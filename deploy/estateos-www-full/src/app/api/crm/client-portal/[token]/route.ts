@@ -2,8 +2,41 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
+import { buyerPrefToWebRadarFilters } from '@/lib/agencyClientShape';
+import { formatRadarSummary } from '@/lib/radarCalibrationWeb';
+import { contactThreadPair } from '@/lib/contactThreadPair';
+import { sendContactThreadMessage } from '@/lib/contactSendMessage';
 
 type RouteCtx = { params: Promise<{ token: string }> };
+
+function shapeSearchCriteria(pref: Parameters<typeof buyerPrefToWebRadarFilters>[0]) {
+  if (!pref) return null;
+  const filters = buyerPrefToWebRadarFilters(pref);
+  const summary = formatRadarSummary(filters);
+  const amenities = [
+    filters.requireBalcony ? 'Balkon' : null,
+    filters.requireGarden ? 'Ogródek' : null,
+    filters.requireElevator ? 'Winda' : null,
+    filters.requireParking ? 'Parking' : null,
+    filters.requireFurnished ? 'Umeblowane' : null,
+  ].filter(Boolean) as string[];
+  return {
+    ...summary,
+    districts: filters.selectedDistricts,
+    amenities,
+    calibrationMode: filters.calibrationMode,
+  };
+}
+
+async function ensureAgencyClientThread(agencyUserId: number, linkedUserId: number) {
+  const pair = contactThreadPair(agencyUserId, linkedUserId);
+  return prisma.contactThread.upsert({
+    where: { userLowId_userHighId: pair },
+    update: {},
+    create: pair,
+    select: { id: true },
+  });
+}
 
 export async function GET(_req: Request, ctx: RouteCtx) {
   const { token } = await ctx.params;
@@ -64,6 +97,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const agent = client.agencyUser;
   const agencyName = agent.companyName?.trim() || 'EstateOS';
   const agentName = resolveSellerPersonName(agent) || agent.name || agencyName;
+  const searchCriteria =
+    client.type === 'BUYER' ? shapeSearchCriteria(client.buyerPreference) : null;
+  const canChat = Boolean(client.linkedUserId);
 
   return NextResponse.json({
     success: true,
@@ -74,6 +110,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agentName,
       agentPhone: agent.phone,
       agentEmail: agent.email,
+      searchCriteria,
+      canChat,
       matches:
         client.type === 'BUYER'
           ? client.matches.map((m) => ({
@@ -126,13 +164,24 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const action = String(body.action || '');
 
   const client = await prisma.agencyClient.findFirst({
-    where: { portalToken: token, status: 'ACTIVE', type: 'BUYER' },
+    where: { portalToken: token, status: 'ACTIVE' },
+    select: {
+      id: true,
+      type: true,
+      agencyUserId: true,
+      linkedUserId: true,
+      firstName: true,
+      lastName: true,
+    },
   });
   if (!client) {
     return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
   }
 
   if (action === 'submit_feedback') {
+    if (client.type !== 'BUYER') {
+      return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
+    }
     const matchId = Number(body.matchId);
     const feedback = String(body.feedback || '').trim();
     if (!Number.isFinite(matchId) || !feedback) {
@@ -166,6 +215,68 @@ export async function POST(req: Request, ctx: RouteCtx) {
     ]);
 
     return NextResponse.json({ success: true });
+  }
+
+  if (action === 'list_messages' || action === 'send_message') {
+    if (!client.linkedUserId) {
+      return NextResponse.json(
+        { error: 'Czat będzie dostępny po powiązaniu konta klienta z EstateOS.' },
+        { status: 400 },
+      );
+    }
+
+    const thread = await ensureAgencyClientThread(client.agencyUserId, client.linkedUserId);
+
+    if (action === 'list_messages') {
+      const messages = await prisma.contactMessage.findMany({
+        where: { threadId: thread.id },
+        orderBy: { createdAt: 'asc' },
+        take: 100,
+        select: {
+          id: true,
+          senderId: true,
+          content: true,
+          createdAt: true,
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        messages: messages.map((m) => ({
+          id: m.id,
+          content: m.content,
+          createdAt: m.createdAt.toISOString(),
+          fromAgent: m.senderId === client.agencyUserId,
+          fromMe: m.senderId === client.linkedUserId,
+        })),
+      });
+    }
+
+    const content = String(body.content || '').trim();
+    if (!content) {
+      return NextResponse.json({ error: 'Wpisz treść wiadomości.' }, { status: 400 });
+    }
+
+    const result = await sendContactThreadMessage({
+      threadId: thread.id,
+      userId: client.linkedUserId,
+      content,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        kind: 'CLIENT_MESSAGE',
+        title: 'Wiadomość od klienta',
+        body: content.slice(0, 280),
+        metadata: { threadId: thread.id, via: 'portal' },
+      },
+    });
+
+    return NextResponse.json({ success: true, message: result.message });
   }
 
   return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });

@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 import { prisma } from '@/lib/prisma';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { absolutizeMediaUrl } from '@/lib/offerShareLanding';
 import { appendPresentationQuery } from '@/lib/offerPresentingAgent';
 
 function buildTransporter() {
@@ -25,6 +26,14 @@ export function buildPortalUrl(token: string): string {
   return `${base.replace(/\/$/, '')}/klient/${token}`;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 type OfferBrief = {
   id: number;
   title: string;
@@ -33,18 +42,65 @@ type OfferBrief = {
   price: number;
   priceCurrency: string | null;
   imageUrl?: string;
+  area?: number | null;
+  rooms?: number | null;
 };
 
-function formatOfferLine(offer: OfferBrief): string {
-  const location = [offer.city, offer.district].filter(Boolean).join(', ');
-  const priceLabel = `${Math.round(offer.price).toLocaleString('pl-PL')} ${offer.priceCurrency || 'PLN'}`;
-  return `${offer.title} (${location}, ${priceLabel})`;
+function formatPriceLabel(offer: OfferBrief): string {
+  return `${Math.round(offer.price).toLocaleString('pl-PL')} ${offer.priceCurrency || 'PLN'}`;
+}
+
+function formatLocation(offer: OfferBrief): string {
+  return [offer.city, offer.district].filter(Boolean).join(', ');
 }
 
 function offerUrlForClient(offerId: number, portalToken: string | null | undefined): string {
   const base = `https://estateos.pl/oferta/${offerId}`;
   if (!portalToken) return base;
   return `https://estateos.pl${appendPresentationQuery(`/oferta/${offerId}`, { portalToken })}`;
+}
+
+function formatMetaLine(offer: OfferBrief): string {
+  const bits: string[] = [];
+  if (offer.rooms != null && Number(offer.rooms) > 0) {
+    bits.push(`${offer.rooms} pok.`);
+  }
+  if (offer.area != null && Number(offer.area) > 0) {
+    bits.push(`${Math.round(Number(offer.area))} m²`);
+  }
+  return bits.join(' · ');
+}
+
+function buildOfferCardHtml(offer: OfferBrief, portalToken?: string | null): string {
+  const offerUrl = offerUrlForClient(offer.id, portalToken);
+  const location = formatLocation(offer);
+  const priceLabel = formatPriceLabel(offer);
+  const meta = formatMetaLine(offer);
+  const imageUrl = offer.imageUrl ? absolutizeMediaUrl(offer.imageUrl) : '';
+
+  const imageBlock = imageUrl
+    ? `<tr>
+        <td style="padding:0;line-height:0;font-size:0;">
+          <a href="${escapeHtml(offerUrl)}" style="display:block;text-decoration:none;">
+            <img src="${escapeHtml(imageUrl)}" width="504" alt="${escapeHtml(offer.title)}" style="display:block;width:100%;max-width:504px;height:auto;border:0;object-fit:cover;" />
+          </a>
+        </td>
+      </tr>`
+    : '';
+
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;background:#ffffff;border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;">
+      ${imageBlock}
+      <tr>
+        <td style="padding:20px 22px 22px;">
+          <p style="margin:0 0 6px;font-size:11px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:#059669;">${escapeHtml(location || 'Nieruchomość')}</p>
+          <p style="margin:0 0 8px;font-size:18px;line-height:1.3;font-weight:800;color:#111827;letter-spacing:-0.02em;">${escapeHtml(offer.title)}</p>
+          <p style="margin:0 0 4px;font-size:20px;font-weight:900;color:#111827;letter-spacing:-0.03em;">${escapeHtml(priceLabel)}</p>
+          ${meta ? `<p style="margin:0 0 16px;font-size:13px;color:#6b7280;">${escapeHtml(meta)}</p>` : `<div style="height:12px;line-height:12px;font-size:12px;">&nbsp;</div>`}
+          <a href="${escapeHtml(offerUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:13px 22px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Zobacz ofertę</a>
+        </td>
+      </tr>
+    </table>`;
 }
 
 function buildEmailHtml(params: {
@@ -55,37 +111,104 @@ function buildEmailHtml(params: {
   offers: OfferBrief[];
   portalUrl?: string | null;
   portalToken?: string | null;
+  agentPhone?: string | null;
+  agentEmail?: string | null;
 }) {
-  const { agencyName, agentName, clientName, intro, offers, portalUrl, portalToken } = params;
-  const offerBlocks = offers
-    .map((offer) => {
-      const offerUrl = offerUrlForClient(offer.id, portalToken);
-      const location = [offer.city, offer.district].filter(Boolean).join(', ');
-      const priceLabel = `${Math.round(offer.price).toLocaleString('pl-PL')} ${offer.priceCurrency || 'PLN'}`;
-      return `
-        <div style="background:#f9fafb;border-radius:16px;padding:20px;margin-bottom:16px;">
-          <p style="margin:0 0 6px;font-weight:600;color:#111;">${offer.title}</p>
-          <p style="margin:0 0 12px;color:#6b7280;font-size:14px;">${location} · ${priceLabel}</p>
-          <a href="${offerUrl}" style="display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:10px 20px;border-radius:999px;font-weight:700;font-size:12px;">Zobacz ofertę</a>
-        </div>`;
-    })
-    .join('');
+  const {
+    agencyName,
+    agentName,
+    clientName,
+    intro,
+    offers,
+    portalUrl,
+    portalToken,
+    agentPhone,
+    agentEmail,
+  } = params;
+
+  const eyebrow =
+    offers.length === 1 ? 'Propozycja specjalnie dla Ciebie' : 'Propozycje specjalnie dla Ciebie';
+  const count = offers.length;
+  const countLabel =
+    count === 1 ? '1 ofertę' : count < 5 ? `${count} oferty` : `${count} ofert`;
+  const headline =
+    count === 1 ? `Witaj ${clientName}` : `Witaj ${clientName} — wybrałem ${countLabel}`;
+
+  const offerBlocks = offers.map((offer) => buildOfferCardHtml(offer, portalToken)).join('');
 
   const portalBlock = portalUrl
-    ? `<p style="margin:0 0 20px;font-size:13px;color:#6b7280;">Możesz też zalogować się do swojego panelu klienta i zostawić uwagi do każdej propozycji: <a href="${portalUrl}" style="color:#059669;">${portalUrl}</a></p>`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:4px 0 0;background:#f8fafc;border:1px solid #e5e7eb;border-radius:18px;">
+        <tr>
+          <td style="padding:18px 20px;">
+            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;">Twój prywatny panel klienta</p>
+            <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b7280;">W panelu zobaczysz wszystkie propozycje w jednym miejscu i możesz zostawić uwagi do każdej z nich.</p>
+            <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;">Otwórz panel klienta</a>
+          </td>
+        </tr>
+      </table>`
     : '';
 
+  const contactBits = [
+    agentPhone
+      ? `<a href="tel:${escapeHtml(agentPhone)}" style="color:#111827;font-weight:700;text-decoration:none;">${escapeHtml(agentPhone)}</a>`
+      : '',
+    agentEmail
+      ? `<a href="mailto:${escapeHtml(agentEmail)}" style="color:#111827;font-weight:700;text-decoration:none;">${escapeHtml(agentEmail)}</a>`
+      : '',
+  ].filter(Boolean);
+
   return `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f7;padding:32px 16px;">
-      <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:20px;padding:32px;border:1px solid #e5e7eb;">
-        <p style="font-size:11px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#059669;margin:0 0 12px;">${agencyName}</p>
-        <h1 style="font-size:22px;margin:0 0 8px;color:#111;">Witaj ${clientName},</h1>
-        <p style="color:#374151;line-height:1.6;margin:0 0 20px;">${intro}</p>
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f7;padding:32px 16px;">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 24px 60px rgba(15,23,42,0.08);">
+      <div style="background:linear-gradient(135deg,#0b1220 0%,#102a23 55%,#0f766e 100%);padding:28px 28px 34px;">
+        <p style="margin:0 0 14px;font-size:12px;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:#6ee7b7;">${escapeHtml(agencyName)}</p>
+        <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.55);">${escapeHtml(eyebrow)}</p>
+        <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15;color:#ffffff;letter-spacing:-0.03em;">${escapeHtml(headline)}</h1>
+      </div>
+      <div style="padding:28px;">
+        <p style="margin:0 0 22px;color:#374151;font-size:15px;line-height:1.65;">${escapeHtml(intro)}</p>
         ${offerBlocks}
         ${portalBlock}
-        <p style="margin:24px 0 0;font-size:13px;color:#6b7280;">Pozdrawiam serdecznie,<br><strong>${agentName}</strong><br>${agencyName}</p>
+        <div style="margin-top:26px;padding-top:20px;border-top:1px solid #f3f4f6;">
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Pozdrawiam serdecznie,</p>
+          <p style="margin:0;font-size:16px;font-weight:800;color:#111827;">${escapeHtml(agentName)}</p>
+          <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">${escapeHtml(agencyName)}</p>
+          ${
+            contactBits.length
+              ? `<p style="margin:10px 0 0;font-size:13px;color:#6b7280;">${contactBits.join(' · ')}</p>`
+              : ''
+          }
+        </div>
+        <p style="margin:22px 0 0;text-align:center;font-size:11px;color:#9ca3af;">EstateOS™ · oferta przygotowana indywidualnie dla Ciebie</p>
       </div>
-    </div>`;
+    </div>
+  </div>`;
+}
+
+function toOfferBrief(row: {
+  id: number;
+  title: string;
+  city: string;
+  district: string | null;
+  price: number;
+  priceCurrency: string | null;
+  area?: number | null;
+  rooms?: number | null;
+  images?: unknown;
+}): OfferBrief {
+  const raw = resolveOfferPrimaryImage({ images: row.images });
+  const imageUrl = raw ? absolutizeMediaUrl(raw) : undefined;
+  return {
+    id: row.id,
+    title: row.title,
+    city: row.city,
+    district: row.district,
+    price: row.price,
+    priceCurrency: row.priceCurrency,
+    area: row.area ?? null,
+    rooms: row.rooms ?? null,
+    imageUrl,
+  };
 }
 
 export async function buildAgencyClientEmailPreview(params: {
@@ -103,7 +226,17 @@ export async function buildAgencyClientEmailPreview(params: {
     }),
     prisma.offer.findMany({
       where: { id: { in: offerIds } },
-      select: { id: true, title: true, city: true, district: true, price: true, priceCurrency: true },
+      select: {
+        id: true,
+        title: true,
+        city: true,
+        district: true,
+        price: true,
+        priceCurrency: true,
+        area: true,
+        rooms: true,
+        images: true,
+      },
     }),
     prisma.user.findUnique({
       where: { id: params.agencyUserId },
@@ -114,16 +247,19 @@ export async function buildAgencyClientEmailPreview(params: {
   if (!client || !agent) throw new Error('Nie znaleziono klienta lub agenta.');
   if (!offers.length) throw new Error('Nie znaleziono ofert.');
 
+  const byId = new Map(offers.map((o) => [o.id, o]));
+  const ordered = offerIds.map((id) => byId.get(id)).filter(Boolean) as typeof offers;
+
   const agentName = resolveSellerPersonName(agent) || agent.name || 'Twój agent';
   const agencyName = agent.companyName?.trim() || 'EstateOS';
   const clientName = `${client.firstName}`.trim() || 'Kliencie';
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : null;
 
-  const offerBriefs: OfferBrief[] = offers.map((o) => ({ ...o, district: o.district }));
+  const offerBriefs: OfferBrief[] = ordered.map(toOfferBrief);
   const defaultIntro =
     offerBriefs.length === 1
-      ? `Przygotowałem dla Ciebie propozycję, która może Cię zainteresować — ${formatOfferLine(offerBriefs[0])}.`
-      : `Przygotowałem dla Ciebie ${offerBriefs.length} propozycje dopasowane do Twoich kryteriów. Poniżej znajdziesz szczegóły każdej z nich.`;
+      ? `Wybrałem dla Ciebie jedną nieruchomość, która — moim zdaniem — szczególnie pasuje do Twoich oczekiwań. Zerknij proszę na zdjęcia i szczegóły poniżej.`
+      : `Przygotowałem dla Ciebie ${offerBriefs.length} starannie dobrane propozycje. Każda z nich może być kolejnym krokiem w poszukiwaniach — poniżej znajdziesz zdjęcia i kluczowe informacje.`;
 
   const intro = params.customMessage?.trim() || defaultIntro;
   const subject =
@@ -139,6 +275,8 @@ export async function buildAgencyClientEmailPreview(params: {
     offers: offerBriefs,
     portalUrl,
     portalToken: client.portalToken,
+    agentPhone: agent.phone,
+    agentEmail: agent.email,
   });
 
   return {
@@ -151,6 +289,8 @@ export async function buildAgencyClientEmailPreview(params: {
     clientEmail: client.email,
     offers: offerBriefs,
     portalUrl,
+    agentPhone: agent.phone,
+    agentEmail: agent.email,
   };
 }
 
@@ -185,7 +325,7 @@ export async function notifyAgencyClientAboutOffer(params: {
     await transporter.sendMail({
       from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
       to: preview.clientEmail,
-      replyTo: (await prisma.user.findUnique({ where: { id: params.agencyUserId }, select: { email: true } }))?.email || undefined,
+      replyTo: preview.agentEmail || undefined,
       subject: preview.subject,
       html: preview.html,
     });
@@ -244,6 +384,10 @@ export async function notifyAgencyClientAboutOffers(params: {
   let emailSent = false;
   if (params.channel === 'email' && preview.clientEmail && toSend.length) {
     const sendOffers = preview.offers.filter((o) => toSend.includes(o.id));
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: params.clientId },
+      select: { portalToken: true },
+    });
     const sendPreview = buildEmailHtml({
       agencyName: preview.agencyName,
       agentName: preview.agentName,
@@ -251,16 +395,15 @@ export async function notifyAgencyClientAboutOffers(params: {
       intro: preview.intro,
       offers: sendOffers,
       portalUrl: preview.portalUrl,
-      portalToken: (await prisma.agencyClient.findFirst({
-        where: { id: params.clientId },
-        select: { portalToken: true },
-      }))?.portalToken,
+      portalToken: client?.portalToken,
+      agentPhone: preview.agentPhone,
+      agentEmail: preview.agentEmail,
     });
     const transporter = buildTransporter();
     await transporter.sendMail({
       from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
       to: preview.clientEmail,
-      replyTo: (await prisma.user.findUnique({ where: { id: params.agencyUserId }, select: { email: true } }))?.email || undefined,
+      replyTo: preview.agentEmail || undefined,
       subject: preview.subject,
       html: sendPreview,
     });
