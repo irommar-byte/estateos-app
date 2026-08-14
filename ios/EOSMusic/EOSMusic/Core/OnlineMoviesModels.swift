@@ -15,6 +15,84 @@ enum EOSLibraryBrand {
 typealias FilmsCatalogMode = OnlineMoviesCatalogMode
 typealias FilmsCatalogKind = OnlineMoviesCatalogKind
 
+/// Porównywanie URL odcinków / filmów (CDA-HD bywa z `-online`, `/` na końcu, www).
+enum MovieURLMatching {
+    static func normalizedKey(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed) else {
+            return trimmed.lowercased()
+        }
+        components.scheme = "https"
+        components.host = components.host?
+            .lowercased()
+            .replacingOccurrences(of: #"^www\."#, with: "", options: .regularExpression)
+        components.query = nil
+        components.fragment = nil
+        components.user = nil
+        components.password = nil
+        var path = components.path.lowercased()
+        while path.count > 1, path.hasSuffix("/") {
+            path.removeLast()
+        }
+        if path.hasSuffix("-online") {
+            path = String(path.dropLast("-online".count))
+        }
+        components.path = path
+        let host = components.host ?? ""
+        return host.isEmpty ? path : "\(host)\(path)"
+    }
+
+    static func urlsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        guard !lhs.isEmpty, !rhs.isEmpty else { return false }
+        if lhs == rhs { return true }
+        return normalizedKey(lhs) == normalizedKey(rhs)
+    }
+
+    /// `/episode/westworld-sezon-1-odcinek-1-online` → `/tvshows/westworld/`
+    static func inferredSeriesPageURL(from episodeURL: String) -> String? {
+        guard let url = URL(string: episodeURL) else { return nil }
+        let path = url.path.lowercased()
+        guard path.contains("/episode/") else { return nil }
+        guard var slug = path.split(separator: "/").last.map(String.init), !slug.isEmpty else { return nil }
+        if slug.hasSuffix("-online") {
+            slug = String(slug.dropLast("-online".count))
+        }
+        if let range = slug.range(of: #"-sezon-\d+"#, options: .regularExpression) {
+            slug = String(slug[..<range.lowerBound])
+        }
+        slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        guard !slug.isEmpty else { return nil }
+        var components = URLComponents()
+        components.scheme = url.scheme ?? "https"
+        components.host = url.host
+        components.path = "/tvshows/\(slug)/"
+        return components.string
+    }
+
+    static func download(
+        matching url: String,
+        title: String? = nil,
+        in downloads: [MovieDownload]
+    ) -> MovieDownload? {
+        if let exact = downloads.first(where: { urlsMatch($0.url, url) && $0.isDownloaded }) {
+            return exact
+        }
+        let needle = (title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard needle.count >= 6 else { return nil }
+        return downloads.first { download in
+            guard download.isDownloaded else { return false }
+            let hay = download.title.lowercased()
+            if hay.contains(needle) || needle.contains(hay) { return true }
+            if let file = download.filename?.lowercased(), file.contains(needle.replacingOccurrences(of: " ", with: "_")) {
+                return true
+            }
+            return false
+        }
+    }
+}
+
 enum OnlineMoviesCatalogMode: String, CaseIterable, Identifiable {
     case all = "all"
     case latest = "latest"
@@ -170,6 +248,14 @@ struct MovieDownload: Codable, Identifiable, Hashable {
         let parts = path.split(separator: "/").map(String.init)
         guard parts.count >= 2 else { return nil }
         return parts[1]
+    }
+
+    var looksLikeEpisode: Bool {
+        let path = url.lowercased()
+        if path.contains("/episode/") { return true }
+        if let filename, filename.localizedCaseInsensitiveContains("/Sezon ") { return true }
+        let t = title.lowercased()
+        return t.contains(" · sezon ") || t.contains(" · odcinek") || t.contains(" odc. ")
     }
 }
 
@@ -518,7 +604,7 @@ struct OnlineMovieSelection: Identifiable, Hashable {
         source = download.source ?? "cda-hd"
         detail = nil
         duration = nil
-        isSerial = false
+        isSerial = download.looksLikeEpisode
     }
 
     init(episode: EpisodeItem, source: String? = "cda-hd") {

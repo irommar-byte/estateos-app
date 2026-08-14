@@ -147,7 +147,6 @@ struct VideoSignalBadgeBar: View {
                 if !info.container.isEmpty { chip(info.container) }
                 if !info.bitrate.isEmpty { chip(info.bitrate) }
                 chip(aspectTitle, style: .accent)
-                chip(info.isLocal ? "Lokalnie" : "Sieć", style: .muted)
             }
             .padding(.horizontal, 2)
         }

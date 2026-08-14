@@ -63,7 +63,7 @@ struct OnlineMoviesDownloadsView: View {
         .refreshable { await movies.refreshDownloads() }
         .task { await movies.refreshDownloads() }
         .navigationDestination(item: $selected) { selection in
-            OnlineMovieDetailView(selection: selection)
+            OnlineDownloadedMediaDestination(selection: selection)
                 .environmentObject(app)
                 .environmentObject(video)
         }
@@ -120,6 +120,64 @@ struct OnlineMoviesDownloadsView: View {
                 pendingDelete = download
             } label: {
                 Label("Usuń", systemImage: "trash")
+            }
+        }
+    }
+}
+
+/// Pobrany odcinek serialu otwiera pełną listę sezonu, nie kartę „filmu”.
+struct OnlineDownloadedMediaDestination: View {
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var video: VideoAppModel
+
+    let selection: OnlineMovieSelection
+
+    @State private var seriesInfo: VideoInfoResponse?
+    @State private var isLoading = false
+    @State private var loadError: String?
+
+    private var looksLikeEpisode: Bool {
+        selection.isSerial
+            || selection.url.lowercased().contains("/episode/")
+            || selection.title.lowercased().contains(" · sezon ")
+            || selection.title.lowercased().contains(" · odcinek")
+    }
+
+    var body: some View {
+        Group {
+            if let seriesInfo, seriesInfo.isSeries, !seriesInfo.playableEpisodes.isEmpty {
+                OnlineSeriesEpisodesView(info: seriesInfo, highlightEpisodeURL: selection.url)
+            } else if isLoading {
+                ProgressView("Wczytuję sezon…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                OnlineMovieDetailView(selection: selection)
+            }
+        }
+        .task {
+            guard looksLikeEpisode else { return }
+            await loadSeries()
+        }
+    }
+
+    private func loadSeries() async {
+        isLoading = true
+        defer { isLoading = false }
+        var candidates: [String] = []
+        if let inferred = MovieURLMatching.inferredSeriesPageURL(from: selection.url) {
+            candidates.append(inferred)
+        }
+        candidates.append(selection.url)
+        for url in candidates {
+            do {
+                let info = try await app.onlineMovies.fetchInfo(url: url)
+                if info.isSeries, !info.playableEpisodes.isEmpty {
+                    seriesInfo = info
+                    loadError = nil
+                    return
+                }
+            } catch {
+                loadError = error.localizedDescription
             }
         }
     }

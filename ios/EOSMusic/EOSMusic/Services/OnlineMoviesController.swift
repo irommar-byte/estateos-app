@@ -40,15 +40,22 @@ final class OnlineMoviesController: ObservableObject {
         activeTasks.removeAll()
     }
 
-    func transferState(for url: String) -> OnlineMovieTransferState {
+    func transferState(for url: String, title: String? = nil) -> OnlineMovieTransferState {
         if let state = transferStates[url] { return state }
+        if let keyed = transferStates.first(where: { MovieURLMatching.urlsMatch($0.key, url) })?.value {
+            return keyed
+        }
         if phoneFileURL(for: url) != nil { return .onPhone }
-        if downloads.contains(where: { $0.url == url && $0.isDownloaded }) { return .onServer }
+        if downloadEntry(for: url, title: title) != nil { return .onServer }
         return .idle
     }
 
-    func jobId(for url: String) -> String? {
-        downloads.first(where: { $0.url == url && $0.isDownloaded })?.downloadJobId
+    func jobId(for url: String, title: String? = nil) -> String? {
+        downloadEntry(for: url, title: title)?.downloadJobId
+    }
+
+    func downloadEntry(for url: String, title: String? = nil) -> MovieDownload? {
+        MovieURLMatching.download(matching: url, title: title, in: downloads)
     }
 
     func refreshHome() async {
@@ -198,7 +205,8 @@ final class OnlineMoviesController: ObservableObject {
         height: Int = 720,
         video: VideoAppModel,
         episodeQueue: [EpisodeItem]? = nil,
-        seriesTitle: String? = nil
+        seriesTitle: String? = nil,
+        preferSavedCopy: Bool = true
     ) {
         streamTask?.cancel()
         streamTask = Task {
@@ -207,7 +215,8 @@ final class OnlineMoviesController: ObservableObject {
                 height: height,
                 video: video,
                 episodeQueue: episodeQueue,
-                seriesTitle: seriesTitle
+                seriesTitle: seriesTitle,
+                preferSavedCopy: preferSavedCopy
             )
         }
     }
@@ -223,15 +232,14 @@ final class OnlineMoviesController: ObservableObject {
     func playFromServer(selection: OnlineMovieSelection, video: VideoAppModel) async {
         guard let api else { return }
         do {
-            let jobId: String
-            if let existing = self.jobId(for: selection.url) {
-                jobId = existing
-            } else {
+            guard let existing = self.jobId(for: selection.url, title: selection.title) else {
                 statusMessage = "Najpierw pobierz film na serwer."
                 return
             }
-            let token = try await api.moviePlayToken(jobId: jobId)
-            let streamURL = api.movieStreamURL(jobId: jobId, token: token.token)
+            statusMessage = "Uruchamiam z serwera…"
+            let token = try await api.moviePlayToken(jobId: existing)
+            let streamURL = api.movieStreamURL(jobId: existing, token: token.token)
+            statusMessage = nil
             await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
         } catch {
             statusMessage = error.localizedDescription
@@ -251,7 +259,8 @@ final class OnlineMoviesController: ObservableObject {
         height: Int,
         video: VideoAppModel,
         episodeQueue: [EpisodeItem]? = nil,
-        seriesTitle: String? = nil
+        seriesTitle: String? = nil,
+        preferSavedCopy: Bool = true
     ) async {
         guard let api else { return }
         isPreparingStream = true
@@ -263,17 +272,30 @@ final class OnlineMoviesController: ObservableObject {
         }
 
         do {
-            // Lokalna kopia / serwer mają pierwszeństwo (natychmiastowy start).
-            if let local = phoneFileURL(for: selection.url) {
+            // Lokalna kopia / serwer — tylko gdy użytkownik nie wybrał źródła na żywo.
+            if preferSavedCopy, let local = phoneFileURL(for: selection.url) {
                 statusMessage = nil
                 await playRemoteOrLocal(url: local, title: selection.title, video: video)
                 return
             }
-            if let existing = jobId(for: selection.url) {
+            if preferSavedCopy, let existing = jobId(for: selection.url, title: selection.title) {
+                statusMessage = "Uruchamiam z serwera…"
                 let token = try await api.moviePlayToken(jobId: existing)
                 let streamURL = api.movieStreamURL(jobId: existing, token: token.token)
                 statusMessage = nil
-                await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+                if let queue = episodeQueue, queue.count > 1 {
+                    await playEpisodeQueue(
+                        episodes: queue,
+                        startURL: selection.url,
+                        streamURLForEpisode: { ep in
+                            MovieURLMatching.urlsMatch(ep.url, selection.url) ? streamURL : nil
+                        },
+                        seriesTitle: seriesTitle ?? selection.title,
+                        video: video
+                    )
+                } else {
+                    await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+                }
                 return
             }
 
@@ -358,8 +380,12 @@ final class OnlineMoviesController: ObservableObject {
                     if job.status == "error" {
                         throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
                     }
-                    let pct = max(0, min(100, job.progress ?? 0))
-                    transferStates[key] = .acquiringServer(progress: pct)
+                    if job.status == "processing" {
+                        transferStates[key] = .acquiringServer(progress: min(job.progress ?? 99, 99))
+                    } else {
+                        let pct = max(0, min(job.status == "done" ? 100 : 99, job.progress ?? 0))
+                        transferStates[key] = .acquiringServer(progress: pct)
+                    }
                     if job.ready == true || job.status == "done" { break }
                     try await Task.sleep(nanoseconds: 900_000_000)
                 }
@@ -375,6 +401,12 @@ final class OnlineMoviesController: ObservableObject {
                 source: selection.source
             )
             await refreshDownloads()
+            let landed = downloads.contains {
+                $0.url == selection.url && (($0.bytes ?? 0) > 0 || ($0.downloadJobId?.isEmpty == false))
+            }
+            guard landed else {
+                throw APIError.server("Film nie pojawił się w MOVIES/ na serwerze — spróbuj ponownie.")
+            }
             transferStates[key] = .onServer
             statusMessage = "Film jest na serwerze."
 
@@ -408,7 +440,9 @@ final class OnlineMoviesController: ObservableObject {
         seriesTitle: String,
         video: VideoAppModel
     ) async {
-        guard let startIdx = episodes.firstIndex(where: { $0.url == startURL }) else {
+        guard let startIdx = episodes.firstIndex(where: {
+            MovieURLMatching.urlsMatch($0.url, startURL)
+        }) else {
             statusMessage = "Nie znaleziono odcinka w kolejce."
             return
         }
@@ -420,7 +454,7 @@ final class OnlineMoviesController: ObservableObject {
             var fileURL = streamURLForEpisode(episode)
             if fileURL == nil, let local = phoneFileURL(for: episode.url) {
                 fileURL = local
-            } else if fileURL == nil, let jobId = jobId(for: episode.url), let api {
+            } else if fileURL == nil, let jobId = jobId(for: episode.url, title: episode.title), let api {
                 if let token = try? await api.moviePlayToken(jobId: jobId) {
                     fileURL = api.movieStreamURL(jobId: jobId, token: token.token)
                 }
@@ -498,7 +532,8 @@ final class OnlineMoviesController: ObservableObject {
         transferStates[key] = .downloadingPhone(progress: 0)
         statusMessage = "Kopiuję na telefon…"
 
-        var request = URLRequest(url: api.movieFileURL(jobId: jobId))
+        let play = try await api.moviePlayToken(jobId: jobId)
+        var request = URLRequest(url: api.movieStreamURL(jobId: jobId, token: play.token))
         request.timeoutInterval = 3600
         if let token = SessionStore.load()?.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -562,9 +597,15 @@ final class OnlineMoviesController: ObservableObject {
 
     private func phoneFileURL(for sourceURL: String) -> URL? {
         let map = UserDefaults.standard.dictionary(forKey: Self.phoneMapKey) as? [String: String] ?? [:]
-        guard let path = map[sourceURL] else { return nil }
-        let url = URL(fileURLWithPath: path)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        if let path = map[sourceURL], FileManager.default.fileExists(atPath: path) {
+            return URL(fileURLWithPath: path)
+        }
+        for (key, path) in map where MovieURLMatching.urlsMatch(key, sourceURL) {
+            if FileManager.default.fileExists(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+        }
+        return nil
     }
 
     private func rememberPhoneFile(url: String, fileURL: URL) {

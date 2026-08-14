@@ -65,6 +65,10 @@ final class AppModel: ObservableObject {
         onlineMovies.jobId(for: url) != nil
     }
 
+    func isMovieDownloaded(url: String, title: String?) -> Bool {
+        onlineMovies.jobId(for: url, title: title) != nil
+    }
+
     func isMovieOnPhone(url: String) -> Bool {
         onlineMovies.transferState(for: url) == .onPhone
     }

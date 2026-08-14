@@ -20,6 +20,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     @Published private(set) var subtitlesEnabled = false
     @Published private(set) var signalInfo = VideoSignalInfo()
     @Published private(set) var currentPlayableURL: URL?
+    @Published private(set) var playbackOrigin: MediaPlaybackOrigin = .unknown
     /// 0…200 — VLC scale (100 = normal). Shown in HUD for keyboard volume.
     @Published private(set) var volumeLevel: Int = 100
     @Published var rate: VideoPlaybackRate = .normal {
@@ -640,6 +641,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         subtitleTracks = []
         subtitlesEnabled = false
         currentPlayableURL = nil
+        playbackOrigin = .unknown
         sourcesRef?.endAllAccess()
         accessedFolderId = nil
         sourcesRef = nil
@@ -666,6 +668,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             }
             isLocalFile = url.isFileURL
             currentPlayableURL = url
+            playbackOrigin = MediaPlaybackOrigin.fromVideoURL(url)
             thumbnailGenerator.cancel()
 
             let media = VLCMedia(url: url)
@@ -674,8 +677,16 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                 media.addOption(":file-caching=1200")
                 media.addOption(":live-caching=300")
             } else {
-                media.addOption(":network-caching=1500")
-                media.addOption(":file-caching=1000")
+                let fromServer = playbackOrigin == .server
+                // Complete MP4 on EOS — short cache so the first frame appears quickly.
+                // Live preview may need a bit more; never treat as endless live (http-continuous).
+                media.addOption(fromServer ? ":network-caching=1400" : ":network-caching=2000")
+                media.addOption(fromServer ? ":file-caching=1000" : ":file-caching=1400")
+                media.addOption(":http-reconnect=true")
+                media.addOption(":http-user-agent=\(AppConfig.userAgent)")
+                if let token = SessionStore.load()?.token, !token.isEmpty {
+                    media.addOption(":http-extra-header=Authorization: Bearer \(token)")
+                }
             }
             // Resume after minimize — VLC seeks unreliably on HTTP until buffered;
             // start-time opens already at the parked position.
@@ -711,13 +722,12 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             }
             hasEnded = false
             errorMessage = nil
-            // Never flash the spinner for local files — frame is usually ready immediately.
             isBuffering = false
 
             if autoplay {
                 isPlaying = true
                 wantsPlayback = true
-                AudioSession.activateForPlayback()
+                AudioSession.activateForVideoPlayback()
                 // Deferred play is required after stop/ended on MobileVLCKit.
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 40_000_000)
@@ -758,6 +768,11 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
     private func prepareFilmstrip(for url: URL) {
         guard currentPlayableURL == url else { return }
+        // Remote HTTP: 20 thumbnail seeks fight VLC for the same MP4 and stall playback.
+        guard url.isFileURL else {
+            thumbnailGenerator.cancel()
+            return
+        }
         let knownDuration = max(
             duration,
             (player.media?.length.value?.doubleValue ?? 0) / 1000.0
@@ -786,10 +801,13 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             return
         }
         bufferingRevealTask?.cancel()
+        let timeAtStart = currentTime
         bufferingRevealTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard !Task.isCancelled else { return }
-            if self.player.state == .buffering || (!self.player.isPlaying && !self.hasEnded) {
+            let advanced = self.currentTime - timeAtStart > 0.25
+            let stalled = self.player.state == .buffering || (!self.player.isPlaying && !self.hasEnded)
+            if stalled && !advanced && !self.player.isPlaying {
                 self.isBuffering = true
             }
         }
@@ -1065,7 +1083,7 @@ extension VideoPlaybackEngine: VLCMediaPlayerDelegate {
         Task { @MainActor in
             switch player.state {
             case .error:
-                errorMessage = "Nie udało się odtworzyć pliku (kodek / HDR)."
+                errorMessage = "Nie udało się odtworzyć wideo. Spróbuj „Odtwórz z serwera” albo ze źródła."
                 isPlaying = false
                 clearBuffering()
                 hasEnded = false

@@ -425,6 +425,10 @@ private struct PlayerContent: View {
                 .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
+            if engine.playbackOrigin != .unknown {
+                BreathingSourceBadge(origin: engine.playbackOrigin)
+                    .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
+            }
             if let artist = track.artist, !artist.isEmpty {
                 Button {
                     Task { await openArtist(for: track) }

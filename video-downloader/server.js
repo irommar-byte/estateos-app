@@ -671,8 +671,25 @@ function finalizeJob(job, jobDir) {
     }
   }
 
+  // Movies: persist into MOVIES/ BEFORE advertising done — otherwise the client
+  // exits at 100% while rename into series folders still fails (ensureDir was false).
+  if (job.kind === "movie") {
+    job.status = "processing";
+    job.progress = 99;
+    sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose, phase: "persisting" });
+    try {
+      persistMovieFile(job);
+    } catch (err) {
+      job.status = "error";
+      job.error = friendlyError(err);
+      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+      return;
+    }
+  }
+
   job.status = "done";
   job.progress = 100;
+  job.ready = true;
   if (job.purpose === "preview") ensurePlayToken(job);
   sendEvent(job, {
     status: "done",
@@ -681,14 +698,11 @@ function finalizeJob(job, jobDir) {
     jobId: job.id,
     purpose: job.purpose,
     playToken: job.playToken,
+    ready: true,
   });
 
   if (job.purpose === "preview") {
     setTimeout(() => cleanupJob(job.id), 60 * 60 * 1000);
-  }
-
-  if (job.kind === "movie") {
-    persistMovieFile(job);
   }
 }
 
@@ -814,7 +828,7 @@ function persistMovieFile(job) {
   const destInfo = moviesFileDestPath(MUSIC_PLAYLIST_DOWNLOADS_DIR, {
     title,
     jobId: job.id,
-  }, { ensureDir: false });
+  }, { ensureDir: true });
   const dest = destInfo.filePath;
   if (job.file !== dest) {
     try {
@@ -869,7 +883,8 @@ function startTransferJob({ jobId, url, args, purpose = "download", movieDownloa
   proc.on("progress", (p) => {
     if (job.cancelled) return;
     job.status = "downloading";
-    if (typeof p.percent === "number") job.progress = p.percent;
+    // Never show 100% until finalize/persist finished — yt-dlp hits 100 during remux.
+    if (typeof p.percent === "number") job.progress = Math.min(99, Math.max(0, p.percent));
     sendEvent(job, {
       status: job.status,
       progress: job.progress,
@@ -1541,7 +1556,7 @@ function startTvpMovieDownloadJob({
   const destInfo = moviesFileDestPath(MUSIC_PLAYLIST_DOWNLOADS_DIR, {
     title: movieDownload.title,
     jobId,
-  }, { ensureDir: false });
+  }, { ensureDir: true });
 
   const job = {
     id: jobId,
@@ -1702,7 +1717,8 @@ function startHlsMovieDownloadJob({
   proc.on("progress", (p) => {
     if (job.cancelled) return;
     job.status = "downloading";
-    if (typeof p.percent === "number") job.progress = p.percent;
+    // Never show 100% until finalize/persist finished — yt-dlp hits 100 during remux.
+    if (typeof p.percent === "number") job.progress = Math.min(99, Math.max(0, p.percent));
     sendEvent(job, {
       status: job.status,
       progress: job.progress,
@@ -2049,14 +2065,17 @@ async function downloadStreamToFile(job, streamUrl, referer, destPath, opts = {}
       job.file = destPath;
     }
 
+    if (job.kind === "movie" && !forAirPlay) {
+      job.status = "processing";
+      job.progress = 99;
+      sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose, phase: "persisting" });
+      assertValidMovieFile(destPath);
+      persistMovieFile(job);
+    }
     job.status = forAirPlay ? "airplay-ready" : "done";
     job.progress = 100;
     job.ready = true;
     if (forAirPlay) ensurePlayToken(job);
-    if (job.kind === "movie" && !forAirPlay) {
-      assertValidMovieFile(destPath);
-      persistMovieFile(job);
-    }
     sendEvent(job, {
       status: job.status,
       progress: 100,
@@ -5491,8 +5510,21 @@ app.post("/api/download", async (req, res) => {
         }
       : null;
 
+  // Serial /tvshows/ → trwale linkuj URL odcinka (nie strony serialu).
+  if (movieDownload) {
+    try {
+      const resolved = await resolveMirrorPlayUrl(url);
+      if (resolved?.url && resolved.url !== movieDownload.url) {
+        movieDownload.url = resolved.url;
+        if (resolved.title) movieDownload.title = String(resolved.title).slice(0, 500);
+      }
+    } catch {
+      /* leave original URL — download path may still resolve later */
+    }
+  }
+
   if (movieDownload?.userKey) {
-    const existing = findDownloadByUrl(movieDownload.userKey, url);
+    const existing = findDownloadByUrl(movieDownload.userKey, movieDownload.url);
     if (existing?.downloadJobId) {
       const existingFile = resolvePersistedMovieFile(
         movieDownload.userKey,
@@ -5537,7 +5569,7 @@ app.post("/api/download", async (req, res) => {
     }
     for (const active of jobs.values()) {
       if (
-        active.movieUrl === url &&
+        active.movieUrl === movieDownload.url &&
         active.userKey === movieDownload.userKey &&
         !active.cancelled &&
         active.status !== "error" &&
@@ -5943,11 +5975,17 @@ app.post("/api/cancel/:jobId", (req, res) => {
   res.json({ ok: true, cancelled: true });
 });
 
-// GET /api/file/:jobId  -> stream the downloaded file, then clean up
+// GET /api/file/:jobId  -> stream the downloaded file (Range), then clean up if ephemeral
 app.get("/api/file/:jobId", (req, res) => {
-  const job = jobs.get(req.params.jobId);
+  let job = jobs.get(req.params.jobId);
+  if (!job || !job.file || !fs.existsSync(job.file)) {
+    job = getOrRestoreMovieJob(req.params.jobId, req) || job;
+  }
   if (!job || !job.file || !fs.existsSync(job.file)) {
     return res.status(404).send("Plik niedostępny.");
+  }
+  if (job.kind === "movie" || job.persistent) {
+    return serveVideoFile(req, res, job.file);
   }
   res.download(job.file, sanitizeName(job.name), (err) => {
     if (!job.persistent) cleanupJob(req.params.jobId);

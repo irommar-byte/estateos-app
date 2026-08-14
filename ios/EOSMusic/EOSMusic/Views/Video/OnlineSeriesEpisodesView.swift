@@ -20,6 +20,7 @@ struct OnlineSeriesEpisodesView: View {
     @Environment(\.dismiss) private var dismiss
 
     let info: VideoInfoResponse
+    var highlightEpisodeURL: String? = nil
 
     @State private var selectedSeasonIndex = 0
     @State private var isSelectionMode = false
@@ -27,6 +28,7 @@ struct OnlineSeriesEpisodesView: View {
     @State private var pendingBatch: PendingDownloadBatch?
     @State private var playingEpisodeID: String?
     @State private var selectedHeight = 720
+    @State private var playErrorMessage: String?
 
     private var movies: OnlineMoviesController { app.onlineMovies }
     private var downloads: MovieDownloadService { app.movieDownloads }
@@ -59,6 +61,7 @@ struct OnlineSeriesEpisodesView: View {
     private var allEpisodes: [EpisodeItem] { seasonSections.flatMap(\.episodes) }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 headerActions
@@ -91,14 +94,40 @@ struct OnlineSeriesEpisodesView: View {
             }
         }
         .overlay {
-            if playingEpisodeID != nil {
+            if playingEpisodeID != nil || movies.isPreparingStream {
                 ZStack {
                     Color.black.opacity(0.45).ignoresSafeArea()
-                    ProgressView("Uruchamiam odcinek…")
-                        .padding(24)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    VStack(spacing: 12) {
+                        ProgressView(movies.statusMessage ?? "Uruchamiam odcinek…")
+                        if movies.isPreparingStream, movies.streamPrepareProgress > 0 {
+                            ProgressView(value: movies.streamPrepareProgress, total: 100)
+                                .frame(width: 180)
+                        }
+                    }
+                    .padding(24)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                 }
             }
+        }
+        .task {
+            await movies.refreshDownloads()
+            selectHighlightedSeason()
+            if let highlightEpisodeURL {
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                proxy.scrollTo(highlightEpisodeURL, anchor: .center)
+            }
+        }
+        .alert(
+            "Odtwarzanie",
+            isPresented: Binding(
+                get: { playErrorMessage != nil },
+                set: { if !$0 { playErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { playErrorMessage = nil }
+        } message: {
+            Text(playErrorMessage ?? "")
+        }
         }
     }
 
@@ -165,6 +194,7 @@ struct OnlineSeriesEpisodesView: View {
         return VStack(spacing: 10) {
             ForEach(episodes) { episode in
                 episodeRow(episode)
+                    .id(episode.url)
             }
         }
     }
@@ -173,6 +203,7 @@ struct OnlineSeriesEpisodesView: View {
         let onServer = isDownloaded(episode)
         let onPhone = app.isMovieOnPhone(url: episode.url)
         let batchState = downloads.itemState(for: episode.url)
+        let highlighted = isHighlighted(episode)
         return HStack(spacing: 12) {
             if isSelectionMode {
                 Image(systemName: selectedEpisodeIDs.contains(episode.id) ? "checkmark.circle.fill" : "circle")
@@ -183,12 +214,25 @@ struct OnlineSeriesEpisodesView: View {
             OnlineMovieBackdrop(url: episode.thumbnail.flatMap(URL.init(string:)))
                 .frame(width: 80, height: 48)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(alignment: .topLeading) {
+                    if highlighted {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(EOSTheme.accent)
+                            .background(.white, in: Circle())
+                            .offset(x: -4, y: -4)
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(episode.title)
                     .font(EOSTypography.subheadline.weight(.semibold))
                     .lineLimit(2)
                 HStack(spacing: 6) {
+                    if highlighted {
+                        Text("Pobrany")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(EOSTheme.accent)
+                    }
                     if onPhone {
                         MovieStorageLocationBadge(kind: .phone)
                     } else if onServer {
@@ -201,7 +245,7 @@ struct OnlineSeriesEpisodesView: View {
             Spacer()
 
             Button {
-                Task { await playEpisode(episode) }
+                Task { await playEpisode(episode, preferSavedCopy: true) }
             } label: {
                 Image(systemName: "play.circle.fill")
                     .font(.title2)
@@ -210,7 +254,19 @@ struct OnlineSeriesEpisodesView: View {
             .disabled(playingEpisodeID != nil || movies.isPreparingStream)
 
             Menu {
-                Button("Oglądaj") { Task { await playEpisode(episode) } }
+                Button("Oglądaj ze źródła") {
+                    Task { await playEpisode(episode, preferSavedCopy: false) }
+                }
+                if onServer {
+                    Button("Odtwórz z serwera") {
+                        Task { await playEpisode(episode, preferSavedCopy: true) }
+                    }
+                }
+                if onPhone {
+                    Button("Odtwórz z telefonu") {
+                        Task { await playEpisode(episode, preferSavedCopy: true) }
+                    }
+                }
                 Button("Pobierz…") {
                     prepareDownload([episode], label: serverDownloadTitle(seriesTitle: displayTitle, episode: episode))
                 }
@@ -226,7 +282,14 @@ struct OnlineSeriesEpisodesView: View {
             }
         }
         .padding(10)
-        .background(EOSTheme.card, in: RoundedRectangle(cornerRadius: 12))
+        .background(
+            highlighted ? EOSTheme.accent.opacity(0.12) : EOSTheme.card,
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(highlighted ? EOSTheme.accent : .clear, lineWidth: 1.5)
+        )
         .contentShape(Rectangle())
         .onTapGesture {
             if isSelectionMode { toggleSelection(episode) }
@@ -306,23 +369,63 @@ struct OnlineSeriesEpisodesView: View {
         )
     }
 
-    private func playEpisode(_ episode: EpisodeItem) async {
+    private func playEpisode(_ episode: EpisodeItem, preferSavedCopy: Bool = true) async {
         playingEpisodeID = episode.id
         defer { playingEpisodeID = nil }
         let selection = OnlineMovieSelection(episode: episode, source: info.source)
+
+        if preferSavedCopy, app.isMovieOnPhone(url: episode.url) {
+            await movies.playFromPhone(selection: selection, video: video)
+            if !video.isPlayerPresented {
+                playErrorMessage = movies.statusMessage ?? "Nie udało się odtworzyć kopii z telefonu."
+            }
+            return
+        }
+        if preferSavedCopy, movies.jobId(for: episode.url, title: episode.title) != nil {
+            await movies.playFromServer(selection: selection, video: video)
+            if !video.isPlayerPresented {
+                playErrorMessage = movies.statusMessage
+                    ?? "Nie udało się odtworzyć pliku z serwera."
+            }
+            return
+        }
+
         movies.watchStream(
             selection: selection,
             height: selectedHeight,
             video: video,
             episodeQueue: allEpisodes,
-            seriesTitle: displayTitle
+            seriesTitle: displayTitle,
+            preferSavedCopy: preferSavedCopy
         )
-        // watchStream is async internally — give it a moment
-        try? await Task.sleep(nanoseconds: 300_000_000)
+        // Czekaj na start / błąd — wcześniej overlay znikał po 0.3s i wyglądało jak „martwy” Play.
+        for _ in 0..<180 {
+            if video.isPlayerPresented { return }
+            if !movies.isPreparingStream { break }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        if !video.isPlayerPresented {
+            playErrorMessage = movies.statusMessage
+                ?? "Nie udało się uruchomić odcinka. Jeśli jest na serwerze — odśwież listę i spróbuj ponownie."
+        }
     }
 
     private func isDownloaded(_ episode: EpisodeItem) -> Bool {
-        app.isMovieDownloaded(url: episode.url)
+        app.isMovieDownloaded(url: episode.url, title: episode.title)
+    }
+
+    private func isHighlighted(_ episode: EpisodeItem) -> Bool {
+        guard let highlightEpisodeURL else { return false }
+        return MovieURLMatching.urlsMatch(episode.url, highlightEpisodeURL)
+    }
+
+    private func selectHighlightedSeason() {
+        guard let highlightEpisodeURL else { return }
+        if let index = seasonSections.firstIndex(where: { section in
+            section.episodes.contains { MovieURLMatching.urlsMatch($0.url, highlightEpisodeURL) }
+        }) {
+            selectedSeasonIndex = index
+        }
     }
 
     private var downloadedOnServerCount: Int {

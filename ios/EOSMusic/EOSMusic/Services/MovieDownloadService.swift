@@ -442,6 +442,13 @@ final class MovieDownloadService: ObservableObject {
                     source: item.source
                 )
                 await onlineMovies.refreshDownloads()
+                let landed = onlineMovies.downloads.contains {
+                    MovieURLMatching.urlsMatch($0.url, item.url)
+                        && (($0.bytes ?? 0) > 0 || ($0.downloadJobId?.isEmpty == false))
+                }
+                if !landed {
+                    throw APIError.server("Film nie pojawił się w MOVIES/ na serwerze — spróbuj ponownie.")
+                }
 
                 if batch.destination == .serverAndPhone {
                     batch = activeBatch ?? batch
@@ -552,13 +559,19 @@ final class MovieDownloadService: ObservableObject {
                 throw CancellationError()
             }
             let job = try await api.fetchJobStatus(jobId: jobId)
-            if let progress = job.progress {
-                applyProgress(itemIndex: itemIndex, phone: false, percent: progress)
-            }
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
             }
-            if job.ready == true || job.status == "done" { return }
+            // processing / remux / persist — keep UI under 100% so it doesn't look stuck at done.
+            if job.status == "processing" {
+                applyProgress(itemIndex: itemIndex, phone: false, percent: min(job.progress ?? 99, 99))
+            } else if let progress = job.progress {
+                applyProgress(itemIndex: itemIndex, phone: false, percent: min(progress, job.status == "done" ? 100 : 99))
+            }
+            if job.ready == true || job.status == "done" {
+                applyProgress(itemIndex: itemIndex, phone: false, percent: 100)
+                return
+            }
             poll += 1
             let delay: UInt64 = poll < 30 ? 500_000_000 : 1_000_000_000
             try await Task.sleep(nanoseconds: delay)

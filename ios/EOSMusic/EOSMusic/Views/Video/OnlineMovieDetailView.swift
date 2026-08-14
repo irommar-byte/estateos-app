@@ -164,19 +164,23 @@ struct OnlineMovieDetailView: View {
                     showSeriesEpisodes = true
                 } label: {
                     Label("Odcinki i sezony", systemImage: "list.bullet.rectangle.portrait")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(OnlineMoviePrimaryButton())
-            } else {
-                Button {
-                    movies.watchStream(selection: selection, height: 720, video: video)
-                } label: {
-                    Label(movies.isPreparingStream ? "Uruchamiam…" : "Oglądaj", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(OnlineMoviePrimaryButton())
-                .disabled(movies.isPreparingStream || transfer.isBusy)
             }
+
+            Button {
+                movies.watchStream(selection: selection, height: 720, video: video, preferSavedCopy: false)
+            } label: {
+                Label(movies.isPreparingStream ? "Uruchamiam…" : "Oglądaj ze źródła", systemImage: "dot.radiowaves.left.and.right")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnlineMoviePrimaryButton())
+            .disabled(movies.isPreparingStream || transfer.isBusy)
 
             if movies.isPreparingStream {
                 ProgressView(value: movies.streamPrepareProgress, total: 100) {
@@ -197,6 +201,7 @@ struct OnlineMovieDetailView: View {
                 }
             } label: {
                 Label("Pobierz", systemImage: "arrow.down.circle")
+                    .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))
@@ -208,12 +213,19 @@ struct OnlineMovieDetailView: View {
     private var playbackButtons: some View {
         if case .onPhone = transfer {
             Button { Task { await movies.playFromPhone(selection: selection, video: video) } } label: {
-                Label("Odtwórz z telefonu", systemImage: "iphone").frame(maxWidth: .infinity)
+                Label("Odtwórz z telefonu", systemImage: "iphone")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnlineMovieSecondaryButton())
-        } else if case .onServer = transfer {
+        }
+        if movies.jobId(for: selection.url, title: selection.title) != nil {
             Button { Task { await movies.playFromServer(selection: selection, video: video) } } label: {
-                Label("Odtwórz z serwera", systemImage: "server.rack").frame(maxWidth: .infinity)
+                Label("Odtwórz z serwera", systemImage: "server.rack")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnlineMovieSecondaryButton())
         }
@@ -276,9 +288,14 @@ struct OnlineMovieDetailView: View {
 
     private var transferLabel: String {
         switch transfer {
-        case .acquiringServer(let p): return String(format: "Serwer · %.0f%%", p)
-        case .downloadingPhone(let p): return String(format: "iPhone · %.0f%%", p)
-        default: return "Pobieranie…"
+        case .acquiringServer(let p) where p >= 99:
+            return "Finalizowanie na serwerze…"
+        case .acquiringServer(let p):
+            return String(format: "Serwer · %.0f%%", p)
+        case .downloadingPhone(let p):
+            return String(format: "iPhone · %.0f%%", p)
+        default:
+            return "Pobieranie…"
         }
     }
 
@@ -289,6 +306,39 @@ struct OnlineMovieDetailView: View {
     ) {
         guard let info else { return }
         let options = info.qualityOptions(for: format)
+
+        // Serial: nie linkuj URL strony /tvshows/ — pobieraj konkretny odcinek (inaczej „1/1 OK” i „0 serwer”).
+        if info.isSeries {
+            guard let episode = info.playableEpisodes.first else {
+                movies.statusMessage = "Wybierz odcinek z listy — serial nie da się pobrać jako jedna strona."
+                return
+            }
+            let item = MovieDownloadQueueItem(
+                url: episode.url,
+                title: serverDownloadTitle(seriesTitle: displayTitle, episode: episode),
+                thumbnail: episode.thumbnail ?? selection.thumbnail ?? info.thumbnail,
+                source: selection.source
+            )
+            if destination == .serverAndPhone {
+                movies.downloadToPhone(
+                    selection: OnlineMovieSelection(episode: episode, source: selection.source),
+                    height: MediaQualityOption.apiHeight(for: quality, options: options),
+                    video: video
+                )
+                return
+            }
+            downloads.startBatch(
+                items: [item],
+                label: displayTitle,
+                thumbnail: selection.thumbnail,
+                contextKey: info.webpageUrl,
+                format: format,
+                quality: quality,
+                destination: .server
+            )
+            return
+        }
+
         let item = MovieDownloadQueueItem(
             url: selection.url,
             title: displayTitle,
@@ -334,7 +384,10 @@ private struct OnlineMoviePrimaryButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(EOSTypography.headline)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
             .padding(.vertical, 14)
+            .padding(.horizontal, 12)
             .foregroundStyle(.white)
             .background(EOSTheme.accent.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 14))
     }
@@ -346,7 +399,10 @@ struct OnlineMovieSecondaryButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(EOSTypography.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
             .padding(.vertical, 12)
+            .padding(.horizontal, 12)
             .foregroundStyle(emphasized ? .white : .primary)
             .background(
                 RoundedRectangle(cornerRadius: 14)

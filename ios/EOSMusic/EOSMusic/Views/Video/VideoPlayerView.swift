@@ -32,6 +32,13 @@ struct VideoPlayerView: View {
                 VLCVideoContainer(engine: engine)
                     .ignoresSafeArea()
 
+                // Sampling surface for system PiP / AirPlay video (must stay in window hierarchy).
+                VideoPiPLayerHost(controller: video.pipController)
+                    .frame(width: 320, height: 180)
+                    .opacity(0.01)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+
                 // Tap empty video area to toggle controls — does not cover the chrome.
                 Color.clear
                     .contentShape(Rectangle())
@@ -41,13 +48,29 @@ struct VideoPlayerView: View {
 
                 // Local files: never block the picture with a spinner.
                 // Remote: only after prolonged buffering (engine debounces).
-                if engine.isBuffering {
+                if engine.isBuffering && engine.currentTime < 0.5 {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.05)
                         .padding(14)
                         .background(.black.opacity(0.35), in: Circle())
                         .allowsHitTesting(false)
+                }
+
+                if video.pipController.isExternalPlaybackActive {
+                    VStack(spacing: 8) {
+                        Image(systemName: "airplayvideo")
+                            .font(.system(size: 42, weight: .semibold))
+                        Text(video.pipController.externalDeviceName.map { "AirPlay · \($0)" } ?? "AirPlay")
+                            .font(.headline)
+                        Text("Obraz i dźwięk na zewnętrznym ekranie")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(24)
+                    .background(.ultraThinMaterial.opacity(0.55), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .allowsHitTesting(false)
                 }
 
                 if let error = engine.errorMessage {
@@ -126,6 +149,11 @@ struct VideoPlayerView: View {
         }
         .onChange(of: engine.currentPlayableURL) { _, _ in
             video.pipController.prepareAirPlayHandoff(for: engine)
+        }
+        .onChange(of: engine.isPlaying) { _, playing in
+            if playing {
+                video.pipController.prepareAirPlayHandoff(for: engine)
+            }
         }
         .onDisappear {
             hideTask?.cancel()
@@ -269,15 +297,21 @@ struct VideoPlayerView: View {
                 }
                 .accessibilityLabel("Schowaj player")
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(engine.currentItem?.title ?? "Wideo")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text(engine.folderName)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        BreathingSourceBadge(
+                            origin: video.pipController.isExternalPlaybackActive ? .airPlay : engine.playbackOrigin,
+                            compact: true
+                        )
+                        Text(engine.folderName)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer(minLength: 8)
@@ -447,87 +481,87 @@ struct VideoPlayerView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 78)
 
-            HStack(spacing: 10) {
-                Button {
-                    showAudioSheet = true
-                    bumpControls()
-                } label: {
-                    Label("Lektor", systemImage: "waveform")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.16), in: Capsule())
-                }
-
-                Button {
-                    if engine.subtitleTracks.isEmpty {
-                        showSubtitleSheet = true
-                    } else {
-                        engine.setSubtitlesEnabled(!engine.subtitlesEnabled)
-                    }
-                    bumpControls()
-                } label: {
-                    Label(
-                        engine.subtitlesEnabled ? "Napisy wł." : "Napisy",
-                        systemImage: engine.subtitlesEnabled ? "captions.bubble.fill" : "captions.bubble"
-                    )
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(engine.subtitlesEnabled ? Color.black : .white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        engine.subtitlesEnabled ? EOSTheme.accent : Color.white.opacity(0.16),
-                        in: Capsule()
-                    )
-                }
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.45).onEnded { _ in
-                        showSubtitleSheet = true
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    Button {
+                        showAudioSheet = true
                         bumpControls()
+                    } label: {
+                        playerChip(title: "Lektor", systemImage: "waveform", emphasized: false)
                     }
-                )
 
-                Button {
-                    showAspectSheet = true
-                    bumpControls()
-                } label: {
-                    Label(engine.aspectMode.title, systemImage: "aspectratio")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.16), in: Capsule())
-                }
+                    Button {
+                        if engine.subtitleTracks.isEmpty {
+                            showSubtitleSheet = true
+                        } else {
+                            engine.setSubtitlesEnabled(!engine.subtitlesEnabled)
+                        }
+                        bumpControls()
+                    } label: {
+                        playerChip(
+                            title: engine.subtitlesEnabled ? "Napisy wł." : "Napisy",
+                            systemImage: engine.subtitlesEnabled ? "captions.bubble.fill" : "captions.bubble",
+                            emphasized: engine.subtitlesEnabled
+                        )
+                    }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                            showSubtitleSheet = true
+                            bumpControls()
+                        }
+                    )
 
-                Spacer(minLength: 0)
+                    Button {
+                        showAspectSheet = true
+                        bumpControls()
+                    } label: {
+                        playerChip(title: engine.aspectMode.title, systemImage: "aspectratio", emphasized: false)
+                    }
 
-                if engine.signalInfo.isHDR {
-                    Text(engine.signalInfo.hdrLabel)
+                    if engine.signalInfo.isHDR {
+                        Text(engine.signalInfo.hdrLabel)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color.yellow, in: Capsule())
+                    }
+
+                    Text(engine.rate.title)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.white.opacity(0.85))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(Color.yellow, in: Capsule())
+                        .background(Color.white.opacity(0.12), in: Capsule())
+                        .onTapGesture {
+                            showMore = true
+                            bumpControls()
+                        }
+
+                    Text("\(engine.currentIndex + 1)/\(max(engine.queue.count, 1))")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
                 }
-
-                Text(engine.rate.title)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.12), in: Capsule())
-                    .onTapGesture {
-                        showMore = true
-                        bumpControls()
-                    }
-
-                Text("\(engine.currentIndex + 1)/\(max(engine.queue.count, 1))")
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.8))
             }
         }
+    }
+
+    private func playerChip(title: String, systemImage: String, emphasized: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+            Text(title)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .environment(\.locale, Locale(identifier: "en_US_POSIX"))
+        }
+        .font(.subheadline.weight(.bold))
+        .foregroundStyle(emphasized ? Color.black : .white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            emphasized ? EOSTheme.accent : Color.white.opacity(0.16),
+            in: Capsule()
+        )
     }
 
     private func toggleControls() {
@@ -647,18 +681,9 @@ private struct VideoScrubber: View {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color.white.opacity(0.16))
                 HStack(spacing: 5) {
-                    if thumbnails.isGenerating {
-                        ProgressView()
-                            .tint(.white)
-                            .controlSize(.small)
-                        Text("Przygotowuję podgląd kliszy…")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.82))
-                    } else {
-                        Image(systemName: "film")
-                        Text("Przesuń, aby wyszukać fragment")
-                            .font(.caption2.weight(.semibold))
-                    }
+                    Image(systemName: "film")
+                    Text("Przesuń, aby wyszukać fragment")
+                        .font(.caption2.weight(.semibold))
                 }
                 .foregroundStyle(.white.opacity(0.8))
             }
@@ -871,20 +896,32 @@ struct AirPlayRouteButton: UIViewRepresentable {
         picker.tintColor = .white
         picker.activeTintColor = UIColor(EOSTheme.accent)
         picker.prioritizesVideoDevices = true
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped))
-        tap.cancelsTouchesInView = false
-        picker.addGestureRecognizer(tap)
+        // Warm AVPlayer before the system sheet appears (touch down, not only after pick).
+        let down = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.warm))
+        down.minimumPressDuration = 0
+        down.cancelsTouchesInView = false
+        down.delegate = context.coordinator
+        picker.addGestureRecognizer(down)
         return picker
     }
 
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
         context.coordinator.onPrepare = onPrepare
+        uiView.prioritizesVideoDevices = true
     }
 
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var onPrepare: () -> Void
         init(onPrepare: @escaping () -> Void) { self.onPrepare = onPrepare }
-        @objc func tapped() { onPrepare() }
+        @objc func warm(_ gesture: UIGestureRecognizer) {
+            if gesture.state == .began {
+                onPrepare()
+            }
+        }
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool { true }
     }
 }
 

@@ -183,6 +183,7 @@ final class MusicPlaybackEngine: ObservableObject {
     @Published var shuffleEnabled = false
     @Published var repeatMode: RepeatMode = .all
     @Published var errorMessage: String?
+    @Published private(set) var playbackOrigin: MediaPlaybackOrigin = .unknown
     /// When true, never open network streams — local files only.
     var offlineOnly = false
     let visualizer = PlayerAudioVisualizer()
@@ -488,6 +489,7 @@ final class MusicPlaybackEngine: ObservableObject {
         teardownPlayer()
         currentTrack = nil
         displayArtwork = nil
+        playbackOrigin = .unknown
         isPlaying = false
         isLoading = false
         isBuffering = false
@@ -620,6 +622,7 @@ final class MusicPlaybackEngine: ObservableObject {
 
         currentTrack = track
         displayArtwork = nil
+        playbackOrigin = .unknown
         isLoading = true
         isBuffering = false
         setPlaybackActivity(
@@ -702,6 +705,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 return try await resolver(track)
             }
             if let file = track.playbackFileURL {
+                playbackOrigin = file.isFileURL ? .phone : .liveSource
                 return file
             }
             throw APIError.server("Nie można odtworzyć pliku ze źródła.")
@@ -711,6 +715,7 @@ final class MusicPlaybackEngine: ObservableObject {
             activeStreamJobId = nil
             tokenExpiresAt = nil
             setPlaybackActivity(.openingLocal, title: "Importowany plik", detail: "Odtwarzam z iPhone'a")
+            playbackOrigin = .phone
             return openedLocal
         }
 
@@ -728,6 +733,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 activeStreamJobId = nil
                 tokenExpiresAt = nil
                 setPlaybackActivity(.openingLocal, title: "Plik lokalny", detail: "Odtwarzam z iPhone'a")
+                playbackOrigin = .phone
                 return local
             }
             EOSPerfLog.stream.warning(
@@ -753,6 +759,7 @@ final class MusicPlaybackEngine: ObservableObject {
                     detail: "Łączę ze streamem (cache tokenu)"
                 )
                 EOSPerfLog.stream.debug("token cache hit job=\(jobId, privacy: .public)")
+                playbackOrigin = .server
                 return api.musicStreamURL(jobId: jobId, token: cached.token)
             }
             do {
@@ -763,6 +770,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 )
                 let token = try await api.musicPlayToken(jobId: jobId)
                 rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
+                playbackOrigin = .server
                 return api.musicStreamURL(jobId: jobId, token: token.token)
             } catch {
                 // Stale id — try next / fall through to ensure.
@@ -776,6 +784,7 @@ final class MusicPlaybackEngine: ObservableObject {
             detail: "Łączę z Apple Music / APLMate…",
             progress: 3
         )
+        playbackOrigin = .liveSource
         let ensure = try await api.startMusicPlay(
             url: track.url,
             folderId: track.folderId,
@@ -785,6 +794,7 @@ final class MusicPlaybackEngine: ObservableObject {
         if let token = ensure.token, !token.isEmpty, ensure.ready == true {
             rememberStreamToken(jobId: jobId, token: token, expiresIn: nil)
             setPlaybackActivity(.onServerConnecting, title: "Stream gotowy", detail: "Otwieram odtwarzacz…")
+            playbackOrigin = .liveSource
             return api.musicStreamURL(jobId: jobId, token: token)
         }
         if ensure.ready != true {
@@ -802,6 +812,7 @@ final class MusicPlaybackEngine: ObservableObject {
         setPlaybackActivity(.onServerConnecting, title: "Stream gotowy", detail: "Pobieram token…")
         let token = try await api.musicPlayToken(jobId: jobId)
         rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
+        playbackOrigin = .liveSource
         return api.musicStreamURL(jobId: jobId, token: token.token)
     }
 

@@ -102,7 +102,7 @@ struct MovieDownloadQueuePanel: View {
                     .lineLimit(1)
                 if let pct = item.progressPercent {
                     HStack(spacing: 6) {
-                        Text(String(format: "%.0f%%", pct))
+                        Text(pct >= 99 ? "Finalizowanie…" : String(format: "%.0f%%", pct))
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(EOSTheme.accent)
                         if item.id == service.activeBatch?.items.first(where: {

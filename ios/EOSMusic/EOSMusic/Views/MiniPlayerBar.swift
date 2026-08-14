@@ -267,13 +267,18 @@ private struct MiniPlayerContent: View {
                         )
                             .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
                         VStack(alignment: .leading, spacing: 2) {
-                            MarqueeText(
-                                text: track.title,
-                                font: .subheadline.weight(.semibold),
-                                foreground: EOSTheme.textPrimary,
-                                speedPointsPerSecond: 30
-                            )
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 6) {
+                                MarqueeText(
+                                    text: track.title,
+                                    font: .subheadline.weight(.semibold),
+                                    foreground: EOSTheme.textPrimary,
+                                    speedPointsPerSecond: 30
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                if engine.playbackOrigin != .unknown {
+                                    BreathingSourceBadge(origin: engine.playbackOrigin, compact: true)
+                                }
+                            }
 
                             if engine.isLoading || statusFlags.isBuffering || statusFlags.activity.phase.showsSpinner {
                                 PlaybackActivityLine(activity: statusFlags.activity, compact: true)

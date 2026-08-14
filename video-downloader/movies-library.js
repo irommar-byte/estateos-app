@@ -257,6 +257,7 @@ export function listMovieDownloads(req, downloadsRoot = null) {
   }
   return store.downloads
     .filter((d) => d.downloadJobId)
+    .filter((d) => !/smoke\.local/i.test(String(d.url || "")) && !/^00000000-smoke/i.test(String(d.downloadJobId || "")))
     .sort((a, b) => (b.downloadedAt || 0) - (a.downloadedAt || 0))
     .map((d) => {
       const bytes = fileBytesForDownload(d, moviesDir);

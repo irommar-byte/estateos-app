@@ -29,6 +29,7 @@ final class VideoPiPController: NSObject, ObservableObject {
     private var isTransferringBack = false
     /// Pełne zamknięcie playera — nie wznawiaj VLC po `stopPictureInPicture`.
     private var isDiscardingPlayback = false
+    private var isEndingExternal = false
     private var startTask: Task<Void, Never>?
     private var externalTask: Task<Void, Never>?
     private var routeObserver: NSObjectProtocol?
@@ -36,6 +37,7 @@ final class VideoPiPController: NSObject, ObservableObject {
     private var pipTimeObserver: Any?
     private var externalEndObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
+    private var externalActiveObserver: NSKeyValueObservation?
 
     override init() {
         super.init()
@@ -43,11 +45,14 @@ final class VideoPiPController: NSObject, ObservableObject {
         avPlayer.usesExternalPlaybackWhileExternalScreenIsActive = true
         playerLayer.player = avPlayer
         playerLayer.videoGravity = .resizeAspect
-        // Tiny but non-zero layer so AVKit can sample frames for PiP / AirPlay video.
-        playerLayer.frame = CGRect(x: 0, y: 0, width: 64, height: 36)
+        // AVKit needs a real sampling surface (≥ ~160pt) or PiP/AirPlay video never becomes possible.
+        playerLayer.frame = Self.sampleLayerFrame
         installRouteObserver()
         installExternalPlaybackObserver()
+        installExternalActiveObserver()
     }
+
+    private static let sampleLayerFrame = CGRect(x: 0, y: 0, width: 320, height: 180)
 
     deinit {
         if let routeObserver {
@@ -63,6 +68,7 @@ final class VideoPiPController: NSObject, ObservableObject {
             avPlayer.removeTimeObserver(pipTimeObserver)
         }
         rateObserver?.invalidate()
+        externalActiveObserver?.invalidate()
     }
 
     var isSystemSupported: Bool {
@@ -82,10 +88,22 @@ final class VideoPiPController: NSObject, ObservableObject {
         }
         airPlayNotice = nil
         self.engine = engine
+        if let host = hostView {
+            attach(to: host)
+        } else {
+            ensureController()
+        }
+        AudioSession.activateForVideoPlayback()
         externalTask?.cancel()
         externalTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            _ = await self.loadAVPlayerItem(from: engine, autoplay: false)
+            guard await self.loadAVPlayerItem(from: engine, autoplay: false) else { return }
+            // Warm a frame so route picker can offer video AirPlay, not audio-only.
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                self.avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
+            }
+            self.avPlayer.pause()
+            _ = await self.waitUntilAVPlayerHasVideo(maxSeconds: 2.0)
         }
     }
 
@@ -153,11 +171,19 @@ final class VideoPiPController: NSObject, ObservableObject {
             playerLayer.removeFromSuperlayer()
             host.layer.addSublayer(playerLayer)
         }
-        let bounds = host.bounds
-        playerLayer.frame = bounds.width > 1 && bounds.height > 1
-            ? bounds
-            : CGRect(x: 0, y: 0, width: 64, height: 36)
+        layoutSampleLayer(in: host)
         ensureController()
+    }
+
+    private func layoutSampleLayer(in host: UIView) {
+        let bounds = host.bounds
+        if bounds.width >= 160, bounds.height >= 90 {
+            playerLayer.frame = bounds
+        } else {
+            playerLayer.frame = Self.sampleLayerFrame
+            host.bounds = Self.sampleLayerFrame
+        }
+        playerLayer.contentsScale = host.window?.screen.scale ?? UIScreen.main.scale
     }
 
     private func ensureController() {
@@ -165,7 +191,29 @@ final class VideoPiPController: NSObject, ObservableObject {
             guard let pip = AVPictureInPictureController(playerLayer: playerLayer) else { return }
             pip.delegate = self
             pip.canStartPictureInPictureAutomaticallyFromInline = false
+            if #available(iOS 16.0, *) {
+                pip.requiresLinearPlayback = false
+            }
             controller = pip
+        }
+    }
+
+    private func installExternalActiveObserver() {
+        externalActiveObserver = avPlayer.observe(\.isExternalPlaybackActive, options: [.new]) { [weak self] player, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if player.isExternalPlaybackActive {
+                    if !self.isExternalPlaybackActive, let engine = self.engine, !self.isActive {
+                        await self.beginExternalPlayback(engine: engine)
+                    } else {
+                        self.isExternalPlaybackActive = true
+                        self.externalDeviceName = Self.airPlayOutputName(AVAudioSession.sharedInstance())
+                            ?? self.externalDeviceName
+                    }
+                } else if self.isExternalPlaybackActive {
+                    self.endExternalPlayback(transferToVLC: true)
+                }
+            }
         }
     }
 
@@ -174,7 +222,11 @@ final class VideoPiPController: NSObject, ObservableObject {
         var request = URLRequest(url: url)
         request.setValue(AppConfig.userAgent, forHTTPHeaderField: "User-Agent")
         let path = url.path.lowercased()
-        if path.contains("/api/file/") || path.contains("/api/movies/stream/") {
+        if path.contains("/api/file/")
+            || path.contains("/api/movies/stream/")
+            || path.contains("/api/play/")
+            || path.contains("/api/music/stream/")
+        {
             if let token = SessionStore.load()?.token {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
@@ -256,7 +308,7 @@ final class VideoPiPController: NSObject, ObservableObject {
     }
 
     private func beginExternalPlayback(engine: VideoPlaybackEngine) async {
-        guard !isExternalPlaybackActive, !isActive else { return }
+        guard !isExternalPlaybackActive, !isActive, !isPreparing else { return }
         guard let url = engine.currentPlayableURL else { return }
 
         guard Self.isApplePiPContainer(url) else {
@@ -269,9 +321,9 @@ final class VideoPiPController: NSObject, ObservableObject {
         self.engine = engine
         sourceWasPlaying = engine.isPlaying
 
-        AudioSession.activateForVideoPlayback()
+        AudioSession.activateForVideoPlayback(force: true)
         engine.suspendForAVKitHandoff()
-        let loaded = await loadAVPlayerItem(from: engine, autoplay: sourceWasPlaying)
+        let loaded = await loadAVPlayerItem(from: engine, autoplay: true)
         guard loaded else {
             engine.resumeFromAVKitHandoff(at: engine.currentTime, resume: sourceWasPlaying)
             isPreparing = false
@@ -282,22 +334,41 @@ final class VideoPiPController: NSObject, ObservableObject {
         if let host = hostView {
             attach(to: host)
         }
-        for _ in 0..<25 {
+        _ = await waitUntilAVPlayerHasVideo(maxSeconds: 3.5)
+        for _ in 0..<40 {
             if avPlayer.isExternalPlaybackActive || Self.isAirPlayVideoRoute(AVAudioSession.sharedInstance()) {
                 break
             }
             try? await Task.sleep(nanoseconds: 80_000_000)
         }
 
+        let routeOK = Self.isAirPlayVideoRoute(AVAudioSession.sharedInstance())
+        let avOK = avPlayer.isExternalPlaybackActive
+        guard routeOK || avOK else {
+            avPlayer.pause()
+            engine.resumeFromAVKitHandoff(at: engine.currentTime, resume: sourceWasPlaying)
+            isPreparing = false
+            airPlayNotice = "AirPlay wideo nie przejął streamu. Spróbuj ponownie albo użyj Lustrzanego odbicia."
+            return
+        }
+
+        if !avPlayer.isExternalPlaybackActive, sourceWasPlaying || routeOK {
+            avPlayer.play()
+        }
+
         isExternalPlaybackActive = true
         isPreparing = false
         externalDeviceName = Self.airPlayOutputName(AVAudioSession.sharedInstance())
+            ?? "AirPlay"
         startExternalTimeObserver()
         objectWillChange.send()
     }
 
     private func endExternalPlayback(transferToVLC: Bool) {
+        guard !isEndingExternal else { return }
         guard isExternalPlaybackActive || avPlayer.currentItem != nil else { return }
+        isEndingExternal = true
+        defer { isEndingExternal = false }
         stopExternalTimeObserver()
 
         let seconds = avPlayer.currentTime().seconds
@@ -495,7 +566,7 @@ final class VideoPiPController: NSObject, ObservableObject {
 
             if self.sourceWasPlaying {
                 self.avPlayer.play()
-                guard await self.waitUntilAVPlayerHasVideo(maxSeconds: 4.5) else {
+                guard await self.waitUntilAVPlayerHasVideo(maxSeconds: 8.0) else {
                     self.transferBackToVLC()
                     self.errorMessage = "PiP: brak klatek wideo — spróbuj ponownie za chwilę."
                     return
@@ -505,25 +576,27 @@ final class VideoPiPController: NSObject, ObservableObject {
                     self.avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
                 }
                 self.avPlayer.pause()
-                _ = await self.waitUntilAVPlayerHasVideo(maxSeconds: 2.5)
+                _ = await self.waitUntilAVPlayerHasVideo(maxSeconds: 4.0)
             }
 
             if let host = self.hostView {
                 self.attach(to: host)
+            } else {
+                self.ensureController()
             }
             self.ensureVLCSilentDuringPiP()
 
-            for _ in 0..<30 {
+            for _ in 0..<50 {
                 if Task.isCancelled { return }
                 if let controller = self.controller, controller.isPictureInPicturePossible {
                     controller.startPictureInPicture()
                     // Give AVKit a moment; success is confirmed via delegate.
-                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    try? await Task.sleep(nanoseconds: 400_000_000)
                     if self.isActive || controller.isPictureInPictureActive {
                         return
                     }
                 }
-                try? await Task.sleep(nanoseconds: 60_000_000)
+                try? await Task.sleep(nanoseconds: 80_000_000)
             }
 
             self.transferBackToVLC()
@@ -684,14 +757,18 @@ struct VideoPiPLayerHost: UIViewRepresentable {
     @ObservedObject var controller: VideoPiPController
 
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: CGRect(x: 0, y: 0, width: 128, height: 72))
+        let view = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
+        view.isOpaque = false
         controller.attach(to: view)
         return view
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
+        if uiView.bounds.width < 160 || uiView.bounds.height < 90 {
+            uiView.bounds = CGRect(x: 0, y: 0, width: 320, height: 180)
+        }
         controller.attach(to: uiView)
     }
 }

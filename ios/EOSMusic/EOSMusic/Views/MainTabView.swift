@@ -154,15 +154,34 @@ private enum ServerBrowseMode: String, CaseIterable, Identifiable {
     }
 }
 
+private enum ServerMediaKind: String, CaseIterable, Identifiable {
+    case music
+    case movies
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .music: return "Muzyka"
+        case .movies: return "Filmy"
+        }
+    }
+}
+
 struct ServerMusicAssetsView: View {
     @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var video: VideoAppModel
+    @State private var mediaKind: ServerMediaKind = .music
     @State private var mode: ServerBrowseMode = .songs
     @State private var query = ""
     @State private var selectedArtist: String?
     @State private var selectedAlbum: String?
     @State private var assetToDelete: MusicAssetItem?
+    @State private var movieToDelete: MovieDownload?
+    @State private var movieSelection: OnlineMovieSelection?
     @State private var sharePayload: SharePayload?
     @State private var isRefreshing = false
+    @State private var movieEditMode: EditMode = .inactive
 
     private struct SharePayload: Identifiable {
         let id = UUID()
@@ -181,6 +200,28 @@ struct ServerMusicAssetsView: View {
             ($0.title?.localizedCaseInsensitiveContains(q) == true)
                 || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
                 || ($0.album?.localizedCaseInsensitiveContains(q) == true)
+        }
+    }
+
+    private var filteredMovies: [MovieDownload] {
+        let base = app.onlineMovies.downloads.sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 1 else { return base }
+        return base.filter {
+            $0.title.localizedCaseInsensitiveContains(q)
+                || ($0.serverRelativePath?.localizedCaseInsensitiveContains(q) == true)
+                || ($0.source?.localizedCaseInsensitiveContains(q) == true)
+        }
+    }
+
+    private var groupedMovies: [(series: String, items: [MovieDownload])] {
+        let dict = Dictionary(grouping: filteredMovies) { $0.seriesFolderName ?? "Filmy" }
+        return dict.keys.sorted().map { key in
+            (series: key, items: dict[key]!.sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            })
         }
     }
 
@@ -259,7 +300,11 @@ struct ServerMusicAssetsView: View {
 
     var body: some View {
         Group {
-            if app.serverAssets.isEmpty && !isRefreshing && app.onlineMovies.serverMovieCount == 0 {
+            if app.serverAssets.isEmpty
+                && app.onlineMovies.downloads.isEmpty
+                && app.onlineMovies.serverMovieCount == 0
+                && !isRefreshing
+            {
                 ContentUnavailableView(
                     "Brak mediów na serwerze",
                     systemImage: "externaldrive",
@@ -298,45 +343,31 @@ struct ServerMusicAssetsView: View {
                         }
 
                         Section {
-                            Picker("Widok", selection: $mode) {
-                                ForEach(ServerBrowseMode.allCases) { item in
-                                    Text(item.title).tag(item)
+                            Picker("Typ", selection: $mediaKind) {
+                                ForEach(ServerMediaKind.allCases) { kind in
+                                    Text(kind.title).tag(kind)
                                 }
                             }
                             .pickerStyle(.segmented)
                             .listRowBackground(Color.clear)
-                            .onChange(of: mode) { _, _ in
+                            .onChange(of: mediaKind) { _, _ in
                                 selectedArtist = nil
                                 selectedAlbum = nil
-                            }
-
-                            if !filteredAssets.isEmpty {
-                                Button {
-                                    Task { await app.playServerAssets(filteredAssets, startIndex: 0) }
-                                } label: {
-                                    Label(
-                                        "Odtwórz \(filteredAssets.count == app.serverAssets.count ? "wszystko" : "wybór") (\(filteredAssets.count))",
-                                        systemImage: "play.fill"
-                                    )
-                                    .font(.headline)
-                                    .foregroundStyle(EOSTheme.accent)
-                                }
+                                movieEditMode = .inactive
                             }
                         }
 
-                        switch mode {
-                        case .artists:
-                            artistSections
-                        case .albums:
-                            albumSections
-                        case .songs:
-                            songSections
+                        if mediaKind == .music {
+                            musicBrowser
+                        } else {
+                            moviesBrowser
                         }
                     }
                     .listStyle(.insetGrouped)
                     .eosScrollClearance()
+                    .environment(\.editMode, mediaKind == .movies ? $movieEditMode : .constant(.inactive))
                     .overlay(alignment: .trailing) {
-                        if mode == .songs, selectedArtist == nil, selectedAlbum == nil {
+                        if mediaKind == .music, mode == .songs, selectedArtist == nil, selectedAlbum == nil {
                             AlphabetIndexBar(
                                 available: Set(LibraryAlphabet.group(filteredAssets) { $0.title ?? "Utwór" }.map(\.key))
                             ) { letter in
@@ -352,7 +383,14 @@ struct ServerMusicAssetsView: View {
         }
         .navigationTitle("Serwer EOS")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $query, prompt: "Szukaj na serwerze")
+        .searchable(text: $query, prompt: mediaKind == .music ? "Szukaj muzyki" : "Szukaj filmów")
+        .toolbar {
+            if mediaKind == .movies, !filteredMovies.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    EditButton()
+                }
+            }
+        }
         .task {
             isRefreshing = true
             async let music: Void = app.refreshServerAssets()
@@ -363,6 +401,11 @@ struct ServerMusicAssetsView: View {
         .refreshable {
             await app.refreshServerAssets()
             await app.onlineMovies.refreshDownloads()
+        }
+        .navigationDestination(item: $movieSelection) { selection in
+            OnlineDownloadedMediaDestination(selection: selection)
+                .environmentObject(app)
+                .environmentObject(video)
         }
         .confirmationDialog(
             "Usunąć utwór z biblioteki serwera?",
@@ -379,8 +422,180 @@ struct ServerMusicAssetsView: View {
         } message: {
             Text("Trwała kopia EOS zniknie. Lokalne pliki na iPhonie zostaną.")
         }
+        .confirmationDialog(
+            "Usunąć film z serwera?",
+            isPresented: Binding(get: { movieToDelete != nil }, set: { if !$0 { movieToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Usuń z MOVIES/", role: .destructive) {
+                if let movie = movieToDelete {
+                    Task { await app.onlineMovies.deleteServerDownload(url: movie.url) }
+                }
+                movieToDelete = nil
+            }
+            Button("Anuluj", role: .cancel) { movieToDelete = nil }
+        } message: {
+            if let movie = movieToDelete {
+                Text("„\(movie.title)” zniknie z dysku serwera.")
+            }
+        }
         .sheet(item: $sharePayload) { payload in
             ActivityView(activityItems: [payload.url])
+        }
+    }
+
+    @ViewBuilder
+    private var musicBrowser: some View {
+        Section {
+            Picker("Widok", selection: $mode) {
+                ForEach(ServerBrowseMode.allCases) { item in
+                    Text(item.title).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+            .listRowBackground(Color.clear)
+            .onChange(of: mode) { _, _ in
+                selectedArtist = nil
+                selectedAlbum = nil
+            }
+
+            if !filteredAssets.isEmpty {
+                Button {
+                    Task { await app.playServerAssets(filteredAssets, startIndex: 0) }
+                } label: {
+                    Label(
+                        "Odtwórz \(filteredAssets.count == app.serverAssets.count ? "wszystko" : "wybór") (\(filteredAssets.count))",
+                        systemImage: "play.fill"
+                    )
+                    .font(.headline)
+                    .foregroundStyle(EOSTheme.accent)
+                }
+            }
+        }
+
+        switch mode {
+        case .artists:
+            artistSections
+        case .albums:
+            albumSections
+        case .songs:
+            songSections
+        }
+    }
+
+    @ViewBuilder
+    private var moviesBrowser: some View {
+        if filteredMovies.isEmpty {
+            Section {
+                ContentUnavailableView(
+                    query.isEmpty ? "Brak filmów na serwerze" : "Brak wyników",
+                    systemImage: "film",
+                    description: Text(query.isEmpty
+                        ? "Pobierz film z EOS™LIBRARY — plik trafi do MOVIES/ na VPS."
+                        : "Spróbuj innej frazy.")
+                )
+                .listRowBackground(Color.clear)
+            }
+        } else {
+            Section {
+                HStack {
+                    Label("\(filteredMovies.count) filmów", systemImage: "film.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(ByteCountFormatter.string(
+                        fromByteCount: Int64(filteredMovies.reduce(0) { $0 + ($1.bytes ?? 0) }),
+                        countStyle: .file
+                    ))
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                }
+            }
+
+            ForEach(groupedMovies, id: \.series) { group in
+                Section {
+                    ForEach(group.items) { download in
+                        movieRow(download)
+                    }
+                    .onDelete { offsets in
+                        for index in offsets {
+                            let item = group.items[index]
+                            Task { await app.onlineMovies.deleteServerDownload(url: item.url) }
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Image(systemName: "folder.fill")
+                            .foregroundStyle(EOSTheme.accent)
+                        Text(group.series)
+                    }
+                } footer: {
+                    let bytes = group.items.reduce(0) { $0 + ($1.bytes ?? 0) }
+                    Text("\(group.items.count) · \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))")
+                }
+            }
+        }
+    }
+
+    private func movieRow(_ download: MovieDownload) -> some View {
+        Button {
+            movieSelection = OnlineMovieSelection(download: download)
+        } label: {
+            HStack(spacing: 12) {
+                ArtworkImage(url: download.artworkURL, size: 56, cornerRadius: 8)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(download.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                    if let path = download.serverRelativePath {
+                        Text(path)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 8) {
+                        if let bytes = download.bytes, bytes > 0 {
+                            Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        OnlineMovieTransferBadge(state: app.onlineMovies.transferState(for: download.url))
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                movieSelection = OnlineMovieSelection(download: download)
+            } label: {
+                Label("Otwórz", systemImage: "play.fill")
+            }
+            Button {
+                Task {
+                    await app.onlineMovies.playFromServer(
+                        selection: OnlineMovieSelection(download: download),
+                        video: video
+                    )
+                }
+            } label: {
+                Label("Odtwórz teraz", systemImage: "play.circle")
+            }
+            Button("Usuń z serwera", role: .destructive) {
+                movieToDelete = download
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button("Usuń", role: .destructive) {
+                movieToDelete = download
+            }
         }
     }
 

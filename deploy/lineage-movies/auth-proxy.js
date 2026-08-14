@@ -176,7 +176,9 @@ function isTokenizedPlay(req) {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
   const raw = req.originalUrl || req.url || "";
   const tokenizedPath =
-    raw.includes("/api/play/") || raw.includes("/api/music/stream/");
+    raw.includes("/api/play/") ||
+    raw.includes("/api/music/stream/") ||
+    raw.includes("/api/movies/stream/");
   if (!tokenizedPath) return false;
   try {
     const u = new URL(raw, "http://movies.local");
