@@ -249,6 +249,14 @@ function friendlyError(err) {
     return "Ten film nie jest już dostępny do odtworzenia na CDA-HD — źródło wideo zostało usunięte lub wygasło. Strona z opisem może nadal istnieć.";
   if (/Nie udało się otworzyć strony mirror/i.test(msg))
     return "Nie udało się otworzyć strony mirror (cda-hd itp.). Sprawdź link.";
+  if (/Postprocessing:\s*Conversion failed/i.test(msg)) {
+    let freeHint = "";
+    try {
+      const free = movieStorageAvailableBytes();
+      freeHint = ` (${(free / (1024 ** 3)).toFixed(1)} GB wolne)`;
+    } catch {}
+    return `Finalizacja filmu nie powiodła się — za mało miejsca na konwersję HLS→MP4${freeHint}. Ponów pobieranie: zapiszę strumień bez podwójnego pliku.`;
+  }
   if (/No space left on device|ENOSPC|errno 28/i.test(msg))
     return "Brak miejsca na dysku serwera — pobieranie nie może się dokończyć. Anuluj zadania i zwolnij miejsce na VPS.";
   if (/unsupported platform:\s*linux/i.test(msg))
@@ -1675,6 +1683,167 @@ function startTvpMovieDownloadJob({
   return job;
 }
 
+function estimateMovieDurationSec(job) {
+  const url = String(job?.movieUrl || "");
+  const title = String(job?.movieTitle || "");
+  if (/\/episode\//i.test(url) || /sezon\s*\d+/i.test(title)) return 50 * 60;
+  return 140 * 60;
+}
+
+async function fetchHlsPlaylistText(url, referer) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": UA, Referer: referer || "" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} przy odczycie HLS.`);
+  return await res.text();
+}
+
+async function pickHlsVariantForDisk(streamUrl, referer, job) {
+  let playlist;
+  try {
+    playlist = await fetchHlsPlaylistText(streamUrl, referer);
+  } catch {
+    return streamUrl;
+  }
+  if (!/#EXT-X-STREAM-INF/i.test(playlist)) return streamUrl;
+  const lines = playlist.split(/\r?\n/);
+  const variants = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = lines[i].match(/#EXT-X-STREAM-INF:[^\n]*BANDWIDTH=(\d+)/i);
+    if (!m || !lines[i + 1] || lines[i + 1].startsWith("#")) continue;
+    try {
+      variants.push({
+        bandwidth: Number(m[1]),
+        url: new URL(lines[i + 1].trim(), streamUrl).href,
+      });
+    } catch {
+      /* skip */
+    }
+  }
+  if (!variants.length) return streamUrl;
+  variants.sort((a, b) => b.bandwidth - a.bandwidth);
+  let available = 0;
+  try {
+    available = movieStorageAvailableBytes();
+  } catch {
+    return variants[0].url;
+  }
+  const budget = Math.max(0, available - MOVIE_STORAGE_ABORT_BYTES);
+  const durationSec = estimateMovieDurationSec(job);
+  const fits = variants.filter((v) => (v.bandwidth * durationSec) / 8 <= budget);
+  const chosen = fits[0] || variants[variants.length - 1];
+  if (chosen.url !== streamUrl) {
+    console.warn(
+      "hls variant",
+      Math.round(chosen.bandwidth / 1000) + "kbps",
+      "budget",
+      (budget / (1024 ** 3)).toFixed(2) + "GB"
+    );
+  }
+  return chosen.url;
+}
+
+function spawnFfmpegHlsCopy(outFile, inputUrl, referer, { adtsToAsc = true } = {}) {
+  const header = `Referer: ${referer || ""}\r\nUser-Agent: ${UA}\r\n`;
+  const args = [
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-user_agent",
+    UA,
+    "-headers",
+    header,
+    "-i",
+    inputUrl,
+    "-map",
+    "0",
+    "-c",
+    "copy",
+  ];
+  if (adtsToAsc) args.push("-bsf:a", "aac_adtstoasc");
+  args.push("-progress", "pipe:1", "-nostats", outFile);
+  return spawn(ffmpegStatic, args, { stdio: ["ignore", "pipe", "pipe"] });
+}
+
+function waitForFfmpegHlsCopy(job, outFile, inputUrl, referer) {
+  return new Promise((resolve, reject) => {
+    let adts = true;
+    let stderrTail = "";
+    let durationSec = 0;
+    const start = (useAdts) => {
+      const proc = spawnFfmpegHlsCopy(outFile, inputUrl, referer, { adtsToAsc: useAdts });
+      job.proc = proc;
+      proc.stderr.on("data", (chunk) => {
+        const text = String(chunk);
+        stderrTail = (stderrTail + text).slice(-8000);
+        const dur = text.match(/Duration:\s*(\d+):(\d+):(\d+)/);
+        if (dur) {
+          durationSec = Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]);
+        }
+      });
+      proc.stdout.on("data", (chunk) => {
+        if (job.cancelled) return;
+        if (failJobIfDiskExhausted(job)) {
+          try { proc.kill("SIGKILL"); } catch {}
+          return;
+        }
+        const text = String(chunk);
+        const us = text.match(/out_time_us=(\d+)/);
+        const ms = text.match(/out_time_ms=(\d+)/);
+        const clock = text.match(/out_time=(\d+):(\d+):(\d+)/);
+        const size = text.match(/total_size=(\d+)/);
+        job.status = "downloading";
+        job.phase = "downloading";
+        job.lastProgressAt = Date.now();
+        if (size) job.downloadedBytes = Number(size[1]);
+        let elapsed = 0;
+        if (us) elapsed = Number(us[1]) / 1e6;
+        else if (ms) elapsed = Number(ms[1]) / 1e3;
+        else if (clock) elapsed = Number(clock[1]) * 3600 + Number(clock[2]) * 60 + Number(clock[3]);
+        if (elapsed > 0 && durationSec > 0) {
+          job.progress = Math.min(99, (elapsed / durationSec) * 99);
+        } else if (size) {
+          job.progress = Math.min(99, Math.max(1, Number(size[1]) / (30 * 1024 * 1024)));
+        }
+        sendEvent(job, {
+          status: job.status,
+          progress: job.progress,
+          purpose: job.purpose,
+          phase: job.phase,
+          downloadedBytes: job.downloadedBytes || null,
+        });
+      });
+      proc.on("error", (err) => reject(err));
+      proc.on("close", (code) => {
+        if (job.cancelled || job.status === "error") {
+          resolve(false);
+          return;
+        }
+        if (code !== 0 && useAdts && /aac_adtstoasc|adts to asc/i.test(stderrTail)) {
+          try { fs.rmSync(outFile, { force: true }); } catch {}
+          adts = false;
+          start(false);
+          return;
+        }
+        const size = fs.existsSync(outFile) ? fs.statSync(outFile).size : 0;
+        if (code === 0 && size > 512 * 1024) {
+          resolve(true);
+          return;
+        }
+        const err = new Error(
+          stderrTail.match(/Error.+/i)?.[0] ||
+            `ffmpeg HLS zakończył się błędem (kod ${code}).`
+        );
+        err.stderr = stderrTail;
+        reject(err);
+      });
+    };
+    start(adts);
+  });
+}
+
 function startHlsMovieDownloadJob({
   jobId,
   streamUrl,
@@ -1702,80 +1871,90 @@ function startHlsMovieDownloadJob({
     clients: new Set(),
   };
   jobs.set(jobId, job);
+  sendEvent(job, { status: "starting", phase: "resolving", progress: 0, purpose: job.purpose });
 
-  const args = [
-    streamUrl,
-    "-o",
-    path.join(jobDir, "download.%(ext)s"),
-    "--referer",
-    referer || "",
-    "--ffmpeg-location",
-    path.dirname(ffmpegStatic),
-    "--merge-output-format",
-    "mp4",
-    "--concurrent-fragments",
-    "8",
-    "--retries",
-    "12",
-    "--fragment-retries",
-    "12",
-    "--no-playlist",
-    "--no-warnings",
-  ];
-
-  const proc = ytDlp.exec(args);
-  job.proc = proc;
-
-  proc.on("progress", (p) => {
-    if (job.cancelled) return;
-    job.status = "downloading";
-    // Never show 100% until finalize/persist finished — yt-dlp hits 100 during remux.
-    if (typeof p.percent === "number") job.progress = Math.min(99, Math.max(0, p.percent));
-    sendEvent(job, {
-      status: job.status,
-      progress: job.progress,
-      speed: p.currentSpeed,
-      eta: p.eta,
-      purpose: job.purpose,
-    });
-  });
-
-  proc.on("error", (err) => {
-    job.status = "error";
-    job.error = friendlyError(err);
-    sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
-  });
-
-  proc.on("close", (code, signal) => {
-    if (job.cancelled || job.status === "error" || job.status === "cancelled") return;
-    if (signal || (code != null && code !== 0)) {
-      job.status = "error";
-      job.error =
-        job.error ||
-        friendlyError(
-          new Error(
-            signal
-              ? `Pobieranie HLS przerwane (${signal}).`
-              : `Pobieranie HLS zakończyło się błędem (kod ${code}).`
-          )
-        );
-      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
-      return;
-    }
-    job.status = "processing";
-    job.phase = "finalizing";
-    job.progress = 99;
-    job.lastProgressAt = Date.now();
-    sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose, phase: "finalizing" });
+  (async () => {
+    const outFile = path.join(jobDir, "download.mp4");
     try {
+      const inputUrl = await pickHlsVariantForDisk(streamUrl, referer, job);
+      const ok = await waitForFfmpegHlsCopy(job, outFile, inputUrl, referer);
+      if (!ok || job.cancelled || job.status === "error") return;
+      job.status = "processing";
+      job.phase = "finalizing";
+      job.progress = 99;
+      job.lastProgressAt = Date.now();
+      sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose, phase: "finalizing" });
       finalizeJob(job, jobDir);
       job.ready = true;
     } catch (err) {
-      job.status = "error";
-      job.error = friendlyError(err);
-      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+      if (job.cancelled || job.status === "error" || job.status === "cancelled") return;
+      if (/ENOSPC|No space left/i.test(String(err?.message || err?.stderr || ""))) {
+        job.status = "error";
+        job.error = friendlyError(err);
+        sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+        return;
+      }
+      // Fallback: native HLS to a single MPEG-TS — no ffmpeg remux that doubles disk.
+      try {
+        await new Promise((resolve, reject) => {
+          const args = [
+            streamUrl,
+            "-o",
+            path.join(jobDir, "download.%(ext)s"),
+            "--referer",
+            referer || "",
+            "--ffmpeg-location",
+            path.dirname(ffmpegStatic),
+            "--hls-use-mpegts",
+            "--concurrent-fragments",
+            "4",
+            "--retries",
+            "12",
+            "--fragment-retries",
+            "12",
+            "--no-playlist",
+            "--no-warnings",
+          ];
+          const proc = ytDlp.exec(args);
+          job.proc = proc;
+          proc.on("progress", (p) => {
+            if (job.cancelled) return;
+            if (failJobIfDiskExhausted(job)) return;
+            job.status = "downloading";
+            job.phase = "downloading";
+            job.lastProgressAt = Date.now();
+            if (typeof p.percent === "number") job.progress = Math.min(99, Math.max(0, p.percent));
+            sendEvent(job, {
+              status: job.status,
+              progress: job.progress,
+              purpose: job.purpose,
+              phase: job.phase,
+            });
+          });
+          proc.on("error", reject);
+          proc.on("close", (code, signal) => {
+            if (job.cancelled || job.status === "error") return resolve();
+            if (signal || (code != null && code !== 0)) {
+              return reject(new Error(job.error || `Pobieranie HLS zakończyło się błędem (kod ${code}).`));
+            }
+            resolve();
+          });
+        });
+        if (job.cancelled || job.status === "error") return;
+        job.status = "processing";
+        job.phase = "finalizing";
+        job.progress = 99;
+        sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose, phase: "finalizing" });
+        finalizeJob(job, jobDir);
+        job.ready = true;
+      } catch (fallbackErr) {
+        if (job.cancelled || job.status === "error") return;
+        job.status = "error";
+        job.error = friendlyError(fallbackErr);
+        sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+      }
     }
-  });
+  })();
 
   return job;
 }
