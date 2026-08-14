@@ -232,7 +232,18 @@ final class MusicAPIClient {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
         var poll = 0
         while Date() < deadline {
-            let job = try await fetchJobStatus(jobId: jobId)
+            let job: JobStatusResponse
+            do {
+                job = try await fetchJobStatus(jobId: jobId)
+            } catch {
+                if APIError.isTimeout(error) {
+                    poll += 1
+                    let ns: UInt64 = poll < 40 ? 200_000_000 : poll < 80 ? 400_000_000 : 1_000_000_000
+                    try await Task.sleep(nanoseconds: ns)
+                    continue
+                }
+                throw error
+            }
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Odtwarzanie nie powiodło się.")
             }
@@ -331,7 +342,41 @@ final class MusicAPIClient {
         if let title, !title.isEmpty { body["title"] = title }
         if let thumbnail, !thumbnail.isEmpty { body["thumbnail"] = thumbnail }
         if let source, !source.isEmpty { body["source"] = source }
-        return try await request("POST", path: "/api/download", body: body)
+        do {
+            return try await request("POST", path: "/api/download", body: body)
+        } catch {
+            guard APIError.isTimeout(error) else { throw error }
+            if let recovered = await recoverMovieDownloadJob(url: url) {
+                return recovered
+            }
+            throw error
+        }
+    }
+
+    /// POST /api/download may time out after the server already queued the job.
+    private func recoverMovieDownloadJob(url: String) async -> DownloadStartResponse? {
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if Task.isCancelled { return nil }
+            if let active = try? await fetchActiveServerDownloads() {
+                let match = (active.movies + active.items).first {
+                    $0.isMovie && MovieURLMatching.urlsMatch($0.url, url)
+                }
+                if let match, !match.jobId.isEmpty {
+                    return DownloadStartResponse(
+                        jobId: match.jobId,
+                        assetId: match.assetId,
+                        reused: true,
+                        ready: match.ready,
+                        status: match.status,
+                        progress: match.progress,
+                        token: nil
+                    )
+                }
+            }
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+        return nil
     }
 
     func fetchMovieDownloads() async throws -> MovieDownloadsResponse {
@@ -406,7 +451,18 @@ final class MusicAPIClient {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
         var poll = 0
         while Date() < deadline {
-            let job = try await fetchJobStatus(jobId: jobId)
+            let job: JobStatusResponse
+            do {
+                job = try await fetchJobStatus(jobId: jobId)
+            } catch {
+                if APIError.isTimeout(error) {
+                    poll += 1
+                    let ns: UInt64 = poll < 40 ? 400_000_000 : 800_000_000
+                    try await Task.sleep(nanoseconds: ns)
+                    continue
+                }
+                throw error
+            }
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Odtwarzanie nie powiodło się.")
             }
@@ -494,8 +550,10 @@ final class MusicAPIClient {
             req.timeoutInterval = 90
         } else if path.hasPrefix("/api/cda-hd/") || path.hasPrefix("/api/films/") || path.hasPrefix("/api/search") {
             req.timeoutInterval = 60
-        } else if path.hasPrefix("/api/download") || path.hasPrefix("/api/job/") || path.hasPrefix("/api/downloads/") {
-            req.timeoutInterval = 45
+        } else if path.hasPrefix("/api/download") {
+            req.timeoutInterval = 90
+        } else if path.hasPrefix("/api/job/") || path.hasPrefix("/api/downloads/") {
+            req.timeoutInterval = 20
         } else if path.hasPrefix("/api/music/library") || path.hasPrefix("/api/music/assets") {
             req.timeoutInterval = 45
         } else {

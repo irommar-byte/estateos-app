@@ -28,7 +28,7 @@ import {
   orderCdaHdCatalog,
   loadCdaHdDiskCatalog,
 } from "./cda-hd.js";
-import { getCdaHdSessionInfo, startCdaHdSessionKeeper } from "./cda-hd-fetch.js";
+import { getCdaHdSessionInfo, startCdaHdSessionKeeper, isCdaHdSolveLockBusy } from "./cda-hd-fetch.js";
 import {
   detectPortal,
   portalCookieArgs,
@@ -884,7 +884,10 @@ function startTransferJob({ jobId, url, args, purpose = "download", movieDownloa
 
   proc.on("progress", (p) => {
     if (job.cancelled) return;
+    if (failJobIfDiskExhausted(job)) return;
     job.status = "downloading";
+    job.phase = "downloading";
+    job.lastProgressAt = Date.now();
     // Never show 100% until finalize/persist finished — yt-dlp hits 100 during remux.
     if (typeof p.percent === "number") job.progress = Math.min(99, Math.max(0, p.percent));
     sendEvent(job, {
@@ -893,6 +896,7 @@ function startTransferJob({ jobId, url, args, purpose = "download", movieDownloa
       speed: p.currentSpeed,
       eta: p.eta,
       purpose: job.purpose,
+      phase: job.phase,
     });
   });
 
@@ -1709,6 +1713,12 @@ function startHlsMovieDownloadJob({
     path.dirname(ffmpegStatic),
     "--merge-output-format",
     "mp4",
+    "--concurrent-fragments",
+    "8",
+    "--retries",
+    "12",
+    "--fragment-retries",
+    "12",
     "--no-playlist",
     "--no-warnings",
   ];
@@ -1752,7 +1762,11 @@ function startHlsMovieDownloadJob({
       sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
       return;
     }
-    sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose });
+    job.status = "processing";
+    job.phase = "finalizing";
+    job.progress = 99;
+    job.lastProgressAt = Date.now();
+    sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose, phase: "finalizing" });
     try {
       finalizeJob(job, jobDir);
       job.ready = true;
@@ -2688,7 +2702,8 @@ const jobs = new Map();
 
 const MOVIE_QUEUE_FILE = path.join(DOWNLOAD_DIR, "_movie-job-queue.json");
 const MOVIE_STORAGE_FLOOR_BYTES = Number(process.env.MOVIE_STORAGE_FLOOR_BYTES || 512 * 1024 * 1024);
-const MOVIE_JOB_RESERVE_BYTES = Number(process.env.MOVIE_JOB_RESERVE_BYTES || 900 * 1024 * 1024);
+const MOVIE_JOB_RESERVE_BYTES = Number(process.env.MOVIE_JOB_RESERVE_BYTES || 1200 * 1024 * 1024);
+const MOVIE_STORAGE_ABORT_BYTES = Number(process.env.MOVIE_STORAGE_ABORT_BYTES || 256 * 1024 * 1024);
 const movieDownloadQueue = new DurableMovieJobQueue({
   filePath: MOVIE_QUEUE_FILE,
   maxConcurrent: Number(process.env.MOVIE_DOWNLOAD_CONCURRENCY || 2),
@@ -2697,9 +2712,13 @@ const movieDownloadQueue = new DurableMovieJobQueue({
   onPersistError: (error) => console.error("movie queue persist:", error?.message || error),
 });
 
-function assertMovieStorageAvailable() {
+function movieStorageAvailableBytes() {
   const stats = fs.statfsSync(DOWNLOAD_DIR);
-  const available = Number(stats.bavail) * Number(stats.bsize);
+  return Number(stats.bavail) * Number(stats.bsize);
+}
+
+function assertMovieStorageAvailable() {
+  const available = movieStorageAvailableBytes();
   const reservations = (movieDownloadQueue.list().length + 1) * MOVIE_JOB_RESERVE_BYTES;
   const required = MOVIE_STORAGE_FLOOR_BYTES + reservations;
   if (available >= required) return;
@@ -2710,6 +2729,25 @@ function assertMovieStorageAvailable() {
   );
   error.statusCode = 507;
   throw error;
+}
+
+function failJobIfDiskExhausted(job) {
+  if (!job || job.status === "error" || job.status === "cancelled" || job.ready) return false;
+  let available = 0;
+  try {
+    available = movieStorageAvailableBytes();
+  } catch {
+    return false;
+  }
+  if (available >= MOVIE_STORAGE_ABORT_BYTES) return false;
+  const availableMB = Math.max(0, Math.round(available / (1024 * 1024)));
+  job.status = "error";
+  job.error = `Zabrakło miejsca na serwerze podczas pobierania (${availableMB} MB wolne). Zwolnij przestrzeń i ponów.`;
+  try { stopJobTransfer(job); } catch {}
+  job.cancelled = false;
+  job.status = "error";
+  sendEvent(job, { status: "error", phase: "error", error: job.error });
+  return true;
 }
 
 function cleanupTerminalMovieWorkspace(job, delayMs = 2000) {
@@ -2762,7 +2800,25 @@ async function runQueuedMirrorMovieDownload(record) {
   jobs.set(record.id, previous);
   sendEvent(previous, { status: "starting", phase: "resolving", progress: 0, heartbeat: true });
 
-  const mirror = await getMirrorStream(sourceUrl);
+  const heartbeat = setInterval(() => {
+    const current = jobs.get(record.id);
+    if (!current || current.status === "error" || current.status === "cancelled" || current.ready) return;
+    current.phase = current.phase || "resolving";
+    sendEvent(current, {
+      status: current.status || "starting",
+      phase: current.phase,
+      progress: current.progress || 0,
+      heartbeat: true,
+    });
+  }, 3000);
+
+  let mirror;
+  try {
+    mirror = await withTimeout(getMirrorStream(sourceUrl), 180_000, "resolve-stream");
+  } finally {
+    clearInterval(heartbeat);
+  }
+
   const streamType = mirror.stream.type || detectStreamType(mirror.stream.url);
   const isHls = streamType === "hls" || /\.m3u8?(\?|$)/i.test(mirror.stream.url);
   const clients = previous.clients || new Set();
@@ -2825,6 +2881,8 @@ function isStalledMovieDownload(job, now = Date.now()) {
   if (!job || job.kind !== "movie" || job.purpose !== "download") return false;
   if (job.status === "queued" || job.phase === "queued") return false;
   if (job.ready || job.status === "done" || job.status === "error" || job.status === "cancelled") return false;
+  // yt-dlp still running (including remux) — slow feature films must not be killed.
+  if (job.proc && job.status !== "error" && job.status !== "cancelled") return false;
   const anchor = Number(job.lastProgressAt || job.queuedAt || job.createdAt || 0);
   return anchor > 0 && now - anchor > MOVIE_JOB_IDLE_MS;
 }
@@ -3944,6 +4002,9 @@ async function resolveCdaHdOrderedForPaging({ mode, type, page, pageSize }) {
   }
 
   try {
+    if (isCdaHdSolveLockBusy()) {
+      return { ordered, cached: !!cached, disk: !!disk, growSkipped: "solve-lock" };
+    }
     // Filmy/seriale filtrują pulę — bierzemy zapas z listingu, żeby page 2+ nie była pusta.
     const growTarget = type === "all" ? minNeeded : Math.min(240, minNeeded * 3);
     const grown = await withTimeout(
@@ -5668,18 +5729,8 @@ app.post("/api/download", async (req, res) => {
         }
       : null;
 
-  // Serial /tvshows/ → trwale linkuj URL odcinka (nie strony serialu).
-  if (movieDownload) {
-    try {
-      const resolved = await resolveMirrorPlayUrl(url);
-      if (resolved?.url && resolved.url !== movieDownload.url) {
-        movieDownload.url = resolved.url;
-        if (resolved.title) movieDownload.title = String(resolved.title).slice(0, 500);
-      }
-    } catch {
-      /* leave original URL — download path may still resolve later */
-    }
-  }
+  // Resolve Cloudflare / odcinek serialu w runnerze kolejki — POST musi wrócić od razu,
+  // inaczej aplikacja zrywa request po 45 s ("Przekroczenie limitu czasu żądania").
 
   if (movieDownload?.userKey) {
     const existing = findDownloadByUrl(movieDownload.userKey, movieDownload.url);
@@ -6048,6 +6099,7 @@ app.get("/api/job/:jobId", (req, res) => {
     kind: job.kind || null,
     intent: job.intent || null,
     url: job.trackUrl || job.movieUrl || job.url || null,
+    phase: job.phase || null,
     ready,
     fullReady,
     cdaFullPending: cdaPending,

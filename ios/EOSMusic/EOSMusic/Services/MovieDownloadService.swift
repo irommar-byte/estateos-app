@@ -461,10 +461,12 @@ final class MovieDownloadService: ObservableObject {
         guard !items.isEmpty else { return }
 
         if batchTask != nil, var batch = activeBatch, !batch.isCancelled, !batch.isFinished {
+            var added = 0
             for item in items where !batch.items.contains(where: {
                 MovieURLMatching.urlsMatch($0.url, item.url)
             }) {
                 batch.items.append(item)
+                added += 1
             }
             if destination == .serverAndPhone {
                 batch.destination = .serverAndPhone
@@ -472,6 +474,9 @@ final class MovieDownloadService: ObservableObject {
             activeBatch = batch
             statusMessage = "Dodano do kolejki — \(batch.items.count) pozycji."
             persistBatch(force: true)
+            if added > 0 {
+                Task { await enqueueAllPendingOnServer() }
+            }
             return
         }
 
@@ -1052,9 +1057,27 @@ final class MovieDownloadService: ObservableObject {
             if let id = activeBatch?.items[safe: itemIndex]?.id, cancelledItemIds.contains(id) {
                 throw CancellationError()
             }
-            let job = try await api.fetchJobStatus(jobId: jobId)
+            let job: JobStatusResponse
+            do {
+                job = try await api.fetchJobStatus(jobId: jobId)
+            } catch {
+                if APIError.isTimeout(error) {
+                    poll += 1
+                    let delay: UInt64 = poll < 30 ? 500_000_000 : 1_000_000_000
+                    try await Task.sleep(nanoseconds: delay)
+                    continue
+                }
+                throw error
+            }
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
+            }
+
+            let status = job.status.lowercased()
+            let phase = (job.phase ?? "").lowercased()
+            if status == "queued" || status == "starting" || status == "processing"
+                || phase == "resolving" || phase == "queued" || phase == "finalizing" || phase == "persisting" {
+                lastProgressAt = Date()
             }
 
             let rawProgress = job.progress ?? 0

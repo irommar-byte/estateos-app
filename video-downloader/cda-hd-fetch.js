@@ -47,22 +47,31 @@ function loadSession() {
 }
 
 function saveSession() {
-  ensureSessionDir();
-  const tmp = `${SESSION_PATH}.${process.pid}.tmp`;
-  fs.writeFileSync(
-    tmp,
-    JSON.stringify(
-      {
-        cookies: session.cookies,
-        userAgent: session.userAgent,
-        updatedAt: session.updatedAt,
-      },
-      null,
-      2
-    ) + "\n",
-    "utf8"
-  );
-  fs.renameSync(tmp, SESSION_PATH);
+  try {
+    ensureSessionDir();
+    const tmp = `${SESSION_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(
+      tmp,
+      JSON.stringify(
+        {
+          cookies: session.cookies,
+          userAgent: session.userAgent,
+          updatedAt: session.updatedAt,
+        },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
+    fs.renameSync(tmp, SESSION_PATH);
+  } catch (err) {
+    try { fs.rmSync(`${SESSION_PATH}.${process.pid}.tmp`, { force: true }); } catch {}
+    console.warn("cda-hd session save:", err?.message || err);
+  }
+}
+
+export function isCdaHdSolveLockBusy() {
+  return !!solveLock;
 }
 
 function isAllowedCdaHdResultUrl(url) {

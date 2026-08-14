@@ -14,6 +14,18 @@ enum APIError: LocalizedError {
         case .network(let err): return err.localizedDescription
         }
     }
+
+    var isTimeout: Bool {
+        guard case .network(let err) = self else { return false }
+        if let urlError = err as? URLError { return urlError.code == .timedOut }
+        return (err as NSError).code == NSURLErrorTimedOut
+    }
+
+    static func isTimeout(_ error: Error) -> Bool {
+        if let api = error as? APIError { return api.isTimeout }
+        if let urlError = error as? URLError { return urlError.code == .timedOut }
+        return (error as NSError).code == NSURLErrorTimedOut
+    }
 }
 
 struct AuthUser: Codable, Equatable {
@@ -163,6 +175,7 @@ struct JobStatusResponse: Codable {
     let intent: String?
     let url: String?
     let name: String?
+    let phase: String?
 }
 
 struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
@@ -170,7 +183,7 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
     let jobId: String
     let kind: String
     let status: String
-    let progress: Double
+    let progress: Double?
     let title: String
     let url: String
     let thumbnail: String?
@@ -197,7 +210,8 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
     }
 
     var progressPercent: Double {
-        min(100, max(0, progress <= 1 && progress > 0 ? progress * 100 : progress))
+        let value = progress ?? 0
+        return min(100, max(0, value <= 1 && value > 0 ? value * 100 : value))
     }
 }
 
@@ -205,6 +219,13 @@ struct ActiveServerDownloadsResponse: Codable {
     let items: [ActiveServerDownload]
     let music: [ActiveServerDownload]
     let movies: [ActiveServerDownload]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .items) ?? []
+        music = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .music) ?? []
+        movies = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .movies) ?? []
+    }
 }
 
 struct DownloadStartResponse: Codable {
