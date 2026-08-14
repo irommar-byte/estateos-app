@@ -94,13 +94,15 @@ struct WinampDisplayEnvelope {
         frame: MusicPlaybackEngine.AudioReactiveFrame,
         bandCount: Int,
         intensity: Double,
-        isPlaying: Bool
+        isPlaying: Bool,
+        speed: Double = 1.0
     ) {
         let dt = min(0.04, lastTime.map { time - $0 } ?? (1.0 / WinampSpectrumStyle.displayFPS))
         lastTime = time
+        let speedMul = min(1.85, max(0.35, speed))
         // Instant attack, aggressive release — classic snappy oscilloscope feel.
-        let fall = WinampSpectrumStyle.falloffNormPerSecond * dt * (isPlaying ? 1.75 : 0.4)
-        let peakFallBase = (8.0 / 255.0) * (dt * WinampSpectrumStyle.displayFPS)
+        let fall = WinampSpectrumStyle.falloffNormPerSecond * dt * (isPlaying ? 1.75 : 0.4) * speedMul
+        let peakFallBase = (8.0 / 255.0) * (dt * WinampSpectrumStyle.displayFPS) * speedMul
 
         for index in 0..<bandCount {
             let target = WinampSpectrumStyle.quantizeLevel(min(1, frame.spectrumBand(at: index) * intensity))
@@ -155,14 +157,16 @@ final class WinampEnvelopeDriver {
         frame: MusicPlaybackEngine.AudioReactiveFrame,
         bandCount: Int,
         intensity: Double,
-        isPlaying: Bool
+        isPlaying: Bool,
+        speed: Double = 1.0
     ) -> (levels: [Double], peaks: [Double], bass: Double, mid: Double, treble: Double, bassPeak: Double, midPeak: Double, treblePeak: Double) {
         envelope.step(
             time: time,
             frame: frame,
             bandCount: bandCount,
             intensity: intensity,
-            isPlaying: isPlaying
+            isPlaying: isPlaying,
+            speed: speed
         )
         return (
             levels: Array(envelope.levels.prefix(bandCount)),

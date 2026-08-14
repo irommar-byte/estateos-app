@@ -170,33 +170,17 @@ private struct PlayerContent: View {
                 let hero = layout.heroCanvasSize(availableHeight: fillH)
                 let eqH = layout.spectrumFillHeight(availableHeight: fillH)
 
-                Group {
-                    if layout.isPad {
-                        narrowMixerStack(
-                            track: track,
-                            layout: layout,
-                            fillH: fillH,
-                            hero: hero,
-                            eqH: eqH
-                        )
-                        .frame(height: fillH)
-                    } else {
-                        ScrollView(.vertical, showsIndicators: false) {
-                            narrowMixerStack(
-                                track: track,
-                                layout: layout,
-                                fillH: fillH,
-                                hero: hero,
-                                eqH: eqH
-                            )
-                            .frame(minHeight: fillH)
-                        }
-                    }
-                }
+                narrowMixerStack(
+                    track: track,
+                    layout: layout,
+                    hero: hero,
+                    eqH: eqH
+                )
+                .frame(width: geo.size.width, height: fillH)
             }
             .frame(maxHeight: .infinity)
 
-            playerBottomConsole(track: track, layout: layout)
+            playerBottomConsole(layout: layout)
             playerFooter(layout: layout)
         }
         .padding(.horizontal, layout.horizontalPadding)
@@ -208,12 +192,10 @@ private struct PlayerContent: View {
     private func narrowMixerStack(
         track: MusicPlaybackTrack,
         layout: PlayerLayout,
-        fillH: CGFloat,
         hero: CGFloat,
         eqH: CGFloat
     ) -> some View {
         VStack(spacing: 0) {
-            Spacer(minLength: layout.topGap)
             ProMixerNarrowConsole(
                 visualizer: engine.visualizer,
                 isPlaying: engine.isPlaying,
@@ -222,6 +204,7 @@ private struct PlayerContent: View {
                 drive: ui.playerDrive,
                 bandCount: ui.playerSpectrumBandCount,
                 barScale: ui.playerSpectrumBarScale,
+                speed: ui.playerSpectrumSpeed,
                 sideVUSegments: ui.playerSideVUSegments,
                 compactMixer: layout.compactMixer,
                 queueLabel: engine.queuePositionLabel,
@@ -234,15 +217,15 @@ private struct PlayerContent: View {
                 fallbackArtwork: engine.displayArtwork,
                 canvasSize: hero,
                 spectrumHeight: eqH,
-                expandSpectrum: layout.isPad || fillH > 640
+                expandSpectrum: layout.isPad
             ) {
-                trackMeta(track: track, layout: layout, includeStorage: false)
+                trackMeta(track: track, layout: layout)
             } status: {
                 playerStatusSection(layout: layout)
             } storage: {
                 EmptyView()
             }
-            Spacer(minLength: layout.bottomGap)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -265,6 +248,7 @@ private struct PlayerContent: View {
                         drive: ui.playerDrive,
                         bandCount: ui.playerSpectrumBandCount,
                         barScale: ui.playerSpectrumBarScale,
+                        speed: ui.playerSpectrumSpeed,
                         sideVUSegments: ui.playerSideVUSegments,
                         compactMixer: layout.compactMixer,
                         queueLabel: engine.queuePositionLabel,
@@ -278,7 +262,7 @@ private struct PlayerContent: View {
                         canvasSize: hero,
                         spectrumHeight: eqH
                     ) {
-                        trackMeta(track: track, layout: layout, includeStorage: false)
+                        trackMeta(track: track, layout: layout)
                     } status: {
                         playerStatusSection(layout: layout)
                     } storage: {
@@ -290,7 +274,7 @@ private struct PlayerContent: View {
             }
             .frame(maxHeight: .infinity)
 
-            playerBottomConsole(track: track, layout: layout)
+            playerBottomConsole(layout: layout)
             playerFooter(layout: layout)
         }
         .padding(.horizontal, layout.horizontalPadding)
@@ -328,6 +312,7 @@ private struct PlayerContent: View {
                     intensity: policy.intensityScale,
                     bandCount: ui.playerSpectrumBandCount,
                     barScale: ui.playerSpectrumBarScale,
+                    speed: ui.playerSpectrumSpeed,
                     compact: layout.compactMixer
                 )
                 .frame(height: layout.compactMixer ? 176 : 208)
@@ -340,8 +325,8 @@ private struct PlayerContent: View {
 
     @ViewBuilder
     private func playerStatusSection(layout: PlayerLayout) -> some View {
-        PlayerBufferingStatus(engine: engine)
-            .padding(.top, 6)
+            PlayerBufferingStatus(engine: engine)
+            .padding(.top, layout.compactMixer ? 2 : 6)
 
         if let error = engine.errorMessage {
             Text(error)
@@ -442,30 +427,15 @@ private struct PlayerContent: View {
         .padding(.top, layout.chromeTop)
     }
 
-    @ViewBuilder
-    private func playerStorageBar(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
-        if !track.isExternal || track.isOpenedLocalImport {
-            PlayerStorageStatusBar(
-                state: app.playbackCloudState(for: track),
-                onServerHint: app.isOnServer(track.url) || track.isOnServer,
-                layout: .horizontal,
-                onDownload: { app.downloadCurrentPlayback() },
-                onCancel: { app.cancelDownload(for: track.url) },
-                onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
-            )
-            .padding(.horizontal, 2)
-        }
-    }
-
-    private func trackMeta(track: MusicPlaybackTrack, layout: PlayerLayout, includeStorage: Bool = true) -> some View {
+    private func trackMeta(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
         VStack(spacing: layout.tight ? 3 : 5) {
             Text(track.title)
                 .font(layout.wide ? .title2.weight(.bold) : (layout.tight ? .title3.weight(.bold) : .title2.weight(.bold)))
                 .foregroundStyle(EOSTheme.textPrimary)
                 .multilineTextAlignment(layout.wide ? .leading : .center)
                 .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
+                .lineLimit(layout.compactMixer ? 1 : 2)
+                .minimumScaleFactor(0.8)
             if engine.playbackOrigin != .unknown {
                 BreathingSourceBadge(origin: engine.playbackOrigin)
                     .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
@@ -475,7 +445,7 @@ private struct PlayerContent: View {
                     Task { await openArtist(for: track) }
                 } label: {
                     Text(artist)
-                        .font(layout.tight ? .body : .title3)
+                        .font(layout.compactMixer ? .subheadline : (layout.tight ? .body : .title3))
                         .foregroundStyle(EOSTheme.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
@@ -516,30 +486,30 @@ private struct PlayerContent: View {
         .padding(.horizontal, 8)
     }
 
-    private func playbackSlider(layout: PlayerLayout) -> some View {
-        PlayerProgressSlider(engine: engine, tight: layout.tight)
+    private func playbackSlider() -> some View {
+        PlayerProgressSlider(engine: engine, tight: true)
     }
 
-    /// Jedna spójna karta na dole playera: status utworu (zawsze widoczny),
-    /// suwak i transport — z głębią 3D, biała na jasnym motywie.
-    private func playerBottomConsole(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
-        VStack(spacing: layout.tight ? 4 : 6) {
-            playerStorageBar(track: track, layout: layout)
-            playbackSlider(layout: layout)
+    /// Jedna spójna karta na dole playera: suwak i transport.
+    /// Pobieranie jest w chrome (chmurka) — tu nie dublujemy „Na serwerze / Pobierz”.
+    private func playerBottomConsole(layout: PlayerLayout) -> some View {
+        VStack(spacing: layout.tight ? 2 : 4) {
+            playbackSlider()
             ProMixerTransportDeck(
                 engine: engine,
                 playButtonSize: layout.playButtonSize,
-                tight: layout.tight,
+                tight: true,
                 bare: true
             )
         }
-        .padding(.horizontal, 12)
-        .padding(.top, layout.tight ? 10 : 12)
-        .padding(.bottom, layout.tight ? 4 : 6)
+        .padding(.horizontal, 10)
+        .padding(.top, layout.tight ? 8 : 10)
+        .padding(.bottom, layout.tight ? 2 : 4)
         .background {
             PlayerBottomConsoleSurface(colorScheme: colorScheme)
         }
-        .padding(.top, 6)
+        .padding(.top, 4)
+        .padding(.horizontal, layout.isPad || layout.wide ? 4 : 10)
     }
 
     private func openAlbum(for track: MusicPlaybackTrack) {
@@ -615,12 +585,12 @@ private struct PlayerLayout {
         // Spectrum: kompaktowa okładka w headerze — EQ zajmuje resztę.
         if preset.showsMixer {
             if wide { return min(148, max(96, height * 0.16)) }
-            if tight { return isPad ? 96 : 64 }
+            if tight { return isPad ? 88 : 56 }
             if isPad { return min(140, max(100, height * 0.12)) }
-            if height < 620 { return 72 }
-            if height < 700 { return 80 }
-            if height < 780 { return 92 }
-            return 100
+            if height < 620 { return 64 }
+            if height < 700 { return 72 }
+            if height < 780 { return 84 }
+            return 92
         }
         // Winyl / Okładka / Strobe — duży hero wypełniający środek ekranu.
         if wide { return min(360, height * 0.48) }
@@ -637,22 +607,25 @@ private struct PlayerLayout {
     func heroCanvasSize(availableHeight: CGFloat) -> CGFloat {
         if preset.showsMixer {
             if isPad { return min(132, max(discSize, availableHeight * 0.11)) }
-            return discSize
+            return min(discSize, max(56, availableHeight * 0.11))
         }
-        // Cover / vinyl — zajmij większość wolnej przestrzeni.
-        let target = availableHeight * (isPad ? 0.62 : 0.55)
-        let capped = min(width * (isPad ? 0.72 : 0.86), target, isPad ? 520 : 340)
-        return max(discSize, capped)
+        // Cover / vinyl — zajmij większość wolnej przestrzeni, ale zostaw pasek efektów.
+        let reserved: CGFloat = isPad ? 230 : 248
+        let leftover = max(140, availableHeight - reserved)
+        let target = leftover * (isPad ? 0.78 : 0.82)
+        let capped = min(width * (isPad ? 0.72 : 0.78), target, leftover, isPad ? 520 : 280)
+        return max(min(discSize, leftover), min(capped, leftover))
     }
 
     func spectrumFillHeight(availableHeight: CGFloat) -> CGFloat {
         guard preset.showsMixer else { return spectrumBlockHeight }
         if isPad || availableHeight > 640 {
             // Na dużym ekranie EQ wypełnia środek bez przewijania.
-            let reserved: CGFloat = isPad ? 188 : 180
+            let reserved: CGFloat = isPad ? 220 : 268
             return max(spectrumBlockHeight, availableHeight - reserved)
         }
-        return spectrumBlockHeight
+        let reserved: CGFloat = compactMixer ? 258 : 280
+        return max(88, min(spectrumBlockHeight, availableHeight - reserved))
     }
 
     var spectrumHeight: CGFloat {
@@ -702,20 +675,20 @@ private struct PlayerLayout {
         return 52
     }
 
-    var playButtonSize: CGFloat { tight ? 50 : (compact ? 56 : 62) }
+    var playButtonSize: CGFloat { tight ? 46 : (compact ? 52 : 58) }
     var topGap: CGFloat { tight ? 2 : (compact ? 4 : 6) }
     var afterDiscGap: CGFloat { tight ? 4 : 8 }
     var metaGap: CGFloat { tight ? 4 : 8 }
     var bottomGap: CGFloat { tight ? 2 : (compact ? 4 : 6) }
     var chromeTop: CGFloat { tight ? 2 : 6 }
-    var safeBottom: CGFloat { isPad ? 10 : (tight ? 2 : 6) }
-    var horizontalPadding: CGFloat { wide ? 28 : (width > 700 ? 24 : (width < 340 ? 8 : 12)) }
+    var safeBottom: CGFloat { isPad ? 10 : (tight ? 2 : 4) }
+    var horizontalPadding: CGFloat { wide ? 28 : (width > 700 ? 24 : (width < 340 ? 10 : 16)) }
     var maxContentWidth: CGFloat {
         if wide { return min(width - 32, 1200) }
         if isPad {
             return width > 820 ? min(width * 0.9, 960) : min(width * 0.94, 720)
         }
-        return min(width - 16, 540)
+        return min(width - 36, 500)
     }
     var wideArtColumnWidth: CGFloat { min(420, width * 0.42) }
     var wideColumnGap: CGFloat { 32 }
@@ -1137,7 +1110,7 @@ private struct PlayerProgressSlider: View {
         TimelineView(.periodic(from: .now, by: 0.1)) { _ in
             let time = isScrubbing ? scrubTime : engine.livePlaybackTime()
             let duration = max(engine.liveDuration(), 1)
-            VStack(spacing: 6) {
+            VStack(spacing: tight ? 3 : 6) {
                 PrecisionScrubBar(
                     progress: duration > 0 ? min(1, max(0, time / duration)) : 0,
                     isScrubbing: isScrubbing,
@@ -1164,7 +1137,7 @@ private struct PlayerProgressSlider: View {
                 .foregroundStyle(EOSTheme.textMuted)
             }
             .padding(.horizontal, 4)
-            .padding(.bottom, tight ? 6 : 10)
+            .padding(.bottom, tight ? 2 : 8)
         }
     }
 
@@ -2089,7 +2062,7 @@ private struct PlayerBottomConsoleSurface: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
         Group {
             if colorScheme == .dark {
                 shape

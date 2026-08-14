@@ -387,6 +387,10 @@ final class UIPreferences: ObservableObject {
     @Published var playerSpectrumBarScale: Double {
         didSet { UserDefaults.standard.set(playerSpectrumBarScale, forKey: Self.spectrumBarScaleKey) }
     }
+    /// Spectrum EQ: szybkość drgań słupków (0.4…1.6).
+    @Published var playerSpectrumSpeed: Double {
+        didSet { UserDefaults.standard.set(playerSpectrumSpeed, forKey: Self.spectrumSpeedKey) }
+    }
     /// Boczne VU L/R: liczba segmentów LED (12…32).
     @Published var playerSideVUSegments: Int {
         didSet { UserDefaults.standard.set(playerSideVUSegments, forKey: Self.sideVUSegmentsKey) }
@@ -418,6 +422,7 @@ final class UIPreferences: ObservableObject {
     private static let autoPerfKey = "ui.playerAutoPerformance"
     private static let spectrumBandsKey = "ui.playerSpectrumBandCount"
     private static let spectrumBarScaleKey = "ui.playerSpectrumBarScale"
+    private static let spectrumSpeedKey = "ui.playerSpectrumSpeed"
     private static let sideVUSegmentsKey = "ui.playerSideVUSegments"
     private static let offlineModeKey = "ui.offlineModeEnabled"
 
@@ -473,6 +478,11 @@ final class UIPreferences: ObservableObject {
             playerSpectrumBarScale = min(1.5, max(0.5, UserDefaults.standard.double(forKey: Self.spectrumBarScaleKey)))
         } else {
             playerSpectrumBarScale = 1.0
+        }
+        if UserDefaults.standard.object(forKey: Self.spectrumSpeedKey) != nil {
+            playerSpectrumSpeed = min(1.6, max(0.4, UserDefaults.standard.double(forKey: Self.spectrumSpeedKey)))
+        } else {
+            playerSpectrumSpeed = 1.0
         }
         if UserDefaults.standard.object(forKey: Self.sideVUSegmentsKey) != nil {
             let stored = UserDefaults.standard.integer(forKey: Self.sideVUSegmentsKey)

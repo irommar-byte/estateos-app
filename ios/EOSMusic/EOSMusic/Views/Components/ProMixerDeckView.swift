@@ -22,6 +22,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     let drive: Double
     let bandCount: Int
     var barScale: Double = 1.0
+    var speed: Double = 1.0
     var sideVUSegments: Int = 24
     let compactMixer: Bool
     let queueLabel: String
@@ -91,6 +92,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                                     intensity: intensity,
                                     bandCount: bandCount,
                                     barScale: barScale,
+                                    speed: speed,
                                     compact: rowGeo.size.width < 380
                                 )
                                 .frame(maxWidth: .infinity)
@@ -127,6 +129,10 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             storage()
+
+            if preset.showsMixer {
+                ProMixerSpectrumTuneStrip(compact: compactMixer)
+            }
 
             ProMixerControlStrip(compact: compactMixer)
         }
@@ -168,6 +174,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let drive: Double
     let bandCount: Int
     var barScale: Double = 1.0
+    var speed: Double = 1.0
     var sideVUSegments: Int = 24
     let compactMixer: Bool
     let queueLabel: String
@@ -187,32 +194,31 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
 
     private var live: Bool { isPlaying && !isLoading }
 
-    private var eqHeight: CGFloat {
-        if expandSpectrum {
-            return max(140, spectrumHeight)
-        }
-        return max(96, min(spectrumHeight, 136))
+    private var eqMinHeight: CGFloat {
+        if expandSpectrum { return max(120, min(spectrumHeight, 220)) }
+        return compactMixer ? 88 : 96
     }
 
     var body: some View {
-        VStack(spacing: compactMixer ? 6 : 8) {
+        VStack(spacing: compactMixer ? 4 : 6) {
             ProMixerStatusRail(
                 visualizer: visualizer,
                 isPlaying: live,
                 queueLabel: queueLabel,
                 onQueueTap: onQueueTap,
                 onServer: onServer,
-                drive: drive
+                drive: drive,
+                compact: compactMixer
             )
 
             ProMixerChassis {
-                VStack(spacing: compactMixer ? 8 : 10) {
+                VStack(spacing: compactMixer ? 6 : 8) {
                     artworkThumb
                         .frame(width: canvasSize, height: canvasSize)
                         .frame(maxWidth: .infinity)
                         .clipped()
 
-                    VStack(spacing: 4) {
+                    VStack(spacing: compactMixer ? 2 : 4) {
                         meta()
                         status()
                     }
@@ -220,7 +226,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
 
                     if preset.showsMixer {
                         GeometryReader { rowGeo in
-                            let vuW = min(expandSpectrum ? 34 : 28, max(14, rowGeo.size.width * 0.068))
+                            let vuW = min(expandSpectrum ? 34 : 24, max(14, rowGeo.size.width * 0.062))
                             HStack(alignment: .bottom, spacing: rowGeo.size.width < 360 ? 4 : 6) {
                                 ProMixerVerticalVU(
                                     visualizer: visualizer,
@@ -231,7 +237,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                     drive: drive,
                                     segmentCount: sideVUSegments
                                 )
-                                .frame(width: vuW, height: eqHeight)
+                                .frame(width: vuW, height: rowGeo.size.height)
 
                                 WinampSpectrumHost(
                                     visualizer: visualizer,
@@ -239,10 +245,11 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                     intensity: intensity,
                                     bandCount: bandCount,
                                     barScale: barScale,
+                                    speed: speed,
                                     compact: compactMixer || rowGeo.size.width < 380
                                 )
                                 .frame(maxWidth: .infinity)
-                                .frame(height: eqHeight)
+                                .frame(height: rowGeo.size.height)
 
                                 ProMixerVerticalVU(
                                     visualizer: visualizer,
@@ -253,11 +260,12 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                     drive: drive,
                                     segmentCount: sideVUSegments
                                 )
-                                .frame(width: vuW, height: eqHeight)
+                                .frame(width: vuW, height: rowGeo.size.height)
                             }
                         }
-                        .frame(height: eqHeight + 8)
-                        .padding(8)
+                        .frame(minHeight: eqMinHeight)
+                        .frame(maxHeight: .infinity)
+                        .padding(compactMixer ? 5 : 8)
                         .background {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(Color.black.opacity(0.88))
@@ -266,24 +274,31 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                         .stroke(Color.white.opacity(0.08), lineWidth: 0.8)
                                 }
                         }
+                        .layoutPriority(-1)
 
-                        ProMixerStereoBridge(visualizer: visualizer, isPlaying: live)
-                    } else if expandSpectrum {
-                        // Cover / vinyl — zabierz wolną przestrzeń pod hero, żeby nie było pustki.
+                        ProMixerStereoBridge(visualizer: visualizer, isPlaying: live, compact: compactMixer)
+                    } else {
                         Spacer(minLength: 0)
                     }
                 }
-                .padding(compactMixer ? 10 : 12)
-                .frame(maxWidth: .infinity)
+                .padding(compactMixer ? 8 : 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .frame(maxHeight: .infinity)
 
             storage()
 
+            if preset.showsMixer {
+                ProMixerSpectrumTuneStrip(compact: compactMixer)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             ProMixerControlStrip(compact: true)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(4)
-        .frame(maxWidth: .infinity)
+        .padding(compactMixer ? 2 : 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { ProMixerStageBackground() }
     }
 
@@ -666,6 +681,7 @@ private struct ProMixerStatusRail: View {
     var onQueueTap: (() -> Void)? = nil
     var onServer: Bool
     var drive: Double = 0.4
+    var compact: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
     private var isLight: Bool { colorScheme == .light }
@@ -697,8 +713,8 @@ private struct ProMixerStatusRail: View {
                     ProMixerLED(label: "CLIP", color: ProMixerDeckView.labelRed, lit: clip, blink: clip)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, compact ? 8 : 10)
+            .padding(.vertical, compact ? 5 : 8)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(
@@ -949,6 +965,7 @@ private struct ProMixerMasterSection: View {
     let intensity: Double
     let bandCount: Int
     var barScale: Double = 1.0
+    var speed: Double = 1.0
     var sideVUSegments: Int = 24
     let compactMixer: Bool
     let effectsActive: Bool
@@ -984,6 +1001,8 @@ private struct ProMixerMasterSection: View {
                     isPlaying: isPlaying,
                     intensity: intensity,
                     bandCount: bandCount,
+                    barScale: barScale,
+                    speed: speed,
                     compact: compactMixer
                 )
                 .frame(minHeight: compactMixer ? 180 : 220)
@@ -1031,11 +1050,12 @@ private struct ProMixerNumericDisplay: View {
 private struct ProMixerStereoBridge: View {
     let visualizer: PlayerAudioVisualizer
     let isPlaying: Bool
+    var compact: Bool = false
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 16, paused: !isPlaying)) { _ in
             let frame = visualizer.snapshot(isPlaying: isPlaying)
-            HStack(spacing: 6) {
+            HStack(spacing: compact ? 4 : 6) {
                 stereoBar(level: frame.bass, label: "L")
                 stereoBar(level: (frame.bass + frame.treble) / 2, label: "M")
                 stereoBar(level: frame.treble, label: "R")
@@ -1045,7 +1065,7 @@ private struct ProMixerStereoBridge: View {
 
     private func stereoBar(level: Double, label: String) -> some View {
         let norm = WinampSpectrumStyle.quantizeLevel(isPlaying ? level : level * 0.1)
-        return VStack(spacing: 3) {
+        return VStack(spacing: compact ? 2 : 3) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color(white: 0.08))
@@ -1060,9 +1080,9 @@ private struct ProMixerStereoBridge: View {
                         .frame(width: max(4, geo.size.width * norm))
                 }
             }
-            .frame(height: 6)
+            .frame(height: compact ? 5 : 6)
             Text(label)
-                .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                .font(.system(size: compact ? 7 : 8, weight: .heavy, design: .monospaced))
                 .foregroundStyle(Color.white.opacity(0.45))
         }
     }
@@ -1114,6 +1134,88 @@ private struct ProMixerBeatChase: View {
     }
 }
 
+// MARK: - Spectrum bar count / size / speed
+
+private struct ProMixerSpectrumTuneStrip: View {
+    @EnvironmentObject private var ui: UIPreferences
+    @Environment(\.colorScheme) private var colorScheme
+    var compact: Bool = true
+
+    private var isLight: Bool { colorScheme == .light }
+
+    var body: some View {
+        HStack(spacing: compact ? 8 : 12) {
+            Picker("Słupki", selection: $ui.playerSpectrumBandCount) {
+                Text("16").tag(16)
+                Text("24").tag(24)
+                Text("32").tag(32)
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .frame(maxWidth: compact ? 132 : 160)
+
+            miniSlider(
+                icon: "arrow.left.and.right",
+                value: $ui.playerSpectrumBarScale,
+                range: 0.5...1.5,
+                accessibility: "Wielkość słupków"
+            )
+
+            miniSlider(
+                icon: "hare.fill",
+                value: $ui.playerSpectrumSpeed,
+                range: 0.4...1.6,
+                accessibility: "Szybkość słupków"
+            )
+        }
+        .padding(.horizontal, compact ? 8 : 12)
+        .padding(.vertical, compact ? 5 : 8)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: isLight
+                            ? [Color.white, Color(white: 0.95)]
+                            : [Color(white: 0.12), Color(white: 0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: isLight
+                                    ? [Color.white, Color.black.opacity(0.07)]
+                                    : [Color.white.opacity(0.14), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                }
+        }
+        .tint(ProMixerDeckView.labelGreen)
+    }
+
+    private func miniSlider(
+        icon: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        accessibility: String
+    ) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(ProMixerDeckView.labelGreen.opacity(0.9))
+                .frame(width: 14)
+            Slider(value: value, in: range)
+                .controlSize(.mini)
+        }
+        .accessibilityLabel(accessibility)
+    }
+}
+
 // MARK: - Effect mode strip (ON + presets with LED)
 
 struct ProMixerControlStrip: View {
@@ -1125,12 +1227,12 @@ struct ProMixerControlStrip: View {
     private var powered: Bool { ui.playerMixerPowered }
 
     var body: some View {
-        HStack(spacing: compact ? 8 : 12) {
-            ProMixerMasterPowerButton(isOn: $ui.playerMixerPowered)
+        HStack(spacing: compact ? 6 : 12) {
+            ProMixerMasterPowerButton(isOn: $ui.playerMixerPowered, compact: compact)
 
             Rectangle()
                 .fill(isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12))
-                .frame(width: 1, height: compact ? 42 : 48)
+                .frame(width: 1, height: compact ? 36 : 48)
 
             HStack(spacing: compact ? 6 : 8) {
                 effectButton(.vinyl, title: "WINYL", icon: "opticaldisc.fill", led: ProMixerDeckView.labelAmber)
@@ -1143,8 +1245,8 @@ struct ProMixerControlStrip: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, compact ? 10 : 14)
-        .padding(.vertical, compact ? 8 : 10)
+        .padding(.horizontal, compact ? 8 : 14)
+        .padding(.vertical, compact ? 5 : 10)
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(
@@ -1182,9 +1284,9 @@ struct ProMixerControlStrip: View {
                 ui.playerMixerPowered = true
             }
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: compact ? 3 : 5) {
                 ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: isLight
@@ -1194,7 +1296,7 @@ struct ProMixerControlStrip: View {
                                 endPoint: .bottom
                             )
                         )
-                        .frame(width: compact ? 54 : 62, height: compact ? 40 : 46)
+                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
                         .overlay {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(
@@ -1205,9 +1307,9 @@ struct ProMixerControlStrip: View {
                         .shadow(color: active ? led.opacity(0.35) : .black.opacity(isLight ? 0.06 : 0.25), radius: active ? 8 : 3, y: 2)
 
                     Image(systemName: icon)
-                        .font(.system(size: compact ? 14 : 16, weight: .semibold))
+                        .font(.system(size: compact ? 13 : 16, weight: .semibold))
                         .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.55)))
-                        .frame(width: compact ? 54 : 62, height: compact ? 40 : 46)
+                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
 
                     // Dioda LED — zapala się gdy efekt aktywny
                     Circle()
@@ -1238,9 +1340,9 @@ struct ProMixerControlStrip: View {
                 ui.playerMixerPowered = true
             }
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: compact ? 3 : 5) {
                 ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: isLight
@@ -1250,7 +1352,7 @@ struct ProMixerControlStrip: View {
                                 endPoint: .bottom
                             )
                         )
-                        .frame(width: compact ? 54 : 62, height: compact ? 40 : 46)
+                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
                         .overlay {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(
@@ -1261,9 +1363,9 @@ struct ProMixerControlStrip: View {
                         .shadow(color: active ? led.opacity(0.35) : .black.opacity(isLight ? 0.06 : 0.25), radius: active ? 8 : 3, y: 2)
 
                     Image(systemName: "light.beacon.max.fill")
-                        .font(.system(size: compact ? 14 : 16, weight: .semibold))
+                        .font(.system(size: compact ? 13 : 16, weight: .semibold))
                         .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.55)))
-                        .frame(width: compact ? 54 : 62, height: compact ? 40 : 46)
+                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
 
                     Circle()
                         .fill(active ? led : (isLight ? Color(white: 0.82) : Color(white: 0.18)))
@@ -1287,9 +1389,11 @@ struct ProMixerControlStrip: View {
 /// Duży, piękny przełącznik ON/OFF całej elektroniki efektów.
 private struct ProMixerMasterPowerButton: View {
     @Binding var isOn: Bool
+    var compact: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
     private var isLight: Bool { colorScheme == .light }
+    private var knob: CGFloat { compact ? 42 : 52 }
 
     var body: some View {
         Button {
@@ -1298,7 +1402,7 @@ private struct ProMixerMasterPowerButton: View {
                 isOn.toggle()
             }
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: compact ? 3 : 5) {
                 ZStack {
                     Circle()
                         .fill(
@@ -1308,10 +1412,10 @@ private struct ProMixerMasterPowerButton: View {
                                     : [Color(white: 0.24), Color(white: 0.08), Color.black],
                                 center: .topLeading,
                                 startRadius: 2,
-                                endRadius: 28
+                                endRadius: knob * 0.55
                             )
                         )
-                        .frame(width: 52, height: 52)
+                        .frame(width: knob, height: knob)
                         .overlay {
                             Circle()
                                 .stroke(
@@ -1328,25 +1432,23 @@ private struct ProMixerMasterPowerButton: View {
                         .shadow(color: .black.opacity(isLight ? 0.12 : 0.45), radius: isLight ? 8 : 10, y: 4)
                         .shadow(color: (isOn ? ProMixerDeckView.labelGreen : Color.clear).opacity(0.45), radius: 12, y: 0)
 
-                    // Pierścień statusu
                     Circle()
                         .stroke(isOn ? ProMixerDeckView.labelGreen.opacity(0.85) : Color.secondary.opacity(0.25), lineWidth: 2.5)
-                        .frame(width: 40, height: 40)
+                        .frame(width: knob * 0.77, height: knob * 0.77)
 
                     Image(systemName: "power")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: compact ? 14 : 16, weight: .bold))
                         .foregroundStyle(isOn ? ProMixerDeckView.labelGreen : (isLight ? Color.secondary : Color.white.opacity(0.4)))
 
-                    // Mała dioda LED w rogu
                     Circle()
                         .fill(isOn ? ProMixerDeckView.labelGreen : (isLight ? Color(white: 0.75) : Color(white: 0.15)))
-                        .frame(width: 8, height: 8)
+                        .frame(width: compact ? 7 : 8, height: compact ? 7 : 8)
                         .shadow(color: isOn ? ProMixerDeckView.labelGreen.opacity(0.95) : .clear, radius: 5)
-                        .offset(x: 16, y: -16)
+                        .offset(x: knob * 0.31, y: -knob * 0.31)
                 }
 
                 Text(isOn ? "ON" : "OFF")
-                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                    .font(.system(size: compact ? 8 : 9, weight: .heavy, design: .monospaced))
                     .foregroundStyle(isOn ? ProMixerDeckView.labelGreen : (isLight ? Color.secondary : Color.white.opacity(0.45)))
             }
         }
@@ -1369,7 +1471,7 @@ struct ProMixerTransportDeck: View {
     private var isLight: Bool { colorScheme == .light }
 
     var body: some View {
-        HStack(spacing: tight ? 16 : 22) {
+        HStack(spacing: tight ? 12 : 20) {
             transportButton("shuffle", active: engine.shuffleEnabled) {
                 engine.toggleShuffle()
             }
@@ -1387,8 +1489,8 @@ struct ProMixerTransportDeck: View {
             }
         }
         .foregroundStyle(EOSTheme.textPrimary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, tight ? 8 : 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, tight ? 4 : 10)
         .background {
             if !bare {
                 deckChassis

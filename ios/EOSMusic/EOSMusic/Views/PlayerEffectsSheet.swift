@@ -147,6 +147,20 @@ struct PlayerEffectsSheet: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
+                            Label("Szybkość słupków", systemImage: "hare.fill")
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text("\(Int(ui.playerSpectrumSpeed * 100))%")
+                                .font(.caption.monospacedDigit().weight(.bold))
+                                .foregroundStyle(EOSTheme.accent)
+                        }
+                        Slider(value: $ui.playerSpectrumSpeed, in: 0.4...1.6)
+                            .tint(EOSTheme.accent)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
                             Label("Segmenty VU L/R", systemImage: "slider.vertical.3")
                                 .font(.subheadline.weight(.medium))
                             Spacer()
@@ -168,7 +182,7 @@ struct PlayerEffectsSheet: View {
                 } header: {
                     Text("Spectrum EQ / Mikser")
                 } footer: {
-                    Text("Reguluj gęstość i grubość słupków w środku oraz wysokość bocznych wskaźników L/R (efekt miksera DJ).")
+                    Text("Reguluj liczbę, grubość i szybkość drgań słupków Winamp oraz wysokość bocznych wskaźników L/R.")
                 }
 
                 Section {

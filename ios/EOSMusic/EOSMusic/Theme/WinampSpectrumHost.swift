@@ -9,6 +9,7 @@ struct WinampSpectrumHost: UIViewRepresentable {
     var intensity: Double
     var bandCount: Int
     var barScale: Double = 1.0
+    var speed: Double = 1.0
     var compact: Bool
 
     func makeUIView(context: Context) -> WinampSpectrumUIView {
@@ -19,6 +20,7 @@ struct WinampSpectrumHost: UIViewRepresentable {
             intensity: intensity,
             bandCount: bandCount,
             barScale: barScale,
+            speed: speed,
             compact: compact
         )
         return view
@@ -31,6 +33,7 @@ struct WinampSpectrumHost: UIViewRepresentable {
             intensity: intensity,
             bandCount: bandCount,
             barScale: barScale,
+            speed: speed,
             compact: compact
         )
     }
@@ -48,9 +51,10 @@ final class WinampSpectrumUIView: UIView {
     private var intensity: Double = 1
     private var bandCount = MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard
     private var barScale: Double = 1.0
+    private var speed: Double = 1.0
     private var compact = false
     private var lastDrawAt: CFTimeInterval = 0
-    private let targetFPS: CFTimeInterval = 30
+    private var targetFPS: CFTimeInterval = 30
     private var snap: (
         levels: [Double],
         peaks: [Double],
@@ -92,19 +96,22 @@ final class WinampSpectrumUIView: UIView {
         intensity: Double,
         bandCount: Int,
         barScale: Double,
+        speed: Double,
         compact: Bool
     ) {
         self.visualizer = visualizer
         let nextBands = max(8, min(MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax, bandCount))
         let nextScale = min(1.5, max(0.5, barScale))
+        let nextSpeed = min(1.6, max(0.4, speed))
         let bandChanged = self.bandCount != nextBands
         let scaleChanged = abs(self.barScale - nextScale) > 0.02
+        let speedChanged = abs(self.speed - nextSpeed) > 0.03
         let playingChanged = self.isPlaying != isPlaying
         let compactChanged = self.compact != compact
         let intensityChanged = abs(self.intensity - intensity) > 0.01
 
         // Idempotent — SwiftUI may call updateUIView often; never restart the link needlessly.
-        guard bandChanged || scaleChanged || playingChanged || compactChanged || intensityChanged || (displayLink == nil && isPlaying) else {
+        guard bandChanged || scaleChanged || speedChanged || playingChanged || compactChanged || intensityChanged || (displayLink == nil && isPlaying) else {
             return
         }
 
@@ -112,11 +119,16 @@ final class WinampSpectrumUIView: UIView {
         self.intensity = intensity
         self.bandCount = nextBands
         self.barScale = nextScale
+        self.speed = nextSpeed
         self.compact = compact
+        self.targetFPS = min(48, max(20, 12 + 24 * nextSpeed))
         if bandChanged {
             envelope.reset()
         }
         if isPlaying {
+            if speedChanged {
+                stop()
+            }
             start()
         } else {
             tick(force: true)
@@ -136,10 +148,15 @@ final class WinampSpectrumUIView: UIView {
     private func start() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(onFrame(_:)))
+        let fps = max(20, min(48, targetFPS))
         if #available(iOS 15.0, *) {
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: 60, preferred: 30)
+            link.preferredFrameRateRange = CAFrameRateRange(
+                minimum: 20,
+                maximum: Float(min(60, fps + 8)),
+                preferred: Float(fps)
+            )
         } else {
-            link.preferredFramesPerSecond = 30
+            link.preferredFramesPerSecond = Int(fps.rounded())
         }
         link.add(to: .main, forMode: .common)
         displayLink = link
@@ -163,7 +180,8 @@ final class WinampSpectrumUIView: UIView {
             frame: frame,
             bandCount: bandCount,
             intensity: intensity,
-            isPlaying: isPlaying
+            isPlaying: isPlaying,
+            speed: speed
         )
     }
 
