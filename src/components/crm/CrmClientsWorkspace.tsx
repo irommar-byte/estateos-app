@@ -26,6 +26,7 @@ import {
   MessageCircle,
   PhoneCall,
   Clock3,
+  SlidersHorizontal,
   Contact2,
   IdCard,
 } from "lucide-react";
