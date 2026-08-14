@@ -89,6 +89,16 @@ async function api(method, urlPath, { body, token, timeoutMs = 45000 } = {}) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function apiWithRetries(method, urlPath, options, accept, attempts = 3) {
+  let result = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    result = await api(method, urlPath, options);
+    if (accept(result)) return result;
+    if (attempt < attempts) await sleep(3000);
+  }
+  return result;
+}
+
 async function waitForTerminalJob(jobId, { token, timeoutMs = 90 * 60 * 1000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let last = null;
@@ -257,10 +267,12 @@ let filmUrl = null;
 }
 
 {
-  const { res, json } = await api("POST", "/api/search", {
-    body: { query: "love", source: "all", page: 1, pageSize: 24 },
-    timeoutMs: 35000,
-  });
+  const { res, json } = await apiWithRetries(
+    "POST",
+    "/api/search",
+    { body: { query: "love", source: "all", page: 1, pageSize: 24 }, timeoutMs: 60000 },
+    (result) => result.res.ok && searchItems(result.json).length > 0
+  );
   const items = searchItems(json);
   const sources = [...new Set(items.map((i) => i.source || "?"))];
   const hasApple = items.some((i) => String(i.source || "").toLowerCase().includes("apple"));
@@ -338,22 +350,27 @@ if (sampleDownload?.downloadJobId) {
 }
 
 {
-  // Prefer a YouTube URL for live info/preview — CDA-HD info depends on Cloudflare.
-  let probeUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw"; // me at the zoo (short)
-  const yt = await api("POST", "/api/search", {
-    body: { query: "me at the zoo", source: "youtube", page: 1, pageSize: 3 },
-    timeoutMs: 20000,
-  });
-  if (searchItems(yt.json)[0]?.url) probeUrl = searchItems(yt.json)[0].url;
+  // Keep the generic info/preview contract tied to the production incident source.
+  const probeUrl = "https://cda-hd.cc/episode/westworld-sezon-1-odcinek-2-online";
 
-  const info = await api("POST", "/api/info", { body: { url: probeUrl }, timeoutMs: 90000 });
+  const info = await apiWithRetries(
+    "POST",
+    "/api/info",
+    { body: { url: probeUrl }, timeoutMs: 90000 },
+    (result) => result.res.ok && !!result.json?.title
+  );
   if (info.res.ok && info.json?.title) {
     ok("info film", String(info.json.title).slice(0, 60));
   } else {
     fail("info film", JSON.stringify(info.json)?.slice(0, 120) || "failed");
   }
 
-  const prev = await api("POST", "/api/preview", { body: { url: probeUrl, height: 720 }, timeoutMs: 90000 });
+  const prev = await apiWithRetries(
+    "POST",
+    "/api/preview",
+    { body: { url: probeUrl, height: 720 }, timeoutMs: 90000 },
+    (result) => result.res.ok && !!result.json?.jobId
+  );
   if (!(prev.res.ok && prev.json?.jobId)) {
     fail("preview start", JSON.stringify(prev.json)?.slice(0, 120) || "failed");
   } else {

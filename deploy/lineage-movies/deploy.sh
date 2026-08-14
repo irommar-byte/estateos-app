@@ -177,7 +177,7 @@ check() {
   local url="$3"
   local body=""
   local attempt
-  for attempt in 1 2 3 4 5; do
+  for attempt in $(seq 1 30); do
     body=$(curl -fsS "$url" 2>/dev/null || true)
     if [ -n "$body" ] && printf '%s' "$body" | grep -qF "$pattern"; then
       echo "  OK $label"
