@@ -1,15 +1,19 @@
 import { create } from 'zustand';
-import { AppState } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {
   KEI_IMPORT_STEPS,
   type KeiAiRewriteProgress,
-  type KeiExportProgressEvent,
   type KeiExportRequest,
   type KeiExportResultItem,
+  type KeiImportJobSnapshot,
   type KeiImportStepId,
 } from '../contracts/keiAmerContract';
-import { keiAmerExportStream, cancelKeiAmerExportStream, reconcileExportItemsFromResult } from '../services/keiAmerService';
+import {
+  keiAmerCancelExportJob,
+  keiAmerFetchActiveExportJobs,
+  keiAmerFetchExportJob,
+  keiAmerStartExportJob,
+} from '../services/keiAmerService';
 
 export type KeiExportItemProgress = {
   index: number;
@@ -29,193 +33,23 @@ export type KeiExportItemProgress = {
   aiRewrite?: KeiAiRewriteProgress;
 };
 
-function mergeCompletedSteps(existing: KeiImportStepId[], step: KeiImportStepId): KeiImportStepId[] {
-  const stepIdx = KEI_IMPORT_STEPS.indexOf(step);
-  const completedSteps = [...existing];
-  for (let i = 0; i < stepIdx; i += 1) {
-    const prior = KEI_IMPORT_STEPS[i];
-    if (!completedSteps.includes(prior)) completedSteps.push(prior);
-  }
-  return completedSteps;
-}
-
-function applyExportEvent(
-  state: Pick<KeiAmerExportState, 'items' | 'message' | 'results' | 'skipped' | 'running'>,
-  event: KeiExportProgressEvent,
-): Partial<KeiAmerExportState> | null {
-  if (event.type === 'connected') {
-    return { message: event.message };
-  }
-  if (event.type === 'batch_start') {
-    return { message: `Import ${event.total} ogłoszeń…` };
-  }
-  if (event.type === 'item_start') {
-    return {
-      items: state.items.map((item) =>
-        item.index !== event.index
-          ? item
-          : {
-              ...item,
-              status: 'active',
-              keiListingId: event.keiListingId,
-              portalUrl: event.portalUrl,
-              address: event.address ?? item.address,
-              currentStep: 'check_duplicate',
-              stepLabel: 'Sprawdzanie duplikatu…',
-            },
-      ),
-    };
-  }
-  if (event.type === 'step') {
-    return {
-      items: state.items.map((item) =>
-        item.index !== event.index
-          ? item
-          : {
-              ...item,
-              status: 'active',
-              currentStep: event.step,
-              stepLabel: event.label,
-              stepDetail: event.detail ?? item.stepDetail,
-              completedSteps: mergeCompletedSteps(item.completedSteps, event.step),
-            },
-      ),
-    };
-  }
-  if (event.type === 'ai_rewrite') {
-    return {
-      items: state.items.map((item) =>
-        item.index !== event.index
-          ? item
-          : {
-              ...item,
-              status: 'active',
-              currentStep: 'create_offer',
-              stepLabel: event.rewrite.working ? 'AI przepisuje opis…' : 'Opis gotowy',
-              stepDetail: event.rewrite.working ? 'GPT' : event.rewrite.rewrittenByAi ? 'AI ✓' : 'reguły',
-              completedSteps: mergeCompletedSteps(item.completedSteps, 'create_offer'),
-              aiRewrite: event.rewrite,
-            },
-      ),
-    };
-  }
-  if (event.type === 'image_progress') {
-    return {
-      items: state.items.map((item) =>
-        item.index !== event.index
-          ? item
-          : {
-              ...item,
-              status: 'active',
-              currentStep: 'images',
-              stepLabel: event.asFloorPlan
-                ? `Zdjęcie ${event.imageIndex}/${event.imageTotal} (rzut)`
-                : event.label,
-              stepDetail: event.asFloorPlan
-                ? 'Wybrane zdjęcie zapisywane jako rzut mieszkania'
-                : item.stepDetail,
-              completedSteps: mergeCompletedSteps(item.completedSteps, 'images'),
-              imageProgress: {
-                index: event.imageIndex,
-                total: event.imageTotal,
-                label: event.label,
-                asFloorPlan: event.asFloorPlan,
-              },
-            },
-      ),
-    };
-  }
-  if (event.type === 'floor_plan_decision') {
-    return {
-      items: state.items.map((item) =>
-        item.index !== event.index
-          ? item
-          : {
-              ...item,
-              stepDetail: event.asFloorPlan
-                ? 'Wybrane zdjęcie zostanie zapisane jako rzut'
-                : 'Zdjęcia trafią tylko do galerii',
-            },
-      ),
-    };
-  }
-  if (event.type === 'item_done') {
-    return {
-      items: state.items.map((item) =>
-        item.index !== event.index
-          ? item
-          : {
-              ...item,
-              status: 'done',
-              currentStep: null,
-              stepLabel: 'Gotowe',
-              offerId: event.offerId,
-              publicUrl: event.publicUrl,
-              editUrl: event.editUrl,
-              completedSteps: [...KEI_IMPORT_STEPS],
-            },
-      ),
-      results: [
-        ...state.results.filter((r) => r.portalUrl !== event.portalUrl),
-        {
-          offerId: event.offerId,
-          portalUrl: event.portalUrl,
-          publicUrl: event.publicUrl,
-          editUrl: event.editUrl,
-          keiListingId: event.keiListingId,
-        },
-      ],
-    };
-  }
-  if (event.type === 'item_skip') {
-    return {
-      items: state.items.map((item) =>
-        item.index !== event.index
-          ? item
-          : {
-              ...item,
-              status: 'skipped',
-              currentStep: null,
-              stepLabel: 'Pominięto',
-              reason: event.existingOfferId
-                ? `${event.reason} (oferta #${event.existingOfferId})`
-                : event.reason,
-              completedSteps: [],
-            },
-      ),
-      skipped: state.skipped + 1,
-    };
-  }
-  if (event.type === 'batch_done') {
-    return { message: event.message };
-  }
-  if (event.type === 'result') {
-    const patches = reconcileExportItemsFromResult(state.items, event);
-    const nextItems =
-      patches.length === 0
-        ? state.items
-        : state.items.map((item) => {
-            const patch = patches.find((p) => p.index === item.index)?.patch;
-            return patch ? { ...item, ...(patch as Partial<KeiExportItemProgress>) } : item;
-          });
-    void Haptics.notificationAsync(
-      (event.exported?.length || 0) > 0
-        ? Haptics.NotificationFeedbackType.Success
-        : Haptics.NotificationFeedbackType.Warning,
-    );
-    return {
-      items: nextItems,
-      results: event.exported || [],
-      skipped: event.skipped?.length || 0,
-      message: event.message || 'Import zakończony.',
-      running: false,
-    };
-  }
-  if (event.type === 'error') {
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    return { message: event.message, running: false };
-  }
-  return null;
+function mapJobItems(job: KeiImportJobSnapshot): KeiExportItemProgress[] {
+  return (job.items || []).map((item) => ({
+    index: item.index,
+    keiListingId: item.keiListingId,
+    portalUrl: item.portalUrl,
+    address: item.address,
+    status: item.status,
+    completedSteps: (item.completedSteps || []) as KeiImportStepId[],
+    currentStep: item.currentStep,
+    stepLabel: item.stepLabel,
+    stepDetail: item.stepDetail,
+    imageProgress: item.imageProgress,
+    offerId: item.offerId,
+    publicUrl: item.publicUrl,
+    editUrl: item.editUrl,
+    reason: item.reason,
+  }));
 }
 
 type KeiAmerExportState = {
@@ -225,6 +59,8 @@ type KeiAmerExportState = {
   items: KeiExportItemProgress[];
   results: KeiExportResultItem[];
   skipped: number;
+  jobId: string | null;
+  authToken: string | null;
   onComplete?: () => void;
   setModalVisible: (visible: boolean) => void;
   cancelExport: () => void;
@@ -234,28 +70,85 @@ type KeiAmerExportState = {
     initialItems: KeiExportItemProgress[],
     onComplete?: () => void,
   ) => void;
+  hydrateFromServer: (token: string) => Promise<void>;
   clearSession: () => void;
 };
 
-let exportInflight: Promise<void> | null = null;
-/** true gdy użytkownik ręcznie zatrzymał — ignoruj late errors ze streamu. */
-let exportCancelledByUser = false;
-
-export function isKeiExportStreamAlive(): boolean {
-  return exportInflight != null;
+function applyJobSnapshot(
+  job: KeiImportJobSnapshot,
+  onComplete?: () => void,
+): Partial<KeiAmerExportState> {
+  const running = job.status === 'queued' || job.status === 'running';
+  const patch: Partial<KeiAmerExportState> = {
+    jobId: job.id,
+    running,
+    message: job.message || (running ? 'Import w toku na serwerze…' : 'Import zakończony.'),
+    items: mapJobItems(job),
+    results: job.exported || [],
+    skipped: job.skipped?.length || 0,
+  };
+  if (!running) {
+    patch.onComplete = undefined;
+    if (onComplete) queueMicrotask(() => onComplete());
+    if (job.status === 'done') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else if (job.status === 'error') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } else if (job.status === 'cancelled') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+  }
+  return patch;
 }
 
-/** Po powrocie z tła: jeśli stream padł, zamknij „running”, zostaw ostatni znany etap w kartach. */
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let exportCancelledByUser = false;
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+async function pollOnce() {
+  const state = useKeiAmerExportStore.getState();
+  if (!state.authToken || !state.jobId || exportCancelledByUser) return;
+  try {
+    const res = await keiAmerFetchExportJob(state.authToken, state.jobId);
+    if (!res.job) return;
+    const onComplete = state.onComplete;
+    useKeiAmerExportStore.setState(applyJobSnapshot(res.job, onComplete));
+    if (res.job.status !== 'queued' && res.job.status !== 'running') {
+      stopPolling();
+    }
+  } catch {
+    /* keep last known progress — server job continues */
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  void pollOnce();
+  pollTimer = setInterval(() => {
+    void pollOnce();
+  }, 1500);
+}
+
+export function isKeiExportStreamAlive(): boolean {
+  const state = useKeiAmerExportStore.getState();
+  return Boolean(state.running && state.jobId);
+}
+
+/** Po powrocie z tła: dociągnij postęp z serwera (job działa niezależnie od aplikacji). */
 export function reconcileKeiExportAfterForeground(): void {
   const state = useKeiAmerExportStore.getState();
-  if (!state.running || exportInflight != null || exportCancelledByUser) return;
-  const unfinished = state.items.some((item) => item.status === 'pending' || item.status === 'active');
-  useKeiAmerExportStore.setState({
-    running: false,
-    message: unfinished
-      ? 'Połączenie z importem zostało przerwane w tle. Ostatni znany etap poniżej — uruchom ponownie pozostałe oferty.'
-      : state.message,
-  });
+  if (!state.authToken) return;
+  if (state.jobId) {
+    startPolling();
+    return;
+  }
+  void useKeiAmerExportStore.getState().hydrateFromServer(state.authToken);
 }
 
 export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
@@ -265,18 +158,23 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   items: [],
   results: [],
   skipped: 0,
+  jobId: null,
+  authToken: null,
   onComplete: undefined,
 
   setModalVisible: (visible) => set({ modalVisible: visible }),
 
   cancelExport: () => {
-    if (!get().running) return;
+    const { running, jobId, authToken } = get();
+    if (!running) return;
     exportCancelledByUser = true;
-    cancelKeiAmerExportStream();
-    exportInflight = null;
+    stopPolling();
+    if (jobId && authToken) {
+      void keiAmerCancelExportJob(authToken, jobId).catch(() => undefined);
+    }
     set((state) => ({
       running: false,
-      message: 'Import zatrzymany.',
+      message: 'Anulowanie na serwerze… Ukończone oferty zostają.',
       onComplete: undefined,
       items: state.items.map((item) =>
         item.status === 'pending' || item.status === 'active'
@@ -295,76 +193,86 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
 
   clearSession: () => {
     if (get().running) return;
+    stopPolling();
     set({
       message: '',
       items: [],
       results: [],
       skipped: 0,
+      jobId: null,
       onComplete: undefined,
     });
   },
 
+  hydrateFromServer: async (token) => {
+    set({ authToken: token });
+    try {
+      const res = await keiAmerFetchActiveExportJobs(token);
+      const active =
+        res.active?.[0] ||
+        res.jobs?.find((j) => j.status === 'queued' || j.status === 'running') ||
+        null;
+      if (!active) return;
+      exportCancelledByUser = false;
+      set({
+        ...applyJobSnapshot(active),
+        authToken: token,
+        modalVisible:
+          active.status === 'queued' || active.status === 'running'
+            ? true
+            : get().modalVisible,
+      });
+      if (active.status === 'queued' || active.status === 'running') {
+        startPolling();
+      }
+    } catch {
+      /* ignore — offline / no admin */
+    }
+  },
+
   startExport: (token, body, initialItems, onComplete) => {
-    if (exportInflight) return;
+    if (get().running) return;
 
     exportCancelledByUser = false;
     set({
       running: true,
       modalVisible: true,
-      message: 'Rozpoczynam import…',
+      message: 'Uruchamiam import na serwerze…',
       items: initialItems,
       results: [],
       skipped: 0,
+      jobId: null,
+      authToken: token,
       onComplete,
     });
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    exportInflight = keiAmerExportStream(token, body, (event) => {
-      if (exportCancelledByUser) return;
-      if (event.type === 'result') {
-        const cb = get().onComplete;
-        set((state) => {
-          const patch = applyExportEvent(state, event);
-          return patch ? { ...state, ...patch, onComplete: undefined } : state;
+    void (async () => {
+      try {
+        const started = await keiAmerStartExportJob(token, body);
+        if (exportCancelledByUser) return;
+        const job = started.job;
+        set({
+          ...applyJobSnapshot(job),
+          authToken: token,
+          onComplete,
+          modalVisible: true,
         });
-        queueMicrotask(() => cb?.());
-        return;
-      }
-      set((state) => {
-        const patch = applyExportEvent(state, event);
-        return patch ? { ...state, ...patch } : state;
-      });
-    })
-      .catch((error) => {
-        if (exportCancelledByUser || !get().running) return;
-        const cancelled = error instanceof Error && error.message.includes('zatrzymany');
-        // Po wyjściu w tło iOS czasem zrywa XHR — nie kasuj postępu; UI zostaje na ostatnim etapie.
-        const backgrounded = AppState.currentState !== 'active';
-        if (backgrounded && !cancelled) {
-          set({
-            message: get().message || 'Import w tle — wróć do aplikacji, aby zobaczyć postęp na żywo.',
-          });
-          return;
+        if (job.status === 'queued' || job.status === 'running') {
+          startPolling();
+        } else {
+          stopPolling();
+          queueMicrotask(() => onComplete?.());
         }
+      } catch (error) {
+        if (exportCancelledByUser) return;
         set({
           running: false,
-          message: cancelled
-            ? 'Import zatrzymany.'
-            : error instanceof Error
-              ? error.message
-              : 'Eksport nie powiódł się',
+          message: error instanceof Error ? error.message : 'Eksport nie powiódł się',
         });
-        if (!cancelled) {
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }
-      })
-      .finally(() => {
-        exportInflight = null;
-        if (exportCancelledByUser) return;
-        // Nie zamykaj „running”, jeśli apka jest w tle i stream padł — stan kart zostaje.
-        if (AppState.currentState !== 'active' && get().running) return;
-        set((state) => (state.running ? { running: false } : state));
-      });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    })();
   },
 }));
 

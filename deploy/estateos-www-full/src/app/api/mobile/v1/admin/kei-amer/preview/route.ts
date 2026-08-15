@@ -1,24 +1,36 @@
 import { NextResponse } from 'next/server';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
-import { previewKeiExportListings } from '@/lib/keiAmerPreview';
+import { parseKeiPreviewSearchParams, previewKeiExportListings } from '@/lib/keiAmerPreview';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function GET(req: Request) {
   const gate = await requireMobileAdmin(req);
   if (!gate.ok) return gate.response;
 
   const url = new URL(req.url);
-  const propertyKind = url.searchParams.get('propertyKind') === 'house' ? 'house' : 'apartment';
-  const transactionKind = url.searchParams.get('transactionKind') === 'rent' ? 'rent' : 'sale';
+  const search = parseKeiPreviewSearchParams(url.searchParams);
   const page = Number(url.searchParams.get('page') || 1);
   const pageSize = Number(url.searchParams.get('pageSize') || 20);
   const selectionPool = url.searchParams.get('selectionPool') === '1';
+  const mode = url.searchParams.get('mode') === 'search' ? 'search' : 'feed';
+  const verifyPortal =
+    url.searchParams.get('verify') === '1' ||
+    (mode === 'search' && url.searchParams.get('verify') !== '0');
 
   try {
-    const result = await previewKeiExportListings({ propertyKind, transactionKind, page, pageSize, selectionPool });
+    const result = await previewKeiExportListings({
+      propertyKind: search.propertyKind,
+      transactionKind: search.transactionKind,
+      page,
+      pageSize,
+      selectionPool,
+      mode,
+      search,
+      verifyPortal,
+    });
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Podgląd KEI nie powiódł się.';

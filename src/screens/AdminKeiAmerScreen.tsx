@@ -116,6 +116,14 @@ export default function AdminKeiAmerScreen() {
 
   const [propertyKind, setPropertyKind] = useState<KeiPropertyKind>('apartment');
   const [transactionKind, setTransactionKind] = useState<KeiTransactionKind>('sale');
+  const [browseMode, setBrowseMode] = useState<'feed' | 'search'>('feed');
+  const [district, setDistrict] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [minArea, setMinArea] = useState('');
+  const [maxArea, setMaxArea] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [targetUserId, setTargetUserId] = useState('55');
   const [commission, setCommission] = useState('2');
   const [autoCount, setAutoCount] = useState('1');
@@ -136,12 +144,23 @@ export default function AdminKeiAmerScreen() {
   const setExportVisible = useKeiAmerExportStore((s) => s.setModalVisible);
   const startKeiExport = useKeiAmerExportStore((s) => s.startExport);
   const cancelKeiExport = useKeiAmerExportStore((s) => s.cancelExport);
+  const hydrateExport = useKeiAmerExportStore((s) => s.hydrateFromServer);
 
   const peekInflight = useRef(new Set<string>());
 
   const selectedList = useMemo(() => Object.values(selected), [selected]);
-  const availableListings = useMemo(() => listings.filter((l) => !l.alreadyImported), [listings]);
-  const importedListings = useMemo(() => listings.filter((l) => l.alreadyImported), [listings]);
+  const availableListings = useMemo(
+    () => listings.filter((l) => !l.blockedReason && !l.alreadyImported),
+    [listings],
+  );
+  const importedListings = useMemo(
+    () => listings.filter((l) => l.alreadyImported || l.blockedReason === 'imported'),
+    [listings],
+  );
+  const inactiveListings = useMemo(
+    () => listings.filter((l) => l.blockedReason === 'inactive'),
+    [listings],
+  );
 
   const resolveFloorPlanSelection = useCallback(
     (portalUrl: string): KeiFloorPlanSelection => {
@@ -182,6 +201,27 @@ export default function AdminKeiAmerScreen() {
           transactionKind,
           page: nextPage,
           pageSize: KEI_PAGE_SIZE,
+          mode: browseMode,
+          district: browseMode === 'search' ? district.trim() || undefined : undefined,
+          minPrice:
+            browseMode === 'search' && minPrice.trim()
+              ? Number(minPrice.replace(',', '.'))
+              : undefined,
+          maxPrice:
+            browseMode === 'search' && maxPrice.trim()
+              ? Number(maxPrice.replace(',', '.'))
+              : undefined,
+          minArea:
+            browseMode === 'search' && minArea.trim()
+              ? Number(minArea.replace(',', '.'))
+              : undefined,
+          maxArea:
+            browseMode === 'search' && maxArea.trim()
+              ? Number(maxArea.replace(',', '.'))
+              : undefined,
+          dateFrom: browseMode === 'search' ? dateFrom.trim() || undefined : undefined,
+          dateTo: browseMode === 'search' ? dateTo.trim() || undefined : undefined,
+          verify: browseMode === 'search',
         });
         setListings(res.listings || []);
         setPreviewMessage(res.message || '');
@@ -193,7 +233,20 @@ export default function AdminKeiAmerScreen() {
         setPreviewLoading(false);
       }
     },
-    [token, sessionOk, propertyKind, transactionKind],
+    [
+      token,
+      sessionOk,
+      propertyKind,
+      transactionKind,
+      browseMode,
+      district,
+      minPrice,
+      maxPrice,
+      minArea,
+      maxArea,
+      dateFrom,
+      dateTo,
+    ],
   );
 
   const peekLastImage = useCallback(
@@ -247,7 +300,18 @@ export default function AdminKeiAmerScreen() {
 
   const toggleSelection = useCallback(
     (item: KeiPreviewListing) => {
-      if (item.alreadyImported) return;
+      if (item.alreadyImported || item.blockedReason) {
+        Alert.alert(
+          'Niedostępne do importu',
+          item.portalCheckReason ||
+            (item.blockedReason === 'inactive'
+              ? 'Ogłoszenie nieaktualne na portalu źródłowym.'
+              : item.blockedReason === 'outreach'
+                ? 'Wysłano już zaproszenie właściciela.'
+                : 'Oferta jest już w bazie.'),
+        );
+        return;
+      }
       void Haptics.selectionAsync();
       setSelected((prev) => {
         const next = { ...prev };
@@ -302,11 +366,11 @@ export default function AdminKeiAmerScreen() {
       return;
     }
 
-    const alreadyInDb = selectedList.filter((row) => row.alreadyImported);
+    const alreadyInDb = selectedList.filter((row) => row.alreadyImported || row.blockedReason);
     if (alreadyInDb.length > 0) {
       Alert.alert(
-        'Duplikaty w wyborze',
-        `${alreadyInDb.length} ogłoszeń jest już w bazie. Odznacz je przed importem.`,
+        'Niedostępne w wyborze',
+        `${alreadyInDb.length} ogłoszeń jest zablokowanych (duplikat / outreach / nieaktualne). Odznacz je przed importem.`,
       );
       return;
     }
@@ -366,12 +430,16 @@ export default function AdminKeiAmerScreen() {
   }, [loadSession]);
 
   useEffect(() => {
-    if (sessionOk && !exportRunning) {
+    if (token) void hydrateExport(token);
+  }, [token, hydrateExport]);
+
+  useEffect(() => {
+    if (sessionOk && !exportRunning && browseMode === 'feed') {
       setSelected({});
       setPage(1);
       void loadPreview(1);
     }
-  }, [sessionOk, propertyKind, transactionKind, exportRunning, loadPreview]);
+  }, [sessionOk, propertyKind, transactionKind, exportRunning, browseMode, loadPreview]);
 
   const handleStopExport = useCallback(() => {
     Alert.alert(
@@ -457,6 +525,24 @@ export default function AdminKeiAmerScreen() {
         </View>
 
         <View style={styles.sectionPad}>
+          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>TRYB LISTY</Text>
+          <SegmentedControl
+            value={browseMode}
+            onChange={(mode) => {
+              setBrowseMode(mode);
+              setSelected({});
+              setListings([]);
+              setPreviewMessage('');
+            }}
+            options={[
+              { id: 'feed', label: 'Aktualne' },
+              { id: 'search', label: 'Wyszukiwanie' },
+            ]}
+            colors={colors}
+          />
+        </View>
+
+        <View style={styles.sectionPad}>
           <Text style={[styles.sectionLabel, { color: colors.secondary }]}>TRANSAKCJA</Text>
           <SegmentedControl
             value={transactionKind}
@@ -481,6 +567,108 @@ export default function AdminKeiAmerScreen() {
             colors={colors}
           />
         </View>
+
+        {browseMode === 'search' ? (
+          <View style={styles.sectionPad}>
+            <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
+              FILTRY WYSZUKIWANIA (także starsze oferty)
+            </Text>
+            <View style={[styles.configCard, { backgroundColor: colors.card }]}>
+              <View style={styles.configRow}>
+                <Text style={[styles.configLabel, { color: colors.secondary }]}>Dzielnica</Text>
+                <TextInput
+                  value={district}
+                  onChangeText={setDistrict}
+                  placeholder="np. żoliborz"
+                  placeholderTextColor={colors.tertiary}
+                  style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, minWidth: 140 }]}
+                />
+              </View>
+              <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+              <View style={styles.configRow}>
+                <Text style={[styles.configLabel, { color: colors.secondary }]}>Cena od–do</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    value={minPrice}
+                    onChangeText={setMinPrice}
+                    keyboardType="number-pad"
+                    placeholder="od"
+                    placeholderTextColor={colors.tertiary}
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
+                  />
+                  <TextInput
+                    value={maxPrice}
+                    onChangeText={setMaxPrice}
+                    keyboardType="number-pad"
+                    placeholder="do"
+                    placeholderTextColor={colors.tertiary}
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
+                  />
+                </View>
+              </View>
+              <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+              <View style={styles.configRow}>
+                <Text style={[styles.configLabel, { color: colors.secondary }]}>Metraż od–do</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    value={minArea}
+                    onChangeText={setMinArea}
+                    keyboardType="decimal-pad"
+                    placeholder="od"
+                    placeholderTextColor={colors.tertiary}
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
+                  />
+                  <TextInput
+                    value={maxArea}
+                    onChangeText={setMaxArea}
+                    keyboardType="decimal-pad"
+                    placeholder="do"
+                    placeholderTextColor={colors.tertiary}
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
+                  />
+                </View>
+              </View>
+              <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+              <View style={styles.configRow}>
+                <Text style={[styles.configLabel, { color: colors.secondary }]}>Data wystawienia</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    value={dateFrom}
+                    onChangeText={setDateFrom}
+                    placeholder="RRRR-MM-DD"
+                    placeholderTextColor={colors.tertiary}
+                    autoCapitalize="none"
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 110 }]}
+                  />
+                  <TextInput
+                    value={dateTo}
+                    onChangeText={setDateTo}
+                    placeholder="RRRR-MM-DD"
+                    placeholderTextColor={colors.tertiary}
+                    autoCapitalize="none"
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 110 }]}
+                  />
+                </View>
+              </View>
+            </View>
+            <Pressable
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setSelected({});
+                void loadPreview(1);
+              }}
+              style={[styles.autoBtn, { backgroundColor: colors.accentBlue, marginTop: 12, alignSelf: 'stretch' }]}
+            >
+              <Text style={styles.autoBtnText}>
+                {previewLoading ? 'Szukam i weryfikuję…' : 'Szukaj i sprawdź aktualność'}
+              </Text>
+            </Pressable>
+            <Text style={[styles.hint, { color: colors.tertiary }]}>
+              Serwer przeszukuje KEI (także starsze) i sprawdza, czy link na OtoDom/OLX nadal działa — tylko aktywne
+              oferty trafiają do importu.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.sectionPad}>
           <Text style={[styles.sectionLabel, { color: colors.secondary }]}>KONFIGURACJA EKSPORTU</Text>
@@ -524,6 +712,7 @@ export default function AdminKeiAmerScreen() {
             </Pressable>
           </View>
           <Text style={[styles.hint, { color: colors.tertiary }]}>
+            Import działa na serwerze EstateOS — możesz zamknąć aplikację; postęp wczyta się na każdym urządzeniu.
             Wybierz do {KEI_MAX_SELECT} ogłoszeń z Warszawy (OtoDom, OLX, Nieruchomości-Online).
           </Text>
         </View>
@@ -624,6 +813,7 @@ export default function AdminKeiAmerScreen() {
                   </Text>
                   <Text style={[styles.listingPrice, { color: colors.secondary }]}>
                     {item.price || '—'} · {item.area ? `${item.area} m²` : '—'}
+                    {item.portalActive === true ? ' · portal OK' : ''}
                   </Text>
                 </View>
                 <Pressable

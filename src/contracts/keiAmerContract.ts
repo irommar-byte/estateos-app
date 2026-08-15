@@ -14,6 +14,11 @@ export type KeiPreviewListing = {
   transactionLabel: string;
   alreadyImported: boolean;
   existingOfferId: number | null;
+  outreachSent?: boolean;
+  outreachSentAt?: string | null;
+  blockedReason?: 'imported' | 'outreach' | 'inactive' | null;
+  portalActive?: boolean | null;
+  portalCheckReason?: string | null;
 };
 
 export type KeiSessionResponse = {
@@ -24,6 +29,7 @@ export type KeiSessionResponse = {
 
 export type KeiPreviewResponse = {
   ok: boolean;
+  mode?: 'feed' | 'search';
   propertyKind: KeiPropertyKind;
   transactionKind: KeiTransactionKind;
   page: number;
@@ -31,6 +37,55 @@ export type KeiPreviewResponse = {
   hasNextPage: boolean;
   listings: KeiPreviewListing[];
   message: string;
+  verified?: boolean;
+};
+
+export type KeiListingSearchParams = {
+  mode?: 'feed' | 'search';
+  propertyKind: KeiPropertyKind;
+  transactionKind?: KeiTransactionKind;
+  page?: number;
+  pageSize?: number;
+  selectionPool?: boolean;
+  district?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minArea?: number;
+  maxArea?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  verify?: boolean;
+};
+
+export type KeiImportJobSnapshot = {
+  id: string;
+  adminUserId: number;
+  status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
+  message: string;
+  propertyKind: KeiPropertyKind;
+  transactionKind: KeiTransactionKind;
+  items: Array<{
+    index: number;
+    keiListingId: string;
+    portalUrl: string;
+    address?: string;
+    status: 'pending' | 'active' | 'done' | 'skipped';
+    completedSteps: KeiImportStepId[];
+    currentStep: KeiImportStepId | null;
+    stepLabel: string;
+    stepDetail?: string;
+    imageProgress?: { index: number; total: number; label: string; asFloorPlan: boolean };
+    offerId?: number;
+    publicUrl?: string;
+    editUrl?: string;
+    reason?: string;
+  }>;
+  exported: KeiExportResultItem[];
+  skipped: KeiExportSkippedItem[];
+  cancelRequested: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
 };
 
 export type KeiPeekResponse = {
@@ -80,7 +135,7 @@ export type KeiExportRequest = {
 export type KeiImportStepId = 'check_duplicate' | 'fetch_portal' | 'create_offer' | 'images' | 'activate';
 
 export type KeiExportProgressEvent =
-  | { type: 'connected'; message: string }
+  | { type: 'connected'; message: string; jobId?: string }
   | { type: 'batch_start'; total: number }
   | {
       type: 'item_start';

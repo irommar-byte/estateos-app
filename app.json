@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "buildNumber": "1",
+      "buildNumber": "2",
       "bundleIdentifier": "pl.estateos.app",
       "associatedDomains": [
         "webcredentials:estateos.pl",
@@ -55,7 +55,7 @@
       }
     },
     "android": {
-      "versionCode": 43,
+      "versionCode": 44,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -156,7 +156,9 @@
         {
           "icon": "./assets/app.png",
           "color": "#ffffff",
-          "sounds": ["./assets/sounds/estateos_notify.wav"]
+          "sounds": [
+            "./assets/sounds/estateos_notify.wav"
+          ]
         }
       ],
       [

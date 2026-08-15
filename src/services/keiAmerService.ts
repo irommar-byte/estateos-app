@@ -3,6 +3,7 @@ import { API_URL } from '../config/network';
 import type {
   KeiExportProgressEvent,
   KeiExportRequest,
+  KeiImportJobSnapshot,
   KeiPeekResponse,
   KeiPreviewResponse,
   KeiPropertyKind,
@@ -46,6 +47,15 @@ export async function keiAmerFetchPreview(
     page?: number;
     pageSize?: number;
     selectionPool?: boolean;
+    mode?: 'feed' | 'search';
+    district?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    minArea?: number;
+    maxArea?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    verify?: boolean;
   },
 ): Promise<KeiPreviewResponse> {
   const q = new URLSearchParams({
@@ -55,10 +65,62 @@ export async function keiAmerFetchPreview(
     pageSize: String(params.pageSize ?? 20),
   });
   if (params.selectionPool) q.set('selectionPool', '1');
+  if (params.mode === 'search') q.set('mode', 'search');
+  if (params.district) q.set('district', params.district);
+  if (params.minPrice != null) q.set('minPrice', String(params.minPrice));
+  if (params.maxPrice != null) q.set('maxPrice', String(params.maxPrice));
+  if (params.minArea != null) q.set('minArea', String(params.minArea));
+  if (params.maxArea != null) q.set('maxArea', String(params.maxArea));
+  if (params.dateFrom) q.set('dateFrom', params.dateFrom);
+  if (params.dateTo) q.set('dateTo', params.dateTo);
+  if (params.verify === true) q.set('verify', '1');
+  if (params.verify === false) q.set('verify', '0');
   const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/preview?${q}`, {
     headers: authHeaders(token),
   });
   return parseJson<KeiPreviewResponse>(res);
+}
+
+export async function keiAmerStartExportJob(
+  token: string,
+  body: KeiExportRequest,
+): Promise<{ ok: boolean; jobId: string; job: KeiImportJobSnapshot; message?: string }> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/export-jobs`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return parseJson(res);
+}
+
+export async function keiAmerFetchExportJob(
+  token: string,
+  jobId: string,
+): Promise<{ ok: boolean; job: KeiImportJobSnapshot }> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/export-jobs/${jobId}`, {
+    headers: authHeaders(token),
+  });
+  return parseJson(res);
+}
+
+export async function keiAmerFetchActiveExportJobs(
+  token: string,
+): Promise<{ ok: boolean; jobs: KeiImportJobSnapshot[]; active: KeiImportJobSnapshot[] }> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/export-jobs/active`, {
+    headers: authHeaders(token),
+  });
+  return parseJson(res);
+}
+
+export async function keiAmerCancelExportJob(
+  token: string,
+  jobId: string,
+): Promise<{ ok: boolean; job: KeiImportJobSnapshot }> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/export-jobs/${jobId}/cancel`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  });
+  return parseJson(res);
 }
 
 export async function keiAmerPeekListing(token: string, portalUrl: string): Promise<KeiPeekResponse> {

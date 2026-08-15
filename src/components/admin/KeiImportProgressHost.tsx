@@ -24,6 +24,7 @@ import {
   type KeiAiRewriteProgress,
 } from '../../contracts/keiAmerContract';
 import { useThemeStore } from '../../store/useThemeStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import {
   computeKeiItemPercent,
   computeKeiOverallPercent,
@@ -318,6 +319,7 @@ function KeiBackgroundPill({
 export default function KeiImportProgressHost() {
   const insets = useSafeAreaInsets();
   const colors = useKeiTheme();
+  const token = useAuthStore((s) => s.token);
   const running = useKeiAmerExportStore((s) => s.running);
   const modalVisible = useKeiAmerExportStore((s) => s.modalVisible);
   const message = useKeiAmerExportStore((s) => s.message);
@@ -326,6 +328,7 @@ export default function KeiImportProgressHost() {
   const skipped = useKeiAmerExportStore((s) => s.skipped);
   const setModalVisible = useKeiAmerExportStore((s) => s.setModalVisible);
   const cancelExport = useKeiAmerExportStore((s) => s.cancelExport);
+  const hydrateFromServer = useKeiAmerExportStore((s) => s.hydrateFromServer);
 
   const exportScrollRef = useRef<ScrollView>(null);
   const exportCardOffsetsRef = useRef<Record<string, number>>({});
@@ -338,7 +341,7 @@ export default function KeiImportProgressHost() {
   );
   const stageLabel = activeItem
     ? [activeItem.stepLabel, activeItem.stepDetail].filter(Boolean).join(' · ')
-    : message || 'Import w tle…';
+    : message || 'Import na serwerze…';
   const activeExportIndex = useMemo(
     () => items.findIndex((item) => item.status === 'active'),
     [items],
@@ -346,6 +349,10 @@ export default function KeiImportProgressHost() {
 
   const showPill = running && !modalVisible && items.length > 0;
   const showModal = modalVisible && (running || items.length > 0);
+
+  useEffect(() => {
+    if (token) void hydrateFromServer(token);
+  }, [token, hydrateFromServer]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
