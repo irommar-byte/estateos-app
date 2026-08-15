@@ -6,17 +6,16 @@
 export type IntelligenceMood = 'calm' | 'active' | 'alert' | 'celebrate';
 
 /**
- * Why the genie card auto-opened (or manual tap).
+ * Why Intelligence wants attention (or a manual tap).
  *
- * Sparse Apple-style rules:
- * - `manual` — user tapped the orb / Guide open. No chime.
- * - `milestone` — first cross of 25/50/75/90 in this session. High priority.
- * - `contradiction` — contradictionIndex rose past 0.55. High priority.
- * - `progress` — meaningful progress delta (≥8%) without a new milestone. Medium.
- * - `ready_peek` — one-time boot peek when direction is already meaningful. Low.
+ * Auto reasons never open the genie sheet — they only ping the orb.
+ * - `manual` — user tapped the orb / Guide open.
+ * - `milestone` — first cross of 25/50/75/90 in this session.
+ * - `contradiction` — contradictionIndex rose past 0.55.
+ * - `progress` — meaningful progress delta (≥8%) without a new milestone.
+ * - `ready_peek` — one-time boot ping when direction is already meaningful.
  *
- * Session budget: max 2 auto-presents (peek + milestone|contradiction|progress).
- * Chime debounce: 12s. Never auto-present while sheet is open.
+ * Session budget: max 2 orb pings (peek + milestone|contradiction|progress).
  */
 export type PresentReason = 'progress' | 'milestone' | 'contradiction' | 'ready_peek' | 'manual';
 

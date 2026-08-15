@@ -87,7 +87,7 @@ export function isMeaningfulProgressDelta(prev: number | null, next: number): bo
 
 /**
  * Decide which auto-present (if any) to fire.
- * Caller must still check sheet-open + consumeAutoBudget before presentGently.
+ * Caller must still check sheet-open + consumeAutoBudget before pinging the orb.
  */
 export function pickAutoPresent(input: {
   prevProgress: number | null;
