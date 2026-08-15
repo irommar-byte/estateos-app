@@ -123,7 +123,7 @@ function Layer({
         transition={
           dimmed
             ? undefined
-            : { duration: CYCLE_S, repeat: Infinity, ease: "easeInOut" }
+            : { duration: CYCLE_S, repeat: Infinity, ease: "linear" }
         }
       />
     );
@@ -139,9 +139,8 @@ function Layer({
         opacity: dimmed ? 0.55 : undefined,
         filter: dimmed ? "blur(12px)" : undefined,
       }}
-      // Restart keyframes each cycle; stable layerKey keeps the same DOM node identity per slot.
+      // Nowa klatka cyklu — animacja od pierwszej klatki (bez initial={false}, które czekało 22s).
       key={`${layerKey}-${cycle}-${isOut ? "out" : "in"}`}
-      initial={false}
       animate={
         isOut
           ? {
@@ -159,8 +158,12 @@ function Layer({
       }
       transition={{
         duration: CYCLE_S,
-        ease: "easeInOut",
-        times: isOut ? [0, 0.55, 0.8, 1] : [0, 0.48, 0.72, 1],
+        ease: "linear",
+        opacity: {
+          duration: CYCLE_S,
+          ease: "linear",
+          times: isOut ? [0, 0.55, 0.8, 1] : [0, 0.48, 0.72, 1],
+        },
       }}
     />
   );
