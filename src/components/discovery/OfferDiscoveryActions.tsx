@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -15,7 +16,6 @@ import { useDiscoveryActions } from '../../hooks/useDiscoveryActions';
 import { dispatchIntelligenceDislikePrompt } from '../../lib/discovery/clientEvents';
 import { shouldPromptCatalogDislikeViaBrain } from '../../utils/discoveryExperienceState';
 import type { DiscoveryTasteAction } from '../../services/discoveryService';
-import { DISCOVERY_COLORS } from './discoveryMotion';
 import { useI18n } from '../../i18n';
 
 type Variant = 'compact' | 'full';
@@ -37,44 +37,21 @@ const ACTION_DEFS: Array<{
   type: Exclude<DiscoveryTasteAction, 'OPEN'>;
   labelKey: 'like' | 'dislike' | 'serious';
   Icon: ActionIcon;
-  tone: 'like' | 'dislike' | 'serious';
 }> = [
-  { type: 'LIKE', labelKey: 'like', Icon: ThumbsUp, tone: 'like' },
-  { type: 'DISLIKE', labelKey: 'dislike', Icon: ThumbsDown, tone: 'dislike' },
-  { type: 'SERIOUS', labelKey: 'serious', Icon: Sparkles, tone: 'serious' },
+  { type: 'LIKE', labelKey: 'like', Icon: ThumbsUp },
+  { type: 'DISLIKE', labelKey: 'dislike', Icon: ThumbsDown },
+  { type: 'SERIOUS', labelKey: 'serious', Icon: Sparkles },
 ];
 
-const TONE = {
-  like: {
-    icon: '#059669',
-    iconDark: '#34D399',
-    shadow: '#10B981',
-    face: ['#ECFDF5', '#D1FAE5', '#A7F3D0'] as const,
-    faceDark: ['#064E3B', '#065F46', '#047857'] as const,
-    faceActive: ['#6EE7B7', '#34D399', '#10B981'] as const,
-    rim: 'rgba(16,185,129,0.55)',
-    rimDark: 'rgba(52,211,153,0.45)',
-  },
-  dislike: {
-    icon: '#E11D48',
-    iconDark: '#FB7185',
-    shadow: '#F43F5E',
-    face: ['#FFF1F2', '#FFE4E6', '#FECDD3'] as const,
-    faceDark: ['#4C0519', '#9F1239', '#BE123C'] as const,
-    faceActive: ['#FDA4AF', '#FB7185', '#F43F5E'] as const,
-    rim: 'rgba(244,63,94,0.5)',
-    rimDark: 'rgba(251,113,133,0.45)',
-  },
-  serious: {
-    icon: '#D97706',
-    iconDark: '#FBBF24',
-    shadow: '#F59E0B',
-    face: ['#FFFBEB', '#FEF3C7', '#FDE68A'] as const,
-    faceDark: ['#451A03', '#92400E', '#B45309'] as const,
-    faceActive: ['#FCD34D', '#FBBF24', '#F59E0B'] as const,
-    rim: 'rgba(245,158,11,0.55)',
-    rimDark: 'rgba(251,191,36,0.45)',
-  },
+/** Black-glass taste chrome — WWW `.eos-discovery-btn` parity, no color disco. */
+const LUX = {
+  ink: '#0A0A0A',
+  ivory: '#F5F5F7',
+  iconIdle: 'rgba(255,255,255,0.94)',
+  faceIdle: ['rgba(42,42,44,0.96)', 'rgba(8,8,8,0.94)'] as const,
+  faceActive: ['#FFFFFF', '#E8E8ED'] as const,
+  borderIdle: 'rgba(255,255,255,0.30)',
+  borderActive: 'rgba(255,255,255,0.92)',
 };
 
 /**
@@ -86,7 +63,6 @@ export default function OfferDiscoveryActions({
   source = 'mobile_offer_card',
   trackOpen = false,
   onRequireAuth,
-  isDark = false,
   promptDislikeViaBrain = false,
 }: Props) {
   const { t } = useI18n();
@@ -107,17 +83,6 @@ export default function OfferDiscoveryActions({
     ...action,
     label: t(`discovery.actions.${action.labelKey}`),
   }));
-
-  const theme = {
-    reasonsBg: isDark ? 'rgba(190,24,93,0.12)' : 'rgba(251,207,232,0.32)',
-    reasonsBorder: isDark ? 'rgba(244,114,182,0.28)' : 'rgba(225,29,72,0.2)',
-    reasonsText: isDark ? '#F9FAFB' : '#1F2937',
-    closeIcon: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(31,41,55,0.58)',
-    chipText: isDark ? DISCOVERY_COLORS.ivory : '#1F2937',
-    chipFace: isDark
-      ? (['#2C2C2E', '#1C1C1E', '#111113'] as const)
-      : (['#FFFFFF', '#F3F4F6', '#E5E7EB'] as const),
-  };
 
   useEffect(() => {
     if (!trackOpen || !Number.isFinite(id) || id <= 0) return;
@@ -172,21 +137,15 @@ export default function OfferDiscoveryActions({
   };
 
   const reasonSheet = reasonOpen ? (
-    <View
-      style={[
-        styles.reasons,
-        { borderColor: theme.reasonsBorder, backgroundColor: theme.reasonsBg },
-      ]}
-      accessibilityLabel={t('discovery.dislike.title')}
-    >
+    <View style={styles.reasons} accessibilityLabel={t('discovery.dislike.title')}>
       <View style={styles.reasonsHead}>
-        <Text style={[styles.reasonsTitle, { color: theme.reasonsText }]}>{t('discovery.dislike.title')}</Text>
+        <Text style={styles.reasonsTitle}>{t('discovery.dislike.title')}</Text>
         <Pressable
           accessibilityLabel={t('discovery.closeA11y')}
           hitSlop={10}
           onPress={() => setReasonOpen(false)}
         >
-          <Ionicons name="close" size={16} color={theme.closeIcon} />
+          <Ionicons name="close" size={16} color="rgba(255,255,255,0.7)" />
         </Pressable>
       </View>
       <View style={styles.reasonsGrid}>
@@ -194,32 +153,18 @@ export default function OfferDiscoveryActions({
           <Pressable
             key={r.code}
             disabled={isBusy(id)}
-            style={({ pressed }) => [styles.chipOuter, pressed && styles.pressedIn]}
+            style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
             onPress={() => void commit('DISLIKE', r.code)}
           >
-            <LinearGradient
-              colors={[...theme.chipFace]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={[styles.chip, { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]}
-            >
-              <Text style={[styles.chipText, { color: theme.chipText }]}>{r.label}</Text>
-            </LinearGradient>
+            <Text style={styles.chipText}>{r.label}</Text>
           </Pressable>
         ))}
         <Pressable
           disabled={isBusy(id)}
-          style={({ pressed }) => [styles.chipOuter, pressed && styles.pressedIn]}
+          style={({ pressed }) => [styles.chip, styles.chipSkip, pressed && styles.chipPressed]}
           onPress={() => void commit('DISLIKE')}
         >
-          <LinearGradient
-            colors={[...theme.chipFace]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={[styles.chip, styles.chipSkip, { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]}
-          >
-            <Text style={[styles.chipText, { color: theme.chipText }]}>{t('discovery.dislike.skipShort')}</Text>
-          </LinearGradient>
+          <Text style={[styles.chipText, styles.chipSkipText]}>{t('discovery.dislike.skipShort')}</Text>
         </Pressable>
       </View>
     </View>
@@ -229,16 +174,9 @@ export default function OfferDiscoveryActions({
     return (
       <View style={styles.fullBar} accessibilityLabel={t('discovery.actions.like')}>
         <View style={styles.fullRow}>
-          {actions.map(({ type, label, Icon, tone }) => {
+          {actions.map(({ type, label, Icon }) => {
             const isActive = active === type;
-            const colors = TONE[tone];
-            const face = isActive
-              ? colors.faceActive
-              : isDark
-                ? colors.faceDark
-                : colors.face;
-            const iconColor = isDark ? colors.iconDark : colors.icon;
-            const iconSize = 14;
+            const ink = isActive ? LUX.ink : LUX.iconIdle;
             return (
               <Pressable
                 key={type}
@@ -248,33 +186,29 @@ export default function OfferDiscoveryActions({
                 onPress={() => void handle(type)}
                 style={({ pressed }) => [
                   styles.pillOuter,
-                  {
-                    shadowColor: colors.shadow,
-                    shadowOpacity: isActive ? 0.42 : isDark ? 0.35 : 0.28,
-                  },
+                  isActive && styles.pillOuterActive,
                   pressed && styles.pressedIn,
                 ]}
               >
                 <LinearGradient
-                  colors={[...face]}
+                  colors={[...(isActive ? LUX.faceActive : LUX.faceIdle)]}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={[
                     styles.pill,
                     {
-                      borderColor: isDark ? colors.rimDark : colors.rim,
-                      borderTopColor: isDark ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.95)',
-                      borderBottomColor: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.12)',
+                      borderColor: isActive ? LUX.borderActive : LUX.borderIdle,
                     },
                   ]}
                 >
+                  <View pointerEvents="none" style={styles.pillSheen} />
                   {isBusy(id) && isActive ? (
-                    <ActivityIndicator size="small" color={iconColor} />
+                    <ActivityIndicator size="small" color={ink} />
                   ) : (
-                    <Icon size={iconSize} color={iconColor} strokeWidth={2.4} />
+                    <Icon size={14} color={ink} strokeWidth={2.15} />
                   )}
                   <Text
-                    style={[styles.pillLabel, { color: iconColor }]}
+                    style={[styles.pillLabel, { color: ink }]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.72}
@@ -292,73 +226,69 @@ export default function OfferDiscoveryActions({
   }
 
   return (
-    <View style={styles.tray} accessibilityLabel={t('discovery.actions.like')}>
-      {actions.map(({ type, label, Icon, tone }) => {
-        const isActive = active === type;
-        const colors = TONE[tone];
-        const face = isActive
-          ? colors.faceActive
-          : isDark
-            ? colors.faceDark
-            : colors.face;
-        const iconColor = isDark ? colors.iconDark : colors.icon;
-        return (
-          <Pressable
-            key={type}
-            disabled={isBusy(id)}
-            accessibilityLabel={label}
-            accessibilityState={{ selected: isActive }}
-            onPress={(e) => {
-              e?.stopPropagation?.();
-              void handle(type);
-            }}
-            style={({ pressed }) => [
-              styles.iconBtnOuter,
-              {
-                shadowColor: colors.shadow,
-                shadowOpacity: isActive ? 0.4 : 0.28,
-              },
-              pressed && styles.pressedIn,
-            ]}
-          >
-            <LinearGradient
-              colors={[...face]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={[
+    <View style={styles.trayOuter} accessibilityLabel={t('discovery.actions.like')}>
+      <View style={styles.tray}>
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            pointerEvents="none"
+            intensity={32}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
+        {actions.map(({ type, label, Icon }) => {
+          const isActive = active === type;
+          const ink = isActive ? LUX.ink : LUX.iconIdle;
+          return (
+            <Pressable
+              key={type}
+              disabled={isBusy(id)}
+              accessibilityLabel={label}
+              accessibilityState={{ selected: isActive }}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                void handle(type);
+              }}
+              style={({ pressed }) => [
                 styles.iconBtn,
-                {
-                  borderColor: isDark ? colors.rimDark : colors.rim,
-                  borderTopColor: isDark ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.9)',
-                },
+                isActive && styles.iconBtnActive,
+                pressed && !isActive && styles.iconBtnPressed,
+                pressed && styles.pressedIn,
               ]}
             >
-                    <Icon size={14} color={iconColor} strokeWidth={2.4} />
-            </LinearGradient>
-          </Pressable>
-        );
-      })}
+              {isBusy(id) && isActive ? (
+                <ActivityIndicator size="small" color={ink} />
+              ) : (
+                <Icon size={15} color={ink} strokeWidth={2.1} />
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  trayOuter: {
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    elevation: 8,
+  },
   tray: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(8,10,14,0.55)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.62)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  iconBtnOuter: {
-    borderRadius: 17,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 6,
-    elevation: 5,
+    borderColor: 'rgba(255,255,255,0.22)',
   },
   iconBtn: {
     width: 34,
@@ -366,7 +296,13 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  iconBtnActive: {
+    backgroundColor: LUX.ivory,
+  },
+  iconBtnPressed: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   fullBar: { gap: 10 },
   fullRow: {
@@ -380,43 +316,62 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     borderRadius: 999,
-    shadowOffset: { width: 0, height: 5 },
-    shadowRadius: 8,
-    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    elevation: 7,
     ...Platform.select({
       android: { marginBottom: 1 },
       default: {},
     }),
   },
+  pillOuterActive: {
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+  },
   pill: {
     flex: 1,
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 5,
     paddingHorizontal: 6,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: 999,
     borderWidth: 1,
     minWidth: 0,
   },
+  pillSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '48%',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
   pillLabel: {
     flexShrink: 1,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: -0.2,
-    textShadowColor: 'rgba(255,255,255,0.35)',
-    textShadowOffset: { width: 0, height: 0.5 },
-    textShadowRadius: 0.5,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
   },
   pressedIn: {
     transform: [{ translateY: 1 }, { scale: 0.97 }],
-    shadowOpacity: 0.14,
   },
   reasons: {
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(8,8,8,0.92)',
     padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 10,
   },
   reasonsHead: {
     flexDirection: 'row',
@@ -424,23 +379,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  reasonsTitle: { fontSize: 13, fontWeight: '800' },
-  reasonsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chipOuter: {
-    borderRadius: 999,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
-    shadowRadius: 5,
-    elevation: 3,
+  reasonsTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.55)',
   },
+  reasonsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.85)',
+    borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  chipSkip: {},
-  chipText: { fontSize: 12, fontWeight: '700' },
+  chipPressed: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  chipSkip: {
+    borderStyle: 'dashed',
+  },
+  chipText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  chipSkipText: { color: 'rgba(255,255,255,0.55)' },
 });

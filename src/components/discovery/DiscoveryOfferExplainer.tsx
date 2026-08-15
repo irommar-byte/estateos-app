@@ -57,7 +57,7 @@ export default function DiscoveryOfferExplainer({ offerId, isDark = false, embed
   if (!hydrated || !enabled || !reason) return null;
 
   const textMain = isDark ? 'rgba(229,236,241,0.94)' : 'rgba(29,42,36,0.88)';
-  const badgeText = isDark ? 'rgba(129,225,190,0.96)' : 'rgba(21,127,99,0.92)';
+  const badgeText = isDark ? 'rgba(245,245,247,0.72)' : 'rgba(10,10,10,0.52)';
 
   return (
     <View style={[styles.wrap, embedded ? styles.wrapEmbedded : null]}>

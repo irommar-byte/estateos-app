@@ -2277,36 +2277,25 @@ export default function OfferDetail({ route, navigation }: any) {
 
           {offer?.id && intelligenceHydrated && intelligenceEnabled ? (
             <View style={[styles.discoveryUnifiedWrap, isDark && styles.discoveryUnifiedWrapDark]}>
-              <LinearGradient
-                colors={
-                  isDark
-                    ? ['rgba(90,200,250,0.92)', 'rgba(167,139,250,0.88)', 'rgba(52,211,153,0.9)', 'rgba(251,191,36,0.88)', 'rgba(90,200,250,0.92)']
-                    : ['rgba(56,189,248,0.85)', 'rgba(147,51,234,0.8)', 'rgba(34,197,94,0.85)', 'rgba(251,191,36,0.82)', 'rgba(56,189,248,0.85)']
-                }
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.discoveryRainbowBorder}
+              <View
+                style={[
+                  styles.discoveryUnifiedCard,
+                  {
+                    backgroundColor: isDark ? 'rgba(16,20,26,0.96)' : '#FFFFFF',
+                    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(10,10,10,0.12)',
+                  },
+                ]}
               >
-                <View
-                  style={[
-                    styles.discoveryUnifiedCard,
-                    {
-                      backgroundColor: isDark ? 'rgba(16,20,26,0.96)' : '#FFFFFF',
-                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.95)',
-                    },
-                  ]}
-                >
-                  <DiscoveryOfferExplainer offerId={offer.id} isDark={isDark} embedded />
-                  <OfferDiscoveryActions
-                    offerId={offer.id}
-                    variant="full"
-                    source="mobile_offer_detail"
-                    trackOpen
-                    isDark={isDark}
-                    onRequireAuth={() => navigation?.navigate?.('Login')}
-                  />
-                </View>
-              </LinearGradient>
+                <DiscoveryOfferExplainer offerId={offer.id} isDark={isDark} embedded />
+                <OfferDiscoveryActions
+                  offerId={offer.id}
+                  variant="full"
+                  source="mobile_offer_detail"
+                  trackOpen
+                  isDark={isDark}
+                  onRequireAuth={() => navigation?.navigate?.('Login')}
+                />
+              </View>
             </View>
           ) : null}
 
@@ -4547,13 +4536,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000000',
     shadowOpacity: 0.5,
   },
-  discoveryRainbowBorder: {
-    borderRadius: 20,
-    padding: 1.5,
-    overflow: 'hidden',
-  },
   discoveryUnifiedCard: {
-    borderRadius: 18.5,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
     paddingVertical: 10,
