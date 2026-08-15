@@ -56,7 +56,9 @@ type PreviewListing = {
   existingOfferId: number | null;
   outreachSent: boolean;
   outreachSentAt: string | null;
-  blockedReason: "imported" | "outreach" | null;
+  blockedReason: "imported" | "outreach" | "inactive" | null;
+  portalActive?: boolean | null;
+  portalCheckReason?: string | null;
 };
 
 type PreviewState = {
@@ -196,6 +198,7 @@ function ImportProgressModal(props: {
   skippedCount: number;
   onMinimize: () => void;
   onClose: () => void;
+  onStop?: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const overallPct = computeKeiOverallPercent(props.items);
@@ -219,9 +222,18 @@ function ImportProgressModal(props: {
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-white/10">
           <div>
             <p className="text-lg font-black text-white">Import KEI</p>
-            <p className="text-xs text-white/45 mt-0.5">{props.message || "Postęp na żywo"}</p>
+            <p className="text-xs text-white/45 mt-0.5">{props.message || "Postęp z serwera"}</p>
           </div>
           <div className="flex items-center gap-2">
+            {props.running && props.onStop ? (
+              <button
+                type="button"
+                onClick={props.onStop}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-[11px] font-bold text-red-300"
+              >
+                Stop
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={props.onMinimize}
@@ -497,6 +509,14 @@ export default function KeiAmerWorkspace() {
   const [actionMode, setActionMode] = useState<ActionMode>("import");
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("apartment");
   const [transactionKind, setTransactionKind] = useState<TransactionKind>("sale");
+  const [browseMode, setBrowseMode] = useState<"feed" | "search">("feed");
+  const [district, setDistrict] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [minArea, setMinArea] = useState("");
+  const [maxArea, setMaxArea] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [targetUserId, setTargetUserId] = useState("55");
   const [commissionPercent, setCommissionPercent] = useState("2");
   const [exportCount, setExportCount] = useState("1");
@@ -537,12 +557,18 @@ export default function KeiAmerWorkspace() {
   const exportSkipped = useKeiAmerExportStore((s) => s.skipped);
   const setExportVisible = useKeiAmerExportStore((s) => s.setModalVisible);
   const startKeiExport = useKeiAmerExportStore((s) => s.startExport);
+  const cancelKeiExport = useKeiAmerExportStore((s) => s.cancelExport);
+  const hydrateExport = useKeiAmerExportStore((s) => s.hydrateFromServer);
   const clearExportSession = useKeiAmerExportStore((s) => s.clearSession);
 
   const peekInflight = useRef(new Set<string>());
   const selectedList = useMemo(() => Object.values(selected), [selected]);
   const selectedCount = selectedList.length;
   const overallPercent = computeKeiOverallPercent(exportItems);
+
+  useEffect(() => {
+    void hydrateExport();
+  }, [hydrateExport]);
 
   useEffect(() => {
     setOutreachTemplate(loadKeiOutreachTemplate());
@@ -684,7 +710,18 @@ export default function KeiAmerWorkspace() {
           transactionKind,
           page: String(page),
           pageSize: String(PAGE_SIZE),
+          mode: browseMode,
         });
+        if (browseMode === "search") {
+          if (district.trim()) qs.set("district", district.trim());
+          if (minPrice.trim()) qs.set("minPrice", minPrice.trim());
+          if (maxPrice.trim()) qs.set("maxPrice", maxPrice.trim());
+          if (minArea.trim()) qs.set("minArea", minArea.trim());
+          if (maxArea.trim()) qs.set("maxArea", maxArea.trim());
+          if (dateFrom.trim()) qs.set("dateFrom", dateFrom.trim());
+          if (dateTo.trim()) qs.set("dateTo", dateTo.trim());
+          qs.set("verify", "1");
+        }
         const res = await fetch(`/api/admin/kei-amer/preview?${qs}`, { credentials: "include", cache: "no-store" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(String(data?.error || `Błąd podglądu (${res.status}).`));
@@ -703,6 +740,8 @@ export default function KeiAmerWorkspace() {
               outreachSent: Boolean(row.outreachSent),
               outreachSentAt: row.outreachSentAt ? String(row.outreachSentAt) : null,
               blockedReason: (row.blockedReason as PreviewListing["blockedReason"]) || null,
+              portalActive: typeof row.portalActive === "boolean" ? row.portalActive : null,
+              portalCheckReason: row.portalCheckReason ? String(row.portalCheckReason) : null,
             }))
           : [];
         setPreview({
@@ -726,7 +765,7 @@ export default function KeiAmerWorkspace() {
         });
       }
     },
-    [previewPage, propertyKind, transactionKind],
+    [previewPage, propertyKind, transactionKind, browseMode, district, minPrice, maxPrice, minArea, maxArea, dateFrom, dateTo],
   );
 
   const autoSelectByCount = useCallback(
@@ -781,8 +820,9 @@ export default function KeiAmerWorkspace() {
 
   useEffect(() => {
     if (!session.ok || session.loading || exportRunning) return;
+    if (browseMode === "search") return;
     void loadPreview(previewPage);
-  }, [session.ok, session.loading, propertyKind, transactionKind, previewPage, exportRunning, loadPreview]);
+  }, [session.ok, session.loading, propertyKind, transactionKind, previewPage, exportRunning, browseMode, loadPreview]);
 
   useEffect(() => {
     if (!session.ok || exportRunning) return;
@@ -1159,7 +1199,108 @@ export default function KeiAmerWorkspace() {
               <option value="house">Dom</option>
             </select>
           </label>
+
+          <label className="flex flex-col gap-1.5 md:col-span-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Tryb listy</span>
+            <SegmentedControl
+              value={browseMode}
+              onChange={(mode) => {
+                setBrowseMode(mode);
+                setSelected({});
+                setPreviewPage(1);
+              }}
+              options={[
+                { id: "feed", label: "Aktualne" },
+                { id: "search", label: "Wyszukiwanie" },
+              ]}
+            />
+          </label>
         </div>
+
+        {browseMode === "search" ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Dzielnica</span>
+              <input
+                value={district}
+                onChange={(e) => setDistrict(e.target.value)}
+                placeholder="np. żoliborz"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Cena od</span>
+              <input
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                inputMode="numeric"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Cena do</span>
+              <input
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                inputMode="numeric"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Metraż od</span>
+              <input
+                value={minArea}
+                onChange={(e) => setMinArea(e.target.value)}
+                inputMode="decimal"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Metraż do</span>
+              <input
+                value={maxArea}
+                onChange={(e) => setMaxArea(e.target.value)}
+                inputMode="decimal"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Data od (RRRR-MM-DD)</span>
+              <input
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                placeholder="2024-01-01"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Data do</span>
+              <input
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                placeholder="2026-08-15"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <div className="md:col-span-2 flex items-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected({});
+                  setPreviewPage(1);
+                  void loadPreview(1);
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-sky-500 text-black text-xs font-black uppercase"
+              >
+                <RefreshCw size={14} /> Szukaj i sprawdź aktualność
+              </button>
+            </div>
+            <p className="md:col-span-3 text-[11px] text-white/45">
+              Import działa na serwerze — możesz zamknąć kartę; postęp wraca z API na każdym urządzeniu. Wyszukiwanie
+              obejmuje też starsze oferty i weryfikuje link na portalu źródłowym.
+            </p>
+          </div>
+        ) : null}
 
         <div className="text-xs md:text-sm">
           {session.loading ? (
@@ -1384,6 +1525,7 @@ export default function KeiAmerWorkspace() {
         resultsCount={exportResults.length}
         skippedCount={exportSkipped}
         onMinimize={() => setExportVisible(false)}
+        onStop={() => cancelKeiExport()}
         onClose={() => {
           setExportVisible(false);
           clearExportSession();

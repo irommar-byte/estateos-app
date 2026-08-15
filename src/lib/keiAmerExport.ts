@@ -158,6 +158,8 @@ export async function exportKeiListingsToEstateOS(options?: {
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
   onProgress?: KeiExportProgressEmitter;
+  /** Cooperative cancel between items (durable server jobs). */
+  shouldCancel?: () => boolean | Promise<boolean>;
 }): Promise<{
   ok: true;
   exported: KeiExportItemResult[];
@@ -173,6 +175,10 @@ export async function exportKeiListingsToEstateOS(options?: {
   message: string;
 }> {
   const emit = options?.onProgress;
+  const checkCancel = async () => {
+    if (!options?.shouldCancel) return false;
+    return Boolean(await options.shouldCancel());
+  };
 
   const session = await ensureKeiAmerSession(true);
   if (!session.ok) {
@@ -250,6 +256,9 @@ export async function exportKeiListingsToEstateOS(options?: {
 
   for (const target of exportTargets) {
     if (selections.length === 0 && exported.length >= count) break;
+    if (await checkCancel()) {
+      throw new Error('Import anulowany.');
+    }
 
     const portalUrl = target.portalUrl;
     const keiListingId = target.keiListingId;

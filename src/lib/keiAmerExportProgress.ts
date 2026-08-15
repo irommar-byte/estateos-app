@@ -9,7 +9,7 @@ export type KeiAiRewriteProgress = {
 };
 
 export type KeiExportProgressEvent =
-  | { type: 'connected'; message: string }
+  | { type: 'connected'; message: string; jobId?: string }
   | { type: 'batch_start'; total: number }
   | {
       type: 'item_start';

@@ -1,63 +1,79 @@
+import { NextResponse } from 'next/server';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
-import { exportKeiListingsToEstateOS } from '@/lib/keiAmerExport';
 import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
 import { encodeKeiSseEvent, KEI_SSE_HEADERS } from '@/lib/keiAmerSse';
+import { parseKeiExportBody } from '@/lib/keiAmerExportRouteUtils';
+import {
+  enqueueKeiImportJob,
+  getKeiImportJob,
+  isKeiImportJobTerminal,
+  type KeiImportJobItem,
+} from '@/lib/keiAmerImportJobs';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const maxDuration = 300;
 
-function parseFloorPlanOverrides(raw: unknown): Record<string, boolean> | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
-  const out: Record<string, boolean> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof value === 'boolean') out[key] = value;
+function eventsFromItemDelta(
+  prev: KeiImportJobItem[] | null,
+  next: KeiImportJobItem[],
+): KeiExportProgressEvent[] {
+  const events: KeiExportProgressEvent[] = [];
+  for (const item of next) {
+    const before = prev?.find((row) => row.index === item.index);
+    if (!before || before.status === 'pending') {
+      if (item.status !== 'pending') {
+        events.push({
+          type: 'item_start',
+          index: item.index,
+          total: next.length,
+          keiListingId: item.keiListingId,
+          portalUrl: item.portalUrl,
+          address: item.address,
+        });
+      }
+    }
+    if (item.status === 'active' && item.currentStep && item.currentStep !== before?.currentStep) {
+      events.push({
+        type: 'step',
+        index: item.index,
+        step: item.currentStep,
+        label: item.stepLabel,
+        detail: item.stepDetail,
+      });
+    }
+    if (item.imageProgress && item.imageProgress.index !== before?.imageProgress?.index) {
+      events.push({
+        type: 'image_progress',
+        index: item.index,
+        imageIndex: item.imageProgress.index,
+        imageTotal: item.imageProgress.total,
+        asFloorPlan: item.imageProgress.asFloorPlan,
+        label: item.imageProgress.label,
+      });
+    }
+    if (item.status === 'done' && before?.status !== 'done' && item.offerId && item.publicUrl && item.editUrl) {
+      events.push({
+        type: 'item_done',
+        index: item.index,
+        keiListingId: item.keiListingId,
+        offerId: item.offerId,
+        portalUrl: item.portalUrl,
+        publicUrl: item.publicUrl,
+        editUrl: item.editUrl,
+      });
+    }
+    if (item.status === 'skipped' && before?.status !== 'skipped') {
+      events.push({
+        type: 'item_skip',
+        index: item.index,
+        keiListingId: item.keiListingId,
+        portalUrl: item.portalUrl,
+        reason: item.reason || 'Pominięto',
+      });
+    }
   }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function parseFloorPlanSelections(raw: unknown) {
-  if (!raw || typeof raw !== 'object') return undefined;
-  const out: Record<string, { enabled: boolean; imageIndex: number }> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (!value || typeof value !== 'object') continue;
-    const row = value as Record<string, unknown>;
-    const enabled = row.enabled === true;
-    const imageIndex = Number(row.imageIndex);
-    out[key] = {
-      enabled,
-      imageIndex: Number.isFinite(imageIndex) && imageIndex >= 0 ? Math.floor(imageIndex) : 0,
-    };
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function parseExportBody(body: Record<string, unknown>) {
-  const selections = Array.isArray(body?.selections)
-    ? body.selections
-        .map((row: Record<string, unknown>) => ({
-          keiId: String(row?.keiId || ''),
-          portalUrl: String(row?.portalUrl || ''),
-          address: String(row?.address || '').trim() || undefined,
-        }))
-        .filter((row: { portalUrl: string }) => row.portalUrl)
-    : undefined;
-
-  const targetUserId = Number(body?.targetUserId);
-  const agentCommissionPercent = Number(body?.agentCommissionPercent);
-  const count = Number(body?.count);
-
-  return {
-    targetUserId: Number.isFinite(targetUserId) && targetUserId > 0 ? targetUserId : undefined,
-    agentCommissionPercent:
-      Number.isFinite(agentCommissionPercent) && agentCommissionPercent >= 0 ? agentCommissionPercent : undefined,
-    count: Number.isFinite(count) && count > 0 ? count : undefined,
-    propertyKind: body?.propertyKind === 'house' ? ('house' as const) : ('apartment' as const),
-    transactionKind: body?.transactionKind === 'rent' ? ('rent' as const) : ('sale' as const),
-    selections,
-    floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
-    floorPlanSelections: parseFloorPlanSelections(body?.floorPlanSelections),
-  };
+  return events;
 }
 
 export async function POST(req: Request) {
@@ -65,7 +81,18 @@ export async function POST(req: Request) {
   if (!gate.ok) return gate.response;
 
   const body = await req.json().catch(() => ({}));
-  const parsed = parseExportBody(body as Record<string, unknown>);
+  const parsed = parseKeiExportBody(body as Record<string, unknown>);
+
+  let job;
+  try {
+    job = await enqueueKeiImportJob({
+      adminUserId: gate.adminId,
+      ...parsed,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Nie udało się uruchomić importu.';
+    return NextResponse.json({ ok: false, error: message }, { status: 422 });
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -73,22 +100,35 @@ export async function POST(req: Request) {
         controller.enqueue(encodeKeiSseEvent(event));
       };
 
-      send({ type: 'connected', message: 'Połączono — import w toku…' });
+      send({ type: 'connected', message: 'Import trwa na serwerze…' });
 
       void (async () => {
+        let prevItems: KeiImportJobItem[] | null = null;
         try {
-          const result = await exportKeiListingsToEstateOS({
-            ...parsed,
-            onProgress: send,
-          });
-
-          send({
-            type: 'result',
-            ok: true,
-            exported: result.exported,
-            skipped: result.skipped,
-            message: result.message,
-          });
+          send({ type: 'batch_start', total: job.items.length });
+          for (;;) {
+            const snapshot = await getKeiImportJob(job.id);
+            if (!snapshot) break;
+            for (const event of eventsFromItemDelta(prevItems, snapshot.items)) {
+              send(event);
+            }
+            prevItems = snapshot.items;
+            if (isKeiImportJobTerminal(snapshot.status)) {
+              if (snapshot.status === 'error') {
+                send({ type: 'error', message: snapshot.message || 'Import nie powiódł się.' });
+              } else {
+                send({
+                  type: 'result',
+                  ok: snapshot.status === 'done' || snapshot.status === 'cancelled',
+                  exported: snapshot.exported,
+                  skipped: snapshot.skipped,
+                  message: snapshot.message,
+                });
+              }
+              break;
+            }
+            await new Promise((r) => setTimeout(r, 900));
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
           send({ type: 'error', message });

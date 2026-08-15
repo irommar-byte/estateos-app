@@ -157,6 +157,103 @@ export function isWarsawListing(row: KeiListingRow): boolean {
   return hay.includes('warszawa') || hay.includes('wawa');
 }
 
+/** Parse KEI price/area strings like "1 250 000 zł" / "62,5 m2". */
+export function parseKeiNumeric(raw: unknown): number | null {
+  const text = String(raw ?? '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/zł|pln|m²|m2|metr.*/gi, '')
+    .trim();
+  if (!text) return null;
+  const normalized = text.includes(',') && !text.includes('.')
+    ? text.replace(/\s+/g, '').replace(',', '.')
+    : text.replace(/\s+/g, '').replace(/,(?=\d{3}\b)/g, '');
+  const n = Number(normalized.replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+export function parseKeiListingDate(raw: unknown): Date | null {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const pl = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+  if (pl) {
+    const d = new Date(Number(pl[3]), Number(pl[2]) - 1, Number(pl[1]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(text);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export type KeiListingSearchFilters = {
+  propertyKind?: KeiPropertyKind;
+  transactionKind?: KeiTransactionKind;
+  /** Fragment dzielnicy / ulicy w adresie (np. "żoliborz"). */
+  district?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minArea?: number;
+  maxArea?: number;
+  /** YYYY-MM-DD — data wystawienia od */
+  dateFrom?: string;
+  /** YYYY-MM-DD — data wystawienia do */
+  dateTo?: string;
+  /**
+   * KEI `okres`: 1 = domyślne świeże, 0 = szersze archiwum (wyszukiwanie starszych).
+   */
+  okres?: string;
+};
+
+export function rowMatchesKeiSearchFilters(
+  row: KeiListingRow,
+  filters: KeiListingSearchFilters,
+): boolean {
+  const propertyKind = filters.propertyKind ?? 'apartment';
+  const transactionKind = filters.transactionKind ?? 'sale';
+  if (!rowMatchesKeiFilters(row, propertyKind, transactionKind)) return false;
+
+  const district = String(filters.district || '').trim().toLowerCase();
+  if (district) {
+    const hay = `${row.adres || ''} ${row.tekst || ''}`.toLowerCase();
+    if (!hay.includes(district)) return false;
+  }
+
+  const price = parseKeiNumeric(row.cena);
+  if (filters.minPrice != null && Number.isFinite(filters.minPrice)) {
+    if (price == null || price < filters.minPrice) return false;
+  }
+  if (filters.maxPrice != null && Number.isFinite(filters.maxPrice)) {
+    if (price == null || price > filters.maxPrice) return false;
+  }
+
+  const area = parseKeiNumeric(row.pow);
+  if (filters.minArea != null && Number.isFinite(filters.minArea)) {
+    if (area == null || area < filters.minArea) return false;
+  }
+  if (filters.maxArea != null && Number.isFinite(filters.maxArea)) {
+    if (area == null || area > filters.maxArea) return false;
+  }
+
+  const listingDate = parseKeiListingDate(row.data);
+  if (filters.dateFrom) {
+    const from = parseKeiListingDate(filters.dateFrom);
+    if (from && (!listingDate || listingDate < from)) return false;
+  }
+  if (filters.dateTo) {
+    const to = parseKeiListingDate(filters.dateTo);
+    if (to) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      if (!listingDate || listingDate > end) return false;
+    }
+  }
+
+  return true;
+}
+
 export async function ensureKeiAmerSession(force = false): Promise<{ ok: boolean; message: string }> {
   const { login, password } = getKeiCredentials();
   if (!login || !password) {
@@ -249,11 +346,13 @@ export async function fetchKeiListingsPage(params: {
   dir?: 'ASC' | 'DESC';
   propertyKind?: KeiPropertyKind;
   transactionKind?: KeiTransactionKind;
+  /** KEI period window — "1" fresh feed, "0" broader archive for older search. */
+  okres?: string;
 }): Promise<{ total: number; rows: KeiListingRow[] }> {
   const qs = new URLSearchParams({
     rodzaj: keiRodzajForTransactionKind(params.transactionKind ?? 'sale'),
     typ: keiTypForPropertyKind(params.propertyKind ?? 'apartment'),
-    okres: '1',
+    okres: params.okres ?? '1',
     wystapienia: '1',
     miasto: '1',
     start: String(params.start ?? 0),
@@ -277,13 +376,26 @@ export async function findWarsawPortalListings(options?: {
   transactionKind?: KeiTransactionKind;
   maxResults?: number;
   maxPages?: number;
+  search?: KeiListingSearchFilters;
 }): Promise<KeiListingRow[]> {
-  const propertyKind = options?.propertyKind ?? 'apartment';
-  const transactionKind = options?.transactionKind ?? 'sale';
+  const propertyKind = options?.propertyKind ?? options?.search?.propertyKind ?? 'apartment';
+  const transactionKind = options?.transactionKind ?? options?.search?.transactionKind ?? 'sale';
   const maxResults = Math.max(1, options?.maxResults ?? 1);
   const maxPages = options?.maxPages ?? 8;
   const limit = 50;
   const results: KeiListingRow[] = [];
+  const search = options?.search;
+  const hasExtendedSearch = Boolean(
+    search &&
+      (search.district ||
+        search.minPrice != null ||
+        search.maxPrice != null ||
+        search.minArea != null ||
+        search.maxArea != null ||
+        search.dateFrom ||
+        search.dateTo),
+  );
+  const okres = search?.okres ?? (hasExtendedSearch ? '0' : '1');
 
   for (let page = 0; page < maxPages && results.length < maxResults; page += 1) {
     const { rows } = await fetchKeiListingsPage({
@@ -293,11 +405,16 @@ export async function findWarsawPortalListings(options?: {
       dir: 'DESC',
       propertyKind,
       transactionKind,
+      okres,
     });
     for (const row of rows) {
-      if (!rowMatchesKeiFilters(row, propertyKind, transactionKind)) continue;
       if (!isWarsawListing(row)) continue;
       if (!isSupportedKeiPortalUrl(row.www || '')) continue;
+      if (search) {
+        if (!rowMatchesKeiSearchFilters(row, { ...search, propertyKind, transactionKind })) continue;
+      } else if (!rowMatchesKeiFilters(row, propertyKind, transactionKind)) {
+        continue;
+      }
       results.push(row);
       if (results.length >= maxResults) break;
     }
@@ -312,6 +429,7 @@ export async function findWarsawPortalListingsPaged(options?: {
   transactionKind?: KeiTransactionKind;
   page?: number;
   pageSize?: number;
+  search?: KeiListingSearchFilters;
 }): Promise<{
   rows: KeiListingRow[];
   page: number;
@@ -322,12 +440,25 @@ export async function findWarsawPortalListingsPaged(options?: {
   const pageSize = Math.max(1, Math.min(Math.floor(options?.pageSize ?? 12), 30));
   const skip = (page - 1) * pageSize;
   const need = skip + pageSize + 1;
+  const hasExtendedSearch = Boolean(
+    options?.search &&
+      (options.search.district ||
+        options.search.minPrice != null ||
+        options.search.maxPrice != null ||
+        options.search.minArea != null ||
+        options.search.maxArea != null ||
+        options.search.dateFrom ||
+        options.search.dateTo),
+  );
 
   const collected = await findWarsawPortalListings({
     propertyKind: options?.propertyKind,
     transactionKind: options?.transactionKind,
     maxResults: need,
-    maxPages: Math.min(Math.ceil(need / 6) + 4, 24),
+    maxPages: hasExtendedSearch
+      ? Math.min(Math.ceil(need / 4) + 10, 40)
+      : Math.min(Math.ceil(need / 6) + 4, 24),
+    search: options?.search,
   });
 
   return {
