@@ -3774,11 +3774,12 @@ html:not(.light) .eos-car-form-cancel {
   gap: 0.2rem;
   padding: 0.28rem;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.58);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 10px 28px rgba(0, 0, 0, 0.22);
   opacity: 0;
   transform: translateY(6px);
   pointer-events: none;
@@ -3804,6 +3805,7 @@ html:not(.light) .eos-car-form-cancel {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  overflow: visible;
 }
 @media (max-width: 640px) {
   .eos-discovery-bar--full {
@@ -3835,10 +3837,12 @@ html:not(.light) .eos-car-form-cancel {
   }
 }
 .eos-discovery-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
+  overflow: visible;
   border-radius: 9999px;
   cursor: pointer;
   transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
@@ -3863,12 +3867,12 @@ html:not(.light) .eos-car-form-cancel {
 }
 .eos-discovery-btn--pill {
   padding: 0.62rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.16);
   color: #fff;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), 0 10px 28px rgba(0, 0, 0, 0.18);
 }
 .eos-discovery-btn__label {
   font-size: 0.62rem;
@@ -3884,8 +3888,37 @@ html:not(.light) .eos-car-form-cancel {
 .eos-discovery-btn--dislike.is-active,
 .eos-discovery-btn--serious.is-active {
   color: #0a0a0a;
-  border-color: rgba(255, 255, 255, 0.92);
-  background: #f5f5f7;
+  border-color: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: inset 0 1px 0 #fff, 0 0 0 2px rgba(10, 10, 10, 0.42), 0 10px 28px rgba(0, 0, 0, 0.2);
+}
+
+.eos-taste-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.eos-taste-confetti i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -2px 0 0 -2px;
+  border-radius: 1px;
+  animation: eos-taste-burst 0.72s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes eos-taste-burst {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg) scale(0.4);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(0.75);
+  }
 }
 
 .eos-discovery-reasons {

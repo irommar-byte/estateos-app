@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useDiscoveryActions } from '../../hooks/useDiscoveryActions';
@@ -17,6 +16,7 @@ import { dispatchIntelligenceDislikePrompt } from '../../lib/discovery/clientEve
 import { shouldPromptCatalogDislikeViaBrain } from '../../utils/discoveryExperienceState';
 import type { DiscoveryTasteAction } from '../../services/discoveryService';
 import { useI18n } from '../../i18n';
+import TasteConfettiBurst from './TasteConfettiBurst';
 
 type Variant = 'compact' | 'full';
 
@@ -31,7 +31,12 @@ type Props = {
   promptDislikeViaBrain?: boolean;
 };
 
-type ActionIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+type ActionIcon = React.ComponentType<{
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+  fill?: string;
+}>;
 
 const ACTION_DEFS: Array<{
   type: Exclude<DiscoveryTasteAction, 'OPEN'>;
@@ -43,19 +48,14 @@ const ACTION_DEFS: Array<{
   { type: 'SERIOUS', labelKey: 'serious', Icon: Sparkles },
 ];
 
-/** Black-glass taste chrome — WWW `.eos-discovery-btn` parity, no color disco. */
 const LUX = {
   ink: '#0A0A0A',
   ivory: '#F5F5F7',
-  iconIdle: 'rgba(255,255,255,0.94)',
-  faceIdle: ['rgba(42,42,44,0.96)', 'rgba(8,8,8,0.94)'] as const,
-  faceActive: ['#FFFFFF', '#E8E8ED'] as const,
-  borderIdle: 'rgba(255,255,255,0.30)',
-  borderActive: 'rgba(255,255,255,0.92)',
+  iconIdle: 'rgba(255,255,255,0.96)',
 };
 
 /**
- * Quiet taste controls for offer surfaces — WWW OfferDiscoveryActions parity.
+ * Apple-glass taste controls — transparent frost, lasting selected state, luxury burst.
  */
 export default function OfferDiscoveryActions({
   offerId,
@@ -67,9 +67,11 @@ export default function OfferDiscoveryActions({
 }: Props) {
   const { t } = useI18n();
   const { record, lastAction, isBusy } = useDiscoveryActions();
-  const [flash, setFlash] = useState<DiscoveryTasteAction | null>(null);
   const [reasonOpen, setReasonOpen] = useState(false);
-  const active = flash || lastAction(offerId);
+  const [burst, setBurst] = useState<{ type: Exclude<DiscoveryTasteAction, 'OPEN'>; nonce: number } | null>(
+    null,
+  );
+  const active = lastAction(offerId);
   const id = Number(offerId);
 
   const dislikeReasons = [
@@ -98,7 +100,6 @@ export default function OfferDiscoveryActions({
     reasonCode?: string,
   ) => {
     if (!Number.isFinite(id) || id <= 0 || isBusy(id)) return;
-    setFlash(eventType);
     setReasonOpen(false);
     void Haptics.selectionAsync();
     const result = await record({
@@ -108,18 +109,14 @@ export default function OfferDiscoveryActions({
       source,
       onRequireAuth,
     });
-    if (!result.ok) {
-      setFlash(null);
-      return;
-    }
-    setTimeout(() => setFlash(null), 1600);
+    if (!result.ok) return;
+    setBurst({ type: eventType, nonce: Date.now() });
   };
 
   const handle = async (eventType: Exclude<DiscoveryTasteAction, 'OPEN'>) => {
     if (eventType === 'DISLIKE') {
       if (promptDislikeViaBrain) {
         if (!Number.isFinite(id) || id <= 0 || isBusy(id)) return;
-        // Algorytm pyta rzadko (co 3. „nie dla mnie”) — inaczej zapisujemy od razu.
         if (shouldPromptCatalogDislikeViaBrain()) {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           dispatchIntelligenceDislikePrompt({ offerId: id, source });
@@ -190,22 +187,25 @@ export default function OfferDiscoveryActions({
                   pressed && styles.pressedIn,
                 ]}
               >
-                <LinearGradient
-                  colors={[...(isActive ? LUX.faceActive : LUX.faceIdle)]}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={[
-                    styles.pill,
-                    {
-                      borderColor: isActive ? LUX.borderActive : LUX.borderIdle,
-                    },
-                  ]}
-                >
+                <View style={[styles.pill, isActive && styles.pillActive]}>
+                  {Platform.OS === 'ios' && !isActive ? (
+                    <BlurView
+                      pointerEvents="none"
+                      intensity={36}
+                      tint="dark"
+                      style={StyleSheet.absoluteFill}
+                    />
+                  ) : null}
                   <View pointerEvents="none" style={styles.pillSheen} />
                   {isBusy(id) && isActive ? (
                     <ActivityIndicator size="small" color={ink} />
                   ) : (
-                    <Icon size={14} color={ink} strokeWidth={2.15} />
+                    <Icon
+                      size={14}
+                      color={ink}
+                      strokeWidth={isActive ? 2.4 : 2.1}
+                      fill={isActive ? ink : 'transparent'}
+                    />
                   )}
                   <Text
                     style={[styles.pillLabel, { color: ink }]}
@@ -215,7 +215,8 @@ export default function OfferDiscoveryActions({
                   >
                     {label}
                   </Text>
-                </LinearGradient>
+                </View>
+                {burst?.type === type ? <TasteConfettiBurst nonce={burst.nonce} /> : null}
               </Pressable>
             );
           })}
@@ -227,15 +228,12 @@ export default function OfferDiscoveryActions({
 
   return (
     <View style={styles.trayOuter} accessibilityLabel={t('discovery.actions.like')}>
-      <View style={styles.tray}>
+      <View style={styles.trayClip} pointerEvents="none">
         {Platform.OS === 'ios' ? (
-          <BlurView
-            pointerEvents="none"
-            intensity={32}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
+          <BlurView intensity={42} tint="light" style={StyleSheet.absoluteFill} />
         ) : null}
+      </View>
+      <View style={styles.trayRow}>
         {actions.map(({ type, label, Icon }) => {
           const isActive = active === type;
           const ink = isActive ? LUX.ink : LUX.iconIdle;
@@ -259,8 +257,14 @@ export default function OfferDiscoveryActions({
               {isBusy(id) && isActive ? (
                 <ActivityIndicator size="small" color={ink} />
               ) : (
-                <Icon size={15} color={ink} strokeWidth={2.1} />
+                <Icon
+                  size={15}
+                  color={ink}
+                  strokeWidth={isActive ? 2.4 : 2.1}
+                  fill={isActive ? ink : 'transparent'}
+                />
               )}
+              {burst?.type === type ? <TasteConfettiBurst nonce={burst.nonce} /> : null}
             </Pressable>
           );
         })}
@@ -271,24 +275,29 @@ export default function OfferDiscoveryActions({
 
 const styles = StyleSheet.create({
   trayOuter: {
+    position: 'relative',
     borderRadius: 999,
+    overflow: 'visible',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.32,
+    shadowOpacity: 0.22,
     shadowRadius: 18,
     elevation: 8,
   },
-  tray: {
+  trayClip: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.38)',
+  },
+  trayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 6,
     paddingVertical: 5,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.22)',
   },
   iconBtn: {
     width: 34,
@@ -297,38 +306,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    overflow: 'visible',
   },
   iconBtnActive: {
-    backgroundColor: LUX.ivory,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.98)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 0,
+    elevation: 2,
   },
   iconBtnPressed: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  fullBar: { gap: 10 },
+  fullBar: { gap: 10, overflow: 'visible' },
   fullRow: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
     alignItems: 'stretch',
     gap: 6,
     width: '100%',
+    overflow: 'visible',
   },
   pillOuter: {
     flex: 1,
     minWidth: 0,
     borderRadius: 999,
+    overflow: 'visible',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    elevation: 7,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    elevation: 5,
     ...Platform.select({
       android: { marginBottom: 1 },
       default: {},
     }),
   },
   pillOuterActive: {
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
   },
   pill: {
     flex: 1,
@@ -341,7 +360,13 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 999,
     borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.38)',
+    backgroundColor: 'rgba(16,16,18,0.38)',
     minWidth: 0,
+  },
+  pillActive: {
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderColor: 'rgba(255,255,255,0.98)',
   },
   pillSheen: {
     position: 'absolute',
@@ -349,7 +374,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '48%',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
   pillLabel: {
     flexShrink: 1,
@@ -364,12 +389,13 @@ const styles = StyleSheet.create({
   reasons: {
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(8,8,8,0.92)',
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(18,18,20,0.55)',
     padding: 12,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.35,
     shadowRadius: 24,
     elevation: 10,
   },
@@ -392,11 +418,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   chipPressed: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   chipSkip: {
     borderStyle: 'dashed',

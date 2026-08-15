@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { dispatchDiscoveryUpdated } from "@/lib/discovery/clientEvents";
+import {
+  peekTasteMemory,
+  rememberTaste,
+  subscribeTasteMemory,
+} from "@/lib/discovery/tasteMemory";
 
 export type DiscoveryUiAction = "LIKE" | "DISLIKE" | "SERIOUS" | "OPEN";
 
@@ -24,9 +29,11 @@ type RecordResult = {
  */
 export function useDiscoveryActions() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [lastByOffer, setLastByOffer] = useState<Record<number, DiscoveryUiAction>>({});
+  const [lastByOffer, setLastByOffer] = useState(peekTasteMemory);
   const openSentRef = useRef<Set<number>>(new Set());
   const inFlightRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => subscribeTasteMemory(setLastByOffer), []);
 
   const record = useCallback(async (opts: RecordOptions): Promise<RecordResult> => {
     const id = Number(opts.offerId);
@@ -68,8 +75,12 @@ export function useDiscoveryActions() {
 
       if (opts.eventType === "OPEN") {
         openSentRef.current.add(id);
-      } else {
-        setLastByOffer((prev) => ({ ...prev, [id]: opts.eventType }));
+      } else if (
+        opts.eventType === "LIKE" ||
+        opts.eventType === "DISLIKE" ||
+        opts.eventType === "SERIOUS"
+      ) {
+        rememberTaste(id, opts.eventType);
       }
       dispatchDiscoveryUpdated({ offerId: id, eventType: opts.eventType });
       return { ok: true };
