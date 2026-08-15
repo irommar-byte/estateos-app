@@ -1262,6 +1262,44 @@ html.light .theme-aware-dashboard .eos-on-media [class*="text-emerald-300"] {
   color: #6ee7b7 !important;
 }
 
+/* Katalog hero: zdjęcie + biały tekst. Light-mode nadpisuje text-white i from-black. */
+.eos-catalog-hero__scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(6, 8, 12, 0.86) 0%, rgba(6, 8, 12, 0.52) 44%, rgba(6, 8, 12, 0.18) 100%),
+    linear-gradient(180deg, rgba(6, 8, 12, 0.22) 0%, transparent 46%, rgba(6, 8, 12, 0.4) 100%);
+}
+
+html.light .theme-aware-dashboard .eos-catalog-hero,
+html.light .theme-aware-dashboard .eos-catalog-hero h1,
+html.light .theme-aware-dashboard .eos-catalog-hero h2,
+html.light .theme-aware-dashboard .eos-catalog-hero p,
+html.light .theme-aware-dashboard .eos-catalog-hero span,
+html.light .theme-aware-dashboard .eos-catalog-hero .text-white,
+html.light .theme-aware-dashboard .eos-catalog-hero [class*="text-white/"] {
+  color: #ffffff !important;
+}
+
+html.light .theme-aware-dashboard .eos-catalog-hero [class*="text-white/70"],
+html.light .theme-aware-dashboard .eos-catalog-hero [class*="text-white/78"],
+html.light .theme-aware-dashboard .eos-catalog-hero [class*="text-white/85"] {
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+
+html.light .theme-aware-dashboard .eos-catalog-hero [class*="border-white/"] {
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+html.light .theme-aware-dashboard .eos-catalog-hero [class*="bg-white/10"] {
+  background-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+html.light .eos-ambient-photo {
+  opacity: 0.07 !important;
+}
+
 /* Karty CRM / listy — spójne tło w jasnym motywie */
 html.light .theme-aware-dashboard .eos-surface-card {
   background-color: var(--eos-card) !important;

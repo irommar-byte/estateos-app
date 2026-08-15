@@ -21,7 +21,7 @@ export default function EcosystemAmbientBackground() {
       <img
         src={photo}
         alt=""
-        className="absolute inset-0 h-full w-full object-cover object-[center_35%] opacity-[0.22] sm:opacity-[0.26]"
+        className="eos-ambient-photo absolute inset-0 h-full w-full object-cover object-[center_35%] opacity-[0.22] sm:opacity-[0.26]"
       />
       <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-[var(--eos-bg)]/55 to-[var(--eos-bg)]" />
     </div>
