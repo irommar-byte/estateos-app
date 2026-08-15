@@ -499,21 +499,8 @@ export default function AdminKeiAmerScreen() {
   }, [sessionOk, propertyKind, transactionKind, exportRunning, browseMode, loadPreview]);
 
   const handleStopExport = useCallback(() => {
-    Alert.alert(
-      'Zatrzymać import?',
-      'Bieżąca pozycja może nie dokończyć się. Oferty już zaimportowane pozostaną w bazie.',
-      [
-        { text: 'Kontynuuj', style: 'cancel' },
-        {
-          text: 'Zatrzymaj',
-          style: 'destructive',
-          onPress: () => {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            cancelKeiExport();
-          },
-        },
-      ],
-    );
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    cancelKeiExport();
   }, [cancelKeiExport]);
 
   const handleOpenExportModal = useCallback(() => {

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   AppState,
   Easing,
@@ -262,8 +261,8 @@ function KeiBackgroundPill({
     return () => loop.stop();
   }, [engravedFlash]);
 
-  const capsuleBg = isDark ? 'rgba(28,28,30,0.78)' : 'rgba(255,255,255,0.82)';
-  const border = isDark ? 'rgba(52,199,89,0.38)' : 'rgba(52,199,89,0.32)';
+  const capsuleBg = isDark ? 'rgba(22,22,24,0.28)' : 'rgba(255,255,255,0.22)';
+  const border = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.55)';
 
   return (
     <View
@@ -273,7 +272,7 @@ function KeiBackgroundPill({
       <View style={[styles.pillShadow, { shadowColor: isDark ? '#34C759' : '#000' }]}>
         <View style={styles.pillPress}>
           {Platform.OS === 'ios' ? (
-            <BlurView intensity={isDark ? 42 : 55} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+            <BlurView intensity={isDark ? 48 : 72} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           ) : (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: capsuleBg }]} />
           )}
@@ -379,21 +378,8 @@ export default function KeiImportProgressHost() {
   }, [modalVisible, activeExportIndex]);
 
   const handleStop = useCallback(() => {
-    Alert.alert(
-      'Zatrzymać import?',
-      'Bieżąca pozycja może nie dokończyć się. Oferty już zaimportowane pozostaną w bazie.',
-      [
-        { text: 'Kontynuuj', style: 'cancel' },
-        {
-          text: 'Zatrzymaj',
-          style: 'destructive',
-          onPress: () => {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            cancelExport();
-          },
-        },
-      ],
-    );
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    cancelExport();
   }, [cancelExport]);
 
   const handleOpen = useCallback(() => {
@@ -560,8 +546,8 @@ const styles = StyleSheet.create({
   pillInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
-    paddingLeft: 14,
+    paddingVertical: 12,
+    paddingLeft: 16,
     paddingRight: 10,
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
