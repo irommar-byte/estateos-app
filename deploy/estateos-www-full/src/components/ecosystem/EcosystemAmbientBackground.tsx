@@ -15,15 +15,15 @@ export default function EcosystemAmbientBackground() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none fixed inset-x-0 top-[var(--eos-nav-height)] z-0 h-[min(58vh,560px)] overflow-hidden"
+      className="eos-ambient-wash pointer-events-none fixed inset-x-0 top-[var(--eos-nav-height)] z-0 h-[min(62vh,620px)] overflow-hidden"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={photo}
         alt=""
-        className="eos-ambient-photo absolute inset-0 h-full w-full object-cover object-[center_35%] opacity-[0.22] sm:opacity-[0.26]"
+        className="eos-ambient-photo absolute inset-0 h-full w-full object-cover object-[center_32%]"
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-[var(--eos-bg)]/55 to-[var(--eos-bg)]" />
+      <div className="eos-ambient-fade absolute inset-0" />
     </div>
   );
 }
