@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { X, Minus, Plus, Banknote, CreditCard } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import NumericKeyboardAccessory, {
+  ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID,
+} from '../NumericKeyboardAccessory';
 import { API_URL } from '../../config/network';
 import { archiveOfferAfterSaleClosed } from '../../utils/mobileOfferArchive';
 import { postDealroomTextMessage } from '../../utils/dealroomOfferReserve';
@@ -304,6 +307,7 @@ export default function BidActionModal({
 
   const handleSubmitPress = () => {
     if (!canSubmit || loading || isLocked) return;
+    Keyboard.dismiss();
     setConfirmVisible(true);
   };
 
@@ -322,7 +326,15 @@ export default function BidActionModal({
                 <Text style={styles.title}>{title || t('dealroom.bid.defaultTitle')}</Text>
                 <Text style={styles.intro}>{t('dealroom.bid.intro')}</Text>
               </View>
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={loading} hitSlop={8}>
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  onClose();
+                }}
+                disabled={loading}
+                hitSlop={8}
+              >
                 <X size={16} color="#d1d5db" />
               </TouchableOpacity>
             </View>
@@ -417,7 +429,10 @@ export default function BidActionModal({
                 <View style={styles.amountHero}>
                   <TouchableOpacity
                     style={[styles.nudgeBtn, (isLocked || loading) && styles.nudgeBtnDisabled]}
-                    onPress={() => adjustAmount(QUICK_BID_STEPS[0])}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      adjustAmount(QUICK_BID_STEPS[0]);
+                    }}
                     disabled={isLocked || loading}
                     activeOpacity={0.85}
                     accessibilityRole="button"
@@ -431,7 +446,13 @@ export default function BidActionModal({
                     <TextInput
                       value={formatAmountInput(amount)}
                       onChangeText={(v) => setAmount(v.replace(/\D/g, ''))}
-                      keyboardType="numeric"
+                      keyboardType="number-pad"
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={() => Keyboard.dismiss()}
+                      inputAccessoryViewID={
+                        Platform.OS === 'ios' ? ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID : undefined
+                      }
                       placeholder={t('dealroom.bid.amountPlaceholder')}
                       placeholderTextColor="#6b6b70"
                       style={styles.amountInput}
@@ -441,7 +462,10 @@ export default function BidActionModal({
                   </View>
                   <TouchableOpacity
                     style={[styles.nudgeBtn, (isLocked || loading) && styles.nudgeBtnDisabled]}
-                    onPress={() => adjustAmount(QUICK_BID_STEPS[1])}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      adjustAmount(QUICK_BID_STEPS[1]);
+                    }}
                     disabled={isLocked || loading}
                     activeOpacity={0.85}
                     accessibilityRole="button"
@@ -468,7 +492,10 @@ export default function BidActionModal({
                 <View style={styles.payTrack}>
                   <TouchableOpacity
                     style={[styles.paySeg, financing === 'CASH' && styles.paySegOn]}
-                    onPress={() => setFinancing('CASH')}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setFinancing('CASH');
+                    }}
                     activeOpacity={0.88}
                   >
                     <Banknote size={16} color={financing === 'CASH' ? '#0A0A0A' : '#d1d5db'} strokeWidth={2.1} />
@@ -478,7 +505,10 @@ export default function BidActionModal({
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.paySeg, financing === 'CREDIT' && styles.paySegOn]}
-                    onPress={() => setFinancing('CREDIT')}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setFinancing('CREDIT');
+                    }}
                     activeOpacity={0.88}
                   >
                     <CreditCard size={16} color={financing === 'CREDIT' ? '#0A0A0A' : '#d1d5db'} strokeWidth={2.1} />
@@ -515,7 +545,7 @@ export default function BidActionModal({
             {!!error && <Text style={styles.error}>{error}</Text>}
 
             <View style={styles.footerRow}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={onClose} disabled={loading}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => { Keyboard.dismiss(); onClose(); }} disabled={loading}>
                 <Text style={styles.secondaryTxt}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.primaryBtn, !canSubmit && styles.disabled]} onPress={handleSubmitPress} disabled={!canSubmit || loading}>
@@ -603,6 +633,7 @@ export default function BidActionModal({
             </View>
           </View>
         </Modal>
+        <NumericKeyboardAccessory isDark />
       </View>
     </Modal>
   );
