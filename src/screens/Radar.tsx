@@ -1,4 +1,5 @@
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Audio } from 'expo-av';
 import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
@@ -809,7 +810,8 @@ export default function Radar({ theme, route }: any) {
             </BlurView>
           </View>
         </View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
 
       <Modal visible={isScanning} transparent={true} animationType="none">
         <Animated.View style={[styles.scannerOverlay, { opacity: scanOpacity }]}>
@@ -847,7 +849,8 @@ export default function Radar({ theme, route }: any) {
 
           <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFF', opacity: flashOpacity }]} pointerEvents="none" />
         </Animated.View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
 
     </View>
   );

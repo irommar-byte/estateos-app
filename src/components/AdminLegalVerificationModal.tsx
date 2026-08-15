@@ -20,6 +20,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from './NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -345,7 +346,9 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
           </ScrollView>
         </View>
         </KeyboardAvoidingView>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
+    <NumericKeyboardAccessory />
     </Modal>
 
       <EkwBookViewerModal

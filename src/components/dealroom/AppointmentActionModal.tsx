@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { X, ChevronLeft } from 'lucide-react-native';
 import PresentationCountdown from './PresentationCountdown';
@@ -473,8 +474,10 @@ export default function AppointmentActionModal({
               </View>
             </View>
           </View>
-        </Modal>
+        <NumericKeyboardAccessory />
+    </Modal>
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

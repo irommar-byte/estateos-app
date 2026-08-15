@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import NumericKeyboardAccessory from './NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -205,6 +206,7 @@ export default function DeleteAccountSheet({
           </View>
         </KeyboardAvoidingView>
       </BlurView>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

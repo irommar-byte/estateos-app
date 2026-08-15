@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -164,6 +165,7 @@ export default function EditNameSheet({ visible, onClose, theme, isDark = false 
           </View>
         </KeyboardAvoidingView>
       </BlurView>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import NumericKeyboardAccessory from './NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -900,6 +901,7 @@ export default function EditProfileDataSheet({
         </View>
       ) : null}
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

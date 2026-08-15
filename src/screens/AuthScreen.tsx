@@ -1,4 +1,5 @@
 import { authPasskeyButtonLabel } from '../utils/passkeyPlatformCopy';
+import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -500,6 +501,7 @@ function ImageScalePreviewModal({
           </View>
         </View>
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }
@@ -620,6 +622,7 @@ const ForgotPasswordModal = ({ visible, onClose, theme, t }: any) => {
           )}
         </View>
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 };

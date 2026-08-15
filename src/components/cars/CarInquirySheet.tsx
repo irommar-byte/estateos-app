@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   View,
   Text,
@@ -198,6 +199,7 @@ export default function CarInquirySheet({
           </View>
         ) : null}
       </KeyboardAvoidingView>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

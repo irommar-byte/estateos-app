@@ -48,6 +48,7 @@ import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import NumericKeyboardAccessory from './src/components/NumericKeyboardAccessory';
 import { I18nProvider, useI18n } from './src/i18n';
 import { useThemeStore, ThemeMode, useResolvedTheme, ensureThemeAppearanceListener } from './src/store/useThemeStore';
 import { useOfferStore } from './src/store/useOfferStore';
@@ -1970,6 +1971,7 @@ export default function App() {
         {!isSplashVisible ? <AgencyPendingGate /> : null}
         </View>
         </I18nProvider>
+        <NumericKeyboardAccessory isDark={resolvedTheme === 'dark'} />
       </GestureHandlerRootView>
       </SafeAreaProvider>
 

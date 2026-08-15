@@ -536,6 +536,10 @@ export default function BidActionModal({
                 placeholderTextColor="#6b6b70"
                 style={[styles.input, styles.note]}
                 multiline
+                blurOnSubmit={false}
+                inputAccessoryViewID={
+                  Platform.OS === 'ios' ? ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID : undefined
+                }
                 editable={!isLocked && !loading}
               />
             </View>

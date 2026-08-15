@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -378,7 +379,8 @@ export default function EditPhoneSheet({ visible, onClose, theme, isDark = false
             </View>
           </View>
         </BlurView>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
     );
   }
 
@@ -542,6 +544,7 @@ export default function EditPhoneSheet({ visible, onClose, theme, isDark = false
           </View>
         ) : null}
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

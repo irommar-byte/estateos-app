@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -459,6 +460,7 @@ export default function ContactVerificationSheet({ visible, onClose, theme, isDa
           </View>
         ) : null}
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

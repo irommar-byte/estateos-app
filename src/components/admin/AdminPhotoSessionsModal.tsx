@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -585,6 +586,7 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
           </ScrollView>
         )}
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

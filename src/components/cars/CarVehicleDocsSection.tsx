@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   View,
   Text,
@@ -308,7 +309,8 @@ export default function CarVehicleDocsSection({
             </ScrollView>
           ) : null}
         </View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
     </View>
   );
 }

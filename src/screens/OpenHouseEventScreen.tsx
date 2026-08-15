@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -610,7 +611,8 @@ export default function OpenHouseEventScreen() {
             )}
           </View>
         </View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
     </View>
   );
 }

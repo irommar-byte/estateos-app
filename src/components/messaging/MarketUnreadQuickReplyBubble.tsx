@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -208,6 +209,7 @@ function QuickReplyModal({
           </View>
         </View>
       </KeyboardAvoidingView>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

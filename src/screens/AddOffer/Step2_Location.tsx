@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import NumericKeyboardAccessory from '../../components/NumericKeyboardAccessory';
 import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable, LayoutAnimation, UIManager, Modal, ActivityIndicator } from 'react-native';
 import MapView, { Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -1562,7 +1563,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
             </View>
           </View>
         </View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
     </KeyboardAvoidingView>
   );
 }

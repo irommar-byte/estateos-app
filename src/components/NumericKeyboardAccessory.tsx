@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   InputAccessoryView,
   Keyboard,
@@ -6,38 +6,69 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useResolvedTheme } from '../store/useThemeStore';
 
-/** Wspólne ID dla pól `keyboardType="numeric"` — pasek „Gotowe” nad klawiaturą iOS. */
-export const ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID = 'estateos-numeric-keyboard-done';
+/** Jedno ID dla wszystkich pól — cyfry i zwykły tekst. */
+export const ESTATEOS_KEYBOARD_DONE_ID = 'estateos-keyboard-done';
+/** Alias wsteczny — ten sam pasek co dla tekstu. */
+export const ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID = ESTATEOS_KEYBOARD_DONE_ID;
+
+function installTextInputDoneAccessory() {
+  if (Platform.OS !== 'ios') return;
+  const TI = TextInput as typeof TextInput & { defaultProps?: Record<string, unknown> };
+  TI.defaultProps = {
+    ...(TI.defaultProps || {}),
+    inputAccessoryViewID: ESTATEOS_KEYBOARD_DONE_ID,
+  };
+}
+
+installTextInputDoneAccessory();
 
 type Props = {
   isDark?: boolean;
 };
 
+function DoneBar({ isDark }: { isDark: boolean }) {
+  return (
+    <View style={[styles.bar, isDark ? styles.barDark : styles.barLight]}>
+      <Pressable
+        onPress={() => {
+          Haptics.selectionAsync();
+          Keyboard.dismiss();
+        }}
+        hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel="Gotowe"
+        style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.65 }]}
+      >
+        <Text style={styles.doneText}>Gotowe</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 /**
- * iOS: przycisk „Gotowe” nad klawiaturą numeryczną (brak Enter).
- * Podłącz przez `inputAccessoryViewID={ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID}`.
+ * iOS: „Gotowe” nad każdą klawiaturą (numeryczna nie ma Enter, tekstowa ma Return = nowa linia).
+ * Podłącz przez `inputAccessoryViewID` albo defaultProps z tego modułu.
+ * Wewnątrz `Modal` trzeba zamontować ten komponent — pasek z App.tsx nie wchodzi do natywnego okna modala.
  */
-export default function NumericKeyboardAccessory({ isDark = false }: Props) {
+export default function NumericKeyboardAccessory({ isDark }: Props) {
+  const themeDark = useResolvedTheme() === 'dark';
+  const dark = isDark ?? themeDark;
+
+  useEffect(() => {
+    installTextInputDoneAccessory();
+  }, []);
+
   if (Platform.OS !== 'ios') return null;
 
   return (
-    <InputAccessoryView nativeID={ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID}>
-      <View style={[styles.bar, isDark ? styles.barDark : styles.barLight]}>
-        <Pressable
-          onPress={() => {
-            Haptics.selectionAsync();
-            Keyboard.dismiss();
-          }}
-          hitSlop={12}
-          style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.65 }]}
-        >
-          <Text style={styles.doneText}>Gotowe</Text>
-        </Pressable>
-      </View>
+    <InputAccessoryView nativeID={ESTATEOS_KEYBOARD_DONE_ID}>
+      <DoneBar isDark={dark} />
     </InputAccessoryView>
   );
 }

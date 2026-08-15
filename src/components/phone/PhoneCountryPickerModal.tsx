@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   Dimensions,
   FlatList,
@@ -164,6 +165,7 @@ export default function PhoneCountryPickerModal({ visible, onClose, selectedIso,
           <PhoneCountryPickerPanel selectedIso={selectedIso} onSelect={onSelect} onClose={onClose} isDark={isDark} />
         </View>
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

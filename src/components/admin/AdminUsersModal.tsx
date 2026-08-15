@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -598,6 +599,7 @@ export default function AdminUsersModal({ visible, onClose, onOpenUser, theme }:
           />
         )}
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

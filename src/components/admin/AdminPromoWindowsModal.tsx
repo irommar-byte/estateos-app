@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -215,6 +216,7 @@ export default function AdminPromoWindowsModal({ visible, onClose, theme, onSent
           </Pressable>
         </ScrollView>
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

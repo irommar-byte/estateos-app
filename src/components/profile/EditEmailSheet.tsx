@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -221,7 +222,8 @@ export default function EditEmailSheet({
             </View>
           </View>
         </BlurView>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
     );
   }
 
@@ -346,6 +348,7 @@ export default function EditEmailSheet({
           </View>
         </KeyboardAvoidingView>
       </BlurView>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

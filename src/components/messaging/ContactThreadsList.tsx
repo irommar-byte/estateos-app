@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -394,7 +395,8 @@ export default function ContactThreadsList({
             </View>
           </Pressable>
         </Pressable>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
     </View>
   );
 }

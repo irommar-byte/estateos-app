@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
 import { ActivityIndicator, Alert, Animated, Easing, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -177,6 +178,7 @@ function ImportSuccessCinematic({
           </Pressable>
         </Animated.View>
       </Animated.View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }
@@ -934,7 +936,8 @@ export default function AdminNativeImportScreen() {
             ))}
           </ScrollView>
         </View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
       <PublicationChoiceModal
         visible={publicationChoiceVisible}
         isDark={isDark}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from './NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Modal,
@@ -558,6 +559,7 @@ export default function ProPhotoSessionModal({
           </View>
         </KeyboardAvoidingView>
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

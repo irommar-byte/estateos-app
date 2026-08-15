@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
 import {
   View,
   Text,
@@ -933,6 +934,7 @@ const RadarAuthGateModal = ({
           </Pressable>
         </Animated.View>
       </Animated.View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 };
@@ -6469,7 +6471,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             </View>
           </View>
         </View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
       ) : null}
     </View>
   </>);

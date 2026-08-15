@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
 import { 
   StyleSheet, View, Text, Pressable, TextInput, KeyboardAvoidingView, 
   Platform, ActivityIndicator, Alert, Linking, Modal
@@ -2520,7 +2521,8 @@ export default function DealroomChatScreen() {
             </Pressable>
           </View>
         </View>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
 
       {/* Apple Guideline 1.2 — UGC: Report + Block. */}
       <Modal
@@ -2570,7 +2572,8 @@ export default function DealroomChatScreen() {
             </Pressable>
           </View>
         </Pressable>
-      </Modal>
+      <NumericKeyboardAccessory />
+    </Modal>
 
       <ReportSheet
         visible={isReportOpen}

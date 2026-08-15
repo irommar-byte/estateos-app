@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from './NumericKeyboardAccessory';
 import {
   ActivityIndicator,
   Alert,
@@ -501,6 +502,7 @@ export default function AdminContentReportsModal({ visible, onClose, theme, onQu
           </ScrollView>
         )}
       </View>
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }

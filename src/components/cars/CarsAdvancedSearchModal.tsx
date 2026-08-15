@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   Keyboard,
   Modal,
@@ -692,6 +693,7 @@ export default function CarsAdvancedSearchModal({
           />
         </View>
       ) : null}
+    <NumericKeyboardAccessory />
     </Modal>
   );
 }
