@@ -3880,20 +3880,12 @@ html:not(.light) .eos-car-form-cancel {
 .eos-discovery-btn__icon {
   color: inherit;
 }
-.eos-discovery-btn--like.is-active {
-  color: #34d399;
-  border-color: rgba(52, 211, 153, 0.45);
-  background: rgba(6, 78, 59, 0.72);
-}
-.eos-discovery-btn--dislike.is-active {
-  color: #fca5a5;
-  border-color: rgba(248, 113, 113, 0.4);
-  background: rgba(127, 29, 29, 0.55);
-}
+.eos-discovery-btn--like.is-active,
+.eos-discovery-btn--dislike.is-active,
 .eos-discovery-btn--serious.is-active {
-  color: #fcd34d;
-  border-color: rgba(251, 191, 36, 0.5);
-  background: rgba(120, 53, 15, 0.62);
+  color: #0a0a0a;
+  border-color: rgba(255, 255, 255, 0.92);
+  background: #f5f5f7;
 }
 
 .eos-discovery-reasons {
@@ -3952,7 +3944,7 @@ html:not(.light) .eos-car-form-cancel {
 }
 .eos-discovery-reasons__chip:hover {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(252, 165, 165, 0.45);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 .eos-discovery-reasons__chip--skip {
   color: rgba(255, 255, 255, 0.55);
