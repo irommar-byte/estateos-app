@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Wallet } from "lucide-react";
 import KeiAmerWorkspace from "@/components/admin/KeiAmerWorkspace";
 import PortalOnboardingInvitePanel from "@/components/admin/PortalOnboardingInvitePanel";
+import ServerMemoryTile from "@/components/admin/ServerMemoryTile";
 
 export default function Centrala() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -83,6 +84,7 @@ export default function Centrala() {
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
+          <ServerMemoryTile />
           {[
             { title: "Baza Ofert", desc: "Zarządzaj nieruchomościami.", icon: <Database size={32} />, path: "/centrala/oferty", color: "from-blue-500/20 to-blue-500/5" },
             { title: "Użytkownicy", desc: "Zarządzaj kontami.", icon: <Users size={32} />, path: "/centrala/uzytkownicy", color: "from-emerald-500/20 to-emerald-500/5" },
