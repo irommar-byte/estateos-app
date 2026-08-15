@@ -128,7 +128,7 @@ function isVoeEmbedHost(url) {
 }
 
 const CDA_HD_PLAYER_HOSTS =
-  /(?:^|\.)player\.cda-hd\.(?:co|cc)|(?:^|\.)player\.cvary\.org|(?:^|\.)divxplayer\.ml|(?:^|\.)metaverseid\.tk|(?:^|\.)akpdm\.top$/i;
+  /(?:^|\.)player\.cda-h(?:d)?\.(?:co|cc)|(?:^|\.)player\.cvary\.org|(?:^|\.)divxplayer\.ml|(?:^|\.)metaverseid\.tk|(?:^|\.)akpdm\.top$/i;
 
 export function isCdaHdPlayerHost(url) {
   try {
@@ -460,7 +460,57 @@ async function fetchVoeHtml(startUrl) {
   return { html, finalUrl: startUrl };
 }
 
-export async function resolveVoePage(startUrl, depth = 0) {
+/** Canonical VOE mirrors — ogladaj.me often redirects to dead CF hosts (520). */
+const VOE_FALLBACK_ORIGINS = [
+  "https://voe.sx",
+  "https://vtbe.to",
+  "https://voe-unblock.com",
+];
+
+function extractVoeEmbedId(url) {
+  try {
+    const m = new URL(url).pathname.match(/\/e\/([a-zA-Z0-9]+)/i);
+    return m?.[1] || "";
+  } catch {
+    return "";
+  }
+}
+
+function looksLikeDeadVoeHtml(html, finalUrl) {
+  if (!html) return true;
+  if (/\b520:\s*Web server is returning an unknown error/i.test(html)) return true;
+  if (/Just a moment\.\.\./i.test(html)) return true;
+  if (/cf-error-details|cloudflare\.com\/5xx-error/i.test(html)) return true;
+  try {
+    const host = new URL(finalUrl || "").hostname;
+    if (/stevenfamilyedge|nicolehappyoutside/i.test(host) && html.length < 9000 && !/m3u8|application\/json/i.test(html)) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+async function resolveVoeWithFallbackHosts(embedUrl, depth) {
+  const id = extractVoeEmbedId(embedUrl);
+  if (!id || depth > 3) return null;
+  let origin = "";
+  try {
+    origin = new URL(embedUrl).origin;
+  } catch {
+    return null;
+  }
+  for (const base of VOE_FALLBACK_ORIGINS) {
+    if (base === origin) continue;
+    const alt = `${base}/e/${id}`;
+    const hit = await resolveVoePage(alt, depth + 1, { skipHostFallback: true });
+    if (hit?.url) return hit;
+  }
+  return null;
+}
+
+export async function resolveVoePage(startUrl, depth = 0, options = {}) {
   if (depth > 5) return null;
 
   if (isCdaHdPlayerHost(startUrl)) {
@@ -473,7 +523,11 @@ export async function resolveVoePage(startUrl, depth = 0) {
   }
 
   const fetched = await fetchVoeHtml(startUrl);
-  if (!fetched) {
+  if (!fetched || looksLikeDeadVoeHtml(fetched.html, fetched.finalUrl)) {
+    if (!options.skipHostFallback && extractVoeEmbedId(startUrl)) {
+      const viaFallback = await resolveVoeWithFallbackHosts(startUrl, depth);
+      if (viaFallback) return viaFallback;
+    }
     if (!isVoeEmbedHost(startUrl)) return resolveDoodPage(startUrl);
     return null;
   }
@@ -487,16 +541,24 @@ export async function resolveVoePage(startUrl, depth = 0) {
   const extracted = extractVoeStreamFromHtml(html, finalUrl);
 
   if (extracted.redirect) {
-    return resolveVoePage(extracted.redirect, depth + 1);
+    const viaRedirect = await resolveVoePage(extracted.redirect, depth + 1, options);
+    if (viaRedirect) return viaRedirect;
+    if (!options.skipHostFallback && extractVoeEmbedId(startUrl)) {
+      return resolveVoeWithFallbackHosts(startUrl, depth);
+    }
+    return null;
   }
   if (extracted.stream) {
     return extracted.stream;
   }
   for (const iframeUrl of extracted.iframes || []) {
-    const nested = await resolveVoePage(iframeUrl, depth + 1);
+    const nested = await resolveVoePage(iframeUrl, depth + 1, options);
     if (nested) return nested;
   }
 
+  if (!options.skipHostFallback && extractVoeEmbedId(startUrl)) {
+    return resolveVoeWithFallbackHosts(startUrl, depth);
+  }
   return null;
 }
 
@@ -562,10 +624,11 @@ function extractCdaHdInlineEmbeds(html, pageUrl) {
   const out = [];
   const seen = new Set();
   const hashScriptRe =
-    /<script[^>]+src=["'](https?:\/\/player\.cda-hd\.[^"']+\/player\/hash\.php\?hash=([a-zA-Z0-9]+))["']/gi;
+    /<script[^>]+src=["'](https?:\/\/player\.cda-h(?:d)?\.[^"']+\/player\/hash\.php\?hash=([a-zA-Z0-9]+))["']/gi;
   let m;
   while ((m = hashScriptRe.exec(html))) {
     const vid = m[2];
+    // Canonical player domain — player.cda-h.co hash gate often returns empty body for /e/{hash}.
     const playerUrl = `https://player.cda-hd.co/e/${vid}`;
     if (seen.has(playerUrl)) continue;
     seen.add(playerUrl);
