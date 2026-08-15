@@ -24,6 +24,9 @@ import {
   Sparkles,
   Square,
   Trash2,
+  Download,
+  Pencil,
+  FilePenLine,
   AlertTriangle,
 } from "lucide-react";
 
@@ -69,6 +72,9 @@ type FileEntry = {
   bytes: number;
   mtimeMs: number | null;
   deletable: boolean;
+  downloadable?: boolean;
+  editableText?: boolean;
+  renamable?: boolean;
 };
 
 type ProcessRow = {
@@ -192,6 +198,11 @@ export default function ServerMemoryPage() {
   const [selectedLarge, setSelectedLarge] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<FileEntry | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [editTarget, setEditTarget] = useState<FileEntry | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
 
   const diskSmooth = useSmooth(status?.disk.percent ?? 0);
   const cpuSmooth = useSmooth(status?.cpu.percent ?? 0);
@@ -368,6 +379,103 @@ export default function ServerMemoryPage() {
       await loadStatus();
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Błąd procesu.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const downloadFile = (entry: FileEntry) => {
+    if (!activeArea || entry.isDir) return;
+    const qs = new URLSearchParams({ area: activeArea, path: entry.relativePath });
+    window.open(`/api/admin/server/files/download?${qs.toString()}`, "_blank", "noopener,noreferrer");
+  };
+
+  const downloadSelected = () => {
+    if (!activeArea) return;
+    const files = entries.filter((e) => selected.has(e.relativePath) && e.downloadable && !e.isDir);
+    if (files.length === 0) {
+      setNotice("Zaznacz pliki do pobrania (nie foldery).");
+      return;
+    }
+    files.forEach((file, index) => {
+      window.setTimeout(() => downloadFile(file), index * 350);
+    });
+    setNotice(`Pobieranie ${files.length} plików…`);
+  };
+
+  const openRename = (entry: FileEntry) => {
+    setRenameTarget(entry);
+    setRenameValue(entry.name);
+  };
+
+  const submitRename = async () => {
+    if (!activeArea || !renameTarget) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/server/files", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          area: activeArea,
+          path: renameTarget.relativePath,
+          action: "rename",
+          newName: renameValue,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Zmiana nazwy nie powiodła się.");
+      setRenameTarget(null);
+      setNotice(`Zmieniono nazwę na „${data.name}”.`);
+      await loadFiles(activeArea, cwd);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Błąd zmiany nazwy.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openEdit = async (entry: FileEntry) => {
+    if (!activeArea) return;
+    setEditTarget(entry);
+    setEditLoading(true);
+    setEditContent("");
+    try {
+      const qs = new URLSearchParams({ area: activeArea, path: entry.relativePath, mode: "content" });
+      const res = await fetch(`/api/admin/server/files?${qs}`, { cache: "no-store", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się wczytać pliku.");
+      setEditContent(String(data.content || ""));
+    } catch (err) {
+      setEditTarget(null);
+      setNotice(err instanceof Error ? err.message : "Błąd odczytu.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!activeArea || !editTarget) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/server/files", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          area: activeArea,
+          path: editTarget.relativePath,
+          action: "save",
+          content: editContent,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Zapis nie powiódł się.");
+      setEditTarget(null);
+      setNotice(`Zapisano „${editTarget.name}” (${formatBytes(data.bytes || 0)}).`);
+      await loadFiles(activeArea, cwd);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Błąd zapisu.");
     } finally {
       setBusy(false);
     }
@@ -562,14 +670,30 @@ export default function ServerMemoryPage() {
                 <p className="text-xs text-[var(--eos-muted)]">Sugestie do ręcznego usunięcia</p>
               </div>
               {selectedLarge.size > 0 && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void runDeleteLarge()}
-                  className="inline-flex items-center gap-2 rounded-full bg-red-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white"
-                >
-                  <Trash2 size={12} /> Usuń ({selectedLarge.size})
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      [...selectedLarge].forEach((p, i) => {
+                        window.setTimeout(() => {
+                          const qs = new URLSearchParams({ absolute: p });
+                          window.open(`/api/admin/server/files/download?${qs}`, "_blank", "noopener,noreferrer");
+                        }, i * 350);
+                      });
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-text)]"
+                  >
+                    <Download size={12} /> Pobierz
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void runDeleteLarge()}
+                    className="inline-flex items-center gap-2 rounded-full bg-red-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white"
+                  >
+                    <Trash2 size={12} /> Usuń ({selectedLarge.size})
+                  </button>
+                </div>
               )}
             </div>
             <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -651,7 +775,16 @@ export default function ServerMemoryPage() {
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {selected.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={downloadSelected}
+                      className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-bg)] px-4 py-2 text-[11px] font-black uppercase tracking-widest text-[var(--eos-text)]"
+                    >
+                      <Download size={13} /> Pobierz ({selected.size})
+                    </button>
+                  )}
                   {area.deletable && selected.size > 0 ? (
                     <button
                       type="button"
@@ -662,7 +795,7 @@ export default function ServerMemoryPage() {
                     </button>
                   ) : !area.deletable ? (
                     <span className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
-                      <Shield size={12} /> Tylko podgląd
+                      <Shield size={12} /> Podgląd + pobieranie
                     </span>
                   ) : null}
                 </div>
@@ -678,31 +811,30 @@ export default function ServerMemoryPage() {
                     <thead className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
                       <tr className="border-b border-[var(--eos-border)]">
                         <th className="w-10 px-4 py-3">
-                          {area.deletable && (
-                            <input
-                              type="checkbox"
-                              checked={
-                                selected.size > 0 &&
-                                selected.size === entries.filter((e) => e.deletable).length
-                              }
-                              onChange={() => {
-                                const deletable = entries.filter((e) => e.deletable);
-                                if (selected.size === deletable.length) setSelected(new Set());
-                                else setSelected(new Set(deletable.map((e) => e.relativePath)));
-                              }}
-                            />
-                          )}
+                          <input
+                            type="checkbox"
+                            checked={
+                              selected.size > 0 &&
+                              selected.size === entries.filter((e) => e.deletable || e.downloadable).length
+                            }
+                            onChange={() => {
+                              const selectable = entries.filter((e) => e.deletable || e.downloadable);
+                              if (selected.size === selectable.length) setSelected(new Set());
+                              else setSelected(new Set(selectable.map((e) => e.relativePath)));
+                            }}
+                          />
                         </th>
                         <th className="px-3 py-3">Nazwa</th>
                         <th className="px-3 py-3">Rozmiar</th>
                         <th className="px-3 py-3">Data</th>
+                        <th className="px-3 py-3 text-right">Akcje</th>
                       </tr>
                     </thead>
                     <tbody>
                       {entries.map((entry) => (
                         <tr key={entry.relativePath} className="border-b border-[var(--eos-border)] last:border-0 hover:bg-[var(--eos-input)]">
                           <td className="px-4 py-3">
-                            {entry.deletable && (
+                            {(entry.deletable || entry.downloadable) && (
                               <input
                                 type="checkbox"
                                 checked={selected.has(entry.relativePath)}
@@ -739,11 +871,45 @@ export default function ServerMemoryPage() {
                           <td className="px-3 py-3 text-[var(--eos-subtle)]">
                             {entry.mtimeMs ? new Date(entry.mtimeMs).toLocaleString("pl-PL") : "—"}
                           </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap justify-end gap-1.5">
+                              {entry.downloadable && (
+                                <button
+                                  type="button"
+                                  title="Pobierz"
+                                  onClick={() => downloadFile(entry)}
+                                  className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                                >
+                                  <Download size={11} /> Pobierz
+                                </button>
+                              )}
+                              {entry.renamable && (
+                                <button
+                                  type="button"
+                                  title="Zmień nazwę"
+                                  onClick={() => openRename(entry)}
+                                  className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                                >
+                                  <Pencil size={11} /> Nazwa
+                                </button>
+                              )}
+                              {entry.editableText && (
+                                <button
+                                  type="button"
+                                  title="Edytuj treść"
+                                  onClick={() => void openEdit(entry)}
+                                  className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                                >
+                                  <FilePenLine size={11} /> Edytuj
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                       {entries.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="px-6 py-10 text-center text-[var(--eos-muted)]">
+                          <td colSpan={5} className="px-6 py-10 text-center text-[var(--eos-muted)]">
                             Pusty katalog
                           </td>
                         </tr>
@@ -854,6 +1020,76 @@ export default function ServerMemoryPage() {
           onCancel={() => setConfirmCleanup(false)}
           onConfirm={() => void runCleanup()}
         />
+      )}
+
+      {renameTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[28px] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] p-6 text-[var(--eos-text)] shadow-[var(--eos-shadow-strong)]">
+            <h3 className="text-xl font-black">Zmień nazwę</h3>
+            <p className="mt-2 text-sm text-[var(--eos-muted)]">Aktualnie: {renameTarget.name}</p>
+            <input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="mt-4 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-[var(--eos-accent)]"
+              autoFocus
+            />
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" className="rounded-full px-4 py-2 text-sm text-[var(--eos-muted)]" onClick={() => setRenameTarget(null)}>
+                Anuluj
+              </button>
+              <button
+                type="button"
+                disabled={busy || !renameValue.trim()}
+                onClick={() => void submitRename()}
+                className="rounded-full bg-[var(--eos-accent)] px-5 py-2 text-sm font-bold text-white disabled:opacity-40"
+              >
+                {busy ? <Loader2 size={14} className="animate-spin" /> : "Zapisz nazwę"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-[28px] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] text-[var(--eos-text)] shadow-[var(--eos-shadow-strong)]">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--eos-border)] px-5 py-4">
+              <div>
+                <h3 className="text-lg font-black">Edycja · {editTarget.name}</h3>
+                <p className="text-xs text-[var(--eos-muted)]">Pliki tekstowe do 1,5 MB</p>
+              </div>
+              <button type="button" className="text-sm text-[var(--eos-muted)]" onClick={() => setEditTarget(null)}>
+                Zamknij
+              </button>
+            </div>
+            {editLoading ? (
+              <div className="flex items-center gap-2 px-5 py-10 text-[var(--eos-muted)]">
+                <Loader2 className="animate-spin" size={16} /> Wczytuję…
+              </div>
+            ) : (
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                spellCheck={false}
+                className="min-h-[50vh] flex-1 resize-y bg-[var(--eos-bg)] px-5 py-4 font-mono text-xs leading-relaxed text-[var(--eos-text)] outline-none"
+              />
+            )}
+            <div className="flex justify-end gap-3 border-t border-[var(--eos-border)] px-5 py-4">
+              <button type="button" className="rounded-full px-4 py-2 text-sm text-[var(--eos-muted)]" onClick={() => setEditTarget(null)}>
+                Anuluj
+              </button>
+              <button
+                type="button"
+                disabled={busy || editLoading}
+                onClick={() => void saveEdit()}
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-accent)] px-5 py-2 text-sm font-bold text-white disabled:opacity-40"
+              >
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <FilePenLine size={14} />}
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
