@@ -514,6 +514,7 @@ export default function IntelligencePulseTape({
     null,
   );
   const [presentReason, setPresentReason] = useState<PresentReason | null>(null);
+  const [orbNotice, setOrbNotice] = useState<Exclude<PresentReason, 'manual'> | null>(null);
   const [spectacle, setSpectacle] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   /** Idle-first oil: full multi-layer swirl only around real interaction. */
@@ -525,6 +526,7 @@ export default function IntelligencePulseTape({
   const splashA = useRef(new Animated.Value(0)).current;
   const splashB = useRef(new Animated.Value(0)).current;
   const splashC = useRef(new Animated.Value(0)).current;
+  const whisperOp = useRef(new Animated.Value(0)).current;
   const closingRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spectacleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -663,6 +665,56 @@ export default function IntelligencePulseTape({
     [clearHide, runGenieOut],
   );
 
+  const playOrbSplash = useCallback(() => {
+    if (reduceMotionRef.current) return;
+    const runSplash = (ring: Animated.Value, delayMs: number) => {
+      ring.setValue(0);
+      return Animated.sequence([
+        Animated.delay(delayMs),
+        Animated.timing(ring, {
+          toValue: 1,
+          duration: INTEL_MOTION.splashMs,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]);
+    };
+    Animated.parallel([
+      runSplash(splashA, 0),
+      runSplash(splashB, INTEL_MOTION.splashStaggerMs),
+      runSplash(splashC, INTEL_MOTION.splashStaggerMs * 2),
+    ]).start();
+  }, [splashA, splashB, splashC]);
+
+  /** Auto attention stays on the orb — never covers the catalog. */
+  const nudgeOrb = useCallback(
+    (kind: Exclude<PresentReason, 'manual'>) => {
+      if (sheetVisibleRef.current) return;
+      bumpActivity();
+      setOrbNotice(kind);
+      impact(Haptics.ImpactFeedbackStyle.Light);
+      playOrbSplash();
+      whisperOp.stopAnimation();
+      whisperOp.setValue(0);
+      Animated.sequence([
+        Animated.timing(whisperOp, {
+          toValue: 1,
+          duration: reduceMotionRef.current ? 0 : 220,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(2800),
+        Animated.timing(whisperOp, {
+          toValue: 0,
+          duration: reduceMotionRef.current ? 0 : 420,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    },
+    [bumpActivity, impact, playOrbSplash, whisperOp],
+  );
+
   const presentGently = useCallback(
     (kind: PresentReason, milestoneGate?: number | null) => {
       bumpActivity();
@@ -763,9 +815,9 @@ export default function IntelligencePulseTape({
       if (reason === 'milestone' && gate != null) {
         await writeMilestones(sessionStore, [...seen, gate]);
       }
-      presentGently(reason, gate);
+      nudgeOrb(reason);
     },
-    [presentGently],
+    [nudgeOrb],
   );
 
   const { pulse, ready } = useDiscoveryPulse({ onPulseChange });
@@ -786,10 +838,10 @@ export default function IntelligencePulseTape({
         if (await hasDonePeek(sessionStore)) return;
         if (!(await consumeAutoBudget(sessionStore))) return;
         await markPeekDone(sessionStore);
-        presentGently(contradiction ? 'contradiction' : 'ready_peek');
+        nudgeOrb(contradiction ? 'contradiction' : 'ready_peek');
       })();
     }, INTEL_MOTION.bootPeekDelayMs);
-  }, [presentGently, pulse, ready]);
+  }, [nudgeOrb, pulse, ready]);
 
   useEffect(
     () => subscribeIntelligenceDislikePrompt((detail) => {
@@ -849,7 +901,14 @@ export default function IntelligencePulseTape({
   const activeStageIndex = STAGE_ORDER.indexOf(activeStage);
   const progressPct = Math.max(0, Math.min(100, Math.round(pulse?.progress ?? 0)));
   const stageName = t(`discovery.stages.${activeStage}`);
-  const orbA11y = `${t('discovery.brand')} · ${stageName} · ${progressPct}%`;
+  const orbA11y = orbNotice
+    ? `${t('discovery.brand')} · ${t(
+        `discovery.pulse.${orbNotice === 'ready_peek' ? 'readyPeek' : orbNotice}Badge`,
+      )}`
+    : `${t('discovery.brand')} · ${stageName} · ${progressPct}%`;
+  const noticeBadge = orbNotice
+    ? t(`discovery.pulse.${orbNotice === 'ready_peek' ? 'readyPeek' : orbNotice}Badge`)
+    : '';
 
   /** Confidence wording mirrors www — i18n when present, PL fallback otherwise. */
   const confidenceText = (() => {
@@ -871,14 +930,14 @@ export default function IntelligencePulseTape({
     return contradictionOn ? 'Sygnały się mieszają' : 'Sygnały spójne';
   })();
 
-  /** Screen readers hear the auto-present instead of watching it. */
+  /** Screen readers hear the orb ping instead of a covering card. */
   useEffect(() => {
-    if (!sheetVisible || !presentReason || presentReason === 'manual') return;
-    const badge = t(
-      `discovery.pulse.${presentReason === 'ready_peek' ? 'readyPeek' : presentReason}Lead`,
+    if (!orbNotice || sheetVisible) return;
+    const lead = t(
+      `discovery.pulse.${orbNotice === 'ready_peek' ? 'readyPeek' : orbNotice}Lead`,
     );
-    AccessibilityInfo.announceForAccessibility?.(`${stageName} · ${progressPct}% · ${badge}`);
-  }, [presentReason, progressPct, sheetVisible, stageName, t]);
+    AccessibilityInfo.announceForAccessibility?.(`${t('discovery.brand')} · ${lead}`);
+  }, [orbNotice, sheetVisible, t]);
 
   const sheetSurface = isDark ? 'rgba(10,10,12,0.92)' : 'rgba(255,255,255,0.96)';
   const sheetText = isDark ? '#FFFFFF' : '#111827';
@@ -930,36 +989,22 @@ export default function IntelligencePulseTape({
 
   /** Water-splash ripples when like / dislike / serious teach the model. */
   useEffect(() => {
-    const runSplash = (ring: Animated.Value, delayMs: number) => {
-      ring.setValue(0);
-      return Animated.sequence([
-        Animated.delay(delayMs),
-        Animated.timing(ring, {
-          toValue: 1,
-          duration: INTEL_MOTION.splashMs,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]);
-    };
-
     return subscribeIntelligenceLearn((detail) => {
       if (!detail?.kind || detail.kind === 'open' || detail.kind === 'other') return;
       impact(Haptics.ImpactFeedbackStyle.Light);
       bumpActivity();
-      if (reduceMotionRef.current) return;
-      Animated.parallel([
-        runSplash(splashA, 0),
-        runSplash(splashB, INTEL_MOTION.splashStaggerMs),
-        runSplash(splashC, INTEL_MOTION.splashStaggerMs * 2),
-      ]).start();
+      playOrbSplash();
     });
-  }, [bumpActivity, impact, splashA, splashB, splashC]);
+  }, [bumpActivity, impact, playOrbSplash]);
 
   const open = useCallback(() => {
     impact(Haptics.ImpactFeedbackStyle.Light);
-    presentGently('manual');
-  }, [impact, presentGently]);
+    const pending = orbNotice;
+    setOrbNotice(null);
+    whisperOp.stopAnimation();
+    whisperOp.setValue(0);
+    presentGently(pending || 'manual');
+  }, [impact, orbNotice, presentGently, whisperOp]);
 
   const close = useCallback(() => {
     if (!reduceMotionRef.current) void Haptics.selectionAsync();
@@ -1133,7 +1178,27 @@ export default function IntelligencePulseTape({
           </View>
           <ProgressRing progress={progressPct} color={colors.accent} />
           <SiriBrainCore ringColor={colors.ring} active={orbActive} reduceMotion={reduceMotion} />
+          {orbNotice ? (
+            <View
+              pointerEvents="none"
+              style={[styles.noticePip, { backgroundColor: colors.accent, borderColor: isDark ? '#000' : '#fff' }]}
+            />
+          ) : null}
         </ApplePressable>
+        {orbNotice && noticeBadge ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.noticeWhisper,
+              layout === 'inline' ? styles.noticeWhisperInline : styles.noticeWhisperFloat,
+              { opacity: whisperOp, backgroundColor: isDark ? 'rgba(12,12,14,0.92)' : 'rgba(255,255,255,0.94)' },
+            ]}
+          >
+            <Text style={[styles.noticeWhisperText, { color: colors.accent }]} numberOfLines={1}>
+              {noticeBadge}
+            </Text>
+          </Animated.View>
+        ) : null}
       </View>
 
       <Modal
@@ -1430,6 +1495,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 55,
     elevation: 55,
+    overflow: 'visible',
   },
   rootInline: {
     zIndex: 55,
@@ -1445,6 +1511,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
+  },
+  noticePip: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    zIndex: 6,
+  },
+  noticeWhisper: {
+    position: 'absolute',
+    top: 16,
+    maxWidth: 128,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  noticeWhisperFloat: {
+    right: HIT + 8,
+  },
+  noticeWhisperInline: {
+    right: HIT + 8,
+  },
+  noticeWhisperText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   aura: {
     position: 'absolute',

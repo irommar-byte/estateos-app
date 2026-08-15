@@ -251,6 +251,8 @@ export default function DiscoveryPulse() {
   const [auth, setAuth] = useState<"unknown" | "guest" | "user">("unknown");
   const [spectacle, setSpectacle] = useState(false);
   const [presentReason, setPresentReason] = useState<PresentReason | null>(null);
+  const [orbNotice, setOrbNotice] = useState<Exclude<PresentReason, "manual"> | null>(null);
+  const [orbWhisper, setOrbWhisper] = useState(false);
   const [absorbing, setAbsorbing] = useState(false);
   const [fillBoost, setFillBoost] = useState(0);
   const [oilActive, setOilActive] = useState(true);
@@ -266,6 +268,9 @@ export default function DiscoveryPulse() {
   const hidePausedRef = useRef(false);
   const hideRemainingRef = useRef(0);
   const hideDeadlineRef = useRef(0);
+  const whisperTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orbNoticeRef = useRef<Exclude<PresentReason, "manual"> | null>(null);
+  orbNoticeRef.current = orbNotice;
 
   const wakeOil = useCallback(() => {
     setOilActive(true);
@@ -375,10 +380,41 @@ export default function DiscoveryPulse() {
     [clearHide, intelligenceEnabled, scheduleHide, wakeOil],
   );
 
+  const nudgeOrb = useCallback(
+    async (kind: Exclude<PresentReason, "manual">) => {
+      if (!intelligenceEnabled) return;
+      if (expandedRef.current) return;
+      const allowed = await consumeAutoBudget(webStore);
+      if (!allowed) return;
+      wakeOil();
+      setOrbNotice(kind);
+      setOrbWhisper(true);
+      setSplashKey((k) => k + 1);
+      if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
+      whisperTimerRef.current = setTimeout(() => setOrbWhisper(false), 3000);
+    },
+    [intelligenceEnabled, wakeOil],
+  );
+
   const toggleOrb = useCallback(() => {
     wakeOil();
     if (expandedRef.current) {
       collapseToOrb();
+      return;
+    }
+    const pending = orbNoticeRef.current;
+    setOrbNotice(null);
+    setOrbWhisper(false);
+    if (whisperTimerRef.current) {
+      clearTimeout(whisperTimerRef.current);
+      whisperTimerRef.current = null;
+    }
+    if (pending) {
+      setPresentReason(pending);
+      presentReasonRef.current = pending;
+      setExpanded(true);
+      expandedRef.current = true;
+      dispatchIntelligenceSheetOpen(true);
       return;
     }
     void presentGently("manual");
@@ -418,7 +454,7 @@ export default function DiscoveryPulse() {
             if (pick === "milestone" && milestone != null) {
               await writeMilestones(webStore, [...seen, milestone]);
             }
-            void presentGently(pick);
+            void nudgeOrb(pick);
           }
         }
 
@@ -430,7 +466,7 @@ export default function DiscoveryPulse() {
         // no-op
       }
     },
-    [presentGently],
+    [nudgeOrb],
   );
 
   useEffect(() => {
@@ -440,6 +476,7 @@ export default function DiscoveryPulse() {
       clearHide();
       if (absorbTimerRef.current) clearTimeout(absorbTimerRef.current);
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
     };
   }, [load, clearHide, wakeOil]);
 
@@ -496,7 +533,7 @@ export default function DiscoveryPulse() {
       await new Promise((r) => setTimeout(r, INTEL_MOTION.bootPeekDelayMs));
       if (cancelled || expandedRef.current) return;
       await markPeekDone(webStore);
-      void presentGently(
+      void nudgeOrb(
         pulse.contradictionIndex >= INTEL_THRESHOLDS.contradiction
           ? "contradiction"
           : "ready_peek",
@@ -506,7 +543,7 @@ export default function DiscoveryPulse() {
     return () => {
       cancelled = true;
     };
-  }, [auth, pulse, expanded, intelligenceEnabled, presentGently]);
+  }, [auth, pulse, expanded, intelligenceEnabled, nudgeOrb]);
 
   if (
     !intelligenceHydrated ||
@@ -554,6 +591,16 @@ export default function DiscoveryPulse() {
           ready_peek: dict.intelligence.readyPeekLead,
         }[presentReason]
       : null;
+  const noticeBadge =
+    orbNotice === "progress"
+      ? dict.intelligence.progressBadge
+      : orbNotice === "milestone"
+        ? dict.intelligence.milestoneBadge
+        : orbNotice === "contradiction"
+          ? dict.intelligence.contradictionBadge
+          : orbNotice === "ready_peek"
+            ? dict.intelligence.readyPeekBadge
+            : null;
 
   const circumference = 2 * Math.PI * 17;
 
@@ -737,7 +784,7 @@ export default function DiscoveryPulse() {
           scale: absorbing ? [1, 1.14, 1] : 1,
         }}
         transition={reduceMotion ? { duration: 0.12 } : INTEL_ORB_SPRING}
-        className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${ringClass} bg-transparent shadow-[0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 hover:scale-[1.1] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
+        className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center overflow-visible rounded-full border ${ringClass} bg-transparent shadow-[0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 hover:scale-[1.1] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
         aria-label={`EstateOS Intelligence · ${statusCaption}`}
         aria-expanded={expanded}
         title={statusCaption}
@@ -753,6 +800,27 @@ export default function DiscoveryPulse() {
           size={18}
           oilActive={oilActive || expanded || absorbing}
         />
+
+        {orbNotice ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/50"
+            style={{ background: colors.accent }}
+            aria-hidden
+          />
+        ) : null}
+
+        <AnimatePresence>
+          {orbWhisper && noticeBadge ? (
+            <motion.span
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -4 }}
+              className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-10 -translate-y-1/2 whitespace-nowrap rounded-full border border-white/15 bg-[rgba(10,12,16,0.92)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+            >
+              {noticeBadge}
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
 
         <svg
           className="pointer-events-none absolute left-1/2 top-1/2 size-[2.65rem] -translate-x-1/2 -translate-y-1/2 -rotate-90"
