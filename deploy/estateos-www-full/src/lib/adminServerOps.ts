@@ -51,7 +51,45 @@ export type ServerFileEntry = {
   bytes: number;
   mtimeMs: number | null;
   deletable: boolean;
+  downloadable: boolean;
+  editableText: boolean;
+  renamable: boolean;
 };
+
+const TEXT_EDIT_EXT = new Set([
+  'txt',
+  'md',
+  'json',
+  'log',
+  'csv',
+  'tsv',
+  'yml',
+  'yaml',
+  'xml',
+  'html',
+  'htm',
+  'css',
+  'js',
+  'ts',
+  'mjs',
+  'cjs',
+  'ini',
+  'conf',
+  'cfg',
+  'svg',
+  'plist',
+  'sh',
+  'bash',
+  'zsh',
+]);
+
+export function isTextEditableName(name: string) {
+  const lower = name.toLowerCase();
+  if (BLOCKED_NAME_RE.test(name)) return false;
+  if (lower.endsWith('.env.example')) return true;
+  const ext = lower.includes('.') ? lower.split('.').pop() || '' : '';
+  return TEXT_EDIT_EXT.has(ext);
+}
 
 export type LargeFileHint = {
   path: string;
@@ -71,6 +109,12 @@ export type SafeCleanupItem = {
 const HOME = (process.env.ADMIN_SERVER_HOME || process.env.HOME || '/home/rommar').replace(/\/+$/, '');
 const DOWNLOADS = path.join(HOME, 'lineage-movies/downloads');
 const UPLOADS = path.join(HOME, 'uploads');
+const BLOCKED_NAME_RE = /(\.env($|\.)|^id_rsa|^id_ed25519|\.pem$|\.key$|schema\.prisma$)/i;
+const SAFE_CLEAN_NAME_RE = /\.(part|tmp|ytdl|download)$/i;
+const UNSAFE_NEW_NAME_RE = /[\\/\0]|^\.+$/;
+const MAX_LIST = 500;
+const HISTORY_LEN = 48;
+const MAX_TEXT_EDIT_BYTES = 1_500_000;
 
 export const STORAGE_CATEGORIES: StorageCategoryDef[] = [
   {
@@ -202,10 +246,6 @@ export const STORAGE_CATEGORIES: StorageCategoryDef[] = [
 ];
 
 const ALL_AREAS: StorageArea[] = STORAGE_CATEGORIES.flatMap((c) => c.areas);
-const BLOCKED_NAME_RE = /(\.env($|\.)|^id_rsa|^id_ed25519|\.pem$|\.key$|schema\.prisma$)/i;
-const SAFE_CLEAN_NAME_RE = /\.(part|tmp|ytdl|download)$/i;
-const MAX_LIST = 500;
-const HISTORY_LEN = 48;
 
 type MetricSample = {
   at: number;
@@ -433,6 +473,7 @@ export function listFiles(areaId: string, relativePath = ''): {
     }
     if (info.isSymbolicLink()) continue;
     const rel = path.relative(area.root, full).split(path.sep).join('/');
+    const blocked = BLOCKED_NAME_RE.test(name);
     entries.push({
       name,
       path: full,
@@ -440,7 +481,10 @@ export function listFiles(areaId: string, relativePath = ''): {
       isDir: info.isDirectory(),
       bytes: info.isDirectory() ? 0 : info.size,
       mtimeMs: Number.isFinite(info.mtimeMs) ? info.mtimeMs : null,
-      deletable: area.deletable && !BLOCKED_NAME_RE.test(name),
+      deletable: area.deletable && !blocked,
+      downloadable: !info.isDirectory() && !blocked,
+      editableText: !info.isDirectory() && area.deletable && !blocked && isTextEditableName(name),
+      renamable: area.deletable && !blocked,
     });
   }
   entries.sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name, 'pl'));
@@ -488,6 +532,89 @@ export function deleteTargets(areaId: string, relativePaths: string[]) {
     }
   }
   return { deleted, errors };
+}
+
+export function resolveDownloadFile(areaId: string, relativePath: string) {
+  const { area, abs } = resolveAreaPath(areaId, relativePath);
+  if (!fs.existsSync(abs)) throw new Error('Plik nie istnieje.');
+  const st = fs.lstatSync(abs);
+  if (!st.isFile()) throw new Error('Można pobierać tylko pliki.');
+  const name = path.basename(abs);
+  if (BLOCKED_NAME_RE.test(name)) throw new Error('Plik chroniony.');
+  return { area, abs, name, size: st.size };
+}
+
+export function resolveDownloadAbsolute(absPath: string) {
+  const abs = path.resolve(absPath);
+  const area = ALL_AREAS.find((a) => isInside(a.root, abs));
+  if (!area) throw new Error('Plik poza dozwolonym obszarem.');
+  if (!fs.existsSync(abs)) throw new Error('Plik nie istnieje.');
+  const st = fs.lstatSync(abs);
+  if (!st.isFile()) throw new Error('Można pobierać tylko pliki.');
+  const name = path.basename(abs);
+  if (BLOCKED_NAME_RE.test(name)) throw new Error('Plik chroniony.');
+  return { area, abs, name, size: st.size };
+}
+
+export function renameEntry(areaId: string, relativePath: string, newNameRaw: string) {
+  const area = areaById(areaId);
+  if (!area) throw new Error('Nieznany obszar pamięci.');
+  if (!area.deletable) throw new Error('Ten obszar jest chroniony — nie można edytować.');
+  const newName = String(newNameRaw || '').trim();
+  if (!newName || UNSAFE_NEW_NAME_RE.test(newName) || newName.includes('..')) {
+    throw new Error('Nieprawidłowa nazwa.');
+  }
+  if (BLOCKED_NAME_RE.test(newName)) throw new Error('Ta nazwa jest zablokowana.');
+  const { abs } = resolveAreaPath(areaId, relativePath);
+  if (!fs.existsSync(abs)) throw new Error('Element nie istnieje.');
+  if (BLOCKED_NAME_RE.test(path.basename(abs))) throw new Error('Element chroniony.');
+  const dest = path.join(path.dirname(abs), newName);
+  if (!isInside(area.root, dest)) throw new Error('Ścieżka poza obszarem.');
+  if (fs.existsSync(dest)) throw new Error('Element o tej nazwie już istnieje.');
+  fs.renameSync(abs, dest);
+  const nextRelative = path.relative(area.root, dest).split(path.sep).join('/');
+  return { ok: true, from: relativePath, to: nextRelative, name: newName };
+}
+
+export function readEditableText(areaId: string, relativePath: string) {
+  const area = areaById(areaId);
+  if (!area) throw new Error('Nieznany obszar pamięci.');
+  const { abs } = resolveAreaPath(areaId, relativePath);
+  if (!fs.existsSync(abs)) throw new Error('Plik nie istnieje.');
+  const st = fs.lstatSync(abs);
+  if (!st.isFile()) throw new Error('To nie jest plik.');
+  const name = path.basename(abs);
+  if (BLOCKED_NAME_RE.test(name)) throw new Error('Plik chroniony.');
+  if (!isTextEditableName(name)) throw new Error('Ten typ pliku nie nadaje się do edycji tekstu.');
+  if (st.size > MAX_TEXT_EDIT_BYTES) throw new Error('Plik jest za duży do edycji w przeglądarce (max 1,5 MB).');
+  const content = fs.readFileSync(abs, 'utf8');
+  return {
+    ok: true,
+    name,
+    relativePath,
+    bytes: st.size,
+    editable: area.deletable,
+    content,
+  };
+}
+
+export function writeEditableText(areaId: string, relativePath: string, content: string) {
+  const area = areaById(areaId);
+  if (!area) throw new Error('Nieznany obszar pamięci.');
+  if (!area.deletable) throw new Error('Ten obszar jest chroniony — nie można zapisywać.');
+  const { abs } = resolveAreaPath(areaId, relativePath);
+  if (!fs.existsSync(abs)) throw new Error('Plik nie istnieje.');
+  const st = fs.lstatSync(abs);
+  if (!st.isFile()) throw new Error('To nie jest plik.');
+  const name = path.basename(abs);
+  if (BLOCKED_NAME_RE.test(name)) throw new Error('Plik chroniony.');
+  if (!isTextEditableName(name)) throw new Error('Ten typ pliku nie nadaje się do edycji tekstu.');
+  const text = String(content ?? '');
+  if (Buffer.byteLength(text, 'utf8') > MAX_TEXT_EDIT_BYTES) {
+    throw new Error('Treść przekracza limit 1,5 MB.');
+  }
+  fs.writeFileSync(abs, text, 'utf8');
+  return { ok: true, bytes: Buffer.byteLength(text, 'utf8') };
 }
 
 function walkSafeCleanup(dir: string, out: SafeCleanupItem[], depth = 0) {
