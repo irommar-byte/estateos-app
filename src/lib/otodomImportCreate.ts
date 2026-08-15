@@ -272,6 +272,7 @@ export async function importOtodomImagesForOffer(params: {
   lastImageAsFloorPlan?: boolean;
   floorPlanImageIndex?: number | null;
   onProgress?: (progress: ImportImageProgress) => void;
+  shouldCancel?: () => boolean | Promise<boolean>;
 }): Promise<{ uploaded: number; failed: number; urls: string[]; floorPlanUrl: string | null }> {
   const urls: string[] = [];
   let uploaded = 0;
@@ -288,7 +289,14 @@ export async function importOtodomImagesForOffer(params: {
   const floorPlanRemoteUrl = floorPlanIdx != null ? allUrls[floorPlanIdx] : null;
   const totalSteps = galleryUrls.length + (floorPlanRemoteUrl ? 1 : 0);
 
+  const throwIfCancelled = async () => {
+    if (await params.shouldCancel?.()) {
+      throw new Error('Import anulowany.');
+    }
+  };
+
   const uploadGalleryImage = async (remoteUrl: string, galleryIndex: number, step: number) => {
+    await throwIfCancelled();
     params.onProgress?.({
       phase: 'download',
       index: step,
@@ -342,6 +350,7 @@ export async function importOtodomImagesForOffer(params: {
   try {
     let step = 0;
     for (let offset = 0; offset < galleryUrls.length; offset += IMAGE_UPLOAD_CONCURRENCY) {
+      await throwIfCancelled();
       const chunk = galleryUrls.slice(offset, offset + IMAGE_UPLOAD_CONCURRENCY);
       const chunkResults = await Promise.all(
         chunk.map(async (remoteUrl, chunkIndex) => {
@@ -357,6 +366,7 @@ export async function importOtodomImagesForOffer(params: {
     }
 
     if (floorPlanRemoteUrl) {
+      await throwIfCancelled();
       step += 1;
       params.onProgress?.({
         phase: 'download',
@@ -424,6 +434,7 @@ export async function createOfferFromOtodomDraft(
     floorPlanImageIndex?: number | null;
     onImageProgress?: (progress: ImportImageProgress) => void;
     onCopyProgress?: (label: string, detail?: string, meta?: { rewrittenByAi?: boolean }) => void;
+    shouldCancel?: () => boolean | Promise<boolean>;
     /** false = głos właściciela (import zaproszeń), true = głos agenta (domyślnie). */
     agentVoice?: boolean;
     /** Zachowaj tytuł i opis z portalu bez AI (zaproszenia właścicieli). */
@@ -432,6 +443,12 @@ export async function createOfferFromOtodomDraft(
     skipAutoFloorPlanProbe?: boolean;
   },
 ) {
+  const throwIfCancelled = async () => {
+    if (await options?.shouldCancel?.()) {
+      throw new Error('Import anulowany.');
+    }
+  };
+
   const existing = await findExistingImportedOffer(draft);
   if (existing) {
     return {
@@ -442,6 +459,7 @@ export async function createOfferFromOtodomDraft(
     };
   }
 
+  await throwIfCancelled();
   options?.onCopyProgress?.(
     options?.preserveOriginalCopy ? 'Kopiowanie opisu z portalu…' : 'Przeróbka opisu (sztuczna inteligencja)…',
     options?.preserveOriginalCopy ? 'bez zmian' : isOtodomImportAiConfigured() ? 'GPT' : 'reguły',
@@ -473,6 +491,7 @@ export async function createOfferFromOtodomDraft(
     detail,
     { rewrittenByAi: presentation.rewrittenByAi },
   );
+  await throwIfCancelled();
   const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
   let offerId: number | null = null;
   let publicationReserved = false;
@@ -489,6 +508,8 @@ export async function createOfferFromOtodomDraft(
       userId: ownerUserId,
       draft,
     });
+
+    await throwIfCancelled();
 
     let floorPlanImageIndex: number | null = null;
     if (options?.floorPlanImageIndex !== undefined) {
@@ -518,6 +539,7 @@ export async function createOfferFromOtodomDraft(
       maxImages: options?.maxImportImages,
       floorPlanImageIndex,
       onProgress: options?.onImageProgress,
+      shouldCancel: options?.shouldCancel,
     });
 
     const refreshed = await prisma.offer.findUnique({

@@ -395,10 +395,15 @@ export async function exportKeiListingsToEstateOS(options?: {
         detail: draft.title,
       });
 
+      if (await checkCancel()) {
+        throw new Error('Import anulowany.');
+      }
+
       const created = await createOfferFromOtodomDraft(draft, targetUserId, undefined, {
         agentCommissionPercent,
         maxImportImages: KEI_MAX_IMPORT_IMAGES,
         floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
+        shouldCancel: checkCancel,
         onCopyProgress: (label, detail, meta) => {
           emit?.({
             type: 'step',

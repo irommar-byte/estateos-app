@@ -23,8 +23,13 @@ const MIME_TO_EXT: Record<string, string> = {
 
 const activeUploads = new Set<number>();
 
-export async function acquireOfferUploadLock(offerId: number) {
+export async function acquireOfferUploadLock(offerId: number, timeoutMs = 20_000) {
+  const started = Date.now();
   while (activeUploads.has(offerId)) {
+    if (Date.now() - started > timeoutMs) {
+      activeUploads.delete(offerId);
+      break;
+    }
     await new Promise((r) => setTimeout(r, 50));
   }
   activeUploads.add(offerId);

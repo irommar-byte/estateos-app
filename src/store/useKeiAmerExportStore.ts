@@ -73,7 +73,16 @@ async function pollOnce() {
   try {
     const res = await fetch(`/api/admin/kei-amer/export-jobs/${state.jobId}`, { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
+    if (exportCancelledByUser) return;
     if (!res.ok || !data?.job) return;
+    if (data.job.cancelRequested || data.job.status === 'cancelled') {
+      stopPolling();
+      useKeiAmerExportStore.setState({
+        ...mapJob({ ...data.job, status: 'cancelled' } as KeiImportJobSnapshot),
+        running: false,
+      });
+      return;
+    }
     const onComplete = state.onComplete;
     useKeiAmerExportStore.setState({
       ...mapJob(data.job as KeiImportJobSnapshot),
@@ -125,13 +134,16 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
 
   cancelExport: () => {
     const { running, jobId } = get();
-    if (!running || !jobId) return;
+    if (!running) return;
     exportCancelledByUser = true;
     stopPolling();
-    void fetch(`/api/admin/kei-amer/export-jobs/${jobId}/cancel`, { method: 'POST' }).catch(() => undefined);
+    if (jobId) {
+      void fetch(`/api/admin/kei-amer/export-jobs/${jobId}/cancel`, { method: 'POST' }).catch(() => undefined);
+    }
     set((state) => ({
       running: false,
-      message: 'Anulowanie na serwerze…',
+      modalVisible: false,
+      message: 'Import zatrzymany.',
       onComplete: undefined,
       items: state.items.map((item) =>
         item.status === 'pending' || item.status === 'active'
@@ -148,16 +160,18 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   },
 
   hydrateFromServer: async () => {
+    if (exportCancelledByUser) return;
     try {
       const res = await fetch('/api/admin/kei-amer/export-jobs/active', { cache: 'no-store' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return;
+      if (exportCancelledByUser) return;
       const active = (data.active?.[0] || null) as KeiImportJobSnapshot | null;
       if (!active) return;
-      exportCancelledByUser = false;
+      if (active.status === 'cancelled') return;
       set({
         ...mapJob(active),
-        modalVisible: active.status === 'queued' || active.status === 'running',
+        modalVisible: false,
       });
       if (active.status === 'queued' || active.status === 'running') startPolling();
     } catch {
@@ -170,7 +184,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
     exportCancelledByUser = false;
     set({
       running: true,
-      modalVisible: true,
+      modalVisible: false,
       message: 'Uruchamiam import na serwerze…',
       items: initialItems,
       results: [],
@@ -194,7 +208,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
         set({
           ...mapJob(data.job as KeiImportJobSnapshot),
           onComplete,
-          modalVisible: true,
+          modalVisible: false,
         });
         if (data.job.status === 'queued' || data.job.status === 'running') {
           startPolling();

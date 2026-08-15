@@ -323,8 +323,12 @@ async function writeJobFields(
   }
   if (sets.length === 0) return;
   values.push(jobId);
+  const protectCancelled =
+    fields.status && fields.status !== 'cancelled'
+      ? ` AND status NOT IN ('cancelled') AND cancelRequested = 0`
+      : '';
   await prisma.$executeRawUnsafe(
-    `UPDATE KeiAmerImportJob SET ${sets.join(', ')} WHERE id = ?`,
+    `UPDATE KeiAmerImportJob SET ${sets.join(', ')} WHERE id = ?${protectCancelled}`,
     ...values,
   );
 }
@@ -380,8 +384,13 @@ export async function listActiveKeiImportJobs(adminUserId?: number): Promise<Kei
 export async function requestCancelKeiImportJob(jobId: string): Promise<KeiImportJobSnapshot | null> {
   await ensureKeiAmerImportJobTable();
   await prisma.$executeRawUnsafe(
-    `UPDATE KeiAmerImportJob SET cancelRequested = 1, message = ? WHERE id = ? AND status IN ('queued', 'running')`,
-    'Anulowanie…',
+    `UPDATE KeiAmerImportJob
+     SET cancelRequested = 1,
+         status = 'cancelled',
+         message = ?,
+         finishedAt = NOW(3)
+     WHERE id = ? AND status IN ('queued', 'running')`,
+    'Import zatrzymany — ukończone pozycje zostają na serwerze.',
     jobId,
   );
   return getKeiImportJob(jobId);
