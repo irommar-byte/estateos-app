@@ -90,8 +90,57 @@ type OutreachResultItem = {
   sentAt: string;
 };
 
+type FacetOption = {
+  id: string;
+  label: string;
+  count: number;
+  district?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minArea?: number;
+  maxArea?: number;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+type SearchFacets = {
+  sampled: number;
+  districts: FacetOption[];
+  priceRanges: FacetOption[];
+  areaRanges: FacetOption[];
+  datePresets: FacetOption[];
+};
+
 const MAX_SELECT = 25;
 const PAGE_SIZE = 20;
+
+function FacetSelect(props: {
+  label: string;
+  value: string;
+  options: FacetOption[];
+  loading?: boolean;
+  onChange: (value: string) => void;
+  anyLabel?: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[10px] font-black uppercase tracking-wider text-white/50">{props.label}</span>
+      <select
+        value={props.value}
+        disabled={props.loading}
+        onChange={(e) => props.onChange(e.target.value)}
+        className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white disabled:opacity-50"
+      >
+        <option value="">{props.anyLabel || "Dowolna"}</option>
+        {props.options.map((opt) => (
+          <option key={opt.id} value={opt.id}>
+            {opt.count > 0 ? `${opt.label} (${opt.count})` : opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function SegmentedControl<T extends string>(props: {
   value: T;
@@ -510,13 +559,13 @@ export default function KeiAmerWorkspace() {
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("apartment");
   const [transactionKind, setTransactionKind] = useState<TransactionKind>("sale");
   const [browseMode, setBrowseMode] = useState<"feed" | "search">("feed");
-  const [district, setDistrict] = useState("");
-  const [minPrice, setMinPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
-  const [minArea, setMinArea] = useState("");
-  const [maxArea, setMaxArea] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [districtId, setDistrictId] = useState("");
+  const [priceRangeId, setPriceRangeId] = useState("");
+  const [areaRangeId, setAreaRangeId] = useState("");
+  const [datePresetId, setDatePresetId] = useState("");
+  const [facets, setFacets] = useState<SearchFacets | null>(null);
+  const [facetsLoading, setFacetsLoading] = useState(false);
+  const [facetsError, setFacetsError] = useState("");
   const [targetUserId, setTargetUserId] = useState("55");
   const [commissionPercent, setCommissionPercent] = useState("2");
   const [exportCount, setExportCount] = useState("1");
@@ -701,6 +750,51 @@ export default function KeiAmerWorkspace() {
     }
   }, []);
 
+  const selectedDistrict = useMemo(
+    () => facets?.districts.find((opt) => opt.id === districtId),
+    [facets, districtId],
+  );
+  const selectedPrice = useMemo(
+    () => facets?.priceRanges.find((opt) => opt.id === priceRangeId),
+    [facets, priceRangeId],
+  );
+  const selectedArea = useMemo(
+    () => facets?.areaRanges.find((opt) => opt.id === areaRangeId),
+    [facets, areaRangeId],
+  );
+  const selectedDate = useMemo(
+    () => facets?.datePresets.find((opt) => opt.id === datePresetId),
+    [facets, datePresetId],
+  );
+
+  const loadFacets = useCallback(async () => {
+    setFacetsLoading(true);
+    setFacetsError("");
+    try {
+      const qs = new URLSearchParams({ propertyKind, transactionKind });
+      const res = await fetch(`/api/admin/kei-amer/facets?${qs}`, { credentials: "include", cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error || `Błąd filtrów (${res.status}).`));
+      const next: SearchFacets = {
+        sampled: Number(data?.sampled) || 0,
+        districts: Array.isArray(data?.districts) ? data.districts : [],
+        priceRanges: Array.isArray(data?.priceRanges) ? data.priceRanges : [],
+        areaRanges: Array.isArray(data?.areaRanges) ? data.areaRanges : [],
+        datePresets: Array.isArray(data?.datePresets) ? data.datePresets : [],
+      };
+      setFacets(next);
+      setDistrictId((prev) => (next.districts.some((opt) => opt.id === prev) ? prev : ""));
+      setPriceRangeId((prev) => (next.priceRanges.some((opt) => opt.id === prev) ? prev : ""));
+      setAreaRangeId((prev) => (next.areaRanges.some((opt) => opt.id === prev) ? prev : ""));
+      setDatePresetId((prev) => (next.datePresets.some((opt) => opt.id === prev) ? prev : ""));
+    } catch (e) {
+      setFacets(null);
+      setFacetsError(e instanceof Error ? e.message : "Nie udało się pobrać list z KEI.");
+    } finally {
+      setFacetsLoading(false);
+    }
+  }, [propertyKind, transactionKind]);
+
   const loadPreview = useCallback(
     async (page = previewPage) => {
       setPreview((prev) => ({ ...prev, loading: true, error: "" }));
@@ -713,13 +807,13 @@ export default function KeiAmerWorkspace() {
           mode: browseMode,
         });
         if (browseMode === "search") {
-          if (district.trim()) qs.set("district", district.trim());
-          if (minPrice.trim()) qs.set("minPrice", minPrice.trim());
-          if (maxPrice.trim()) qs.set("maxPrice", maxPrice.trim());
-          if (minArea.trim()) qs.set("minArea", minArea.trim());
-          if (maxArea.trim()) qs.set("maxArea", maxArea.trim());
-          if (dateFrom.trim()) qs.set("dateFrom", dateFrom.trim());
-          if (dateTo.trim()) qs.set("dateTo", dateTo.trim());
+          if (selectedDistrict?.district) qs.set("district", selectedDistrict.district);
+          if (selectedPrice?.minPrice != null) qs.set("minPrice", String(selectedPrice.minPrice));
+          if (selectedPrice?.maxPrice != null) qs.set("maxPrice", String(selectedPrice.maxPrice));
+          if (selectedArea?.minArea != null) qs.set("minArea", String(selectedArea.minArea));
+          if (selectedArea?.maxArea != null) qs.set("maxArea", String(selectedArea.maxArea));
+          if (selectedDate?.dateFrom) qs.set("dateFrom", selectedDate.dateFrom);
+          if (selectedDate?.dateTo) qs.set("dateTo", selectedDate.dateTo);
           qs.set("verify", "1");
         }
         const res = await fetch(`/api/admin/kei-amer/preview?${qs}`, { credentials: "include", cache: "no-store" });
@@ -765,7 +859,7 @@ export default function KeiAmerWorkspace() {
         });
       }
     },
-    [previewPage, propertyKind, transactionKind, browseMode, district, minPrice, maxPrice, minArea, maxArea, dateFrom, dateTo],
+    [previewPage, propertyKind, transactionKind, browseMode, selectedDistrict, selectedPrice, selectedArea, selectedDate],
   );
 
   const autoSelectByCount = useCallback(
@@ -817,6 +911,11 @@ export default function KeiAmerWorkspace() {
   useEffect(() => {
     void ensureSession(true);
   }, [ensureSession]);
+
+  useEffect(() => {
+    if (!session.ok || session.loading) return;
+    void loadFacets();
+  }, [session.ok, session.loading, loadFacets]);
 
   useEffect(() => {
     if (!session.ok || session.loading || exportRunning) return;
@@ -1218,70 +1317,37 @@ export default function KeiAmerWorkspace() {
         </div>
 
         {browseMode === "search" ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Dzielnica</span>
-              <input
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                placeholder="np. żoliborz"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Cena od</span>
-              <input
-                value={minPrice}
-                onChange={(e) => setMinPrice(e.target.value)}
-                inputMode="numeric"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Cena do</span>
-              <input
-                value={maxPrice}
-                onChange={(e) => setMaxPrice(e.target.value)}
-                inputMode="numeric"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Metraż od</span>
-              <input
-                value={minArea}
-                onChange={(e) => setMinArea(e.target.value)}
-                inputMode="decimal"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Metraż do</span>
-              <input
-                value={maxArea}
-                onChange={(e) => setMaxArea(e.target.value)}
-                inputMode="decimal"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Data od (RRRR-MM-DD)</span>
-              <input
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                placeholder="2024-01-01"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Data do</span>
-              <input
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                placeholder="2026-08-15"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+            <FacetSelect
+              label="Dzielnica"
+              value={districtId}
+              options={facets?.districts || []}
+              loading={facetsLoading}
+              onChange={setDistrictId}
+              anyLabel="Cała Warszawa"
+            />
+            <FacetSelect
+              label="Cena"
+              value={priceRangeId}
+              options={facets?.priceRanges || []}
+              loading={facetsLoading}
+              onChange={setPriceRangeId}
+            />
+            <FacetSelect
+              label="Metraż"
+              value={areaRangeId}
+              options={facets?.areaRanges || []}
+              loading={facetsLoading}
+              onChange={setAreaRangeId}
+              anyLabel="Dowolny"
+            />
+            <FacetSelect
+              label="Data wystawienia"
+              value={datePresetId}
+              options={facets?.datePresets || []}
+              loading={facetsLoading}
+              onChange={setDatePresetId}
+            />
             <div className="md:col-span-2 flex items-end">
               <button
                 type="button"
@@ -1295,9 +1361,14 @@ export default function KeiAmerWorkspace() {
                 <RefreshCw size={14} /> Szukaj i sprawdź aktualność
               </button>
             </div>
-            <p className="md:col-span-3 text-[11px] text-white/45">
-              Import działa na serwerze — możesz zamknąć kartę; postęp wraca z API na każdym urządzeniu. Wyszukiwanie
-              obejmuje też starsze oferty i weryfikuje link na portalu źródłowym.
+            <p className="md:col-span-2 text-[11px] text-white/45">
+              {facetsError
+                ? facetsError
+                : facetsLoading
+                  ? "Pobieram dzielnice, ceny i metraże z amer.kei.pl…"
+                  : facets?.sampled
+                    ? `Listy z amer.kei.pl · ${facets.sampled} ogłoszeń w próbce. Wyszukiwanie obejmuje też starsze oferty i weryfikuje link na portalu.`
+                    : "Wybierz dzielnicę, cenę albo metraż z listy KEI — bez ręcznego wpisywania."}
             </p>
           </div>
         ) : null}
