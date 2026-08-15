@@ -19,16 +19,17 @@ export default function CatalogBrandHero({
   children,
 }: CatalogBrandHeroProps) {
   return (
-    <header className="eos-catalog-hero eos-cinematic-dark eos-on-media relative mb-8 min-h-[220px] overflow-hidden rounded-3xl border border-white/10 shadow-[0_28px_80px_rgba(0,0,0,0.28)]">
-      <CatalogBrandHeroMotif
-        variant={brand}
-        accent={accent}
-        className="absolute inset-0 h-full w-full"
-      />
-      {/* Dedicated scrim — light-mode CSS rewrites Tailwind from-black* to white. */}
+    <header className="eos-catalog-hero relative mb-8 min-h-[220px] overflow-hidden rounded-[1.75rem]">
+      <div className="eos-catalog-hero__media" aria-hidden>
+        <CatalogBrandHeroMotif
+          variant={brand}
+          accent={accent}
+          className="absolute inset-0 h-full w-full"
+        />
+      </div>
       <div className="eos-catalog-hero__scrim" aria-hidden />
 
-      <div className="relative z-10 max-w-3xl p-6 sm:p-8">
+      <div className="eos-catalog-hero__copy relative z-10 max-w-3xl p-6 sm:p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-white/70">
           {brand === "car" ? "EstateOS™Car" : "EstateOS™Home"}
         </p>
