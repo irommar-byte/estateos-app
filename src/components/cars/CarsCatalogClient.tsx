@@ -475,7 +475,7 @@ export default function CarsCatalogClient() {
   const findLabel = cat.findListing;
 
   return (
-    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 font-sans text-[var(--eos-text)] sm:px-6">
       <div className="mx-auto max-w-7xl">
         <CatalogBrandHero
           brand="car"
