@@ -35,11 +35,13 @@ html[data-ecosystem="car"] {
   --eos-accent: #0ea5e9;
   --eos-accent-soft: rgba(14, 165, 233, 0.14);
   --eos-brand-label: "Car";
+  --eos-bg: #07090c;
 }
 
 html.light[data-ecosystem="car"] {
   --eos-accent: #0284c7;
   --eos-accent-soft: rgba(2, 132, 199, 0.14);
+  --eos-bg: #eef2f6;
 }
 
 html.light {
@@ -1230,6 +1232,12 @@ html.light .theme-aware-dashboard {
   color: var(--eos-text) !important;
 }
 
+html.light[data-ecosystem="car"] .theme-aware-dashboard {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(14, 165, 233, 0.12), transparent 36%),
+    linear-gradient(180deg, #f3f6fa 0%, #ffffff 48%, #e8eef4 100%) !important;
+}
+
 /* Passkey toggle — własna paleta, bez globalnych nadpisań CRM */
 html.light .theme-aware-dashboard .eos-passkey-toggle,
 html.light .theme-aware-dashboard .eos-passkey-toggle h3,
@@ -1262,103 +1270,156 @@ html.light .theme-aware-dashboard .eos-on-media [class*="text-emerald-300"] {
   color: #6ee7b7 !important;
 }
 
-/* Katalog hero: zdjęcie zlewa się z tłem strony (szkło), nie czarny kloc. */
+/* Katalog Home / Car — karta jak reszta strony + ostre zdjęcie, bez mgły. */
 .eos-catalog-hero {
+  display: grid;
   isolation: isolate;
-  background: color-mix(in srgb, var(--eos-bg) 42%, transparent);
-  border: 1px solid color-mix(in srgb, var(--eos-text) 8%, transparent);
-  box-shadow:
-    0 1px 0 color-mix(in srgb, #ffffff 55%, transparent) inset,
-    0 18px 48px color-mix(in srgb, var(--eos-text) 7%, transparent);
-  backdrop-filter: blur(22px) saturate(1.15);
-  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+  overflow: hidden;
+  margin-bottom: 2rem;
+  min-height: 240px;
+  border-radius: 1.75rem;
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  box-shadow: var(--eos-shadow-soft);
+  color: var(--eos-text);
+}
+
+@media (min-width: 768px) {
+  .eos-catalog-hero {
+    grid-template-columns: minmax(280px, 1.08fr) minmax(260px, 0.92fr);
+    min-height: 328px;
+  }
+}
+
+.eos-catalog-hero__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.5rem 1.5rem 1.35rem;
+  color: var(--eos-text);
+}
+
+@media (min-width: 640px) {
+  .eos-catalog-hero__copy {
+    padding: 2rem 2.1rem 1.85rem;
+  }
+}
+
+.eos-catalog-hero__eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--eos-accent);
+}
+
+.eos-catalog-hero__title {
+  margin: 0.7rem 0 0;
+  font-size: clamp(1.7rem, 3.4vw, 2.65rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+  color: var(--eos-text);
+}
+
+.eos-catalog-hero__lead {
+  margin: 0.85rem 0 0;
+  max-width: 36rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--eos-muted);
+}
+
+.eos-catalog-hero__actions {
+  margin-top: 0.15rem;
+}
+
+.eos-catalog-hero__stats {
+  margin: 1.1rem 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--eos-subtle);
 }
 
 .eos-catalog-hero__media {
+  position: relative;
+  min-height: 180px;
+  background: var(--eos-bg);
+}
+
+.eos-catalog-hero__photo {
   position: absolute;
   inset: 0;
-  opacity: 0.5;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 42%;
+}
+
+.eos-catalog-hero__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 54%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 0%, #000 54%, transparent 100%);
+  background: linear-gradient(90deg, var(--eos-card) 0%, transparent 28%);
 }
 
-.eos-catalog-hero__media img {
-  filter: saturate(0.82) brightness(1.08);
+@media (max-width: 767px) {
+  .eos-catalog-hero__media {
+    min-height: 168px;
+    order: -1;
+  }
+  .eos-catalog-hero__media::after {
+    background: linear-gradient(180deg, transparent 42%, var(--eos-card) 100%);
+  }
 }
 
-.eos-catalog-hero__scrim {
+.eos-catalog-hero--home .eos-catalog-hero__media::before {
+  content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(
-      105deg,
-      color-mix(in srgb, var(--eos-bg) 86%, transparent) 0%,
-      color-mix(in srgb, var(--eos-bg) 52%, transparent) 42%,
-      color-mix(in srgb, var(--eos-bg) 8%, transparent) 100%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--eos-bg) 18%, transparent) 0%,
-      transparent 48%,
-      color-mix(in srgb, var(--eos-bg) 72%, transparent) 100%
-    );
+  background: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--eos-accent) 16%, transparent) 100%);
+  z-index: 1;
 }
 
-html.light .theme-aware-dashboard .eos-catalog-hero__copy,
-html.light .theme-aware-dashboard .eos-catalog-hero__copy h1,
-html.light .theme-aware-dashboard .eos-catalog-hero__copy p,
-html.light .theme-aware-dashboard .eos-catalog-hero__copy .text-white,
-html.light .theme-aware-dashboard .eos-catalog-hero__copy [class*="text-white/"] {
-  color: var(--eos-text) !important;
-}
-
-html.light .theme-aware-dashboard .eos-catalog-hero__copy [class*="text-white/70"],
-html.light .theme-aware-dashboard .eos-catalog-hero__copy [class*="text-white/78"],
-html.light .theme-aware-dashboard .eos-catalog-hero__copy [class*="text-white/85"] {
-  color: color-mix(in srgb, var(--eos-text) 62%, transparent) !important;
+.eos-catalog-hero--car .eos-catalog-hero__media::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 38%, color-mix(in srgb, var(--eos-accent) 22%, transparent) 100%);
+  z-index: 1;
 }
 
 html.light .theme-aware-dashboard .eos-catalog-hero a[class*="bg-emerald-"],
-html.light .theme-aware-dashboard .eos-catalog-hero a[class*="bg-sky-"] {
+html.light .theme-aware-dashboard .eos-catalog-hero a[class*="bg-sky-"],
+html.light .theme-aware-dashboard .eos-catalog-hero button[class*="bg-sky-"],
+html.light .theme-aware-dashboard .eos-catalog-hero button[class*="bg-emerald-"] {
   color: #ffffff !important;
 }
 
-html.light .theme-aware-dashboard .eos-catalog-hero [class*="border-white/"] {
-  border-color: color-mix(in srgb, var(--eos-text) 12%, transparent) !important;
+.eos-ambient-wash {
+  pointer-events: none;
+  position: fixed;
+  inset-inline: 0;
+  top: var(--eos-nav-height);
+  z-index: 0;
+  height: min(52vh, 480px);
 }
 
-html.light .theme-aware-dashboard .eos-catalog-hero [class*="bg-white/10"] {
-  background-color: rgba(255, 255, 255, 0.48) !important;
-  color: var(--eos-text) !important;
+.eos-ambient-wash--home {
+  background: radial-gradient(ellipse at 16% -10%, var(--eos-accent-soft), transparent 58%);
 }
 
-.eos-ambient-photo {
-  opacity: 0.22;
-  filter: saturate(0.7) brightness(1.05);
-}
-
-.eos-ambient-fade {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--eos-bg) 28%, transparent) 0%,
-    color-mix(in srgb, var(--eos-bg) 62%, transparent) 48%,
-    var(--eos-bg) 100%
-  );
-}
-
-html.light .eos-ambient-photo {
-  opacity: 0.16 !important;
-  filter: saturate(0.62) brightness(1.18);
-}
-
-html.light .eos-catalog-hero__media {
-  opacity: 0.38;
-}
-
-html.light .eos-catalog-hero__media img {
-  filter: saturate(0.7) brightness(1.22);
+.eos-ambient-wash--car {
+  background:
+    radial-gradient(ellipse at 82% -8%, var(--eos-accent-soft), transparent 52%),
+    radial-gradient(ellipse at 12% 20%, color-mix(in srgb, var(--eos-accent) 8%, transparent), transparent 46%);
 }
 
 /* Karty CRM / listy — spójne tło w jasnym motywie */

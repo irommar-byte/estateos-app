@@ -19,28 +19,22 @@ export default function CatalogBrandHero({
   children,
 }: CatalogBrandHeroProps) {
   return (
-    <header className="eos-catalog-hero relative mb-8 min-h-[220px] overflow-hidden rounded-[1.75rem]">
+    <header className={`eos-catalog-hero eos-catalog-hero--${brand}`}>
+      <div className="eos-catalog-hero__copy">
+        <p className="eos-catalog-hero__eyebrow">
+          {brand === "car" ? "EstateOS™ Car" : "EstateOS™ Home"}
+        </p>
+        <h1 className="eos-catalog-hero__title">{title}</h1>
+        <p className="eos-catalog-hero__lead">{description}</p>
+        {children ? <div className="eos-catalog-hero__actions">{children}</div> : null}
+        {stats ? <p className="eos-catalog-hero__stats">{stats}</p> : null}
+      </div>
       <div className="eos-catalog-hero__media" aria-hidden>
         <CatalogBrandHeroMotif
           variant={brand}
           accent={accent}
-          className="absolute inset-0 h-full w-full"
+          className="eos-catalog-hero__photo"
         />
-      </div>
-      <div className="eos-catalog-hero__scrim" aria-hidden />
-
-      <div className="eos-catalog-hero__copy relative z-10 max-w-3xl p-6 sm:p-8">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-white/70">
-          {brand === "car" ? "EstateOS™Car" : "EstateOS™Home"}
-        </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          {title}
-        </h1>
-        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">{description}</p>
-        {children ? <div className="relative z-10">{children}</div> : null}
-        {stats ? (
-          <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">{stats}</p>
-        ) : null}
       </div>
     </header>
   );

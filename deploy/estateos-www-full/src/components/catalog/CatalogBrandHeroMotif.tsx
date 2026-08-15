@@ -9,7 +9,7 @@ const PHOTOS = {
     "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1800&q=72",
   homeRent:
     "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1800&q=72",
-  car: "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=72",
+  car: "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=1800&q=80",
 } as const;
 
 export function catalogBrandPhoto(variant: "home" | "car", accent: "sale" | "rent" = "sale") {

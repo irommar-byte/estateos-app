@@ -57,7 +57,7 @@ const STEPS = [
 
 export default function CarsStartCampaignPage() {
   return (
-    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 font-sans text-[var(--eos-text)] sm:px-6">
       <div className="relative mx-auto max-w-5xl">
         <CatalogBrandHero
           brand="car"

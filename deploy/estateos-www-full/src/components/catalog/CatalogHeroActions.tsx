@@ -23,7 +23,7 @@ const basePrimary =
   "group inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-[13px] font-semibold tracking-[-0.01em] transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--eos-card)]";
 
 const baseSecondary =
-  "inline-flex items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-3 text-[12px] font-semibold tracking-[-0.01em] text-white/90 backdrop-blur-md transition duration-200 ease-out hover:border-white/50 hover:bg-white/18 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50";
+  "inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)] px-4 py-3 text-[12px] font-semibold tracking-[-0.01em] text-[var(--eos-text)] transition duration-200 ease-out hover:border-[var(--eos-border-strong)] hover:bg-[var(--eos-bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--eos-accent)]/45";
 
 type CatalogHeroPrimaryLinkProps = {
   brand: Brand;
