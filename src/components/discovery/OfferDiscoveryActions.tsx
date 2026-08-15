@@ -36,9 +36,43 @@ const ACTIONS: Array<{
   { type: "SERIOUS", labelPl: "Na poważnie", Icon: Sparkles, tone: "serious" },
 ];
 
+const CONFETTI_COLORS = ["#ffffff", "#f5f5f7", "#d4d4d8", "#111111", "#d4af37"];
+
+function TasteConfetti({ nonce }: { nonce: number }) {
+  const bits = Array.from({ length: 16 }, (_, i) => {
+    const angle = (Math.PI * 2 * i) / 16 + ((nonce + i * 13) % 7) * 0.08;
+    const dist = 26 + ((nonce + i * 17) % 31);
+    return {
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist - 6,
+      r: ((nonce + i * 23) % 220) - 110,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      w: 3 + (i % 4),
+      h: 2 + (i % 5),
+    };
+  });
+  return (
+    <span className="eos-taste-confetti" aria-hidden>
+      {bits.map((bit, i) => (
+        <i
+          key={`${nonce}-${i}`}
+          style={{
+            width: bit.w,
+            height: bit.h,
+            background: bit.color,
+            ["--x" as string]: `${bit.x}px`,
+            ["--y" as string]: `${bit.y}px`,
+            ["--r" as string]: `${bit.r}deg`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 /**
- * Quiet, Apple-like taste controls for offer surfaces.
- * Dislike optionally opens a micro reason sheet (full) or fires plain DISLIKE (compact).
+ * Apple-glass taste controls for offer surfaces.
+ * Selected state persists; a luxury burst plays from the press.
  */
 export default function OfferDiscoveryActions({
   offerId,
@@ -49,9 +83,11 @@ export default function OfferDiscoveryActions({
   onRequireAuth,
 }: Props) {
   const { record, lastAction, isBusy } = useDiscoveryActions();
-  const [flash, setFlash] = useState<DiscoveryUiAction | null>(null);
   const [reasonOpen, setReasonOpen] = useState(false);
-  const active = flash || lastAction(offerId);
+  const [burst, setBurst] = useState<{ type: Exclude<DiscoveryUiAction, "OPEN">; nonce: number } | null>(
+    null,
+  );
+  const active = lastAction(offerId);
   const id = Number(offerId);
 
   useEffect(() => {
@@ -69,7 +105,6 @@ export default function OfferDiscoveryActions({
     reasonCode?: string,
   ) => {
     if (!Number.isFinite(id) || id <= 0 || isBusy(id)) return;
-    setFlash(eventType);
     setReasonOpen(false);
     const result = await record({
       offerId: id,
@@ -78,11 +113,8 @@ export default function OfferDiscoveryActions({
       source,
       onRequireAuth,
     });
-    if (!result.ok) {
-      setFlash(null);
-      return;
-    }
-    window.setTimeout(() => setFlash(null), 1600);
+    if (!result.ok) return;
+    setBurst({ type: eventType, nonce: Date.now() });
   };
 
   const handle = async (eventType: Exclude<DiscoveryUiAction, "OPEN">) => {
@@ -163,8 +195,14 @@ export default function OfferDiscoveryActions({
                 isActive ? "is-active" : ""
               }`}
             >
-              <Icon size={16} className="eos-discovery-btn__icon" aria-hidden />
+              <Icon
+                size={16}
+                className="eos-discovery-btn__icon"
+                aria-hidden
+                fill={isActive ? "currentColor" : "none"}
+              />
               <span className="eos-discovery-btn__label">{labelPl}</span>
+              {burst?.type === type ? <TasteConfetti nonce={burst.nonce} /> : null}
             </button>
           );
         })}
@@ -198,7 +236,13 @@ export default function OfferDiscoveryActions({
               isActive ? "is-active" : ""
             }`}
           >
-            <Icon size={15} className="eos-discovery-btn__icon" aria-hidden />
+            <Icon
+              size={15}
+              className="eos-discovery-btn__icon"
+              aria-hidden
+              fill={isActive ? "currentColor" : "none"}
+            />
+            {burst?.type === type ? <TasteConfetti nonce={burst.nonce} /> : null}
           </button>
         );
       })}
