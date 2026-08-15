@@ -63,6 +63,7 @@ export default function OfferDiscoveryActions({
   source = 'mobile_offer_card',
   trackOpen = false,
   onRequireAuth,
+  isDark = false,
   promptDislikeViaBrain = false,
 }: Props) {
   const { t } = useI18n();
@@ -134,15 +135,20 @@ export default function OfferDiscoveryActions({
   };
 
   const reasonSheet = reasonOpen ? (
-    <View style={styles.reasons} accessibilityLabel={t('discovery.dislike.title')}>
+    <View
+      style={[styles.reasons, isDark ? styles.reasonsDark : styles.reasonsLight]}
+      accessibilityLabel={t('discovery.dislike.title')}
+    >
       <View style={styles.reasonsHead}>
-        <Text style={styles.reasonsTitle}>{t('discovery.dislike.title')}</Text>
+        <Text style={[styles.reasonsTitle, { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,10,0.45)' }]}>
+          {t('discovery.dislike.title')}
+        </Text>
         <Pressable
           accessibilityLabel={t('discovery.closeA11y')}
           hitSlop={10}
           onPress={() => setReasonOpen(false)}
         >
-          <Ionicons name="close" size={16} color="rgba(255,255,255,0.7)" />
+          <Ionicons name="close" size={16} color={isDark ? 'rgba(255,255,255,0.7)' : 'rgba(10,10,10,0.45)'} />
         </Pressable>
       </View>
       <View style={styles.reasonsGrid}>
@@ -150,30 +156,55 @@ export default function OfferDiscoveryActions({
           <Pressable
             key={r.code}
             disabled={isBusy(id)}
-            style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+            style={({ pressed }) => [
+              styles.chip,
+              isDark ? styles.chipDark : styles.chipLight,
+              pressed && (isDark ? styles.chipPressedDark : styles.chipPressedLight),
+            ]}
             onPress={() => void commit('DISLIKE', r.code)}
           >
-            <Text style={styles.chipText}>{r.label}</Text>
+            <Text style={[styles.chipText, { color: isDark ? '#FFFFFF' : '#0A0A0A' }]}>{r.label}</Text>
           </Pressable>
         ))}
         <Pressable
           disabled={isBusy(id)}
-          style={({ pressed }) => [styles.chip, styles.chipSkip, pressed && styles.chipPressed]}
+          style={({ pressed }) => [
+            styles.chip,
+            styles.chipSkip,
+            isDark ? styles.chipDark : styles.chipLight,
+            pressed && (isDark ? styles.chipPressedDark : styles.chipPressedLight),
+          ]}
           onPress={() => void commit('DISLIKE')}
         >
-          <Text style={[styles.chipText, styles.chipSkipText]}>{t('discovery.dislike.skipShort')}</Text>
+          <Text
+            style={[
+              styles.chipText,
+              { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,10,0.45)' },
+            ]}
+          >
+            {t('discovery.dislike.skipShort')}
+          </Text>
         </Pressable>
       </View>
     </View>
   ) : null;
 
   if (variant === 'full') {
+    const idleInk = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,10,0.58)';
     return (
       <View style={styles.fullBar} accessibilityLabel={t('discovery.actions.like')}>
-        <View style={styles.fullRow}>
+        <View style={[styles.segmentTrack, isDark && styles.segmentTrackDark]}>
+          {Platform.OS === 'ios' ? (
+            <BlurView
+              pointerEvents="none"
+              intensity={isDark ? 28 : 40}
+              tint={isDark ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
           {actions.map(({ type, label, Icon }) => {
             const isActive = active === type;
-            const ink = isActive ? LUX.ink : LUX.iconIdle;
+            const ink = isActive ? LUX.ink : idleInk;
             return (
               <Pressable
                 key={type}
@@ -182,40 +213,29 @@ export default function OfferDiscoveryActions({
                 accessibilityState={{ selected: isActive }}
                 onPress={() => void handle(type)}
                 style={({ pressed }) => [
-                  styles.pillOuter,
-                  isActive && styles.pillOuterActive,
-                  pressed && styles.pressedIn,
+                  styles.segment,
+                  isActive && styles.segmentActive,
+                  pressed && !isActive && styles.segmentPressed,
                 ]}
               >
-                <View style={[styles.pill, isActive && styles.pillActive]}>
-                  {Platform.OS === 'ios' && !isActive ? (
-                    <BlurView
-                      pointerEvents="none"
-                      intensity={36}
-                      tint="dark"
-                      style={StyleSheet.absoluteFill}
-                    />
-                  ) : null}
-                  <View pointerEvents="none" style={styles.pillSheen} />
-                  {isBusy(id) && isActive ? (
-                    <ActivityIndicator size="small" color={ink} />
-                  ) : (
-                    <Icon
-                      size={14}
-                      color={ink}
-                      strokeWidth={isActive ? 2.4 : 2.1}
-                      fill={isActive ? ink : 'transparent'}
-                    />
-                  )}
-                  <Text
-                    style={[styles.pillLabel, { color: ink }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                  >
-                    {label}
-                  </Text>
-                </View>
+                {isBusy(id) && isActive ? (
+                  <ActivityIndicator size="small" color={ink} />
+                ) : (
+                  <Icon
+                    size={13}
+                    color={ink}
+                    strokeWidth={isActive ? 2.35 : 2}
+                    fill={isActive ? ink : 'transparent'}
+                  />
+                )}
+                <Text
+                  style={[styles.segmentLabel, { color: ink }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                >
+                  {label}
+                </Text>
                 {burst?.type === type ? <TasteConfettiBurst nonce={burst.nonce} /> : null}
               </Pressable>
             );
@@ -322,82 +342,67 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
   fullBar: { gap: 10, overflow: 'visible' },
-  fullRow: {
+  segmentTrack: {
     flexDirection: 'row',
-    flexWrap: 'nowrap',
     alignItems: 'stretch',
-    gap: 6,
     width: '100%',
-    overflow: 'visible',
+    minHeight: 44,
+    borderRadius: 14,
+    overflow: 'hidden',
+    padding: 3,
+    gap: 2,
+    backgroundColor: 'rgba(118,118,128,0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
-  pillOuter: {
+  segmentTrackDark: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  segment: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 999,
     overflow: 'visible',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    elevation: 5,
-    ...Platform.select({
-      android: { marginBottom: 1 },
-      default: {},
-    }),
-  },
-  pillOuterActive: {
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-  },
-  pill: {
-    flex: 1,
-    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 11,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.38)',
-    backgroundColor: 'rgba(16,16,18,0.38)',
-    minWidth: 0,
+    gap: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 9,
+    borderRadius: 11,
   },
-  pillActive: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderColor: 'rgba(255,255,255,0.98)',
+  segmentActive: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  pillSheen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '48%',
-    backgroundColor: 'rgba(255,255,255,0.22)',
+  segmentPressed: {
+    backgroundColor: 'rgba(255,255,255,0.35)',
   },
-  pillLabel: {
-    flexShrink: 1,
+  segmentLabel: {
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
+    fontWeight: '700',
+    letterSpacing: -0.1,
+    textAlign: 'center',
   },
   pressedIn: {
     transform: [{ translateY: 1 }, { scale: 0.97 }],
   },
   reasons: {
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: 'rgba(18,18,20,0.55)',
     padding: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 10,
+  },
+  reasonsLight: {
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(118,118,128,0.08)',
+  },
+  reasonsDark: {
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(18,18,20,0.55)',
   },
   reasonsHead: {
     flexDirection: 'row',
@@ -408,9 +413,8 @@ const styles = StyleSheet.create({
   reasonsTitle: {
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1.6,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.55)',
   },
   reasonsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
@@ -418,15 +422,23 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  chipLight: {
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.86)',
+  },
+  chipDark: {
+    borderColor: 'rgba(255,255,255,0.20)',
     backgroundColor: 'rgba(255,255,255,0.10)',
   },
-  chipPressed: {
+  chipPressedLight: {
+    backgroundColor: 'rgba(255,255,255,1)',
+  },
+  chipPressedDark: {
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
   chipSkip: {
     borderStyle: 'dashed',
   },
-  chipText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-  chipSkipText: { color: 'rgba(255,255,255,0.55)' },
+  chipText: { fontSize: 12, fontWeight: '700' },
 });

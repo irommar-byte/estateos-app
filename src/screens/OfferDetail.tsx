@@ -388,10 +388,18 @@ export default function OfferDetail({ route, navigation }: any) {
     requestInvestorProUpsell('off_market');
   };
 
+  const handleGoBack = useCallback(() => {
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+    navigation?.navigate?.('MainTabs');
+  }, [navigation]);
+
   const openAuthEntry = (intent: 'login' | 'register') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsGuestGateVisible(false);
-    navigation.goBack();
+    if (navigation?.canGoBack?.()) navigation.goBack();
     setTimeout(() => {
       navigation.navigate('MainTabs', { screen: 'Profil', params: { authIntent: intent } });
     }, 120);
@@ -1690,7 +1698,7 @@ export default function OfferDetail({ route, navigation }: any) {
         pointerEvents={isCinemaMode ? 'none' : 'box-none'}
       >
         <Animated.View style={cinemaTopLeftStyle}>
-          <TouchableOpacity style={styles.glassButtonOuter} onPress={() => navigation?.goBack()} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.glassButtonOuter} onPress={handleGoBack} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
             <View style={styles.glassButton}>
               <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} pointerEvents="none" />
               <View style={styles.glassButtonSheen} pointerEvents="none" />
@@ -3132,7 +3140,7 @@ export default function OfferDetail({ route, navigation }: any) {
                 <Crown color="#0a0a0a" size={16} />
                 <Text style={styles.offMarketPrimaryButtonText}>{t('offer.offMarket.investorProCta')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity activeOpacity={0.9} style={styles.offMarketSecondaryButton} onPress={() => navigation?.goBack()}>
+              <TouchableOpacity activeOpacity={0.9} style={styles.offMarketSecondaryButton} onPress={handleGoBack}>
                 <Text style={styles.offMarketSecondaryButtonText}>{t('offer.offMarket.waitPatiently')}</Text>
               </TouchableOpacity>
             </View>
@@ -3143,7 +3151,7 @@ export default function OfferDetail({ route, navigation }: any) {
 
       {/* --- GUEST GATE: DOSTĘP DO OFERTY DLA NIEZALOGOWANYCH --- */}
       {isGuest && isGuestGateVisible ? (
-      <Modal visible transparent animationType="fade" onRequestClose={() => navigation?.goBack()}>
+      <Modal visible transparent animationType="fade" onRequestClose={handleGoBack}>
         <BlurView intensity={72} tint="dark" style={StyleSheet.absoluteFill}>
           <View style={styles.guestGateBackdrop} />
           <View style={styles.offMarketOverlay}>
@@ -3151,7 +3159,7 @@ export default function OfferDetail({ route, navigation }: any) {
               <Pressable
                 onPress={() => {
                   setIsGuestGateVisible(false);
-                  navigation?.goBack();
+                  handleGoBack();
                 }}
                 style={styles.guestCloseBtn}
                 hitSlop={12}
@@ -3243,7 +3251,7 @@ export default function OfferDetail({ route, navigation }: any) {
           }
           isDark={isDark}
           isOwner={isOwner}
-          onGoBack={() => navigation?.goBack?.()}
+          onGoBack={handleGoBack}
           onBrowseSimilar={
             isOwner
               ? undefined
@@ -3253,7 +3261,7 @@ export default function OfferDetail({ route, navigation }: any) {
                   try {
                     navigation?.navigate?.('MainTabs', { screen: 'Radar' });
                   } catch {
-                    navigation?.goBack?.();
+                    handleGoBack();
                   }
                 }
           }
@@ -3375,7 +3383,7 @@ export default function OfferDetail({ route, navigation }: any) {
           }
           const result = await blockUser(targetId, token, user.id);
           if (result.ok) {
-            setTimeout(() => navigation?.goBack?.(), 220);
+            setTimeout(() => handleGoBack(), 220);
           }
           return result;
         }}
