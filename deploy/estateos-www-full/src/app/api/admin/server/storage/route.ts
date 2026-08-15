@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin/requireAdmin';
-import { collectStorageReport, readDiskMetrics } from '@/lib/adminServerOps';
+import {
+  collectCategoryReport,
+  findLargestFiles,
+  previewSafeCleanup,
+  readDiskMetrics,
+} from '@/lib/adminServerOps';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,9 +15,27 @@ export async function GET() {
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const [disk, buckets] = await Promise.all([readDiskMetrics('/'), collectStorageReport()]);
+    const [disk, categoryPack, largestFiles, safeCleanup] = await Promise.all([
+      readDiskMetrics('/'),
+      collectCategoryReport(),
+      findLargestFiles(18),
+      previewSafeCleanup(),
+    ]);
+
     return NextResponse.json(
-      { ok: true, disk, buckets },
+      {
+        ok: true,
+        disk,
+        categories: categoryPack.categories,
+        accountedBytes: categoryPack.accountedBytes,
+        otherBytes: Math.max(0, disk.usedBytes - categoryPack.accountedBytes),
+        largestFiles,
+        safeCleanup: {
+          count: safeCleanup.count,
+          bytes: safeCleanup.bytes,
+          preview: safeCleanup.items.slice(0, 12),
+        },
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
