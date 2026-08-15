@@ -3,6 +3,8 @@ import os from 'os';
 import { requireAdmin } from '@/lib/admin/requireAdmin';
 import {
   diskHealth,
+  getMetricHistory,
+  pushMetricSample,
   readCpuMetrics,
   readDiskMetrics,
   readMariaDbStatus,
@@ -26,7 +28,7 @@ export async function GET() {
     const cpu = readCpuMetrics();
     const memory = readMemoryMetrics();
     const level = diskHealth(disk.percent, mariadb.up);
-    const online = processes.filter((p) => p.status === 'online').length;
+    pushMetricSample({ cpu: cpu.percent, ram: memory.percent, disk: disk.percent });
 
     return NextResponse.json(
       {
@@ -39,7 +41,8 @@ export async function GET() {
         memory,
         disk,
         database: mariadb,
-        processes: { total: processes.length, online },
+        processes: { total: processes.length, online: processes.filter((p) => p.status === 'online').length },
+        history: getMetricHistory(),
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );
