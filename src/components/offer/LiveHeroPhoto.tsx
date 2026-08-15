@@ -25,7 +25,7 @@ type Props = {
 
 /** Jedno pełne okrążenie kamery po kółku. */
 const CYCLE_MS = 18000;
-/** Morph dopiero pod koniec okrążenia — wcześniej można kolejkować miniaturę. */
+/** Morph dopiero pod koniec okrążenia — wcześniej widać jedną warstwę. */
 const HOLD_END = 0.72;
 
 /**
@@ -89,28 +89,34 @@ export default function LiveHeroPhoto({
     [aIsOutgoing],
   );
 
-  const queueNextIndex = useCallback(
-    (index: number) => {
-      const L = listRef.current;
-      if (L.length < 2) return;
-      const i = Math.max(0, Math.min(Math.floor(index), L.length - 1));
-      if (i === cursorRef.current) {
-        queuedNextRef.current = null;
-        delayedQueueRef.current = null;
-        return;
-      }
-      if (progress.value < HOLD_END) {
-        queuedNextRef.current = i;
-        delayedQueueRef.current = null;
-        if (aOutgoingRef.current) setSlotB(L[i]!);
-        else setSlotA(L[i]!);
-      } else {
-        delayedQueueRef.current = i;
-        queuedNextRef.current = null;
-      }
-    },
-    [progress],
-  );
+  /** Miniatura: podmień widoczne zdjęcie od razu — orbit kamery nie resetujemy. */
+  const showIndexImmediately = useCallback((index: number) => {
+    const L = listRef.current;
+    if (!L.length) return;
+    const i = Math.max(0, Math.min(Math.floor(index), L.length - 1));
+    queuedNextRef.current = null;
+    delayedQueueRef.current = null;
+    if (i === cursorRef.current) return;
+
+    const chosen = L[i]!;
+    const next = L[(i + 1) % L.length]!;
+    cursorRef.current = i;
+
+    // W trakcie morphu obie warstwy są widoczne — ta sama klatka, żeby fade nie odjechał od tapnięcia.
+    if (progress.value >= HOLD_END) {
+      setSlotA(chosen);
+      setSlotB(chosen);
+      return;
+    }
+
+    if (aOutgoingRef.current) {
+      setSlotA(chosen);
+      if (L.length > 1) setSlotB(next);
+    } else {
+      setSlotB(chosen);
+      if (L.length > 1) setSlotA(next);
+    }
+  }, [progress]);
 
   const prepareNextHiddenSlot = useCallback(() => {
     const L = listRef.current;
@@ -195,8 +201,8 @@ export default function LiveHeroPhoto({
   useEffect(() => {
     if (preferredNextNonce < 1) return;
     if (preferredNextIndex == null || !list.length) return;
-    queueNextIndex(preferredNextIndex);
-  }, [preferredNextIndex, preferredNextNonce, list.length, queueNextIndex]);
+    showIndexImmediately(preferredNextIndex);
+  }, [preferredNextIndex, preferredNextNonce, list.length, showIndexImmediately]);
 
   const cameraStyle = useAnimatedStyle(() => {
     'worklet';

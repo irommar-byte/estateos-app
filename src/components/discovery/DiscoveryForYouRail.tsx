@@ -120,17 +120,31 @@ function SiriRainbowOrb({
 
 function IntelligenceRailShell({
   children,
+  glowOpacity,
+  siriRotateA,
+  siriRotateB,
+  orbMotionA,
+  orbMotionB,
   shellLift,
+  shimmerX,
   isDark,
 }: {
   children: React.ReactNode;
-  glowOpacity?: Animated.AnimatedInterpolation<number>;
-  siriRotateA?: Animated.AnimatedInterpolation<string>;
-  siriRotateB?: Animated.AnimatedInterpolation<string>;
-  orbMotionA?: unknown;
-  orbMotionB?: unknown;
+  glowOpacity: Animated.AnimatedInterpolation<number>;
+  siriRotateA: Animated.AnimatedInterpolation<string>;
+  siriRotateB: Animated.AnimatedInterpolation<string>;
+  orbMotionA: {
+    scale: Animated.AnimatedInterpolation<number>;
+    translateX: Animated.AnimatedInterpolation<number>;
+    translateY: Animated.AnimatedInterpolation<number>;
+  };
+  orbMotionB: {
+    scale: Animated.AnimatedInterpolation<number>;
+    translateX: Animated.AnimatedInterpolation<number>;
+    translateY: Animated.AnimatedInterpolation<number>;
+  };
   shellLift: Animated.AnimatedInterpolation<number>;
-  shimmerX?: Animated.AnimatedInterpolation<number>;
+  shimmerX: Animated.AnimatedInterpolation<number>;
   isDark: boolean;
 }) {
   return (
@@ -141,8 +155,59 @@ function IntelligenceRailShell({
         { transform: [{ translateY: shellLift }] },
       ]}
     >
-      <View style={[styles.quietFrame, isDark ? styles.quietFrameDark : styles.quietFrameLight]}>
-        <View style={styles.shellContent}>{children}</View>
+      <View style={[styles.rainbowFrame, isDark ? styles.rainbowFrameDark : styles.rainbowFrameLight]}>
+        <LinearGradient
+          colors={[...SIRI_RAINBOW]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.borderShimmer, { transform: [{ translateX: shimmerX }] }]}
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(255,255,255,0.45)', 'transparent']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.borderShimmerBar}
+          />
+        </Animated.View>
+        <View style={[styles.rainbowInner, isDark ? styles.rainbowInnerDark : styles.rainbowInnerLight]}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={
+              isDark
+                ? ['rgba(255,255,255,0.1)', 'transparent', 'rgba(0,0,0,0.16)']
+                : ['rgba(255,255,255,0.65)', 'transparent', 'rgba(15,23,42,0.04)']
+            }
+            locations={[0, 0.5, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.innerShade}
+          />
+          <SiriRainbowOrb
+            size={168}
+            style={styles.siriOrbPrimary}
+            rotate={siriRotateA}
+            opacity={glowOpacity}
+            scale={orbMotionA.scale}
+            translateX={orbMotionA.translateX}
+            translateY={orbMotionA.translateY}
+            isDark={isDark}
+          />
+          <SiriRainbowOrb
+            size={118}
+            style={styles.siriOrbSecondary}
+            rotate={siriRotateB}
+            opacity={glowOpacity}
+            scale={orbMotionB.scale}
+            translateX={orbMotionB.translateX}
+            translateY={orbMotionB.translateY}
+            isDark={isDark}
+          />
+          <View style={styles.shellContent}>{children}</View>
+        </View>
       </View>
     </Animated.View>
   );
@@ -704,19 +769,6 @@ const styles = StyleSheet.create({
   shellStage: {
     borderRadius: 30,
     backgroundColor: 'transparent',
-  },
-  quietFrame: {
-    borderRadius: 26,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  quietFrameDark: {
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(8,12,20,0.92)',
-  },
-  quietFrameLight: {
-    borderColor: 'rgba(15,23,42,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.94)',
   },
   shellStageDark: {
     shadowColor: '#000',
