@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -22,20 +24,32 @@ import { BlurView } from 'expo-blur';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import {
+  KEI_FALLBACK_APARTMENT_AREA_RANGES,
+  KEI_FALLBACK_DISTRICTS,
+  KEI_FALLBACK_HOUSE_AREA_RANGES,
+  KEI_FALLBACK_RENT_PRICE_RANGES,
+  KEI_FALLBACK_SALE_PRICE_RANGES,
   KEI_MAX_SELECT,
   KEI_PAGE_SIZE,
+  keiFallbackDatePresets,
   type KeiFloorPlanSelection,
   type KeiPreviewListing,
   type KeiPropertyKind,
+  type KeiSearchFacetsResponse,
   type KeiTransactionKind,
 } from '../contracts/keiAmerContract';
 import {
+  keiAmerFetchFacets,
   keiAmerFetchPreview,
   keiAmerPeekImageUrl,
   keiAmerPeekListing,
   keiAmerRefreshSession,
 } from '../services/keiAmerService';
 import { useKeiAmerExportStore } from '../store/useKeiAmerExportStore';
+import NumericKeyboardAccessory, {
+  ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID,
+} from '../components/NumericKeyboardAccessory';
+import KeiSearchFilters from '../components/admin/KeiSearchFilters';
 
 type LastImagePeek = {
   loading: boolean;
@@ -117,13 +131,13 @@ export default function AdminKeiAmerScreen() {
   const [propertyKind, setPropertyKind] = useState<KeiPropertyKind>('apartment');
   const [transactionKind, setTransactionKind] = useState<KeiTransactionKind>('sale');
   const [browseMode, setBrowseMode] = useState<'feed' | 'search'>('feed');
-  const [district, setDistrict] = useState('');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [minArea, setMinArea] = useState('');
-  const [maxArea, setMaxArea] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [districtId, setDistrictId] = useState('');
+  const [priceRangeId, setPriceRangeId] = useState('');
+  const [areaRangeId, setAreaRangeId] = useState('');
+  const [datePresetId, setDatePresetId] = useState('');
+  const [facets, setFacets] = useState<KeiSearchFacetsResponse | null>(null);
+  const [facetsLoading, setFacetsLoading] = useState(false);
+  const [facetsError, setFacetsError] = useState('');
   const [targetUserId, setTargetUserId] = useState('55');
   const [commission, setCommission] = useState('2');
   const [autoCount, setAutoCount] = useState('1');
@@ -147,6 +161,41 @@ export default function AdminKeiAmerScreen() {
   const hydrateExport = useKeiAmerExportStore((s) => s.hydrateFromServer);
 
   const peekInflight = useRef(new Set<string>());
+  const numericInputProps =
+    Platform.OS === 'ios' ? { inputAccessoryViewID: ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID } : {};
+
+  const districtOptions = facets?.districts?.length ? facets.districts : KEI_FALLBACK_DISTRICTS;
+  const priceOptions = facets?.priceRanges?.length
+    ? facets.priceRanges
+    : transactionKind === 'rent'
+      ? KEI_FALLBACK_RENT_PRICE_RANGES
+      : KEI_FALLBACK_SALE_PRICE_RANGES;
+  const areaOptions = facets?.areaRanges?.length
+    ? facets.areaRanges
+    : propertyKind === 'house'
+      ? KEI_FALLBACK_HOUSE_AREA_RANGES
+      : KEI_FALLBACK_APARTMENT_AREA_RANGES;
+  const dateOptions = useMemo(
+    () => (facets?.datePresets?.length ? facets.datePresets : keiFallbackDatePresets()),
+    [facets],
+  );
+
+  const selectedDistrict = useMemo(
+    () => districtOptions.find((opt) => opt.id === districtId),
+    [districtOptions, districtId],
+  );
+  const selectedPrice = useMemo(
+    () => priceOptions.find((opt) => opt.id === priceRangeId),
+    [priceOptions, priceRangeId],
+  );
+  const selectedArea = useMemo(
+    () => areaOptions.find((opt) => opt.id === areaRangeId),
+    [areaOptions, areaRangeId],
+  );
+  const selectedDate = useMemo(
+    () => dateOptions.find((opt) => opt.id === datePresetId),
+    [dateOptions, datePresetId],
+  );
 
   const selectedList = useMemo(() => Object.values(selected), [selected]);
   const availableListings = useMemo(
@@ -175,6 +224,25 @@ export default function AdminKeiAmerScreen() {
     [floorPlanSelections, lastImagePeeks],
   );
 
+  const loadFacets = useCallback(async () => {
+    if (!token || !sessionOk) return;
+    setFacetsLoading(true);
+    setFacetsError('');
+    try {
+      const res = await keiAmerFetchFacets(token, { propertyKind, transactionKind });
+      setFacets(res);
+      setDistrictId((prev) => (res.districts.some((opt) => opt.id === prev) ? prev : ''));
+      setPriceRangeId((prev) => (res.priceRanges.some((opt) => opt.id === prev) ? prev : ''));
+      setAreaRangeId((prev) => (res.areaRanges.some((opt) => opt.id === prev) ? prev : ''));
+      setDatePresetId((prev) => (res.datePresets.some((opt) => opt.id === prev) ? prev : ''));
+    } catch (e) {
+      setFacets(null);
+      setFacetsError(e instanceof Error ? e.message : 'Nie udało się pobrać list z KEI');
+    } finally {
+      setFacetsLoading(false);
+    }
+  }, [token, sessionOk, propertyKind, transactionKind]);
+
   const loadSession = useCallback(async () => {
     if (!token) return;
     setSessionLoading(true);
@@ -202,25 +270,13 @@ export default function AdminKeiAmerScreen() {
           page: nextPage,
           pageSize: KEI_PAGE_SIZE,
           mode: browseMode,
-          district: browseMode === 'search' ? district.trim() || undefined : undefined,
-          minPrice:
-            browseMode === 'search' && minPrice.trim()
-              ? Number(minPrice.replace(',', '.'))
-              : undefined,
-          maxPrice:
-            browseMode === 'search' && maxPrice.trim()
-              ? Number(maxPrice.replace(',', '.'))
-              : undefined,
-          minArea:
-            browseMode === 'search' && minArea.trim()
-              ? Number(minArea.replace(',', '.'))
-              : undefined,
-          maxArea:
-            browseMode === 'search' && maxArea.trim()
-              ? Number(maxArea.replace(',', '.'))
-              : undefined,
-          dateFrom: browseMode === 'search' ? dateFrom.trim() || undefined : undefined,
-          dateTo: browseMode === 'search' ? dateTo.trim() || undefined : undefined,
+          district: browseMode === 'search' ? selectedDistrict?.district : undefined,
+          minPrice: browseMode === 'search' ? selectedPrice?.minPrice : undefined,
+          maxPrice: browseMode === 'search' ? selectedPrice?.maxPrice : undefined,
+          minArea: browseMode === 'search' ? selectedArea?.minArea : undefined,
+          maxArea: browseMode === 'search' ? selectedArea?.maxArea : undefined,
+          dateFrom: browseMode === 'search' ? selectedDate?.dateFrom : undefined,
+          dateTo: browseMode === 'search' ? selectedDate?.dateTo : undefined,
           verify: browseMode === 'search',
         });
         setListings(res.listings || []);
@@ -239,13 +295,10 @@ export default function AdminKeiAmerScreen() {
       propertyKind,
       transactionKind,
       browseMode,
-      district,
-      minPrice,
-      maxPrice,
-      minArea,
-      maxArea,
-      dateFrom,
-      dateTo,
+      selectedDistrict,
+      selectedPrice,
+      selectedArea,
+      selectedDate,
     ],
   );
 
@@ -430,6 +483,10 @@ export default function AdminKeiAmerScreen() {
   }, [loadSession]);
 
   useEffect(() => {
+    if (sessionOk) void loadFacets();
+  }, [sessionOk, loadFacets]);
+
+  useEffect(() => {
     if (token) void hydrateExport(token);
   }, [token, hydrateExport]);
 
@@ -473,7 +530,11 @@ export default function AdminKeiAmerScreen() {
   }, []);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg }]}>
+    <KeyboardAvoidingView
+      style={[styles.root, { backgroundColor: colors.bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+    >
       <View style={[styles.navBar, { paddingTop: insets.top + 8, borderBottomColor: colors.separator }]}>
         <Pressable
           onPress={() => {
@@ -487,7 +548,7 @@ export default function AdminKeiAmerScreen() {
           <Text style={[styles.navBackText, { color: colors.accentBlue }]}>Profil</Text>
         </Pressable>
         <Text style={[styles.navTitle, { color: colors.text }]}>Amer KEI</Text>
-        <Pressable onPress={() => void loadSession()} style={styles.navAction} hitSlop={12}>
+        <Pressable onPress={() => void Promise.all([loadSession(), loadFacets()])} style={styles.navAction} hitSlop={12}>
           {sessionLoading ? (
             <ActivityIndicator size="small" color={colors.accentBlue} />
           ) : (
@@ -498,11 +559,14 @@ export default function AdminKeiAmerScreen() {
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         refreshControl={
           <RefreshControl
             refreshing={previewLoading}
             onRefresh={() => {
-              void loadSession().then(() => loadPreview(page));
+              void loadSession().then(() => Promise.all([loadFacets(), loadPreview(page)]));
             }}
             tintColor={colors.accentBlue}
           />
@@ -573,100 +637,28 @@ export default function AdminKeiAmerScreen() {
             <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
               FILTRY WYSZUKIWANIA (także starsze oferty)
             </Text>
-            <View style={[styles.configCard, { backgroundColor: colors.card }]}>
-              <View style={styles.configRow}>
-                <Text style={[styles.configLabel, { color: colors.secondary }]}>Dzielnica</Text>
-                <TextInput
-                  value={district}
-                  onChangeText={setDistrict}
-                  placeholder="np. żoliborz"
-                  placeholderTextColor={colors.tertiary}
-                  style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, minWidth: 140 }]}
-                />
-              </View>
-              <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-              <View style={styles.configRow}>
-                <Text style={[styles.configLabel, { color: colors.secondary }]}>Cena od–do</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TextInput
-                    value={minPrice}
-                    onChangeText={setMinPrice}
-                    keyboardType="number-pad"
-                    placeholder="od"
-                    placeholderTextColor={colors.tertiary}
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
-                  />
-                  <TextInput
-                    value={maxPrice}
-                    onChangeText={setMaxPrice}
-                    keyboardType="number-pad"
-                    placeholder="do"
-                    placeholderTextColor={colors.tertiary}
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
-                  />
-                </View>
-              </View>
-              <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-              <View style={styles.configRow}>
-                <Text style={[styles.configLabel, { color: colors.secondary }]}>Metraż od–do</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TextInput
-                    value={minArea}
-                    onChangeText={setMinArea}
-                    keyboardType="decimal-pad"
-                    placeholder="od"
-                    placeholderTextColor={colors.tertiary}
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
-                  />
-                  <TextInput
-                    value={maxArea}
-                    onChangeText={setMaxArea}
-                    keyboardType="decimal-pad"
-                    placeholder="do"
-                    placeholderTextColor={colors.tertiary}
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 84 }]}
-                  />
-                </View>
-              </View>
-              <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-              <View style={styles.configRow}>
-                <Text style={[styles.configLabel, { color: colors.secondary }]}>Data wystawienia</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TextInput
-                    value={dateFrom}
-                    onChangeText={setDateFrom}
-                    placeholder="RRRR-MM-DD"
-                    placeholderTextColor={colors.tertiary}
-                    autoCapitalize="none"
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 110 }]}
-                  />
-                  <TextInput
-                    value={dateTo}
-                    onChangeText={setDateTo}
-                    placeholder="RRRR-MM-DD"
-                    placeholderTextColor={colors.tertiary}
-                    autoCapitalize="none"
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary, width: 110 }]}
-                  />
-                </View>
-              </View>
-            </View>
-            <Pressable
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            <KeiSearchFilters
+              colors={colors}
+              loading={facetsLoading}
+              error={facetsError}
+              facets={facets}
+              districtId={districtId}
+              priceRangeId={priceRangeId}
+              areaRangeId={areaRangeId}
+              datePresetId={datePresetId}
+              onSelectDistrict={setDistrictId}
+              onSelectPrice={setPriceRangeId}
+              onSelectArea={setAreaRangeId}
+              onSelectDate={setDatePresetId}
+              searchLoading={previewLoading}
+              propertyKind={propertyKind}
+              transactionKind={transactionKind}
+              onSearch={() => {
+                Keyboard.dismiss();
                 setSelected({});
                 void loadPreview(1);
               }}
-              style={[styles.autoBtn, { backgroundColor: colors.accentBlue, marginTop: 12, alignSelf: 'stretch' }]}
-            >
-              <Text style={styles.autoBtnText}>
-                {previewLoading ? 'Szukam i weryfikuję…' : 'Szukaj i sprawdź aktualność'}
-              </Text>
-            </Pressable>
-            <Text style={[styles.hint, { color: colors.tertiary }]}>
-              Serwer przeszukuje KEI (także starsze) i sprawdza, czy link na OtoDom/OLX nadal działa — tylko aktywne
-              oferty trafiają do importu.
-            </Text>
+            />
           </View>
         ) : null}
 
@@ -679,6 +671,7 @@ export default function AdminKeiAmerScreen() {
                 value={targetUserId}
                 onChangeText={setTargetUserId}
                 keyboardType="number-pad"
+                {...numericInputProps}
                 style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
               />
             </View>
@@ -689,6 +682,7 @@ export default function AdminKeiAmerScreen() {
                 value={commission}
                 onChangeText={setCommission}
                 keyboardType="decimal-pad"
+                {...numericInputProps}
                 style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
               />
             </View>
@@ -702,6 +696,7 @@ export default function AdminKeiAmerScreen() {
               value={autoCount}
               onChangeText={setAutoCount}
               keyboardType="number-pad"
+              {...numericInputProps}
               style={[styles.autoInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
             />
             <Pressable
@@ -1003,7 +998,8 @@ export default function AdminKeiAmerScreen() {
           </Pressable>
         )}
       </View>
-    </View>
+      <NumericKeyboardAccessory isDark={colors.isDark} />
+    </KeyboardAvoidingView>
   );
 }
 

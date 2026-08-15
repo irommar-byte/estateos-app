@@ -7,6 +7,7 @@ import type {
   KeiPeekResponse,
   KeiPreviewResponse,
   KeiPropertyKind,
+  KeiSearchFacetsResponse,
   KeiSessionResponse,
   KeiTransactionKind,
 } from '../contracts/keiAmerContract';
@@ -37,6 +38,20 @@ export async function keiAmerRefreshSession(token: string, force = true): Promis
     headers: authHeaders(token),
   });
   return parseJson<KeiSessionResponse>(res);
+}
+
+export async function keiAmerFetchFacets(
+  token: string,
+  params: { propertyKind: KeiPropertyKind; transactionKind?: KeiTransactionKind },
+): Promise<KeiSearchFacetsResponse> {
+  const q = new URLSearchParams({
+    propertyKind: params.propertyKind,
+    transactionKind: params.transactionKind ?? 'sale',
+  });
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/facets?${q}`, {
+    headers: authHeaders(token),
+  });
+  return parseJson<KeiSearchFacetsResponse>(res);
 }
 
 export async function keiAmerFetchPreview(
