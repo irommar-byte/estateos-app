@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
-import { X, Minus, Plus } from 'lucide-react-native';
+import { X, Minus, Plus, Banknote, CreditCard } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { API_URL } from '../../config/network';
 import { archiveOfferAfterSaleClosed } from '../../utils/mobileOfferArchive';
@@ -49,6 +49,12 @@ function normalizeToken(rawToken: string | null) {
   const trimmed = rawToken.trim();
   if (!trimmed) return null;
   return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
+}
+
+function formatAmountInput(value: string) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('pl-PL');
 }
 
 function formatCurrency(value?: number | null) {
@@ -311,13 +317,15 @@ export default function BidActionModal({
         >
           <View style={styles.card}>
             <View style={styles.headerRow}>
-              <View />
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={loading}>
+              <View style={styles.headerCopy}>
+                <Text style={styles.eyebrow}>DEALROOM</Text>
+                <Text style={styles.title}>{title || t('dealroom.bid.defaultTitle')}</Text>
+                <Text style={styles.intro}>{t('dealroom.bid.intro')}</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={loading} hitSlop={8}>
                 <X size={16} color="#d1d5db" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.eyebrow}>DEALROOM</Text>
-            <Text style={styles.title}>{title || t('dealroom.bid.defaultTitle')}</Text>
 
             <ScrollView
               style={styles.content}
@@ -395,66 +403,107 @@ export default function BidActionModal({
 
             {(mode === 'create' || decision === 'COUNTER') && !isWaitingForOther && (
               <View style={styles.sectionCard}>
-                <Text style={styles.sectionLabel}>{t('dealroom.bid.yourProposal')}</Text>
-                <TextInput
-                  value={amount}
-                  onChangeText={(v) => setAmount(v.replace(/[^\d]/g, ''))}
-                  keyboardType="numeric"
-                  placeholder={t('dealroom.bid.amountPlaceholder')}
-                  placeholderTextColor="#777"
-                  style={styles.input}
-                  editable={!isLocked && !loading}
-                />
-                <View style={styles.stepperRow}>
-                  {QUICK_BID_STEPS.map((delta) => {
-                    const isPositive = delta > 0;
-                    const label = `${isPositive ? '+' : '−'} ${Math.abs(delta).toLocaleString('pl-PL')}`;
-                    const disabled = isLocked || loading;
-                    return (
-                      <TouchableOpacity
-                        key={delta}
-                        style={[styles.stepperBtn, disabled && styles.stepperBtnDisabled]}
-                        onPress={() => adjustAmount(delta)}
-                        disabled={disabled}
-                        activeOpacity={0.85}
-                        accessibilityRole="button"
-                        accessibilityLabel={t(isPositive ? 'dealroom.bid.increaseA11y' : 'dealroom.bid.decreaseA11y', {
-                          amount: Math.abs(delta).toLocaleString('pl-PL'),
-                        })}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        {isPositive ? (
-                          <Plus size={14} color={disabled ? '#5a5a5f' : '#e1e1e4'} strokeWidth={2.6} />
-                        ) : (
-                          <Minus size={14} color={disabled ? '#5a5a5f' : '#e1e1e4'} strokeWidth={2.6} />
-                        )}
-                        <Text style={[styles.stepperTxt, disabled && styles.stepperTxtDisabled]} numberOfLines={1}>
-                          {label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                {mode === 'create' && (
-                  <View style={styles.segment}>
-                    <TouchableOpacity style={[styles.segmentBtn, financing === 'CASH' && styles.segmentBtnActive]} onPress={() => setFinancing('CASH')}>
-                      <Text style={[styles.segmentTxt, financing === 'CASH' && styles.segmentTxtActive]}>{t('dealroom.bid.financing.cash')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.segmentBtn, financing === 'CREDIT' && styles.segmentBtnActive]} onPress={() => setFinancing('CREDIT')}>
-                      <Text style={[styles.segmentTxt, financing === 'CREDIT' && styles.segmentTxtActive]}>{t('dealroom.bid.financing.credit')}</Text>
-                    </TouchableOpacity>
+                <View style={styles.stepHead}>
+                  <View style={styles.stepNum}>
+                    <Text style={styles.stepNumTxt}>1</Text>
                   </View>
-                )}
+                  <View style={styles.stepCopy}>
+                    <Text style={styles.sectionLabel}>{t('dealroom.bid.yourProposal')}</Text>
+                    <Text style={styles.stepHint}>
+                      {t('dealroom.bid.amountHint', { step: Math.abs(QUICK_BID_STEPS[1]).toLocaleString('pl-PL') })}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.amountHero}>
+                  <TouchableOpacity
+                    style={[styles.nudgeBtn, (isLocked || loading) && styles.nudgeBtnDisabled]}
+                    onPress={() => adjustAmount(QUICK_BID_STEPS[0])}
+                    disabled={isLocked || loading}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('dealroom.bid.decreaseA11y', {
+                      amount: Math.abs(QUICK_BID_STEPS[0]).toLocaleString('pl-PL'),
+                    })}
+                  >
+                    <Minus size={18} color={isLocked || loading ? '#5a5a5f' : '#f5f5f7'} strokeWidth={2.6} />
+                  </TouchableOpacity>
+                  <View style={styles.amountField}>
+                    <TextInput
+                      value={formatAmountInput(amount)}
+                      onChangeText={(v) => setAmount(v.replace(/\D/g, ''))}
+                      keyboardType="numeric"
+                      placeholder={t('dealroom.bid.amountPlaceholder')}
+                      placeholderTextColor="#6b6b70"
+                      style={styles.amountInput}
+                      editable={!isLocked && !loading}
+                    />
+                    <Text style={styles.amountSuffix}>zł</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.nudgeBtn, (isLocked || loading) && styles.nudgeBtnDisabled]}
+                    onPress={() => adjustAmount(QUICK_BID_STEPS[1])}
+                    disabled={isLocked || loading}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('dealroom.bid.increaseA11y', {
+                      amount: Math.abs(QUICK_BID_STEPS[1]).toLocaleString('pl-PL'),
+                    })}
+                  >
+                    <Plus size={18} color={isLocked || loading ? '#5a5a5f' : '#f5f5f7'} strokeWidth={2.6} />
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
+            {mode === 'create' && !isWaitingForOther ? (
+              <View style={styles.sectionCard}>
+                <View style={styles.stepHead}>
+                  <View style={styles.stepNum}>
+                    <Text style={styles.stepNumTxt}>2</Text>
+                  </View>
+                  <View style={styles.stepCopy}>
+                    <Text style={styles.sectionLabel}>{t('dealroom.bid.paymentLabel')}</Text>
+                  </View>
+                </View>
+                <View style={styles.payTrack}>
+                  <TouchableOpacity
+                    style={[styles.paySeg, financing === 'CASH' && styles.paySegOn]}
+                    onPress={() => setFinancing('CASH')}
+                    activeOpacity={0.88}
+                  >
+                    <Banknote size={16} color={financing === 'CASH' ? '#0A0A0A' : '#d1d5db'} strokeWidth={2.1} />
+                    <Text style={[styles.paySegTxt, financing === 'CASH' && styles.paySegTxtOn]}>
+                      {t('dealroom.bid.financing.cash')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.paySeg, financing === 'CREDIT' && styles.paySegOn]}
+                    onPress={() => setFinancing('CREDIT')}
+                    activeOpacity={0.88}
+                  >
+                    <CreditCard size={16} color={financing === 'CREDIT' ? '#0A0A0A' : '#d1d5db'} strokeWidth={2.1} />
+                    <Text style={[styles.paySegTxt, financing === 'CREDIT' && styles.paySegTxtOn]}>
+                      {t('dealroom.bid.financing.credit')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>{t('dealroom.bid.messageLabel')}</Text>
+              <View style={styles.stepHead}>
+                <View style={styles.stepNum}>
+                  <Text style={styles.stepNumTxt}>{mode === 'create' ? '3' : '2'}</Text>
+                </View>
+                <View style={styles.stepCopy}>
+                  <Text style={styles.sectionLabel}>{t('dealroom.bid.messageLabel')}</Text>
+                </View>
+              </View>
               <TextInput
                 value={note}
                 onChangeText={setNote}
                 placeholder={t('dealroom.bid.messagePlaceholder')}
-                placeholderTextColor="#777"
+                placeholderTextColor="#6b6b70"
                 style={[styles.input, styles.note]}
                 multiline
                 editable={!isLocked && !loading}
@@ -470,7 +519,7 @@ export default function BidActionModal({
                 <Text style={styles.secondaryTxt}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.primaryBtn, !canSubmit && styles.disabled]} onPress={handleSubmitPress} disabled={!canSubmit || loading}>
-                {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryTxt}>{t('dealroom.bid.send')}</Text>}
+                {loading ? <ActivityIndicator color="#0A0A0A" /> : <Text style={styles.primaryTxt}>{t('dealroom.bid.sendProposal')}</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -563,61 +612,102 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', justifyContent: 'center', padding: 10 },
   keyboardWrap: { width: '100%', justifyContent: 'center' },
   card: { backgroundColor: '#0b0b0b', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, maxHeight: '96%' },
-  headerRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 2 },
-  closeBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center', backgroundColor: '#141418' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
+  headerCopy: { flex: 1, minWidth: 0, paddingRight: 4 },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
   eyebrow: { color: '#8a8a8f', fontSize: 10, fontWeight: '800', letterSpacing: 1.3, textTransform: 'uppercase' },
-  title: { color: '#fff', fontSize: 24, fontWeight: '700', letterSpacing: -0.3, marginTop: 4, marginBottom: 6 },
+  title: { color: '#fff', fontSize: 24, fontWeight: '700', letterSpacing: -0.3, marginTop: 4 },
+  intro: { color: '#9da0a6', fontSize: 13, lineHeight: 18, fontWeight: '500', marginTop: 6 },
   content: { marginTop: 2 },
   contentInner: { paddingBottom: 8, flexGrow: 0 },
-  sectionLabel: { color: '#9da0a6', fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  stepHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  stepNum: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  stepNumTxt: { color: '#f5f5f7', fontSize: 11, fontWeight: '800' },
+  stepCopy: { flex: 1, minWidth: 0 },
+  sectionLabel: { color: '#e8e8ed', fontSize: 13, fontWeight: '800', letterSpacing: 0.1 },
+  stepHint: { color: '#8e8e93', fontSize: 11, fontWeight: '500', marginTop: 2, lineHeight: 15 },
   sectionCard: {
-    backgroundColor: '#111113',
-    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    padding: 10,
+    borderColor: 'rgba(255,255,255,0.10)',
+    padding: 12,
     marginBottom: 10,
   },
-  input: { backgroundColor: '#161618', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', color: '#fff', paddingHorizontal: 12, paddingVertical: 11, marginBottom: 0 },
-  note: { minHeight: 84, textAlignVertical: 'top' },
-  stepperRow: {
+  amountHero: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
+    alignItems: 'center',
+    gap: 10,
   },
-  stepperBtn: {
+  nudgeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  nudgeBtnDisabled: { opacity: 0.4 },
+  amountField: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 56,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  amountInput: {
+    flex: 1,
+    minWidth: 0,
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.6,
+    paddingVertical: 8,
+    fontVariant: ['tabular-nums'],
+  },
+  amountSuffix: {
+    color: '#aeaeb2',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  payTrack: {
+    flexDirection: 'row',
+    gap: 4,
+    padding: 3,
+    borderRadius: 14,
+    backgroundColor: 'rgba(118,118,128,0.22)',
+  },
+  paySeg: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: '#17171a',
     paddingVertical: 11,
-    paddingHorizontal: 10,
+    borderRadius: 11,
   },
-  stepperBtnDisabled: {
-    opacity: 0.45,
+  paySegOn: {
+    backgroundColor: '#F5F5F7',
   },
-  stepperTxt: {
-    color: '#e1e1e4',
-    fontWeight: '800',
-    fontSize: 13,
-    letterSpacing: 0.3,
-    fontVariant: ['tabular-nums'],
-  },
-  stepperTxtDisabled: {
-    color: '#5a5a5f',
-  },
-  segment: { flexDirection: 'row', gap: 8 },
-  segmentBtn: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', paddingVertical: 10, alignItems: 'center', backgroundColor: '#17171a' },
-  segmentBtnActive: { borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.16)' },
-  acceptBtn: { borderColor: 'rgba(16,185,129,0.45)', backgroundColor: 'rgba(16,185,129,0.15)' },
-  segmentTxt: { color: '#c0c3c8', fontWeight: '700', fontSize: 12 },
-  acceptTxt: { color: '#9af0bf' },
-  segmentTxtActive: { color: '#10b981' },
+  paySegTxt: { color: '#d1d5db', fontWeight: '700', fontSize: 13 },
+  paySegTxtOn: { color: '#0A0A0A' },
+  input: { backgroundColor: 'rgba(0,0,0,0.28)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', color: '#fff', paddingHorizontal: 12, paddingVertical: 11, marginBottom: 0 },
+  note: { minHeight: 76, textAlignVertical: 'top' },
   lockedBox: {
     borderRadius: 14,
     borderWidth: 1,
@@ -735,11 +825,11 @@ const styles = StyleSheet.create({
   },
   timelineLabel: { color: '#f3f4f6', fontWeight: '700', fontSize: 12 },
   timelineValue: { color: '#9ca3af', fontWeight: '700', fontSize: 12, marginLeft: 10 },
-  footerRow: { flexDirection: 'row', gap: 10, marginTop: 2 },
-  primaryBtn: { flex: 1, borderRadius: 12, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center', paddingVertical: 13 },
-  primaryTxt: { color: '#04120d', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6, fontSize: 12 },
-  secondaryBtn: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', paddingVertical: 13, backgroundColor: '#131316' },
-  secondaryTxt: { color: '#e1e1e4', fontWeight: '700', fontSize: 12 },
+  footerRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  primaryBtn: { flex: 1.35, borderRadius: 14, backgroundColor: '#F5F5F7', alignItems: 'center', justifyContent: 'center', paddingVertical: 14 },
+  primaryTxt: { color: '#0A0A0A', fontWeight: '800', letterSpacing: 0.1, fontSize: 14 },
+  secondaryBtn: { flex: 0.85, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.05)' },
+  secondaryTxt: { color: '#e1e1e4', fontWeight: '700', fontSize: 14 },
   error: { color: '#ff6b6b', marginBottom: 8, fontWeight: '600' },
   disabled: { opacity: 0.45 },
   confirmBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
