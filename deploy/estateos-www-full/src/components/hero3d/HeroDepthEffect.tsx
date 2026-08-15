@@ -413,10 +413,6 @@ export default function HeroDepthEffect() {
               label={dict.footer.appStore}
               androidComingSoon
               androidSoonLabel={dict.homeAppPitch.androidSoon}
-              androidBetaLabel={dict.homeAppPitch.androidBetaLabel}
-              androidBetaBadge={dict.homeAppPitch.androidBetaBadge}
-              showAndroidBetaHint
-              androidBetaHint={dict.homeAppPitch.androidBetaHint}
             />
           </motion.div>
         </motion.div>

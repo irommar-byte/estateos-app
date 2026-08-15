@@ -10,10 +10,11 @@ import os
 /// - My = `MPPlayableContentManager` (trzecia aplikacja). NBT często zgłasza
 ///   `enforcedContentItemsCount = 1` i/lub `enforcedContentTreeDepth = 1`.
 ///
-/// Strategia jak Apple Music w UI samochodu:
-/// 1. Zawsze **zagnieżdżona** playlista → utwory (1 kontener w root = „mieści się” w limicie 1).
-/// 2. Wewnątrz kontenera **nigdy** nie tnij kolejki do 1 — ignoruj fałszywy limit NBT.
-/// 3. `nowPlayingIdentifiers` = kontener + **wszystkie** utwory kolejki (nie tylko bieżący).
+/// Strategia:
+/// 1. Drzewo browse: zagnieżdżona playlista → utwory (1 kontener w root = OK przy limicie 1).
+/// 2. Wewnątrz kontenera nigdy nie tnij kolejki do 1.
+/// 3. `nowPlayingIdentifiers` = **tylko utwory**, bieżący jako pierwszy — to napędza listę
+///    pokrętłem przy Now Playing. Kontener w tej tablicy psuje listę na NBT (zostaje 3/6 bez scrolla).
 /// 4. Nie przeładowuj drzewa przy każdym ticku czasu — tylko przy zmianie kolejki/utworu.
 @MainActor
 final class BluetoothMediaBrowser: NSObject {
@@ -374,13 +375,20 @@ final class BluetoothMediaBrowser: NSObject {
 
         var ids: [String] = []
         switch snap.root {
-        case .activeQueue(_, let container, let tracks):
-            // Kontener playlisty + CAŁA kolejka — NBT/iDrive przewija tę listę jak Apple Music.
-            ids.append(container.identifier)
-            if let current = snap.nowPlayingIdentifier {
-                ids.append(current)
-                for track in tracks where track.identifier != current {
-                    ids.append(track.identifier)
+        case .activeQueue(_, _, let tracks):
+            // Krytyczne dla BMW NBT / iDrive List:
+            // - `nowPlayingIdentifiers` = przewijana lista pokrętłem przy Now Playing.
+            // - Pierwszy ID MUSI być bieżącym utworem (dokumentacja Apple).
+            // - NIE wstawiać kontenera playlisty — NBT wtedy „widzi” 1 element (folder)
+            //   i zostaje tylko next/prev + licznik 3/6 z MPNowPlayingInfo.
+            if let current = snap.nowPlayingIdentifier,
+               let currentIdx = tracks.firstIndex(where: { $0.identifier == current }) {
+                ids.append(tracks[currentIdx].identifier)
+                if currentIdx + 1 < tracks.count {
+                    ids.append(contentsOf: tracks[(currentIdx + 1)...].map(\.identifier))
+                }
+                if currentIdx > 0 {
+                    ids.append(contentsOf: tracks[..<currentIdx].map(\.identifier))
                 }
             } else {
                 ids.append(contentsOf: tracks.map(\.identifier))
@@ -394,7 +402,16 @@ final class BluetoothMediaBrowser: NSObject {
         if ids.count > 120 {
             ids = Array(ids.prefix(120))
         }
-        MPPlayableContentManager.shared().nowPlayingIdentifiers = ids
+
+        let manager = MPPlayableContentManager.shared()
+        // NBT czasem cache’uje starą listę — wymuś podmianę.
+        if manager.nowPlayingIdentifiers != ids {
+            manager.nowPlayingIdentifiers = []
+            manager.nowPlayingIdentifiers = ids
+            Self.log.info(
+                "nowPlayingIdentifiers count=\(ids.count, privacy: .public) first=\(ids.first ?? "-", privacy: .public)"
+            )
+        }
     }
 
     private func notifyContentChanged() {
