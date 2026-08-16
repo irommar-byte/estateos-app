@@ -6,6 +6,7 @@ import { buyerPrefToWebRadarFilters } from '@/lib/agencyClientShape';
 import { formatRadarSummary } from '@/lib/radarCalibrationWeb';
 import { contactThreadPair } from '@/lib/contactThreadPair';
 import { sendContactThreadMessage } from '@/lib/contactSendMessage';
+import type { AcquisitionFormData } from '@/lib/acquisitionWorkflow';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -81,8 +82,34 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           images: true,
         },
       },
+      acquisition: {
+        select: {
+          id: true,
+          status: true,
+          currentStep: true,
+          formData: true,
+          agreementSnapshot: true,
+          clientAcknowledgedAt: true,
+          clientAcknowledgementName: true,
+          signedAt: true,
+          signerName: true,
+          documentHash: true,
+          copyEmailSentAt: true,
+          updatedAt: true,
+        },
+      },
       activities: {
-        where: { kind: { in: ['LISTING_LINKED', 'CLIENT_NOTIFIED', 'OFFER_SHARED'] } },
+        where: {
+          kind: {
+            in: [
+              'LISTING_LINKED',
+              'CLIENT_NOTIFIED',
+              'OFFER_SHARED',
+              'ACQUISITION_MEETING',
+              'ACQUISITION_SIGNED',
+            ],
+          },
+        },
         orderBy: { createdAt: 'desc' },
         take: 12,
         select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true },
@@ -146,6 +173,21 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             imageUrl: resolveOfferPrimaryImage(client.linkedOffer),
           }
         : null,
+      acquisition: client.acquisition
+        ? {
+            status: client.acquisition.status,
+            currentStep: client.acquisition.currentStep,
+            formData: client.acquisition.formData as unknown as AcquisitionFormData,
+            agreementSnapshot: client.acquisition.agreementSnapshot,
+            clientAcknowledgedAt: client.acquisition.clientAcknowledgedAt?.toISOString() ?? null,
+            clientAcknowledgementName: client.acquisition.clientAcknowledgementName,
+            signedAt: client.acquisition.signedAt?.toISOString() ?? null,
+            signerName: client.acquisition.signerName,
+            documentHash: client.acquisition.documentHash,
+            copyEmailSentAt: client.acquisition.copyEmailSentAt?.toISOString() ?? null,
+            updatedAt: client.acquisition.updatedAt.toISOString(),
+          }
+        : null,
       activities: client.activities.map((a) => ({
         id: a.id,
         kind: a.kind,
@@ -172,10 +214,67 @@ export async function POST(req: Request, ctx: RouteCtx) {
       linkedUserId: true,
       firstName: true,
       lastName: true,
+      acquisition: {
+        select: {
+          id: true,
+          status: true,
+          formData: true,
+          clientAcknowledgedAt: true,
+        },
+      },
     },
   });
   if (!client) {
     return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
+  }
+
+  if (action === 'update_acquisition_checklist') {
+    if (client.type !== 'SELLER' || !client.acquisition || client.acquisition.status === 'SIGNED') {
+      return NextResponse.json({ error: 'Proces pozyskania nie jest dostępny do edycji.' }, { status: 400 });
+    }
+    const incoming = body.documents && typeof body.documents === 'object' ? body.documents : {};
+    const currentForm = client.acquisition.formData as unknown as AcquisitionFormData;
+    const documents = Object.fromEntries(
+      Object.entries(incoming)
+        .slice(0, 30)
+        .map(([key, value]) => [String(key).slice(0, 64), Boolean(value)]),
+    );
+    await prisma.agencyClientAcquisition.update({
+      where: { id: client.acquisition.id },
+      data: { formData: { ...currentForm, documents } },
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'acknowledge_acquisition') {
+    if (client.type !== 'SELLER' || !client.acquisition || !['TERMS_READY', 'IN_MEETING'].includes(client.acquisition.status)) {
+      return NextResponse.json({ error: 'Warunki nie są jeszcze gotowe do potwierdzenia.' }, { status: 400 });
+    }
+    const acknowledgementName = String(body.name || '').trim();
+    if (acknowledgementName.length < 3) {
+      return NextResponse.json({ error: 'Wpisz imię i nazwisko.' }, { status: 400 });
+    }
+    const acknowledgedAt = new Date();
+    await prisma.$transaction([
+      prisma.agencyClientAcquisition.update({
+        where: { id: client.acquisition.id },
+        data: {
+          clientAcknowledgedAt: acknowledgedAt,
+          clientAcknowledgementName: acknowledgementName.slice(0, 191),
+        },
+      }),
+      prisma.agencyClientActivity.create({
+        data: {
+          clientId: client.id,
+          agencyUserId: client.agencyUserId,
+          kind: 'ACQUISITION_ACKNOWLEDGED',
+          title: 'Klient zapoznał się z warunkami',
+          body: `${acknowledgementName} potwierdził(a) zapoznanie się z dokumentem.`,
+          metadata: { acknowledgedAt: acknowledgedAt.toISOString(), via: 'client_portal' },
+        },
+      }),
+    ]);
+    return NextResponse.json({ success: true, acknowledgedAt: acknowledgedAt.toISOString() });
   }
 
   if (action === 'submit_feedback') {

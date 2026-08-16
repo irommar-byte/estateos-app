@@ -13,6 +13,9 @@ import OtodomImportProCard from "@/components/otodom/OtodomImportProCard";
 import OpenHouseProCard from "@/components/openHouse/OpenHouseProCard";
 import AuctionProCard from "@/components/crm/AuctionProCard";
 import PulseUpcomingSchedule from "@/components/PulseUpcomingSchedule";
+import { buildInvestorProBarPalette, buildInvestorProPeriodStatus } from "@/lib/investorProMembership";
+import { isPlusCreditActive } from "@/lib/offerListingLimits";
+import { fmtDict } from "@/i18n/crmExtendedDictionary";
 
 type ProOfferRow = { id: number; title: string; city?: string; district?: string };
 
@@ -157,6 +160,7 @@ export default function ProWidget({
 }) {
   const { locale, dict } = useLocale();
   const pw = dict.crm.proWidget;
+  const ps = dict.crm.proStatus;
   const dateTag = locale === "pl" ? "pl-PL" : locale === "uk" ? "uk-UA" : "en-GB";
   const [avgPrice, setAvgPrice] = useState<number | null>(null);
   const [demandLabel, setDemandLabel] = useState<string>("—");
@@ -178,6 +182,19 @@ export default function ProWidget({
   
   const today = new Date();
   const isCurrentMonthView = monthOffset === 0;
+  const membershipPeriod =
+    currentUser?.isPro && currentUser?.proExpiresAt
+      ? buildInvestorProPeriodStatus(currentUser.proExpiresAt)
+      : null;
+  const membershipPalette = membershipPeriod
+    ? buildInvestorProBarPalette(membershipPeriod.progressRemaining)
+    : null;
+  const membershipExpiry = membershipPeriod
+    ? new Date(membershipPeriod.expiresAtMs).toLocaleDateString(dateTag)
+    : null;
+  const membershipCredits = isPlusCreditActive(currentUser)
+    ? Number(currentUser?.extraListings ?? 0)
+    : null;
 
   const firstDay = (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -287,6 +304,50 @@ export default function ProWidget({
                  <h1 className="text-4xl font-black tabular-nums leading-none tracking-tighter text-[var(--eos-text)] drop-shadow-sm md:text-5xl">{today.toLocaleTimeString(dateTag, { hour: '2-digit', minute: '2-digit' })}</h1>
               </div>
            </div>
+           {membershipPeriod && membershipPalette ? (
+             <div className="eos-pro-panel eos-pro-panel-inset rounded-2xl p-4">
+               <div className="flex items-start justify-between gap-3">
+                 <div className="min-w-0">
+                   <p
+                     className="text-[8px] font-black uppercase tracking-[0.22em]"
+                     style={{ color: membershipPalette.tone }}
+                   >
+                     {ps.eyebrow}
+                   </p>
+                   <p className="mt-1 truncate text-[11px] font-bold text-[var(--eos-text)]">
+                     {fmtDict(ps.compactUntil, { date: membershipExpiry || "—" })}
+                   </p>
+                 </div>
+                 {membershipCredits !== null ? (
+                   <div className="shrink-0 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-center">
+                     <p className="text-[7px] font-black uppercase tracking-[0.12em] text-emerald-500">
+                       {ps.creditsShort}
+                     </p>
+                     <p className="text-xs font-black tabular-nums text-emerald-500">{membershipCredits}</p>
+                   </div>
+                 ) : null}
+               </div>
+               <div className="mt-3 h-1.5 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                 <div
+                   className="h-full rounded-full transition-all duration-700 ease-out"
+                   style={{
+                     width: `${Math.max(
+                       membershipPeriod.progressRemaining * 100,
+                       membershipPeriod.daysLeft > 0 ? 3 : 0,
+                     )}%`,
+                     background: `linear-gradient(90deg, ${membershipPalette.toneSoft}, ${membershipPalette.tone})`,
+                     boxShadow: `0 0 14px ${membershipPalette.glow}`,
+                   }}
+                 />
+               </div>
+               <p className="eos-pro-subtle mt-1.5 text-[8px]">
+                 {fmtDict(ps.barCaption, {
+                   n: membershipPeriod.daysLeft,
+                   total: membershipPeriod.periodDays,
+                 })}
+               </p>
+             </div>
+           ) : null}
            <div className="grid grid-cols-2 gap-4">
               <div className="eos-pro-panel eos-pro-panel-inset flex h-[80px] flex-col justify-between rounded-2xl p-4">
                  <div className="flex items-start justify-between">

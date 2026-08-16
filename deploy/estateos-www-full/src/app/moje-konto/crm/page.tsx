@@ -52,109 +52,8 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { parseDealEvent } from "@/components/crm/dealRoomUtils";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
-import { buildInvestorProPeriodStatus, buildInvestorProBarPalette } from "@/lib/investorProMembership";
-import { isPlusCreditActive } from "@/lib/offerListingLimits";
 
 type CrmTab = "klienci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje";
-
-const ProStatusBar = ({ user, compact = false }: { user: any; compact?: boolean }) => {
-  const { dict, locale } = useLocale();
-  const ps = dict.crm.proStatus;
-  if (!user?.isPro || !user?.proExpiresAt) return null;
-
-  const period = buildInvestorProPeriodStatus(user.proExpiresAt);
-  if (!period) return null;
-
-  const expiry = new Date(period.expiresAtMs);
-  const daysLeft = period.daysLeft;
-  const progress = period.progressRemaining * 100;
-  const palette = buildInvestorProBarPalette(period.progressRemaining);
-  const dayUnit = daysLeft === 1 ? ps.dayOne : ps.dayMany;
-  const dateLocale = locale === "en" ? "en-GB" : "pl-PL";
-  const expiryLabel = expiry.toLocaleDateString(dateLocale);
-  const creditsActive = isPlusCreditActive(user);
-  const creditsCount = creditsActive ? Number(user.extraListings ?? 0) : 0;
-
-  if (compact) {
-    return (
-      <div className="mb-5 sm:mb-6 px-1 sm:px-2 md:px-4">
-        <div className="flex flex-col gap-2.5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 px-4 py-3 backdrop-blur-xl sm:flex-row sm:items-center sm:gap-4">
-          <div className="min-w-0 shrink-0 sm:w-[11rem]">
-            <p
-              className="text-[9px] font-black uppercase tracking-[0.22em]"
-              style={{ color: palette.tone }}
-            >
-              {ps.eyebrow}
-            </p>
-            <p className="mt-0.5 truncate text-xs font-semibold text-[var(--eos-text)]">
-              {fmtDict(ps.compactUntil, { date: expiryLabel })}
-            </p>
-            <p className="text-[10px] text-[var(--eos-muted)]">
-              {fmtDict(ps.daysLeft, { n: daysLeft, unit: dayUnit })}
-            </p>
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="relative h-2 w-full overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
-              <div
-                className="h-full rounded-full transition-all duration-700 ease-out"
-                style={{
-                  width: `${Math.max(progress, daysLeft > 0 ? 3 : 0)}%`,
-                  background: `linear-gradient(90deg, ${palette.toneSoft}, ${palette.tone})`,
-                  boxShadow: `0 0 16px ${palette.glow}`,
-                }}
-              />
-            </div>
-            <p className="mt-1 text-[9px] text-[var(--eos-muted)]/75">
-              {fmtDict(ps.barCaption, { n: daysLeft, total: period.periodDays })}
-            </p>
-          </div>
-
-          {creditsActive ? (
-            <div className="shrink-0 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-center sm:text-right">
-              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-400/90">
-                {ps.creditsShort}
-              </p>
-              <p className="text-sm font-black tabular-nums text-emerald-400">{creditsCount}</p>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mb-5 sm:mb-6 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-2xl border border-[var(--eos-border)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] font-black mb-1" style={{ color: palette.tone }}>
-            {ps.eyebrow}
-          </p>
-          <p className="text-sm sm:text-base text-[var(--eos-text)] font-bold">
-            {ps.validUntil} {expiryLabel}
-          </p>
-          <p className="text-xs sm:text-sm text-[var(--eos-muted)]">
-            {fmtDict(ps.daysLeft, { n: daysLeft, unit: dayUnit })}
-          </p>
-          <p className="mt-1 text-[10px] sm:text-xs text-[var(--eos-muted)]/90">{ps.periodHint}</p>
-        </div>
-      </div>
-      <div className="relative h-3 w-full overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] sm:h-3.5">
-        <div
-          className="relative h-full rounded-full transition-all duration-700 ease-out"
-          style={{
-            width: `${Math.max(progress, daysLeft > 0 ? 4 : 0)}%`,
-            background: `linear-gradient(90deg, ${palette.toneSoft}, ${palette.tone})`,
-            boxShadow: `0 0 24px ${palette.glow}`,
-          }}
-        />
-      </div>
-      <p className="mt-2 text-[10px] text-[var(--eos-muted)]/80">
-        {fmtDict(ps.barCaption, { n: daysLeft, total: period.periodDays })}
-      </p>
-    </div>
-  );
-};
 
 const WowOverlay = ({
   type,
@@ -1281,8 +1180,6 @@ export default function CRMDashboard() {
           onOpenClients={() => handleTabSwitch('klienci' as CrmTab)}
           onOpenPlanning={() => handleTabSwitch('planowanie' as CrmTab)}
         />
-
-        <ProStatusBar user={currentUser} compact />
 
         {isPremium ? (
           <ProWidget

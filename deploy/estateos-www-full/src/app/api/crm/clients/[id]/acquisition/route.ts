@@ -1,0 +1,344 @@
+import { createHash } from "node:crypto";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireAgencyUserId } from "@/lib/agencyClientAuth";
+import {
+  buildAcquisitionAgreementText,
+  createDefaultAcquisitionForm,
+  type AcquisitionFormData,
+} from "@/lib/acquisitionWorkflow";
+import { sendTransactionalEmail } from "@/lib/email/transactional";
+import { resolveSellerPersonName } from "@/lib/sellerDisplay";
+
+type RouteCtx = { params: Promise<{ id: string }> };
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function shapeAcquisition(record: any, fallbackForm: AcquisitionFormData) {
+  if (!record) return null;
+  return {
+    id: record.id,
+    clientId: record.clientId,
+    status: record.status,
+    currentStep: record.currentStep,
+    formData: (record.formData || fallbackForm) as AcquisitionFormData,
+    agreementSnapshot: record.agreementSnapshot,
+    approvedTemplateConfirmed: Boolean(record.approvedTemplateConfirmed),
+    clientAcknowledgedAt: record.clientAcknowledgedAt?.toISOString() ?? null,
+    clientAcknowledgementName: record.clientAcknowledgementName,
+    signedAt: record.signedAt?.toISOString() ?? null,
+    signerName: record.signerName,
+    signerEmail: record.signerEmail,
+    documentHash: record.documentHash,
+    copyEmailSentAt: record.copyEmailSentAt?.toISOString() ?? null,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+async function loadContext(clientId: number, agencyUserId: number) {
+  return prisma.agencyClient.findFirst({
+    where: { id: clientId, agencyUserId, status: "ACTIVE", type: "SELLER" },
+    include: {
+      acquisition: true,
+      agencyUser: {
+        select: { name: true, companyName: true, email: true, phone: true },
+      },
+    },
+  });
+}
+
+function buildSnapshot(client: Awaited<ReturnType<typeof loadContext>>, form: AcquisitionFormData, reference: string) {
+  if (!client) throw new Error("Nie znaleziono klienta.");
+  const agentName =
+    resolveSellerPersonName(client.agencyUser) ||
+    client.agencyUser.name ||
+    "Agent";
+  return buildAcquisitionAgreementText({
+    reference,
+    createdAt: new Date().toLocaleString("pl-PL"),
+    agencyName: client.agencyUser.companyName?.trim() || "EstateOS",
+    agentName,
+    agentEmail: client.agencyUser.email,
+    agentPhone: client.agencyUser.phone,
+    clientName: `${client.firstName} ${client.lastName}`.trim(),
+    clientEmail: client.email,
+    clientPhone: client.phone,
+    form,
+  });
+}
+
+function documentHtml(params: {
+  agreement: string;
+  signatureData?: string | null;
+  signerName?: string | null;
+  signedAt?: Date | null;
+  hash?: string | null;
+}) {
+  return `<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><title>Umowa i karta pozyskania</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:820px;margin:40px auto;padding:0 24px;color:#171717;line-height:1.55}pre{white-space:pre-wrap;font:inherit}.sign{margin-top:36px;padding-top:24px;border-top:1px solid #ddd}.sign img{display:block;max-width:360px;max-height:150px;border:1px solid #ddd;border-radius:12px}.audit{font-size:12px;color:#666;word-break:break-all}</style>
+</head><body><pre>${escapeHtml(params.agreement)}</pre>
+<section class="sign"><h2>Podpis klienta</h2>
+${params.signatureData ? `<img src="${params.signatureData}" alt="Podpis klienta">` : ""}
+<p><strong>${escapeHtml(params.signerName || "—")}</strong><br>${params.signedAt ? escapeHtml(params.signedAt.toLocaleString("pl-PL")) : "—"}</p>
+<p class="audit">SHA-256: ${escapeHtml(params.hash || "—")}</p></section></body></html>`;
+}
+
+async function syncMeetingActivity(params: {
+  clientId: number;
+  agencyUserId: number;
+  clientName: string;
+  form: AcquisitionFormData;
+}) {
+  const rawStartsAt = params.form.meeting.startsAt;
+  if (!rawStartsAt) return;
+  const startsAt = new Date(rawStartsAt);
+  if (Number.isNaN(startsAt.getTime())) return;
+  const existing = await prisma.agencyClientActivity.findFirst({
+    where: { clientId: params.clientId, agencyUserId: params.agencyUserId, kind: "ACQUISITION_MEETING" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  const metadata = {
+    startsAt: startsAt.toISOString(),
+    location: params.form.meeting.location || null,
+    notes: params.form.meeting.reasonForSale || null,
+    source: "acquisition_workflow",
+  };
+  const title = `Pozyskanie · ${params.clientName}`;
+  const activityBody =
+    [params.form.meeting.location, params.form.meeting.clientGoal].filter(Boolean).join(" · ") ||
+    "Spotkanie pozyskania";
+  if (existing) {
+    await prisma.agencyClientActivity.update({
+      where: { id: existing.id },
+      data: { title, body: activityBody, metadata },
+    });
+  } else {
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId: params.clientId,
+        agencyUserId: params.agencyUserId,
+        kind: "ACQUISITION_MEETING",
+        title,
+        body: activityBody,
+        metadata,
+      },
+    });
+  }
+}
+
+export async function GET(req: Request, ctx: RouteCtx) {
+  const agencyUserId = await requireAgencyUserId(req);
+  if (!agencyUserId) return NextResponse.json({ error: "Brak dostępu." }, { status: 403 });
+  const clientId = Number((await ctx.params).id);
+  const client = await loadContext(clientId, agencyUserId);
+  if (!client) return NextResponse.json({ error: "Nie znaleziono klienta sprzedającego." }, { status: 404 });
+  const fallbackForm = createDefaultAcquisitionForm(client);
+  return NextResponse.json({
+    success: true,
+    acquisition: shapeAcquisition(client.acquisition, fallbackForm),
+    defaultForm: fallbackForm,
+    portalUrl: client.portalToken ? `/klient/${client.portalToken}` : null,
+  });
+}
+
+export async function PATCH(req: Request, ctx: RouteCtx) {
+  const agencyUserId = await requireAgencyUserId(req);
+  if (!agencyUserId) return NextResponse.json({ error: "Brak dostępu." }, { status: 403 });
+  const clientId = Number((await ctx.params).id);
+  const client = await loadContext(clientId, agencyUserId);
+  if (!client) return NextResponse.json({ error: "Nie znaleziono klienta sprzedającego." }, { status: 404 });
+  if (client.acquisition?.status === "SIGNED") {
+    return NextResponse.json({ error: "Podpisany dokument jest zablokowany przed zmianami." }, { status: 409 });
+  }
+
+  const body = await req.json();
+  const formData = (body.formData || client.acquisition?.formData || createDefaultAcquisitionForm(client)) as AcquisitionFormData;
+  const currentStep = Math.min(6, Math.max(1, Number(body.currentStep || client.acquisition?.currentStep || 1)));
+  const status = ["PREPARATION", "IN_MEETING", "TERMS_READY", "CANCELLED"].includes(String(body.status))
+    ? String(body.status)
+    : client.acquisition?.status || "PREPARATION";
+
+  const record = await prisma.agencyClientAcquisition.upsert({
+    where: { clientId },
+    update: {
+      formData,
+      currentStep,
+      status,
+      approvedTemplateConfirmed:
+        body.approvedTemplateConfirmed === undefined
+          ? undefined
+          : Boolean(body.approvedTemplateConfirmed),
+      ...(body.invalidateAgreement === true ? { agreementSnapshot: null, status: "IN_MEETING" } : {}),
+    },
+    create: {
+      clientId,
+      agencyUserId,
+      formData,
+      currentStep,
+      status,
+      approvedTemplateConfirmed: Boolean(body.approvedTemplateConfirmed),
+    },
+  });
+  await syncMeetingActivity({
+    clientId,
+    agencyUserId,
+    clientName: `${client.firstName} ${client.lastName}`.trim(),
+    form: formData,
+  });
+
+  return NextResponse.json({ success: true, acquisition: shapeAcquisition(record, formData) });
+}
+
+export async function POST(req: Request, ctx: RouteCtx) {
+  const agencyUserId = await requireAgencyUserId(req);
+  if (!agencyUserId) return NextResponse.json({ error: "Brak dostępu." }, { status: 403 });
+  const clientId = Number((await ctx.params).id);
+  let client = await loadContext(clientId, agencyUserId);
+  if (!client) return NextResponse.json({ error: "Nie znaleziono klienta sprzedającego." }, { status: 404 });
+  const body = await req.json();
+  const action = String(body.action || "");
+  const form = (body.formData || client.acquisition?.formData || createDefaultAcquisitionForm(client)) as AcquisitionFormData;
+
+  const base = await prisma.agencyClientAcquisition.upsert({
+    where: { clientId },
+    update: { formData: form, currentStep: Math.min(6, Math.max(1, Number(body.currentStep || 6))) },
+    create: { clientId, agencyUserId, formData: form, currentStep: 6, status: "IN_MEETING" },
+  });
+  client = await loadContext(clientId, agencyUserId);
+  if (!client) return NextResponse.json({ error: "Nie znaleziono klienta." }, { status: 404 });
+
+  if (action === "prepare_terms" || action === "send_preview") {
+    const agreement = buildSnapshot(client, form, `EOS-POZ-${clientId}-${base.id}`);
+    const updated = await prisma.agencyClientAcquisition.update({
+      where: { id: base.id },
+      data: {
+        formData: form,
+        agreementSnapshot: agreement,
+        approvedTemplateConfirmed: Boolean(body.approvedTemplateConfirmed),
+        status: "TERMS_READY",
+        currentStep: 6,
+      },
+    });
+
+    let emailSent = false;
+    if (action === "send_preview" && client.email) {
+      const portalUrl = `${(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://estateos.pl").replace(/\/+$/, "")}/klient/${client.portalToken}`;
+      emailSent = await sendTransactionalEmail({
+        to: client.email,
+        subject: `Warunki współpracy do zapoznania · ${client.agencyUser.companyName || "EstateOS"}`,
+        html: `<div style="font-family:-apple-system,sans-serif;padding:24px"><h2>Przygotowanie do spotkania</h2><p>Dzień dobry ${escapeHtml(client.firstName)},</p><p>Agent przygotował kartę nieruchomości, listę dokumentów i warunki współpracy. Zapoznaj się z nimi przed spotkaniem i zaznacz przygotowane dokumenty.</p><p><a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#07130e;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">Otwórz panel klienta</a></p></div>`,
+        attachments: [{
+          filename: `warunki-wspolpracy-${clientId}.html`,
+          content: documentHtml({ agreement }),
+          contentType: "text/html; charset=utf-8",
+        }],
+      });
+    }
+    return NextResponse.json({
+      success: true,
+      emailSent,
+      acquisition: shapeAcquisition(updated, form),
+    });
+  }
+
+  if (action === "sign") {
+    if (client.acquisition?.status === "SIGNED") {
+      return NextResponse.json({ error: "Dokument został już podpisany." }, { status: 409 });
+    }
+    const signatureData = String(body.signatureData || "");
+    if (!/^data:image\/png;base64,[a-zA-Z0-9+/=]+$/.test(signatureData) || signatureData.length > 400_000) {
+      return NextResponse.json({ error: "Podpis jest nieprawidłowy lub zbyt duży." }, { status: 400 });
+    }
+    const signerName = String(body.signerName || "").trim();
+    const signerEmail = String(body.signerEmail || client.email || "").trim().toLowerCase();
+    if (!signerName || !signerEmail.includes("@")) {
+      return NextResponse.json({ error: "Podaj imię, nazwisko i prawidłowy e-mail podpisującego." }, { status: 400 });
+    }
+    if (body.approvedTemplateConfirmed !== true && !client.acquisition?.approvedTemplateConfirmed) {
+      return NextResponse.json({ error: "Agent musi potwierdzić użycie zatwierdzonego wzoru firmy." }, { status: 400 });
+    }
+
+    const agreement =
+      client.acquisition?.agreementSnapshot ||
+      buildSnapshot(client, form, `EOS-POZ-${clientId}-${base.id}`);
+    const signedAt = new Date();
+    const documentHash = createHash("sha256")
+      .update(`${agreement}\n${signatureData}\n${signerName}\n${signedAt.toISOString()}`)
+      .digest("hex");
+    const forwardedIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "";
+    const signerIpHash = forwardedIp
+      ? createHash("sha256")
+          .update(`${forwardedIp}:${process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "estateos"}`)
+          .digest("hex")
+      : null;
+
+    const updated = await prisma.agencyClientAcquisition.update({
+      where: { id: base.id },
+      data: {
+        formData: form,
+        agreementSnapshot: agreement,
+        approvedTemplateConfirmed: true,
+        signatureSvg: signatureData,
+        signerName,
+        signerEmail,
+        signedAt,
+        documentHash,
+        signerIpHash,
+        signerUserAgent: String(req.headers.get("user-agent") || "").slice(0, 512) || null,
+        status: "SIGNED",
+        currentStep: 6,
+      },
+    });
+
+    const htmlDocument = documentHtml({
+      agreement,
+      signatureData,
+      signerName,
+      signedAt,
+      hash: documentHash,
+    });
+    const emailSent = await sendTransactionalEmail({
+      to: signerEmail,
+      subject: `Podpisana umowa i karta nieruchomości · ${client.agencyUser.companyName || "EstateOS"}`,
+      html: `<div style="font-family:-apple-system,sans-serif;padding:24px"><h2>Dokument został podpisany</h2><p>Dzień dobry ${escapeHtml(client.firstName)},</p><p>W załączniku znajduje się utrwalona kopia dokumentu podpisanego ${escapeHtml(signedAt.toLocaleString("pl-PL"))}.</p><p style="font-size:12px;color:#6b7280;word-break:break-all">SHA-256: ${documentHash}</p></div>`,
+      attachments: [{
+        filename: `podpisana-umowa-${clientId}.html`,
+        content: htmlDocument,
+        contentType: "text/html; charset=utf-8",
+      }],
+    });
+    if (emailSent) {
+      await prisma.agencyClientAcquisition.update({
+        where: { id: base.id },
+        data: { copyEmailSentAt: new Date() },
+      });
+    }
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId,
+        agencyUserId,
+        kind: "ACQUISITION_SIGNED",
+        title: "Podpisano warunki współpracy",
+        body: `Podpisujący: ${signerName}. Kopia e-mail: ${emailSent ? "wysłana" : "niewysłana"}.`,
+        metadata: { acquisitionId: base.id, documentHash, signedAt: signedAt.toISOString(), emailSent },
+      },
+    });
+    const finalRecord = await prisma.agencyClientAcquisition.findUnique({ where: { id: base.id } });
+    return NextResponse.json({
+      success: true,
+      emailSent,
+      acquisition: shapeAcquisition(finalRecord, form),
+    });
+  }
+
+  return NextResponse.json({ error: "Nieznana akcja." }, { status: 400 });
+}
