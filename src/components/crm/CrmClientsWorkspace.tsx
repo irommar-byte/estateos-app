@@ -36,6 +36,7 @@ import OpenContactThreadButton from "@/components/contact/OpenContactThreadButto
 import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import SellerAcquisitionWorkspace from "@/components/crm/SellerAcquisitionWorkspace";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -959,34 +960,45 @@ export default function CrmClientsWorkspace() {
                   </div>
                 </>
               ) : (
-                <div className="space-y-4 rounded-2xl border border-[var(--eos-border)] p-5">
-                  <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelLead}</p>
-                  {detail.linkedOfferId ? (
-                    <div className="rounded-xl bg-[var(--eos-input)]/50 p-4">
-                      <p className="text-sm font-semibold text-[var(--eos-text)]">{cl.viewLinkedListing}</p>
+                <div className="space-y-5">
+                  <SellerAcquisitionWorkspace
+                    client={{
+                      id: detail.id,
+                      firstName: detail.firstName,
+                      lastName: detail.lastName,
+                      email: detail.email,
+                    }}
+                    onUpdated={() => void loadDetail(detail.id)}
+                  />
+                  <div className="space-y-4 rounded-2xl border border-[var(--eos-border)] p-5">
+                    <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelLead}</p>
+                    {detail.linkedOfferId ? (
+                      <div className="rounded-xl bg-[var(--eos-input)]/50 p-4">
+                        <p className="text-sm font-semibold text-[var(--eos-text)]">{cl.viewLinkedListing}</p>
+                        <Link
+                          href={`/oferta/${detail.linkedOfferId}`}
+                          className="mt-2 inline-flex items-center gap-2 text-sm font-bold text-emerald-600"
+                        >
+                          #{detail.linkedOfferId}
+                        </Link>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelEmpty}</p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
                       <Link
-                        href={`/oferta/${detail.linkedOfferId}`}
-                        className="mt-2 inline-flex items-center gap-2 text-sm font-bold text-emerald-600"
+                        href={`/dodaj-oferte?agencyClientId=${detail.id}`}
+                        className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-text)] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-bg)]"
                       >
-                        #{detail.linkedOfferId}
+                        {cl.addClientListing}
+                      </Link>
+                      <Link
+                        href="/dodaj-oferte"
+                        className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+                      >
+                        {cl.addOwnLead}
                       </Link>
                     </div>
-                  ) : (
-                    <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelEmpty}</p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      href={`/dodaj-oferte?agencyClientId=${detail.id}`}
-                      className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-text)] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-bg)]"
-                    >
-                      {cl.addClientListing}
-                    </Link>
-                    <Link
-                      href="/dodaj-oferte"
-                      className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
-                    >
-                      {cl.addOwnLead}
-                    </Link>
                   </div>
                 </div>
               )}

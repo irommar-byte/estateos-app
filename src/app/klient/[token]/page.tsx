@@ -12,7 +12,12 @@ import {
   Building2,
   ExternalLink,
   SlidersHorizontal,
+  CalendarCheck2,
+  FileCheck2,
+  BriefcaseBusiness,
+  ShieldCheck,
 } from "lucide-react";
+import { ACQUISITION_DOCUMENTS, type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 
 type SearchCriteria = {
   location: string;
@@ -71,6 +76,19 @@ type PortalData = {
     managementStatus: string | null;
     imageUrl: string;
   } | null;
+  acquisition: {
+    status: string;
+    currentStep: number;
+    formData: AcquisitionFormData;
+    agreementSnapshot: string | null;
+    clientAcknowledgedAt: string | null;
+    clientAcknowledgementName: string | null;
+    signedAt: string | null;
+    signerName: string | null;
+    documentHash: string | null;
+    copyEmailSentAt: string | null;
+    updatedAt: string;
+  } | null;
   activities: Array<{
     id: number;
     kind: string;
@@ -90,6 +108,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [messages, setMessages] = useState<PortalMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
+  const [acquisitionBusy, setAcquisitionBusy] = useState("");
+  const [acknowledgementName, setAcknowledgementName] = useState("");
 
   useEffect(() => {
     void params.then((p) => setToken(p.token));
@@ -181,6 +201,66 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     }
   };
 
+  const updateDocument = (documentId: string, checked: boolean) => {
+    setPortal((current) => {
+      if (!current?.acquisition) return current;
+      return {
+        ...current,
+        acquisition: {
+          ...current.acquisition,
+          formData: {
+            ...current.acquisition.formData,
+            documents: {
+              ...current.acquisition.formData.documents,
+              [documentId]: checked,
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const saveDocumentChecklist = async () => {
+    if (!token || !portal?.acquisition) return;
+    setAcquisitionBusy("documents");
+    try {
+      const res = await fetch(`/api/crm/client-portal/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_acquisition_checklist",
+          documents: portal.acquisition.formData.documents,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Nie udało się zapisać listy.");
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd");
+    } finally {
+      setAcquisitionBusy("");
+    }
+  };
+
+  const acknowledgeAcquisition = async () => {
+    if (!token || !acknowledgementName.trim()) return;
+    setAcquisitionBusy("acknowledge");
+    try {
+      const res = await fetch(`/api/crm/client-portal/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "acknowledge_acquisition", name: acknowledgementName }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Nie udało się zapisać potwierdzenia.");
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd");
+    } finally {
+      setAcquisitionBusy("");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -226,6 +306,136 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </p>
         )}
       </header>
+
+      {portal.type === "SELLER" && portal.acquisition ? (
+        <section className="space-y-5 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)] sm:p-7">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+                <BriefcaseBusiness className="size-4" />
+                Twoja współpraca z agentem
+              </p>
+              <h2 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Przejrzysty proces sprzedaży</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
+                Widzisz przygotowanie nieruchomości, uzgodnione warunki, dokumenty i kolejne działania agenta w jednym miejscu.
+              </p>
+            </div>
+            <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[9px] font-black uppercase tracking-wider ${
+              portal.acquisition.status === "SIGNED"
+                ? "bg-emerald-500/15 text-emerald-700"
+                : "bg-amber-500/15 text-amber-700"
+            }`}>
+              {portal.acquisition.status === "SIGNED" ? <ShieldCheck className="size-3.5" /> : <CalendarCheck2 className="size-3.5" />}
+              {portal.acquisition.status === "SIGNED" ? "Współpraca zawarta" : "Przygotowanie"}
+            </span>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-5">
+            {[
+              ["1", "Poznajemy cele", "Sytuacja i termin klienta"],
+              ["2", "Sprawdzamy dane", "Stan prawny i dokumenty"],
+              ["3", "Budujemy ofertę", "Parametry, cena i prezentacja"],
+              ["4", "Promujemy", "Portale, baza klientów i kontakt"],
+              ["5", "Prowadzimy transakcję", "Prezentacje, negocjacje i umowa"],
+            ].map(([number, title, body]) => (
+              <div key={number} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/35 p-3">
+                <p className="text-[9px] font-black text-emerald-600">0{number}</p>
+                <p className="mt-1 text-xs font-black text-[var(--eos-text)]">{title}</p>
+                <p className="mt-1 text-[10px] leading-snug text-[var(--eos-muted)]">{body}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-4 sm:p-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-black text-[var(--eos-text)]">
+                  <FileCheck2 className="size-4 text-emerald-500" />
+                  Przygotuj na spotkanie
+                </p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Zaznacz dokumenty, które masz już przygotowane.</p>
+              </div>
+              <p className="text-xs font-black text-emerald-600">
+                {ACQUISITION_DOCUMENTS.filter((item) => portal.acquisition?.formData.documents[item.id]).length}/{ACQUISITION_DOCUMENTS.length}
+              </p>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {ACQUISITION_DOCUMENTS.map((item) => (
+                <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-3">
+                  <input
+                    type="checkbox"
+                    disabled={portal.acquisition?.status === "SIGNED"}
+                    checked={Boolean(portal.acquisition?.formData.documents[item.id])}
+                    onChange={(event) => updateDocument(item.id, event.target.checked)}
+                    className="mt-0.5 size-4 accent-emerald-500"
+                  />
+                  <span className="text-xs font-semibold leading-snug text-[var(--eos-text)]">{item.label}</span>
+                </label>
+              ))}
+            </div>
+            {portal.acquisition.status !== "SIGNED" ? (
+              <button
+                type="button"
+                disabled={Boolean(acquisitionBusy)}
+                onClick={() => void saveDocumentChecklist()}
+                className="mt-4 inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)] disabled:opacity-50"
+              >
+                <CheckCircle2 className="size-3.5" />
+                {acquisitionBusy === "documents" ? "Zapisywanie…" : "Zapisz listę dokumentów"}
+              </button>
+            ) : null}
+          </div>
+
+          {portal.acquisition.agreementSnapshot ? (
+            <div>
+              <p className="mb-3 text-sm font-black text-[var(--eos-text)]">Uzgodnione dane i warunki współpracy</p>
+              <pre className="max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded-2xl border border-[var(--eos-border)] bg-white p-5 text-xs leading-relaxed text-slate-800 shadow-inner">
+                {portal.acquisition.agreementSnapshot}
+              </pre>
+              {portal.acquisition.status === "SIGNED" ? (
+                <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                  <p className="flex items-center gap-2 font-black text-emerald-700"><ShieldCheck className="size-4" /> Dokument podpisany</p>
+                  <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                    {portal.acquisition.signerName} · {portal.acquisition.signedAt ? new Date(portal.acquisition.signedAt).toLocaleString("pl-PL") : ""}
+                  </p>
+                  <p className="mt-1 break-all text-[9px] text-[var(--eos-muted)]">SHA-256: {portal.acquisition.documentHash}</p>
+                </div>
+              ) : portal.acquisition.clientAcknowledgedAt ? (
+                <p className="mt-3 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700">
+                  Potwierdzono zapoznanie: {portal.acquisition.clientAcknowledgementName} · {new Date(portal.acquisition.clientAcknowledgedAt).toLocaleString("pl-PL")}
+                </p>
+              ) : (
+                <div className="mt-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/35 p-4">
+                  <p className="text-xs leading-relaxed text-[var(--eos-muted)]">
+                    To potwierdzenie oznacza zapoznanie się z dokumentem przed spotkaniem. Nie zastępuje podpisu umowy.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={acknowledgementName}
+                      onChange={(event) => setAcknowledgementName(event.target.value)}
+                      placeholder="Imię i nazwisko"
+                      className="flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+                    />
+                    <button
+                      type="button"
+                      disabled={acknowledgementName.trim().length < 3 || Boolean(acquisitionBusy)}
+                      onClick={() => void acknowledgeAcquisition()}
+                      className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="size-3.5" />
+                      {acquisitionBusy === "acknowledge" ? "Zapisywanie…" : "Zapoznałem/am się"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-dashed border-[var(--eos-border)] p-5 text-sm text-[var(--eos-muted)]">
+              Agent uzupełnia kartę nieruchomości i warunki współpracy. Dokument pojawi się tutaj przed podpisem.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       {portal.type === "BUYER" && criteria ? (
         <section className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
