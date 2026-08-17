@@ -17,6 +17,7 @@ import {
 } from '@/lib/crm/clientJourney';
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -276,10 +277,15 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             city: client.linkedOffer.city,
             district: client.linkedOffer.district,
             status: client.linkedOffer.status,
+            statusLabel: listingStatusLabel(client.linkedOffer.status),
             managementStatus: client.linkedOffer.managementStatus,
             imageUrl: resolveOfferPrimaryImage(client.linkedOffer),
           }
         : null,
+      listingProgress: buildListingProgress({
+        signed: client.acquisition?.status === 'SIGNED' || Boolean(client.acquisition?.signedAt),
+        offer: client.linkedOffer,
+      }),
       acquisition: client.acquisition
         ? {
             status: client.acquisition.status,
@@ -351,6 +357,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
     await prisma.agencyClientAcquisition.update({
       where: { id: client.acquisition.id },
       data: { formData: { ...currentForm, documents } },
+    });
+    await notifyAgent({
+      agencyUserId: client.agencyUserId,
+      clientId: client.id,
+      title: 'Klient zaktualizował dokumenty',
+      body: `${clientName} zaznaczył przygotowane dokumenty na spotkanie.`,
     });
     return NextResponse.json({ success: true });
   }

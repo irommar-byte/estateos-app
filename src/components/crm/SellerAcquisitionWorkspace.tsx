@@ -30,6 +30,7 @@ import NumberStepper from "@/components/crm/NumberStepper";
 import CommissionRateSlider from "@/components/crm/CommissionRateSlider";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { COMMISSION_RATE_DEFAULT } from "@/lib/leadTransferShared";
+import { PROPERTY_AMENITIES } from "@/lib/crm/clientJourney";
 
 type SellerClient = {
   id: number;
@@ -438,13 +439,52 @@ export default function SellerAcquisitionWorkspace({
         {step === 3 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="sm:col-span-2 lg:col-span-3">
-              <AddressSuggestInput
-                label="Pełny adres nieruchomości"
-                value={form.property.address}
-                onChange={(value) => updateSection("property", { address: value })}
-                placeholder="Ulica, numer, miasto"
-                disabled={signed}
-              />
+            <AddressSuggestInput
+              label="Pełny adres nieruchomości"
+              value={form.property.address}
+              onChange={(value, meta) =>
+                updateSection("property", {
+                  address: value,
+                  city: meta?.city || form.property.city,
+                  lat: meta?.lat != null ? String(meta.lat) : form.property.lat,
+                  lng: meta?.lng != null ? String(meta.lng) : form.property.lng,
+                })
+              }
+              placeholder="Ulica, numer, miasto"
+              disabled={signed}
+            />
+            </div>
+            <div className="sm:col-span-2 lg:col-span-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">Przyległości i dodatki</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {PROPERTY_AMENITIES.map((item) => {
+                  const selected = String(form.property.amenities || "")
+                    .split(",")
+                    .map((part) => part.trim())
+                    .filter(Boolean);
+                  const active = selected.includes(item.label);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={signed}
+                      onClick={() => {
+                        const next = active
+                          ? selected.filter((label) => label !== item.label)
+                          : [...selected, item.label];
+                        updateSection("property", { amenities: next.join(",") });
+                      }}
+                      className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${
+                        active
+                          ? "bg-emerald-500 text-black"
+                          : "border border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <ChipRow
               label="Rodzaj nieruchomości"

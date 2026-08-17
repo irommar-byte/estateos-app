@@ -109,9 +109,11 @@ type PortalData = {
     city: string;
     district: string | null;
     status: string;
+    statusLabel?: string;
     managementStatus: string | null;
     imageUrl: string;
   } | null;
+  listingProgress?: Array<{ id: string; label: string; done: boolean; current: boolean }>;
   acquisition: {
     status: string;
     currentStep: number;
@@ -618,22 +620,45 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </section>
       ) : null}
 
-      {portal.type === "SELLER" && portal.listing ? (
+      {portal.type === "SELLER" && (portal.listing || portal.listingProgress?.length) ? (
         <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
-                Twoja Przypisana Oferta
+                Twoja oferta
               </p>
               <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)]">
-                {portal.listing.title || "Ogłoszenie nieruchomości"}
+                {portal.listing?.title || "Przygotowanie ogłoszenia"}
               </h2>
             </div>
             <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-black uppercase text-emerald-600">
-              Opublikowana i aktywna
+              {portal.listing?.statusLabel || "W przygotowaniu"}
             </span>
           </div>
 
+          {portal.listingProgress?.length ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-5">
+              {portal.listingProgress.map((step) => (
+                <div
+                  key={step.id}
+                  className={`rounded-xl border px-3 py-3 ${
+                    step.done
+                      ? "border-emerald-500/30 bg-emerald-500/10"
+                      : step.current
+                        ? "border-emerald-500/50 bg-[var(--eos-input)]/40"
+                        : "border-[var(--eos-border)] bg-[var(--eos-input)]/20"
+                  }`}
+                >
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+                    {step.done ? "Gotowe" : step.current ? "Teraz" : "Dalej"}
+                  </p>
+                  <p className="mt-1 text-xs font-bold text-[var(--eos-text)]">{step.label}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {portal.listing ? (
           <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
             {portal.listing.imageUrl && (
               <img
@@ -649,18 +674,31 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               <p className="text-sm font-semibold text-[var(--eos-text)]">
                 📍 {portal.listing.city} {portal.listing.district ? `· ${portal.listing.district}` : ""}
               </p>
-              <p className="text-xs text-[var(--eos-muted)]">
-                Ogłoszenie jest promowane w bazie kupujących EstateOS™ oraz w aplikacji mobilnej.
-              </p>
-              <Link
-                href={`/oferta/${portal.listing.id}`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600 hover:underline"
-              >
-                Zobacz publiczną stronę ogłoszenia <ExternalLink className="size-3.5" />
-              </Link>
+              {portal.listing.status === "ACTIVE" || portal.listing.status === "PUBLISHED" ? (
+                <>
+                  <p className="text-xs text-[var(--eos-muted)]">
+                    Ogłoszenie jest promowane w bazie kupujących EstateOS™ oraz w aplikacji mobilnej.
+                  </p>
+                  <Link
+                    href={`/oferta/${portal.listing.id}`}
+                    target="_blank"
+                    className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600 hover:underline"
+                  >
+                    Zobacz publiczną stronę ogłoszenia <ExternalLink className="size-3.5" />
+                  </Link>
+                </>
+              ) : (
+                <p className="text-xs text-[var(--eos-muted)]">
+                  Agent dokończy zdjęcia i publikację. Status ogłoszenia zobaczysz tutaj na bieżąco.
+                </p>
+              )}
             </div>
           </div>
+          ) : (
+            <p className="mt-4 text-sm text-[var(--eos-muted)]">
+              Po podpisaniu umowy agent przygotuje ogłoszenie. Kolejne kroki — szkic, zdjęcia i publikacja — pojawią się tutaj.
+            </p>
+          )}
         </section>
       ) : null}
 

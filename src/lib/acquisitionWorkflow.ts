@@ -25,6 +25,9 @@ export type AcquisitionFormData = {
   };
   property: {
     address: string;
+    city: string;
+    lat: string;
+    lng: string;
     propertyType: string;
     area: string;
     rooms: string;
@@ -40,6 +43,8 @@ export type AcquisitionFormData = {
     furnishing: string;
     advantages: string;
     defects: string;
+    planImages: string;
+    roomsJson: string;
   };
   strategy: {
     expectedPrice: string;
@@ -147,6 +152,9 @@ export function createDefaultAcquisitionForm(
     },
     property: {
       address,
+      city: client?.sellerCity || "",
+      lat: "",
+      lng: "",
       propertyType: "Mieszkanie",
       area: client?.sellerArea ? String(client.sellerArea) : "",
       rooms: client?.sellerRooms ? String(client.sellerRooms) : "",
@@ -162,6 +170,8 @@ export function createDefaultAcquisitionForm(
       furnishing: "",
       advantages: client?.sellerDescription || "",
       defects: "",
+      planImages: "",
+      roomsJson: "",
     },
     strategy: {
       expectedPrice: client?.sellerPrice ? String(client.sellerPrice) : "",
