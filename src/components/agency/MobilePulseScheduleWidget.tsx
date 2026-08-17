@@ -53,11 +53,21 @@ function CountdownDigit({ value, label, isDark }: { value: number; label: string
   );
 }
 
-export default function MobilePulseScheduleWidget({ isDark = true }: { isDark?: boolean }) {
+type WidgetProps = {
+  isDark?: boolean;
+  /** Renders without its own card chrome, to sit flush inside a parent section. */
+  embedded?: boolean;
+  /** When provided, the widget renders these events instead of fetching its own. */
+  events?: ScheduleEvent[];
+};
+
+export default function MobilePulseScheduleWidget({ isDark = true, embedded, events: externalEvents }: WidgetProps) {
   const token = useAuthStore((s) => s.token);
-  const [events, setEvents] = useState<ScheduleEvent[]>([]);
+  const [fetchedEvents, setFetchedEvents] = useState<ScheduleEvent[]>([]);
   const [index, setIndex] = useState(0);
   const [now, setNow] = useState(Date.now());
+
+  const events = externalEvents ?? fetchedEvents;
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -68,7 +78,7 @@ export default function MobilePulseScheduleWidget({ isDark = true }: { isDark?: 
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data?.events)) {
-        setEvents(data.events);
+        setFetchedEvents(data.events);
       }
     } catch {
       /* keep silent */
@@ -76,10 +86,11 @@ export default function MobilePulseScheduleWidget({ isDark = true }: { isDark?: 
   }, [token]);
 
   useEffect(() => {
+    if (externalEvents) return;
     void load();
     const interval = setInterval(() => void load(), 60000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, externalEvents]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -90,6 +101,10 @@ export default function MobilePulseScheduleWidget({ isDark = true }: { isDark?: 
     const target = new Date(ev.startsAt).getTime();
     return !Number.isNaN(target) && target - now > -3600 * 2 * 1000;
   });
+
+  useEffect(() => {
+    setIndex((prev) => (prev >= visibleEvents.length ? 0 : prev));
+  }, [visibleEvents.length]);
 
   const active = visibleEvents[index] ?? null;
 
@@ -102,11 +117,29 @@ export default function MobilePulseScheduleWidget({ isDark = true }: { isDark?: 
   const minutes = Math.floor((diffSec % 3600) / 60);
   const seconds = Math.floor(diffSec % 60);
 
-  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const border = isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)';
+  const cardBg = embedded
+    ? isDark
+      ? 'rgba(255,255,255,0.05)'
+      : 'rgba(0,0,0,0.035)'
+    : isDark
+      ? '#1C1C1E'
+      : '#FFFFFF';
+  const border = embedded
+    ? isDark
+      ? 'rgba(255,255,255,0.10)'
+      : 'rgba(0,0,0,0.07)'
+    : isDark
+      ? 'rgba(84,84,88,0.45)'
+      : 'rgba(60,60,67,0.12)';
 
   return (
-    <View style={[styles.container, { backgroundColor: cardBg, borderColor: border }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: cardBg, borderColor: border },
+        embedded ? { marginTop: 0, marginBottom: 0, padding: 12 } : null,
+      ]}
+    >
       {/* Header Bar */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
