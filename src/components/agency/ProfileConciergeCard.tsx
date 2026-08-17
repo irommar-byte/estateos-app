@@ -6,14 +6,17 @@ import * as Notifications from 'expo-notifications';
 import { useAuthStore } from '../../store/useAuthStore';
 import { fetchLeadTransfers } from '../../services/leadTransferService';
 import { countPendingConciergeLeads } from '../../types/leadTransfer';
+import type { CrmPalette } from './crmGoldTheme';
 
 type Props = {
   isDark: boolean;
   isAgency: boolean;
   embedded?: boolean;
+  /** Overrides the stock iOS accents, e.g. to stay readable on the gold panel. */
+  palette?: CrmPalette;
 };
 
-export default function ProfileConciergeCard({ isDark, isAgency, embedded }: Props) {
+export default function ProfileConciergeCard({ isDark, isAgency, embedded, palette }: Props) {
   const navigation = useNavigation<any>();
   const token = useAuthStore((s) => s.token);
   const [pendingCount, setPendingCount] = useState(0);
@@ -57,8 +60,9 @@ export default function ProfileConciergeCard({ isDark, isAgency, embedded }: Pro
 
   const cardBg = embedded ? 'transparent' : isDark ? '#1C1C1E' : '#FFFFFF';
   const border = embedded ? 'transparent' : isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)';
-  const text = isDark ? '#FFFFFF' : '#000000';
-  const secondary = isDark ? '#8E8E93' : '#6C6C70';
+  const text = palette?.text ?? (isDark ? '#FFFFFF' : '#000000');
+  const secondary = palette?.secondary ?? (isDark ? '#8E8E93' : '#6C6C70');
+  const iconTone = palette?.buyer ?? '#FF9500';
 
   return (
     <Pressable
@@ -75,24 +79,26 @@ export default function ProfileConciergeCard({ isDark, isAgency, embedded }: Pro
         },
       ]}
     >
-      <View style={styles.iconWrap}>
-        <Ionicons name="briefcase" size={22} color="#FF9500" />
+      <View style={[styles.iconWrap, palette ? { backgroundColor: `${iconTone}1F` } : null]}>
+        <Ionicons name="briefcase" size={22} color={iconTone} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ color: secondary, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
-          CONCIERGE
-        </Text>
-        <Text style={{ color: text, fontSize: 17, fontWeight: '800', marginTop: 2 }}>
+        {palette ? null : (
+          <Text style={{ color: secondary, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+            CONCIERGE
+          </Text>
+        )}
+        <Text style={{ color: text, fontSize: 15, fontWeight: '700' }}>
           {isAgency ? 'Zapytania o przejęcie' : 'Przekazanie do agencji'}
         </Text>
-        <Text style={{ color: secondary, fontSize: 12, marginTop: 4 }} numberOfLines={2}>
+        <Text style={{ color: secondary, fontSize: 11.5, marginTop: 2 }} numberOfLines={2}>
           {isAgency
             ? 'Podgląd ofert i warunki współpracy dla właścicieli.'
             : 'Warunki od agencji, akceptacja i podgląd sprzedaży.'}
         </Text>
       </View>
       {loading ? (
-        <ActivityIndicator color="#FF9500" />
+        <ActivityIndicator color={iconTone} />
       ) : pendingCount > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{pendingCount > 9 ? '9+' : pendingCount}</Text>

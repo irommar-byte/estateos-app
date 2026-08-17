@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '../../config/network';
 import { useAuthStore } from '../../store/useAuthStore';
+import { crmKindTone, type CrmPalette } from './crmGoldTheme';
+import { TickingClockIcon } from './CrmAnimatedIcons';
 
 type ScheduleEvent = {
   id: string;
@@ -13,40 +15,45 @@ type ScheduleEvent = {
   location?: string | null;
 };
 
-function kindColor(kind: ScheduleEvent['kind']) {
-  if (kind === 'acquisition') return '#007AFF'; // Sky blue
-  if (kind === 'presentation') return '#AF52DE'; // Purple
-  return '#34C759'; // Emerald green
-}
-
 function kindLabel(kind: ScheduleEvent['kind']) {
   if (kind === 'acquisition') return 'POZYSKANIE KLIENTA';
   if (kind === 'presentation') return 'PREZENTACJA';
   return 'DZIEŃ OTWARTY';
 }
 
-function CountdownDigit({ value, label, isDark }: { value: number; label: string; isDark: boolean }) {
+function CountdownDigit({
+  value,
+  label,
+  isDark,
+  palette,
+}: {
+  value: number;
+  label: string;
+  isDark: boolean;
+  palette?: CrmPalette;
+}) {
   return (
     <View style={styles.digitWrap}>
       <View
         style={[
           styles.digitBox,
           {
-            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)',
+            backgroundColor:
+              palette?.surface ?? (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)'),
+            borderColor: palette?.hairline ?? (isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)'),
           },
         ]}
       >
-        <Text
-          style={[
-            styles.digitNum,
-            { color: isDark ? '#FFFFFF' : '#1C1C1E' },
-          ]}
-        >
+        <Text style={[styles.digitNum, { color: palette?.text ?? (isDark ? '#FFFFFF' : '#1C1C1E') }]}>
           {String(value).padStart(2, '0')}
         </Text>
       </View>
-      <Text style={[styles.digitLabel, { color: isDark ? 'rgba(255,255,255,0.45)' : '#8E8E93' }]}>
+      <Text
+        style={[
+          styles.digitLabel,
+          { color: palette?.muted ?? (isDark ? 'rgba(255,255,255,0.45)' : '#8E8E93') },
+        ]}
+      >
         {label}
       </Text>
     </View>
@@ -59,9 +66,16 @@ type WidgetProps = {
   embedded?: boolean;
   /** When provided, the widget renders these events instead of fetching its own. */
   events?: ScheduleEvent[];
+  /** Overrides the stock iOS accents, e.g. to stay readable on the gold panel. */
+  palette?: CrmPalette;
 };
 
-export default function MobilePulseScheduleWidget({ isDark = true, embedded, events: externalEvents }: WidgetProps) {
+export default function MobilePulseScheduleWidget({
+  isDark = true,
+  embedded,
+  events: externalEvents,
+  palette,
+}: WidgetProps) {
   const token = useAuthStore((s) => s.token);
   const [fetchedEvents, setFetchedEvents] = useState<ScheduleEvent[]>([]);
   const [index, setIndex] = useState(0);
@@ -120,6 +134,17 @@ export default function MobilePulseScheduleWidget({ isDark = true, embedded, eve
   const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
   const border = isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)';
 
+  const textColor = palette?.text ?? (isDark ? '#FFFFFF' : '#000000');
+  const secondaryColor = palette?.secondary ?? (isDark ? '#8E8E93' : '#6C6C70');
+  const mutedColor = palette?.muted ?? (isDark ? '#8E8E93' : '#8E8E93');
+  const liveColor = palette?.attention ?? '#FF9500';
+  const kindTone = (kind: ScheduleEvent['kind']) => {
+    if (palette) return crmKindTone(palette, kind);
+    if (kind === 'acquisition') return '#007AFF';
+    if (kind === 'presentation') return '#AF52DE';
+    return '#34C759';
+  };
+
   return (
     <View
       style={[
@@ -131,12 +156,14 @@ export default function MobilePulseScheduleWidget({ isDark = true, embedded, eve
       {/* Header Bar */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="time" size={15} color={active ? kindColor(active.kind) : '#34C759'} />
-          </View>
-          <Text style={[styles.widgetTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-            TERMINARZ SPOTKAŃ
-          </Text>
+          {palette ? (
+            <TickingClockIcon color={active ? kindTone(active.kind) : palette.accent} size={16} />
+          ) : (
+            <View style={styles.iconCircle}>
+              <Ionicons name="time" size={15} color={active ? kindTone(active.kind) : '#34C759'} />
+            </View>
+          )}
+          <Text style={[styles.widgetTitle, { color: textColor }]}>TERMINARZ SPOTKAŃ</Text>
         </View>
         {visibleEvents.length > 1 ? (
           <View style={styles.navRow}>
@@ -144,16 +171,16 @@ export default function MobilePulseScheduleWidget({ isDark = true, embedded, eve
               onPress={() => setIndex((prev) => (prev > 0 ? prev - 1 : visibleEvents.length - 1))}
               hitSlop={12}
             >
-              <Ionicons name="chevron-back" size={18} color={isDark ? '#FFFFFF' : '#000000'} />
+              <Ionicons name="chevron-back" size={18} color={textColor} />
             </Pressable>
-            <Text style={{ color: isDark ? '#8E8E93' : '#6C6C70', fontSize: 12, fontWeight: '800' }}>
+            <Text style={{ color: secondaryColor, fontSize: 12, fontWeight: '800' }}>
               {index + 1}/{visibleEvents.length}
             </Text>
             <Pressable
               onPress={() => setIndex((prev) => (prev + 1) % visibleEvents.length)}
               hitSlop={12}
             >
-              <Ionicons name="chevron-forward" size={18} color={isDark ? '#FFFFFF' : '#000000'} />
+              <Ionicons name="chevron-forward" size={18} color={textColor} />
             </Pressable>
           </View>
         ) : null}
@@ -166,14 +193,14 @@ export default function MobilePulseScheduleWidget({ isDark = true, embedded, eve
             <View
               style={[
                 styles.kindPill,
-                { backgroundColor: `${kindColor(active.kind)}1A`, borderColor: kindColor(active.kind) },
+                { backgroundColor: `${kindTone(active.kind)}1A`, borderColor: kindTone(active.kind) },
               ]}
             >
-              <Text style={[styles.kindText, { color: kindColor(active.kind) }]}>
+              <Text style={[styles.kindText, { color: kindTone(active.kind) }]}>
                 {kindLabel(active.kind)}
               </Text>
             </View>
-            <Text style={[styles.eventDateText, { color: isDark ? '#8E8E93' : '#6C6C70' }]}>
+            <Text style={[styles.eventDateText, { color: secondaryColor }]}>
               {new Date(active.startsAt).toLocaleString('pl-PL', {
                 day: 'numeric',
                 month: 'short',
@@ -185,36 +212,41 @@ export default function MobilePulseScheduleWidget({ isDark = true, embedded, eve
 
           {/* Clock Countdown Grid or Live Status */}
           {isLive ? (
-            <View style={styles.liveBox}>
-              <Ionicons name="radio" size={18} color="#FF9500" />
-              <Text style={styles.liveText}>SPOTKANIE W TRAKCIE</Text>
+            <View
+              style={[
+                styles.liveBox,
+                { backgroundColor: `${liveColor}${isDark ? '24' : '1F'}`, borderColor: liveColor },
+              ]}
+            >
+              <Ionicons name="radio" size={18} color={liveColor} />
+              <Text style={[styles.liveText, { color: liveColor }]}>SPOTKANIE W TRAKCIE</Text>
             </View>
           ) : (
             <View style={styles.grid}>
-              <CountdownDigit value={days} label="DNI" isDark={isDark} />
+              <CountdownDigit value={days} label="DNI" isDark={isDark} palette={palette} />
               <View style={styles.colonWrap}>
-                <Text style={[styles.colon, { color: isDark ? '#8E8E93' : '#8E8E93' }]}>:</Text>
+                <Text style={[styles.colon, { color: mutedColor }]}>:</Text>
               </View>
-              <CountdownDigit value={hours} label="GODZ" isDark={isDark} />
+              <CountdownDigit value={hours} label="GODZ" isDark={isDark} palette={palette} />
               <View style={styles.colonWrap}>
-                <Text style={[styles.colon, { color: isDark ? '#8E8E93' : '#8E8E93' }]}>:</Text>
+                <Text style={[styles.colon, { color: mutedColor }]}>:</Text>
               </View>
-              <CountdownDigit value={minutes} label="MIN" isDark={isDark} />
+              <CountdownDigit value={minutes} label="MIN" isDark={isDark} palette={palette} />
               <View style={styles.colonWrap}>
-                <Text style={[styles.colon, { color: isDark ? '#8E8E93' : '#8E8E93' }]}>:</Text>
+                <Text style={[styles.colon, { color: mutedColor }]}>:</Text>
               </View>
-              <CountdownDigit value={seconds} label="SEK" isDark={isDark} />
+              <CountdownDigit value={seconds} label="SEK" isDark={isDark} palette={palette} />
             </View>
           )}
 
           {/* Event Details */}
-          <Text style={[styles.eventTitle, { color: isDark ? '#FFFFFF' : '#000000' }]} numberOfLines={1}>
+          <Text style={[styles.eventTitle, { color: textColor }]} numberOfLines={1}>
             {active.title}
           </Text>
           {active.location ? (
             <View style={styles.locRow}>
-              <Ionicons name="location-outline" size={13} color={isDark ? '#8E8E93' : '#6C6C70'} />
-              <Text style={[styles.locText, { color: isDark ? '#8E8E93' : '#6C6C70' }]} numberOfLines={1}>
+              <Ionicons name="location-outline" size={13} color={secondaryColor} />
+              <Text style={[styles.locText, { color: secondaryColor }]} numberOfLines={1}>
                 {active.location}
               </Text>
             </View>
@@ -222,11 +254,9 @@ export default function MobilePulseScheduleWidget({ isDark = true, embedded, eve
         </View>
       ) : (
         <View style={styles.emptyWrap}>
-          <Ionicons name="checkmark-circle-outline" size={26} color="#34C759" />
-          <Text style={[styles.emptyTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-            Brak zaplanowanych spotkań
-          </Text>
-          <Text style={[styles.emptySub, { color: isDark ? '#8E8E93' : '#6C6C70' }]}>
+          <Ionicons name="checkmark-circle-outline" size={26} color={palette?.onTrack ?? '#34C759'} />
+          <Text style={[styles.emptyTitle, { color: textColor }]}>Brak zaplanowanych spotkań</Text>
+          <Text style={[styles.emptySub, { color: secondaryColor }]}>
             Ustal termin spotkania na ekranie Dodaj Klienta.
           </Text>
         </View>
@@ -349,15 +379,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,149,0,0.14)',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,149,0,0.4)',
     alignSelf: 'stretch',
     marginVertical: 4,
   },
   liveText: {
-    color: '#FF9500',
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0.8,

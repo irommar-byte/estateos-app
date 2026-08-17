@@ -3,6 +3,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { crmKindColor, type CrmScheduleEvent } from '../../hooks/useCrmSchedule';
+import { crmKindTone, type CrmPalette } from './crmGoldTheme';
 
 type Props = {
   events: CrmScheduleEvent[];
@@ -12,6 +13,8 @@ type Props = {
   plain?: boolean;
   /** Colour of the "today" marker and other highlights. */
   accent?: string;
+  /** Overrides the stock iOS accents, e.g. to stay readable on the gold panel. */
+  palette?: CrmPalette;
 };
 
 const WEEKDAYS = ['PN', 'WT', 'ŚR', 'CZ', 'PT', 'SB', 'ND'];
@@ -50,23 +53,30 @@ export default function CrmMonthCalendar({
   onEventPress,
   plain,
   accent = '#34C759',
+  palette,
 }: Props) {
+  const kindTone = (kind: CrmScheduleEvent['kind']) =>
+    palette ? crmKindTone(palette, kind) : crmKindColor(kind);
   const today = useMemo(() => new Date(), []);
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const [selected, setSelected] = useState<string>(dayKey(today));
   const fade = useRef(new Animated.Value(1)).current;
 
-  const text = isDark ? '#FFFFFF' : '#0D0D0F';
-  const secondary = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)';
+  const text = palette?.text ?? (isDark ? '#FFFFFF' : '#0D0D0F');
+  const secondary = palette?.secondary ?? (isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)');
+  const weekendLabel = palette?.muted ?? (isDark ? '#5E5E63' : '#B0B0B5');
   const trackBg = plain ? 'transparent' : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.035)';
-  const hairline = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)';
-  const rowBg = plain
-    ? isDark
-      ? 'rgba(255,255,255,0.09)'
-      : 'rgba(255,255,255,0.5)'
-    : isDark
-      ? 'rgba(255,255,255,0.06)'
-      : '#FFFFFF';
+  const hairline = palette?.hairline ?? (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)');
+  const rowBg =
+    palette?.surface ??
+    (plain
+      ? isDark
+        ? 'rgba(255,255,255,0.09)'
+        : 'rgba(255,255,255,0.5)'
+      : isDark
+        ? 'rgba(255,255,255,0.06)'
+        : '#FFFFFF');
+  const selectedBg = palette?.surfaceStrong ?? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.55)');
 
   const byDay = useMemo(() => {
     const map = new Map<string, CrmScheduleEvent[]>();
@@ -167,7 +177,7 @@ export default function CrmMonthCalendar({
       <View style={styles.weekRow}>
         {WEEKDAYS.map((label, i) => (
           <View key={label} style={styles.cell}>
-            <Text style={[styles.weekLabel, { color: i > 4 ? (isDark ? '#5E5E63' : '#B0B0B5') : secondary }]}>
+            <Text style={[styles.weekLabel, { color: i > 4 ? weekendLabel : secondary }]}>
               {label}
             </Text>
           </View>
@@ -206,9 +216,7 @@ export default function CrmMonthCalendar({
               <View
                 style={[
                   styles.dayShell,
-                  isSelected && !isToday
-                    ? { backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.55)' }
-                    : null,
+                  isSelected && !isToday ? { backgroundColor: selectedBg } : null,
                   isToday ? [styles.dayToday, { backgroundColor: accent, shadowColor: accent }] : null,
                 ]}
               >
@@ -229,7 +237,7 @@ export default function CrmMonthCalendar({
                 {dots.map((event) => (
                   <View
                     key={event.id}
-                    style={[styles.dot, { backgroundColor: crmKindColor(event.kind), opacity: isPast ? 0.5 : 1 }]}
+                    style={[styles.dot, { backgroundColor: kindTone(event.kind), opacity: isPast ? 0.5 : 1 }]}
                   />
                 ))}
               </View>
@@ -240,9 +248,9 @@ export default function CrmMonthCalendar({
 
       <View style={styles.legendRow}>
         {[
-          { color: crmKindColor('acquisition'), label: 'Pozyskanie' },
-          { color: crmKindColor('presentation'), label: 'Prezentacja' },
-          { color: crmKindColor('open_house_host'), label: 'Dzień otwarty' },
+          { color: kindTone('acquisition'), label: 'Pozyskanie' },
+          { color: kindTone('presentation'), label: 'Prezentacja' },
+          { color: kindTone('open_house_host'), label: 'Dzień otwarty' },
         ].map((item) => (
           <View key={item.label} style={styles.legendItem}>
             <View style={[styles.dot, { backgroundColor: item.color }]} />
@@ -270,7 +278,7 @@ export default function CrmMonthCalendar({
                 { backgroundColor: rowBg, borderColor: hairline, opacity: pressed ? 0.7 : 1 },
               ]}
             >
-              <View style={[styles.eventBar, { backgroundColor: crmKindColor(event.kind) }]} />
+              <View style={[styles.eventBar, { backgroundColor: kindTone(event.kind) }]} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.eventTitle, { color: text }]} numberOfLines={1}>
                   {event.title}

@@ -13,15 +13,34 @@ import AnalogAppleClock from './AnalogAppleClock';
 import CrmMonthCalendar from './CrmMonthCalendar';
 import MobilePulseScheduleWidget from './MobilePulseScheduleWidget';
 import ProfileConciergeCard from './ProfileConciergeCard';
+import { crmGoldPalette, type CrmPalette } from './crmGoldTheme';
+import {
+  AddClientNudgeIcon,
+  ClientsBreathIcon,
+  LiveMeetingIcon,
+  OnTrackCheckIcon,
+  RadarPulseIcon,
+  SparkleOrbitIcon,
+  TickingClockIcon,
+  TodayCalendarIcon,
+} from './CrmAnimatedIcons';
 
 type Props = {
   isDark: boolean;
   isAgency: boolean;
 };
 
-const GOLD = '#E3B94F';
-const BUYER_COLOR = '#FF9500';
-const SELLER_COLOR = '#34C759';
+type TaskTone = 'attention' | 'pending' | 'onTrack';
+
+type CrmTask = {
+  id: string;
+  tone: TaskTone;
+  chip: string;
+  title: string;
+  detail: string;
+  icon: (color: string) => React.ReactNode;
+  onPress?: () => void;
+};
 
 function configureCrmLayoutAnimation(expanding: boolean) {
   const duration = expanding ? 360 : 280;
@@ -41,35 +60,73 @@ function configureCrmLayoutAnimation(expanding: boolean) {
   });
 }
 
-function LivePulseDot({ color }: { color: string }) {
-  const pulse = useRef(new Animated.Value(0)).current;
+function toneColor(palette: CrmPalette, tone: TaskTone) {
+  if (tone === 'attention') return palette.attention;
+  if (tone === 'onTrack') return palette.onTrack;
+  return palette.pending;
+}
+
+/** Breathing halo that marks the one row needing attention right now. */
+function AttentionHalo({ color, radius }: { color: string; radius: number }) {
+  const breathe = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(pulse, {
-        toValue: 1,
-        duration: 1600,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }),
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse]);
+  }, [breathe]);
 
   return (
-    <View style={styles.pulseWrap}>
-      <Animated.View
-        style={[
-          styles.pulseHalo,
-          {
-            backgroundColor: color,
-            opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
-            transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 2.4] }) }],
-          },
-        ]}
-      />
-      <View style={[styles.pulseCore, { backgroundColor: color }]} />
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          borderRadius: radius,
+          borderWidth: 1.5,
+          borderColor: color,
+          opacity: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] }),
+        },
+      ]}
+    />
+  );
+}
+
+function StatusChip({ label, color, palette }: { label: string; color: string; palette: CrmPalette }) {
+  return (
+    <View
+      style={[
+        styles.chip,
+        { backgroundColor: palette.isDark ? `${color}26` : `${color}1A`, borderColor: `${color}80` },
+      ]}
+    >
+      <Text style={[styles.chipText, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+function BlockHeading({
+  label,
+  hint,
+  palette,
+  icon,
+}: {
+  label: string;
+  hint?: string;
+  palette: CrmPalette;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.blockHeading}>
+      {icon}
+      <Text style={[styles.blockLabel, { color: palette.secondary }]}>{label}</Text>
+      <View style={[styles.blockRule, { backgroundColor: palette.hairline }]} />
+      {hint ? <Text style={[styles.blockHint, { color: palette.muted }]}>{hint}</Text> : null}
     </View>
   );
 }
@@ -78,8 +135,9 @@ function MetricTile({
   value,
   label,
   hint,
+  hintTone,
   icon,
-  accent,
+  palette,
   isDark,
   delay,
   onPress,
@@ -87,8 +145,9 @@ function MetricTile({
   value: string;
   label: string;
   hint?: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accent: string;
+  hintTone: string;
+  icon: React.ReactNode;
+  palette: CrmPalette;
   isDark: boolean;
   delay: number;
   onPress?: () => void;
@@ -127,13 +186,13 @@ function MetricTile({
         }
         contentStyle={styles.metricContent}
       >
-        <Ionicons name={icon} size={13} color={accent} />
-        <Text style={[styles.metricValue, { color: isDark ? '#FFF8E4' : '#2B1E04' }]}>{value}</Text>
-        <Text style={[styles.metricLabel, { color: isDark ? 'rgba(255,240,205,0.6)' : 'rgba(43,30,4,0.62)' }]} numberOfLines={1}>
+        {icon}
+        <Text style={[styles.metricValue, { color: palette.text }]}>{value}</Text>
+        <Text style={[styles.metricLabel, { color: palette.secondary }]} numberOfLines={1}>
           {label}
         </Text>
         {hint ? (
-          <Text style={[styles.metricHint, { color: accent }]} numberOfLines={1}>
+          <Text style={[styles.metricHint, { color: hintTone }]} numberOfLines={1}>
             {hint}
           </Text>
         ) : null}
@@ -149,6 +208,8 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
   const [expanded, setExpanded] = useState(true);
 
+  const palette = useMemo(() => crmGoldPalette(isDark), [isDark]);
+
   const loadClients = useCallback(async () => {
     if (!token) return;
     const res = await fetchAgencyClients(token);
@@ -160,10 +221,6 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
       void loadClients();
     }, [loadClients]),
   );
-
-  const text = isDark ? '#FFF8E4' : '#2B1E04';
-  const secondary = isDark ? 'rgba(255,240,205,0.55)' : 'rgba(43,30,4,0.58)';
-  const cardBorder = isDark ? 'rgba(255,226,163,0.24)' : 'rgba(120,86,18,0.26)';
 
   const sellers = clients.filter((c) => c.type === 'SELLER').length;
   const buyers = clients.filter((c) => c.type === 'BUYER').length;
@@ -185,15 +242,8 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
     [navigation],
   );
 
-  const tasks = useMemo(() => {
-    const list: Array<{
-      id: string;
-      icon: keyof typeof Ionicons.glyphMap;
-      color: string;
-      title: string;
-      detail: string;
-      onPress?: () => void;
-    }> = [];
+  const tasks = useMemo<CrmTask[]>(() => {
+    const list: CrmTask[] = [];
 
     const live = events.find((event) => {
       const start = new Date(event.startsAt).getTime();
@@ -202,10 +252,11 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
     if (live) {
       list.push({
         id: 'live',
-        icon: 'radio',
-        color: BUYER_COLOR,
+        tone: 'attention',
+        chip: 'TERAZ',
         title: 'Spotkanie trwa teraz',
         detail: [live.subtitle, live.location].filter(Boolean).join(' · ') || live.title,
+        icon: (color) => <LiveMeetingIcon color={color} />,
         onPress: () => handleEventPress(live),
       });
     }
@@ -218,10 +269,11 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
       const first = todayEvents[0];
       list.push({
         id: 'today',
-        icon: 'today',
-        color: GOLD,
+        tone: 'attention',
+        chip: 'DZIŚ',
         title: `Dziś ${todayEvents.length === 1 ? 'jedno wydarzenie' : `${todayEvents.length} wydarzenia`}`,
         detail: `${new Date(first.startsAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · ${first.subtitle || first.title}`,
+        icon: (color) => <TodayCalendarIcon color={color} />,
         onPress: () => handleEventPress(first),
       });
     }
@@ -230,10 +282,11 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
     if (withoutMeeting > 0) {
       list.push({
         id: 'no-meeting',
-        icon: 'calendar-outline',
-        color: '#AF52DE',
+        tone: 'pending',
+        chip: 'USTAL',
         title: `${withoutMeeting} ${withoutMeeting === 1 ? 'klient bez terminu' : 'klientów bez terminu'}`,
         detail: 'Ustal spotkanie i wyślij wizytówkę z kalendarzem',
+        icon: (color) => <TickingClockIcon color={color} />,
         onPress: () => navigation.navigate('AgencyClients'),
       });
     }
@@ -241,10 +294,11 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
     if (matchTotal > 0) {
       list.push({
         id: 'matches',
-        icon: 'sparkles',
-        color: SELLER_COLOR,
-        title: `${matchTotal} ${matchTotal === 1 ? 'dopasowanie' : 'dopasowań'} do wysłania`,
+        tone: 'onTrack',
+        chip: 'GOTOWE',
+        title: `${matchTotal} ${matchTotal === 1 ? 'dopasowanie' : 'dopasowań'} gotowych`,
         detail: 'Radar znalazł oferty pod preferencje klientów',
+        icon: (color) => <RadarPulseIcon color={color} />,
         onPress: () => navigation.navigate('AgencyClients'),
       });
     }
@@ -252,10 +306,11 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
     if (clients.length === 0) {
       list.push({
         id: 'first-client',
-        icon: 'person-add',
-        color: SELLER_COLOR,
+        tone: 'pending',
+        chip: 'START',
         title: 'Dodaj pierwszego klienta',
         detail: 'Umów spotkanie i uruchom kartę pozyskania',
+        icon: (color) => <AddClientNudgeIcon color={color} />,
         onPress: () => navigation.navigate('AgencyClientCreate'),
       });
     }
@@ -263,9 +318,11 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
     return list.slice(0, 3);
   }, [events, clients, matchTotal, now, navigation, handleEventPress]);
 
+  const attentionCount = tasks.filter((task) => task.tone === 'attention').length;
+
   return (
     <View style={[profilePremiumCardShellStyle(isDark, 20), styles.shell]}>
-      <View style={[styles.card, { borderColor: cardBorder }]}>
+      <View style={[styles.card, { borderColor: palette.hairline }]}>
         <TitaniumHomeKeyBackdrop isDark={isDark} variant="gold" />
 
         <View style={styles.cardContent}>
@@ -281,20 +338,20 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
             accessibilityLabel={expanded ? 'Zwiń panel CRM' : 'Rozwiń panel CRM'}
           >
             <View style={styles.headerCopy}>
-              <View style={styles.eyebrowRow}>
-                <LivePulseDot color={GOLD} />
-                <Text style={[styles.sectionEyebrow, { color: secondary }]}>CENTRUM SPRZEDAŻY</Text>
-              </View>
-              <Text style={[styles.sectionTitle, { color: text }]}>EstateOS™ CRM</Text>
+              <Text style={[styles.sectionEyebrow, { color: palette.secondary }]}>CENTRUM SPRZEDAŻY</Text>
+              <Text style={[styles.sectionTitle, { color: palette.text }]}>EstateOS™ CRM</Text>
             </View>
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={isDark ? 'rgba(255,240,205,0.5)' : 'rgba(43,30,4,0.45)'}
-            />
+            <View style={styles.headerRight}>
+              {attentionCount > 0 ? (
+                <StatusChip label={`PILNE ${attentionCount}`} color={palette.attention} palette={palette} />
+              ) : (
+                <StatusChip label="PLAN OK" color={palette.onTrack} palette={palette} />
+              )}
+              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={palette.muted} />
+            </View>
           </Pressable>
 
-          <AnalogAppleClock size={170} isDark={isDark} variant="gold" accent={GOLD} />
+          <AnalogAppleClock size={168} isDark={isDark} variant="gold" accent={palette.accent} />
 
           {expanded ? (
             <>
@@ -303,8 +360,9 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                   value={String(clients.length)}
                   label="Klienci"
                   hint={`${sellers} sprz. · ${buyers} kup.`}
-                  icon="people"
-                  accent={GOLD}
+                  hintTone={palette.secondary}
+                  icon={<ClientsBreathIcon color={palette.accent} size={16} />}
+                  palette={palette}
                   isDark={isDark}
                   delay={60}
                   onPress={() => navigation.navigate('AgencyClients')}
@@ -321,8 +379,15 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                         })
                       : 'brak terminów'
                   }
-                  icon="calendar"
-                  accent={BUYER_COLOR}
+                  hintTone={
+                    nextEvent
+                      ? attentionCount > 0
+                        ? palette.attention
+                        : palette.acquisition
+                      : palette.muted
+                  }
+                  icon={<TodayCalendarIcon color={palette.acquisition} size={16} />}
+                  palette={palette}
                   isDark={isDark}
                   delay={140}
                   onPress={nextEvent ? () => handleEventPress(nextEvent) : undefined}
@@ -330,77 +395,100 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                 <MetricTile
                   value={String(matchTotal)}
                   label="Dopasowania"
-                  hint={matchTotal > 0 ? 'do wysłania' : 'radar czuwa'}
-                  icon="sparkles"
-                  accent={SELLER_COLOR}
+                  hint={matchTotal > 0 ? 'gotowe do wysłania' : 'radar czuwa'}
+                  hintTone={matchTotal > 0 ? palette.onTrack : palette.muted}
+                  icon={<SparkleOrbitIcon color={palette.onTrack} size={16} />}
+                  palette={palette}
                   isDark={isDark}
                   delay={220}
                   onPress={() => navigation.navigate('AgencyClients')}
                 />
               </View>
 
-              <Text style={[styles.blockLabel, { color: secondary }]}>DO ZROBIENIA</Text>
+              <BlockHeading
+                label="Do zrobienia"
+                hint={attentionCount > 0 ? 'wymaga uwagi' : 'wszystko na czas'}
+                palette={palette}
+              />
               <View style={styles.blockList}>
                 {tasks.length === 0 ? (
                   <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.taskContent}>
-                    <InsetMetalIconWell isDark={isDark} variant="gold" size={34} borderRadius={10}>
-                      <Ionicons name="checkmark-circle" size={17} color={SELLER_COLOR} />
+                    <InsetMetalIconWell isDark={isDark} variant="gold" size={36} borderRadius={11}>
+                      <OnTrackCheckIcon color={palette.onTrack} />
                     </InsetMetalIconWell>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[styles.taskTitle, { color: text }]}>Wszystko ogarnięte</Text>
-                      <Text style={[styles.taskDetail, { color: secondary }]} numberOfLines={1}>
+                      <View style={styles.taskTitleRow}>
+                        <Text style={[styles.taskTitle, { color: palette.text }]} numberOfLines={1}>
+                          Wszystko ogarnięte
+                        </Text>
+                        <StatusChip label="PLAN OK" color={palette.onTrack} palette={palette} />
+                      </View>
+                      <Text style={[styles.taskDetail, { color: palette.secondary }]} numberOfLines={2}>
                         Brak zaległości w pozyskaniu i obsłudze klientów
                       </Text>
                     </View>
                   </InsetMetalRecess>
                 ) : (
-                  tasks.map((task) => (
-                    <InsetMetalRecess
-                      key={task.id}
-                      isDark={isDark}
-                      variant="gold"
-                      onPress={
-                        task.onPress
-                          ? () => {
-                              void Haptics.selectionAsync();
-                              task.onPress?.();
-                            }
-                          : undefined
-                      }
-                      contentStyle={styles.taskContent}
-                    >
-                      <InsetMetalIconWell isDark={isDark} variant="gold" size={34} borderRadius={10}>
-                        <Ionicons name={task.icon} size={16} color={task.color} />
-                      </InsetMetalIconWell>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={[styles.taskTitle, { color: text }]} numberOfLines={1}>
-                          {task.title}
-                        </Text>
-                        <Text style={[styles.taskDetail, { color: secondary }]} numberOfLines={1}>
-                          {task.detail}
-                        </Text>
+                  tasks.map((task) => {
+                    const tone = toneColor(palette, task.tone);
+                    return (
+                      <View key={task.id} style={styles.taskWrap}>
+                        <InsetMetalRecess
+                          isDark={isDark}
+                          variant="gold"
+                          onPress={
+                            task.onPress
+                              ? () => {
+                                  void Haptics.selectionAsync();
+                                  task.onPress?.();
+                                }
+                              : undefined
+                          }
+                          contentStyle={styles.taskContent}
+                        >
+                          <InsetMetalIconWell isDark={isDark} variant="gold" size={36} borderRadius={11}>
+                            {task.icon(tone)}
+                          </InsetMetalIconWell>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <View style={styles.taskTitleRow}>
+                              <Text style={[styles.taskTitle, { color: palette.text }]} numberOfLines={1}>
+                                {task.title}
+                              </Text>
+                              <StatusChip label={task.chip} color={tone} palette={palette} />
+                            </View>
+                            <Text style={[styles.taskDetail, { color: palette.secondary }]} numberOfLines={2}>
+                              {task.detail}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={15} color={palette.muted} />
+                        </InsetMetalRecess>
+                        {task.tone === 'attention' ? <AttentionHalo color={tone} radius={14} /> : null}
                       </View>
-                      <Ionicons name="chevron-forward" size={15} color={isDark ? 'rgba(255,240,205,0.35)' : 'rgba(43,30,4,0.3)'} />
-                    </InsetMetalRecess>
-                  ))
+                    );
+                  })
                 )}
               </View>
 
-              <Text style={[styles.blockLabel, { color: secondary }]}>NAJBLIŻSZY TERMIN</Text>
+              <BlockHeading
+                label="Najbliższy termin"
+                palette={palette}
+                icon={<TickingClockIcon color={palette.accent} size={14} />}
+              />
               <View style={styles.blockList}>
                 <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.wellContent}>
-                  <MobilePulseScheduleWidget isDark={isDark} embedded events={events} />
+                  <MobilePulseScheduleWidget isDark={isDark} embedded events={events} palette={palette} />
                 </InsetMetalRecess>
               </View>
 
-              <Text style={[styles.blockLabel, { color: secondary }]}>KALENDARZ MIESIĄCA</Text>
+              <BlockHeading label="Kalendarz miesiąca" palette={palette} />
               <View style={styles.blockList}>
                 <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.wellContent}>
                   <CrmMonthCalendar
                     events={events}
                     isDark={isDark}
                     plain
-                    accent={isDark ? GOLD : '#5F430A'}
+                    accent={palette.accent}
+                    palette={palette}
                     onEventPress={handleEventPress}
                   />
                 </InsetMetalRecess>
@@ -417,8 +505,8 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                       navigation.navigate('AgencyClientCreate');
                     }}
                   >
-                    <Ionicons name="person-add" size={16} color={SELLER_COLOR} />
-                    <Text style={[styles.actionText, { color: text }]}>Dodaj klienta</Text>
+                    <Ionicons name="person-add" size={16} color={palette.onTrack} />
+                    <Text style={[styles.actionText, { color: palette.text }]}>Dodaj klienta</Text>
                   </InsetMetalRecess>
                 </View>
 
@@ -432,20 +520,20 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                       navigation.navigate('AgencyClients');
                     }}
                   >
-                    <Ionicons name="people" size={16} color={GOLD} />
-                    <Text style={[styles.actionText, { color: text }]}>Moi klienci</Text>
+                    <Ionicons name="people" size={16} color={palette.accent} />
+                    <Text style={[styles.actionText, { color: palette.text }]}>Moi klienci</Text>
                   </InsetMetalRecess>
                 </View>
               </View>
 
-              <Text style={[styles.blockLabel, { color: secondary }]}>CONCIERGE</Text>
+              <BlockHeading label="Concierge" palette={palette} />
               <View style={styles.blockList}>
                 <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.wellContent}>
-                  <ProfileConciergeCard isDark={isDark} isAgency={isAgency} embedded />
+                  <ProfileConciergeCard isDark={isDark} isAgency={isAgency} embedded palette={palette} />
                 </InsetMetalRecess>
               </View>
 
-              <Text style={[styles.footer, { color: isDark ? 'rgba(255,240,205,0.38)' : 'rgba(43,30,4,0.38)' }]}>
+              <Text style={[styles.footer, { color: palette.muted }]}>
                 Terminy, karty pozyskania i panel klienta działają w jednym obiegu z wersją WWW.
               </Text>
             </>
@@ -480,37 +568,61 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   headerCopy: { flex: 1, minWidth: 0 },
-  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 4 },
-  pulseWrap: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
-  pulseHalo: { position: 'absolute', width: 10, height: 10, borderRadius: 5 },
-  pulseCore: { width: 8, height: 8, borderRadius: 4 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionEyebrow: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.1,
     textTransform: 'uppercase',
+    marginBottom: 3,
   },
   sectionTitle: {
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.5,
   },
+  chip: {
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  chipText: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
   metricsRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  metricContent: { paddingVertical: 10, paddingHorizontal: 10, gap: 2 },
-  metricValue: { fontSize: 20, fontWeight: '900', letterSpacing: -0.7, fontVariant: ['tabular-nums'], marginTop: 4 },
-  metricLabel: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.3 },
-  metricHint: { fontSize: 9, fontWeight: '800', marginTop: 2 },
-  blockLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
+  metricContent: { paddingVertical: 11, paddingHorizontal: 10, gap: 1 },
+  metricValue: {
+    fontSize: 21,
+    fontWeight: '900',
+    letterSpacing: -0.7,
+    fontVariant: ['tabular-nums'],
+    marginTop: 3,
+  },
+  metricLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
+  metricHint: { fontSize: 9.5, fontWeight: '800', marginTop: 3 },
+  blockHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
     marginTop: 18,
   },
-  blockList: { marginTop: 8, gap: 10 },
+  blockLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  blockRule: { flex: 1, height: StyleSheet.hairlineWidth },
+  blockHint: { fontSize: 9.5, fontWeight: '700' },
+  blockList: { marginTop: 9, gap: 10 },
+  taskWrap: { position: 'relative', borderRadius: 14 },
   taskContent: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
-  taskTitle: { fontSize: 14, fontWeight: '700' },
-  taskDetail: { fontSize: 11.5, fontWeight: '500', marginTop: 2 },
+  taskTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  taskTitle: { flexShrink: 1, fontSize: 14, fontWeight: '700' },
+  taskDetail: { fontSize: 11.5, fontWeight: '500', marginTop: 3 },
   wellContent: { padding: 12 },
   actionsRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
   actionFlex: { flex: 1 },
