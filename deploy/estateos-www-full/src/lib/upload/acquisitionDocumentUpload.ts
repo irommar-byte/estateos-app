@@ -56,7 +56,7 @@ export async function saveAcquisitionPaperFile(params: {
     return { ok: false, status: 415, error: "Dozwolone: PDF, JPG, PNG lub WEBP." };
   }
 
-  const dir = path.join(AGENCY_UPLOAD_BASE_FS, "acquisition", String(params.clientId));
+  const dir = AGENCY_UPLOAD_BASE_FS;
   try {
     await fs.mkdir(dir, { recursive: true });
   } catch {
@@ -64,12 +64,12 @@ export async function saveAcquisitionPaperFile(params: {
   }
 
   const ext = mime === "application/pdf" ? ".pdf" : mime === "image/png" ? ".png" : mime === "image/webp" ? ".webp" : ".jpg";
-  const fileName = `umowa-${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
+  const fileName = `acq-${params.clientId}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
   await fs.writeFile(path.join(dir, fileName), params.buffer);
 
   return {
     ok: true,
-    url: `${AGENCY_UPLOAD_PUBLIC_PREFIX}/acquisition/${params.clientId}/${fileName}`,
+    url: `${AGENCY_UPLOAD_PUBLIC_PREFIX}/${fileName}`,
     name: originalName.slice(0, 120),
     mimeType: mime,
     size: params.buffer.length,
