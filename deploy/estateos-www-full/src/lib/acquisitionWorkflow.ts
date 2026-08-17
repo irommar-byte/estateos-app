@@ -209,6 +209,8 @@ export function normalizeAcquisitionForm(
     notes: incoming.notes ?? fallback.notes,
   };
 }
+
+function line(label: string, value: unknown): string {
   const text = String(value ?? "").trim();
   return `${label}: ${text || "—"}`;
 }
