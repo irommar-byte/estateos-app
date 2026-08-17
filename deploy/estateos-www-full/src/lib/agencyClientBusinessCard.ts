@@ -161,6 +161,7 @@ export async function sendAgencyClientBusinessCard(params: {
     location?: string | null;
     notes?: string | null;
   };
+  prepLabels?: string[];
 }) {
   const [client, agent] = await Promise.all([
     prisma.agencyClient.findFirst({
@@ -226,14 +227,23 @@ export async function sendAgencyClientBusinessCard(params: {
   const clientName = client.firstName?.trim() || 'Kliencie';
 
   const meeting = params.meeting;
+  const prepList = (params.prepLabels || []).filter(Boolean);
+  const prepHtml = prepList.length
+    ? `<div style="margin:0 0 20px;padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;">
+        <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#475569;">Proszę przygotować</p>
+        <ul style="margin:10px 0 0;padding:0 0 0 18px;color:#334155;font-size:14px;line-height:1.55;">
+          ${prepList.map((label) => `<li style="margin:0 0 4px;">${escapeHtml(label)}</li>`).join('')}
+        </ul>
+      </div>`
+    : '';
   const meetingHtml = meeting
     ? `<div style="margin:0 0 20px;padding:16px 18px;border-radius:18px;background:#ecfdf5;border:1px solid #a7f3d0;">
         <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#047857;">Umówione spotkanie</p>
         <p style="margin:8px 0 0;font-size:18px;font-weight:900;color:#064e3b;">${escapeHtml(meeting.startsAt.toLocaleString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p>
         ${meeting.location ? `<p style="margin:6px 0 0;color:#065f46;">${escapeHtml(meeting.location)}</p>` : ''}
         ${meeting.notes ? `<p style="margin:6px 0 0;color:#374151;">${escapeHtml(meeting.notes)}</p>` : ''}
-      </div>`
-    : '';
+      </div>${prepHtml}`
+    : prepHtml;
 
   const html = buildBusinessCardHtml({
     clientName,
@@ -264,7 +274,10 @@ export async function sendAgencyClientBusinessCard(params: {
         title: `Spotkanie pozyskania · ${agencyName}`,
         startsAt: meeting.startsAt,
         location: meeting.location,
-        description: meeting.notes || `Spotkanie z agentem ${agentName}`,
+        description:
+          [meeting.notes || `Spotkanie z agentem ${agentName}`, prepList.length ? `Przygotować: ${prepList.join('; ')}` : '']
+            .filter(Boolean)
+            .join('\\n'),
       })
     : null;
 
@@ -308,6 +321,7 @@ export async function sendAgencyClientBusinessCard(params: {
         companyUrl,
         portalUrl,
         meetingStartsAt: meeting?.startsAt.toISOString() || null,
+        prepItems: params.prepLabels || [],
       },
     },
   });

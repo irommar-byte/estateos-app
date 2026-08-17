@@ -45,10 +45,35 @@ export type AgencyClientDetail = AgencyClientListItem & {
   portalUrl: string | null;
   portalToken: string | null;
   linkedOfferId: number | null;
+  linkedUserId?: number | null;
   sellerDescription: string | null;
   sellerDistrict: string | null;
   buyerFilters: Record<string, unknown> | null;
   matches: AgencyClientMatch[];
+  meeting?: {
+    startsAt: string;
+    location: string | null;
+    notes: string | null;
+    status: 'confirmed' | 'pending';
+    proposedBy: 'agent' | 'client';
+    reason: string | null;
+  } | null;
+  presentation?: {
+    startsAt: string;
+    location: string | null;
+    notes: string | null;
+    status: 'confirmed' | 'pending';
+    proposedBy: 'agent' | 'client';
+    reason: string | null;
+  } | null;
+  messages?: Array<{
+    id: number;
+    content: string;
+    createdAt: string;
+    fromAgent: boolean;
+    fromMe: boolean;
+    attachments: Array<{ url: string; name: string; mimeType: string; size: number }>;
+  }>;
 };
 
 export type AcquisitionFormData = {
@@ -248,6 +273,41 @@ export async function createOfferFromAcquisition(token: string, clientId: number
   const json = await parseJson(res);
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się utworzyć oferty.') };
   return { ok: true as const, offerId: Number(json.offerId) };
+}
+
+export async function postAgencyClientAction(token: string, clientId: number, body: Record<string, unknown>) {
+  const res = await fetch(`${API_URL}/api/crm/clients/${clientId}`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await parseJson(res);
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się wykonać akcji.') };
+  return { ok: true as const, message: json.message, ...json };
+}
+
+export async function uploadClientPortalAttachment(
+  token: string,
+  clientId: number,
+  file: { uri: string; name: string; mimeType: string },
+) {
+  const payload = new FormData();
+  payload.append('file', {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType,
+  } as any);
+  const res = await fetch(`${API_URL}/api/crm/clients/${clientId}/portal-attachments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: payload,
+  });
+  const json = await parseJson(res);
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się wgrać załącznika.') };
+  return {
+    ok: true as const,
+    attachment: json.attachment as { url: string; name: string; mimeType: string; size: number },
+  };
 }
 
 export async function previewPortalListing(token: string, url: string) {

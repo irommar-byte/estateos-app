@@ -48,7 +48,7 @@ export async function getAgencyClientForUser(clientId: number, agencyUserId: num
           },
         },
       },
-      activities: { orderBy: { createdAt: 'desc' }, take: 30 },
+      activities: { orderBy: { createdAt: 'desc' }, take: 80 },
     },
   });
 }

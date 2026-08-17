@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ export default function AcquisitionRoomScanner({
   onChangePlanImages,
   isDark,
   disabled,
+  autoOpen,
 }: {
   rooms: RoomItem[];
   planImages: string[];
@@ -28,12 +29,19 @@ export default function AcquisitionRoomScanner({
   onChangePlanImages: (images: string[]) => void;
   isDark?: boolean;
   disabled?: boolean;
+  autoOpen?: boolean;
 }) {
   const [newRoomName, setNewRoomName] = useState('Salon');
   const [width, setWidth] = useState('');
   const [length, setLength] = useState('');
   const [roomScanOpen, setRoomScanOpen] = useState(false);
   const roomScanAvailable = isRoomScanSupportedOnDevice();
+
+  useEffect(() => {
+    if (autoOpen && roomScanAvailable && !disabled) {
+      setRoomScanOpen(true);
+    }
+  }, [autoOpen, roomScanAvailable, disabled]);
 
   const colors = {
     card: isDark ? '#1C1C1E' : '#FFFFFF',

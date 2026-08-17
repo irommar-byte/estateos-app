@@ -42,6 +42,8 @@ import {
   saveAcquisition,
   suggestAddresses,
   uploadAcquisitionPaper,
+  postAgencyClientAction,
+  uploadClientPortalAttachment,
   type AcquisitionFormData,
   type AcquisitionRecord,
   type AgencyClientDetail,
@@ -117,6 +119,8 @@ export default function AgencyClientDetailScreen() {
   const [dateModalField, setDateModalField] = useState<string | null>(null); // 'startsAt' | 'targetTimeline'
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [planImages, setPlanImages] = useState<string[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [presentationAt, setPresentationAt] = useState('');
 
   // Seller Buyer Radar Controls
   const [sellerRadarSearching, setSellerRadarSearching] = useState(false);
@@ -501,12 +505,26 @@ export default function AgencyClientDetailScreen() {
         visible={Boolean(dateModalField)}
         isDark={isDark}
         mode={dateModalField === 'targetTimeline' ? 'timeline' : 'meeting'}
-        title={dateModalField === 'targetTimeline' ? 'Horyzont sprzedaży' : 'Termin'}
+        title={
+          dateModalField === 'targetTimeline'
+            ? 'Horyzont sprzedaży'
+            : dateModalField === 'presentation'
+              ? 'Termin prezentacji'
+              : 'Termin'
+        }
         initialValue={
-          dateModalField && form ? String((form.meeting as Record<string, string>)[dateModalField] || '') : ''
+          dateModalField === 'presentation'
+            ? presentationAt
+            : dateModalField && form
+              ? String((form.meeting as Record<string, string>)[dateModalField] || '')
+              : ''
         }
         onClose={() => setDateModalField(null)}
         onSelect={(formattedDate) => {
+          if (dateModalField === 'presentation') {
+            setPresentationAt(formattedDate);
+            return;
+          }
           if (dateModalField && form) {
             setForm(setSection(form, 'meeting', { [dateModalField]: formattedDate }));
           }
@@ -583,6 +601,210 @@ export default function AgencyClientDetailScreen() {
                 <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}>
                   {formatPhoneNumber(client.phone || '')} • {client.email || 'Brak e-maila'}
                 </Text>
+              </View>
+
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                  WSPÓŁPRACA Z KLIENTEM
+                </Text>
+                {client.meeting ? (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>SPOTKANIE</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
+                      {new Date(client.meeting.startsAt).toLocaleString('pl-PL')}
+                    </Text>
+                    {client.meeting.location ? (
+                      <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }}>{client.meeting.location}</Text>
+                    ) : null}
+                    <Text style={{ color: client.meeting.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
+                      {client.meeting.status === 'pending'
+                        ? client.meeting.reason
+                          ? `Propozycja klienta: ${client.meeting.reason}`
+                          : 'Oczekuje na Twoją decyzję'
+                        : 'Potwierdzone'}
+                    </Text>
+                    {client.meeting.status === 'pending' ? (
+                      <Pressable
+                        onPress={async () => {
+                          if (!token) return;
+                          setBusy('accept_meeting');
+                          const res = await postAgencyClientAction(token, clientId, { action: 'accept_schedule_change', kind: 'meeting' });
+                          setBusy('');
+                          if (!res.ok) Alert.alert('Termin', res.message);
+                          else void load();
+                        }}
+                        style={[styles.secondary, { borderColor: colors.accent, marginTop: 8 }]}
+                      >
+                        <Text style={{ color: colors.accent, fontWeight: '800', textAlign: 'center' }}>
+                          {busy === 'accept_meeting' ? '…' : 'Akceptuj nowy termin'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <View style={{ marginTop: 14 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>PREZENTACJA</Text>
+                  {client.presentation ? (
+                    <>
+                      <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
+                        {new Date(client.presentation.startsAt).toLocaleString('pl-PL')}
+                      </Text>
+                      <Text style={{ color: client.presentation.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
+                        {client.presentation.status === 'pending' ? 'Czeka na potwierdzenie klienta' : 'Potwierdzona'}
+                      </Text>
+                      {client.presentation.status === 'pending' && client.presentation.proposedBy === 'client' ? (
+                        <Pressable
+                          onPress={async () => {
+                            if (!token) return;
+                            setBusy('accept_pres');
+                            const res = await postAgencyClientAction(token, clientId, { action: 'accept_schedule_change', kind: 'presentation' });
+                            setBusy('');
+                            if (!res.ok) Alert.alert('Prezentacja', res.message);
+                            else void load();
+                          }}
+                          style={[styles.secondary, { borderColor: colors.accent, marginTop: 8 }]}
+                        >
+                          <Text style={{ color: colors.accent, fontWeight: '800', textAlign: 'center' }}>
+                            {busy === 'accept_pres' ? '…' : 'Akceptuj termin klienta'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
+                      Zaproponuj termin prezentacji — klient potwierdzi albo poda swój.
+                    </Text>
+                  )}
+                  <Pressable
+                    onPress={() => setDateModalField('presentation')}
+                    style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
+                  >
+                    <Text style={{ color: presentationAt ? colors.text : colors.secondary, fontWeight: '700' }}>
+                      {presentationAt || 'Wybierz termin prezentacji'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={!presentationAt || busy === 'propose_pres'}
+                    onPress={async () => {
+                      if (!token || !presentationAt) return;
+                      const m = presentationAt.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+                      if (!m) {
+                        Alert.alert('Prezentacja', 'Wybierz kompletny termin.');
+                        return;
+                      }
+                      setBusy('propose_pres');
+                      const startsAt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
+                      const res = await postAgencyClientAction(token, clientId, { action: 'propose_presentation', startsAt });
+                      setBusy('');
+                      if (!res.ok) Alert.alert('Prezentacja', res.message);
+                      else {
+                        setPresentationAt('');
+                        void load();
+                      }
+                    }}
+                    style={[styles.primary, { marginTop: 8, opacity: presentationAt ? 1 : 0.5 }]}
+                  >
+                    <Text style={styles.primaryText}>{busy === 'propose_pres' ? 'Wysyłam…' : 'Zaproponuj prezentację klientowi'}</Text>
+                  </Pressable>
+                </View>
+
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>WIADOMOŚCI</Text>
+                  <View style={{ maxHeight: 220, marginTop: 8 }}>
+                    {(client.messages || []).length === 0 ? (
+                      <Text style={{ color: colors.secondary, fontSize: 12 }}>Brak wiadomości — napisz pierwszy.</Text>
+                    ) : (
+                      (client.messages || []).slice(-12).map((msg) => (
+                        <View
+                          key={msg.id}
+                          style={{
+                            alignSelf: msg.fromMe ? 'flex-end' : 'flex-start',
+                            backgroundColor: msg.fromMe ? 'rgba(52,199,89,0.16)' : colors.input,
+                            borderRadius: 12,
+                            padding: 10,
+                            marginBottom: 6,
+                            maxWidth: '88%',
+                          }}
+                        >
+                          <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800' }}>
+                            {msg.fromMe ? 'Ty' : client.firstName}
+                          </Text>
+                          {msg.content ? (
+                            <Text style={{ color: colors.text, fontSize: 13, marginTop: 2 }}>{msg.content}</Text>
+                          ) : null}
+                          {(msg.attachments || []).map((att) => (
+                            <Pressable key={att.url} onPress={() => Linking.openURL(att.url.startsWith('http') ? att.url : `https://estateos.pl${att.url}`)}>
+                              <Text style={{ color: '#007AFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>📎 {att.name}</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ))
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                    <TextInput
+                      value={chatDraft}
+                      onChangeText={setChatDraft}
+                      placeholder="Wiadomość do klienta…"
+                      placeholderTextColor={colors.secondary}
+                      style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                    />
+                    <Pressable
+                      onPress={async () => {
+                        if (!token) return;
+                        const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+                        if (picked.canceled || !picked.assets?.[0]) return;
+                        const file = picked.assets[0];
+                        setBusy('attach');
+                        const uploaded = await uploadClientPortalAttachment(token, clientId, {
+                          uri: file.uri,
+                          name: file.name || 'zalacznik',
+                          mimeType: file.mimeType || 'application/octet-stream',
+                        });
+                        if (!uploaded.ok) {
+                          setBusy('');
+                          Alert.alert('Załącznik', uploaded.message);
+                          return;
+                        }
+                        const res = await postAgencyClientAction(token, clientId, {
+                          action: 'send_portal_message',
+                          content: chatDraft.trim(),
+                          attachments: [uploaded.attachment],
+                        });
+                        setBusy('');
+                        if (!res.ok) Alert.alert('Wiadomość', res.message);
+                        else {
+                          setChatDraft('');
+                          void load();
+                        }
+                      }}
+                      style={[styles.iconBtn, { backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }]}
+                    >
+                      <Ionicons name="attach-outline" size={20} color={colors.text} />
+                    </Pressable>
+                    <Pressable
+                      disabled={busy === 'chat' || !chatDraft.trim()}
+                      onPress={async () => {
+                        if (!token || !chatDraft.trim()) return;
+                        setBusy('chat');
+                        const res = await postAgencyClientAction(token, clientId, {
+                          action: 'send_portal_message',
+                          content: chatDraft.trim(),
+                        });
+                        setBusy('');
+                        if (!res.ok) Alert.alert('Wiadomość', res.message);
+                        else {
+                          setChatDraft('');
+                          void load();
+                        }
+                      }}
+                      style={[styles.iconBtn, { backgroundColor: colors.accent }]}
+                    >
+                      <Ionicons name="send" size={18} color="#000" />
+                    </Pressable>
+                  </View>
+                </View>
               </View>
 
               {/* Offer Creation / Link Section for Sellers */}
@@ -859,7 +1081,17 @@ export default function AgencyClientDetailScreen() {
                         />
                       </View>
 
-                      {/* Interactive Room Scanner & Floor Plan Attachment */}
+                      <MultiSelectChipGroup
+                        label="PRZYLEGŁOŚCI I DODATKI"
+                        options={['Garaż', 'Miejsce postojowe', 'Komórka lokatorska', 'Piwnica', 'Balkon', 'Taras', 'Ogródek', 'Winda']}
+                        selected={String(form.property.amenities || '').split(',').map((s) => s.trim()).filter(Boolean)}
+                        onToggle={(opt) => toggleChipSelection('property', 'amenities', opt)}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                      {field('property', 'parking', 'GARAŻ / MIEJSCE — numer, piętro, dokument')}
+                      {field('property', 'storage', 'KOMÓRKA / PIWNICA — numer, powierzchnia')}
+
                       <AcquisitionRoomScanner
                         rooms={rooms}
                         planImages={planImages}
@@ -867,6 +1099,7 @@ export default function AgencyClientDetailScreen() {
                         onChangePlanImages={setPlanImages}
                         isDark={isDark}
                         disabled={signed}
+                        autoOpen={step === 3}
                       />
                     </>
                   ) : null}

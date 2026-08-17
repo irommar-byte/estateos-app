@@ -12,6 +12,7 @@ import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 import { sendNotification } from '@/lib/core/notification.core';
 import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
+import { normalizePrepItemIds, prepItemLabels } from '@/lib/crm/clientJourney';
 
 function normalizePhone(raw: unknown): string | null {
   const input = String(raw || '').trim();
@@ -165,6 +166,8 @@ export async function POST(req: Request) {
   }
 
   const meeting = body.acquisitionMeeting;
+  const prepItems = normalizePrepItemIds(body.prepItems ?? meeting?.prepItems);
+  const prepLabels = prepItemLabels(prepItems);
   let meetingPayload: { startsAt: Date; location: string; notes: string } | null = null;
   if (
     type === 'SELLER' &&
@@ -189,6 +192,9 @@ export async function POST(req: Request) {
             location: location || null,
             notes: notes || null,
             listingUrl: body.listingUrl ? String(body.listingUrl).trim() : null,
+            prepItems,
+            proposedBy: 'agent',
+            status: 'confirmed',
           },
         },
       });
@@ -209,7 +215,7 @@ export async function POST(req: Request) {
       clientId: client.id,
       agencyUserId,
       customMessage: meetingPayload
-        ? 'Potwierdzam nasze spotkanie i przesyłam wizytówkę. W załączniku plik kalendarza — dodaj go, żeby przypomniało o terminie.'
+        ? 'Potwierdzam nasze spotkanie i przesyłam wizytówkę. W panelu klienta możesz napisać do mnie, potwierdzić termin albo zaproponować inną godzinę.'
         : undefined,
       meeting: meetingPayload
         ? {
@@ -218,6 +224,7 @@ export async function POST(req: Request) {
             notes: meetingPayload.notes || null,
           }
         : undefined,
+      prepLabels,
     }).catch(() => {});
   }
 

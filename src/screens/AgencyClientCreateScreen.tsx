@@ -25,6 +25,7 @@ import AcquisitionAddressMapField, {
   type AcquisitionAddressValue,
 } from '../components/agency/AcquisitionAddressMapField';
 import AcquisitionDatePickerModal from '../components/agency/AcquisitionDatePickerModal';
+import { CLIENT_PREP_ITEMS } from '../constants/clientJourney';
 
 const DRAFT_KEY = '@eos_agency_client_create_draft';
 
@@ -70,6 +71,7 @@ export default function AgencyClientCreateScreen() {
     lng: null,
   });
   const [meetingModal, setMeetingModal] = useState(false);
+  const [prepItems, setPrepItems] = useState<string[]>([]);
   const [importBusy, setImportBusy] = useState(false);
   const [importPreview, setImportPreview] = useState<string | null>(null);
   const submittedRef = useRef(false);
@@ -123,6 +125,7 @@ export default function AgencyClientCreateScreen() {
                 if (parsed.type) setType(parsed.type);
                 if (parsed.alsoSearching !== undefined) setAlsoSearching(parsed.alsoSearching);
                 if (parsed.address) setAddress(parsed.address);
+                if (Array.isArray(parsed.prepItems)) setPrepItems(parsed.prepItems);
               },
             },
           ],
@@ -140,13 +143,13 @@ export default function AgencyClientCreateScreen() {
       if (submittedRef.current) return;
       const hasContent = Boolean(form.firstName || form.lastName || form.email || form.phone || form.meetingAt || address.address);
       if (hasContent) {
-        void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, type, alsoSearching, address }));
+        void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, type, alsoSearching, address, prepItems }));
       } else {
         void AsyncStorage.removeItem(DRAFT_KEY);
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [form, type, alsoSearching, address]);
+  }, [form, type, alsoSearching, address, prepItems]);
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -283,11 +286,13 @@ export default function AgencyClientCreateScreen() {
               sellerDistrict: address.city || null,
               sellerPrice: form.sellerPrice ? parseGroupedNumber(form.sellerPrice) : null,
               listingUrl: form.listingUrl.trim() || null,
+              prepItems,
               acquisitionMeeting: startsAt
                 ? {
                     startsAt,
                     location: address.address || null,
                     notes: form.comments.trim() || null,
+                    prepItems,
                   }
                 : null,
               ...(alsoSearching
@@ -514,8 +519,40 @@ export default function AgencyClientCreateScreen() {
                   </Pressable>
                   <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>
                     Kartę pozyskania wypełniasz na miejscu. Tu ustalamy tylko wizytę — klient dostanie maila z
-                    wizytówką i plikiem do kalendarza.
+                    wizytówką, listą przygotowań i przyciskiem do panelu.
                   </Text>
+                </View>
+
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                    KLIENT MA PRZYGOTOWAĆ
+                  </Text>
+                  <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, marginBottom: 8 }}>
+                    Zaznacz przed dodaniem — lista trafi na maila i do panelu klienta.
+                  </Text>
+                  {CLIENT_PREP_ITEMS.map((item) => {
+                    const checked = prepItems.includes(item.id);
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() =>
+                          setPrepItems((current) =>
+                            checked ? current.filter((id) => id !== item.id) : [...current, item.id],
+                          )
+                        }
+                        style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}
+                      >
+                        <Ionicons
+                          name={checked ? 'checkbox' : 'square-outline'}
+                          size={22}
+                          color={colors.accent}
+                        />
+                        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600', flex: 1, lineHeight: 18 }}>
+                          {item.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
 
                 <View style={{ marginBottom: 12 }}>

@@ -6,6 +6,7 @@ import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import { readPendingPublication } from "@/lib/offerPendingPublication";
 import { listEnrichedLeadTransfersForUser } from "@/lib/leadTransfer";
 import { acquisitionActivityToAppointment } from "@/lib/crm/planningCalendar";
+import { resolveMeeting, resolvePresentation } from "@/lib/crm/clientJourney";
 
 export async function GET(req: Request) {
   try {
@@ -118,15 +119,58 @@ export async function GET(req: Request) {
     });
 
     const acquisitionActs = await prisma.agencyClientActivity.findMany({
-      where: { agencyUserId: finalUserId, kind: 'ACQUISITION_MEETING' },
+      where: {
+        agencyUserId: finalUserId,
+        kind: {
+          in: [
+            'ACQUISITION_MEETING',
+            'MEETING_CHANGE_PROPOSED',
+            'MEETING_CONFIRMED',
+            'PRESENTATION_PROPOSED',
+            'PRESENTATION_CHANGE_PROPOSED',
+            'PRESENTATION_CONFIRMED',
+          ],
+        },
+      },
       include: {
         client: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       },
       take: 250,
     });
-    const acquisitionAppointments = acquisitionActs
-      .map((row) => acquisitionActivityToAppointment(row))
-      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    const grouped = new Map<number, typeof acquisitionActs>();
+    for (const row of acquisitionActs) {
+      const list = grouped.get(row.client.id) || [];
+      list.push(row);
+      grouped.set(row.client.id, list);
+    }
+    const acquisitionAppointments = [...grouped.values()].flatMap((rows) => {
+      const seed = rows[rows.length - 1];
+      const meeting = resolveMeeting(rows);
+      const presentation = resolvePresentation(rows);
+      const out = [];
+      if (meeting) {
+        const mapped = acquisitionActivityToAppointment({
+          ...seed,
+          kind: meeting.status === 'pending' ? 'MEETING_CHANGE_PROPOSED' : 'ACQUISITION_MEETING',
+          title: `Pozyskanie · ${seed.client.firstName} ${seed.client.lastName}`.trim(),
+          body: meeting.reason || meeting.notes,
+          metadata: meeting,
+        });
+        if (mapped) out.push(mapped);
+      }
+      if (presentation) {
+        const mapped = acquisitionActivityToAppointment({
+          ...seed,
+          id: seed.id + 1_000_000,
+          kind: presentation.status === 'pending' ? 'PRESENTATION_CHANGE_PROPOSED' : 'PRESENTATION_CONFIRMED',
+          title: `Prezentacja · ${seed.client.firstName} ${seed.client.lastName}`.trim(),
+          body: presentation.reason || presentation.notes,
+          metadata: presentation,
+        });
+        if (mapped) out.push(mapped);
+      }
+      return out;
+    });
     const allAppointments = [...appointments, ...acquisitionAppointments];
 
     // ==========================================
