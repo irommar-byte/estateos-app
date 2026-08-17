@@ -68,6 +68,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
     : await prisma.agencyClientAcquisition.create({
         data: {
           clientId,
+          agencyUserId,
           formData: nextForm as object,
           status: "IN_MEETING",
           currentStep: 6,
