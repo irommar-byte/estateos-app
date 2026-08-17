@@ -13,6 +13,7 @@ import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 import { sendNotification } from '@/lib/core/notification.core';
 import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
 import { normalizePrepItemIds, prepItemLabels } from '@/lib/crm/clientJourney';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 
 function normalizePhone(raw: unknown): string | null {
   const input = String(raw || '').trim();
@@ -204,7 +205,7 @@ export async function POST(req: Request) {
         type: 'CRM_EVENT',
         title: 'Spotkanie pozyskania',
         body: `${firstName} ${lastName} · ${startsAt.toLocaleString('pl-PL')}`,
-        data: { clientId: client.id, href: `/moje-konto/crm?tab=klienci&clientId=${client.id}` },
+        data: crmAgentPushData(client.id, { notificationType: 'crm_client_schedule' }),
         idempotencyKey: `acq-meet-${client.id}-${startsAt.toISOString()}`,
       }).catch(() => {});
     }

@@ -26,6 +26,12 @@ import AcquisitionAddressMapField, {
 } from '../components/agency/AcquisitionAddressMapField';
 import AcquisitionDatePickerModal from '../components/agency/AcquisitionDatePickerModal';
 import { CLIENT_PREP_ITEMS } from '../constants/clientJourney';
+import AgencyClientRadarSurvey, {
+  clientRadarSurveyHint,
+  clientRadarSurveyReady,
+  defaultClientRadarFilters,
+  type ClientRadarFilters,
+} from '../components/agency/AgencyClientRadarSurvey';
 
 const DRAFT_KEY = '@eos_agency_client_create_draft';
 
@@ -72,6 +78,7 @@ export default function AgencyClientCreateScreen() {
   });
   const [meetingModal, setMeetingModal] = useState(false);
   const [prepItems, setPrepItems] = useState<string[]>([]);
+  const [buyerFilters, setBuyerFilters] = useState<ClientRadarFilters>(defaultClientRadarFilters);
   const [importBusy, setImportBusy] = useState(false);
   const [importPreview, setImportPreview] = useState<string | null>(null);
   const submittedRef = useRef(false);
@@ -126,6 +133,7 @@ export default function AgencyClientCreateScreen() {
                 if (parsed.alsoSearching !== undefined) setAlsoSearching(parsed.alsoSearching);
                 if (parsed.address) setAddress(parsed.address);
                 if (Array.isArray(parsed.prepItems)) setPrepItems(parsed.prepItems);
+                if (parsed.buyerFilters) setBuyerFilters((current) => ({ ...current, ...parsed.buyerFilters }));
               },
             },
           ],
@@ -143,13 +151,13 @@ export default function AgencyClientCreateScreen() {
       if (submittedRef.current) return;
       const hasContent = Boolean(form.firstName || form.lastName || form.email || form.phone || form.meetingAt || address.address);
       if (hasContent) {
-        void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, type, alsoSearching, address, prepItems }));
+        void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, type, alsoSearching, address, prepItems, buyerFilters }));
       } else {
         void AsyncStorage.removeItem(DRAFT_KEY);
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [form, type, alsoSearching, address, prepItems]);
+  }, [form, type, alsoSearching, address, prepItems, buyerFilters]);
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -204,6 +212,10 @@ export default function AgencyClientCreateScreen() {
     }
     if (type === 'SELLER' && !form.meetingAt.trim()) {
       Alert.alert('Termin spotkania', 'Ustal termin i godzinę spotkania — klient dostanie maila z kalendarzem.');
+      return;
+    }
+    if ((type === 'BUYER' || alsoSearching) && !clientRadarSurveyReady(buyerFilters)) {
+      Alert.alert('Ankieta radaru', clientRadarSurveyHint(buyerFilters) || 'Uzupełnij parametry poszukiwań.');
       return;
     }
 
@@ -295,54 +307,10 @@ export default function AgencyClientCreateScreen() {
                     prepItems,
                   }
                 : null,
-              ...(alsoSearching
-                ? {
-                    buyerFilters: {
-                      calibrationMode: 'CITY',
-                      transactionType: 'SELL',
-                      propertyType: 'FLAT',
-                      city: form.buyerCity || 'Warszawa',
-                      selectedDistricts: [],
-                      maxPrice: parseGroupedNumber(form.maxPrice) || 0,
-                      minArea: 0,
-                      minYear: 1900,
-                      requireBalcony: false,
-                      requireGarden: false,
-                      requireElevator: false,
-                      requireParking: false,
-                      requireFurnished: false,
-                      requireTwoLevel: false,
-                      pushNotifications: false,
-                      matchThreshold: 70,
-                      lat: null,
-                      lng: null,
-                      radiusKm: null,
-                    },
-                  }
-                : {}),
+              ...(alsoSearching ? { buyerFilters: { ...buyerFilters, pushNotifications: false } } : {}),
             }
           : {
-              buyerFilters: {
-                calibrationMode: 'CITY',
-                transactionType: 'SELL',
-                propertyType: 'FLAT',
-                city: form.buyerCity || 'Warszawa',
-                selectedDistricts: [],
-                maxPrice: parseGroupedNumber(form.maxPrice) || 0,
-                minArea: 0,
-                minYear: 1900,
-                requireBalcony: false,
-                requireGarden: false,
-                requireElevator: false,
-                requireParking: false,
-                requireFurnished: false,
-                requireTwoLevel: false,
-                pushNotifications: false,
-                matchThreshold: 70,
-                lat: null,
-                lng: null,
-                radiusKm: null,
-              },
+              buyerFilters: { ...buyerFilters, pushNotifications: false },
             }),
       });
 
@@ -631,20 +599,22 @@ export default function AgencyClientCreateScreen() {
                 </Pressable>
 
                 {alsoSearching ? (
-                  <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-                    <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12, marginBottom: 8 }}>
-                      RADAR ZAKUPOWY DLA SPRZEDAJĄCEGO
-                    </Text>
-                    {field('buyerCity', 'MIASTO POSZUKIWAŃ')}
-                    {field('maxPrice', 'BUDŻET MAX (zł)', 'numeric', formatPriceInput)}
-                  </View>
+                  <AgencyClientRadarSurvey
+                    value={buyerFilters}
+                    onChange={setBuyerFilters}
+                    isDark={isDark}
+                    title="RADAR ZAKUPOWY"
+                    subtitle="Sprzedający też szuka — te same filtry co w radarze. Po zapisie zobaczysz, które oferty wysłać."
+                  />
                 ) : null}
               </>
             ) : (
-              <>
-                {field('buyerCity', 'MIASTO POSZUKIWAŃ')}
-                {field('maxPrice', 'BUDŻET MAX (zł)', 'numeric', formatPriceInput)}
-              </>
+              <AgencyClientRadarSurvey
+                value={buyerFilters}
+                onChange={setBuyerFilters}
+                isDark={isDark}
+                subtitle="Wypełnij ankietę jak w radarze. System dopasuje oferty i pokaże, które warto wysłać klientowi."
+              />
             )}
 
             <Pressable disabled={busy} onPress={submit} style={[styles.submitBtn, { backgroundColor: colors.accent }]}>

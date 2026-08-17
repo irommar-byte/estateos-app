@@ -546,7 +546,6 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
 
 const styles = StyleSheet.create({
   shell: {
-    marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 8,
   },

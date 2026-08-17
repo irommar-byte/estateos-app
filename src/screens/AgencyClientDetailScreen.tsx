@@ -28,6 +28,13 @@ import AcquisitionAddressMapField from '../components/agency/AcquisitionAddressM
 import AcquisitionRoomScanner, { type RoomItem } from '../components/agency/AcquisitionRoomScanner';
 import AcquisitionKwField from '../components/agency/AcquisitionKwField';
 import MultiSelectChipGroup from '../components/agency/MultiSelectChipGroup';
+import AgencyClientRadarSurvey, {
+  clientRadarFiltersFromUnknown,
+  clientRadarSurveyHint,
+  clientRadarSurveyReady,
+  defaultClientRadarFilters,
+  type ClientRadarFilters,
+} from '../components/agency/AgencyClientRadarSurvey';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import { buildYearBuiltPickerValues } from '../lib/offerYearBuilt';
 import {
@@ -47,6 +54,7 @@ import {
   type AcquisitionFormData,
   type AcquisitionRecord,
   type AgencyClientDetail,
+  type AgencyClientMatch,
 } from '../services/agencyClientService';
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
 
@@ -95,6 +103,73 @@ function acquisitionSnapshot(form: AcquisitionFormData | null, step: number) {
   return JSON.stringify({ form, step });
 }
 
+function MatchRow({
+  item,
+  colors,
+  sent,
+  busy,
+  onSend,
+}: {
+  item: AgencyClientMatch;
+  colors: { text: string; secondary: string; accent: string; border: string };
+  sent: boolean;
+  busy: boolean;
+  onSend: () => void;
+}) {
+  const meta = [item.offer.city, item.offer.area ? `${item.offer.area} m²` : null].filter(Boolean).join(' · ');
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border,
+      }}
+    >
+      {item.offer.imageUrl ? (
+        <Image source={{ uri: item.offer.imageUrl }} style={{ width: 56, height: 56, borderRadius: 10 }} />
+      ) : (
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 10,
+            backgroundColor: colors.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="home-outline" size={20} color={colors.secondary} />
+        </View>
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>
+          {item.offer.title}
+        </Text>
+        <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 12 }}>
+          {formatCurrencyPLN(item.offer.price)}
+          {item.score ? ` · ${item.score}%` : ''}
+        </Text>
+        <Text style={{ color: colors.secondary, fontSize: 11 }}>{meta}</Text>
+      </View>
+      {sent ? (
+        <View style={{ backgroundColor: 'rgba(52,199,89,0.16)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+          <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 11 }}>Wysłano</Text>
+        </View>
+      ) : (
+        <Pressable
+          onPress={onSend}
+          style={{ backgroundColor: colors.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+        >
+          <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>{busy ? '…' : 'Wyślij'}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 export default function AgencyClientDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -124,9 +199,7 @@ export default function AgencyClientDetailScreen() {
 
   // Seller Buyer Radar Controls
   const [sellerRadarSearching, setSellerRadarSearching] = useState(false);
-  const [sellerRadarCity, setSellerRadarCity] = useState('Warszawa');
-  const [sellerRadarMaxPrice, setSellerRadarMaxPrice] = useState('');
-  const [sellerRadarMinArea, setSellerRadarMinArea] = useState('');
+  const [buyerFilters, setBuyerFilters] = useState<ClientRadarFilters>(defaultClientRadarFilters);
 
   const colors = {
     bg: isDark ? '#000' : '#F2F2F7',
@@ -184,9 +257,10 @@ export default function AgencyClientDetailScreen() {
 
     if (detail.client.buyerFilters) {
       setSellerRadarSearching(true);
-      setSellerRadarCity(String(detail.client.buyerFilters.city || 'Warszawa'));
-      setSellerRadarMaxPrice(formatPriceInput(String(detail.client.buyerFilters.maxPrice || '')));
-      setSellerRadarMinArea(String(detail.client.buyerFilters.minArea || ''));
+      setBuyerFilters(clientRadarFiltersFromUnknown(detail.client.buyerFilters));
+    } else {
+      setSellerRadarSearching(detail.client.type === 'BUYER');
+      setBuyerFilters(defaultClientRadarFilters());
     }
 
     if (detail.client.type === 'SELLER') {
@@ -497,6 +571,54 @@ export default function AgencyClientDetailScreen() {
   };
 
   const matches = client?.matches || [];
+  const pendingMatches = matches
+    .filter((item) => !item.notifiedAt && !item.sharedAt)
+    .sort((a, b) => b.score - a.score);
+  const sentMatches = matches
+    .filter((item) => Boolean(item.notifiedAt || item.sharedAt))
+    .sort((a, b) => b.score - a.score);
+  const showRadarSurvey = Boolean(client && (client.type === 'BUYER' || sellerRadarSearching));
+
+  const saveBuyerRadar = async (enabled: boolean, filters = buyerFilters) => {
+    if (!token) return false;
+    if (enabled && !clientRadarSurveyReady(filters)) {
+      Alert.alert('Ankieta radaru', clientRadarSurveyHint(filters) || 'Uzupełnij parametry poszukiwań.');
+      return false;
+    }
+    setBusy('save_radar');
+    const res = await patchAgencyClient(token, clientId, {
+      alsoSearching: enabled,
+      buyerFilters: enabled ? { ...filters, pushNotifications: false } : null,
+    });
+    if (res.ok && enabled) {
+      await refreshClientMatches(token, clientId);
+    }
+    setBusy('');
+    if (!res.ok) {
+      Alert.alert('Radar', res.message);
+      return false;
+    }
+    void load();
+    return true;
+  };
+
+  const sendMatches = async (offerIds: number[]) => {
+    if (!token || !offerIds.length) return;
+    setBusy(`prop_${offerIds[0]}`);
+    const res = await proposeClientOffers(token, clientId, offerIds);
+    setBusy('');
+    if (!res.ok) {
+      Alert.alert('Wysyłka', res.message);
+      return;
+    }
+    Alert.alert(
+      'Wysyłka',
+      offerIds.length > 1
+        ? `Wysłano ${offerIds.length} ofert do panelu klienta${client?.email ? ' i na e-mail' : ''}.`
+        : `Oferta jest w panelu klienta${client?.email ? ' i poszła na e-mail' : ''}.`,
+    );
+    void load();
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -1269,8 +1391,8 @@ export default function AgencyClientDetailScreen() {
               {/* Dedicated Seller Buyer Radar Section */}
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>
-                    Radar poszukiwań dla sprzedającego
+                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900', flex: 1, paddingRight: 12 }}>
+                    {client.type === 'BUYER' ? 'Radar dopasowań' : 'Radar zakupowy'}
                   </Text>
                   <Pressable
                     onPress={async () => {
@@ -1287,40 +1409,17 @@ export default function AgencyClientDetailScreen() {
                     </Text>
                   </Pressable>
                 </View>
+                <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                  Te same parametry co w radarze. Po zapisie widać, które oferty wysłać klientowi.
+                </Text>
 
                 {client.type === 'SELLER' && (
                   <Pressable
-                    onPress={async () => {
+                    onPress={() => {
                       const nextVal = !sellerRadarSearching;
                       setSellerRadarSearching(nextVal);
-                      if (token) {
-                        await patchAgencyClient(token, clientId, {
-                          alsoSearching: nextVal,
-                          buyerFilters: nextVal
-                            ? {
-                                calibrationMode: 'CITY',
-                                transactionType: 'SELL',
-                                propertyType: 'FLAT',
-                                city: sellerRadarCity,
-                                selectedDistricts: [],
-                                maxPrice: parseGroupedNumber(sellerRadarMaxPrice) || 0,
-                                minArea: Number(sellerRadarMinArea) || 0,
-                                minYear: 1900,
-                                requireBalcony: false,
-                                requireGarden: false,
-                                requireElevator: false,
-                                requireParking: false,
-                                requireFurnished: false,
-                                requireTwoLevel: false,
-                                pushNotifications: false,
-                                matchThreshold: 70,
-                                lat: null,
-                                lng: null,
-                                radiusKm: null,
-                              }
-                            : null,
-                        });
-                        void load();
+                      if (!nextVal) {
+                        void saveBuyerRadar(false);
                       }
                     }}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 12 }}
@@ -1336,134 +1435,83 @@ export default function AgencyClientDetailScreen() {
                   </Pressable>
                 )}
 
-                {sellerRadarSearching && (
-                  <View style={{ marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: colors.input }}>
-                    <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800', marginBottom: 6 }}>
-                      PARAMETRY POSZUKIWAŃ
-                    </Text>
-                    <TextInput
-                      value={sellerRadarCity}
-                      onChangeText={setSellerRadarCity}
-                      placeholder="Miasto"
-                      placeholderTextColor={colors.secondary}
-                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                {showRadarSurvey ? (
+                  <View style={{ marginTop: 8 }}>
+                    <AgencyClientRadarSurvey
+                      value={buyerFilters}
+                      onChange={setBuyerFilters}
+                      isDark={isDark}
+                      title="ANKIETA RADARU"
+                      subtitle="Miasto, dzielnice, budżet, metraż i udogodnienia — potem radar dobiera oferty."
                     />
-                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                      <TextInput
-                        value={sellerRadarMaxPrice}
-                        onChangeText={(text) => setSellerRadarMaxPrice(formatPriceInput(text))}
-                        keyboardType="numeric"
-                        placeholder="Max cena (zł)"
-                        placeholderTextColor={colors.secondary}
-                        style={[
-                          styles.input,
-                          { flex: 1, backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
-                        ]}
-                      />
-                      <TextInput
-                        value={sellerRadarMinArea}
-                        onChangeText={setSellerRadarMinArea}
-                        keyboardType="numeric"
-                        placeholder="Min m²"
-                        placeholderTextColor={colors.secondary}
-                        style={[
-                          styles.input,
-                          { width: 100, backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
-                        ]}
-                      />
-                    </View>
                     <Pressable
-                      onPress={async () => {
-                        if (!token) return;
-                        setBusy('save_radar');
-                        await patchAgencyClient(token, clientId, {
-                          alsoSearching: true,
-                          buyerFilters: {
-                            calibrationMode: 'CITY',
-                            transactionType: 'SELL',
-                            propertyType: 'FLAT',
-                            city: sellerRadarCity,
-                            selectedDistricts: [],
-                            maxPrice: parseGroupedNumber(sellerRadarMaxPrice) || 0,
-                            minArea: Number(sellerRadarMinArea) || 0,
-                            minYear: 1900,
-                            requireBalcony: false,
-                            requireGarden: false,
-                            requireElevator: false,
-                            requireParking: false,
-                            requireFurnished: false,
-                            requireTwoLevel: false,
-                            pushNotifications: false,
-                            matchThreshold: 70,
-                            lat: null,
-                            lng: null,
-                            radiusKm: null,
-                          },
-                        });
-                        await refreshClientMatches(token, clientId);
-                        setBusy('');
-                        void load();
-                      }}
+                      onPress={() => void saveBuyerRadar(true)}
                       style={[styles.secondary, { borderColor: colors.border, marginTop: 10 }]}
                     >
                       <Text style={{ color: colors.text, fontWeight: '800', textAlign: 'center' }}>
-                        {busy === 'save_radar' ? 'Zapisuję…' : 'Zapisz kryteria & dopasuj'}
+                        {busy === 'save_radar' ? 'Dopasowuję…' : 'Zapisz ankietę i dopasuj oferty'}
                       </Text>
                     </Pressable>
                   </View>
-                )}
+                ) : null}
 
-                {/* Matching Offers List */}
                 <View style={{ marginTop: 12 }}>
+                  {pendingMatches.length > 0 ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>
+                        DO WYSŁANIA · {pendingMatches.length}
+                      </Text>
+                      <Pressable onPress={() => void sendMatches(pendingMatches.map((item) => item.offer.id))}>
+                        <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
+                          {busy.startsWith('prop_') ? '…' : 'Wyślij wszystkie'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
                   {matches.length === 0 ? (
                     <Text style={{ color: colors.secondary, fontSize: 13, marginVertical: 8 }}>
-                      Brak pasujących ofert dla podanych kryteriów.
+                      {showRadarSurvey
+                        ? 'Brak ofert powyżej progu. Zapisz ankietę albo obniż próg dopasowania.'
+                        : 'Włącz radar zakupowy, żeby dobierać oferty temu klientowi.'}
                     </Text>
                   ) : (
-                    matches.map((item) => (
-                      <View
-                        key={item.id}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 12,
-                          paddingVertical: 10,
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                          borderBottomColor: colors.border,
-                        }}
-                      >
-                        <Image source={{ uri: item.offer.imageUrl }} style={{ width: 56, height: 56, borderRadius: 10 }} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>
-                            {item.offer.title}
-                          </Text>
-                          <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 12 }}>
-                            {formatCurrencyPLN(item.offer.price)}
-                          </Text>
-                          <Text style={{ color: colors.secondary, fontSize: 11 }}>{item.offer.city}</Text>
-                        </View>
-                        <Pressable
-                          onPress={async () => {
-                            if (!token) return;
-                            setBusy(`prop_${item.offer.id}`);
-                            const res = await proposeClientOffers(token, clientId, [item.offer.id]);
-                            setBusy('');
-                            if (!res.ok) Alert.alert('Propozycja', res.message);
-                            else Alert.alert('Propozycja', 'Wysłano propozycję do panelu klienta!');
-                          }}
+                    <>
+                      {pendingMatches.map((item) => (
+                        <MatchRow
+                          key={item.id}
+                          item={item}
+                          colors={colors}
+                          sent={false}
+                          busy={busy === `prop_${item.offer.id}`}
+                          onSend={() => void sendMatches([item.offer.id])}
+                        />
+                      ))}
+                      {sentMatches.length > 0 ? (
+                        <Text
                           style={{
-                            backgroundColor: colors.accent,
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
-                            borderRadius: 8,
+                            color: colors.secondary,
+                            fontSize: 11,
+                            fontWeight: '900',
+                            letterSpacing: 0.5,
+                            marginTop: pendingMatches.length ? 14 : 0,
+                            marginBottom: 8,
                           }}
                         >
-                          <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>
-                            {busy === `prop_${item.offer.id}` ? '…' : 'Zaproponuj'}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    ))
+                          WYSŁANE KLIENTOWI · {sentMatches.length}
+                        </Text>
+                      ) : null}
+                      {sentMatches.map((item) => (
+                        <MatchRow
+                          key={item.id}
+                          item={item}
+                          colors={colors}
+                          sent
+                          busy={false}
+                          onSend={() => undefined}
+                        />
+                      ))}
+                    </>
                   )}
                 </View>
               </View>

@@ -19,6 +19,7 @@ import {
   type PortalAttachment,
   type PortalChatMessage,
 } from '@/lib/crm/clientJourney';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 
 const SAFE_NAME_RE = /[^a-zA-Z0-9._-]+/g;
 
@@ -143,10 +144,7 @@ export async function sendPortalChat(params: {
       type: 'CHAT_MESSAGE',
       title: 'Wiadomość od klienta',
       body: `${params.clientName || 'Klient'}: ${body.slice(0, 120)}`,
-      data: {
-        clientId: params.clientId,
-        href: `/moje-konto/crm?tab=klienci&clientId=${params.clientId}`,
-      },
+      data: crmAgentPushData(params.clientId, { notificationType: 'crm_client_message' }),
     }).catch(() => {});
   }
 

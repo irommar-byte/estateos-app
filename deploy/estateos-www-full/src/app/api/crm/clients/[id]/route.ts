@@ -30,6 +30,7 @@ import {
   resolveMeeting,
   resolvePresentation,
 } from '@/lib/crm/clientJourney';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 
 type RouteCtx = { params: Promise<{ id: string }> };
@@ -554,7 +555,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       type: 'CRM_EVENT',
       title: isMeeting ? 'Termin spotkania' : 'Propozycja prezentacji',
       body: `${client.firstName} ${client.lastName} · ${startsAt.toLocaleString('pl-PL')}`,
-      data: { clientId, href: `/moje-konto/crm?tab=klienci&clientId=${clientId}` },
+      data: crmAgentPushData(clientId, { notificationType: 'crm_client_schedule' }),
     }).catch(() => {});
     return NextResponse.json({ success: true });
   }

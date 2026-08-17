@@ -1268,6 +1268,10 @@ type PushNavigationTarget =
   | {
       screen: 'AgencyLeadInbox';
       params?: Record<string, never>;
+    }
+  | {
+      screen: 'AgencyClientDetail';
+      params: { clientId: number | string };
     };
 
 const parseNumericOrStringId = (value: unknown): number | string | null => {
@@ -1279,6 +1283,11 @@ const parseNumericOrStringId = (value: unknown): number | string | null => {
 };
 
 const parseLinkToPushTarget = (url: string): PushNavigationTarget | null => {
+  const crmMatch = String(url || '').match(/crm\/client\/([^/?#]+)/i);
+  const crmClientId = parseNumericOrStringId(crmMatch?.[1]);
+  if (crmClientId) {
+    return { screen: 'AgencyClientDetail', params: { clientId: crmClientId } };
+  }
   const carIdStr = extractIdFromDeeplink(url, 'car');
   const carId = parseNumericOrStringId(carIdStr);
   if (carId) {
@@ -1408,6 +1417,25 @@ const parsePushTargetFromResponse = (
         params: { offer: { id: offerId }, id: offerId, offerId },
       };
     }
+  }
+
+  const crmClientId = parseNumericOrStringId(
+    firstDefined(data.clientId, data.agencyClientId, data.crmClientId)
+  );
+  const crmScreenHint = String(firstDefined(data.screen, data.route, data.notificationType, data.targetType, data.href, data.deeplink) || '').toLowerCase();
+  const looksLikeCrmClient =
+    Boolean(crmClientId) &&
+    (crmScreenHint.includes('agencyclient') ||
+      crmScreenHint.includes('crm_client') ||
+      crmScreenHint.includes('crm/client') ||
+      String(data.targetType || '').toUpperCase() === 'CRM_CLIENT' ||
+      String(data.href || '').includes('/crm') ||
+      String(data.notificationType || '').toLowerCase().startsWith('crm_'));
+  if (looksLikeCrmClient && crmClientId) {
+    return {
+      screen: 'AgencyClientDetail',
+      params: { clientId: crmClientId },
+    };
   }
 
   const looksLikeOffer = routeHint.includes('offer') || routeHint.includes('oferta');
@@ -1733,7 +1761,8 @@ export default function App() {
       target.screen === 'OfferDetail' ||
       target.screen === 'CarDetail' ||
       target.screen === 'DealroomChat' ||
-      target.screen === 'ContactChat'
+      target.screen === 'ContactChat' ||
+      target.screen === 'AgencyClientDetail'
     ) {
       (navigationRef as any).dispatch(StackActions.push(target.screen, target.params));
     } else {

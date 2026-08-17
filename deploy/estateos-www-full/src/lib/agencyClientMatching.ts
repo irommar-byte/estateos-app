@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import {
-  buyerPrefToRadarRecord,
   passesBuyerThreshold,
   scoreOfferForBuyerPref,
 } from '@/lib/agencyClientShape';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 
 const OFFER_SELECT = {
   id: true,
@@ -103,15 +103,101 @@ export async function refreshAgencyClientMatches(clientId: number) {
       type: 'CRM_EVENT',
       title: 'Nowe dopasowanie do klienta',
       body: `${client.firstName} ${client.lastName}: ${newlyCreated.length} nowych ofert (top ${top.score}%).`,
-      data: {
-        clientId,
-        href: `/moje-konto/crm?tab=klienci&clientId=${clientId}`,
-      },
+      data: crmAgentPushData(clientId, {
+        notificationType: 'crm_client_match',
+        offerId: top.offerId,
+        matchCount: newlyCreated.length,
+      }),
       idempotencyKey: `client-match-${clientId}-${top.offerId}-${newlyCreated.length}`,
     }).catch(() => {});
   }
 
   return { upserted: upserts.length, newMatches: newlyCreated.length, matches: upserts };
+}
+
+export async function matchPublishedOfferToAgencyClients(
+  offer: Record<string, unknown>,
+  context: { publicationId?: number | string | bigint | null } = {},
+) {
+  const offerId = Number(offer.id);
+  if (!Number.isFinite(offerId) || offerId <= 0) return { matched: 0, notified: 0 };
+
+  const prefs = await prisma.agencyClientBuyerPreference.findMany({
+    where: { client: { status: 'ACTIVE' } },
+    include: {
+      client: {
+        select: {
+          id: true,
+          agencyUserId: true,
+          firstName: true,
+          lastName: true,
+          linkedOfferId: true,
+        },
+      },
+    },
+  });
+  if (!prefs.length) return { matched: 0, notified: 0 };
+
+  const existing = await prisma.agencyClientMatch.findMany({
+    where: { offerId, clientId: { in: prefs.map((row) => row.clientId) } },
+    select: { clientId: true },
+  });
+  const existingIds = new Set(existing.map((row) => row.clientId));
+
+  const hits: Array<{
+    clientId: number;
+    agencyUserId: number;
+    name: string;
+    score: number;
+    wasNew: boolean;
+  }> = [];
+
+  for (const pref of prefs) {
+    if (pref.client.linkedOfferId === offerId) continue;
+    const score = scoreOfferForBuyerPref(pref, offer);
+    if (!passesBuyerThreshold(pref, score)) continue;
+    const rounded = Math.round(score);
+    const wasNew = !existingIds.has(pref.clientId);
+    await prisma.agencyClientMatch.upsert({
+      where: { clientId_offerId: { clientId: pref.clientId, offerId } },
+      create: { clientId: pref.clientId, offerId, score: rounded },
+      update: { score: rounded },
+    });
+    hits.push({
+      clientId: pref.clientId,
+      agencyUserId: pref.client.agencyUserId,
+      name: `${pref.client.firstName} ${pref.client.lastName}`.trim(),
+      score: rounded,
+      wasNew,
+    });
+  }
+
+  const fresh = hits.filter((row) => row.wasNew);
+  if (fresh.length) {
+    const { sendNotification } = await import('@/lib/core/notification.core');
+    const pub = context.publicationId != null && String(context.publicationId).trim() !== ''
+      ? String(context.publicationId)
+      : 'legacy';
+    const title = String(offer.title || 'Nowa oferta');
+    await Promise.allSettled(
+      fresh.map((row) =>
+        sendNotification({
+          userId: row.agencyUserId,
+          type: 'CRM_EVENT',
+          title: 'Oferta pasuje do Twojego klienta',
+          body: `${row.name} · ${row.score}% · ${title}`,
+          data: crmAgentPushData(row.clientId, {
+            notificationType: 'crm_client_match',
+            offerId,
+            matchScore: row.score,
+          }),
+          idempotencyKey: `crm-offer-match:${offerId}:pub:${pub}:client:${row.clientId}`,
+        }),
+      ),
+    );
+  }
+
+  return { matched: hits.length, notified: fresh.length };
 }
 
 export async function buildAgencyClientReport(agencyUserId: number) {

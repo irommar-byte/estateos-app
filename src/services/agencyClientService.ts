@@ -30,12 +30,14 @@ export type AgencyClientMatch = {
   id: number;
   score: number;
   notifiedAt: string | null;
+  sharedAt: string | null;
   clientFeedback: string | null;
   offer: {
     id: number;
     title: string;
     price: number;
     city: string;
+    area?: number | null;
     imageUrl: string;
   };
 };
@@ -162,14 +164,14 @@ export async function proposeClientOffers(token: string, id: number, offerIds: n
   const res = await fetch(`${API_URL}/api/crm/clients/${id}`, {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'notify_offers', offerIds }),
+    body: JSON.stringify({ action: 'notify_offers', offerIds, channel: 'email' }),
   });
   const json = await parseJson(res);
   if (!res.ok) {
     const fallback = await fetch(`${API_URL}/api/crm/clients/${id}`, {
       method: 'POST',
       headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'notify_offer', offerId: offerIds[0] }),
+      body: JSON.stringify({ action: 'notify_offer', offerId: offerIds[0], channel: 'email' }),
     });
     const fallbackJson = await parseJson(fallback);
     if (!fallback.ok) return { ok: false as const, message: String(fallbackJson?.error || json?.error || 'Nie udało się zaproponować.') };
