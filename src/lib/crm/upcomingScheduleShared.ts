@@ -1,6 +1,6 @@
 export type UpcomingScheduleEvent = {
   id: string;
-  kind: 'presentation' | 'open_house_host' | 'open_house_guest';
+  kind: 'presentation' | 'open_house_host' | 'open_house_guest' | 'acquisition';
   title: string;
   subtitle: string;
   location: string;

@@ -1990,7 +1990,14 @@ export default function CRMDashboard() {
               appointments={crmData.appointments || []}
               contacts={crmData.contacts || []}
               currentUserId={Number(currentUser.id)}
-              onManage={(app) => setManagingApp(app)}
+              onManage={(app) => {
+                if (String(app.type || "").toUpperCase() === "ACQUISITION" && app.clientId) {
+                  setActiveTab("klienci");
+                  window.dispatchEvent(new CustomEvent("crm-open-client", { detail: { clientId: app.clientId } }));
+                  return;
+                }
+                setManagingApp(app);
+              }}
               onViewProfile={(user) => void openCounterpartyProfile(user)}
             />
           </motion.div>

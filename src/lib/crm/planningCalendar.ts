@@ -11,6 +11,8 @@ export type PlanningAppointment = {
   status: string;
   message?: string | null;
   type?: string | null;
+  clientId?: number | null;
+  source?: 'appointment' | 'acquisition' | null;
   offer?: {
     id?: number;
     title?: string | null;
@@ -72,10 +74,50 @@ export function appointmentsOnDay(appointments: PlanningAppointment[], day: Date
 }
 
 export function dayIndicators(apps: PlanningAppointment[], myUserId: number) {
-  const hasAccepted = apps.some((a) => isAppointmentAccepted(a.status));
+  const hasAccepted = apps.some((a) => isAppointmentAccepted(a.status) && a.type !== 'ACQUISITION');
   const hasPendingNegotiation = apps.some((a) => appointmentNeedsMyResponse(a, myUserId));
   const hasWaitingMine = apps.some((a) => appointmentWaitingOnOther(a, myUserId));
-  return { hasAccepted, hasPendingNegotiation, hasWaitingMine };
+  const hasAcquisition = apps.some((a) => String(a.type || '').toUpperCase() === 'ACQUISITION');
+  return { hasAccepted, hasPendingNegotiation, hasWaitingMine, hasAcquisition };
+}
+
+export function acquisitionActivityToAppointment(row: {
+  id: number;
+  title: string | null;
+  body: string | null;
+  metadata: unknown;
+  client?: { id: number; firstName: string; lastName: string; email?: string | null; phone?: string | null } | null;
+  agencyUserId: number;
+}): PlanningAppointment | null {
+  const meta = (row.metadata || {}) as Record<string, unknown>;
+  const startsAt = typeof meta.startsAt === 'string' ? meta.startsAt : null;
+  if (!startsAt || Number.isNaN(new Date(startsAt).getTime())) return null;
+  const name = row.client ? `${row.client.firstName} ${row.client.lastName}`.trim() : 'Klient';
+  const location = typeof meta.location === 'string' ? meta.location : '';
+  return {
+    id: -Number(row.id),
+    dealId: 0,
+    proposedById: row.agencyUserId,
+    proposedDate: startsAt,
+    status: 'ACCEPTED',
+    type: 'ACQUISITION',
+    source: 'acquisition',
+    clientId: row.client?.id ?? null,
+    message: row.body,
+    offer: {
+      title: row.title || `Pozyskanie · ${name}`,
+      street: location || String(row.body || ''),
+      city: '',
+    },
+    counterparty: row.client
+      ? {
+          id: row.client.id,
+          name,
+          email: row.client.email || null,
+          phone: row.client.phone || null,
+        }
+      : null,
+  };
 }
 
 /** Poniedziałek jako pierwszy dzień tygodnia (PL). */

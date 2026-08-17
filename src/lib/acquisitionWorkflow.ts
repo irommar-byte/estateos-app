@@ -104,7 +104,7 @@ export const ACQUISITION_DOCUMENTS = [
 ] as const;
 
 export const ACQUISITION_STEPS = [
-  { id: 1, title: "Przygotowanie", subtitle: "Cel spotkania i sytuacja klienta" },
+  { id: 1, title: "Przygotowanie", subtitle: "Cel i horyzont sprzedaży — kartę wypełniasz na miejscu" },
   { id: 2, title: "Stan prawny", subtitle: "Własność, obciążenia i dokumenty" },
   { id: 3, title: "Nieruchomość", subtitle: "Parametry, stan i wyposażenie" },
   { id: 4, title: "Strategia", subtitle: "Cena, marketing i prezentacje" },
