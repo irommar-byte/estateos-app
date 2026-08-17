@@ -55,21 +55,23 @@ export default function ProfileAgencyOfficeCard({ membership, isDark }: Props) {
   const secondary = isDark ? '#8E8E93' : '#6C6C70';
 
   return (
-    <Pressable
-      onPress={() => {
-        if (isPending) return;
-        navigation.navigate('AgencyOffice');
-      }}
-      disabled={isPending}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.card,
         {
           backgroundColor: cardBg,
           borderColor: border,
-          opacity: pressed && !isPending ? 0.92 : 1,
         },
       ]}
     >
+      <Pressable
+        onPress={() => {
+          if (isPending) return;
+          navigation.navigate('AgencyOffice');
+        }}
+        disabled={isPending}
+        style={({ pressed }) => [{ opacity: pressed && !isPending ? 0.92 : 1 }]}
+      >
       <View style={styles.row}>
         <View style={[styles.logoShell, { borderColor: border, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
           {logoUrl ? (
@@ -115,7 +117,26 @@ export default function ProfileAgencyOfficeCard({ membership, isDark }: Props) {
         ) : null}
         {isPending ? null : <Ionicons name="chevron-forward" size={20} color={secondary} />}
       </View>
-    </Pressable>
+      </Pressable>
+      {!isPending ? (
+        <View style={styles.actions}>
+          <Pressable
+            onPress={() => navigation.navigate('AgencyClientCreate')}
+            style={[styles.actionBtn, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+          >
+            <Ionicons name="person-add" size={16} color="#34C759" />
+            <Text style={[styles.actionText, { color: text }]}>Dodaj klienta</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate('AgencyClients')}
+            style={[styles.actionBtn, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+          >
+            <Ionicons name="people" size={16} color="#007AFF" />
+            <Text style={[styles.actionText, { color: text }]}>Moi klienci</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -163,4 +184,16 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     lineHeight: 14,
   },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  actionBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  actionText: { fontSize: 13, fontWeight: '800' },
 });

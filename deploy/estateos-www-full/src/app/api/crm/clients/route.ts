@@ -158,7 +158,7 @@ export async function POST(req: Request) {
                 : null,
           }
         : {}),
-      ...(type === 'BUYER' && body.buyerFilters
+      ...(body.buyerFilters
         ? {
             buyerPreference: {
               create: webRadarFiltersToBuyerPrefCreate(body.buyerFilters as WebRadarFilters),
@@ -179,7 +179,7 @@ export async function POST(req: Request) {
     },
   });
 
-  if (type === 'BUYER') {
+  if (client.buyerPreference) {
     await refreshAgencyClientMatches(client.id);
   }
 

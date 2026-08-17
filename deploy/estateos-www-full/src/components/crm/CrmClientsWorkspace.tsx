@@ -37,6 +37,8 @@ import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import SellerAcquisitionWorkspace from "@/components/crm/SellerAcquisitionWorkspace";
+import AgencyClientCriteriaEditor from "@/components/crm/AgencyClientCriteriaEditor";
+import { defaultWebRadarFilters, type WebRadarFilters } from "@/lib/radarCalibrationWeb";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -83,6 +85,7 @@ type ClientDetail = AgencyClientListItem & {
       imageUrl: string;
     };
   }>;
+  buyerFilters?: WebRadarFilters | null;
   activities?: Array<{
     id: number;
     kind: string;
@@ -138,12 +141,46 @@ export default function CrmClientsWorkspace() {
   const [sortBy, setSortBy] = useState<"recent" | "name" | "match">("recent");
   const [cardBusyId, setCardBusyId] = useState<number | null>(null);
   const [toast, setToast] = useState("");
+  const [sellerFilters, setSellerFilters] = useState<WebRadarFilters>(() => ({
+    ...defaultWebRadarFilters(),
+    pushNotifications: false,
+  }));
+  const [sellerSearching, setSellerSearching] = useState(false);
+  const [criteriaCatalog, setCriteriaCatalog] = useState<{
+    strictCities: string[];
+    strictCityDistricts: Record<string, string[]>;
+  }>({ strictCities: [], strictCityDistricts: {} });
 
   useEffect(() => {
     const open = () => setFormOpen(true);
     window.addEventListener("crm-open-add-client", open);
     return () => window.removeEventListener("crm-open-add-client", open);
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/location/districts", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setCriteriaCatalog({
+          strictCities: Array.isArray(data?.strictCities) ? data.strictCities : [],
+          strictCityDistricts: data?.strictCityDistricts || {},
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!detail) return;
+    const hasFilters = Boolean(detail.buyerFilters);
+    setSellerSearching(hasFilters);
+    if (detail.buyerFilters) {
+      setSellerFilters({ ...defaultWebRadarFilters(), ...detail.buyerFilters, pushNotifications: false });
+    }
+  }, [detail?.id, detail?.buyerFilters]);
 
   const offerHref = (offerId: number, portalToken?: string | null) => {
     if (portalToken) return `/oferta/${offerId}?portal=${encodeURIComponent(portalToken)}`;
@@ -304,6 +341,26 @@ export default function CrmClientsWorkspace() {
     } finally {
       setBusy(false);
       setTimeout(() => setScanning(false), 800);
+    }
+  };
+
+  const saveSellerRadar = async (enabled: boolean, filters = sellerFilters) => {
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/crm/clients/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          enabled
+            ? { alsoSearching: true, buyerFilters: { ...filters, pushNotifications: false } }
+            : { alsoSearching: false },
+        ),
+      });
+      await loadDetail(selectedId);
+      setToast(enabled ? "Radar zakupowy sprzedającego zapisany." : "Radar zakupowy wyłączony.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -970,6 +1027,118 @@ export default function CrmClientsWorkspace() {
                     }}
                     onUpdated={() => void loadDetail(detail.id)}
                   />
+                  <div className="space-y-4 rounded-2xl border border-[var(--eos-border)] p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+                          <Radar className="size-4" />
+                          Radar zakupowy sprzedającego
+                        </p>
+                        <p className="mt-1 text-sm text-[var(--eos-muted)]">
+                          Jeśli klient sprzedaje i jednocześnie czegoś szuka, włącz dopasowania i proponuj oferty tak jak kupującemu.
+                        </p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-sm font-bold">
+                        <input
+                          type="checkbox"
+                          checked={sellerSearching}
+                          onChange={(event) => {
+                            const next = event.target.checked;
+                            setSellerSearching(next);
+                            void saveSellerRadar(next);
+                          }}
+                          className="size-4 accent-emerald-500"
+                        />
+                        Klient też szuka
+                      </label>
+                    </div>
+                    {sellerSearching ? (
+                      <>
+                        <AgencyClientCriteriaEditor
+                          compact
+                          value={sellerFilters}
+                          onChange={setSellerFilters}
+                          catalog={criteriaCatalog}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void saveSellerRadar(true)}
+                            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black"
+                          >
+                            Zapisz kryteria
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void refreshMatches()}
+                            className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+                          >
+                            <RefreshCcw className="size-3.5" />
+                            Odśwież dopasowania
+                          </button>
+                          {selectedOffers.size > 0 ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void openPreview([...selectedOffers])}
+                              className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-text)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-bg)]"
+                            >
+                              <Send className="size-3.5" />
+                              Zaproponuj ({selectedOffers.size})
+                            </button>
+                          ) : null}
+                        </div>
+                        {(detail.matches || []).length === 0 ? (
+                          <p className="text-sm text-[var(--eos-muted)]">Brak dopasowań. Uzupełnij kryteria i odśwież radar.</p>
+                        ) : (
+                          (detail.matches || []).map((m) => {
+                            const sent = Boolean(m.notifiedAt);
+                            const selected = selectedOffers.has(m.offer.id);
+                            return (
+                              <div key={m.id} className={`flex flex-col gap-3 rounded-2xl border p-4 ${selected ? "border-emerald-500/40 bg-emerald-500/5" : "border-[var(--eos-border)]"}`}>
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                  <button
+                                    type="button"
+                                    disabled={sent}
+                                    onClick={() => toggleOffer(m.offer.id, sent)}
+                                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+                                      sent || selected ? "border-emerald-500 bg-emerald-500" : "border-[var(--eos-border)]"
+                                    }`}
+                                  >
+                                    {(sent || selected) ? <Check className="size-4 text-black" /> : null}
+                                  </button>
+                                  <div className="h-16 w-20 shrink-0 rounded-xl bg-cover bg-center" style={{ backgroundImage: `url(${m.offer.imageUrl})` }} />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-semibold text-[var(--eos-text)]">{m.offer.title}</p>
+                                    <p className="text-xs text-[var(--eos-muted)]">
+                                      {m.offer.city} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}%
+                                    </p>
+                                  </div>
+                                  {!sent ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void openPreview([m.offer.id])}
+                                      className="rounded-full bg-emerald-500 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-black"
+                                    >
+                                      Zaproponuj
+                                    </button>
+                                  ) : (
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Wysłano</span>
+                                  )}
+                                </div>
+                                {m.clientFeedback ? (
+                                  <p className="rounded-xl bg-amber-500/8 px-3 py-2 text-sm text-[var(--eos-text)]">{m.clientFeedback}</p>
+                                ) : null}
+                              </div>
+                            );
+                          })
+                        )}
+                      </>
+                    ) : null}
+                  </div>
                   <div className="space-y-4 rounded-2xl border border-[var(--eos-border)] p-5">
                     <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelLead}</p>
                     {detail.linkedOfferId ? (

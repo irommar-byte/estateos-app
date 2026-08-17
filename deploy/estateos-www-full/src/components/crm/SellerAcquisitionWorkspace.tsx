@@ -6,12 +6,11 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
-  Check,
   ClipboardList,
   ExternalLink,
   FileCheck2,
+  FileUp,
   Loader2,
-  Mail,
   PenLine,
   Save,
   Send,
@@ -24,7 +23,11 @@ import {
   type AcquisitionRecord,
 } from "@/lib/acquisitionWorkflow";
 import SignaturePad from "@/components/crm/SignaturePad";
+import AddressSuggestInput from "@/components/crm/AddressSuggestInput";
+import NumberStepper from "@/components/crm/NumberStepper";
+import CommissionRateSlider from "@/components/crm/CommissionRateSlider";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import { COMMISSION_RATE_DEFAULT } from "@/lib/leadTransferShared";
 
 type SellerClient = {
   id: number;
@@ -96,6 +99,38 @@ function TextArea({
   );
 }
 
+function ChipRow({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="sm:col-span-2">
+      <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">{label}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${
+              value === option
+                ? "bg-emerald-500 text-black"
+                : "border border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40"
+            }`}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 function Toggle({
   label,
   checked,
@@ -244,6 +279,29 @@ export default function SellerAcquisitionWorkspace({
     }
   };
 
+  const uploadPaper = async (file: File) => {
+    if (signed) return;
+    setBusy("paper");
+    setNotice("");
+    try {
+      const payload = new FormData();
+      payload.append("file", file);
+      const response = await fetch(`/api/crm/clients/${client.id}/acquisition/paper`, {
+        method: "POST",
+        body: payload,
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Nie udało się wgrać umowy.");
+      if (json.formData) setForm(json.formData);
+      setNotice("Skan umowy został podpięty i będzie widoczny dla klienta.");
+      onUpdated?.();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Błąd wgrywania");
+    } finally {
+      setBusy("");
+    }
+  };
+
   if (loading || !form) {
     return (
       <div className="flex min-h-44 items-center justify-center rounded-2xl border border-[var(--eos-border)]">
@@ -314,9 +372,25 @@ export default function SellerAcquisitionWorkspace({
         {step === 1 ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Termin spotkania" type="datetime-local" value={form.meeting.startsAt} onChange={(value) => updateSection("meeting", { startsAt: value })} />
-            <Field label="Miejsce spotkania" value={form.meeting.location} onChange={(value) => updateSection("meeting", { location: value })} />
-            <Field label="Cel klienta" value={form.meeting.clientGoal} onChange={(value) => updateSection("meeting", { clientGoal: value })} />
-            <Field label="Oczekiwany termin sprzedaży" value={form.meeting.targetTimeline} onChange={(value) => updateSection("meeting", { targetTimeline: value })} placeholder="np. do 3 miesięcy" />
+            <AddressSuggestInput
+              label="Miejsce spotkania"
+              value={form.meeting.location}
+              onChange={(value) => updateSection("meeting", { location: value })}
+              placeholder="Adres, biuro lub online"
+              disabled={signed}
+            />
+            <ChipRow
+              label="Cel klienta"
+              options={["Sprzedaż nieruchomości", "Wynajem", "Sprzedaż i zakup kolejnej", "Szybka transakcja", "Maksymalna cena"]}
+              value={form.meeting.clientGoal}
+              onChange={(value) => updateSection("meeting", { clientGoal: value })}
+            />
+            <ChipRow
+              label="Oczekiwany termin sprzedaży"
+              options={["Jak najszybciej", "Do 1 miesiąca", "Do 3 miesięcy", "Do 6 miesięcy", "Bez pośpiechu"]}
+              value={form.meeting.targetTimeline}
+              onChange={(value) => updateSection("meeting", { targetTimeline: value })}
+            />
             <div className="sm:col-span-2">
               <TextArea label="Dlaczego klient sprzedaje i co jest dla niego najważniejsze?" value={form.meeting.reasonForSale} onChange={(value) => updateSection("meeting", { reasonForSale: value })} placeholder="Motywacja, ograniczenia czasowe, kolejna nieruchomość, bezpieczeństwo transakcji…" rows={4} />
             </div>
@@ -359,13 +433,26 @@ export default function SellerAcquisitionWorkspace({
 
         {step === 3 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="sm:col-span-2 lg:col-span-3"><Field label="Pełny adres nieruchomości" value={form.property.address} onChange={(value) => updateSection("property", { address: value })} /></div>
-            <Field label="Rodzaj nieruchomości" value={form.property.propertyType} onChange={(value) => updateSection("property", { propertyType: value })} />
-            <Field label="Powierzchnia m²" value={form.property.area} onChange={(value) => updateSection("property", { area: value })} />
-            <Field label="Liczba pokoi" value={form.property.rooms} onChange={(value) => updateSection("property", { rooms: value })} />
-            <Field label="Piętro" value={form.property.floor} onChange={(value) => updateSection("property", { floor: value })} />
-            <Field label="Liczba pięter w budynku" value={form.property.totalFloors} onChange={(value) => updateSection("property", { totalFloors: value })} />
-            <Field label="Rok budowy" value={form.property.yearBuilt} onChange={(value) => updateSection("property", { yearBuilt: value })} />
+            <div className="sm:col-span-2 lg:col-span-3">
+              <AddressSuggestInput
+                label="Pełny adres nieruchomości"
+                value={form.property.address}
+                onChange={(value) => updateSection("property", { address: value })}
+                placeholder="Ulica, numer, miasto"
+                disabled={signed}
+              />
+            </div>
+            <ChipRow
+              label="Rodzaj nieruchomości"
+              options={["Mieszkanie", "Dom", "Działka", "Lokal"]}
+              value={form.property.propertyType}
+              onChange={(value) => updateSection("property", { propertyType: value })}
+            />
+            <NumberStepper label="Powierzchnia" value={form.property.area} onChange={(value) => updateSection("property", { area: value })} step={1} suffix="m²" disabled={signed} />
+            <NumberStepper label="Liczba pokoi" value={form.property.rooms} onChange={(value) => updateSection("property", { rooms: value })} step={1} disabled={signed} />
+            <NumberStepper label="Piętro" value={form.property.floor} onChange={(value) => updateSection("property", { floor: value })} step={1} min={0} disabled={signed} />
+            <NumberStepper label="Liczba pięter w budynku" value={form.property.totalFloors} onChange={(value) => updateSection("property", { totalFloors: value })} step={1} disabled={signed} />
+            <NumberStepper label="Rok budowy" value={form.property.yearBuilt} onChange={(value) => updateSection("property", { yearBuilt: value })} step={1} min={1800} max={2035} disabled={signed} />
             <Field label="Stan nieruchomości" value={form.property.condition} onChange={(value) => updateSection("property", { condition: value })} />
             <Field label="Opłaty miesięczne" value={form.property.monthlyFees} onChange={(value) => updateSection("property", { monthlyFees: value })} />
             <Field label="Media / ogrzewanie" value={form.property.utilities} onChange={(value) => updateSection("property", { utilities: value })} />
@@ -382,9 +469,9 @@ export default function SellerAcquisitionWorkspace({
         {step === 4 ? (
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Cena oczekiwana PLN" value={form.strategy.expectedPrice} onChange={(value) => updateSection("strategy", { expectedPrice: value })} />
-              <Field label="Cena rekomendowana PLN" value={form.strategy.recommendedPrice} onChange={(value) => updateSection("strategy", { recommendedPrice: value })} />
-              <Field label="Dolna granica rozmów PLN" value={form.strategy.minimumPrice} onChange={(value) => updateSection("strategy", { minimumPrice: value })} />
+              <NumberStepper label="Cena oczekiwana" value={form.strategy.expectedPrice} onChange={(value) => updateSection("strategy", { expectedPrice: value })} step={5000} suffix="PLN" disabled={signed} />
+              <NumberStepper label="Cena rekomendowana" value={form.strategy.recommendedPrice} onChange={(value) => updateSection("strategy", { recommendedPrice: value })} step={5000} suffix="PLN" disabled={signed} />
+              <NumberStepper label="Dolna granica rozmów" value={form.strategy.minimumPrice} onChange={(value) => updateSection("strategy", { minimumPrice: value })} step={5000} suffix="PLN" disabled={signed} />
             </div>
             <TextArea label="Zasady prezentacji i dostępność" value={form.strategy.presentationRules} onChange={(value) => updateSection("strategy", { presentationRules: value })} placeholder="Dni, godziny, wyprzedzenie, obecność właściciela, zwierzęta…" />
             <div className="grid gap-2 sm:grid-cols-2">
@@ -407,8 +494,8 @@ export default function SellerAcquisitionWorkspace({
                   <option value="OPEN">Otwarta</option>
                 </select>
               </label>
-              <Field label="Okres współpracy (miesiące)" value={form.cooperation.durationMonths} onChange={(value) => updateSection("cooperation", { durationMonths: value })} />
-              <Field label="Okres wypowiedzenia (dni)" value={form.cooperation.noticeDays} onChange={(value) => updateSection("cooperation", { noticeDays: value })} />
+              <NumberStepper label="Okres współpracy" value={form.cooperation.durationMonths} onChange={(value) => updateSection("cooperation", { durationMonths: value })} step={1} min={1} suffix="mies." disabled={signed} />
+              <NumberStepper label="Okres wypowiedzenia" value={form.cooperation.noticeDays} onChange={(value) => updateSection("cooperation", { noticeDays: value })} step={5} min={0} suffix="dni" disabled={signed} />
               <label className="block">
                 <span className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">Sposób naliczenia prowizji</span>
                 <select value={form.cooperation.commissionType} onChange={(event) => updateSection("cooperation", { commissionType: event.target.value as "PERCENT" | "FIXED" })} className={fieldClass}>
@@ -416,7 +503,24 @@ export default function SellerAcquisitionWorkspace({
                   <option value="FIXED">Kwota stała</option>
                 </select>
               </label>
-              <Field label={form.cooperation.commissionType === "PERCENT" ? "Prowizja %" : "Prowizja PLN"} value={form.cooperation.commissionValue} onChange={(value) => updateSection("cooperation", { commissionValue: value })} />
+              {form.cooperation.commissionType === "PERCENT" ? (
+                <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-[var(--eos-border)] p-4">
+                  <CommissionRateSlider
+                    value={Number(String(form.cooperation.commissionValue).replace(",", ".")) || COMMISSION_RATE_DEFAULT}
+                    onChange={(value) => updateSection("cooperation", { commissionValue: String(value) })}
+                    offerPrice={Number(String(form.strategy.expectedPrice || "").replace(/\s/g, "").replace(",", ".")) || 0}
+                  />
+                </div>
+              ) : (
+                <NumberStepper
+                  label="Prowizja"
+                  value={form.cooperation.commissionValue}
+                  onChange={(value) => updateSection("cooperation", { commissionValue: value })}
+                  step={1000}
+                  suffix="PLN"
+                  disabled={signed}
+                />
+              )}
               <Toggle label="Podana prowizja zawiera VAT" checked={form.cooperation.commissionVatIncluded} onChange={(checked) => updateSection("cooperation", { commissionVatIncluded: checked })} />
             </div>
             <Field label="Kiedy prowizja jest należna?" value={form.cooperation.commissionDue} onChange={(value) => updateSection("cooperation", { commissionDue: value })} />
@@ -457,6 +561,48 @@ export default function SellerAcquisitionWorkspace({
                 </button>
               </div>
             )}
+
+            <div className="rounded-2xl border border-[var(--eos-border)] p-4">
+              <p className="flex items-center gap-2 text-sm font-black text-[var(--eos-text)]">
+                <FileUp className="size-4 text-emerald-500" />
+                Skan podpisanej ręcznie umowy
+              </p>
+              <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                Jeśli umowa została już podpisana na papierze, wgraj PDF lub zdjęcie. Klient zobaczy plik w swoim panelu.
+              </p>
+              {(form.paperContracts || []).length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {form.paperContracts.map((file) => (
+                    <a
+                      key={file.url}
+                      href={file.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2 text-sm font-semibold text-emerald-700"
+                    >
+                      {file.name}
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+              {!signed ? (
+                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-wider">
+                  {busy === "paper" ? <Loader2 className="size-3.5 animate-spin" /> : <FileUp className="size-3.5" />}
+                  Wgraj skan umowy
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void uploadPaper(file);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              ) : null}
+            </div>
 
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/8 p-4">
               <p className="flex items-center gap-2 text-sm font-black text-amber-800"><ShieldAlert className="size-4" /> Kontrola wzoru umowy</p>

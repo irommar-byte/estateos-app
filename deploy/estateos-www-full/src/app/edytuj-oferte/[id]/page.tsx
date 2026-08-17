@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Building2, Layers, CheckCircle, BedDouble, Calendar, Box, Sparkles, Map } from "lucide-react";
+import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Building2, Layers, CheckCircle, BedDouble, Calendar, Box, Sparkles, Map, LayoutGrid } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -23,7 +23,7 @@ import {
 } from '@/lib/offerAmenities';
 import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
-import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
+import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
 import dynamic from 'next/dynamic';
 
 const NeighborhoodMapPreview = dynamic(
@@ -49,7 +49,17 @@ const formatNum = (val: string) => val.replace(/\D/g, "").replace(/\B(?=(\d{3})+
 const OFFER_MAX_IMAGES = 20;
 
 // --- KOMPONENT DRAG & DROP ZDJĘĆ ---
-const SortablePhoto = ({ url, onRemove, isMain }: { url: string, onRemove: (url: string) => void, isMain: boolean }) => {
+const SortablePhoto = ({
+  url,
+  onRemove,
+  onMarkAsPlan,
+  isMain,
+}: {
+  url: string;
+  onRemove: (url: string) => void;
+  onMarkAsPlan?: (url: string) => void;
+  isMain: boolean;
+}) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: url });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 group transition-all ${isMain ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]' : 'border-[#222] bg-[#0a0a0a] hover:border-emerald-500/50'}`}>
@@ -66,6 +76,15 @@ const SortablePhoto = ({ url, onRemove, isMain }: { url: string, onRemove: (url:
         </div>
       </div>
       <button onClick={() => onRemove(url)} className="absolute top-2 right-2 p-2 bg-black/80 border border-white/10 hover:bg-red-500 hover:border-red-400 rounded-full text-white/80 hover:text-white z-20 transition-all shadow-xl"><Trash2 size={14} /></button>
+      {onMarkAsPlan ? (
+        <button
+          type="button"
+          onClick={() => onMarkAsPlan(url)}
+          className="absolute left-2 top-2 z-20 rounded-full border border-cyan-400/40 bg-black/80 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-200 hover:bg-cyan-500 hover:text-black"
+        >
+          Plan
+        </button>
+      ) : null}
       {isMain && <div className="absolute bottom-0 left-0 w-full bg-emerald-500 text-black text-[10px] uppercase tracking-[0.2em] font-black text-center py-1.5 z-20 shadow-[0_-10px_20px_rgba(16,185,129,0.5)]">Główne</div>}
     </div>
   );
@@ -90,6 +109,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
   const [imagesList, setImagesList] = useState<string[]>([]);
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
+  const [floorPlanExtraUrls, setFloorPlanExtraUrls] = useState<string[]>([]);
   const [floorPlanUploading, setFloorPlanUploading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -162,6 +182,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         if (parsedImages.length) setImagesList(parsedImages);
         const fp = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
         setFloorPlanUrl(fp || null);
+        setFloorPlanExtraUrls(parseFloorPlanExtraUrls(offer.floorPlanExtraUrls).filter((url) => url !== fp));
         setIsLoading(false);
       } catch (e) { setAuthError("Błąd serwera."); setIsLoading(false); }
     };
@@ -221,7 +242,12 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       }
       const d = await res.json();
       if (d.url) {
-        setFloorPlanUrl(d.url);
+        setFloorPlanUrl((current) => {
+          if (current && current !== d.url) {
+            setFloorPlanExtraUrls((extras) => [...new Set([...extras, current])]);
+          }
+          return d.url;
+        });
         updateData({ floorPlanUrl: d.url, floorPlan: d.url });
       }
     } catch (err) {
@@ -234,7 +260,37 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
   const handleRemoveFloorPlan = () => {
     setFloorPlanUrl(null);
-    updateData({ floorPlanUrl: null, floorPlan: null });
+    setFloorPlanExtraUrls([]);
+    updateData({ floorPlanUrl: null, floorPlan: null, floorPlanExtraUrls: null });
+  };
+
+  const handleMarkAsPlan = (url: string) => {
+    const nextGallery = imagesList.filter((item) => item !== url);
+    setImagesList(nextGallery);
+    updateData({ images: nextGallery.join(','), imageUrl: nextGallery[0] || '' });
+    if (!floorPlanUrl) {
+      setFloorPlanUrl(url);
+      updateData({ floorPlanUrl: url, floorPlan: url });
+      return;
+    }
+    if (floorPlanUrl === url || floorPlanExtraUrls.includes(url)) return;
+    setFloorPlanExtraUrls((current) => [...current, url]);
+  };
+
+  const handleReturnPlanToGallery = (url: string) => {
+    if (floorPlanUrl === url) {
+      const [nextPrimary, ...rest] = floorPlanExtraUrls;
+      setFloorPlanUrl(nextPrimary || null);
+      setFloorPlanExtraUrls(rest);
+      updateData({ floorPlanUrl: nextPrimary || null, floorPlan: nextPrimary || null });
+    } else {
+      setFloorPlanExtraUrls((current) => current.filter((item) => item !== url));
+    }
+    if (!imagesList.includes(url)) {
+      const nextGallery = [...imagesList, url].slice(0, OFFER_MAX_IMAGES);
+      setImagesList(nextGallery);
+      updateData({ images: nextGallery.join(','), imageUrl: nextGallery[0] || '' });
+    }
   };
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
@@ -264,6 +320,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       images: JSON.stringify(imagesList),
       floorPlanUrl: floorPlanUrl || null,
       floorPlan: floorPlanUrl || null,
+      floorPlanExtraUrls: serializeFloorPlanExtraUrls(floorPlanExtraUrls),
       buildYear: data.year ? Number(data.year) : null,
       yearBuilt: data.year ? Number(data.year) : null,
       area: data.area,
@@ -581,7 +638,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             <SortableContext items={imagesList} strategy={horizontalListSortingStrategy}>
               <div className="flex flex-wrap gap-4 md:gap-6 mb-6">
                 {imagesList.map((url, idx) => (
-                  <SortablePhoto key={url} url={url} onRemove={handleRemoveImage} isMain={idx === 0} />
+                  <SortablePhoto key={url} url={url} onRemove={handleRemoveImage} onMarkAsPlan={handleMarkAsPlan} isMain={idx === 0} />
                 ))}
                 
                 {imagesList.length < OFFER_MAX_IMAGES && (
@@ -605,7 +662,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Rzut lokalu dla kupujących</p>
             </div>
           </div>
-          {!floorPlanUrl ? (
+          {!floorPlanUrl && floorPlanExtraUrls.length === 0 ? (
             <label className="w-full min-h-[88px] rounded-2xl border-2 border-dashed border-[#222] hover:border-cyan-500/50 bg-[#0a0a0a]/50 flex flex-col items-center justify-center cursor-pointer transition-all group">
               {floorPlanUploading ? <Loader2 className="animate-spin text-cyan-400" size={28} /> : (
                 <>
@@ -616,16 +673,47 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <input type="file" accept="image/*" onChange={handleFloorPlanUpload} className="hidden" />
             </label>
           ) : (
-            <div className="relative w-full max-w-md mx-auto rounded-2xl overflow-hidden border border-cyan-500/30 bg-black">
-              <img src={floorPlanUrl} alt="Plan nieruchomości" className="w-full h-56 object-contain opacity-90" />
-              <div className="flex gap-2 p-3 border-t border-white/5 bg-[#0a0a0a]">
-                <label className="flex-1 py-2.5 rounded-xl border border-white/10 text-center text-[10px] font-black uppercase tracking-widest text-cyan-400 cursor-pointer hover:bg-white/5">
-                  {floorPlanUploading ? 'Wgrywanie…' : 'Zmień plan'}
+            <div className="space-y-4">
+              <p className="text-xs text-[var(--eos-muted)]">
+                Zaznacz zdjęcia w galerii przyciskiem Plan — trafią tutaj po zatwierdzeniu zapisu.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                {floorPlanUrl ? (
+                  <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-cyan-500/30 bg-black">
+                    <img src={floorPlanUrl} alt="Plan nieruchomości" className="h-56 w-full object-contain opacity-90" />
+                    <span className="absolute left-3 top-3 rounded-full bg-cyan-500 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-black">Główny plan</span>
+                    <div className="flex gap-2 border-t border-white/5 bg-[#0a0a0a] p-3">
+                      <label className="flex-1 cursor-pointer rounded-xl border border-white/10 py-2.5 text-center text-[10px] font-black uppercase tracking-widest text-cyan-400 hover:bg-white/5">
+                        {floorPlanUploading ? 'Wgrywanie…' : 'Zmień plan'}
+                        <input type="file" accept="image/*" onChange={handleFloorPlanUpload} className="hidden" />
+                      </label>
+                      <button type="button" onClick={() => handleReturnPlanToGallery(floorPlanUrl)} className="flex-1 rounded-xl border border-white/10 py-2.5 text-[10px] font-black uppercase tracking-widest text-white/70 hover:bg-white/5">
+                        Do galerii
+                      </button>
+                      <button type="button" onClick={handleRemoveFloorPlan} className="flex-1 rounded-xl border border-red-500/30 py-2.5 text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-500/10">
+                        Usuń
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {floorPlanExtraUrls.map((url) => (
+                  <div key={url} className="relative w-28 overflow-hidden rounded-2xl border border-cyan-500/20 bg-black md:w-36">
+                    <img src={url} alt="Dodatkowy plan" className="h-28 w-full object-contain md:h-36" />
+                    <span className="absolute left-2 top-2 rounded-full bg-cyan-500/90 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-black">Plan</span>
+                    <button type="button" onClick={() => handleReturnPlanToGallery(url)} className="absolute bottom-2 right-2 rounded-full bg-black/80 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-white">
+                      Galeria
+                    </button>
+                  </div>
+                ))}
+                <label className="flex h-28 w-28 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#222] bg-[#0a0a0a]/50 hover:border-cyan-500/50 md:h-36 md:w-36">
+                  {floorPlanUploading ? <Loader2 className="animate-spin text-cyan-400" size={22} /> : (
+                    <>
+                      <LayoutGrid size={22} className="mb-2 text-zinc-600" />
+                      <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Dodaj plan</span>
+                    </>
+                  )}
                   <input type="file" accept="image/*" onChange={handleFloorPlanUpload} className="hidden" />
                 </label>
-                <button type="button" onClick={handleRemoveFloorPlan} className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-500/10">
-                  Usuń
-                </button>
               </div>
             </div>
           )}

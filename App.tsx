@@ -114,6 +114,9 @@ import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
 import AgencyOfficeScreen from './src/screens/AgencyOfficeScreen';
 import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
+import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
+import AgencyClientCreateScreen from './src/screens/AgencyClientCreateScreen';
+import AgencyClientDetailScreen from './src/screens/AgencyClientDetailScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import CarsCatalogScreen from './src/screens/CarsCatalogScreen';
 import CarDetailScreen from './src/screens/CarDetailScreen';
@@ -1942,6 +1945,21 @@ export default function App() {
             <AppStack.Screen
               name="AgencyLeadInbox"
               component={AgencyLeadInboxScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AgencyClients"
+              component={AgencyClientsScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AgencyClientCreate"
+              component={AgencyClientCreateScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AgencyClientDetail"
+              component={AgencyClientDetailScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

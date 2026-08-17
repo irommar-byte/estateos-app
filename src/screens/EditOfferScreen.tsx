@@ -161,6 +161,7 @@ function DraggableEditSquare({
   onDragEnd,
   onHoverSwap,
   onRemove,
+  onMarkAsPlan,
 }: {
   img: EditableImage;
   index: number;
@@ -171,6 +172,7 @@ function DraggableEditSquare({
   onDragEnd: () => void;
   onHoverSwap: (key: string, targetIndex: number) => void;
   onRemove: (index: number) => void;
+  onMarkAsPlan?: (index: number) => void;
 }) {
   const pos = useRef(new Animated.ValueXY(getEditGalleryPosition(index, tileSize))).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -307,6 +309,15 @@ function DraggableEditSquare({
       <Pressable style={styles.deleteImageBtn} onPress={() => onRemove(index)} hitSlop={8}>
         <Ionicons name="close" size={14} color="#FFF" />
       </Pressable>
+      {onMarkAsPlan ? (
+        <Pressable
+          style={styles.planImageBtn}
+          onPress={() => onMarkAsPlan(index)}
+          hitSlop={8}
+        >
+          <Text style={styles.planImageText}>Plan</Text>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }
@@ -391,6 +402,7 @@ export default function EditOfferScreen({ route }: any) {
   const [floorPlan3dLocalUri, setFloorPlan3dLocalUri] = useState<string | null>(null);
   const [floorPlanScanMetaLocal, setFloorPlanScanMetaLocal] = useState<string | null>(null);
   const [floorPlanCleared, setFloorPlanCleared] = useState(false);
+  const [extraFloorPlanUrls, setExtraFloorPlanUrls] = useState<string[]>([]);
   /** Ręczny rzut zastępuje skan LiDAR — przy zapisie czyścimy model 3D i meta na serwerze. */
   const [dropServerFloorPlan3d, setDropServerFloorPlan3d] = useState(false);
   const [originalFloorPlanKey, setOriginalFloorPlanKey] = useState<string | null>(null);
@@ -577,8 +589,19 @@ export default function EditOfferScreen({ route }: any) {
             setOriginalFloorPlanKey(null);
             setFloorPlanPreview(null);
             setFloorPlanLocalUri(null);
-            setFloorPlanCleared(false);
           }
+          const extraRaw = offer.floorPlanExtraUrls;
+          const extras = Array.isArray(extraRaw)
+            ? extraRaw
+            : (() => {
+                try {
+                  const parsed = JSON.parse(String(extraRaw || ''));
+                  return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                  return String(extraRaw || '').split(',').map((v: string) => v.trim()).filter(Boolean);
+                }
+              })();
+          setExtraFloorPlanUrls(extras.map((url: string) => toAbsoluteImageUrl(url)).filter(Boolean));
 
           const floorPlan3dRaw = String(offer.floorPlan3dUrl || '').trim();
           if (floorPlan3dRaw) {
@@ -856,6 +879,23 @@ export default function EditOfferScreen({ route }: any) {
     setDragSnapshot(null);
     dragSnapshotRef.current = null;
     setImages(next);
+  };
+
+  const markImageAsPlan = (index: number) => {
+    const source = dragSnapshot ?? images;
+    const img = source[index];
+    if (!img) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const url = img.serverPath || img.uri;
+    if (!floorPlanPreview) {
+      setFloorPlanPreview(img.uri);
+      setOriginalFloorPlanKey(img.isRemote ? toServerPath(url) : null);
+      setFloorPlanLocalUri(img.isRemote ? null : img.uri);
+      setFloorPlanCleared(false);
+    } else {
+      setExtraFloorPlanUrls((prev) => [...prev, img.uri]);
+    }
+    removeImage(index);
   };
 
   const handleGalleryDragStart = useCallback(() => {
@@ -1197,10 +1237,14 @@ export default function EditOfferScreen({ route }: any) {
       updatePayload.floorPlanUrl = null;
       updatePayload.floorPlan3dUrl = null;
       updatePayload.floorPlanScanMeta = null;
+      updatePayload.floorPlanExtraUrls = null;
     } else if (dropServerFloorPlan3d && !floorPlan3dLocalUri) {
       updatePayload.floorPlan3dUrl = null;
       updatePayload.floorPlanScanMeta = null;
     }
+    updatePayload.floorPlanExtraUrls = extraFloorPlanUrls.length
+      ? JSON.stringify(extraFloorPlanUrls.map((url) => toServerPath(url)))
+      : null;
 
     try {
       const stringifySaveError = (data: any, response: Response) =>
@@ -1831,6 +1875,7 @@ export default function EditOfferScreen({ route }: any) {
                   onDragEnd={handleGalleryDragEnd}
                   onHoverSwap={handleGalleryHoverSwap}
                   onRemove={removeImage}
+                  onMarkAsPlan={markImageAsPlan}
                 />
               ))}
             </View>
@@ -3628,6 +3673,23 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  planImageBtn: {
+    position: 'absolute',
+    left: 4,
+    bottom: 4,
+    backgroundColor: 'rgba(6,182,212,0.92)',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    zIndex: 21,
+  },
+  planImageText: {
+    color: '#000',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   mainPhotoBadge: {
     position: 'absolute',

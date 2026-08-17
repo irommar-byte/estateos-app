@@ -413,6 +413,19 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const yearBuiltLabel = formatOfferBuildYear(offer);
   const heatingLabel = offer.heating ? String(offer.heating) : null;
   const floorPlanSrc = String(offer.floorPlanUrl || offer.floorPlan || "").trim();
+  const extraFloorPlanSrcs = (() => {
+    const raw = offer.floorPlanExtraUrls;
+    if (Array.isArray(raw)) return raw.map((item: unknown) => String(item || "").trim()).filter(Boolean);
+    const text = String(raw || "").trim();
+    if (!text) return [];
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed.map((item: unknown) => String(item || "").trim()).filter(Boolean);
+    } catch {
+      return text.split(",").map((item: string) => item.trim()).filter(Boolean);
+    }
+    return [];
+  })();
   const floorPlan3dSrc = String(offer.floorPlan3dUrl || "").trim();
   const floorPlanScanMeta = parseFloorPlanScanMeta(offer.floorPlanScanMeta);
   const propertyTypeLabel = formatOfferPropertyType(offer.propertyType, locale);
@@ -1060,6 +1073,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 {(floorPlanSrc || floorPlan3dSrc) && !isLocked ? (
                   <OfferFloorPlanPanel
                     floorPlanSrc={floorPlanSrc}
+                    extraFloorPlanSrcs={extraFloorPlanSrcs}
                     floorPlan3dSrc={floorPlan3dSrc || undefined}
                     scanMeta={floorPlanScanMeta}
                     locale={locale}
@@ -1139,6 +1153,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 {(floorPlanSrc || floorPlan3dSrc) && !isLocked ? (
                   <OfferFloorPlanPanel
                     floorPlanSrc={floorPlanSrc}
+                    extraFloorPlanSrcs={extraFloorPlanSrcs}
                     floorPlan3dSrc={floorPlan3dSrc || undefined}
                     scanMeta={floorPlanScanMeta}
                     locale={locale}
