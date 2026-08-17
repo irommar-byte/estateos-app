@@ -43,6 +43,8 @@ export type AgencyClientDetail = AgencyClientListItem & {
   portalUrl: string | null;
   portalToken: string | null;
   linkedOfferId: number | null;
+  sellerDescription: string | null;
+  sellerDistrict: string | null;
   buyerFilters: Record<string, unknown> | null;
   matches: AgencyClientMatch[];
 };
@@ -212,5 +214,51 @@ export async function suggestAddresses(token: string, query: string) {
     headers: authHeaders(token),
   });
   const json = await parseJson(res);
-  return Array.isArray(json.suggestions) ? (json.suggestions as Array<{ id: string; label: string; address: string }>) : [];
+  return Array.isArray(json.suggestions)
+    ? (json.suggestions as Array<{
+        id: string;
+        label: string;
+        address: string;
+        city?: string | null;
+        lat?: number | null;
+        lng?: number | null;
+      }>)
+    : [];
+}
+
+export async function linkAgencyClientOffer(token: string, clientId: number, offerId: number) {
+  const res = await fetch(`${API_URL}/api/crm/clients/${clientId}`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'link_offer', offerId }),
+  });
+  const json = await parseJson(res);
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się powiązać oferty.') };
+  return { ok: true as const };
+}
+
+export async function previewPortalListing(token: string, url: string) {
+  const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: url.trim() }),
+  });
+  const json = await parseJson(res);
+  if (!res.ok || !json?.success) {
+    return { ok: false as const, message: String(json?.message || json?.error || 'Nie udało się odczytać ogłoszenia.') };
+  }
+  return {
+    ok: true as const,
+    draft: json.draft as {
+      title?: string;
+      price?: number | null;
+      city?: string | null;
+      district?: string | null;
+      lat?: number | null;
+      lng?: number | null;
+      area?: number | null;
+      rooms?: number | null;
+    },
+    presentation: json.presentation as { title?: string } | undefined,
+  };
 }

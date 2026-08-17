@@ -44,6 +44,36 @@ export function buildAgentVcard(params: {
   return lines.join('\r\n');
 }
 
+export function buildAcquisitionIcs(params: {
+  title: string;
+  startsAt: Date;
+  location?: string | null;
+  description?: string | null;
+}): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date) =>
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+  const ends = new Date(params.startsAt.getTime() + 60 * 60 * 1000);
+  const uid = `acq-${Date.now()}@estateos.pl`;
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//EstateOS//CRM//PL',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${fmt(new Date())}`,
+    `DTSTART:${fmt(params.startsAt)}`,
+    `DTEND:${fmt(ends)}`,
+    `SUMMARY:${params.title.replace(/\n/g, ' ')}`,
+  ];
+  if (params.location) lines.push(`LOCATION:${params.location.replace(/\n/g, ' ')}`);
+  if (params.description) lines.push(`DESCRIPTION:${params.description.replace(/\n/g, ' ')}`);
+  lines.push('END:VEVENT', 'END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
 function buildBusinessCardHtml(params: {
   clientName: string;
   agentName: string;
@@ -56,6 +86,7 @@ function buildBusinessCardHtml(params: {
   companyUrl?: string | null;
   portalUrl?: string | null;
   message?: string | null;
+  meetingHtml?: string | null;
 }) {
   const avatar = params.avatarUrl
     ? `<img src="${escapeHtml(params.avatarUrl)}" width="88" height="88" alt="" style="display:block;width:88px;height:88px;border-radius:999px;object-fit:cover;border:3px solid #10b981;" />`
@@ -106,13 +137,14 @@ function buildBusinessCardHtml(params: {
             </tr>
           </table>
           ${note}
+          ${params.meetingHtml || ''}
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #f3f4f6;margin-top:4px;">
             ${contactRows}
           </table>
           <div style="margin-top:22px;">
             ${ctaPrimary}${ctaPortal}
           </div>
-          <p style="margin:18px 0 0;font-size:12px;color:#9ca3af;">W załączniku znajdziesz wizytówkę vCard — możesz dodać mnie do kontaktów jednym kliknięciem.</p>
+          <p style="margin:18px 0 0;font-size:12px;color:#9ca3af;">W załączniku znajdziesz wizytówkę vCard${params.meetingHtml ? ' oraz plik kalendarza (.ics) — dodaj spotkanie jednym kliknięciem, żeby przypomniało' : ' — możesz dodać mnie do kontaktów jednym kliknięciem'}.</p>
         </div>
         <p style="margin:18px 0 0;text-align:center;font-size:11px;color:#9ca3af;">EstateOS™ · profesjonalna obsługa nieruchomości</p>
       </div>
@@ -124,6 +156,11 @@ export async function sendAgencyClientBusinessCard(params: {
   clientId: number;
   agencyUserId: number;
   customMessage?: string;
+  meeting?: {
+    startsAt: Date;
+    location?: string | null;
+    notes?: string | null;
+  };
 }) {
   const [client, agent] = await Promise.all([
     prisma.agencyClient.findFirst({
@@ -188,6 +225,16 @@ export async function sendAgencyClientBusinessCard(params: {
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : null;
   const clientName = client.firstName?.trim() || 'Kliencie';
 
+  const meeting = params.meeting;
+  const meetingHtml = meeting
+    ? `<div style="margin:0 0 20px;padding:16px 18px;border-radius:18px;background:#ecfdf5;border:1px solid #a7f3d0;">
+        <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#047857;">Umówione spotkanie</p>
+        <p style="margin:8px 0 0;font-size:18px;font-weight:900;color:#064e3b;">${escapeHtml(meeting.startsAt.toLocaleString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p>
+        ${meeting.location ? `<p style="margin:6px 0 0;color:#065f46;">${escapeHtml(meeting.location)}</p>` : ''}
+        ${meeting.notes ? `<p style="margin:6px 0 0;color:#374151;">${escapeHtml(meeting.notes)}</p>` : ''}
+      </div>`
+    : '';
+
   const html = buildBusinessCardHtml({
     clientName,
     agentName,
@@ -200,6 +247,7 @@ export async function sendAgencyClientBusinessCard(params: {
     companyUrl,
     portalUrl,
     message: params.customMessage,
+    meetingHtml,
   });
 
   const vcard = buildAgentVcard({
@@ -211,9 +259,20 @@ export async function sendAgencyClientBusinessCard(params: {
     website: companyUrl,
   });
 
+  const ics = meeting
+    ? buildAcquisitionIcs({
+        title: `Spotkanie pozyskania · ${agencyName}`,
+        startsAt: meeting.startsAt,
+        location: meeting.location,
+        description: meeting.notes || `Spotkanie z agentem ${agentName}`,
+      })
+    : null;
+
   const sent = await sendTransactionalEmail({
     to: client.email,
-    subject: `${agentName} · wizytówka ${agencyName}`,
+    subject: meeting
+      ? `Spotkanie ${meeting.startsAt.toLocaleString('pl-PL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · ${agencyName}`
+      : `${agentName} · wizytówka ${agencyName}`,
     html,
     attachments: [
       {
@@ -221,6 +280,15 @@ export async function sendAgencyClientBusinessCard(params: {
         content: vcard,
         contentType: 'text/vcard; charset=utf-8',
       },
+      ...(ics
+        ? [
+            {
+              filename: 'spotkanie-pozyskanie.ics',
+              content: ics,
+              contentType: 'text/calendar; charset=utf-8',
+            },
+          ]
+        : []),
     ],
   });
 
@@ -232,8 +300,15 @@ export async function sendAgencyClientBusinessCard(params: {
       agencyUserId: params.agencyUserId,
       kind: 'BUSINESS_CARD_SENT',
       title: 'Wysłano wizytówkę',
-      body: `Wizytówka agenta wysłana na ${client.email}.`,
-      metadata: { email: client.email, companyUrl, portalUrl },
+      body: meeting
+        ? `Wizytówka i termin spotkania wysłane na ${client.email}.`
+        : `Wizytówka agenta wysłana na ${client.email}.`,
+      metadata: {
+        email: client.email,
+        companyUrl,
+        portalUrl,
+        meetingStartsAt: meeting?.startsAt.toISOString() || null,
+      },
     },
   });
 

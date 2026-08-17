@@ -24,6 +24,7 @@ import CommissionRateSlider from '../components/agency/CommissionRateSlider';
 import SignaturePad from '../components/agency/SignaturePad';
 import AcquisitionStepIndicator from '../components/agency/AcquisitionStepIndicator';
 import AcquisitionDatePickerModal from '../components/agency/AcquisitionDatePickerModal';
+import AcquisitionAddressMapField from '../components/agency/AcquisitionAddressMapField';
 import AcquisitionRoomScanner, { type RoomItem } from '../components/agency/AcquisitionRoomScanner';
 import AcquisitionKwField from '../components/agency/AcquisitionKwField';
 import MultiSelectChipGroup from '../components/agency/MultiSelectChipGroup';
@@ -406,6 +407,11 @@ export default function AgencyClientDetailScreen() {
       <AcquisitionDatePickerModal
         visible={Boolean(dateModalField)}
         isDark={isDark}
+        mode={dateModalField === 'targetTimeline' ? 'timeline' : 'meeting'}
+        title={dateModalField === 'targetTimeline' ? 'Horyzont sprzedaży' : 'Termin'}
+        initialValue={
+          dateModalField && form ? String((form.meeting as Record<string, string>)[dateModalField] || '') : ''
+        }
         onClose={() => setDateModalField(null)}
         onSelect={(formattedDate) => {
           if (dateModalField && form) {
@@ -502,8 +508,35 @@ export default function AgencyClientDetailScreen() {
                   {/* Step 1: Spotkanie */}
                   {step === 1 ? (
                     <>
-                      {field('meeting', 'startsAt', 'TERMIN SPOTKANIA', { isDate: true })}
-                      {field('meeting', 'location', 'MIEJSCE SPOTKANIA', { address: true })}
+                      {form.meeting.startsAt ? (
+                        <View style={{ marginBottom: 14 }}>
+                          <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>
+                            UMÓWIONE SPOTKANIE
+                          </Text>
+                          <View
+                            style={{
+                              marginTop: 6,
+                              padding: 12,
+                              borderRadius: 12,
+                              backgroundColor: 'rgba(52,199,89,0.12)',
+                              borderWidth: 1,
+                              borderColor: colors.accent,
+                            }}
+                          >
+                            <Text style={{ color: colors.text, fontWeight: '800' }}>{form.meeting.startsAt}</Text>
+                            {form.meeting.location ? (
+                              <Text style={{ color: colors.secondary, marginTop: 4 }}>{form.meeting.location}</Text>
+                            ) : null}
+                            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>
+                              Termin ustalony przy dodawaniu klienta. Kartę wypełniasz na miejscu.
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <Text style={{ color: colors.secondary, fontSize: 12, marginBottom: 12 }}>
+                          Spotkanie umawiasz na ekranie Dodaj klienta. Tu na miejscu uzupełniasz cel i horyzont sprzedaży.
+                        </Text>
+                      )}
 
                       <MultiSelectChipGroup
                         label="CEL KLIENTA"
@@ -514,7 +547,7 @@ export default function AgencyClientDetailScreen() {
                         disabled={signed}
                       />
 
-                      {field('meeting', 'targetTimeline', 'TERMIN SPRZEDAŻY', { isDate: true })}
+                      {field('meeting', 'targetTimeline', 'HORYZONT SPRZEDAŻY', { isDate: true })}
 
                       <MultiSelectChipGroup
                         label="MOTYWACJA I POWÓD SPRZEDAŻY"
@@ -598,7 +631,33 @@ export default function AgencyClientDetailScreen() {
                   {/* Step 3: Nieruchomość */}
                   {step === 3 ? (
                     <>
-                      {field('property', 'address', 'ADRES NIERUCHOMOŚCI', { address: true })}
+                      <AcquisitionAddressMapField
+                        token={token}
+                        value={{
+                          address: String(form.property.address || ''),
+                          city: String((form.property as Record<string, string>).city || client?.sellerCity || ''),
+                          lat: Number((form.property as Record<string, string>).lat)
+                            ? Number((form.property as Record<string, string>).lat)
+                            : null,
+                          lng: Number((form.property as Record<string, string>).lng)
+                            ? Number((form.property as Record<string, string>).lng)
+                            : null,
+                        }}
+                        onChange={(next) =>
+                          setForm((current) =>
+                            current
+                              ? setSection(current, 'property', {
+                                  address: next.address,
+                                  city: next.city || '',
+                                  lat: next.lat != null ? String(next.lat) : '',
+                                  lng: next.lng != null ? String(next.lng) : '',
+                                })
+                              : current
+                          )
+                        }
+                        isDark={isDark}
+                        disabled={signed}
+                      />
 
                       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
                         <AddOfferWheelPickerColumn

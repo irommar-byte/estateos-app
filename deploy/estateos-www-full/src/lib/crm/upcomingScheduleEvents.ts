@@ -178,7 +178,41 @@ export async function fetchUpcomingScheduleEvents(userId: number): Promise<Upcom
     })
     .filter(Boolean) as UpcomingScheduleEvent[];
 
-  const merged = [...presentationEvents, ...openHouseHostEvents, ...openHouseGuestEvents].sort(
+  const acquisitionRaw = await prisma.agencyClientActivity.findMany({
+    where: {
+      agencyUserId: userId,
+      kind: 'ACQUISITION_MEETING',
+    },
+    include: {
+      client: { select: { id: true, firstName: true, lastName: true } },
+    },
+    take: 40,
+  });
+
+  const acquisitionEvents: UpcomingScheduleEvent[] = acquisitionRaw
+    .map((row) => {
+      const meta = (row.metadata || {}) as Record<string, unknown>;
+      const startsAt = typeof meta.startsAt === 'string' ? meta.startsAt : null;
+      if (!startsAt) return null;
+      const t = new Date(startsAt).getTime();
+      if (Number.isNaN(t) || t < graceStart.getTime() || t > horizon.getTime()) return null;
+      const name = `${row.client.firstName} ${row.client.lastName}`.trim();
+      const location = typeof meta.location === 'string' ? meta.location : '';
+      return {
+        id: `acq-${row.id}`,
+        kind: 'acquisition' as const,
+        title: 'Spotkanie pozyskania',
+        subtitle: name,
+        location,
+        startsAt,
+        endsAt: new Date(t + 60 * 60 * 1000).toISOString(),
+        status: 'confirmed' as const,
+        href: `/moje-konto/crm?tab=klienci&clientId=${row.client.id}`,
+      };
+    })
+    .filter(Boolean) as UpcomingScheduleEvent[];
+
+  const merged = [...presentationEvents, ...openHouseHostEvents, ...openHouseGuestEvents, ...acquisitionEvents].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
   );
 

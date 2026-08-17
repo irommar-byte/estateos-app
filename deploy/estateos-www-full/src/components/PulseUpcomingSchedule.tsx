@@ -23,12 +23,14 @@ function localeTag(locale: Locale): string {
 
 function kindIcon(kind: UpcomingScheduleEvent["kind"]) {
   if (kind === "presentation") return Presentation;
+  if (kind === "acquisition") return CalendarClock;
   return DoorOpen;
 }
 
 function kindAccent(kind: UpcomingScheduleEvent["kind"]) {
   if (kind === "presentation") return "text-purple-500 dark:text-purple-400";
   if (kind === "open_house_host") return "text-emerald-600 dark:text-emerald-400";
+  if (kind === "acquisition") return "text-sky-500 dark:text-sky-400";
   return "text-sky-600 dark:text-sky-400";
 }
 

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import { readPendingPublication } from "@/lib/offerPendingPublication";
 import { listEnrichedLeadTransfersForUser } from "@/lib/leadTransfer";
+import { acquisitionActivityToAppointment } from "@/lib/crm/planningCalendar";
 
 export async function GET(req: Request) {
   try {
@@ -116,6 +117,18 @@ export async function GET(req: Request) {
       };
     });
 
+    const acquisitionActs = await prisma.agencyClientActivity.findMany({
+      where: { agencyUserId: finalUserId, kind: 'ACQUISITION_MEETING' },
+      include: {
+        client: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
+      take: 250,
+    });
+    const acquisitionAppointments = acquisitionActs
+      .map((row) => acquisitionActivityToAppointment(row))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    const allAppointments = [...appointments, ...acquisitionAppointments];
+
     // ==========================================
     // LEADY
     // ==========================================
@@ -141,9 +154,13 @@ export async function GET(req: Request) {
     // ==========================================
     const contactIds = new Set<number>();
 
-    appointments.forEach(item => {
-      if (item.deal.buyerId !== finalUserId) contactIds.add(item.deal.buyerId);
-      if (item.deal.sellerId !== finalUserId) contactIds.add(item.deal.sellerId);
+    allAppointments.forEach(item => {
+      if ('deal' in item && item.deal) {
+        const buyerId = Number(item.deal.buyerId);
+        const sellerId = Number(item.deal.sellerId);
+        if (Number.isFinite(buyerId) && buyerId !== finalUserId) contactIds.add(buyerId);
+        if (Number.isFinite(sellerId) && sellerId !== finalUserId) contactIds.add(sellerId);
+      }
     });
 
     bids.forEach(item => {
@@ -162,7 +179,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       deals: finalDeals,
-      appointments,
+      appointments: allAppointments,
       bids,
       leads,
       offers: myOffers,

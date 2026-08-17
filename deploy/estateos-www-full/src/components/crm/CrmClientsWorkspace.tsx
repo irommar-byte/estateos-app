@@ -158,6 +158,17 @@ export default function CrmClientsWorkspace() {
   }, []);
 
   useEffect(() => {
+    const fromUrl = Number(new URLSearchParams(window.location.search).get("clientId"));
+    if (Number.isFinite(fromUrl) && fromUrl > 0) setSelectedId(fromUrl);
+    const openClient = (event: Event) => {
+      const id = Number((event as CustomEvent).detail?.clientId);
+      if (Number.isFinite(id) && id > 0) setSelectedId(id);
+    };
+    window.addEventListener("crm-open-client", openClient);
+    return () => window.removeEventListener("crm-open-client", openClient);
+  }, []);
+
+  useEffect(() => {
     void (async () => {
       try {
         const res = await fetch("/api/location/districts", { cache: "no-store" });

@@ -26,6 +26,7 @@ import { eosBtn } from "@/components/ui/eosButtonStyles";
 import AgencyClientCriteriaEditor, {
   buyerCriteriaReady,
 } from "@/components/crm/AgencyClientCriteriaEditor";
+import AddressSuggestInput from "@/components/crm/AddressSuggestInput";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 
 type LookupMatch = {
@@ -119,13 +120,15 @@ export default function AgencyClientFormModal({
     strictCityDistricts: Record<string, string[]>;
   }>({ strictCities: [], strictCityDistricts: {} });
   const [meeting, setMeeting] = useState({
-    enabled: false,
+    enabled: true,
     date: "",
     time: "10:00",
     location: "",
     note: "",
   });
   const [alsoSearching, setAlsoSearching] = useState(false);
+  const [listingUrl, setListingUrl] = useState("");
+  const [addressMeta, setAddressMeta] = useState<{ city?: string; lat?: number; lng?: number }>({});
 
   const [form, setForm] = useState({
     firstName: "",
@@ -158,8 +161,10 @@ export default function AgencyClientFormModal({
     setLookupMatches([]);
     setLookupBusy(false);
     setBuyerFilters({ ...defaultWebRadarFilters(), pushNotifications: false });
-    setMeeting({ enabled: false, date: "", time: "10:00", location: "", note: "" });
+    setMeeting({ enabled: true, date: "", time: "10:00", location: "", note: "" });
     setAlsoSearching(false);
+    setListingUrl("");
+    setAddressMeta({});
     setForm({
       firstName: "",
       lastName: "",
@@ -276,8 +281,8 @@ export default function AgencyClientFormModal({
         type === "SELLER" && meeting.enabled && meeting.date && meeting.time
           ? {
               startsAt: new Date(`${meeting.date}T${meeting.time}:00`).toISOString(),
-              location: meeting.location.trim() || null,
-              notes: meeting.note.trim() || null,
+              location: meeting.location.trim() || form.sellerCity.trim() || null,
+              notes: meeting.note.trim() || form.notes.trim() || null,
             }
           : null;
 
@@ -297,11 +302,14 @@ export default function AgencyClientFormModal({
             : {}),
           ...(type === "SELLER"
             ? {
-                sellerCity: form.sellerCity || null,
-                sellerPrice: form.sellerPrice
-                  ? Number(String(form.sellerPrice).replace(/\s/g, "").replace(",", "."))
-                  : null,
-                acquisitionMeeting,
+              sellerCity: form.sellerCity || null,
+              sellerDistrict: addressMeta.city || null,
+              sellerPrice: form.sellerPrice
+                ? Number(String(form.sellerPrice).replace(/\s/g, "").replace(",", "."))
+                : null,
+              notes: form.notes || null,
+              listingUrl: listingUrl.trim() || null,
+              acquisitionMeeting,
                 ...(alsoSearching ? { buyerFilters: { ...buyerFilters, pushNotifications: false } } : {}),
               }
             : {}),
@@ -641,16 +649,29 @@ export default function AgencyClientFormModal({
                 {step === 3 && type === "SELLER" ? (
                   <div className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block min-w-0">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
-                          Miasto / lokalizacja
-                        </span>
-                        <input
+                      <div className="sm:col-span-2">
+                        <AddressSuggestInput
+                          label="Adres nieruchomości"
                           value={form.sellerCity}
-                          onChange={(e) => setForm((f) => ({ ...f, sellerCity: e.target.value }))}
-                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
+                          placeholder="Ulica, numer, miasto…"
+                          onChange={(value, meta) => {
+                            setForm((f) => ({ ...f, sellerCity: value }));
+                            if (meta) setAddressMeta(meta);
+                            if (meta?.lat && !meeting.location) {
+                              setMeeting((m) => ({ ...m, location: value }));
+                            }
+                          }}
                         />
-                      </label>
+                        {Number.isFinite(addressMeta.lat) && Number.isFinite(addressMeta.lng) ? (
+                          <p className="mt-2 text-xs font-bold text-emerald-500">
+                            Pinezka ustawiona — adres zweryfikowany
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-xs text-[var(--eos-muted)]">
+                            Wybierz podpowiedź, żeby potwierdzić lokalizację pinezką.
+                          </p>
+                        )}
+                      </div>
                       <label className="block min-w-0">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                           Szacowana cena
@@ -672,7 +693,7 @@ export default function AgencyClientFormModal({
                           className="size-4 accent-emerald-500"
                         />
                         <span className="text-sm font-bold text-[var(--eos-text)] break-words">
-                          Umów wstępne spotkanie pozyskania
+                          Termin spotkania (klient dostanie e-mail z wizytówką i kalendarzem)
                         </span>
                       </label>
                       {meeting.enabled ? (
@@ -724,9 +745,32 @@ export default function AgencyClientFormModal({
                             />
                           </label>
                           <p className="text-xs text-[var(--eos-muted)] break-words">
-                            Po zapisaniu termin trafi do Twojego dnia w CRM, a klient dostanie e-mail (jeśli podał
-                            adres).
+                            Termin trafi do kalendarza CRM (Terminy). Kartę pozyskania wypełniasz już na miejscu — nie
+                            tutaj.
                           </p>
+                          <label className="block min-w-0">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                              Komentarz
+                            </span>
+                            <textarea
+                              value={form.notes}
+                              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                              rows={3}
+                              placeholder="Notatka dla Ciebie i do maila ze spotkaniem"
+                              className="eos-modal-field mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[var(--eos-text)]"
+                            />
+                          </label>
+                          <label className="block min-w-0">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                              Link do ogłoszenia klienta (Otodom / OLX)
+                            </span>
+                            <input
+                              value={listingUrl}
+                              onChange={(e) => setListingUrl(e.target.value)}
+                              placeholder="https://www.otodom.pl/pl/oferta/..."
+                              className="eos-modal-field mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[var(--eos-text)]"
+                            />
+                          </label>
                         </div>
                       ) : null}
                     </div>

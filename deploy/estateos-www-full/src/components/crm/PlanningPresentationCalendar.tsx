@@ -102,6 +102,12 @@ export default function PlanningPresentationCalendar({
                 Zatwierdzone
               </span>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.6)]" />
+              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-muted)]">
+                Pozyskanie
+              </span>
+            </div>
           </div>
         </div>
 
@@ -175,7 +181,7 @@ export default function PlanningPresentationCalendar({
             const inMonth = d.getMonth() === viewMonth;
             const isToday = isSameCalendarDay(d, today);
             const dayApps = appointmentsOnDay(appointments, d);
-            const { hasAccepted, hasPendingNegotiation, hasWaitingMine } = dayIndicators(
+            const { hasAccepted, hasPendingNegotiation, hasWaitingMine, hasAcquisition } = dayIndicators(
               dayApps,
               currentUserId
             );
@@ -219,7 +225,13 @@ export default function PlanningPresentationCalendar({
                       title="Zatwierdzony termin"
                     />
                   )}
-                  {!hasAccepted && !hasPendingNegotiation && !hasWaitingMine && inMonth && (
+                  {hasAcquisition && (
+                    <span
+                      className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.55)]"
+                      title="Spotkanie pozyskania"
+                    />
+                  )}
+                  {!hasAccepted && !hasPendingNegotiation && !hasWaitingMine && !hasAcquisition && inMonth && (
                     <span className="w-1 h-1 rounded-full bg-[var(--eos-input)]" />
                   )}
                 </div>
@@ -307,9 +319,14 @@ export default function PlanningPresentationCalendar({
                               Czekasz na odpowiedź
                             </span>
                           )}
-                          {String(app.status).toUpperCase() === 'ACCEPTED' && (
+                          {String(app.status).toUpperCase() === 'ACCEPTED' && app.type !== 'ACQUISITION' && (
                             <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase tracking-widest rounded-full border border-emerald-500/30">
                               Zatwierdzone
+                            </span>
+                          )}
+                          {String(app.type || '').toUpperCase() === 'ACQUISITION' && (
+                            <span className="px-2 py-0.5 bg-sky-500/20 text-sky-300 text-[8px] font-black uppercase tracking-widest rounded-full border border-sky-500/30">
+                              Pozyskanie
                             </span>
                           )}
                         </div>
@@ -353,7 +370,7 @@ export default function PlanningPresentationCalendar({
                             </div>
                             <div className="min-w-0">
                               <p className="text-[10px] text-[var(--eos-subtle)] uppercase tracking-widest font-black">
-                                {app.needsMyResponse ? 'Propozycja od' : 'Kontrahent'}
+                              {app.needsMyResponse ? 'Propozycja od' : app.type === 'ACQUISITION' ? 'Klient' : 'Kontrahent'}
                               </p>
                               <p className="text-xs font-bold text-[var(--eos-text)] truncate">{cpName}</p>
                               {cp?.email ? (
@@ -362,7 +379,7 @@ export default function PlanningPresentationCalendar({
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-2 shrink-0">
-                            {cp?.id && onViewProfile ? (
+                            {cp?.id && onViewProfile && app.type !== 'ACQUISITION' ? (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -387,7 +404,7 @@ export default function PlanningPresentationCalendar({
                               }}
                               className="px-4 py-2.5 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest shadow-[0_8px_20px_rgba(16,185,129,0.35)] hover:brightness-110 transition-all"
                             >
-                              Zarządzaj
+                              {app.type === 'ACQUISITION' ? 'Klient' : 'Zarządzaj'}
                             </button>
                           </div>
                         </div>

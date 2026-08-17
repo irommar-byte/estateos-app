@@ -12,11 +12,12 @@ import { useI18n } from '../i18n';
 import { useThemeStore } from '../store/useThemeStore';
 import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
 import { requestInvestorProUpsell } from '../services/investorProUpsell';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { getAdditionalListingSlots, hasAdditionalPlusPublication, userAfterPakietPlusPurchase } from '../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../services/iapPakietPlus';
 import { gatherPublicationBonusCoupons } from '../services/publicationBonusCoupons';
 import { readUserFirstFreePublicationUsed } from '../utils/userPublicationFlags';
+import { linkAgencyClientOffer } from '../services/agencyClientService';
 import PublicationChoiceModal, { type PublicationChoiceConfirm } from '../components/publication/PublicationChoiceModal';
 import type { CreatePublicationRedemption } from '../contracts/offerPublicationContract';
 
@@ -185,6 +186,9 @@ function ImportSuccessCinematic({
 
 export default function AdminNativeImportScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const initialUrl = String(route.params?.initialUrl || '').trim();
+  const linkClientId = Number(route.params?.linkClientId || 0) || null;
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -200,7 +204,7 @@ export default function AdminNativeImportScreen() {
     [isDark]
   );
 
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -257,6 +261,10 @@ export default function AdminNativeImportScreen() {
   useEffect(() => {
     let mounted = true;
     (async () => {
+      if (initialUrl) {
+        if (mounted) setStorageReady(true);
+        return;
+      }
       try {
         const raw = await AsyncStorage.getItem(IMPORT_DRAFT_STORAGE_KEY);
         if (!raw || !mounted) return;
@@ -347,6 +355,13 @@ export default function AdminNativeImportScreen() {
     }
   };
 
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || !initialUrl || !token) return;
+    autoStarted.current = true;
+    void handleAnalyze();
+  }, [initialUrl, token]);
+
   const applyCreatedOffer = async (
     data: Record<string, unknown>,
     redemption: CreatePublicationRedemption,
@@ -379,6 +394,13 @@ export default function AdminNativeImportScreen() {
     await clearImportDraftCache();
     setRestoredDraftBadge(false);
     await refreshUser();
+    const offerId = Number(data?.offerId || 0);
+    if (token && linkClientId && offerId > 0) {
+      const linked = await linkAgencyClientOffer(token, linkClientId, offerId);
+      if (linked.ok) {
+        setMessage(`${String(data?.message || 'Oferta utworzona.')} Powiązano z klientem CRM.`);
+      }
+    }
     setSuccessFxVisible(true);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };

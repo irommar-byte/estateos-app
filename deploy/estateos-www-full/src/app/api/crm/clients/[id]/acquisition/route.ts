@@ -143,9 +143,30 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const client = await loadContext(clientId, agencyUserId);
   if (!client) return NextResponse.json({ error: "Nie znaleziono klienta sprzedającego." }, { status: 404 });
   const fallbackForm = createDefaultAcquisitionForm(client);
+  const meetingAct = await prisma.agencyClientActivity.findFirst({
+    where: { clientId, agencyUserId, kind: "ACQUISITION_MEETING" },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true, body: true },
+  });
+  const meta = (meetingAct?.metadata || {}) as Record<string, unknown>;
+  if (typeof meta.startsAt === "string" && !fallbackForm.meeting.startsAt) {
+    const d = new Date(meta.startsAt);
+    if (!Number.isNaN(d.getTime())) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      fallbackForm.meeting.startsAt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+  }
+  if (typeof meta.location === "string" && meta.location && !fallbackForm.meeting.location) {
+    fallbackForm.meeting.location = meta.location;
+  }
+  const acquisition = shapeAcquisition(client.acquisition, fallbackForm);
+  if (acquisition?.formData?.meeting && !String(acquisition.formData.meeting.startsAt || "").trim() && fallbackForm.meeting.startsAt) {
+    acquisition.formData.meeting.startsAt = fallbackForm.meeting.startsAt;
+    if (fallbackForm.meeting.location) acquisition.formData.meeting.location = fallbackForm.meeting.location;
+  }
   return NextResponse.json({
     success: true,
-    acquisition: shapeAcquisition(client.acquisition, fallbackForm),
+    acquisition,
     defaultForm: fallbackForm,
     portalUrl: client.portalToken ? `/klient/${client.portalToken}` : null,
   });
