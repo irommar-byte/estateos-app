@@ -112,13 +112,17 @@ export default function AgencyClientCreateScreen() {
     return () => clearTimeout(t);
   }, [form, type, alsoSearching]);
 
-  // Real-time lookup check for duplicates
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  // Real-time lookup check for duplicates (lightweight quick=1)
   const lookupSeq = useRef(0);
   useEffect(() => {
     const emailTrim = form.email.trim().toLowerCase();
     const phoneDigits = form.phone.replace(/\D/g, '');
+    const emailOk = isValidEmail(emailTrim);
+    const phoneOk = phoneDigits.length >= 9;
 
-    if (!token || (!emailTrim.includes('@') && phoneDigits.length < 7)) {
+    if (!token || (!emailOk && !phoneOk)) {
       setLookupMatches([]);
       setCheckingDuplicates(false);
       return;
@@ -128,12 +132,12 @@ export default function AgencyClientCreateScreen() {
     const seq = ++lookupSeq.current;
     const t = setTimeout(async () => {
       try {
-        const params = new URLSearchParams();
-        if (emailTrim.includes('@')) params.set('email', emailTrim);
-        if (phoneDigits.length >= 7) params.set('phone', phoneDigits);
+        const params = new URLSearchParams({ quick: '1' });
+        if (emailOk) params.set('email', emailTrim);
+        if (phoneOk) params.set('phone', phoneDigits);
 
         const res = await fetch(`${API_URL}/api/crm/clients/lookup?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
         });
         const json = await res.json().catch(() => ({}));
         if (seq !== lookupSeq.current) return;
@@ -148,7 +152,7 @@ export default function AgencyClientCreateScreen() {
       } finally {
         if (seq === lookupSeq.current) setCheckingDuplicates(false);
       }
-    }, 350);
+    }, 600);
 
     return () => clearTimeout(t);
   }, [form.email, form.phone, token]);

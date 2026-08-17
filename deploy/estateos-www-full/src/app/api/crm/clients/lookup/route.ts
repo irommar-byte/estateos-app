@@ -45,75 +45,119 @@ export async function GET(req: Request) {
   if (emailRaw) or.push({ email: emailRaw });
   if (phoneVariants.length) or.push({ phone: { in: phoneVariants } });
 
-  const rows = await prisma.agencyClient.findMany({
-    where: {
-      agencyUserId,
-      OR: or,
-    },
-    orderBy: { updatedAt: 'desc' },
-    take: 8,
-    include: {
-      buyerPreference: { select: { city: true, maxPrice: true, propertyType: true } },
-      matches: {
-        orderBy: { score: 'desc' },
-        take: 3,
-        include: {
-          offer: { select: { id: true, title: true, city: true, price: true } },
+  const quick = url.searchParams.get('quick') === '1';
+
+  const rows = quick
+    ? await prisma.agencyClient.findMany({
+        where: {
+          agencyUserId,
+          OR: or,
         },
-      },
-      activities: {
-        orderBy: { createdAt: 'desc' },
-        take: 12,
+        orderBy: { updatedAt: 'desc' },
+        take: 5,
         select: {
           id: true,
-          kind: true,
-          title: true,
-          body: true,
-          createdAt: true,
-          offerId: true,
+          status: true,
+          type: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          updatedAt: true,
         },
-      },
-      _count: { select: { matches: true, activities: true } },
-    },
-  });
+      })
+    : await prisma.agencyClient.findMany({
+        where: {
+          agencyUserId,
+          OR: or,
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 8,
+        include: {
+          buyerPreference: { select: { city: true, maxPrice: true, propertyType: true } },
+          matches: {
+            orderBy: { score: 'desc' },
+            take: 3,
+            include: {
+              offer: { select: { id: true, title: true, city: true, price: true } },
+            },
+          },
+          activities: {
+            orderBy: { createdAt: 'desc' },
+            take: 12,
+            select: {
+              id: true,
+              kind: true,
+              title: true,
+              body: true,
+              createdAt: true,
+              offerId: true,
+            },
+          },
+          _count: { select: { matches: true, activities: true } },
+        },
+      });
 
   return NextResponse.json({
     success: true,
     emailValid: emailRaw ? true : null,
     phoneValid: phoneRaw ? true : null,
-    matches: rows.map((c) => ({
-      id: c.id,
-      status: c.status,
-      type: c.type,
-      firstName: c.firstName,
-      lastName: c.lastName,
-      email: c.email,
-      phone: c.phone,
-      notes: c.notes,
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: c.updatedAt.toISOString(),
-      matchCount: c._count.matches,
-      activityCount: c._count.activities,
-      buyerCity: c.buyerPreference?.city ?? null,
-      topMatches: c.matches.map((m) => ({
-        score: m.score,
-        offerId: m.offer.id,
-        offerTitle: m.offer.title,
-        city: m.offer.city,
-        price: m.offer.price,
-      })),
-      activities: c.activities.map((a) => ({
-        id: a.id,
-        kind: a.kind,
-        title: a.title,
-        body: a.body,
-        offerId: a.offerId,
-        createdAt: a.createdAt.toISOString(),
-      })),
-      matchedBy: {
-        email: Boolean(emailRaw && c.email?.toLowerCase() === emailRaw),
-        phone: phonesMatch(c.phone, phoneRaw),
-      },
-    })),
+    matches: rows.map((c) =>
+      quick
+        ? {
+            id: c.id,
+            status: c.status,
+            type: c.type,
+            firstName: c.firstName,
+            lastName: c.lastName,
+            email: c.email,
+            phone: c.phone,
+            updatedAt: c.updatedAt.toISOString(),
+            matchedBy: {
+              email: Boolean(emailRaw && c.email?.toLowerCase() === emailRaw),
+              phone: phonesMatch(c.phone, phoneRaw),
+            },
+          }
+        : {
+            id: c.id,
+            status: c.status,
+            type: c.type,
+            firstName: c.firstName,
+            lastName: c.lastName,
+            email: c.email,
+            phone: c.phone,
+            notes: 'notes' in c ? c.notes : null,
+            createdAt: 'createdAt' in c && c.createdAt ? c.createdAt.toISOString() : null,
+            updatedAt: c.updatedAt.toISOString(),
+            matchCount: '_count' in c ? c._count.matches : 0,
+            activityCount: '_count' in c ? c._count.activities : 0,
+            buyerCity: 'buyerPreference' in c ? (c.buyerPreference?.city ?? null) : null,
+            topMatches:
+              'matches' in c
+                ? c.matches.map((m) => ({
+                    score: m.score,
+                    offerId: m.offer.id,
+                    offerTitle: m.offer.title,
+                    city: m.offer.city,
+                    price: m.offer.price,
+                  }))
+                : [],
+            activities:
+              'activities' in c
+                ? c.activities.map((a) => ({
+                    id: a.id,
+                    kind: a.kind,
+                    title: a.title,
+                    body: a.body,
+                    offerId: a.offerId,
+                    createdAt: a.createdAt.toISOString(),
+                  }))
+                : [],
+            matchedBy: {
+              email: Boolean(emailRaw && c.email?.toLowerCase() === emailRaw),
+              phone: phonesMatch(c.phone, phoneRaw),
+            },
+          },
+    ),
   });
 }
