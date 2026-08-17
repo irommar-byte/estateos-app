@@ -210,7 +210,7 @@ export default function AgencyClientFormModal({
     setLookupBusy(true);
 
     const seq = ++lookupSeq.current;
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ quick: "1" });
     if (emailOk) params.set("email", emailTrim);
     if (phoneOk) params.set("phone", phone);
 
@@ -250,7 +250,7 @@ export default function AgencyClientFormModal({
     if (!open || step !== 2) return;
     const t = setTimeout(() => {
       void runLookup(form.email, phoneE164);
-    }, 320);
+    }, 500);
     return () => clearTimeout(t);
   }, [open, step, form.email, phoneE164, runLookup]);
 
