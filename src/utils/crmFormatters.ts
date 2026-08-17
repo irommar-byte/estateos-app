@@ -1,8 +1,25 @@
+export function parseGroupedNumber(val: string | number | null | undefined): number {
+  const raw = String(val ?? '')
+    .replace(/\u00a0/g, '')
+    .replace(/\s/g, '')
+    .replace(/zł/gi, '')
+    .replace(',', '.');
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : 0;
+}
+
 export function formatCurrencyPLN(val: number | string | null | undefined): string {
   if (val === null || val === undefined || val === '') return '';
-  const num = typeof val === 'number' ? val : Number(String(val).replace(/\s/g, '').replace(',', '.'));
-  if (isNaN(num)) return String(val);
+  const num = typeof val === 'number' ? val : parseGroupedNumber(val);
+  if (!Number.isFinite(num) || num === 0) return '';
   return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(num) + ' zł';
+}
+
+/** Formatuje kwotę podczas wpisywania: `450000` → `450 000`. */
+export function formatPriceInput(val: string): string {
+  const digits = String(val || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(Number(digits));
 }
 
 export function formatPhoneNumber(val: string): string {

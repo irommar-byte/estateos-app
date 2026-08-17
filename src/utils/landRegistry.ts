@@ -37,7 +37,20 @@ const LAND_REGISTRY_PREFIX_DATA: LandRegistryCourtPrefix[] = [
   { prefix: 'KI1L', courtName: 'SR w Kielcach' },
   { prefix: 'LD1M', courtName: 'SR dla Łodzi-Śródmieścia w Łodzi' },
   { prefix: 'LD1P', courtName: 'SR dla Łodzi-Widzewa w Łodzi' },
+  { prefix: 'ZA1Z', courtName: 'SR w Zamościu' },
+  { prefix: 'OL1O', courtName: 'SR w Olsztynie' },
+  { prefix: 'TO1T', courtName: 'SR w Toruniu' },
+  { prefix: 'BY1B', courtName: 'SR w Bydgoszczy' },
+  { prefix: 'KA1K', courtName: 'SR Katowice-Wschód w Katowicach' },
+  { prefix: 'GL1G', courtName: 'SR w Gliwicach' },
+  { prefix: 'CZ1C', courtName: 'SR w Częstochowie' },
+  { prefix: 'OP1O', courtName: 'SR w Opolu' },
+  { prefix: 'BB1B', courtName: 'SR w Bielsku-Białej' },
 ];
+
+export function getPopularLandRegistryCourts(limit = 12): LandRegistryCourtPrefix[] {
+  return LAND_REGISTRY_PREFIX_DATA.slice(0, limit);
+}
 
 export const LAND_REGISTRY_REGEX = /^[A-Z]{2}[0-9A-Z]{2}\/[0-9]{8}\/[0-9]$/;
 
@@ -108,7 +121,7 @@ export function getLandRegistryPrefixInput(value: string): string {
 
 export function getLandRegistryPrefixSuggestions(value: string, limit = 12): LandRegistryCourtPrefix[] {
   const token = getLandRegistryPrefixInput(value);
-  if (!token) return [];
+  if (!token) return getPopularLandRegistryCourts(limit);
   return LAND_REGISTRY_PREFIX_DATA.filter((item) => item.prefix.startsWith(token)).slice(0, limit);
 }
 

@@ -3,6 +3,8 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import RoomScanModal, { isRoomScanSupportedOnDevice } from '../roomScan/RoomScanModal';
+import type { RoomScanDraftAssets } from '../../types/roomScan';
 
 export type RoomItem = {
   id: string;
@@ -30,6 +32,8 @@ export default function AcquisitionRoomScanner({
   const [newRoomName, setNewRoomName] = useState('Salon');
   const [width, setWidth] = useState('');
   const [length, setLength] = useState('');
+  const [roomScanOpen, setRoomScanOpen] = useState(false);
+  const roomScanAvailable = isRoomScanSupportedOnDevice();
 
   const colors = {
     card: isDark ? '#1C1C1E' : '#FFFFFF',
@@ -83,6 +87,21 @@ export default function AcquisitionRoomScanner({
     if (!res.canceled && res.assets?.[0]?.uri) {
       onChangePlanImages([...planImages, res.assets[0].uri]);
     }
+  };
+
+  const applyRoomScan = (assets: RoomScanDraftAssets) => {
+    onChangePlanImages([...planImages, assets.floorPlanPngUri]);
+    const scannedRooms: RoomItem[] = (assets.scanMeta.sections || []).map((section, index) => ({
+      id: section.key || `scan-${index}`,
+      name: section.label || `Pomieszczenie ${index + 1}`,
+      widthM: '',
+      lengthM: '',
+      areaM2: section.areaSqM ? String(section.areaSqM) : '',
+    }));
+    if (scannedRooms.length) {
+      onChangeRooms([...rooms, ...scannedRooms]);
+    }
+    setRoomScanOpen(false);
   };
 
   const pickGalleryPhoto = async () => {
@@ -186,7 +205,22 @@ export default function AcquisitionRoomScanner({
 
       {/* Plan Photos & Camera Scan */}
       <View style={{ marginTop: 16 }}>
-        <Text style={[styles.label, { color: colors.secondary }]}>ZDJĘCIA RZUTU / SKAN DOKUMENTÓW</Text>
+        <Text style={[styles.label, { color: colors.secondary }]}>SKAN LIDAR / RZUT / DOKUMENTY</Text>
+        {roomScanAvailable && !disabled ? (
+          <Pressable
+            onPress={() => setRoomScanOpen(true)}
+            style={[styles.lidarCta, { backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(224,242,254,0.95)', borderColor: isDark ? 'rgba(56,189,248,0.45)' : 'rgba(14,165,233,0.4)' }]}
+          >
+            <Ionicons name="scan-outline" size={22} color="#0284c7" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>Skanuj pomieszczenie (LiDAR / RoomPlan)</Text>
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                Natywny skan Apple — wymiary, plan 2D i spacer 3D.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#0284c7" />
+          </Pressable>
+        ) : null}
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <Pressable onPress={takeCameraPhoto} style={[styles.scanBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Ionicons name="camera-outline" size={20} color={colors.accent} />
@@ -216,6 +250,12 @@ export default function AcquisitionRoomScanner({
           </View>
         ) : null}
       </View>
+
+      <RoomScanModal
+        visible={roomScanOpen}
+        onClose={() => setRoomScanOpen(false)}
+        onComplete={applyRoomScan}
+      />
     </View>
   );
 }
@@ -300,6 +340,15 @@ const styles = StyleSheet.create({
   scanBtnText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  lidarCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 4,
   },
   photoGrid: {
     flexDirection: 'row',

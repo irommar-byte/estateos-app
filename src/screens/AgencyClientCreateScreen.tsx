@@ -19,7 +19,8 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { createAgencyClient } from '../services/agencyClientService';
 import { API_URL } from '../config/network';
-import { formatPhoneNumber } from '../utils/crmFormatters';
+import { formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
+import AcquisitionPhoneField from '../components/agency/AcquisitionPhoneField';
 
 const DRAFT_KEY = '@eos_agency_client_create_draft';
 
@@ -198,7 +199,7 @@ export default function AgencyClientCreateScreen() {
         ...(type === 'SELLER'
           ? {
               sellerCity: form.sellerCity || null,
-              sellerPrice: form.sellerPrice ? Number(form.sellerPrice.replace(/\s/g, '')) : null,
+              sellerPrice: form.sellerPrice ? parseGroupedNumber(form.sellerPrice) : null,
               ...(alsoSearching
                 ? {
                     buyerFilters: {
@@ -207,7 +208,7 @@ export default function AgencyClientCreateScreen() {
                       propertyType: 'FLAT',
                       city: form.buyerCity || 'Warszawa',
                       selectedDistricts: [],
-                      maxPrice: Number(form.maxPrice.replace(/\s/g, '')) || 0,
+                      maxPrice: parseGroupedNumber(form.maxPrice) || 0,
                       minArea: 0,
                       minYear: 1900,
                       requireBalcony: false,
@@ -232,7 +233,7 @@ export default function AgencyClientCreateScreen() {
                 propertyType: 'FLAT',
                 city: form.buyerCity || 'Warszawa',
                 selectedDistricts: [],
-                maxPrice: Number(form.maxPrice.replace(/\s/g, '')) || 0,
+                maxPrice: parseGroupedNumber(form.maxPrice) || 0,
                 minArea: 0,
                 minYear: 1900,
                 requireBalcony: false,
@@ -329,7 +330,11 @@ export default function AgencyClientCreateScreen() {
             {field('firstName', 'IMIĘ')}
             {field('lastName', 'NAZWISKO')}
             {field('email', 'E-MAIL', 'email-address')}
-            {field('phone', 'TELEFON', 'phone-pad', formatPhoneNumber)}
+            <AcquisitionPhoneField
+              value={form.phone}
+              onChange={(phone) => setForm((current) => ({ ...current, phone }))}
+              isDark={isDark}
+            />
 
             {/* Duplicate warning banner */}
             {checkingDuplicates ? (
@@ -359,7 +364,7 @@ export default function AgencyClientCreateScreen() {
             {type === 'SELLER' ? (
               <>
                 {field('sellerCity', 'MIASTO NIERUCHOMOŚCI')}
-                {field('sellerPrice', 'CENA OCZEKIWANA (zł)', 'numeric')}
+                {field('sellerPrice', 'CENA OCZEKIWANA (zł)', 'numeric', formatPriceInput)}
 
                 <Pressable
                   onPress={() => setAlsoSearching((v) => !v)}
@@ -381,14 +386,14 @@ export default function AgencyClientCreateScreen() {
                       RADAR ZAKUPOWY DLA SPRZEDAJĄCEGO
                     </Text>
                     {field('buyerCity', 'MIASTO POSZUKIWAŃ')}
-                    {field('maxPrice', 'BUDŻET MAX (zł)', 'numeric')}
+                    {field('maxPrice', 'BUDŻET MAX (zł)', 'numeric', formatPriceInput)}
                   </View>
                 ) : null}
               </>
             ) : (
               <>
                 {field('buyerCity', 'MIASTO POSZUKIWAŃ')}
-                {field('maxPrice', 'BUDŻET MAX (zł)', 'numeric')}
+                {field('maxPrice', 'BUDŻET MAX (zł)', 'numeric', formatPriceInput)}
               </>
             )}
 

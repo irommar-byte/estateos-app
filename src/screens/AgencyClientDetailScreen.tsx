@@ -25,8 +25,10 @@ import SignaturePad from '../components/agency/SignaturePad';
 import AcquisitionStepIndicator from '../components/agency/AcquisitionStepIndicator';
 import AcquisitionDatePickerModal from '../components/agency/AcquisitionDatePickerModal';
 import AcquisitionRoomScanner, { type RoomItem } from '../components/agency/AcquisitionRoomScanner';
+import AcquisitionKwField from '../components/agency/AcquisitionKwField';
 import MultiSelectChipGroup from '../components/agency/MultiSelectChipGroup';
-import WheelNumberPicker from '../components/agency/WheelNumberPicker';
+import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
+import { buildYearBuiltPickerValues } from '../lib/offerYearBuilt';
 import {
   acquisitionAction,
   archiveAgencyClient,
@@ -42,7 +44,7 @@ import {
   type AcquisitionRecord,
   type AgencyClientDetail,
 } from '../services/agencyClientService';
-import { formatCurrencyPLN, formatPhoneNumber } from '../utils/crmFormatters';
+import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
 
 const STEPS = [
   { id: 1, title: 'Spotkanie' },
@@ -52,6 +54,30 @@ const STEPS = [
   { id: 5, title: 'Współpraca' },
   { id: 6, title: 'Podpis' },
 ];
+
+const ROOM_OPTIONS = ['', ...Array.from({ length: 10 }, (_, i) => String(i + 1))].map((value) => ({
+  value,
+  label: value || '—',
+}));
+const FLOOR_OPTIONS = ['', 'Parter', ...Array.from({ length: 30 }, (_, i) => String(i + 1))].map((value) => ({
+  value: value === 'Parter' ? '0' : value,
+  label: value || '—',
+}));
+const YEAR_OPTIONS = buildYearBuiltPickerValues().map((value) => ({
+  value,
+  label: value || '—',
+}));
+const AREA_OPTIONS = (() => {
+  const numeric = new Set<number>();
+  for (let i = 15; i <= 80; i += 1) numeric.add(i);
+  for (let i = 82; i <= 120; i += 2) numeric.add(i);
+  for (let i = 125; i <= 200; i += 5) numeric.add(i);
+  for (let i = 210; i <= 400; i += 10) numeric.add(i);
+  return ['', ...Array.from(numeric).sort((a, b) => a - b).map(String)].map((value) => ({
+    value,
+    label: value ? `${value} m²` : '—',
+  }));
+})();
 
 function setSection(form: AcquisitionFormData, section: keyof AcquisitionFormData, patch: Record<string, unknown>): AcquisitionFormData {
   const current = form[section];
@@ -116,7 +142,7 @@ export default function AgencyClientDetailScreen() {
     if (detail.client.buyerFilters) {
       setSellerRadarSearching(true);
       setSellerRadarCity(String(detail.client.buyerFilters.city || 'Warszawa'));
-      setSellerRadarMaxPrice(String(detail.client.buyerFilters.maxPrice || ''));
+      setSellerRadarMaxPrice(formatPriceInput(String(detail.client.buyerFilters.maxPrice || '')));
       setSellerRadarMinArea(String(detail.client.buyerFilters.minArea || ''));
     }
 
@@ -124,8 +150,20 @@ export default function AgencyClientDetailScreen() {
       const acq = await fetchAcquisition(token, clientId);
       if (acq.ok) {
         setRecord(acq.acquisition);
-        setForm(acq.acquisition?.formData || acq.defaultForm);
+        const nextForm = acq.acquisition?.formData || acq.defaultForm;
+        setForm(nextForm);
         setStep(acq.acquisition?.currentStep || 1);
+        try {
+          const storedRooms = JSON.parse(String((nextForm.property as Record<string, unknown>)?.roomsJson || '[]'));
+          if (Array.isArray(storedRooms)) setRooms(storedRooms);
+        } catch {
+          /* ignore */
+        }
+        const storedPlans = String((nextForm.property as Record<string, unknown>)?.planImages || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (storedPlans.length) setPlanImages(storedPlans);
       }
     }
   }, [token, clientId]);
@@ -165,6 +203,18 @@ export default function AgencyClientDetailScreen() {
   }, [clientId, record?.signedAt]);
 
   useEffect(() => {
+    if (!form) return;
+    setForm((current) =>
+      current
+        ? setSection(current, 'property', {
+            roomsJson: JSON.stringify(rooms),
+            planImages: planImages.join(','),
+          })
+        : current,
+    );
+  }, [rooms, planImages]);
+
+  useEffect(() => {
     if (!clientId || !form) return;
     const t = setTimeout(() => {
       void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, step }));
@@ -173,11 +223,11 @@ export default function AgencyClientDetailScreen() {
   }, [clientId, form, step]);
 
   const signed = record?.status === 'SIGNED';
-  const expectedPrice = Number(String(form?.strategy?.expectedPrice || '').replace(/\s/g, '').replace(',', '.')) || 0;
-  const commissionValue = Number(String(form?.cooperation?.commissionValue || '').replace(',', '.')) || 2.5;
+  const expectedPrice = parseGroupedNumber(form?.strategy?.expectedPrice);
+  const commissionValue = parseGroupedNumber(form?.cooperation?.commissionValue) || 2.5;
 
   // Recommended price computation
-  const areaNum = Number(String(form?.property?.area || '50').replace(',', '.')) || 50;
+  const areaNum = parseGroupedNumber(form?.property?.area) || 50;
   const calculatedRecommendedPrice = Math.round(areaNum * 14500);
 
   const persist = async (nextStep = step) => {
@@ -274,9 +324,10 @@ export default function AgencyClientDetailScreen() {
     );
   };
 
-  const stepper = (section: keyof AcquisitionFormData, key: string, label: string, stepValue = 1) => {
+  const stepper = (section: keyof AcquisitionFormData, key: string, label: string, stepValue = 1, money = false) => {
     const value = String((form?.[section] as Record<string, unknown>)?.[key] || '');
-    const numeric = Number(String(value).replace(/\s/g, '').replace(',', '.')) || 0;
+    const numeric = parseGroupedNumber(value);
+    const display = money ? (value ? formatPriceInput(String(numeric || value)) : '') : value;
     return (
       <View style={{ marginBottom: 12 }}>
         <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>{label}</Text>
@@ -285,7 +336,11 @@ export default function AgencyClientDetailScreen() {
             disabled={signed}
             onPress={() =>
               setForm((current) =>
-                current ? setSection(current, section, { [key]: String(Math.max(0, numeric - stepValue)) }) : current
+                current
+                  ? setSection(current, section, {
+                      [key]: money ? formatPriceInput(String(Math.max(0, numeric - stepValue))) : String(Math.max(0, numeric - stepValue)),
+                    })
+                  : current
               )
             }
             style={[styles.stepBtn, { borderColor: colors.border }]}
@@ -293,10 +348,14 @@ export default function AgencyClientDetailScreen() {
             <Ionicons name="remove" size={18} color={colors.text} />
           </Pressable>
           <TextInput
-            value={value}
+            value={display}
             editable={!signed}
             keyboardType="numeric"
-            onChangeText={(text) => setForm((current) => (current ? setSection(current, section, { [key]: text }) : current))}
+            onChangeText={(text) =>
+              setForm((current) =>
+                current ? setSection(current, section, { [key]: money ? formatPriceInput(text) : text }) : current
+              )
+            }
             style={[
               styles.input,
               { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border, textAlign: 'center' },
@@ -304,7 +363,15 @@ export default function AgencyClientDetailScreen() {
           />
           <Pressable
             disabled={signed}
-            onPress={() => setForm((current) => (current ? setSection(current, section, { [key]: String(numeric + stepValue) }) : current))}
+            onPress={() =>
+              setForm((current) =>
+                current
+                  ? setSection(current, section, {
+                      [key]: money ? formatPriceInput(String(numeric + stepValue)) : String(numeric + stepValue),
+                    })
+                  : current
+              )
+            }
             style={[styles.stepBtn, { borderColor: colors.border }]}
           >
             <Ionicons name="add" size={18} color={colors.text} />
@@ -470,7 +537,12 @@ export default function AgencyClientDetailScreen() {
                   {step === 2 ? (
                     <>
                       {field('ownership', 'owners', 'WŁAŚCICIELE / DANE Z KW')}
-                      {field('ownership', 'landRegisterNumber', 'NUMER KSIĘGI WIECZYSTEJ (KW)', { isKW: true })}
+                      <AcquisitionKwField
+                        value={String(form.ownership.landRegisterNumber || '')}
+                        onChange={(next) => setForm((c) => (c ? setSection(c, 'ownership', { landRegisterNumber: next }) : c))}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
 
                       {/* Mortgage Switch & Field */}
                       <View style={{ marginVertical: 12 }}>
@@ -509,7 +581,7 @@ export default function AgencyClientDetailScreen() {
                       </View>
 
                       {form.ownership.hasMortgage === 'true' || Boolean(form.ownership.mortgage)
-                        ? field('ownership', 'mortgage', 'WYSOKOŚĆ HIPOTEKI (zł)')
+                        ? stepper('ownership', 'mortgage', 'WYSOKOŚĆ HIPOTEKI (zł)', 10000, true)
                         : null}
 
                       <MultiSelectChipGroup
@@ -528,40 +600,54 @@ export default function AgencyClientDetailScreen() {
                     <>
                       {field('property', 'address', 'ADRES NIERUCHOMOŚCI', { address: true })}
 
-                      <WheelNumberPicker
-                        label="POKOJE"
-                        options={[
-                          { label: '1', value: '1' },
-                          { label: '2', value: '2' },
-                          { label: '3', value: '3' },
-                          { label: '4', value: '4' },
-                          { label: '5+', value: '5' },
-                        ]}
-                        value={String(form.property.rooms || '2')}
-                        onSelect={(v) => setForm((c) => (c ? setSection(c, 'property', { rooms: v }) : c))}
-                        isDark={isDark}
-                        disabled={signed}
-                      />
-
-                      <WheelNumberPicker
-                        label="PIĘTRO"
-                        options={[
-                          { label: 'Parter', value: '0' },
-                          { label: '1', value: '1' },
-                          { label: '2', value: '2' },
-                          { label: '3', value: '3' },
-                          { label: '4', value: '4' },
-                          { label: '5', value: '5' },
-                          { label: '6+', value: '6' },
-                        ]}
-                        value={String(form.property.floor || '1')}
-                        onSelect={(v) => setForm((c) => (c ? setSection(c, 'property', { floor: v }) : c))}
-                        isDark={isDark}
-                        disabled={signed}
-                      />
-
-                      {stepper('property', 'area', 'POWIERZCHNIA m²')}
-                      {stepper('property', 'yearBuilt', 'ROK BUDOWY')}
+                      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                        <AddOfferWheelPickerColumn
+                          title="Pokoje"
+                          value={String(form.property.rooms || '')}
+                          options={ROOM_OPTIONS}
+                          onChange={(v) => setForm((c) => (c ? setSection(c, 'property', { rooms: v }) : c))}
+                          disabled={signed}
+                          theme={{ text: colors.text, subtitle: colors.secondary }}
+                          cardBg={colors.input}
+                          cardBorder={colors.border}
+                        />
+                        <AddOfferWheelPickerColumn
+                          title="Piętro"
+                          value={String(form.property.floor || '')}
+                          options={FLOOR_OPTIONS}
+                          onChange={(v) => setForm((c) => (c ? setSection(c, 'property', { floor: v }) : c))}
+                          disabled={signed}
+                          theme={{ text: colors.text, subtitle: colors.secondary }}
+                          cardBg={colors.input}
+                          cardBorder={colors.border}
+                        />
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                        <AddOfferWheelPickerColumn
+                          title="Powierzchnia"
+                          value={String(form.property.area || '')}
+                          options={
+                            AREA_OPTIONS.some((o) => o.value === String(form.property.area || ''))
+                              ? AREA_OPTIONS
+                              : [...AREA_OPTIONS, { value: String(form.property.area || ''), label: `${form.property.area} m²` }]
+                          }
+                          onChange={(v) => setForm((c) => (c ? setSection(c, 'property', { area: v }) : c))}
+                          disabled={signed}
+                          theme={{ text: colors.text, subtitle: colors.secondary }}
+                          cardBg={colors.input}
+                          cardBorder={colors.border}
+                        />
+                        <AddOfferWheelPickerColumn
+                          title="Rok budowy"
+                          value={String(form.property.yearBuilt || '')}
+                          options={YEAR_OPTIONS}
+                          onChange={(v) => setForm((c) => (c ? setSection(c, 'property', { yearBuilt: v }) : c))}
+                          disabled={signed}
+                          theme={{ text: colors.text, subtitle: colors.secondary }}
+                          cardBg={colors.input}
+                          cardBorder={colors.border}
+                        />
+                      </View>
 
                       {/* Interactive Room Scanner & Floor Plan Attachment */}
                       <AcquisitionRoomScanner
@@ -594,8 +680,8 @@ export default function AgencyClientDetailScreen() {
                               setForm((c) =>
                                 c
                                   ? setSection(c, 'strategy', {
-                                      expectedPrice: String(calculatedRecommendedPrice),
-                                      recommendedPrice: String(calculatedRecommendedPrice),
+                                      expectedPrice: formatPriceInput(String(calculatedRecommendedPrice)),
+                                      recommendedPrice: formatPriceInput(String(calculatedRecommendedPrice)),
                                     })
                                   : c
                               )
@@ -609,9 +695,9 @@ export default function AgencyClientDetailScreen() {
                         </View>
                       </View>
 
-                      {stepper('strategy', 'expectedPrice', 'CENA OCZEKIWANA (zł)', 5000)}
-                      {stepper('strategy', 'recommendedPrice', 'CENA REKOMENDOWANA (zł)', 5000)}
-                      {stepper('strategy', 'minimumPrice', 'DOLNA GRANICA AKCEPTACJI (zł)', 5000)}
+                      {stepper('strategy', 'expectedPrice', 'CENA OCZEKIWANA (zł)', 5000, true)}
+                      {stepper('strategy', 'recommendedPrice', 'CENA REKOMENDOWANA (zł)', 5000, true)}
+                      {stepper('strategy', 'minimumPrice', 'DOLNA GRANICA AKCEPTACJI (zł)', 5000, true)}
                     </>
                   ) : null}
 
@@ -774,7 +860,7 @@ export default function AgencyClientDetailScreen() {
                                 propertyType: 'FLAT',
                                 city: sellerRadarCity,
                                 selectedDistricts: [],
-                                maxPrice: Number(sellerRadarMaxPrice) || 0,
+                                maxPrice: parseGroupedNumber(sellerRadarMaxPrice) || 0,
                                 minArea: Number(sellerRadarMinArea) || 0,
                                 minYear: 1900,
                                 requireBalcony: false,
@@ -822,7 +908,7 @@ export default function AgencyClientDetailScreen() {
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
                       <TextInput
                         value={sellerRadarMaxPrice}
-                        onChangeText={setSellerRadarMaxPrice}
+                        onChangeText={(text) => setSellerRadarMaxPrice(formatPriceInput(text))}
                         keyboardType="numeric"
                         placeholder="Max cena (zł)"
                         placeholderTextColor={colors.secondary}
@@ -855,7 +941,7 @@ export default function AgencyClientDetailScreen() {
                             propertyType: 'FLAT',
                             city: sellerRadarCity,
                             selectedDistricts: [],
-                            maxPrice: Number(sellerRadarMaxPrice) || 0,
+                            maxPrice: parseGroupedNumber(sellerRadarMaxPrice) || 0,
                             minArea: Number(sellerRadarMinArea) || 0,
                             minYear: 1900,
                             requireBalcony: false,
