@@ -10,6 +10,9 @@ import {
 } from "@/lib/acquisitionWorkflow";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { resolveSellerPersonName } from "@/lib/sellerDisplay";
+import { createOfferFromAcquisitionRecord } from "@/lib/crm/acquisitionOffer";
+import { sendNotification } from "@/lib/core/notification.core";
+import { crmAgentPushData } from "@/lib/crm/agentPush";
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -360,10 +363,32 @@ export async function POST(req: Request, ctx: RouteCtx) {
         metadata: { acquisitionId: base.id, documentHash, signedAt: signedAt.toISOString(), emailSent },
       },
     });
+
+    let offerId: number | null = null;
+    let offerError: string | null = null;
+    const offerResult = await createOfferFromAcquisitionRecord({ agencyUserId, clientId });
+    if (offerResult.ok) {
+      offerId = offerResult.offerId;
+    } else {
+      offerError = offerResult.error;
+    }
+
+    await sendNotification({
+      userId: agencyUserId,
+      type: "CRM_EVENT",
+      title: offerId ? "Umowa podpisana — oferta utworzona" : "Umowa podpisana",
+      body: offerId
+        ? `${client.firstName} ${client.lastName} · oferta #${offerId}`
+        : `${client.firstName} ${client.lastName}. ${offerError || "Utwórz ofertę ręcznie z karty."}`,
+      data: crmAgentPushData(clientId, { notificationType: "crm_client_signed" }),
+    }).catch(() => {});
+
     const finalRecord = await prisma.agencyClientAcquisition.findUnique({ where: { id: base.id } });
     return NextResponse.json({
       success: true,
       emailSent,
+      offerId,
+      offerError,
       acquisition: shapeAcquisition(finalRecord, form),
     });
   }

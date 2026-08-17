@@ -18,20 +18,21 @@ import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
-import { createOffer } from '@/lib/services/offer.service';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 import { sendNotification } from '@/lib/core/notification.core';
 import {
   JOURNEY_ACTIVITY,
-  amenitiesSummary,
   buildJourneyStages,
   parseStartsAtInput,
+  prepItemLabels,
   resolveMeeting,
   resolvePresentation,
 } from '@/lib/crm/clientJourney';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
+import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
+import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -59,11 +60,15 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const meeting = resolveMeeting(client.activities);
   const presentation = resolvePresentation(client.activities);
   const messages = await listPortalChat(client.id, 'agent');
+  const acquisition = await prisma.agencyClientAcquisition.findUnique({
+    where: { clientId: client.id },
+    select: { status: true, currentStep: true, signedAt: true },
+  });
   const journey = buildJourneyStages({
     hasMeeting: Boolean(meeting),
     meetingConfirmed: meeting?.status === 'confirmed',
-    acquisitionStarted: false,
-    signed: false,
+    acquisitionStarted: Boolean(acquisition && acquisition.currentStep > 1),
+    signed: acquisition?.status === 'SIGNED' || Boolean(acquisition?.signedAt),
     hasOffer: Boolean(client.linkedOfferId),
     hasPresentation: Boolean(presentation),
     presentationConfirmed: presentation?.status === 'confirmed',
@@ -328,10 +333,32 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'send_business_card') {
     try {
+      const acts = await prisma.agencyClientActivity.findMany({
+        where: {
+          clientId,
+          kind: {
+            in: [
+              JOURNEY_ACTIVITY.MEETING,
+              JOURNEY_ACTIVITY.MEETING_CHANGE,
+              JOURNEY_ACTIVITY.MEETING_CONFIRMED,
+            ],
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      const slot = resolveMeeting(acts);
       const result = await sendAgencyClientBusinessCard({
         clientId,
         agencyUserId,
         customMessage: typeof body.message === 'string' ? body.message : undefined,
+        meeting: slot
+          ? {
+              startsAt: new Date(slot.startsAt),
+              location: slot.location,
+              notes: slot.notes,
+            }
+          : undefined,
+        prepLabels: slot ? prepItemLabels(slot.prepItems) : undefined,
       });
       return NextResponse.json({ success: true, ...result });
     } catch (error) {
@@ -350,63 +377,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'create_offer_from_acquisition') {
-    const client = await prisma.agencyClient.findFirst({
-      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
-      include: { acquisition: true },
-    });
-    if (!client) {
-      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    const result = await createOfferFromAcquisitionRecord({ agencyUserId, clientId });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
     }
-    if (client.type !== 'SELLER') {
-      return NextResponse.json({ error: 'Oferty z karty pozyskania można tworzyć tylko dla sprzedających.' }, { status: 400 });
-    }
-
-    const form = (client.acquisition?.formData || {}) as Record<string, any>;
-    const property = (form.property || {}) as Record<string, any>;
-    const strategy = (form.strategy || {}) as Record<string, any>;
-    const cooperation = (form.cooperation || {}) as Record<string, any>;
-
-    const city = String(property.city || client.sellerCity || 'Warszawa').trim();
-    const district = String(client.sellerDistrict || '').trim();
-    const address = String(property.address || '').trim();
-    const areaVal = Number(property.area) || client.sellerArea || 50;
-    const roomsVal = Number(property.rooms) || client.sellerRooms || 2;
-    const priceVal = Number(strategy.expectedPrice) || client.sellerPrice || 500000;
-
-    const titleStr = address
-      ? `Nieruchomość ${address}`
-      : `Mieszkanie ${areaVal} m² ${city}`;
-
-    const amenityLine = amenitiesSummary(property.amenities);
-    const extraBits = [
-      property.parking ? `Parking/garaż: ${property.parking}` : '',
-      property.storage ? `Komórka/piwnica: ${property.storage}` : '',
-      amenityLine ? `Przyległości: ${amenityLine}` : '',
-    ].filter(Boolean);
-
-    const createdOffer = await createOffer({
-      userId: agencyUserId,
-      title: titleStr,
-      transactionType: cooperation.agreementType === 'RENT' ? 'RENT' : 'SALE',
-      propertyType: 'FLAT',
-      price: priceVal,
-      priceCurrency: 'PLN',
-      city,
-      district: district || undefined,
-      street: address || undefined,
-      area: areaVal,
-      rooms: roomsVal,
-      descriptionText:
-        [property.advantages || client.sellerDescription || client.notes, extraBits.join('. ')].filter(Boolean).join('\n\n') ||
-        'Oferta utworzona z karty pozyskania CRM EstateOS.',
-      status: 'PUBLISHED',
-      managementStatus: 'AGENCY_MANAGED',
-    });
-
-    const offerId = Number(createdOffer.id);
-    await linkOfferToAgencyClient({ agencyUserId, clientId, offerId });
-
-    return NextResponse.json({ success: true, offerId });
+    return NextResponse.json({ success: true, offerId: result.offerId });
   }
 
   if (action === 'send_email_code') {
@@ -557,6 +532,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
       body: `${client.firstName} ${client.lastName} · ${startsAt.toLocaleString('pl-PL')}`,
       data: crmAgentPushData(clientId, { notificationType: 'crm_client_schedule' }),
     }).catch(() => {});
+    await emailClientSchedule({
+      clientId,
+      kind: isMeeting ? 'meeting' : 'presentation',
+      mode: isMeeting ? 'confirmed' : 'proposed',
+      startsAt,
+      location: location || null,
+      notes: notes || null,
+    });
     return NextResponse.json({ success: true });
   }
 
@@ -605,6 +588,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
           status: 'confirmed',
         },
       },
+    });
+    await emailClientSchedule({
+      clientId,
+      kind,
+      mode: 'confirmed',
+      startsAt: new Date(slot.startsAt),
+      location: slot.location,
+      notes: slot.notes,
     });
     return NextResponse.json({ success: true });
   }

@@ -218,24 +218,40 @@ export async function acquisitionAction(
   });
   const json = await parseJson(res);
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się wykonać akcji.') };
-  return { ok: true as const, acquisition: json.acquisition as AcquisitionRecord, emailSent: Boolean(json.emailSent) };
+  return {
+    ok: true as const,
+    acquisition: json.acquisition as AcquisitionRecord,
+    emailSent: Boolean(json.emailSent),
+    offerId: json.offerId != null ? Number(json.offerId) : null,
+    offerError: json.offerError ? String(json.offerError) : null,
+  };
 }
 
-export async function uploadAcquisitionPaper(token: string, clientId: number, file: { uri: string; name: string; mimeType: string }) {
+export async function uploadAcquisitionPaper(
+  token: string,
+  clientId: number,
+  file: { uri: string; name: string; mimeType: string },
+  purpose: 'paper' | 'plan' = 'paper',
+) {
   const payload = new FormData();
   payload.append('file', {
     uri: file.uri,
     name: file.name,
     type: file.mimeType,
   } as any);
+  payload.append('purpose', purpose);
   const res = await fetch(`${API_URL}/api/crm/clients/${clientId}/acquisition/paper`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: payload,
   });
   const json = await parseJson(res);
-  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się wgrać umowy.') };
-  return { ok: true as const, formData: json.formData as AcquisitionFormData };
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się wgrać pliku.') };
+  return {
+    ok: true as const,
+    formData: json.formData as AcquisitionFormData,
+    file: json.file as { url: string; name: string; mimeType: string } | undefined,
+  };
 }
 
 export async function suggestAddresses(token: string, query: string) {

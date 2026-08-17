@@ -313,6 +313,8 @@ export default function AgencyClientFormModal({
               notes: form.notes || null,
               listingUrl: listingUrl.trim() || null,
               prepItems,
+              lat: addressMeta.lat ?? null,
+              lng: addressMeta.lng ?? null,
               acquisitionMeeting,
                 ...(alsoSearching ? { buyerFilters: { ...buyerFilters, pushNotifications: false } } : {}),
               }

@@ -345,6 +345,37 @@ export default function AgencyClientDetailScreen() {
     });
   }, [rooms, planImages]);
 
+  const planUploadInFlight = useRef(false);
+  useEffect(() => {
+    if (!token || signed || planUploadInFlight.current) return;
+    const locals = planImages
+      .map((uri, index) => ({ uri, index }))
+      .filter(({ uri }) => uri && !uri.startsWith('http') && !uri.startsWith('/'));
+    if (!locals.length) return;
+    planUploadInFlight.current = true;
+    let cancelled = false;
+    void (async () => {
+      const next = [...planImages];
+      for (const item of locals) {
+        const res = await uploadAcquisitionPaper(
+          token,
+          clientId,
+          { uri: item.uri, name: `rzut-${Date.now()}-${item.index}.jpg`, mimeType: 'image/jpeg' },
+          'plan',
+        );
+        if (cancelled) return;
+        if (res.ok && res.file?.url) {
+          next[item.index] = res.file.url.startsWith('http') ? res.file.url : `https://estateos.pl${res.file.url}`;
+        }
+      }
+      if (!cancelled) setPlanImages(next);
+      planUploadInFlight.current = false;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [planImages, token, clientId, signed]);
+
   const signed = record?.status === 'SIGNED';
   signedRef.current = signed;
   const expectedPrice = parseGroupedNumber(form?.strategy?.expectedPrice);
@@ -431,8 +462,25 @@ export default function AgencyClientDetailScreen() {
       return;
     }
     savedSnapshotRef.current = acquisitionSnapshot(form, 6);
-    signedRef.current = true;
-    await AsyncStorage.removeItem(DRAFT_KEY);
+    if (name === 'sign') {
+      signedRef.current = true;
+      await AsyncStorage.removeItem(DRAFT_KEY);
+      if (res.offerId) {
+        Alert.alert('Podpisano', `Warunki zapisane. Utworzono ofertę #${res.offerId}.`);
+      } else if (res.offerError) {
+        Alert.alert(
+          'Podpisano',
+          `Warunki zapisane. Oferty nie utworzono automatycznie: ${res.offerError}. Możesz dodać ją przyciskiem na karcie.`,
+        );
+      }
+    } else if (name === 'send_preview') {
+      Alert.alert(
+        'Podgląd wysłany',
+        res.emailSent
+          ? 'Klient dostał e-mail z warunkami i linkiem do panelu.'
+          : 'Warunki zapisane. Jeśli klient ma e-mail, wyślij wizytówkę z panelu.',
+      );
+    }
     setRecord(res.acquisition);
     setStep(6);
   };
@@ -1120,6 +1168,24 @@ export default function AgencyClientDetailScreen() {
                         isDark={isDark}
                         disabled={signed}
                       />
+                      {field('ownership', 'ownershipBasis', 'PODSTAWA NABYCIA / AKT NOTARIALNY')}
+                      <MultiSelectChipGroup
+                        label="STAN CYWILNY / ZGODA MAŁŻONKA"
+                        options={['Kawaler / panna', 'Żonaty / zamężna', 'Wymagana zgoda małżonka', 'Rozdzielność majątkowa']}
+                        selected={((form.ownership.maritalStatus as string) || '').split(',').map((s) => s.trim())}
+                        onToggle={(opt) => toggleChipSelection('ownership', 'maritalStatus', opt)}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                      <MultiSelectChipGroup
+                        label="KTO KORZYSTA Z LOKALU"
+                        options={['Wolny', 'Zamieszkany przez właściciela', 'Najemca', 'Wymagane opróżnienie']}
+                        selected={((form.ownership.occupancy as string) || '').split(',').map((s) => s.trim())}
+                        onToggle={(opt) => toggleChipSelection('ownership', 'occupancy', opt)}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                      {field('ownership', 'legalNotes', 'UWAGI PRAWNE')}
                     </>
                   ) : null}
 
@@ -1263,6 +1329,33 @@ export default function AgencyClientDetailScreen() {
                       {stepper('strategy', 'expectedPrice', 'CENA OCZEKIWANA (zł)', 5000, true)}
                       {stepper('strategy', 'recommendedPrice', 'CENA REKOMENDOWANA (zł)', 5000, true)}
                       {stepper('strategy', 'minimumPrice', 'DOLNA GRANICA AKCEPTACJI (zł)', 5000, true)}
+                      {field('strategy', 'presentationRules', 'ZASADY PREZENTACJI I DOSTĘPNOŚĆ')}
+                      {(
+                        [
+                          ['photoConsent', 'Zgoda na sesję zdjęciową'],
+                          ['marketingConsent', 'Zgoda na marketing oferty'],
+                          ['portalConsent', 'Publikacja w portalach'],
+                          ['socialMediaConsent', 'Media społecznościowe'],
+                          ['keysHandover', 'Klucze przekazane agentowi'],
+                        ] as const
+                      ).map(([key, label]) => {
+                        const checked = Boolean(form.strategy[key]);
+                        return (
+                          <Pressable
+                            key={key}
+                            disabled={signed}
+                            onPress={() =>
+                              setForm((current) =>
+                                current ? setSection(current, 'strategy', { [key]: !checked }) : current,
+                              )
+                            }
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}
+                          >
+                            <Ionicons name={checked ? 'checkbox' : 'square-outline'} size={22} color={colors.accent} />
+                            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700', flex: 1 }}>{label}</Text>
+                          </Pressable>
+                        );
+                      })}
                     </>
                   ) : null}
 
@@ -1270,6 +1363,45 @@ export default function AgencyClientDetailScreen() {
                   {step === 5 ? (
                     <>
                       {stepper('cooperation', 'durationMonths', 'OKRES UMOWY (MIESIĄCE)')}
+                      <MultiSelectChipGroup
+                        label="RODZAJ UMOWY"
+                        options={['Na wyłączność', 'Otwarta']}
+                        selected={[form.cooperation.agreementType === 'OPEN' ? 'Otwarta' : 'Na wyłączność']}
+                        onToggle={(opt) =>
+                          setForm((current) =>
+                            current
+                              ? setSection(current, 'cooperation', {
+                                  agreementType: opt === 'Otwarta' ? 'OPEN' : 'EXCLUSIVE',
+                                })
+                              : current,
+                          )
+                        }
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                      {stepper('cooperation', 'noticeDays', 'WYPOWIEDZENIE (DNI)')}
+                      <Pressable
+                        disabled={signed}
+                        onPress={() =>
+                          setForm((current) =>
+                            current
+                              ? setSection(current, 'cooperation', {
+                                  commissionVatIncluded: !current.cooperation.commissionVatIncluded,
+                                })
+                              : current,
+                          )
+                        }
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}
+                      >
+                        <Ionicons
+                          name={form.cooperation.commissionVatIncluded ? 'checkbox' : 'square-outline'}
+                          size={22}
+                          color={colors.accent}
+                        />
+                        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700', flex: 1 }}>
+                          Prowizja zawiera VAT
+                        </Text>
+                      </Pressable>
                       <CommissionRateSlider
                         value={commissionValue}
                         onChange={(value) =>
@@ -1285,6 +1417,8 @@ export default function AgencyClientDetailScreen() {
                         offerPrice={expectedPrice}
                         isDark={isDark}
                       />
+                      {field('cooperation', 'agentObligations', 'OBOWIĄZKI AGENTA')}
+                      {field('cooperation', 'clientObligations', 'OBOWIĄZKI KLIENTA')}
                     </>
                   ) : null}
 
@@ -1297,6 +1431,15 @@ export default function AgencyClientDetailScreen() {
                         style={styles.primary}
                       >
                         <Text style={styles.primaryText}>{busy === 'prepare_terms' ? 'Przygotowuję…' : 'Przygotuj warunki'}</Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={signed || Boolean(busy) || !record?.agreementSnapshot}
+                        onPress={() => void runAction('send_preview')}
+                        style={[styles.secondary, { borderColor: colors.border, marginTop: 10, opacity: record?.agreementSnapshot ? 1 : 0.5 }]}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '800' }}>
+                          {busy === 'send_preview' ? 'Wysyłam…' : 'Wyślij podgląd do klienta'}
+                        </Text>
                       </Pressable>
 
                       <Pressable

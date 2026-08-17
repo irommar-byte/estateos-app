@@ -299,6 +299,8 @@ export default function AgencyClientCreateScreen() {
               sellerPrice: form.sellerPrice ? parseGroupedNumber(form.sellerPrice) : null,
               listingUrl: form.listingUrl.trim() || null,
               prepItems,
+              lat: address.lat,
+              lng: address.lng,
               acquisitionMeeting: startsAt
                 ? {
                     startsAt,

@@ -14,6 +14,8 @@ import { sendNotification } from '@/lib/core/notification.core';
 import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
 import { normalizePrepItemIds, prepItemLabels } from '@/lib/crm/clientJourney';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
+import { seedAcquisitionForm } from '@/lib/crm/acquisitionOffer';
 
 function normalizePhone(raw: unknown): string | null {
   const input = String(raw || '').trim();
@@ -93,24 +95,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Nieprawidłowy PESEL.' }, { status: 400 });
   }
 
-  let linkedUserId: number | null = null;
-  if (emailRaw) {
-    const existingUser = await prisma.user.findUnique({ where: { email: emailRaw }, select: { id: true } });
-    if (existingUser) {
-      linkedUserId = existingUser.id;
-    } else {
-      const createdUser = await prisma.user.create({
-        data: {
-          email: emailRaw,
-          phone: phoneRaw,
-          name: `${firstName} ${lastName}`.trim(),
-          role: 'USER',
-        },
-        select: { id: true },
-      });
-      linkedUserId = createdUser.id;
-    }
-  }
+  const linkedUserId = await ensureAgencyClientLinkedUser({
+    email: emailRaw,
+    phone: phoneRaw,
+    name: `${firstName} ${lastName}`.trim(),
+  });
 
   const client = await prisma.agencyClient.create({
     data: {
@@ -133,6 +122,14 @@ export async function POST(req: Request) {
             sellerPrice:
               body.sellerPrice != null && Number.isFinite(Number(body.sellerPrice))
                 ? Number(body.sellerPrice)
+                : null,
+            sellerArea:
+              body.sellerArea != null && Number.isFinite(Number(body.sellerArea))
+                ? Number(body.sellerArea)
+                : null,
+            sellerRooms:
+              body.sellerRooms != null && Number.isFinite(Number(body.sellerRooms))
+                ? Math.round(Number(body.sellerRooms))
                 : null,
             sellerDescription: (() => {
               const listingUrl = body.listingUrl ? String(body.listingUrl).trim() : '';
@@ -209,6 +206,32 @@ export async function POST(req: Request) {
         idempotencyKey: `acq-meet-${client.id}-${startsAt.toISOString()}`,
       }).catch(() => {});
     }
+  }
+
+  if (type === 'SELLER') {
+    const lat = Number(body.lat ?? meeting?.lat);
+    const lng = Number(body.lng ?? meeting?.lng);
+    await prisma.agencyClientAcquisition.create({
+      data: {
+        clientId: client.id,
+        agencyUserId,
+        status: 'PREPARATION',
+        currentStep: 1,
+        formData: seedAcquisitionForm({
+          client,
+          meeting: meetingPayload
+            ? {
+                startsAt: meetingPayload.startsAt.toISOString(),
+                location: meetingPayload.location,
+                notes: meetingPayload.notes,
+              }
+            : null,
+          lat: Number.isFinite(lat) ? lat : null,
+          lng: Number.isFinite(lng) ? lng : null,
+          prepItems,
+        }),
+      },
+    }).catch(() => {});
   }
 
   if (emailRaw) {

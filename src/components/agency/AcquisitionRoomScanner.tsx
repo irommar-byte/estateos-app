@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,9 +36,11 @@ export default function AcquisitionRoomScanner({
   const [length, setLength] = useState('');
   const [roomScanOpen, setRoomScanOpen] = useState(false);
   const roomScanAvailable = isRoomScanSupportedOnDevice();
+  const autoOpenedRef = useRef(false);
 
   useEffect(() => {
-    if (autoOpen && roomScanAvailable && !disabled) {
+    if (autoOpen && roomScanAvailable && !disabled && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
       setRoomScanOpen(true);
     }
   }, [autoOpen, roomScanAvailable, disabled]);
@@ -52,7 +54,7 @@ export default function AcquisitionRoomScanner({
     accent: '#34C759',
   };
 
-  const roomPresetNames = ['Salon', 'Sypialnia', 'Kuchnia', 'Łazienka', 'Przedpokój', 'Garderoba', 'Balkon / Taras', 'Inne'];
+  const roomPresetNames = ['Salon', 'Sypialnia', 'Kuchnia', 'Łazienka', 'Przedpokój', 'Garderoba', 'Balkon / Taras', 'Garaż', 'Komórka lokatorska', 'Inne'];
 
   const addRoom = () => {
     if (!newRoomName.trim()) return;

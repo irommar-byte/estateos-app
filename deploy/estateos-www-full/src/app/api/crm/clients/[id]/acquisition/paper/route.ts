@@ -50,15 +50,25 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: saved.error }, { status: saved.status });
   }
 
+  const purpose = String(formData.get("purpose") || "paper").trim().toLowerCase();
   const fallback = createDefaultAcquisitionForm(client);
   const current = normalizeAcquisitionForm(client.acquisition?.formData, fallback);
-  const nextForm: AcquisitionFormData = {
-    ...current,
-    paperContracts: [
-      ...(current.paperContracts || []),
-      { url: saved.url, name: saved.name, uploadedAt: new Date().toISOString() },
-    ],
-  };
+  const nextForm: AcquisitionFormData =
+    purpose === "plan"
+      ? {
+          ...current,
+          property: {
+            ...current.property,
+            planImages: [current.property.planImages, saved.url].filter(Boolean).join(","),
+          },
+        }
+      : {
+          ...current,
+          paperContracts: [
+            ...(current.paperContracts || []),
+            { url: saved.url, name: saved.name, uploadedAt: new Date().toISOString() },
+          ],
+        };
 
   const acquisition = client.acquisition
     ? await prisma.agencyClientAcquisition.update({
