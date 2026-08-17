@@ -72,6 +72,7 @@ export default function AgencyClientCreateScreen() {
   const [meetingModal, setMeetingModal] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importPreview, setImportPreview] = useState<string | null>(null);
+  const submittedRef = useRef(false);
 
   const colors = {
     bg: isDark ? '#000' : '#F2F2F7',
@@ -84,47 +85,64 @@ export default function AgencyClientCreateScreen() {
     accent: '#34C759',
   };
 
-  // Draft Autosave & Restore
+  // Draft Autosave & Restore — only prompt when leaving a half-filled form, never after submit.
   useEffect(() => {
     void (async () => {
+      if (submittedRef.current) return;
       try {
         const raw = await AsyncStorage.getItem(DRAFT_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && (parsed.form?.firstName || parsed.form?.lastName || parsed.form?.email || parsed.form?.phone)) {
-            Alert.alert(
-              'Niedokończony formularz',
-              'Czy chcesz kontynuować od momentu, w którym skończyłeś?',
-              [
-                {
-                  text: 'Zacznij od nowa',
-                  style: 'destructive',
-                  onPress: () => {
-                    void AsyncStorage.removeItem(DRAFT_KEY);
-                  },
-                },
-                {
-                  text: 'Kontynuuj',
-                  onPress: () => {
-                    if (parsed.form) setForm((current) => ({ ...current, ...parsed.form }));
-                    if (parsed.type) setType(parsed.type);
-                    if (parsed.alsoSearching !== undefined) setAlsoSearching(parsed.alsoSearching);
-                    if (parsed.address) setAddress(parsed.address);
-                  },
-                },
-              ]
-            );
-          }
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const hasContent = Boolean(
+          parsed?.form?.firstName ||
+            parsed?.form?.lastName ||
+            parsed?.form?.email ||
+            parsed?.form?.phone ||
+            parsed?.form?.meetingAt ||
+            parsed?.address?.address,
+        );
+        if (!hasContent) {
+          await AsyncStorage.removeItem(DRAFT_KEY);
+          return;
         }
-      } catch {}
+        Alert.alert(
+          'Niedokończony formularz',
+          'Czy chcesz kontynuować od momentu, w którym skończyłeś?',
+          [
+            {
+              text: 'Zacznij od nowa',
+              style: 'destructive',
+              onPress: () => {
+                void AsyncStorage.removeItem(DRAFT_KEY);
+              },
+            },
+            {
+              text: 'Kontynuuj',
+              onPress: () => {
+                if (parsed.form) setForm((current) => ({ ...current, ...parsed.form }));
+                if (parsed.type) setType(parsed.type);
+                if (parsed.alsoSearching !== undefined) setAlsoSearching(parsed.alsoSearching);
+                if (parsed.address) setAddress(parsed.address);
+              },
+            },
+          ],
+        );
+      } catch {
+        void AsyncStorage.removeItem(DRAFT_KEY);
+      }
     })();
   }, []);
 
-  // Save draft on state change
+  // Save draft on state change — skip after successful create so the dialog does not return.
   useEffect(() => {
+    if (submittedRef.current) return;
     const t = setTimeout(() => {
-      if (form.firstName || form.lastName || form.email || form.phone) {
+      if (submittedRef.current) return;
+      const hasContent = Boolean(form.firstName || form.lastName || form.email || form.phone || form.meetingAt || address.address);
+      if (hasContent) {
         void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, type, alsoSearching, address }));
+      } else {
+        void AsyncStorage.removeItem(DRAFT_KEY);
       }
     }, 400);
     return () => clearTimeout(t);
@@ -328,6 +346,7 @@ export default function AgencyClientCreateScreen() {
         return;
       }
 
+      submittedRef.current = true;
       await AsyncStorage.removeItem(DRAFT_KEY);
       const listingUrl = form.listingUrl.trim();
       if (listingUrl) {

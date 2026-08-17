@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -89,6 +89,10 @@ function setSection(form: AcquisitionFormData, section: keyof AcquisitionFormDat
   return form;
 }
 
+function acquisitionSnapshot(form: AcquisitionFormData | null, step: number) {
+  return JSON.stringify({ form, step });
+}
+
 export default function AgencyClientDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -132,6 +136,18 @@ export default function AgencyClientDetailScreen() {
 
   const [creatingOffer, setCreatingOffer] = useState(false);
 
+  const DRAFT_KEY = `@eos_acq_detail_draft_${clientId}`;
+  const savedSnapshotRef = useRef('');
+  const hydratedRef = useRef(false);
+  const draftPromptedRef = useRef(false);
+  const persistInFlightRef = useRef(false);
+  const queuedPersistRef = useRef(false);
+  const formRef = useRef<AcquisitionFormData | null>(null);
+  const stepRef = useRef(1);
+  const signedRef = useRef(false);
+  formRef.current = form;
+  stepRef.current = step;
+
   const handleCreateOfferFromAcquisition = async () => {
     if (!token || !client?.id) return;
     setCreatingOffer(true);
@@ -174,8 +190,10 @@ export default function AgencyClientDetailScreen() {
       if (acq.ok) {
         setRecord(acq.acquisition);
         const nextForm = acq.acquisition?.formData || acq.defaultForm;
+        const nextStep = acq.acquisition?.currentStep || 1;
         setForm(nextForm);
-        setStep(acq.acquisition?.currentStep || 1);
+        setStep(nextStep);
+        savedSnapshotRef.current = acquisitionSnapshot(nextForm, nextStep);
         try {
           const storedRooms = JSON.parse(String((nextForm.property as Record<string, unknown>)?.roomsJson || '[]'));
           if (Array.isArray(storedRooms)) setRooms(storedRooms);
@@ -187,85 +205,135 @@ export default function AgencyClientDetailScreen() {
           .map((s) => s.trim())
           .filter(Boolean);
         if (storedPlans.length) setPlanImages(storedPlans);
+
+        if (!draftPromptedRef.current && !acq.acquisition?.signedAt) {
+          draftPromptedRef.current = true;
+          try {
+            const raw = await AsyncStorage.getItem(DRAFT_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const draftSnap = acquisitionSnapshot(parsed?.form || null, Number(parsed?.step) || nextStep);
+              if (!parsed?.form || draftSnap === savedSnapshotRef.current) {
+                await AsyncStorage.removeItem(DRAFT_KEY);
+              } else {
+                Alert.alert(
+                  'Niezapisany szkic pozyskania',
+                  'Wykryto zmiany, które mogły nie zdążyć zapisać się na serwerze. Czy chcesz je przywrócić?',
+                  [
+                    {
+                      text: 'Odrzuć',
+                      style: 'destructive',
+                      onPress: () => void AsyncStorage.removeItem(DRAFT_KEY),
+                    },
+                    {
+                      text: 'Przywróć',
+                      onPress: () => {
+                        setForm(parsed.form);
+                        if (parsed.step) setStep(Number(parsed.step) || nextStep);
+                      },
+                    },
+                  ],
+                );
+              }
+            }
+          } catch {
+            /* ignore corrupt draft */
+          }
+        } else {
+          void AsyncStorage.removeItem(DRAFT_KEY);
+        }
+        hydratedRef.current = true;
       }
     }
   }, [token, clientId]);
 
   useEffect(() => {
+    hydratedRef.current = false;
+    draftPromptedRef.current = false;
+    savedSnapshotRef.current = '';
     void load();
   }, [load]);
 
-  // Autosave draft check
-  const DRAFT_KEY = `@eos_acq_detail_draft_${clientId}`;
   useEffect(() => {
-    if (!clientId) return;
-    void (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(DRAFT_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.form && !record?.signedAt) {
-            Alert.alert(
-              'Niezapisany szkic pozyskania',
-              'Wykryto niezapisane zmiany z poprzedniej sesji. Czy chcesz je przywrócić?',
-              [
-                { text: 'Odrzuć', style: 'destructive', onPress: () => void AsyncStorage.removeItem(DRAFT_KEY) },
-                {
-                  text: 'Przywróć',
-                  onPress: () => {
-                    if (parsed.form) setForm(parsed.form);
-                    if (parsed.step) setStep(parsed.step);
-                  },
-                },
-              ]
-            );
-          }
-        }
-      } catch {}
-    })();
-  }, [clientId, record?.signedAt]);
-
-  useEffect(() => {
-    if (!form) return;
-    setForm((current) =>
-      current
-        ? setSection(current, 'property', {
-            roomsJson: JSON.stringify(rooms),
-            planImages: planImages.join(','),
-          })
-        : current,
-    );
+    setForm((current) => {
+      if (!current) return current;
+      const roomsJson = JSON.stringify(rooms);
+      const planJoined = planImages.join(',');
+      const property = (current.property || {}) as Record<string, unknown>;
+      if (String(property.roomsJson || '') === roomsJson && String(property.planImages || '') === planJoined) {
+        return current;
+      }
+      return setSection(current, 'property', { roomsJson, planImages: planJoined });
+    });
   }, [rooms, planImages]);
 
-  useEffect(() => {
-    if (!clientId || !form) return;
-    const t = setTimeout(() => {
-      void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, step }));
-    }, 500);
-    return () => clearTimeout(t);
-  }, [clientId, form, step]);
-
   const signed = record?.status === 'SIGNED';
+  signedRef.current = signed;
   const expectedPrice = parseGroupedNumber(form?.strategy?.expectedPrice);
   const commissionValue = parseGroupedNumber(form?.cooperation?.commissionValue) || 2.5;
+
+  const persist = async (nextStep = stepRef.current, opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent);
+    const currentForm = formRef.current;
+    if (!token || !currentForm || signedRef.current) return;
+    if (persistInFlightRef.current) {
+      queuedPersistRef.current = true;
+      return;
+    }
+    persistInFlightRef.current = true;
+    if (!silent) setBusy('save');
+    try {
+      const res = await saveAcquisition(token, clientId, {
+        formData: currentForm,
+        currentStep: nextStep,
+        status: 'IN_MEETING',
+      });
+      if (!res.ok) {
+        if (!silent) Alert.alert('Pozyskanie', res.message);
+        return;
+      }
+      savedSnapshotRef.current = acquisitionSnapshot(currentForm, nextStep);
+      await AsyncStorage.removeItem(DRAFT_KEY);
+      setRecord(res.acquisition);
+      if (nextStep !== stepRef.current) setStep(nextStep);
+    } finally {
+      persistInFlightRef.current = false;
+      if (!silent) setBusy('');
+      if (queuedPersistRef.current) {
+        queuedPersistRef.current = false;
+        void persist(stepRef.current, { silent: true });
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!hydratedRef.current || !form || signed) return;
+    const snap = acquisitionSnapshot(form, step);
+    if (snap === savedSnapshotRef.current) {
+      void AsyncStorage.removeItem(DRAFT_KEY);
+      return;
+    }
+    void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, step }));
+    const t = setTimeout(() => {
+      void persist(step, { silent: true });
+    }, 900);
+    return () => clearTimeout(t);
+  }, [form, step, signed]);
+
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', () => {
+      if (signed || !hydratedRef.current || !formRef.current) return;
+      const snap = acquisitionSnapshot(formRef.current, stepRef.current);
+      if (snap !== savedSnapshotRef.current) {
+        void persist(stepRef.current, { silent: true });
+      }
+    });
+    return sub;
+  }, [navigation, signed]);
 
   // Recommended price computation
   const areaNum = parseGroupedNumber(form?.property?.area) || 50;
   const calculatedRecommendedPrice = Math.round(areaNum * 14500);
-
-  const persist = async (nextStep = step) => {
-    if (!token || !form || signed) return;
-    setBusy('save');
-    const res = await saveAcquisition(token, clientId, { formData: form, currentStep: nextStep, status: 'IN_MEETING' });
-    setBusy('');
-    if (!res.ok) {
-      Alert.alert('Pozyskanie', res.message);
-      return;
-    }
-    await AsyncStorage.removeItem(DRAFT_KEY);
-    setRecord(res.acquisition);
-    setStep(nextStep);
-  };
 
   const runAction = async (name: 'prepare_terms' | 'send_preview' | 'sign') => {
     if (!token || !form) return;
@@ -284,6 +352,9 @@ export default function AgencyClientDetailScreen() {
       Alert.alert('Pozyskanie', res.message);
       return;
     }
+    savedSnapshotRef.current = acquisitionSnapshot(form, 6);
+    signedRef.current = true;
+    await AsyncStorage.removeItem(DRAFT_KEY);
     setRecord(res.acquisition);
     setStep(6);
   };
