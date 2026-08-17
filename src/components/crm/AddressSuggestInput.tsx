@@ -37,7 +37,7 @@ export default function AddressSuggestInput({
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<Suggestion[]>([]);
   const seq = useRef(0);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLLabelElement>(null);
 
   useEffect(() => {
     const onDoc = (event: MouseEvent) => {
