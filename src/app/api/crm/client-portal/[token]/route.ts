@@ -44,7 +44,33 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const client = await prisma.agencyClient.findFirst({
     where: { portalToken: token, status: 'ACTIVE' },
     include: {
-      agencyUser: { select: { name: true, companyName: true, phone: true, email: true } },
+      agencyUser: {
+        select: {
+          id: true,
+          name: true,
+          companyName: true,
+          phone: true,
+          email: true,
+          image: true,
+          agencyMembership: {
+            select: {
+              agentTitle: true,
+              profilePhotoUrl: true,
+              company: {
+                select: {
+                  name: true,
+                  slug: true,
+                  logoUrl: true,
+                  officePhone: true,
+                  officeEmail: true,
+                  website: true,
+                  address: true,
+                },
+              },
+            },
+          },
+        },
+      },
       buyerPreference: true,
       matches: {
         where: { notifiedAt: { not: null } },
@@ -122,8 +148,20 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   }
 
   const agent = client.agencyUser;
-  const agencyName = agent.companyName?.trim() || 'EstateOS';
-  const agentName = resolveSellerPersonName(agent) || agent.name || agencyName;
+  const member = agent.agencyMembership;
+  const company = member?.company;
+
+  const agentName = resolveSellerPersonName(agent) || agent.name || 'Dedykowany Agent';
+  const agentPhoto = member?.profilePhotoUrl || agent.image || null;
+  const agentTitle = member?.agentTitle ? String(member.agentTitle) : 'Dedykowany Doradca d/s Nieruchomości';
+  const agencyName = company?.name || agent.companyName || 'EstateOS Biuro Nieruchomości';
+  const agencyLogo = company?.logoUrl || null;
+  const agencySlug = company?.slug ? `/firma/${company.slug}` : null;
+  const agencyWebsite = company?.website || null;
+  const agencyPhone = company?.officePhone || agent.phone || null;
+  const agencyEmail = company?.officeEmail || agent.email || null;
+  const agencyAddress = company?.address || null;
+
   const searchCriteria = client.buyerPreference ? shapeSearchCriteria(client.buyerPreference) : null;
   const canChat = Boolean(client.linkedUserId);
 
@@ -136,6 +174,14 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agentName,
       agentPhone: agent.phone,
       agentEmail: agent.email,
+      agentPhoto,
+      agentTitle,
+      agencyLogo,
+      agencySlug,
+      agencyWebsite,
+      agencyPhone,
+      agencyEmail,
+      agencyAddress,
       searchCriteria,
       canChat,
       matches: client.buyerPreference

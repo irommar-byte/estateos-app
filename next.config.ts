@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "framer-motion",
+      "date-fns",
+      "@dnd-kit/core",
+      "@dnd-kit/sortable",
+      "recharts",
+    ],
+  },
   images: {
     remotePatterns: [{ protocol: "https", hostname: "**" }],
   },

@@ -1166,6 +1166,13 @@ export default function CrmClientsWorkspace() {
                       <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelEmpty}</p>
                     )}
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void clientAction("create_offer_from_acquisition")}
+                        className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-black hover:bg-emerald-400"
+                      >
+                        ⚡ Utwórz ofertę z karty pozyskania
+                      </button>
                       <Link
                         href={`/dodaj-oferte?agencyClientId=${detail.id}`}
                         className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-text)] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-bg)]"

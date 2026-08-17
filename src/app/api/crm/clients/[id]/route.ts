@@ -18,6 +18,7 @@ import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
+import { createOffer } from '@/lib/services/offer.service';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 
@@ -317,6 +318,57 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
     const result = await linkOfferToAgencyClient({ agencyUserId, clientId, offerId });
     return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'create_offer_from_acquisition') {
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      include: { acquisition: true },
+    });
+    if (!client) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+    if (client.type !== 'SELLER') {
+      return NextResponse.json({ error: 'Oferty z karty pozyskania można tworzyć tylko dla sprzedających.' }, { status: 400 });
+    }
+
+    const form = (client.acquisition?.formData || {}) as Record<string, any>;
+    const property = (form.property || {}) as Record<string, any>;
+    const strategy = (form.strategy || {}) as Record<string, any>;
+    const cooperation = (form.cooperation || {}) as Record<string, any>;
+
+    const city = String(property.city || client.sellerCity || 'Warszawa').trim();
+    const district = String(client.sellerDistrict || '').trim();
+    const address = String(property.address || '').trim();
+    const areaVal = Number(property.area) || client.sellerArea || 50;
+    const roomsVal = Number(property.rooms) || client.sellerRooms || 2;
+    const priceVal = Number(strategy.expectedPrice) || client.sellerPrice || 500000;
+
+    const titleStr = address
+      ? `Nieruchomość ${address}`
+      : `Mieszkanie ${areaVal} m² ${city}`;
+
+    const createdOffer = await createOffer({
+      userId: agencyUserId,
+      title: titleStr,
+      transactionType: cooperation.agreementType === 'RENT' ? 'RENT' : 'SALE',
+      propertyType: 'FLAT',
+      price: priceVal,
+      priceCurrency: 'PLN',
+      city,
+      district: district || undefined,
+      street: address || undefined,
+      area: areaVal,
+      rooms: roomsVal,
+      descriptionText: property.advantages || client.sellerDescription || client.notes || 'Oferta utworzona z karty pozyskania CRM EstateOS.',
+      status: 'PUBLISHED',
+      managementStatus: 'AGENCY_MANAGED',
+    });
+
+    const offerId = Number(createdOffer.id);
+    await linkOfferToAgencyClient({ agencyUserId, clientId, offerId });
+
+    return NextResponse.json({ success: true, offerId });
   }
 
   if (action === 'send_email_code') {

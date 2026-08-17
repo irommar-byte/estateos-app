@@ -48,6 +48,12 @@ export async function GET(req: Request) {
       buyerPreference: true,
       matches: { orderBy: { score: 'desc' }, take: 1, select: { score: true } },
       _count: { select: { matches: true } },
+      activities: {
+        where: { kind: 'ACQUISITION_MEETING' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { metadata: true },
+      },
     },
   });
 

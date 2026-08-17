@@ -23,6 +23,8 @@ export type AgencyClientListItem = {
   linkedUserId: number | null;
   linkedUserEmail: string | null;
   linkedUserLastLoginAt: string | null;
+  upcomingMeetingStartsAt?: string | null;
+  upcomingMeetingLocation?: string | null;
 };
 
 export function buyerPrefToRadarRecord(pref: AgencyClientBuyerPreference | null): Record<string, unknown> {
@@ -112,9 +114,15 @@ export function shapeClientListItem(
     _count?: { matches: number };
     matches?: { score: number }[];
     linkedUser?: { id: number; email: string; lastLoginAt: Date | null } | null;
+    activities?: Array<{ metadata: unknown }>;
   },
 ): AgencyClientListItem {
   const top = client.matches?.[0]?.score ?? null;
+  const meetingAct = client.activities?.[0];
+  const meetingMeta = (meetingAct?.metadata || {}) as Record<string, unknown>;
+  const upcomingMeetingStartsAt = typeof meetingMeta.startsAt === 'string' ? meetingMeta.startsAt : null;
+  const upcomingMeetingLocation = typeof meetingMeta.location === 'string' ? meetingMeta.location : null;
+
   return {
     id: client.id,
     type: client.type,
@@ -136,6 +144,8 @@ export function shapeClientListItem(
     linkedUserId: client.linkedUser?.id ?? client.linkedUserId ?? null,
     linkedUserEmail: client.linkedUser?.email ?? null,
     linkedUserLastLoginAt: client.linkedUser?.lastLoginAt?.toISOString() ?? null,
+    upcomingMeetingStartsAt,
+    upcomingMeetingLocation,
   };
 }
 
