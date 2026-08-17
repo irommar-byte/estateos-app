@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
+import { resolveMeeting, resolvePresentation } from '@/lib/crm/clientJourney';
 
 export type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
 export { splitCountdown, eventCountdownState } from '@/lib/crm/upcomingScheduleShared';
@@ -181,36 +182,56 @@ export async function fetchUpcomingScheduleEvents(userId: number): Promise<Upcom
   const acquisitionRaw = await prisma.agencyClientActivity.findMany({
     where: {
       agencyUserId: userId,
-      kind: 'ACQUISITION_MEETING',
+      kind: {
+        in: [
+          'ACQUISITION_MEETING',
+          'MEETING_CHANGE_PROPOSED',
+          'MEETING_CONFIRMED',
+          'PRESENTATION_PROPOSED',
+          'PRESENTATION_CHANGE_PROPOSED',
+          'PRESENTATION_CONFIRMED',
+        ],
+      },
     },
     include: {
       client: { select: { id: true, firstName: true, lastName: true } },
     },
-    take: 40,
+    take: 250,
   });
 
-  const acquisitionEvents: UpcomingScheduleEvent[] = acquisitionRaw
-    .map((row) => {
-      const meta = (row.metadata || {}) as Record<string, unknown>;
-      const startsAt = typeof meta.startsAt === 'string' ? meta.startsAt : null;
-      if (!startsAt) return null;
-      const t = new Date(startsAt).getTime();
-      if (Number.isNaN(t) || t < graceStart.getTime() || t > horizon.getTime()) return null;
-      const name = `${row.client.firstName} ${row.client.lastName}`.trim();
-      const location = typeof meta.location === 'string' ? meta.location : '';
-      return {
-        id: `acq-${row.id}`,
-        kind: 'acquisition' as const,
-        title: 'Spotkanie pozyskania',
-        subtitle: name,
-        location,
-        startsAt,
-        endsAt: new Date(t + 60 * 60 * 1000).toISOString(),
-        status: 'confirmed' as const,
-        href: `/moje-konto/crm?tab=klienci&clientId=${row.client.id}`,
-      };
-    })
-    .filter(Boolean) as UpcomingScheduleEvent[];
+  const grouped = new Map<number, typeof acquisitionRaw>();
+  for (const row of acquisitionRaw) {
+    const list = grouped.get(row.client.id) || [];
+    list.push(row);
+    grouped.set(row.client.id, list);
+  }
+
+  const acquisitionEvents: UpcomingScheduleEvent[] = [...grouped.values()].flatMap((rows) => {
+    const seed = rows[0];
+    const name = `${seed.client.firstName} ${seed.client.lastName}`.trim();
+    const slots = [
+      { kind: 'acquisition' as const, title: 'Spotkanie pozyskania', slot: resolveMeeting(rows) },
+      { kind: 'presentation' as const, title: 'Prezentacja nieruchomości', slot: resolvePresentation(rows) },
+    ];
+    return slots
+      .map(({ kind, title, slot }) => {
+        if (!slot) return null;
+        const t = new Date(slot.startsAt).getTime();
+        if (Number.isNaN(t) || t < graceStart.getTime() || t > horizon.getTime()) return null;
+        return {
+          id: `${kind}-${seed.client.id}-${slot.startsAt}`,
+          kind,
+          title,
+          subtitle: name,
+          location: slot.location || '',
+          startsAt: slot.startsAt,
+          endsAt: new Date(t + 60 * 60 * 1000).toISOString(),
+          status: slot.status,
+          href: `/moje-konto/crm?tab=klienci&clientId=${seed.client.id}`,
+        };
+      })
+      .filter(Boolean) as UpcomingScheduleEvent[];
+  });
 
   const merged = [...presentationEvents, ...openHouseHostEvents, ...openHouseGuestEvents, ...acquisitionEvents].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()

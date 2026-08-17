@@ -12,7 +12,7 @@ export type PlanningAppointment = {
   message?: string | null;
   type?: string | null;
   clientId?: number | null;
-  source?: 'appointment' | 'acquisition' | null;
+  source?: 'appointment' | 'acquisition' | 'presentation' | null;
   offer?: {
     id?: number;
     title?: string | null;
@@ -83,6 +83,7 @@ export function dayIndicators(apps: PlanningAppointment[], myUserId: number) {
 
 export function acquisitionActivityToAppointment(row: {
   id: number;
+  kind?: string | null;
   title: string | null;
   body: string | null;
   metadata: unknown;
@@ -94,18 +95,21 @@ export function acquisitionActivityToAppointment(row: {
   if (!startsAt || Number.isNaN(new Date(startsAt).getTime())) return null;
   const name = row.client ? `${row.client.firstName} ${row.client.lastName}`.trim() : 'Klient';
   const location = typeof meta.location === 'string' ? meta.location : '';
+  const kind = String(row.kind || '');
+  const isPresentation = kind.startsWith('PRESENTATION');
+  const pending = kind.includes('CHANGE_PROPOSED') || (kind === 'PRESENTATION_PROPOSED' && meta.status !== 'confirmed');
   return {
     id: -Number(row.id),
     dealId: 0,
     proposedById: row.agencyUserId,
     proposedDate: startsAt,
-    status: 'ACCEPTED',
-    type: 'ACQUISITION',
-    source: 'acquisition',
+    status: pending ? 'PENDING' : 'ACCEPTED',
+    type: isPresentation ? 'PRESENTATION' : 'ACQUISITION',
+    source: isPresentation ? 'presentation' : 'acquisition',
     clientId: row.client?.id ?? null,
-    message: row.body,
+    message: typeof meta.reason === 'string' && meta.reason ? meta.reason : row.body,
     offer: {
-      title: row.title || `Pozyskanie · ${name}`,
+      title: row.title || `${isPresentation ? 'Prezentacja' : 'Pozyskanie'} · ${name}`,
       street: location || String(row.body || ''),
       city: '',
     },

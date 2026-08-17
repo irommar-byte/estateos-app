@@ -17,8 +17,13 @@ import {
   BriefcaseBusiness,
   ShieldCheck,
   Zap,
+  Paperclip,
+  Plus,
+  X,
 } from "lucide-react";
 import { ACQUISITION_DOCUMENTS, type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
+import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
+import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAttachmentShared";
 
 type SearchCriteria = {
   location: string;
@@ -38,6 +43,25 @@ type PortalMessage = {
   createdAt: string;
   fromAgent: boolean;
   fromMe: boolean;
+  attachments?: ContactAttachmentMeta[];
+};
+
+type ScheduleSlot = {
+  startsAt: string;
+  location: string | null;
+  notes: string | null;
+  status: "confirmed" | "pending";
+  proposedBy: "agent" | "client";
+  reason: string | null;
+  previousStartsAt: string | null;
+  prepLabels?: string[];
+};
+
+type JourneyStage = {
+  id: string;
+  label: string;
+  done: boolean;
+  current: boolean;
 };
 
 type PortalData = {
@@ -57,6 +81,9 @@ type PortalData = {
   agencyAddress?: string | null;
   searchCriteria: SearchCriteria;
   canChat: boolean;
+  meeting: (ScheduleSlot & { prepLabels?: string[] }) | null;
+  presentation: ScheduleSlot | null;
+  journey: JourneyStage[];
   matches: Array<{
     id: number;
     score: number;
@@ -117,6 +144,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [messages, setMessages] = useState<PortalMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [changeDraft, setChangeDraft] = useState({ startsAt: "", reason: "" });
+  const [presentationChange, setPresentationChange] = useState({ startsAt: "", reason: "" });
+  const [scheduleBusy, setScheduleBusy] = useState("");
   const [acquisitionBusy, setAcquisitionBusy] = useState("");
   const [acknowledgementName, setAcknowledgementName] = useState("");
 
@@ -145,7 +176,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   }, [token]);
 
   const loadMessages = useCallback(async () => {
-    if (!token || !portal?.canChat) return;
+    if (!token) return;
     try {
       const res = await fetch(`/api/crm/client-portal/${token}`, {
         method: "POST",
@@ -159,7 +190,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     } catch {
       /* ignore */
     }
-  }, [token, portal?.canChat]);
+  }, [token]);
 
   useEffect(() => {
     void load();
@@ -191,22 +222,51 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
   const sendChat = async () => {
     const content = chatDraft.trim();
-    if (!token || !content || chatBusy) return;
+    if (!token || chatBusy || (!content && !pendingFile)) return;
     setChatBusy(true);
     try {
+      let attachments: ContactAttachmentMeta[] = [];
+      if (pendingFile) {
+        const payload = new FormData();
+        payload.append("file", pendingFile);
+        const up = await fetch(`/api/crm/client-portal/${token}/attachments`, { method: "POST", body: payload });
+        const upJson = await up.json();
+        if (!up.ok) throw new Error(upJson.error || "Nie udało się wgrać załącznika.");
+        attachments = [upJson.attachment];
+      }
       const res = await fetch(`/api/crm/client-portal/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_message", content }),
+        body: JSON.stringify({ action: "send_message", content, attachments }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
       setChatDraft("");
+      setPendingFile(null);
       await loadMessages();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Błąd");
     } finally {
       setChatBusy(false);
+    }
+  };
+
+  const postSchedule = async (action: string, extra: Record<string, string>) => {
+    if (!token) return;
+    setScheduleBusy(action);
+    try {
+      const res = await fetch(`/api/crm/client-portal/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Nie udało się zapisać.");
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd");
+    } finally {
+      setScheduleBusy("");
     }
   };
 
@@ -386,6 +446,177 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           )}
         </div>
       </header>
+
+      {portal.journey?.length ? (
+        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)]">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Twoja ścieżka</p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {portal.journey.map((stage) => (
+              <div
+                key={stage.id}
+                className={`rounded-2xl border px-3 py-3 ${
+                  stage.done
+                    ? "border-emerald-500/30 bg-emerald-500/10"
+                    : stage.current
+                      ? "border-emerald-500/50 bg-[var(--eos-input)]/40"
+                      : "border-[var(--eos-border)] bg-[var(--eos-input)]/20"
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+                  {stage.done ? "Gotowe" : stage.current ? "Teraz" : "Dalej"}
+                </p>
+                <p className="mt-1 text-xs font-bold text-[var(--eos-text)]">{stage.label}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {portal.meeting ? (
+        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Umówione spotkanie</p>
+              <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">
+                {new Date(portal.meeting.startsAt).toLocaleString("pl-PL", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </h2>
+              {portal.meeting.location ? (
+                <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.meeting.location}</p>
+              ) : null}
+            </div>
+            <span
+              className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${
+                portal.meeting.status === "confirmed"
+                  ? "bg-emerald-500/15 text-emerald-600"
+                  : "bg-amber-500/15 text-amber-700"
+              }`}
+            >
+              {portal.meeting.status === "confirmed" ? "Potwierdzone" : "Oczekuje na agenta"}
+            </span>
+          </div>
+          {portal.meeting.prepLabels?.length ? (
+            <ul className="mt-4 space-y-1.5 text-sm text-[var(--eos-text)]">
+              {portal.meeting.prepLabels.map((label) => (
+                <li key={label} className="flex gap-2">
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                  {label}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {portal.meeting.status === "confirmed" ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={scheduleBusy === "confirm_meeting"}
+                onClick={() => void postSchedule("confirm_meeting", {})}
+                className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+              >
+                Potwierdzam termin
+              </button>
+            </div>
+          ) : null}
+          <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <label className="block">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+                Zaproponuj inny termin
+              </span>
+              <input
+                type="datetime-local"
+                value={changeDraft.startsAt}
+                onChange={(e) => setChangeDraft((d) => ({ ...d, startsAt: e.target.value }))}
+                className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={scheduleBusy === "propose_meeting_change"}
+              onClick={() =>
+                void postSchedule("propose_meeting_change", {
+                  startsAt: changeDraft.startsAt ? new Date(changeDraft.startsAt).toISOString() : "",
+                  reason: changeDraft.reason,
+                })
+              }
+              className="rounded-full border border-emerald-500/40 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-emerald-600 disabled:opacity-50"
+            >
+              Wyślij propozycję
+            </button>
+          </div>
+          <textarea
+            value={changeDraft.reason}
+            onChange={(e) => setChangeDraft((d) => ({ ...d, reason: e.target.value }))}
+            rows={2}
+            placeholder="Powód zmiany terminu lub godziny"
+            className="mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+          />
+        </section>
+      ) : null}
+
+      {portal.presentation ? (
+        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Prezentacja nieruchomości</p>
+          <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">
+            {new Date(portal.presentation.startsAt).toLocaleString("pl-PL", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </h2>
+          {portal.presentation.location ? (
+            <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.presentation.location}</p>
+          ) : null}
+          <p className="mt-2 text-xs font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+            {portal.presentation.status === "confirmed" ? "Potwierdzona" : "Czeka na Twoją decyzję"}
+          </p>
+          {portal.presentation.status === "pending" ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={scheduleBusy === "confirm_presentation"}
+                onClick={() => void postSchedule("confirm_presentation", {})}
+                className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+              >
+                Potwierdzam prezentację
+              </button>
+            </div>
+          ) : null}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <input
+              type="datetime-local"
+              value={presentationChange.startsAt}
+              onChange={(e) => setPresentationChange((d) => ({ ...d, startsAt: e.target.value }))}
+              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+            />
+            <input
+              value={presentationChange.reason}
+              onChange={(e) => setPresentationChange((d) => ({ ...d, reason: e.target.value }))}
+              placeholder="Powód zmiany"
+              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={scheduleBusy === "propose_presentation_change"}
+            onClick={() =>
+              void postSchedule("propose_presentation_change", {
+                startsAt: presentationChange.startsAt ? new Date(presentationChange.startsAt).toISOString() : "",
+                reason: presentationChange.reason,
+              })
+            }
+            className="mt-3 rounded-full border border-emerald-500/40 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-600 disabled:opacity-50"
+          >
+            Zaproponuj inny termin prezentacji
+          </button>
+        </section>
+      ) : null}
 
       {portal.type === "SELLER" && portal.listing ? (
         <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
@@ -758,62 +989,75 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           <MessageSquare className="size-5 text-emerald-500" />
           Wiadomości z agentem
         </h2>
-        {portal.canChat ? (
-          <>
-            <div className="mt-4 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-3">
-              {messages.length === 0 ? (
-                <p className="py-6 text-center text-sm text-[var(--eos-muted)]">
-                  Napisz do agenta — rozmowa trafi do jego Contact w EstateOS.
-                </p>
-              ) : (
-                messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`rounded-xl px-3 py-2 text-sm ${
-                      m.fromMe
-                        ? "ml-8 bg-emerald-500/15 text-[var(--eos-text)]"
-                        : "mr-8 bg-[var(--eos-card)] text-[var(--eos-text)]"
-                    }`}
-                  >
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
-                      {m.fromMe ? "Ty" : portal.agentName}
-                    </p>
-                    <p className="mt-1 whitespace-pre-wrap">{m.content}</p>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                value={chatDraft}
-                onChange={(e) => setChatDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void sendChat();
-                  }
-                }}
-                placeholder="Napisz wiadomość do agenta…"
-                className="flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
-              />
-              <button
-                type="button"
-                disabled={chatBusy || !chatDraft.trim()}
-                onClick={() => void sendChat()}
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+        <div className="mt-4 max-h-80 space-y-2 overflow-y-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-3">
+          {messages.length === 0 ? (
+            <p className="py-6 text-center text-sm text-[var(--eos-muted)]">
+              Napisz do agenta albo wyślij dokument — rozmowa i załączniki trafią do CRM.
+            </p>
+          ) : (
+            messages.map((m) => (
+              <div
+                key={m.id}
+                className={`rounded-xl px-3 py-2 text-sm ${
+                  m.fromMe
+                    ? "ml-8 bg-emerald-500/15 text-[var(--eos-text)]"
+                    : "mr-8 bg-[var(--eos-card)] text-[var(--eos-text)]"
+                }`}
               >
-                <Send className="size-3" />
-                Wyślij
-              </button>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                  {m.fromMe ? "Ty" : portal.agentName}
+                </p>
+                {m.content ? <p className="mt-1 whitespace-pre-wrap">{m.content}</p> : null}
+                {(m.attachments || []).map((att) => (
+                  <ContactAttachmentBubble key={att.url} attachment={att} isMe={m.fromMe} />
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+        {pendingFile ? (
+          <div className="mt-3 flex items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5">
+            <Paperclip className="size-4 shrink-0 text-emerald-500" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold">{pendingFile.name}</p>
+              <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
             </div>
-          </>
-        ) : (
-          <p className="mt-3 text-sm text-[var(--eos-muted)]">
-            Czat będzie dostępny, gdy agent powiąże Twoje konto EstateOS. Możesz też skontaktować się bezpośrednio:
-            {" "}
-            {portal.agentPhone || portal.agentEmail || "dane kontaktowe agenta."}
-          </p>
-        )}
+            <button type="button" onClick={() => setPendingFile(null)} className="rounded-full p-1.5 text-[var(--eos-muted)]">
+              <X className="size-4" />
+            </button>
+          </div>
+        ) : null}
+        <div className="mt-3 flex gap-2">
+          <label className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-emerald-600">
+            <Plus className="size-5" />
+            <input
+              type="file"
+              className="hidden"
+              onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          <input
+            value={chatDraft}
+            onChange={(e) => setChatDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void sendChat();
+              }
+            }}
+            placeholder="Napisz wiadomość do agenta…"
+            className="flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
+          />
+          <button
+            type="button"
+            disabled={chatBusy || (!chatDraft.trim() && !pendingFile)}
+            onClick={() => void sendChat()}
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+          >
+            <Send className="size-3" />
+            Wyślij
+          </button>
+        </div>
       </section>
 
       {portal.activities.length > 0 ? (

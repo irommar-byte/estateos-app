@@ -21,6 +21,16 @@ import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { createOffer } from '@/lib/services/offer.service';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
+import { sendNotification } from '@/lib/core/notification.core';
+import {
+  JOURNEY_ACTIVITY,
+  amenitiesSummary,
+  buildJourneyStages,
+  parseStartsAtInput,
+  resolveMeeting,
+  resolvePresentation,
+} from '@/lib/crm/clientJourney';
+import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -44,6 +54,19 @@ export async function GET(req: Request, ctx: RouteCtx) {
   if (!client) {
     return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
   }
+
+  const meeting = resolveMeeting(client.activities);
+  const presentation = resolvePresentation(client.activities);
+  const messages = await listPortalChat(client.id, 'agent');
+  const journey = buildJourneyStages({
+    hasMeeting: Boolean(meeting),
+    meetingConfirmed: meeting?.status === 'confirmed',
+    acquisitionStarted: false,
+    signed: false,
+    hasOffer: Boolean(client.linkedOfferId),
+    hasPresentation: Boolean(presentation),
+    presentationConfirmed: presentation?.status === 'confirmed',
+  });
 
   return NextResponse.json({
     success: true,
@@ -91,6 +114,10 @@ export async function GET(req: Request, ctx: RouteCtx) {
           imageUrl: resolveOfferPrimaryImage(m.offer),
         },
       })),
+      meeting,
+      presentation,
+      journey,
+      messages,
       activities: client.activities.map((a) => ({
         id: a.id,
         kind: a.kind,
@@ -98,6 +125,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         body: a.body,
         offerId: a.offerId,
         createdAt: a.createdAt.toISOString(),
+        metadata: a.metadata,
       })),
     },
   });
@@ -348,6 +376,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
       ? `Nieruchomość ${address}`
       : `Mieszkanie ${areaVal} m² ${city}`;
 
+    const amenityLine = amenitiesSummary(property.amenities);
+    const extraBits = [
+      property.parking ? `Parking/garaż: ${property.parking}` : '',
+      property.storage ? `Komórka/piwnica: ${property.storage}` : '',
+      amenityLine ? `Przyległości: ${amenityLine}` : '',
+    ].filter(Boolean);
+
     const createdOffer = await createOffer({
       userId: agencyUserId,
       title: titleStr,
@@ -360,7 +395,9 @@ export async function POST(req: Request, ctx: RouteCtx) {
       street: address || undefined,
       area: areaVal,
       rooms: roomsVal,
-      descriptionText: property.advantages || client.sellerDescription || client.notes || 'Oferta utworzona z karty pozyskania CRM EstateOS.',
+      descriptionText:
+        [property.advantages || client.sellerDescription || client.notes, extraBits.join('. ')].filter(Boolean).join('\n\n') ||
+        'Oferta utworzona z karty pozyskania CRM EstateOS.',
       status: 'PUBLISHED',
       managementStatus: 'AGENCY_MANAGED',
     });
@@ -447,6 +484,126 @@ export async function POST(req: Request, ctx: RouteCtx) {
     await prisma.agencyClient.update({
       where: { id: clientId },
       data: { phoneVerifiedAt: new Date(), smsVerifyCode: null, smsVerifyExpiresAt: null },
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'list_portal_messages') {
+    const messages = await listPortalChat(clientId, 'agent');
+    return NextResponse.json({ success: true, messages });
+  }
+
+  if (action === 'send_portal_message') {
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      select: { id: true, linkedUserId: true, firstName: true, lastName: true },
+    });
+    if (!client) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+    const result = await sendPortalChat({
+      clientId,
+      agencyUserId,
+      linkedUserId: client.linkedUserId,
+      from: 'agent',
+      content: String(body.content || ''),
+      attachments: Array.isArray(body.attachments) ? body.attachments : [],
+      clientName: `${client.firstName} ${client.lastName}`.trim(),
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ success: true, message: result.message });
+  }
+
+  if (action === 'propose_presentation' || action === 'propose_meeting') {
+    const startsAt = parseStartsAtInput(body.startsAt);
+    if (!startsAt) {
+      return NextResponse.json({ error: 'Wybierz termin i godzinę.' }, { status: 400 });
+    }
+    const isMeeting = action === 'propose_meeting';
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    if (!client) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+    const location = body.location ? String(body.location).trim() : '';
+    const notes = body.notes ? String(body.notes).trim() : '';
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId,
+        agencyUserId,
+        kind: isMeeting ? JOURNEY_ACTIVITY.MEETING : JOURNEY_ACTIVITY.PRESENTATION,
+        title: isMeeting
+          ? `Spotkanie · ${client.firstName} ${client.lastName}`
+          : `Prezentacja · ${client.firstName} ${client.lastName}`,
+        body: [startsAt.toLocaleString('pl-PL'), location, notes].filter(Boolean).join(' · '),
+        metadata: {
+          startsAt: startsAt.toISOString(),
+          location: location || null,
+          notes: notes || null,
+          proposedBy: 'agent',
+          status: isMeeting ? 'confirmed' : 'pending',
+        },
+      },
+    });
+    await sendNotification({
+      userId: agencyUserId,
+      type: 'CRM_EVENT',
+      title: isMeeting ? 'Termin spotkania' : 'Propozycja prezentacji',
+      body: `${client.firstName} ${client.lastName} · ${startsAt.toLocaleString('pl-PL')}`,
+      data: { clientId, href: `/moje-konto/crm?tab=klienci&clientId=${clientId}` },
+    }).catch(() => {});
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'accept_schedule_change') {
+    const kind = String(body.kind || '') === 'presentation' ? 'presentation' : 'meeting';
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      include: {
+        activities: {
+          where: {
+            kind: {
+              in: [
+                JOURNEY_ACTIVITY.MEETING,
+                JOURNEY_ACTIVITY.MEETING_CHANGE,
+                JOURNEY_ACTIVITY.MEETING_CONFIRMED,
+                JOURNEY_ACTIVITY.PRESENTATION,
+                JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
+                JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+              ],
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!client) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+    const slot = kind === 'presentation' ? resolvePresentation(client.activities) : resolveMeeting(client.activities);
+    if (!slot || slot.status !== 'pending') {
+      return NextResponse.json({ error: 'Brak oczekującej propozycji zmiany.' }, { status: 400 });
+    }
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId,
+        agencyUserId,
+        kind: kind === 'presentation' ? JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED : JOURNEY_ACTIVITY.MEETING_CONFIRMED,
+        title: kind === 'presentation' ? 'Zaakceptowano nowy termin prezentacji' : 'Zaakceptowano nowy termin spotkania',
+        body: new Date(slot.startsAt).toLocaleString('pl-PL'),
+        metadata: {
+          startsAt: slot.startsAt,
+          location: slot.location,
+          notes: slot.notes,
+          prepItems: slot.prepItems,
+          proposedBy: 'agent',
+          status: 'confirmed',
+        },
+      },
     });
     return NextResponse.json({ success: true });
   }

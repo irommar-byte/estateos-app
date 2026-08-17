@@ -4,9 +4,18 @@ import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { buyerPrefToWebRadarFilters } from '@/lib/agencyClientShape';
 import { formatRadarSummary } from '@/lib/radarCalibrationWeb';
-import { contactThreadPair } from '@/lib/contactThreadPair';
-import { sendContactThreadMessage } from '@/lib/contactSendMessage';
+import { sendNotification } from '@/lib/core/notification.core';
 import type { AcquisitionFormData } from '@/lib/acquisitionWorkflow';
+import {
+  CLIENT_PREP_ITEMS,
+  JOURNEY_ACTIVITY,
+  buildJourneyStages,
+  parseStartsAtInput,
+  prepItemLabels,
+  resolveMeeting,
+  resolvePresentation,
+} from '@/lib/crm/clientJourney';
+import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -29,14 +38,43 @@ function shapeSearchCriteria(pref: Parameters<typeof buyerPrefToWebRadarFilters>
   };
 }
 
-async function ensureAgencyClientThread(agencyUserId: number, linkedUserId: number) {
-  const pair = contactThreadPair(agencyUserId, linkedUserId);
-  return prisma.contactThread.upsert({
-    where: { userLowId_userHighId: pair },
-    update: {},
-    create: pair,
-    select: { id: true },
+async function loadJourneyActivities(clientId: number) {
+  return prisma.agencyClientActivity.findMany({
+    where: {
+      clientId,
+      kind: {
+        in: [
+          JOURNEY_ACTIVITY.MEETING,
+          JOURNEY_ACTIVITY.MEETING_CHANGE,
+          JOURNEY_ACTIVITY.MEETING_CONFIRMED,
+          JOURNEY_ACTIVITY.PRESENTATION,
+          JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
+          JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+        ],
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, kind: true, title: true, body: true, createdAt: true, metadata: true },
   });
+}
+
+async function notifyAgent(params: {
+  agencyUserId: number;
+  clientId: number;
+  title: string;
+  body: string;
+  type?: 'CRM_EVENT' | 'CHAT_MESSAGE';
+}) {
+  await sendNotification({
+    userId: params.agencyUserId,
+    type: params.type || 'CRM_EVENT',
+    title: params.title,
+    body: params.body,
+    data: {
+      clientId: params.clientId,
+      href: `/moje-konto/crm?tab=klienci&clientId=${params.clientId}`,
+    },
+  }).catch(() => {});
 }
 
 export async function GET(_req: Request, ctx: RouteCtx) {
@@ -133,11 +171,16 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'OFFER_SHARED',
               'ACQUISITION_MEETING',
               'ACQUISITION_SIGNED',
+              JOURNEY_ACTIVITY.MEETING_CHANGE,
+              JOURNEY_ACTIVITY.MEETING_CONFIRMED,
+              JOURNEY_ACTIVITY.PRESENTATION,
+              JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
+              JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
             ],
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 12,
+        take: 16,
         select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true },
       },
     },
@@ -163,7 +206,18 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const agencyAddress = company?.address || null;
 
   const searchCriteria = client.buyerPreference ? shapeSearchCriteria(client.buyerPreference) : null;
-  const canChat = Boolean(client.linkedUserId);
+  const scheduleActs = await loadJourneyActivities(client.id);
+  const meeting = resolveMeeting(scheduleActs);
+  const presentation = resolvePresentation(scheduleActs);
+  const stages = buildJourneyStages({
+    hasMeeting: Boolean(meeting),
+    meetingConfirmed: meeting?.status === 'confirmed',
+    acquisitionStarted: Boolean(client.acquisition && client.acquisition.currentStep > 1),
+    signed: client.acquisition?.status === 'SIGNED' || Boolean(client.acquisition?.signedAt),
+    hasOffer: Boolean(client.linkedOffer),
+    hasPresentation: Boolean(presentation),
+    presentationConfirmed: presentation?.status === 'confirmed',
+  });
 
   return NextResponse.json({
     success: true,
@@ -183,27 +237,36 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agencyEmail,
       agencyAddress,
       searchCriteria,
-      canChat,
+      canChat: true,
+      meeting: meeting
+        ? {
+            ...meeting,
+            prepLabels: prepItemLabels(meeting.prepItems),
+            prepCatalog: CLIENT_PREP_ITEMS,
+          }
+        : null,
+      presentation,
+      journey: stages,
       matches: client.buyerPreference
         ? client.matches.map((m) => ({
-              id: m.id,
-              score: m.score,
-              notifiedAt: m.notifiedAt?.toISOString() ?? null,
-              clientFeedback: m.clientFeedback,
-              clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
-              offer: {
-                id: m.offer.id,
-                title: m.offer.title,
-                price: m.offer.price,
-                priceCurrency: m.offer.priceCurrency,
-                city: m.offer.city,
-                district: m.offer.district,
-                area: m.offer.area,
-                rooms: m.offer.rooms,
-                imageUrl: resolveOfferPrimaryImage(m.offer),
-              },
-            }))
-          : [],
+            id: m.id,
+            score: m.score,
+            notifiedAt: m.notifiedAt?.toISOString() ?? null,
+            clientFeedback: m.clientFeedback,
+            clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
+            offer: {
+              id: m.offer.id,
+              title: m.offer.title,
+              price: m.offer.price,
+              priceCurrency: m.offer.priceCurrency,
+              city: m.offer.city,
+              district: m.offer.district,
+              area: m.offer.area,
+              rooms: m.offer.rooms,
+              imageUrl: resolveOfferPrimaryImage(m.offer),
+            },
+          }))
+        : [],
       listing: client.linkedOffer
         ? {
             id: client.linkedOffer.id,
@@ -272,6 +335,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
   }
 
+  const clientName = `${client.firstName} ${client.lastName}`.trim();
+
   if (action === 'update_acquisition_checklist') {
     if (client.type !== 'SELLER' || !client.acquisition || client.acquisition.status === 'SIGNED') {
       return NextResponse.json({ error: 'Proces pozyskania nie jest dostępny do edycji.' }, { status: 400 });
@@ -318,6 +383,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
         },
       }),
     ]);
+    await notifyAgent({
+      agencyUserId: client.agencyUserId,
+      clientId: client.id,
+      title: 'Klient potwierdził warunki',
+      body: `${acknowledgementName} zapoznał się z kartą pozyskania.`,
+    });
     return NextResponse.json({ success: true, acknowledgedAt: acknowledgedAt.toISOString() });
   }
 
@@ -356,69 +427,107 @@ export async function POST(req: Request, ctx: RouteCtx) {
         },
       }),
     ]);
-
+    await notifyAgent({
+      agencyUserId: client.agencyUserId,
+      clientId: client.id,
+      title: 'Uwagi klienta do oferty',
+      body: `${clientName}: ${feedback.slice(0, 140)}`,
+    });
     return NextResponse.json({ success: true });
   }
 
-  if (action === 'list_messages' || action === 'send_message') {
-    if (!client.linkedUserId) {
-      return NextResponse.json(
-        { error: 'Czat będzie dostępny po powiązaniu konta klienta z EstateOS.' },
-        { status: 400 },
-      );
+  if (action === 'confirm_meeting' || action === 'confirm_presentation') {
+    const isMeeting = action === 'confirm_meeting';
+    const activities = await loadJourneyActivities(client.id);
+    const slot = isMeeting ? resolveMeeting(activities) : resolvePresentation(activities);
+    if (!slot) {
+      return NextResponse.json({ error: 'Brak terminu do potwierdzenia.' }, { status: 400 });
     }
-
-    const thread = await ensureAgencyClientThread(client.agencyUserId, client.linkedUserId);
-
-    if (action === 'list_messages') {
-      const messages = await prisma.contactMessage.findMany({
-        where: { threadId: thread.id },
-        orderBy: { createdAt: 'asc' },
-        take: 100,
-        select: {
-          id: true,
-          senderId: true,
-          content: true,
-          createdAt: true,
-        },
-      });
-      return NextResponse.json({
-        success: true,
-        messages: messages.map((m) => ({
-          id: m.id,
-          content: m.content,
-          createdAt: m.createdAt.toISOString(),
-          fromAgent: m.senderId === client.agencyUserId,
-          fromMe: m.senderId === client.linkedUserId,
-        })),
-      });
-    }
-
-    const content = String(body.content || '').trim();
-    if (!content) {
-      return NextResponse.json({ error: 'Wpisz treść wiadomości.' }, { status: 400 });
-    }
-
-    const result = await sendContactThreadMessage({
-      threadId: thread.id,
-      userId: client.linkedUserId,
-      content,
-    });
-    if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
-    }
-
+    const startsAt = parseStartsAtInput(body.startsAt) || new Date(slot.startsAt);
     await prisma.agencyClientActivity.create({
       data: {
         clientId: client.id,
         agencyUserId: client.agencyUserId,
-        kind: 'CLIENT_MESSAGE',
-        title: 'Wiadomość od klienta',
-        body: content.slice(0, 280),
-        metadata: { threadId: thread.id, via: 'portal' },
+        kind: isMeeting ? JOURNEY_ACTIVITY.MEETING_CONFIRMED : JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+        title: isMeeting ? 'Klient potwierdził spotkanie' : 'Klient potwierdził prezentację',
+        body: startsAt.toLocaleString('pl-PL'),
+        metadata: {
+          startsAt: startsAt.toISOString(),
+          location: slot.location,
+          notes: slot.notes,
+          prepItems: slot.prepItems,
+          proposedBy: 'client',
+          status: 'confirmed',
+        },
       },
     });
+    await notifyAgent({
+      agencyUserId: client.agencyUserId,
+      clientId: client.id,
+      title: isMeeting ? 'Termin spotkania potwierdzony' : 'Prezentacja potwierdzona',
+      body: `${clientName} · ${startsAt.toLocaleString('pl-PL')}`,
+    });
+    return NextResponse.json({ success: true });
+  }
 
+  if (action === 'propose_meeting_change' || action === 'propose_presentation_change') {
+    const isMeeting = action === 'propose_meeting_change';
+    const startsAt = parseStartsAtInput(body.startsAt);
+    const reason = String(body.reason || '').trim();
+    if (!startsAt) {
+      return NextResponse.json({ error: 'Wybierz nowy termin i godzinę.' }, { status: 400 });
+    }
+    if (reason.length < 3) {
+      return NextResponse.json({ error: 'Dopisz powód zmiany terminu.' }, { status: 400 });
+    }
+    const activities = await loadJourneyActivities(client.id);
+    const slot = isMeeting ? resolveMeeting(activities) : resolvePresentation(activities);
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        kind: isMeeting ? JOURNEY_ACTIVITY.MEETING_CHANGE : JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
+        title: isMeeting ? 'Klient proponuje inny termin spotkania' : 'Klient proponuje inny termin prezentacji',
+        body: `${startsAt.toLocaleString('pl-PL')} · ${reason}`,
+        metadata: {
+          startsAt: startsAt.toISOString(),
+          location: body.location ? String(body.location).trim() : slot?.location || null,
+          notes: slot?.notes || null,
+          prepItems: slot?.prepItems || [],
+          proposedBy: 'client',
+          status: 'pending',
+          reason,
+          previousStartsAt: slot?.startsAt || null,
+        },
+      },
+    });
+    await notifyAgent({
+      agencyUserId: client.agencyUserId,
+      clientId: client.id,
+      title: isMeeting ? 'Propozycja zmiany spotkania' : 'Propozycja zmiany prezentacji',
+      body: `${clientName} proponuje ${startsAt.toLocaleString('pl-PL')}: ${reason}`,
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'list_messages') {
+    const messages = await listPortalChat(client.id, 'client');
+    return NextResponse.json({ success: true, messages });
+  }
+
+  if (action === 'send_message') {
+    const result = await sendPortalChat({
+      clientId: client.id,
+      agencyUserId: client.agencyUserId,
+      linkedUserId: client.linkedUserId,
+      from: 'client',
+      content: String(body.content || ''),
+      attachments: Array.isArray(body.attachments) ? body.attachments : [],
+      clientName,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
     return NextResponse.json({ success: true, message: result.message });
   }
 

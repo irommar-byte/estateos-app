@@ -36,6 +36,7 @@ export type AcquisitionFormData = {
     utilities: string;
     parking: string;
     storage: string;
+    amenities: string;
     furnishing: string;
     advantages: string;
     defects: string;
@@ -101,6 +102,7 @@ export const ACQUISITION_DOCUMENTS = [
   { id: "certificate", label: "Świadectwo charakterystyki energetycznej" },
   { id: "tax", label: "Dokumenty podatkowe istotne dla transakcji" },
   { id: "equipment", label: "Lista wyposażenia pozostającego w nieruchomości" },
+  { id: "parkingDocs", label: "Dokumenty garażu / miejsca postojowego / komórki lokatorskiej" },
 ] as const;
 
 export const ACQUISITION_STEPS = [
@@ -156,6 +158,7 @@ export function createDefaultAcquisitionForm(
       utilities: "",
       parking: "",
       storage: "",
+      amenities: "",
       furnishing: "",
       advantages: client?.sellerDescription || "",
       defects: "",
@@ -250,6 +253,9 @@ export function buildAcquisitionAgreementText(params: {
     line("Rodzaj", form.property.propertyType),
     line("Powierzchnia", form.property.area ? `${form.property.area} m²` : ""),
     line("Liczba pokoi", form.property.rooms),
+    line("Przyległości", form.property.amenities),
+    line("Garaż / parking", form.property.parking),
+    line("Komórka / piwnica", form.property.storage),
     line("Właściciel / właściciele", form.ownership.owners),
     line("Podstawa własności", form.ownership.ownershipBasis),
     line("Księga wieczysta", form.ownership.landRegisterNumber),

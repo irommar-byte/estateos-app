@@ -28,6 +28,7 @@ import AgencyClientCriteriaEditor, {
 } from "@/components/crm/AgencyClientCriteriaEditor";
 import AddressSuggestInput from "@/components/crm/AddressSuggestInput";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
+import { CLIENT_PREP_ITEMS } from "@/lib/crm/clientJourney";
 
 type LookupMatch = {
   id: number;
@@ -128,6 +129,7 @@ export default function AgencyClientFormModal({
   });
   const [alsoSearching, setAlsoSearching] = useState(false);
   const [listingUrl, setListingUrl] = useState("");
+  const [prepItems, setPrepItems] = useState<string[]>([]);
   const [addressMeta, setAddressMeta] = useState<{ city?: string; lat?: number; lng?: number }>({});
 
   const [form, setForm] = useState({
@@ -164,6 +166,7 @@ export default function AgencyClientFormModal({
     setMeeting({ enabled: true, date: "", time: "10:00", location: "", note: "" });
     setAlsoSearching(false);
     setListingUrl("");
+    setPrepItems([]);
     setAddressMeta({});
     setForm({
       firstName: "",
@@ -309,6 +312,7 @@ export default function AgencyClientFormModal({
                 : null,
               notes: form.notes || null,
               listingUrl: listingUrl.trim() || null,
+              prepItems,
               acquisitionMeeting,
                 ...(alsoSearching ? { buyerFilters: { ...buyerFilters, pushNotifications: false } } : {}),
               }
@@ -748,6 +752,34 @@ export default function AgencyClientFormModal({
                             Termin trafi do kalendarza CRM (Terminy). Kartę pozyskania wypełniasz już na miejscu — nie
                             tutaj.
                           </p>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                              Klient ma przygotować
+                            </p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {CLIENT_PREP_ITEMS.map((item) => {
+                                const checked = prepItems.includes(item.id);
+                                return (
+                                  <label
+                                    key={item.id}
+                                    className="flex items-start gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2 text-xs text-[var(--eos-text)]"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() =>
+                                        setPrepItems((current) =>
+                                          checked ? current.filter((id) => id !== item.id) : [...current, item.id],
+                                        )
+                                      }
+                                      className="mt-0.5 size-4 accent-emerald-500"
+                                    />
+                                    <span className="leading-snug">{item.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
                           <label className="block min-w-0">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                               Komentarz
