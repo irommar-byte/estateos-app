@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -19,6 +22,11 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import CommissionRateSlider from '../components/agency/CommissionRateSlider';
 import SignaturePad from '../components/agency/SignaturePad';
+import AcquisitionStepIndicator from '../components/agency/AcquisitionStepIndicator';
+import AcquisitionDatePickerModal from '../components/agency/AcquisitionDatePickerModal';
+import AcquisitionRoomScanner, { type RoomItem } from '../components/agency/AcquisitionRoomScanner';
+import MultiSelectChipGroup from '../components/agency/MultiSelectChipGroup';
+import WheelNumberPicker from '../components/agency/WheelNumberPicker';
 import {
   acquisitionAction,
   archiveAgencyClient,
@@ -34,6 +42,7 @@ import {
   type AcquisitionRecord,
   type AgencyClientDetail,
 } from '../services/agencyClientService';
+import { formatCurrencyPLN, formatPhoneNumber } from '../utils/crmFormatters';
 
 const STEPS = [
   { id: 1, title: 'Spotkanie' },
@@ -59,6 +68,7 @@ export default function AgencyClientDetailScreen() {
   const token = useAuthStore((s) => s.token);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const clientId = Number(route.params?.clientId);
+
   const [client, setClient] = useState<AgencyClientDetail | null>(null);
   const [form, setForm] = useState<AcquisitionFormData | null>(null);
   const [record, setRecord] = useState<AcquisitionRecord | null>(null);
@@ -70,6 +80,18 @@ export default function AgencyClientDetailScreen() {
   const [templateConfirmed, setTemplateConfirmed] = useState(false);
   const [addressHints, setAddressHints] = useState<Array<{ id: string; label: string }>>([]);
 
+  // Mobile UX Controls
+  const [isSigning, setIsSigning] = useState(false);
+  const [dateModalField, setDateModalField] = useState<string | null>(null); // 'startsAt' | 'targetTimeline'
+  const [rooms, setRooms] = useState<RoomItem[]>([]);
+  const [planImages, setPlanImages] = useState<string[]>([]);
+
+  // Seller Buyer Radar Controls
+  const [sellerRadarSearching, setSellerRadarSearching] = useState(false);
+  const [sellerRadarCity, setSellerRadarCity] = useState('Warszawa');
+  const [sellerRadarMaxPrice, setSellerRadarMaxPrice] = useState('');
+  const [sellerRadarMinArea, setSellerRadarMinArea] = useState('');
+
   const colors = {
     bg: isDark ? '#000' : '#F2F2F7',
     card: isDark ? '#1C1C1E' : '#fff',
@@ -77,6 +99,7 @@ export default function AgencyClientDetailScreen() {
     secondary: isDark ? '#8E8E93' : '#6C6C70',
     border: isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)',
     input: isDark ? '#2C2C2E' : '#F2F2F7',
+    accent: '#34C759',
   };
 
   const load = useCallback(async () => {
@@ -89,6 +112,14 @@ export default function AgencyClientDetailScreen() {
     setClient(detail.client);
     setSignerName(`${detail.client.firstName} ${detail.client.lastName}`.trim());
     setSignerEmail(detail.client.email || '');
+
+    if (detail.client.buyerFilters) {
+      setSellerRadarSearching(true);
+      setSellerRadarCity(String(detail.client.buyerFilters.city || 'Warszawa'));
+      setSellerRadarMaxPrice(String(detail.client.buyerFilters.maxPrice || ''));
+      setSellerRadarMinArea(String(detail.client.buyerFilters.minArea || ''));
+    }
+
     if (detail.client.type === 'SELLER') {
       const acq = await fetchAcquisition(token, clientId);
       if (acq.ok) {
@@ -103,9 +134,51 @@ export default function AgencyClientDetailScreen() {
     void load();
   }, [load]);
 
+  // Autosave draft check
+  const DRAFT_KEY = `@eos_acq_detail_draft_${clientId}`;
+  useEffect(() => {
+    if (!clientId) return;
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(DRAFT_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.form && !record?.signedAt) {
+            Alert.alert(
+              'Niezapisany szkic pozyskania',
+              'Wykryto niezapisane zmiany z poprzedniej sesji. Czy chcesz je przywrócić?',
+              [
+                { text: 'Odrzuć', style: 'destructive', onPress: () => void AsyncStorage.removeItem(DRAFT_KEY) },
+                {
+                  text: 'Przywróć',
+                  onPress: () => {
+                    if (parsed.form) setForm(parsed.form);
+                    if (parsed.step) setStep(parsed.step);
+                  },
+                },
+              ]
+            );
+          }
+        }
+      } catch {}
+    })();
+  }, [clientId, record?.signedAt]);
+
+  useEffect(() => {
+    if (!clientId || !form) return;
+    const t = setTimeout(() => {
+      void AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ form, step }));
+    }, 500);
+    return () => clearTimeout(t);
+  }, [clientId, form, step]);
+
   const signed = record?.status === 'SIGNED';
   const expectedPrice = Number(String(form?.strategy?.expectedPrice || '').replace(/\s/g, '').replace(',', '.')) || 0;
   const commissionValue = Number(String(form?.cooperation?.commissionValue || '').replace(',', '.')) || 2.5;
+
+  // Recommended price computation
+  const areaNum = Number(String(form?.property?.area || '50').replace(',', '.')) || 50;
+  const calculatedRecommendedPrice = Math.round(areaNum * 14500);
 
   const persist = async (nextStep = step) => {
     if (!token || !form || signed) return;
@@ -116,6 +189,7 @@ export default function AgencyClientDetailScreen() {
       Alert.alert('Pozyskanie', res.message);
       return;
     }
+    await AsyncStorage.removeItem(DRAFT_KEY);
     setRecord(res.acquisition);
     setStep(nextStep);
   };
@@ -141,23 +215,48 @@ export default function AgencyClientDetailScreen() {
     setStep(6);
   };
 
-  const field = (section: keyof AcquisitionFormData, key: string, label: string, extra?: { address?: boolean }) => {
+  const field = (
+    section: keyof AcquisitionFormData,
+    key: string,
+    label: string,
+    extra?: { address?: boolean; isDate?: boolean; isKW?: boolean }
+  ) => {
     const value = String((form?.[section] as Record<string, unknown>)?.[key] || '');
     return (
       <View style={{ marginBottom: 12 }}>
         <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>{label}</Text>
-        <TextInput
-          editable={!signed}
-          value={value}
-          onChangeText={async (text) => {
-            setForm((current) => (current ? setSection(current, section, { [key]: text }) : current));
-            if (extra?.address && token && text.length >= 3) {
-              setAddressHints(await suggestAddresses(token, text));
-            }
-          }}
-          style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
-        />
-        {extra?.address
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+          <TextInput
+            editable={!signed}
+            value={value}
+            onChangeText={async (text) => {
+              setForm((current) => (current ? setSection(current, section, { [key]: text }) : current));
+              if (extra?.address && token && text.length >= 3) {
+                setAddressHints(await suggestAddresses(token, text));
+              }
+            }}
+            style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+          />
+          {extra?.isDate && (
+            <Pressable
+              disabled={signed}
+              onPress={() => setDateModalField(key)}
+              style={[styles.iconBtn, { backgroundColor: colors.accent }]}
+            >
+              <Ionicons name="calendar-outline" size={20} color="#000" />
+            </Pressable>
+          )}
+          {extra?.isKW && (
+            <Pressable
+              onPress={() => Linking.openURL('https://przegladarka-ekw.ms.gov.pl/eukw_prz/KsiegiWieczyste/wyszukiwanieKW')}
+              style={[styles.iconBtn, { backgroundColor: '#007AFF' }]}
+            >
+              <Ionicons name="open-outline" size={18} color="#fff" />
+            </Pressable>
+          )}
+        </View>
+
+        {extra?.address && addressHints.length > 0
           ? addressHints.map((hint) => (
               <Pressable
                 key={hint.id}
@@ -165,9 +264,9 @@ export default function AgencyClientDetailScreen() {
                   setForm((current) => (current ? setSection(current, section, { [key]: hint.label }) : current));
                   setAddressHints([]);
                 }}
-                style={{ paddingVertical: 8 }}
+                style={{ paddingVertical: 8, paddingHorizontal: 4 }}
               >
-                <Text style={{ color: colors.secondary }}>{hint.label}</Text>
+                <Text style={{ color: colors.accent, fontWeight: '700' }}>📍 {hint.label}</Text>
               </Pressable>
             ))
           : null}
@@ -177,13 +276,18 @@ export default function AgencyClientDetailScreen() {
 
   const stepper = (section: keyof AcquisitionFormData, key: string, label: string, stepValue = 1) => {
     const value = String((form?.[section] as Record<string, unknown>)?.[key] || '');
-    const numeric = Number(String(value).replace(',', '.')) || 0;
+    const numeric = Number(String(value).replace(/\s/g, '').replace(',', '.')) || 0;
     return (
       <View style={{ marginBottom: 12 }}>
         <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>{label}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
           <Pressable
-            onPress={() => setForm((current) => (current ? setSection(current, section, { [key]: String(Math.max(0, numeric - stepValue)) }) : current))}
+            disabled={signed}
+            onPress={() =>
+              setForm((current) =>
+                current ? setSection(current, section, { [key]: String(Math.max(0, numeric - stepValue)) }) : current
+              )
+            }
             style={[styles.stepBtn, { borderColor: colors.border }]}
           >
             <Ionicons name="remove" size={18} color={colors.text} />
@@ -193,9 +297,13 @@ export default function AgencyClientDetailScreen() {
             editable={!signed}
             keyboardType="numeric"
             onChangeText={(text) => setForm((current) => (current ? setSection(current, section, { [key]: text }) : current))}
-            style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 0, textAlign: 'center' }]}
+            style={[
+              styles.input,
+              { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border, textAlign: 'center' },
+            ]}
           />
           <Pressable
+            disabled={signed}
             onPress={() => setForm((current) => (current ? setSection(current, section, { [key]: String(numeric + stepValue) }) : current))}
             style={[styles.stepBtn, { borderColor: colors.border }]}
           >
@@ -206,10 +314,40 @@ export default function AgencyClientDetailScreen() {
     );
   };
 
+  const toggleChipSelection = (section: keyof AcquisitionFormData, key: string, option: string) => {
+    if (!form || signed) return;
+    const currentVal = String((form[section] as Record<string, unknown>)?.[key] || '');
+    const items = currentVal
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    let nextItems: string[];
+    if (items.includes(option)) {
+      nextItems = items.filter((i) => i !== option);
+    } else {
+      nextItems = [...items, option];
+    }
+    setForm(setSection(form, section, { [key]: nextItems.join(', ') }));
+  };
+
   const matches = client?.matches || [];
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
+      {/* Date Picker Modal */}
+      <AcquisitionDatePickerModal
+        visible={Boolean(dateModalField)}
+        isDark={isDark}
+        onClose={() => setDateModalField(null)}
+        onSelect={(formattedDate) => {
+          if (dateModalField && form) {
+            setForm(setSection(form, 'meeting', { [dateModalField]: formattedDate }));
+          }
+        }}
+      />
+
+      {/* Top Navbar */}
       <View style={[styles.nav, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.navBtn}>
           <Ionicons name="chevron-back" size={28} color="#007AFF" />
@@ -240,217 +378,645 @@ export default function AgencyClientDetailScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40 }}>
-        {!client ? <ActivityIndicator color="#34C759" /> : (
-          <>
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={{ color: '#34C759', fontSize: 10, fontWeight: '800' }}>{client.type === 'SELLER' ? 'SPRZEDAJĄCY' : 'KUPUJĄCY'}</Text>
-              <Text style={{ color: colors.text, fontSize: 16, marginTop: 6 }}>{client.email || 'Brak e-mail'}</Text>
-              <Text style={{ color: colors.secondary, marginTop: 4 }}>{client.phone || 'Brak telefonu'}</Text>
-              {client.portalUrl ? (
-                <Pressable onPress={() => Linking.openURL(client.portalUrl!.startsWith('http') ? client.portalUrl! : `https://estateos.pl${client.portalUrl}`)}>
-                  <Text style={{ color: '#007AFF', marginTop: 8, fontWeight: '700' }}>Otwórz panel klienta</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {client.type === 'SELLER' && form ? (
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          scrollEnabled={!isSigning}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 240 }}
+        >
+          {!client ? (
+            <ActivityIndicator color="#34C759" style={{ marginTop: 40 }} />
+          ) : (
+            <>
+              {/* Client Info Banner */}
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Karta pozyskania</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 12 }}>
-                  {STEPS.map((item) => (
-                    <Pressable key={item.id} onPress={() => setStep(item.id)} style={[styles.stepChip, { backgroundColor: step === item.id ? '#34C759' : colors.input }]}>
-                      <Text style={{ fontWeight: '800', color: step === item.id ? '#000' : colors.text }}>{item.title}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-                {step === 1 ? (
-                  <>
-                    {field('meeting', 'startsAt', 'TERMIN')}
-                    {field('meeting', 'location', 'MIEJSCE', { address: true })}
-                    {field('meeting', 'clientGoal', 'CEL KLIENTA')}
-                    {field('meeting', 'targetTimeline', 'TERMIN SPRZEDAŻY')}
-                    {field('meeting', 'reasonForSale', 'MOTYWACJA')}
-                  </>
-                ) : null}
-                {step === 2 ? (
-                  <>
-                    {field('ownership', 'owners', 'WŁAŚCICIELE')}
-                    {field('ownership', 'landRegisterNumber', 'KSIĘGA WIECZYSTA')}
-                    {field('ownership', 'mortgage', 'HIPOTEKA')}
-                    {field('ownership', 'encumbrances', 'OBCIĄŻENIA')}
-                  </>
-                ) : null}
-                {step === 3 ? (
-                  <>
-                    {field('property', 'address', 'ADRES', { address: true })}
-                    {field('property', 'propertyType', 'RODZAJ')}
-                    {stepper('property', 'area', 'POWIERZCHNIA m²')}
-                    {stepper('property', 'rooms', 'POKOJE')}
-                    {stepper('property', 'floor', 'PIĘTRO')}
-                    {stepper('property', 'yearBuilt', 'ROK BUDOWY')}
-                  </>
-                ) : null}
-                {step === 4 ? (
-                  <>
-                    {stepper('strategy', 'expectedPrice', 'CENA OCZEKIWANA', 5000)}
-                    {stepper('strategy', 'recommendedPrice', 'CENA REKOMENDOWANA', 5000)}
-                    {stepper('strategy', 'minimumPrice', 'DOLNA GRANICA', 5000)}
-                  </>
-                ) : null}
-                {step === 5 ? (
-                  <>
-                    {stepper('cooperation', 'durationMonths', 'OKRES (MIESIĄCE)')}
-                    <CommissionRateSlider value={commissionValue} onChange={(value) => setForm((current) => (current ? setSection(current, 'cooperation', { commissionValue: String(value), commissionType: 'PERCENT' }) : current))} offerPrice={expectedPrice} isDark={isDark} />
-                  </>
-                ) : null}
-                {step === 6 ? (
-                  <>
-                    <Pressable disabled={signed || Boolean(busy)} onPress={() => void runAction('prepare_terms')} style={styles.primary}>
-                      <Text style={styles.primaryText}>{busy === 'prepare_terms' ? 'Przygotowuję…' : 'Przygotuj warunki'}</Text>
-                    </Pressable>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                    {client.type === 'SELLER' ? 'SPRZEDAJĄCY' : 'KUPUJĄCY'}
+                  </Text>
+                  {client.portalUrl ? (
                     <Pressable
-                      disabled={signed}
-                      onPress={async () => {
-                        const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, type: ['application/pdf', 'image/*'] });
-                        if (picked.canceled || !picked.assets?.[0] || !token) return;
-                        const asset = picked.assets[0];
-                        const res = await uploadAcquisitionPaper(token, clientId, {
-                          uri: asset.uri,
-                          name: asset.name || 'umowa.pdf',
-                          mimeType: asset.mimeType || 'application/pdf',
-                        });
-                        if (!res.ok) Alert.alert('Umowa', res.message);
-                        else if (res.formData) setForm(res.formData);
-                      }}
-                      style={[styles.secondary, { borderColor: colors.border }]}
+                      onPress={() =>
+                        Linking.openURL(
+                          client.portalUrl!.startsWith('http') ? client.portalUrl! : `https://estateos.pl${client.portalUrl}`
+                        )
+                      }
                     >
-                      <Text style={{ color: colors.text, fontWeight: '800' }}>Wgraj skan umowy</Text>
+                      <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 12 }}>Panel klienta ↗</Text>
                     </Pressable>
-                    {(form.paperContracts || []).map((file) => (
-                      <Pressable key={file.url} onPress={() => Linking.openURL(file.url.startsWith('http') ? file.url : `https://estateos.pl${file.url}`)}>
-                        <Text style={{ color: '#007AFF', marginTop: 8 }}>{file.name}</Text>
-                      </Pressable>
-                    ))}
-                    <Pressable onPress={() => setTemplateConfirmed((v) => !v)} style={{ flexDirection: 'row', gap: 8, marginVertical: 12 }}>
-                      <Ionicons name={templateConfirmed ? 'checkbox' : 'square-outline'} size={22} color="#34C759" />
-                      <Text style={{ color: colors.text, flex: 1 }}>Potwierdzam zatwierdzony wzór firmy</Text>
-                    </Pressable>
-                    <TextInput value={signerName} onChangeText={setSignerName} style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]} />
-                    <TextInput value={signerEmail} onChangeText={setSignerEmail} autoCapitalize="none" style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]} />
-                    <SignaturePad isDark={isDark} onChange={setSignatureData} disabled={signed} />
-                    <Pressable disabled={signed || !signatureData || !templateConfirmed} onPress={() => void runAction('sign')} style={[styles.primary, { opacity: signed || !signatureData || !templateConfirmed ? 0.5 : 1 }]}>
-                      <Text style={styles.primaryText}>{busy === 'sign' ? 'Podpisuję…' : 'Podpisz i wyślij kopię'}</Text>
-                    </Pressable>
-                  </>
-                ) : null}
-                {!signed && step < 6 ? (
-                  <Pressable onPress={() => void persist(step + 1)} style={styles.primary}>
-                    <Text style={styles.primaryText}>{busy === 'save' ? 'Zapisuję…' : 'Zapisz i dalej'}</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
-                  {client.type === 'SELLER' ? 'Radar zakupowy' : 'Dopasowania'}
+                  ) : null}
+                </View>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 4 }}>
+                  {client.firstName} {client.lastName}
                 </Text>
-                <Pressable
-                  onPress={async () => {
-                    if (!token) return;
-                    setBusy('matches');
-                    const res = await refreshClientMatches(token, clientId);
-                    setBusy('');
-                    if (!res.ok) Alert.alert('Radar', res.message);
-                    else void load();
-                  }}
-                >
-                  <Text style={{ color: '#34C759', fontWeight: '800' }}>{busy === 'matches' ? '…' : 'Odśwież'}</Text>
-                </Pressable>
+                <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}>
+                  {formatPhoneNumber(client.phone || '')} • {client.email || 'Brak e-maila'}
+                </Text>
               </View>
-              {client.type === 'SELLER' && !client.buyerFilters ? (
-                <Pressable
-                  onPress={async () => {
-                    if (!token) return;
-                    await patchAgencyClient(token, clientId, {
-                      alsoSearching: true,
-                      buyerFilters: {
-                        calibrationMode: 'CITY',
-                        transactionType: 'SELL',
-                        propertyType: 'FLAT',
-                        city: client.sellerCity || 'Warszawa',
-                        selectedDistricts: [],
-                        maxPrice: 0,
-                        minArea: 0,
-                        minYear: 1900,
-                        requireBalcony: false,
-                        requireGarden: false,
-                        requireElevator: false,
-                        requireParking: false,
-                        requireFurnished: false,
-                        requireTwoLevel: false,
-                        pushNotifications: false,
-                        matchThreshold: 70,
-                        lat: null,
-                        lng: null,
-                        radiusKm: null,
-                      },
-                    });
-                    void load();
-                  }}
-                  style={[styles.secondary, { borderColor: colors.border, marginTop: 12 }]}
-                >
-                  <Text style={{ color: colors.text, fontWeight: '800' }}>Włącz „klient też szuka”</Text>
-                </Pressable>
+
+              {/* Acquisition Card (For Sellers) */}
+              {client.type === 'SELLER' && form ? (
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>Karta pozyskania</Text>
+
+                  {/* Connected Circle Step Indicator */}
+                  <AcquisitionStepIndicator
+                    steps={STEPS}
+                    currentStep={step}
+                    onSelectStep={setStep}
+                    isDark={isDark}
+                  />
+
+                  {/* Step 1: Spotkanie */}
+                  {step === 1 ? (
+                    <>
+                      {field('meeting', 'startsAt', 'TERMIN SPOTKANIA', { isDate: true })}
+                      {field('meeting', 'location', 'MIEJSCE SPOTKANIA', { address: true })}
+
+                      <MultiSelectChipGroup
+                        label="CEL KLIENTA"
+                        options={['Sprzedaż nieruchomości', 'Szybka sprzedaż (gotówka)', 'Najem', 'Zamiana']}
+                        selected={((form.meeting.clientGoal as string) || '').split(',').map((s) => s.trim())}
+                        onToggle={(opt) => toggleChipSelection('meeting', 'clientGoal', opt)}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+
+                      {field('meeting', 'targetTimeline', 'TERMIN SPRZEDAŻY', { isDate: true })}
+
+                      <MultiSelectChipGroup
+                        label="MOTYWACJA I POWÓD SPRZEDAŻY"
+                        options={[
+                          'Chęć kupna nowego mieszkania',
+                          'Zmiana pracy / przeprowadzka',
+                          'Podział majątku / spadek',
+                          'Inwestycja',
+                          'Potrzeba gotówki',
+                        ]}
+                        selected={((form.meeting.reasonForSale as string) || '').split(',').map((s) => s.trim())}
+                        onToggle={(opt) => toggleChipSelection('meeting', 'reasonForSale', opt)}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                    </>
+                  ) : null}
+
+                  {/* Step 2: Stan prawny */}
+                  {step === 2 ? (
+                    <>
+                      {field('ownership', 'owners', 'WŁAŚCICIELE / DANE Z KW')}
+                      {field('ownership', 'landRegisterNumber', 'NUMER KSIĘGI WIECZYSTEJ (KW)', { isKW: true })}
+
+                      {/* Mortgage Switch & Field */}
+                      <View style={{ marginVertical: 12 }}>
+                        <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>HIPOTEKA</Text>
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+                          {['BRAK', 'TAK (OBCIĄŻONA)'].map((opt) => {
+                            const isYes = opt.startsWith('TAK');
+                            const active = isYes
+                              ? form.ownership.hasMortgage === 'true' || Boolean(form.ownership.mortgage)
+                              : form.ownership.hasMortgage === 'false' || !form.ownership.mortgage;
+
+                            return (
+                              <Pressable
+                                key={opt}
+                                disabled={signed}
+                                onPress={() =>
+                                  setForm((c) =>
+                                    c ? setSection(c, 'ownership', { hasMortgage: isYes ? 'true' : 'false' }) : c
+                                  )
+                                }
+                                style={[
+                                  styles.optBtn,
+                                  {
+                                    backgroundColor: active ? colors.accent : colors.input,
+                                    borderColor: active ? colors.accent : colors.border,
+                                  },
+                                ]}
+                              >
+                                <Text style={{ color: active ? '#000' : colors.text, fontWeight: '800', fontSize: 12 }}>
+                                  {opt}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+
+                      {form.ownership.hasMortgage === 'true' || Boolean(form.ownership.mortgage)
+                        ? field('ownership', 'mortgage', 'WYSOKOŚĆ HIPOTEKI (zł)')
+                        : null}
+
+                      <MultiSelectChipGroup
+                        label="OBCIĄŻENIA I PRAWA"
+                        options={['Pełna własność', 'Spółdzielcze własnościowe', 'Służebność osobista', 'Brak obciążeń']}
+                        selected={((form.ownership.encumbrances as string) || '').split(',').map((s) => s.trim())}
+                        onToggle={(opt) => toggleChipSelection('ownership', 'encumbrances', opt)}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                    </>
+                  ) : null}
+
+                  {/* Step 3: Nieruchomość */}
+                  {step === 3 ? (
+                    <>
+                      {field('property', 'address', 'ADRES NIERUCHOMOŚCI', { address: true })}
+
+                      <WheelNumberPicker
+                        label="POKOJE"
+                        options={[
+                          { label: '1', value: '1' },
+                          { label: '2', value: '2' },
+                          { label: '3', value: '3' },
+                          { label: '4', value: '4' },
+                          { label: '5+', value: '5' },
+                        ]}
+                        value={String(form.property.rooms || '2')}
+                        onSelect={(v) => setForm((c) => (c ? setSection(c, 'property', { rooms: v }) : c))}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+
+                      <WheelNumberPicker
+                        label="PIĘTRO"
+                        options={[
+                          { label: 'Parter', value: '0' },
+                          { label: '1', value: '1' },
+                          { label: '2', value: '2' },
+                          { label: '3', value: '3' },
+                          { label: '4', value: '4' },
+                          { label: '5', value: '5' },
+                          { label: '6+', value: '6' },
+                        ]}
+                        value={String(form.property.floor || '1')}
+                        onSelect={(v) => setForm((c) => (c ? setSection(c, 'property', { floor: v }) : c))}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+
+                      {stepper('property', 'area', 'POWIERZCHNIA m²')}
+                      {stepper('property', 'yearBuilt', 'ROK BUDOWY')}
+
+                      {/* Interactive Room Scanner & Floor Plan Attachment */}
+                      <AcquisitionRoomScanner
+                        rooms={rooms}
+                        planImages={planImages}
+                        onChangeRooms={setRooms}
+                        onChangePlanImages={setPlanImages}
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                    </>
+                  ) : null}
+
+                  {/* Step 4: Strategia */}
+                  {step === 4 ? (
+                    <>
+                      {/* Recommended price banner */}
+                      <View style={[styles.recomBox, { backgroundColor: 'rgba(52,199,89,0.12)', borderColor: colors.accent }]}>
+                        <Ionicons name="sparkles" size={20} color={colors.accent} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 12 }}>
+                            SUGEROWANA CENA RYNCKOWA ESTATEOS
+                          </Text>
+                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginTop: 2 }}>
+                            {formatCurrencyPLN(calculatedRecommendedPrice)} (~14 500 zł/m²)
+                          </Text>
+                          <Pressable
+                            disabled={signed}
+                            onPress={() =>
+                              setForm((c) =>
+                                c
+                                  ? setSection(c, 'strategy', {
+                                      expectedPrice: String(calculatedRecommendedPrice),
+                                      recommendedPrice: String(calculatedRecommendedPrice),
+                                    })
+                                  : c
+                              )
+                            }
+                            style={{ marginTop: 6 }}
+                          >
+                            <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 12 }}>
+                              ✓ Zastosuj cenę rekomendowaną
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+
+                      {stepper('strategy', 'expectedPrice', 'CENA OCZEKIWANA (zł)', 5000)}
+                      {stepper('strategy', 'recommendedPrice', 'CENA REKOMENDOWANA (zł)', 5000)}
+                      {stepper('strategy', 'minimumPrice', 'DOLNA GRANICA AKCEPTACJI (zł)', 5000)}
+                    </>
+                  ) : null}
+
+                  {/* Step 5: Współpraca */}
+                  {step === 5 ? (
+                    <>
+                      {stepper('cooperation', 'durationMonths', 'OKRES UMOWY (MIESIĄCE)')}
+                      <CommissionRateSlider
+                        value={commissionValue}
+                        onChange={(value) =>
+                          setForm((current) =>
+                            current
+                              ? setSection(current, 'cooperation', {
+                                  commissionValue: String(value),
+                                  commissionType: 'PERCENT',
+                                })
+                              : current
+                          )
+                        }
+                        offerPrice={expectedPrice}
+                        isDark={isDark}
+                      />
+                    </>
+                  ) : null}
+
+                  {/* Step 6: Podpis */}
+                  {step === 6 ? (
+                    <>
+                      <Pressable
+                        disabled={signed || Boolean(busy)}
+                        onPress={() => void runAction('prepare_terms')}
+                        style={styles.primary}
+                      >
+                        <Text style={styles.primaryText}>{busy === 'prepare_terms' ? 'Przygotowuję…' : 'Przygotuj warunki'}</Text>
+                      </Pressable>
+
+                      <Pressable
+                        disabled={signed}
+                        onPress={async () => {
+                          const picked = await DocumentPicker.getDocumentAsync({
+                            copyToCacheDirectory: true,
+                            type: ['application/pdf', 'image/*'],
+                          });
+                          if (picked.canceled || !picked.assets?.[0] || !token) return;
+                          const asset = picked.assets[0];
+                          const res = await uploadAcquisitionPaper(token, clientId, {
+                            uri: asset.uri,
+                            name: asset.name || 'umowa.pdf',
+                            mimeType: asset.mimeType || 'application/pdf',
+                          });
+                          if (!res.ok) Alert.alert('Umowa', res.message);
+                          else if (res.formData) setForm(res.formData);
+                        }}
+                        style={[styles.secondary, { borderColor: colors.border }]}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '800' }}>Wgraj podpisany skan umowy</Text>
+                      </Pressable>
+
+                      {(form.paperContracts || []).map((file) => (
+                        <Pressable
+                          key={file.url}
+                          onPress={() =>
+                            Linking.openURL(file.url.startsWith('http') ? file.url : `https://estateos.pl${file.url}`)
+                          }
+                        >
+                          <Text style={{ color: '#007AFF', marginTop: 8 }}>📄 {file.name}</Text>
+                        </Pressable>
+                      ))}
+
+                      <Pressable
+                        onPress={() => setTemplateConfirmed((v) => !v)}
+                        style={{ flexDirection: 'row', gap: 8, marginVertical: 12, alignItems: 'center' }}
+                      >
+                        <Ionicons name={templateConfirmed ? 'checkbox' : 'square-outline'} size={22} color={colors.accent} />
+                        <Text style={{ color: colors.text, flex: 1, fontSize: 13, fontWeight: '600' }}>
+                          Potwierdzam zgodność z oficjalnym wzorem umowy firmy
+                        </Text>
+                      </Pressable>
+
+                      <TextInput
+                        value={signerName}
+                        onChangeText={setSignerName}
+                        placeholder="Imię i nazwisko podpisującego"
+                        placeholderTextColor={colors.secondary}
+                        style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                      />
+                      <TextInput
+                        value={signerEmail}
+                        onChangeText={setSignerEmail}
+                        autoCapitalize="none"
+                        placeholder="Adres e-mail"
+                        placeholderTextColor={colors.secondary}
+                        style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                      />
+
+                      {/* Signature Pad with Scroll Lock */}
+                      <SignaturePad
+                        isDark={isDark}
+                        disabled={signed}
+                        onChange={setSignatureData}
+                        onBeginDrawing={() => setIsSigning(true)}
+                        onEndDrawing={() => setIsSigning(false)}
+                      />
+
+                      <Pressable
+                        disabled={signed || !signatureData || !templateConfirmed}
+                        onPress={() => void runAction('sign')}
+                        style={[
+                          styles.primary,
+                          { opacity: signed || !signatureData || !templateConfirmed ? 0.5 : 1 },
+                        ]}
+                      >
+                        <Text style={styles.primaryText}>{busy === 'sign' ? 'Podpisuję…' : 'Podpisz i wyślij kopię'}</Text>
+                      </Pressable>
+                    </>
+                  ) : null}
+
+                  {!signed && step < 6 ? (
+                    <Pressable onPress={() => void persist(step + 1)} style={styles.primary}>
+                      <Text style={styles.primaryText}>{busy === 'save' ? 'Zapisuję…' : 'Zapisz i przejdź dalej'}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : null}
-              {matches.map((match) => (
-                <View key={match.id} style={[styles.match, { borderColor: colors.border }]}>
-                  <Image source={{ uri: match.offer.imageUrl }} style={styles.thumb} contentFit="cover" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: '700' }}>{match.offer.title}</Text>
-                    <Text style={{ color: colors.secondary, marginTop: 4 }}>
-                      {match.offer.city} · {Math.round(match.offer.price).toLocaleString('pl-PL')} zł · {match.score}%
-                    </Text>
-                    {match.clientFeedback ? <Text style={{ color: '#FF9F0A', marginTop: 6 }}>{match.clientFeedback}</Text> : null}
-                  </View>
+
+              {/* Dedicated Seller Buyer Radar Section */}
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>
+                    Radar poszukiwań dla sprzedającego
+                  </Text>
                   <Pressable
                     onPress={async () => {
                       if (!token) return;
-                      const res = await proposeClientOffers(token, clientId, [match.offer.id]);
-                      if (!res.ok) Alert.alert('Propozycja', res.message);
-                      else {
-                        Alert.alert('Propozycja', 'Oferta została zaproponowana klientowi.');
+                      setBusy('matches');
+                      const res = await refreshClientMatches(token, clientId);
+                      setBusy('');
+                      if (!res.ok) Alert.alert('Radar', res.message);
+                      else void load();
+                    }}
+                  >
+                    <Text style={{ color: colors.accent, fontWeight: '800' }}>
+                      {busy === 'matches' ? '…' : 'Odśwież'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {client.type === 'SELLER' && (
+                  <Pressable
+                    onPress={async () => {
+                      const nextVal = !sellerRadarSearching;
+                      setSellerRadarSearching(nextVal);
+                      if (token) {
+                        await patchAgencyClient(token, clientId, {
+                          alsoSearching: nextVal,
+                          buyerFilters: nextVal
+                            ? {
+                                calibrationMode: 'CITY',
+                                transactionType: 'SELL',
+                                propertyType: 'FLAT',
+                                city: sellerRadarCity,
+                                selectedDistricts: [],
+                                maxPrice: Number(sellerRadarMaxPrice) || 0,
+                                minArea: Number(sellerRadarMinArea) || 0,
+                                minYear: 1900,
+                                requireBalcony: false,
+                                requireGarden: false,
+                                requireElevator: false,
+                                requireParking: false,
+                                requireFurnished: false,
+                                requireTwoLevel: false,
+                                pushNotifications: false,
+                                matchThreshold: 70,
+                                lat: null,
+                                lng: null,
+                                radiusKm: null,
+                              }
+                            : null,
+                        });
                         void load();
                       }
                     }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 12 }}
                   >
-                    <Text style={{ color: '#34C759', fontWeight: '800', fontSize: 11 }}>{match.notifiedAt ? 'Wysłano' : 'Zaproponuj'}</Text>
+                    <Ionicons
+                      name={sellerRadarSearching ? 'checkbox' : 'square-outline'}
+                      size={22}
+                      color={colors.accent}
+                    />
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13, flex: 1 }}>
+                      Klient sprzedający równolegle szuka nowej nieruchomości
+                    </Text>
                   </Pressable>
+                )}
+
+                {sellerRadarSearching && (
+                  <View style={{ marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: colors.input }}>
+                    <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800', marginBottom: 6 }}>
+                      PARAMETRY POSZUKIWAŃ
+                    </Text>
+                    <TextInput
+                      value={sellerRadarCity}
+                      onChangeText={setSellerRadarCity}
+                      placeholder="Miasto"
+                      placeholderTextColor={colors.secondary}
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                    />
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                      <TextInput
+                        value={sellerRadarMaxPrice}
+                        onChangeText={setSellerRadarMaxPrice}
+                        keyboardType="numeric"
+                        placeholder="Max cena (zł)"
+                        placeholderTextColor={colors.secondary}
+                        style={[
+                          styles.input,
+                          { flex: 1, backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
+                        ]}
+                      />
+                      <TextInput
+                        value={sellerRadarMinArea}
+                        onChangeText={setSellerRadarMinArea}
+                        keyboardType="numeric"
+                        placeholder="Min m²"
+                        placeholderTextColor={colors.secondary}
+                        style={[
+                          styles.input,
+                          { width: 100, backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
+                        ]}
+                      />
+                    </View>
+                    <Pressable
+                      onPress={async () => {
+                        if (!token) return;
+                        setBusy('save_radar');
+                        await patchAgencyClient(token, clientId, {
+                          alsoSearching: true,
+                          buyerFilters: {
+                            calibrationMode: 'CITY',
+                            transactionType: 'SELL',
+                            propertyType: 'FLAT',
+                            city: sellerRadarCity,
+                            selectedDistricts: [],
+                            maxPrice: Number(sellerRadarMaxPrice) || 0,
+                            minArea: Number(sellerRadarMinArea) || 0,
+                            minYear: 1900,
+                            requireBalcony: false,
+                            requireGarden: false,
+                            requireElevator: false,
+                            requireParking: false,
+                            requireFurnished: false,
+                            requireTwoLevel: false,
+                            pushNotifications: false,
+                            matchThreshold: 70,
+                            lat: null,
+                            lng: null,
+                            radiusKm: null,
+                          },
+                        });
+                        await refreshClientMatches(token, clientId);
+                        setBusy('');
+                        void load();
+                      }}
+                      style={[styles.secondary, { borderColor: colors.border, marginTop: 10 }]}
+                    >
+                      <Text style={{ color: colors.text, fontWeight: '800', textAlign: 'center' }}>
+                        {busy === 'save_radar' ? 'Zapisuję…' : 'Zapisz kryteria & dopasuj'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {/* Matching Offers List */}
+                <View style={{ marginTop: 12 }}>
+                  {matches.length === 0 ? (
+                    <Text style={{ color: colors.secondary, fontSize: 13, marginVertical: 8 }}>
+                      Brak pasujących ofert dla podanych kryteriów.
+                    </Text>
+                  ) : (
+                    matches.map((item) => (
+                      <View
+                        key={item.id}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 12,
+                          paddingVertical: 10,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderBottomColor: colors.border,
+                        }}
+                      >
+                        <Image source={{ uri: item.offer.imageUrl }} style={{ width: 56, height: 56, borderRadius: 10 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>
+                            {item.offer.title}
+                          </Text>
+                          <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 12 }}>
+                            {formatCurrencyPLN(item.offer.price)}
+                          </Text>
+                          <Text style={{ color: colors.secondary, fontSize: 11 }}>{item.offer.city}</Text>
+                        </View>
+                        <Pressable
+                          onPress={async () => {
+                            if (!token) return;
+                            setBusy(`prop_${item.offer.id}`);
+                            const res = await proposeClientOffers(token, clientId, [item.offer.id]);
+                            setBusy('');
+                            if (!res.ok) Alert.alert('Propozycja', res.message);
+                            else Alert.alert('Propozycja', 'Wysłano propozycję do panelu klienta!');
+                          }}
+                          style={{
+                            backgroundColor: colors.accent,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>
+                            {busy === `prop_${item.offer.id}` ? '…' : 'Zaproponuj'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))
+                  )}
                 </View>
-              ))}
-              {matches.length === 0 ? <Text style={{ color: colors.secondary, marginTop: 10 }}>Brak dopasowań.</Text> : null}
-            </View>
-          </>
-        )}
-      </ScrollView>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  nav: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  navTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800' },
-  card: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 14 },
-  input: { marginTop: 6, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
-  stepBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
-  stepChip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8 },
-  primary: { marginTop: 12, backgroundColor: '#34C759', borderRadius: 16, paddingVertical: 14, alignItems: 'center' },
-  primaryText: { fontWeight: '800', color: '#000' },
-  secondary: { marginTop: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, paddingVertical: 12, alignItems: 'center' },
-  match: { flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  thumb: { width: 56, height: 56, borderRadius: 10, backgroundColor: '#333' },
+  nav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  navBtn: { width: 44, height: 36, justifyContent: 'center' },
+  navTitle: { fontSize: 17, fontWeight: '800' },
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  input: {
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepBtn: {
+    width: 40,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recomBox: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  primary: {
+    backgroundColor: '#34C759',
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  primaryText: { color: '#000', fontWeight: '900', fontSize: 15 },
+  secondary: {
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
 });

@@ -19,10 +19,14 @@ export default function SignaturePad({
   onChange,
   disabled,
   isDark,
+  onBeginDrawing,
+  onEndDrawing,
 }: {
   onChange: (dataUrl: string) => void;
   disabled?: boolean;
   isDark?: boolean;
+  onBeginDrawing?: () => void;
+  onEndDrawing?: () => void;
 }) {
   const [strokes, setStrokes] = useState<Point[][]>([]);
   const current = useRef<Point[]>([]);
@@ -44,8 +48,12 @@ export default function SignaturePad({
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !disabled,
+      onStartShouldSetPanResponderCapture: () => !disabled,
       onMoveShouldSetPanResponder: () => !disabled,
+      onMoveShouldSetPanResponderCapture: () => !disabled,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (event) => {
+        onBeginDrawing?.();
         current.current = [{ x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }];
         setStrokes((prev) => [...prev, current.current]);
       },
@@ -58,7 +66,11 @@ export default function SignaturePad({
         });
       },
       onPanResponderRelease: () => {
+        onEndDrawing?.();
         void emitCapture();
+      },
+      onPanResponderTerminate: () => {
+        onEndDrawing?.();
       },
     }),
   ).current;

@@ -16,6 +16,7 @@ import {
   FileCheck2,
   BriefcaseBusiness,
   ShieldCheck,
+  Zap,
 } from "lucide-react";
 import { ACQUISITION_DOCUMENTS, type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 
@@ -328,6 +329,32 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               {portal.acquisition.status === "SIGNED" ? <ShieldCheck className="size-3.5" /> : <CalendarCheck2 className="size-3.5" />}
               {portal.acquisition.status === "SIGNED" ? "Współpraca zawarta" : "Przygotowanie"}
             </span>
+          </div>
+
+          {/* Marketing Activity Highlights */}
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emerald-600">
+              <Zap className="size-4" />
+              Aktywne promowanie Twojej nieruchomości
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
+                <p className="text-xs font-bold text-[var(--eos-text)]">⚡ Priorytetowe wyróżnienie</p>
+                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Ogłoszenie wyróżnione na górze listy w serwisie EstateOS™ oraz w aplikacji mobilnej agentów.</p>
+              </div>
+              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
+                <p className="text-xs font-bold text-[var(--eos-text)]">🎯 Baza aktywnych kupujących</p>
+                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Oferta trafiła bezpośrednio do zweryfikowanych poszukujących o pasującym budżecie.</p>
+              </div>
+              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
+                <p className="text-xs font-bold text-[var(--eos-text)]">📸 Profesjonalna prezentacja</p>
+                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Opracowano plan pomieszczeń, opis rynkowy oraz przygotowano pakiet zdjęciowy.</p>
+              </div>
+              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
+                <p className="text-xs font-bold text-[var(--eos-text)]">📊 Bieżący monitoring</p>
+                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Agent na bieżąco analizuje zainteresowanie i przekazuje Ci sprawozdania z prezentacji.</p>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-5">
