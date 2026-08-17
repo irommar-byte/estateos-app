@@ -21,7 +21,7 @@ function resolveLogoUrl(logoUrl?: string | null) {
   return raw.startsWith('/') ? `${API_URL}${raw}` : raw;
 }
 
-export default function ProfileAgencyOfficeCard({ membership, isDark }: Props) {
+export default function ProfileAgencyOfficeCard({ membership, isDark, embedded }: Props) {
   const navigation = useNavigation<any>();
   const { t } = useI18n();
   const user = useAuthStore((s) => s.user);
