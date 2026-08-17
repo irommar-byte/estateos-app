@@ -131,6 +131,8 @@ function ChipRow({
       </div>
     </div>
   );
+}
+
 function Toggle({
   label,
   checked,
