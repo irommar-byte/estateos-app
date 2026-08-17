@@ -4244,8 +4244,13 @@ function ProfileScreenLoggedIn({
           </View>
         </ProfileCardShell>
 
-        {/* EstateOS™ CRM Unified Section */}
-        <ProfileCrmSection isDark={isDark} isAgency={isAgentProfile} />
+        {isAgentProfile ? (
+          <ProfileCrmSection isDark={isDark} isAgency={isAgentProfile} />
+        ) : (
+          <View style={[styles.section, { paddingHorizontal: 16, marginTop: -4 }]}>
+            <ProfileConciergeCard isDark={isDark} isAgency={isAgentProfile} />
+          </View>
+        )}
 
         <View style={styles.section}>
             <ProfileProExtrasSection

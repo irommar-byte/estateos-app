@@ -117,27 +117,15 @@ export default function MobilePulseScheduleWidget({ isDark = true, embedded, eve
   const minutes = Math.floor((diffSec % 3600) / 60);
   const seconds = Math.floor(diffSec % 60);
 
-  const cardBg = embedded
-    ? isDark
-      ? 'rgba(255,255,255,0.05)'
-      : 'rgba(0,0,0,0.035)'
-    : isDark
-      ? '#1C1C1E'
-      : '#FFFFFF';
-  const border = embedded
-    ? isDark
-      ? 'rgba(255,255,255,0.10)'
-      : 'rgba(0,0,0,0.07)'
-    : isDark
-      ? 'rgba(84,84,88,0.45)'
-      : 'rgba(60,60,67,0.12)';
+  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
+  const border = isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)';
 
   return (
     <View
       style={[
         styles.container,
         { backgroundColor: cardBg, borderColor: border },
-        embedded ? { marginTop: 0, marginBottom: 0, padding: 12 } : null,
+        embedded ? styles.containerEmbedded : null,
       ]}
     >
       {/* Header Bar */}
@@ -254,6 +242,13 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 10,
     marginBottom: 4,
+  },
+  containerEmbedded: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    marginTop: 0,
+    marginBottom: 0,
   },
   header: {
     flexDirection: 'row',

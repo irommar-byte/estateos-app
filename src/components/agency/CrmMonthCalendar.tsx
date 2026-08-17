@@ -8,6 +8,10 @@ type Props = {
   events: CrmScheduleEvent[];
   isDark: boolean;
   onEventPress?: (event: CrmScheduleEvent) => void;
+  /** Drops the own card chrome so a parent surface (e.g. metal recess) provides it. */
+  plain?: boolean;
+  /** Colour of the "today" marker and other highlights. */
+  accent?: string;
 };
 
 const WEEKDAYS = ['PN', 'WT', 'ŚR', 'CZ', 'PT', 'SB', 'ND'];
@@ -22,22 +26,47 @@ function leadingBlanks(year: number, month: number) {
   return (firstWeekday + 6) % 7;
 }
 
+/** Picks black or white for text drawn on top of `hex`. */
+function readableOn(hex: string) {
+  const clean = hex.replace('#', '');
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  if ([r, g, b].some(Number.isNaN)) return '#FFFFFF';
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? '#0D0D0F' : '#FFFFFF';
+}
+
 function monthLabel(year: number, month: number) {
   return new Date(year, month, 1)
     .toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })
     .toUpperCase();
 }
 
-export default function CrmMonthCalendar({ events, isDark, onEventPress }: Props) {
+export default function CrmMonthCalendar({
+  events,
+  isDark,
+  onEventPress,
+  plain,
+  accent = '#34C759',
+}: Props) {
   const today = useMemo(() => new Date(), []);
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const [selected, setSelected] = useState<string>(dayKey(today));
   const fade = useRef(new Animated.Value(1)).current;
 
-  const text = isDark ? '#FFFFFF' : '#000000';
-  const secondary = isDark ? '#8E8E93' : '#6C6C70';
-  const trackBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.035)';
-  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)';
+  const text = isDark ? '#FFFFFF' : '#0D0D0F';
+  const secondary = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)';
+  const trackBg = plain ? 'transparent' : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.035)';
+  const hairline = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)';
+  const rowBg = plain
+    ? isDark
+      ? 'rgba(255,255,255,0.09)'
+      : 'rgba(255,255,255,0.5)'
+    : isDark
+      ? 'rgba(255,255,255,0.06)'
+      : '#FFFFFF';
 
   const byDay = useMemo(() => {
     const map = new Map<string, CrmScheduleEvent[]>();
@@ -101,7 +130,13 @@ export default function CrmMonthCalendar({ events, isDark, onEventPress }: Props
   }, [selected]);
 
   return (
-    <View style={[styles.wrap, { backgroundColor: trackBg, borderColor: hairline }]}>
+    <View
+      style={[
+        styles.wrap,
+        { backgroundColor: trackBg, borderColor: hairline },
+        plain ? styles.wrapPlain : null,
+      ]}
+    >
       <View style={styles.header}>
         <View style={styles.headerTitleCol}>
           <Text style={[styles.headerMonth, { color: text }]}>{monthLabel(cursor.year, cursor.month)}</Text>
@@ -172,16 +207,16 @@ export default function CrmMonthCalendar({ events, isDark, onEventPress }: Props
                 style={[
                   styles.dayShell,
                   isSelected && !isToday
-                    ? { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)' }
+                    ? { backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.55)' }
                     : null,
-                  isToday ? styles.dayToday : null,
+                  isToday ? [styles.dayToday, { backgroundColor: accent, shadowColor: accent }] : null,
                 ]}
               >
                 <Text
                   style={[
                     styles.dayNum,
                     {
-                      color: isToday ? '#FFFFFF' : dayEvents.length > 0 ? text : secondary,
+                      color: isToday ? readableOn(accent) : dayEvents.length > 0 ? text : secondary,
                       fontWeight: isToday || dayEvents.length > 0 ? '800' : '600',
                       opacity: !isToday && isPast ? 0.45 : 1,
                     },
@@ -232,11 +267,7 @@ export default function CrmMonthCalendar({ events, isDark, onEventPress }: Props
               onPress={() => onEventPress?.(event)}
               style={({ pressed }) => [
                 styles.eventRow,
-                {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
-                  borderColor: hairline,
-                  opacity: pressed ? 0.7 : 1,
-                },
+                { backgroundColor: rowBg, borderColor: hairline, opacity: pressed ? 0.7 : 1 },
               ]}
             >
               <View style={[styles.eventBar, { backgroundColor: crmKindColor(event.kind) }]} />
@@ -264,6 +295,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 12,
+  },
+  wrapPlain: {
+    borderWidth: 0,
+    padding: 0,
   },
   header: {
     flexDirection: 'row',
@@ -300,8 +335,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayToday: {
-    backgroundColor: '#34C759',
-    shadowColor: '#34C759',
     shadowOpacity: 0.45,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },

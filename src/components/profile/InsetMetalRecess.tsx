@@ -8,6 +8,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+export type MetalVariant = 'titanium' | 'gold';
+
 type Props = {
   isDark: boolean;
   children: React.ReactNode;
@@ -16,9 +18,55 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   borderRadius?: number;
+  /** `gold` keeps every titanium effect and swaps only the alloy tone. */
+  variant?: MetalVariant;
 };
 
-function recessPalette(isDark: boolean) {
+function goldRecessPalette(isDark: boolean) {
+  if (isDark) {
+    return {
+      floor: ['#221B0F', '#292115', '#1F190D'] as const,
+      floorSheen: ['rgba(255,231,175,0.13)', 'rgba(255,231,175,0.03)', 'transparent'] as const,
+      topLip: ['rgba(0,0,0,0.45)', 'rgba(0,0,0,0.14)', 'transparent'] as const,
+      leftLip: ['rgba(0,0,0,0.3)', 'transparent'] as const,
+      bottomLip: ['transparent', 'rgba(255,226,163,0.22)', 'rgba(255,226,163,0.09)'] as const,
+      rightLip: ['transparent', 'rgba(255,226,163,0.14)'] as const,
+      pitAo: ['transparent', 'rgba(0,0,0,0.18)'] as const,
+      specularBand: 'rgba(255, 240, 200, 0.18)',
+      specularTail: 'rgba(240, 220, 170, 0.05)',
+      glossCap: 'rgba(255, 236, 186, 0.11)',
+      bevelShadow: 'rgba(0, 0, 0, 0.42)',
+      bevelShadowSoft: 'rgba(0, 0, 0, 0.24)',
+      bevelHighlight: 'rgba(255, 231, 175, 0.24)',
+      bevelHighlightSoft: 'rgba(255, 231, 175, 0.13)',
+      pressOverlay: 'rgba(0, 0, 0, 0.12)',
+      ridgeShadow: 'rgba(0, 0, 0, 0.18)',
+    };
+  }
+
+  return {
+    floor: ['#AC8329', '#C69E3E', '#B28A2E'] as const,
+    floorSheen: ['rgba(255,250,232,0.45)', 'rgba(255,250,232,0.12)', 'transparent'] as const,
+    topLip: ['rgba(74,50,6,0.42)', 'rgba(74,50,6,0.13)', 'transparent'] as const,
+    leftLip: ['rgba(74,50,6,0.28)', 'transparent'] as const,
+    bottomLip: ['transparent', 'rgba(255,251,235,0.72)', 'rgba(255,251,235,0.3)'] as const,
+    rightLip: ['transparent', 'rgba(255,251,235,0.5)'] as const,
+    pitAo: ['transparent', 'rgba(74,50,6,0.18)'] as const,
+    specularBand: 'rgba(255, 253, 240, 0.84)',
+    specularTail: 'rgba(250, 238, 205, 0.24)',
+    glossCap: 'rgba(255, 250, 228, 0.4)',
+    bevelShadow: 'rgba(70, 47, 6, 0.4)',
+    bevelShadowSoft: 'rgba(70, 47, 6, 0.2)',
+    bevelHighlight: 'rgba(255, 252, 238, 0.9)',
+    bevelHighlightSoft: 'rgba(255, 252, 238, 0.5)',
+    pressOverlay: 'rgba(70, 47, 6, 0.13)',
+    ridgeShadow: 'rgba(70, 47, 6, 0.16)',
+  };
+}
+
+function recessPalette(isDark: boolean, variant: MetalVariant = 'titanium') {
+  if (variant === 'gold') return goldRecessPalette(isDark);
+
   if (isDark) {
     return {
       floor: ['#171B22', '#1A1F27', '#161A21'] as const,
@@ -67,6 +115,7 @@ function RecessBody({
   contentStyle,
   borderRadius,
   pressed = false,
+  variant = 'titanium',
 }: {
   isDark: boolean;
   children: React.ReactNode;
@@ -74,8 +123,9 @@ function RecessBody({
   contentStyle?: StyleProp<ViewStyle>;
   borderRadius: number;
   pressed?: boolean;
+  variant?: MetalVariant;
 }) {
-  const palette = recessPalette(isDark);
+  const palette = recessPalette(isDark, variant);
   const radiusStyle = { borderRadius };
 
   return (
@@ -184,6 +234,7 @@ export default function InsetMetalRecess({
   style,
   contentStyle,
   borderRadius = 14,
+  variant = 'titanium',
 }: Props) {
   if (onPress) {
     return (
@@ -199,6 +250,7 @@ export default function InsetMetalRecess({
             contentStyle={contentStyle}
             borderRadius={borderRadius}
             pressed={pressed}
+            variant={variant}
           >
             {children}
           </RecessBody>
@@ -208,7 +260,13 @@ export default function InsetMetalRecess({
   }
 
   return (
-    <RecessBody isDark={isDark} style={style} contentStyle={contentStyle} borderRadius={borderRadius}>
+    <RecessBody
+      isDark={isDark}
+      style={style}
+      contentStyle={contentStyle}
+      borderRadius={borderRadius}
+      variant={variant}
+    >
       {children}
     </RecessBody>
   );
@@ -219,16 +277,19 @@ export function InsetMetalIconWell({
   children,
   size = 40,
   borderRadius = 12,
+  variant = 'titanium',
 }: {
   isDark: boolean;
   children: React.ReactNode;
   size?: number;
   borderRadius?: number;
+  variant?: MetalVariant;
 }) {
   return (
     <InsetMetalRecess
       isDark={isDark}
       borderRadius={borderRadius}
+      variant={variant}
       style={{ width: size, height: size }}
       contentStyle={styles.iconWellContent}
     >

@@ -12,7 +12,6 @@ import * as Haptics from 'expo-haptics';
 import { useI18n } from '../../i18n';
 import ProMembershipCountdownBar from './ProMembershipCountdownBar';
 import TitaniumHomeKeyBackdrop from './TitaniumHomeKeyBackdrop';
-import AnalogAppleClock from '../agency/AnalogAppleClock';
 import { profilePremiumCardShellStyle } from './profileCardElevation';
 import InsetMetalRecess, { InsetMetalIconWell } from './InsetMetalRecess';
 import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
@@ -326,9 +325,6 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
       </Pressable>
 
       <ProMembershipCountdownBar proExpiresAt={user?.proExpiresAt} isDark={isDark} />
-
-      {/* Luxury EstateOS Automatic Chronometer Clock */}
-      <AnalogAppleClock size={170} isDark={isDark} />
 
       {toolsExpanded ? (
         <>

@@ -8,11 +8,16 @@ import Svg, {
   Rect,
 } from 'react-native-svg';
 
+export type MetalVariant = 'titanium' | 'gold';
+
 type Props = {
   isDark: boolean;
+  /** `gold` keeps every titanium effect and swaps only the alloy tone. */
+  variant?: MetalVariant;
 };
 
 const DARK_TITANIUM = '#1C2129';
+const DARK_GOLD = '#2A2214';
 
 function lightPalette() {
   return {
@@ -41,48 +46,95 @@ function lightPalette() {
   };
 }
 
-function DarkUniformTitanium() {
+function lightGoldPalette() {
+  return {
+    base: ['#B98B2C', '#E4C275', '#FAF0CE', '#C89B38', '#EED9A2'] as const,
+    undertone: ['#A87C20', '#D9B75F', '#F8EBC2', '#C0943A'] as const,
+    brushLight: 'rgba(255, 252, 236, 0.95)',
+    brushMid: 'rgba(240, 214, 150, 0.35)',
+    brushShadow: 'rgba(96, 66, 12, 0.2)',
+    glossHot: 'rgba(255, 253, 240, 0.95)',
+    glossWarm: 'rgba(255, 240, 200, 0.38)',
+    glossCool: 'rgba(255, 228, 172, 0.18)',
+    specularCore: 'rgba(255, 255, 246, 0.98)',
+    specularTail: 'rgba(250, 235, 194, 0.24)',
+    rimLight: 'rgba(255, 250, 228, 0.88)',
+    rimShadow: 'rgba(95, 66, 14, 0.24)',
+    aoDeep: 'rgba(78, 52, 8, 0.28)',
+    aoMid: 'rgba(104, 76, 22, 0.14)',
+    vignette: 'rgba(92, 63, 12, 0.22)',
+    edgeHighlight: 'rgba(255, 250, 228, 0.95)',
+    edgeShadow: 'rgba(94, 65, 14, 0.24)',
+    chromaticCool: 'rgba(255, 236, 190, 0.12)',
+    chromaticWarm: 'rgba(255, 214, 150, 0.1)',
+    svgHotSpot: ['rgba(255,252,235,0.72)', 'rgba(255,252,235,0)'] as const,
+    svgAoBr: ['rgba(0,0,0,0)', 'rgba(78,52,8,0.35)'] as const,
+    svgAoTl: ['rgba(255,250,228,0.28)', 'rgba(255,250,228,0)'] as const,
+  };
+}
+
+function DarkUniformMetal({ variant }: { variant: MetalVariant }) {
+  const gold = variant === 'gold';
   return (
     <View style={styles.root} pointerEvents="none">
-      <View style={[StyleSheet.absoluteFill, styles.darkFill]} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: gold ? DARK_GOLD : DARK_TITANIUM }]} />
 
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="none">
         <Defs>
-          <Pattern id="ti-brush-dark-uniform" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(16)">
+          <Pattern
+            id={`ti-brush-dark-uniform-${variant}`}
+            width="5"
+            height="5"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(16)"
+          >
             <Line x1="0" y1="0" x2="0" y2="5" stroke="rgba(0,0,0,0.22)" strokeWidth="0.65" opacity="0.55" />
-            <Line x1="2.5" y1="0" x2="2.5" y2="5" stroke="rgba(255,255,255,0.04)" strokeWidth="0.35" opacity="0.7" />
+            <Line
+              x1="2.5"
+              y1="0"
+              x2="2.5"
+              y2="5"
+              stroke={gold ? 'rgba(255,225,160,0.06)' : 'rgba(255,255,255,0.04)'}
+              strokeWidth="0.35"
+              opacity="0.7"
+            />
           </Pattern>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#ti-brush-dark-uniform)" opacity="0.55" />
+        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#ti-brush-dark-uniform-${variant})`} opacity="0.55" />
       </Svg>
 
       <LinearGradient
-        colors={['rgba(255,255,255,0.025)', 'transparent', 'rgba(255,255,255,0.015)']}
+        colors={
+          gold
+            ? ['rgba(255,224,160,0.045)', 'transparent', 'rgba(255,224,160,0.025)']
+            : ['rgba(255,255,255,0.025)', 'transparent', 'rgba(255,255,255,0.015)']
+        }
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={[StyleSheet.absoluteFill, styles.darkMicroSheen]}
       />
 
-      <View style={[styles.bevelHighlight, styles.darkBevelHighlight]} />
+      <View
+        style={[
+          styles.bevelHighlight,
+          { borderColor: gold ? 'rgba(255,226,163,0.16)' : 'rgba(255,255,255,0.08)' },
+        ]}
+      />
       <View style={[styles.bevelShadow, styles.darkBevelShadow]} />
     </View>
   );
 }
 
-export default function TitaniumHomeKeyBackdrop({ isDark }: Props) {
-  const palette = useMemo(() => lightPalette(), []);
+export default function TitaniumHomeKeyBackdrop({ isDark, variant = 'titanium' }: Props) {
+  const palette = useMemo(() => (variant === 'gold' ? lightGoldPalette() : lightPalette()), [variant]);
 
   if (isDark) {
-    return <DarkUniformTitanium />;
+    return <DarkUniformMetal variant={variant} />;
   }
 
-  const brushId = 'ti-brush-light';
-  const fineId = 'ti-fine-light';
-  const crossId = 'ti-cross-light';
-  const hotId = 'ti-hot-light';
-  const aoBrId = 'ti-aobr-light';
-  const aoTlId = 'ti-aotl-light';
-  const sheenId = 'ti-sheen-light';
+  const brushId = `ti-brush-light-${variant}`;
+  const fineId = `ti-fine-light-${variant}`;
+  const crossId = `ti-cross-light-${variant}`;
 
   return (
     <View style={styles.root} pointerEvents="none">
@@ -149,14 +201,8 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
   },
-  darkFill: {
-    backgroundColor: DARK_TITANIUM,
-  },
   darkMicroSheen: {
     opacity: 0.55,
-  },
-  darkBevelHighlight: {
-    borderColor: 'rgba(255,255,255,0.08)',
   },
   darkBevelShadow: {
     borderColor: 'rgba(0,0,0,0.35)',

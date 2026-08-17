@@ -5,9 +5,19 @@ import Svg, { Circle, Line, Rect, Text as SvgText, G } from 'react-native-svg';
 type Props = {
   size?: number;
   isDark?: boolean;
+  /** Hands, brand line and center cap accent. */
+  accent?: string;
+  /** `gold` dresses the case and dial in warm alloy tones. */
+  variant?: 'steel' | 'gold';
 };
 
-export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
+export default function AnalogAppleClock({
+  size = 180,
+  isDark = true,
+  accent = '#34C759',
+  variant = 'steel',
+}: Props) {
+  const gold = variant === 'gold';
   const [time, setTime] = useState(() => new Date());
   const animFrame = useRef<number | null>(null);
 
@@ -51,8 +61,14 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
             width: size,
             height: size,
             borderRadius: radius,
-            borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.15)',
-            backgroundColor: isDark ? '#141416' : '#E8E8ED',
+            borderColor: gold
+              ? isDark
+                ? 'rgba(255,226,163,0.42)'
+                : 'rgba(120,86,18,0.35)'
+              : isDark
+                ? 'rgba(255,255,255,0.22)'
+                : 'rgba(0,0,0,0.15)',
+            backgroundColor: gold ? (isDark ? '#171208' : '#F2E4BE') : isDark ? '#141416' : '#E8E8ED',
           },
         ]}
       >
@@ -62,8 +78,16 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
             cx={center}
             cy={center}
             r={innerRadius}
-            fill={isDark ? '#0F0F11' : '#F7F7FA'}
-            stroke={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}
+            fill={gold ? (isDark ? '#0E0B05' : '#FBF4DF') : isDark ? '#0F0F11' : '#F7F7FA'}
+            stroke={
+              gold
+                ? isDark
+                  ? 'rgba(255,226,163,0.16)'
+                  : 'rgba(120,86,18,0.14)'
+                : isDark
+                  ? 'rgba(255,255,255,0.1)'
+                  : 'rgba(0,0,0,0.08)'
+            }
             strokeWidth={1.5}
           />
 
@@ -84,7 +108,15 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
                 y1={y1}
                 x2={x2}
                 y2={y2}
-                stroke={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)'}
+                stroke={
+                  gold
+                    ? isDark
+                      ? 'rgba(255,226,163,0.28)'
+                      : 'rgba(120,86,18,0.28)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.2)'
+                      : 'rgba(0,0,0,0.18)'
+                }
                 strokeWidth={1}
               />
             );
@@ -106,7 +138,7 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
                 y1={y1}
                 x2={x2}
                 y2={y2}
-                stroke={isDark ? '#FFFFFF' : '#1C1C1E'}
+                stroke={gold ? (isDark ? '#F5DFA6' : '#6B4C10') : isDark ? '#FFFFFF' : '#1C1C1E'}
                 strokeWidth={i % 3 === 0 ? 3 : 2}
                 strokeLinecap="round"
               />
@@ -118,7 +150,15 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
             x={center}
             y={center - radius * 0.32}
             textAnchor="middle"
-            fill={isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'}
+            fill={
+              gold
+                ? isDark
+                  ? 'rgba(245,223,166,0.6)'
+                  : 'rgba(107,76,16,0.6)'
+                : isDark
+                  ? 'rgba(255,255,255,0.45)'
+                  : 'rgba(0,0,0,0.45)'
+            }
             fontSize={8}
             fontWeight="900"
             letterSpacing={2}
@@ -129,7 +169,7 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
             x={center}
             y={center - radius * 0.22}
             textAnchor="middle"
-            fill="#34C759"
+            fill={accent}
             fontSize={6}
             fontWeight="700"
             letterSpacing={1.2}
@@ -145,15 +185,23 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
               width={18}
               height={18}
               rx={4}
-              fill={isDark ? '#1C1C1E' : '#FFFFFF'}
-              stroke={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+              fill={gold ? (isDark ? '#1A1409' : '#FFFDF3') : isDark ? '#1C1C1E' : '#FFFFFF'}
+              stroke={
+                gold
+                  ? isDark
+                    ? 'rgba(255,226,163,0.3)'
+                    : 'rgba(120,86,18,0.3)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.2)'
+                    : 'rgba(0,0,0,0.2)'
+              }
               strokeWidth={1}
             />
             <SvgText
               x={9}
               y={13}
               textAnchor="middle"
-              fill={isDark ? '#FFFFFF' : '#000000'}
+              fill={gold ? (isDark ? '#F7E7BC' : '#4F3808') : isDark ? '#FFFFFF' : '#000000'}
               fontSize={10}
               fontWeight="900"
             >
@@ -169,7 +217,7 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
               width={6}
               height={radius * 0.52}
               rx={3}
-              fill={isDark ? '#E5E5EA' : '#2C2C2E'}
+              fill={gold ? (isDark ? '#EFD9A4' : '#5A3F0A') : isDark ? '#E5E5EA' : '#2C2C2E'}
             />
             <Rect
               x={center - 1}
@@ -177,7 +225,7 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
               width={2}
               height={radius * 0.35}
               rx={1}
-              fill="#34C759"
+              fill={accent}
             />
           </G>
 
@@ -189,7 +237,7 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
               width={4}
               height={radius * 0.76}
               rx={2}
-              fill={isDark ? '#FFFFFF' : '#000000'}
+              fill={gold ? (isDark ? '#FFF6DC' : '#3F2B05') : isDark ? '#FFFFFF' : '#000000'}
             />
             <Rect
               x={center - 0.75}
@@ -197,7 +245,7 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
               width={1.5}
               height={radius * 0.55}
               rx={0.75}
-              fill="#34C759"
+              fill={accent}
             />
           </G>
 
@@ -208,20 +256,20 @@ export default function AnalogAppleClock({ size = 180, isDark = true }: Props) {
               y1={center + 14}
               x2={center}
               y2={center - radius * 0.82}
-              stroke="#34C759"
+              stroke={accent}
               strokeWidth={1.5}
             />
-            <Circle
-              cx={center}
-              cy={center - radius * 0.62}
-              r={3}
-              fill="#34C759"
-            />
+            <Circle cx={center} cy={center - radius * 0.62} r={3} fill={accent} />
           </G>
 
           {/* Center Cap */}
-          <Circle cx={center} cy={center} r={5} fill={isDark ? '#FFFFFF' : '#000000'} />
-          <Circle cx={center} cy={center} r={2.5} fill="#34C759" />
+          <Circle
+            cx={center}
+            cy={center}
+            r={5}
+            fill={gold ? (isDark ? '#FFF6DC' : '#3F2B05') : isDark ? '#FFFFFF' : '#000000'}
+          />
+          <Circle cx={center} cy={center} r={2.5} fill={accent} />
         </Svg>
       </View>
     </View>
