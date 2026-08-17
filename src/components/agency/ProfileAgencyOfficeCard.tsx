@@ -12,6 +12,7 @@ import MobilePulseScheduleWidget from './MobilePulseScheduleWidget';
 type Props = {
   membership: AgencyMembershipSnapshot;
   isDark: boolean;
+  embedded?: boolean;
 };
 
 function resolveLogoUrl(logoUrl?: string | null) {
@@ -54,6 +55,64 @@ export default function ProfileAgencyOfficeCard({ membership, isDark }: Props) {
       : 'rgba(60,60,67,0.12)';
   const text = isDark ? '#FFFFFF' : '#000000';
   const secondary = isDark ? '#8E8E93' : '#6C6C70';
+
+  if (embedded) {
+    return (
+      <View style={{ marginTop: 14 }}>
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)',
+            marginBottom: 12,
+          }}
+        />
+        <Pressable
+          onPress={() => {
+            if (isPending) return;
+            navigation.navigate('AgencyOffice');
+          }}
+          disabled={isPending}
+          style={({ pressed }) => [{ opacity: pressed && !isPending ? 0.88 : 1 }]}
+        >
+          <View style={styles.row}>
+            <View style={[styles.logoShell, { borderColor: border, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
+              {logoUrl ? (
+                <Image source={{ uri: logoUrl }} style={styles.logo} contentFit="cover" />
+              ) : (
+                <Ionicons name="business" size={26} color={isPending ? '#FF9F0A' : isDark ? '#64D2FF' : '#007AFF'} />
+              )}
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.eyebrow, { color: secondary }]}>MOJE BIURO</Text>
+              <Text style={[styles.companyName, { color: text }]} numberOfLines={1}>
+                {companyName}
+              </Text>
+              <View style={styles.badgeRow}>
+                {isPending ? (
+                  <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(255,159,10,0.22)' : 'rgba(255,159,10,0.16)' }]}>
+                    <Text style={[styles.badgeText, { color: '#FF9F0A' }]}>{t('profile.agency.pendingBadge')}</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(52,199,89,0.18)' : 'rgba(52,199,89,0.12)' }]}>
+                    <Text style={styles.badgeText}>{titleLabel}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.subtitle, { color: secondary }]} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            </View>
+            {!isPending && isAdmin && pendingCount > 0 ? (
+              <View style={styles.pendingBubble}>
+                <Text style={styles.pendingBubbleText}>{pendingCount > 99 ? '99+' : String(pendingCount)}</Text>
+              </View>
+            ) : null}
+            {isPending ? null : <Ionicons name="chevron-forward" size={18} color={secondary} />}
+          </View>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <View

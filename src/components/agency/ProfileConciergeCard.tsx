@@ -10,9 +10,10 @@ import { countPendingConciergeLeads } from '../../types/leadTransfer';
 type Props = {
   isDark: boolean;
   isAgency: boolean;
+  embedded?: boolean;
 };
 
-export default function ProfileConciergeCard({ isDark, isAgency }: Props) {
+export default function ProfileConciergeCard({ isDark, isAgency, embedded }: Props) {
   const navigation = useNavigation<any>();
   const token = useAuthStore((s) => s.token);
   const [pendingCount, setPendingCount] = useState(0);
@@ -54,8 +55,8 @@ export default function ProfileConciergeCard({ isDark, isAgency }: Props) {
     };
   }, [load]);
 
-  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const border = isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)';
+  const cardBg = embedded ? (isDark ? '#2C2C2E' : '#F2F2F7') : (isDark ? '#1C1C1E' : '#FFFFFF');
+  const border = embedded ? 'transparent' : (isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)');
   const text = isDark ? '#FFFFFF' : '#000000';
   const secondary = isDark ? '#8E8E93' : '#6C6C70';
 
@@ -64,7 +65,13 @@ export default function ProfileConciergeCard({ isDark, isAgency }: Props) {
       onPress={() => navigation.navigate('AgencyLeadInbox')}
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: cardBg, borderColor: border, opacity: pressed ? 0.9 : 1 },
+        {
+          backgroundColor: cardBg,
+          borderColor: border,
+          borderWidth: embedded ? 0 : StyleSheet.hairlineWidth,
+          marginBottom: embedded ? 0 : 14,
+          opacity: pressed ? 0.9 : 1,
+        },
       ]}
     >
       <View style={styles.iconWrap}>

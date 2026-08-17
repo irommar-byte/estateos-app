@@ -56,6 +56,7 @@ import InvestorProTrialIntroHost from '../components/profile/InvestorProTrialInt
 import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
+import ProfileCrmSection from '../components/agency/ProfileCrmSection';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
@@ -4236,18 +4237,15 @@ function ProfileScreenLoggedIn({
                 }
               }}
             />
+
+            {showAgencyOfficeCard ? (
+              <ProfileAgencyOfficeCard membership={agencyMembership} isDark={isDark} embedded />
+            ) : null}
           </View>
         </ProfileCardShell>
 
-        {showAgencyOfficeCard ? (
-          <View style={[styles.section, { paddingHorizontal: 16, marginTop: -8 }]}>
-            <ProfileAgencyOfficeCard membership={agencyMembership} isDark={isDark} />
-          </View>
-        ) : null}
-
-        <View style={[styles.section, { paddingHorizontal: 16, marginTop: -4 }]}>
-          <ProfileConciergeCard isDark={isDark} isAgency={isAgentProfile} />
-        </View>
+        {/* EstateOS™ CRM Unified Section */}
+        <ProfileCrmSection isDark={isDark} isAgency={isAgentProfile} />
 
         <View style={styles.section}>
             <ProfileProExtrasSection
