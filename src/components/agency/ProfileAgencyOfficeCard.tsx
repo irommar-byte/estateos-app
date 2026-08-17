@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { API_URL } from '../../config/network';
 import type { AgencyMembershipSnapshot } from '../../types/agencyMembership';
 import { useI18n } from '../../i18n';
+import MobilePulseScheduleWidget from './MobilePulseScheduleWidget';
 
 type Props = {
   membership: AgencyMembershipSnapshot;
@@ -119,22 +120,27 @@ export default function ProfileAgencyOfficeCard({ membership, isDark }: Props) {
       </View>
       </Pressable>
       {!isPending ? (
-        <View style={styles.actions}>
-          <Pressable
-            onPress={() => navigation.navigate('AgencyClientCreate')}
-            style={[styles.actionBtn, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
-          >
-            <Ionicons name="person-add" size={16} color="#34C759" />
-            <Text style={[styles.actionText, { color: text }]}>Dodaj klienta</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate('AgencyClients')}
-            style={[styles.actionBtn, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
-          >
-            <Ionicons name="people" size={16} color="#007AFF" />
-            <Text style={[styles.actionText, { color: text }]}>Moi klienci</Text>
-          </Pressable>
-        </View>
+        <>
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => navigation.navigate('AgencyClientCreate')}
+              style={[styles.actionBtn, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+            >
+              <Ionicons name="person-add" size={16} color="#34C759" />
+              <Text style={[styles.actionText, { color: text }]}>Dodaj klienta</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => navigation.navigate('AgencyClients')}
+              style={[styles.actionBtn, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+            >
+              <Ionicons name="people" size={16} color="#007AFF" />
+              <Text style={[styles.actionText, { color: text }]}>Moi klienci</Text>
+            </Pressable>
+          </View>
+
+          {/* CRM Schedule Widget embedded directly in Moje Biuro */}
+          <MobilePulseScheduleWidget isDark={isDark} />
+        </>
       ) : null}
     </View>
   );
