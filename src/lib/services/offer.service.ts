@@ -222,6 +222,7 @@ export async function ensureOfferExtendedAmenityColumns() {
   extendedAmenityColumnsPromise = (async () => {
     await ensureOfferColumn("hasAirConditioning", "BOOLEAN NOT NULL DEFAULT false");
     await ensureOfferColumn("isDuplex", "BOOLEAN NOT NULL DEFAULT false");
+    await ensureOfferColumn("floorPlanExtraUrls", "TEXT");
     extendedAmenityColumnsEnsured = true;
   })();
   try {

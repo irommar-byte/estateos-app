@@ -11,6 +11,7 @@ import FloorPlanScanArtboard from '@/components/offers/FloorPlanScanArtboard';
 
 type OfferFloorPlanPanelProps = {
   floorPlanSrc: string;
+  extraFloorPlanSrcs?: string[];
   floorPlan3dSrc?: string;
   scanMeta?: FloorPlanScanMeta | null;
   locale: Locale;
@@ -22,6 +23,7 @@ type OfferFloorPlanPanelProps = {
 
 export default function OfferFloorPlanPanel({
   floorPlanSrc,
+  extraFloorPlanSrcs = [],
   floorPlan3dSrc,
   scanMeta,
   locale,
@@ -190,6 +192,14 @@ export default function OfferFloorPlanPanel({
 
       {floorPlan3dSrc ? (
         <FloorPlan3dWalkthrough modelUrl={floorPlan3dSrc} copy={copy.floorPlanWalkthrough} />
+      ) : null}
+
+      {extraFloorPlanSrcs.filter((src) => src && src !== floorPlanSrc).length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 border-t border-[var(--eos-border)] p-4 md:grid-cols-3">
+          {extraFloorPlanSrcs.filter((src) => src && src !== floorPlanSrc).map((src) => (
+            <img key={src} src={src} alt="Dodatkowy plan" className="h-36 w-full rounded-xl object-contain bg-black/20" />
+          ))}
+        </div>
       ) : null}
     </section>
   );

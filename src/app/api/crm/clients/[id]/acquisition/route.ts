@@ -5,6 +5,7 @@ import { requireAgencyUserId } from "@/lib/agencyClientAuth";
 import {
   buildAcquisitionAgreementText,
   createDefaultAcquisitionForm,
+  normalizeAcquisitionForm,
   type AcquisitionFormData,
 } from "@/lib/acquisitionWorkflow";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
@@ -27,7 +28,7 @@ function shapeAcquisition(record: any, fallbackForm: AcquisitionFormData) {
     clientId: record.clientId,
     status: record.status,
     currentStep: record.currentStep,
-    formData: (record.formData || fallbackForm) as AcquisitionFormData,
+    formData: normalizeAcquisitionForm(record.formData, fallbackForm),
     agreementSnapshot: record.agreementSnapshot,
     approvedTemplateConfirmed: Boolean(record.approvedTemplateConfirmed),
     clientAcknowledgedAt: record.clientAcknowledgedAt?.toISOString() ?? null,
@@ -161,7 +162,10 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   }
 
   const body = await req.json();
-  const formData = (body.formData || client.acquisition?.formData || createDefaultAcquisitionForm(client)) as AcquisitionFormData;
+  const formData = normalizeAcquisitionForm(
+    body.formData || client.acquisition?.formData,
+    createDefaultAcquisitionForm(client),
+  );
   const currentStep = Math.min(6, Math.max(1, Number(body.currentStep || client.acquisition?.currentStep || 1)));
   const status = ["PREPARATION", "IN_MEETING", "TERMS_READY", "CANCELLED"].includes(String(body.status))
     ? String(body.status)
@@ -206,7 +210,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (!client) return NextResponse.json({ error: "Nie znaleziono klienta sprzedającego." }, { status: 404 });
   const body = await req.json();
   const action = String(body.action || "");
-  const form = (body.formData || client.acquisition?.formData || createDefaultAcquisitionForm(client)) as AcquisitionFormData;
+  const form = normalizeAcquisitionForm(
+    body.formData || client.acquisition?.formData,
+    createDefaultAcquisitionForm(client),
+  );
 
   const base = await prisma.agencyClientAcquisition.upsert({
     where: { clientId },

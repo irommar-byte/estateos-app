@@ -392,6 +392,23 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               <pre className="max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded-2xl border border-[var(--eos-border)] bg-white p-5 text-xs leading-relaxed text-slate-800 shadow-inner">
                 {portal.acquisition.agreementSnapshot}
               </pre>
+              {(portal.acquisition.formData.paperContracts || []).length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm font-black text-[var(--eos-text)]">Podpisana umowa (skan)</p>
+                  {portal.acquisition.formData.paperContracts.map((file) => (
+                    <a
+                      key={file.url}
+                      href={file.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm font-semibold text-emerald-700"
+                    >
+                      {file.name}
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
               {portal.acquisition.status === "SIGNED" ? (
                 <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
                   <p className="flex items-center gap-2 font-black text-emerald-700"><ShieldCheck className="size-4" /> Dokument podpisany</p>
@@ -437,7 +454,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </section>
       ) : null}
 
-      {portal.type === "BUYER" && criteria ? (
+      {criteria ? (
         <section className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
           <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
             <SlidersHorizontal className="size-5 text-emerald-500" />
@@ -515,11 +532,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             </div>
           )}
         </section>
-      ) : (
+      ) : null}
+
+      {portal.type === "BUYER" || portal.matches.length > 0 ? (
         <section className="space-y-4">
           <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
             <Radar className="size-5 text-emerald-500" />
-            Propozycje od agenta
+            {portal.type === "SELLER" ? "Propozycje dla Ciebie" : "Propozycje od agenta"}
           </h2>
           {portal.matches.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center text-sm text-[var(--eos-muted)]">
@@ -580,7 +599,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             ))
           )}
         </section>
-      )}
+      ) : null}
 
       <section className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
         <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">

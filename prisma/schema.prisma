@@ -208,6 +208,7 @@ model Offer {
   images                    String?                    @db.Text
   videoUrl                  String?
   floorPlanUrl              String?
+  floorPlanExtraUrls        String?                    @db.Text
   floorPlan3dUrl            String?
   floorPlanScanMeta         String?                    @db.Text
   landRegistryNumber        String?                    @db.VarChar(64)

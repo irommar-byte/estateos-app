@@ -124,8 +124,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const agent = client.agencyUser;
   const agencyName = agent.companyName?.trim() || 'EstateOS';
   const agentName = resolveSellerPersonName(agent) || agent.name || agencyName;
-  const searchCriteria =
-    client.type === 'BUYER' ? shapeSearchCriteria(client.buyerPreference) : null;
+  const searchCriteria = client.buyerPreference ? shapeSearchCriteria(client.buyerPreference) : null;
   const canChat = Boolean(client.linkedUserId);
 
   return NextResponse.json({
@@ -139,9 +138,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agentEmail: agent.email,
       searchCriteria,
       canChat,
-      matches:
-        client.type === 'BUYER'
-          ? client.matches.map((m) => ({
+      matches: client.buyerPreference
+        ? client.matches.map((m) => ({
               id: m.id,
               score: m.score,
               notifiedAt: m.notifiedAt?.toISOString() ?? null,

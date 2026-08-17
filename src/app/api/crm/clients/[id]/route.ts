@@ -66,10 +66,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
       linkedUserLastLoginAt: client.linkedUser?.lastLoginAt?.toISOString() ?? null,
       portalToken: client.portalToken,
       portalUrl: client.portalToken ? buildPortalUrl(client.portalToken) : null,
-      buyerFilters:
-        client.type === 'BUYER'
-          ? buyerPrefToWebRadarFilters(client.buyerPreference)
-          : null,
+      buyerFilters: client.buyerPreference
+        ? buyerPrefToWebRadarFilters(client.buyerPreference)
+        : null,
       matches: client.matches.map((m) => ({
         id: m.id,
         score: m.score,
@@ -185,8 +184,10 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     }
   }
 
-  if (existing.type === 'BUYER' && body.buyerFilters) {
-    const prefData = webRadarFiltersToBuyerPrefCreate(body.buyerFilters as WebRadarFilters);
+  if (body.buyerFilters || body.alsoSearching === true) {
+    const prefData = webRadarFiltersToBuyerPrefCreate(
+      (body.buyerFilters || {}) as WebRadarFilters,
+    );
     if (existing.buyerPreference) {
       await prisma.agencyClientBuyerPreference.update({
         where: { clientId },
@@ -198,6 +199,9 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       });
     }
     await refreshAgencyClientMatches(clientId);
+  } else if (body.alsoSearching === false && existing.buyerPreference) {
+    await prisma.agencyClientMatch.deleteMany({ where: { clientId } });
+    await prisma.agencyClientBuyerPreference.delete({ where: { clientId } });
   }
 
   return NextResponse.json({ success: true });
@@ -234,10 +238,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'refresh_matches') {
     const client = await prisma.agencyClient.findFirst({
-      where: { id: clientId, agencyUserId, type: 'BUYER' },
+      where: { id: clientId, agencyUserId },
+      include: { buyerPreference: true },
     });
-    if (!client) {
-      return NextResponse.json({ error: 'Klient kupujący nie istnieje.' }, { status: 404 });
+    if (!client || !client.buyerPreference) {
+      return NextResponse.json({ error: 'Brak kryteriów wyszukiwania dla tego klienta.' }, { status: 404 });
     }
     const result = await refreshAgencyClientMatches(clientId);
     return NextResponse.json({ success: true, ...result });

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
@@ -260,15 +261,18 @@ function ImportProgressModal(props: {
 
   if (!props.open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-6">
+  const modal = (
+    <div
+      className="fixed inset-0 z-[999999] flex items-start sm:items-center justify-center p-3 sm:p-6"
+      style={{ paddingTop: "calc(var(--eos-nav-height, 5rem) + 0.75rem)" }}
+    >
       <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={props.onMinimize} aria-label="Zminimalizuj" />
       <motion.div
-        initial={{ opacity: 0, y: 40 }}
+        initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 w-full sm:max-w-2xl max-h-[92vh] overflow-hidden rounded-t-[28px] sm:rounded-[28px] border border-white/12 bg-gradient-to-b from-[#111] to-black shadow-[0_40px_120px_rgba(0,0,0,0.8)]"
+        className="relative z-10 flex w-full sm:max-w-2xl max-h-[calc(100dvh-var(--eos-nav-height,5rem)-1.5rem)] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-gradient-to-b from-[#111] to-black shadow-[0_40px_120px_rgba(0,0,0,0.8)]"
       >
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-white/10">
+        <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4 border-b border-white/10">
           <div>
             <p className="text-lg font-black text-white">Import KEI</p>
             <p className="text-xs text-white/45 mt-0.5">{props.message || "Postęp z serwera"}</p>
@@ -298,7 +302,7 @@ function ImportProgressModal(props: {
           </div>
         </div>
 
-        <div ref={scrollRef} className="p-5 overflow-y-auto max-h-[calc(92vh-88px)] space-y-4">
+        <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div>
             <div className="flex items-end justify-between mb-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-white/40">Ogółem</span>
@@ -382,6 +386,9 @@ function ImportProgressModal(props: {
       </motion.div>
     </div>
   );
+
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
 }
 
 function FloorPlanPicker(props: {

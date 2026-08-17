@@ -65,6 +65,11 @@ export type AcquisitionFormData = {
   };
   documents: Record<string, boolean>;
   notes: string;
+  paperContracts: Array<{
+    url: string;
+    name: string;
+    uploadedAt: string;
+  }>;
 };
 
 export type AcquisitionRecord = {
@@ -182,10 +187,28 @@ export function createDefaultAcquisitionForm(
     },
     documents: Object.fromEntries(ACQUISITION_DOCUMENTS.map((item) => [item.id, false])),
     notes: "",
+    paperContracts: [],
   };
 }
 
-function line(label: string, value: unknown): string {
+export function normalizeAcquisitionForm(
+  raw: unknown,
+  fallback: AcquisitionFormData,
+): AcquisitionFormData {
+  const incoming = raw && typeof raw === "object" ? (raw as Partial<AcquisitionFormData>) : {};
+  return {
+    ...fallback,
+    ...incoming,
+    meeting: { ...fallback.meeting, ...(incoming.meeting || {}) },
+    ownership: { ...fallback.ownership, ...(incoming.ownership || {}) },
+    property: { ...fallback.property, ...(incoming.property || {}) },
+    strategy: { ...fallback.strategy, ...(incoming.strategy || {}) },
+    cooperation: { ...fallback.cooperation, ...(incoming.cooperation || {}) },
+    documents: { ...fallback.documents, ...(incoming.documents || {}) },
+    paperContracts: Array.isArray(incoming.paperContracts) ? incoming.paperContracts : fallback.paperContracts || [],
+    notes: incoming.notes ?? fallback.notes,
+  };
+}
   const text = String(value ?? "").trim();
   return `${label}: ${text || "—"}`;
 }
@@ -261,7 +284,12 @@ export function buildAcquisitionAgreementText(params: {
     line("Media społecznościowe", form.strategy.socialMediaConsent ? "TAK" : "NIE"),
     line("Przekazanie kluczy", form.strategy.keysHandover ? "TAK" : "NIE"),
     "",
-    "8. POTWIERDZENIE",
+    "8. ZAŁĄCZNIKI",
+    form.paperContracts?.length
+      ? form.paperContracts.map((file) => `- ${file.name} (${file.url})`).join("\n")
+      : "Brak skanu podpisanej ręcznie umowy.",
+    "",
+    "9. POTWIERDZENIE",
     "Klient potwierdza prawdziwość przekazanych danych, zapoznanie się z zakresem działań, warunkami wynagrodzenia i zasadami współpracy. Zmiany wymagają utrwalenia przez strony.",
     "",
     "UWAGA FORMALNA",

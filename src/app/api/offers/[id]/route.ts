@@ -73,6 +73,7 @@ const OFFER_WEB_PUT_SELECT = {
   agentCommissionPercent: true,
   plotArea: true,
   floorPlanUrl: true,
+  floorPlanExtraUrls: true,
   heating: true,
   isFurnished: true,
   transactionType: true,
@@ -158,6 +159,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
     
     if (!offer) return NextResponse.json({ error: "Nie znaleziono oferty" }, { status: 404 });
+
+    let extraFloorPlanUrls: string | null = null;
+    try {
+      const extraRow = await prisma.offer.findUnique({
+        where: { id: Number(resolvedParams.id) },
+        select: { floorPlanExtraUrls: true } as any,
+      });
+      extraFloorPlanUrls = (extraRow as { floorPlanExtraUrls?: string | null } | null)?.floorPlanExtraUrls || null;
+    } catch {
+      extraFloorPlanUrls = null;
+    }
 
     const currentUser = await resolveCurrentUser();
     const offerRow = offer as unknown as {
@@ -385,6 +397,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
       floorPlanUrl: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
       floorPlan: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
+      floorPlanExtraUrls: extraFloorPlanUrls,
       floorPlan3dUrl: (legalOffer as { floorPlan3dUrl?: string | null }).floorPlan3dUrl || null,
       floorPlanScanMeta: (legalOffer as { floorPlanScanMeta?: string | null }).floorPlanScanMeta || null,
       marketListedAt: marketListing.marketListedAt,
@@ -564,6 +577,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             : body.floorPlan != null
               ? String(body.floorPlan)
               : currentOffer.floorPlanUrl,
+        floorPlanExtraUrls:
+          body.floorPlanExtraUrls !== undefined
+            ? body.floorPlanExtraUrls
+              ? typeof body.floorPlanExtraUrls === 'string'
+                ? body.floorPlanExtraUrls
+                : JSON.stringify(body.floorPlanExtraUrls)
+              : null
+            : (currentOffer as { floorPlanExtraUrls?: string | null }).floorPlanExtraUrls ?? null,
         floorPlan3dUrl:
           body.floorPlan3dUrl !== undefined
             ? body.floorPlan3dUrl

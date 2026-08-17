@@ -35,7 +35,7 @@ export async function refreshAgencyClientMatches(clientId: number) {
     where: { id: clientId },
     include: { buyerPreference: true },
   });
-  if (!client || client.type !== 'BUYER' || !client.buyerPreference) {
+  if (!client || !client.buyerPreference) {
     return { upserted: 0, matches: [] };
   }
 

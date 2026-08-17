@@ -125,6 +125,7 @@ export default function AgencyClientFormModal({
     location: "",
     note: "",
   });
+  const [alsoSearching, setAlsoSearching] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -158,6 +159,7 @@ export default function AgencyClientFormModal({
     setLookupBusy(false);
     setBuyerFilters({ ...defaultWebRadarFilters(), pushNotifications: false });
     setMeeting({ enabled: false, date: "", time: "10:00", location: "", note: "" });
+    setAlsoSearching(false);
     setForm({
       firstName: "",
       lastName: "",
@@ -300,6 +302,7 @@ export default function AgencyClientFormModal({
                   ? Number(String(form.sellerPrice).replace(/\s/g, "").replace(",", "."))
                   : null,
                 acquisitionMeeting,
+                ...(alsoSearching ? { buyerFilters: { ...buyerFilters, pushNotifications: false } } : {}),
               }
             : {}),
         }),
@@ -724,6 +727,31 @@ export default function AgencyClientFormModal({
                             Po zapisaniu termin trafi do Twojego dnia w CRM, a klient dostanie e-mail (jeśli podał
                             adres).
                           </p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 p-4">
+                      <label className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={alsoSearching}
+                          onChange={(e) => setAlsoSearching(e.target.checked)}
+                          className="size-4 accent-emerald-500"
+                        />
+                        <span className="text-sm font-bold text-[var(--eos-text)]">Klient też szuka nieruchomości</span>
+                      </label>
+                      <p className="mt-2 text-xs text-[var(--eos-muted)]">
+                        Włącz radar zakupowy — system będzie dopasowywał oferty tak jak dla kupującego.
+                      </p>
+                      {alsoSearching ? (
+                        <div className="mt-4">
+                          <AgencyClientCriteriaEditor
+                            compact
+                            value={buyerFilters}
+                            onChange={setBuyerFilters}
+                            catalog={criteriaCatalog}
+                          />
                         </div>
                       ) : null}
                     </div>
