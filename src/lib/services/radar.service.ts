@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/core/notification.core';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { calculateRadarMatchScore, radarMatchThreshold } from '@/lib/radarMatchScore';
+import { matchPublishedOfferToAgencyClients } from '@/lib/agencyClientMatching';
 
 export type RadarMatchContext = {
   /** Id bieżącej sesji publikacji — każde wejście na rynek = nowy push. */
@@ -127,6 +128,9 @@ export const radarService = {
     }
 
     await this.matchNewOffer(offerRecord, { publicationId });
+    await matchPublishedOfferToAgencyClients(offerRecord, { publicationId }).catch((err) => {
+      console.warn(`[RADAR] agency-client match failed offer=${offerId}`, err);
+    });
   },
 };
 

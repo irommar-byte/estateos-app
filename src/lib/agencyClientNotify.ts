@@ -332,10 +332,17 @@ export async function notifyAgencyClientAboutOffer(params: {
     emailSent = true;
   }
 
+  const now = new Date();
   await prisma.agencyClientMatch.upsert({
     where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
-    create: { clientId: params.clientId, offerId: params.offerId, score: 0, notifiedAt: emailSent ? new Date() : undefined },
-    update: emailSent ? { notifiedAt: new Date() } : {},
+    create: {
+      clientId: params.clientId,
+      offerId: params.offerId,
+      score: 0,
+      notifiedAt: now,
+      sharedAt: now,
+    },
+    update: { notifiedAt: now, sharedAt: now },
   });
 
   await prisma.agencyClientActivity.create({
@@ -410,12 +417,12 @@ export async function notifyAgencyClientAboutOffers(params: {
     emailSent = true;
   }
 
-  const now = emailSent ? new Date() : undefined;
+  const now = new Date();
   for (const offerId of toSend) {
     await prisma.agencyClientMatch.upsert({
       where: { clientId_offerId: { clientId: params.clientId, offerId } },
-      create: { clientId: params.clientId, offerId, score: 0, notifiedAt: now },
-      update: now ? { notifiedAt: now } : {},
+      create: { clientId: params.clientId, offerId, score: 0, notifiedAt: now, sharedAt: now },
+      update: { notifiedAt: now, sharedAt: now },
     });
   }
 

@@ -16,6 +16,7 @@ import {
   resolvePresentation,
 } from '@/lib/crm/clientJourney';
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -70,10 +71,9 @@ async function notifyAgent(params: {
     type: params.type || 'CRM_EVENT',
     title: params.title,
     body: params.body,
-    data: {
-      clientId: params.clientId,
-      href: `/moje-konto/crm?tab=klienci&clientId=${params.clientId}`,
-    },
+    data: crmAgentPushData(params.clientId, {
+      notificationType: params.type === 'CHAT_MESSAGE' ? 'crm_client_message' : 'crm_client',
+    }),
   }).catch(() => {});
 }
 
