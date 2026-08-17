@@ -36,7 +36,7 @@ export const VerificationBadge = ({ phoneVerified, emailVerified, isVerified, on
 
   if (fullyVerified) {
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, alignSelf: 'stretch', maxWidth: '100%' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, alignSelf: 'flex-start', maxWidth: '100%' }}>
         <View
           style={{
             flexDirection: 'row',
@@ -70,7 +70,7 @@ export const VerificationBadge = ({ phoneVerified, emailVerified, isVerified, on
   if (missingCount === 1) {
     const what = !phoneOk ? 'telefon' : 'e-mail';
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, alignSelf: 'stretch', maxWidth: '100%' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, alignSelf: 'flex-start', maxWidth: '100%' }}>
         <Pressable
           onPress={onPress}
           disabled={!onPress}
@@ -109,7 +109,7 @@ export const VerificationBadge = ({ phoneVerified, emailVerified, isVerified, on
 
   // Nic nie zweryfikowane.
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, alignSelf: 'stretch', maxWidth: '100%' }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, alignSelf: 'flex-start', maxWidth: '100%' }}>
       <Pressable
         onPress={onPress}
         disabled={!onPress}
