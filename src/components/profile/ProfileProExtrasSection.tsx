@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { useI18n } from '../../i18n';
 import ProMembershipCountdownBar from './ProMembershipCountdownBar';
 import TitaniumHomeKeyBackdrop from './TitaniumHomeKeyBackdrop';
+import MobilePulseScheduleWidget from '../agency/MobilePulseScheduleWidget';
 import { profilePremiumCardShellStyle } from './profileCardElevation';
 import InsetMetalRecess, { InsetMetalIconWell } from './InsetMetalRecess';
 import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
@@ -325,6 +326,8 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
       </Pressable>
 
       <ProMembershipCountdownBar proExpiresAt={user?.proExpiresAt} isDark={isDark} />
+
+      <MobilePulseScheduleWidget isDark={isDark} />
 
       {toolsExpanded ? (
         <>

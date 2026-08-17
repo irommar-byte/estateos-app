@@ -16,6 +16,65 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { fetchAgencyClients, type AgencyClientListItem } from '../services/agencyClientService';
 
+function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso: string; location?: string | null; isDark?: boolean }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const startsAt = new Date(startsAtIso).getTime();
+  if (Number.isNaN(startsAt)) return null;
+  const diffSec = Math.floor((startsAt - now) / 1000);
+
+  if (diffSec < -3600 * 2) return null;
+
+  const isLive = diffSec <= 0 && diffSec >= -3600 * 2;
+  const days = Math.floor(diffSec / 86400);
+  const hours = Math.floor((diffSec % 86400) / 3600);
+  const minutes = Math.floor((diffSec % 3600) / 60);
+  const seconds = Math.floor(diffSec % 60);
+
+  const countdownText = isLive
+    ? 'SPOTKANIE W TRAKCIE'
+    : `Za ${days > 0 ? `${days}d ` : ''}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  const dateStr = new Date(startsAtIso).toLocaleString('pl-PL', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <View
+      style={{
+        marginTop: 8,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 10,
+        backgroundColor: isLive ? 'rgba(255,149,0,0.18)' : 'rgba(52,199,89,0.12)',
+        borderWidth: 1,
+        borderColor: isLive ? '#FF9500' : '#34C759',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+      }}
+    >
+      <Ionicons name="time-outline" size={14} color={isLive ? '#FF9500' : '#34C759'} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: isLive ? '#FF9500' : '#34C759', fontSize: 11, fontWeight: '800' }}>
+          Spotkanie: {countdownText}
+        </Text>
+        <Text style={{ color: isDark ? '#8E8E93' : '#6C6C70', fontSize: 10, marginTop: 1 }}>
+          {dateStr}{location ? ` · ${location}` : ''}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function AgencyClientsScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -97,7 +156,7 @@ export default function AgencyClientsScreen() {
             style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#34C759', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 }}>
+              <Text style={{ color: client.type === 'BUYER' ? '#FF9500' : '#34C759', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 }}>
                 {client.type === 'BUYER' ? 'KUPUJĄCY' : 'SPRZEDAJĄCY'}
               </Text>
               <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 4 }}>
@@ -110,6 +169,13 @@ export default function AgencyClientsScreen() {
                 <Text style={{ color: colors.secondary, marginTop: 6, fontSize: 12 }}>
                   {client.matchCount} dopasowań{client.topMatchScore ? ` · top ${client.topMatchScore}%` : ''}
                 </Text>
+              ) : null}
+              {client.upcomingMeetingStartsAt ? (
+                <MeetingCountdownBadge
+                  startsAtIso={client.upcomingMeetingStartsAt}
+                  location={client.upcomingMeetingLocation}
+                  isDark={isDark}
+                />
               ) : null}
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.secondary} />

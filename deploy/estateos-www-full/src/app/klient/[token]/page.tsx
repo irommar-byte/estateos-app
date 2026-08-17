@@ -47,6 +47,14 @@ type PortalData = {
   agentName: string;
   agentPhone: string | null;
   agentEmail: string | null;
+  agentPhoto?: string | null;
+  agentTitle?: string | null;
+  agencyLogo?: string | null;
+  agencySlug?: string | null;
+  agencyWebsite?: string | null;
+  agencyPhone?: string | null;
+  agencyEmail?: string | null;
+  agencyAddress?: string | null;
   searchCriteria: SearchCriteria;
   canChat: boolean;
   matches: Array<{
@@ -293,20 +301,137 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] pt-28 pb-32 text-[var(--eos-text)]">
     <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
-      <header className="rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-8 shadow-[var(--eos-shadow-soft)]">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">Panel klienta</p>
-        <h1 className="mt-2 text-3xl font-bold text-[var(--eos-text)]">Witaj, {portal.clientName}</h1>
-        <p className="mt-2 text-sm text-[var(--eos-muted)]">
-          {portal.type === "BUYER"
-            ? `Twój agent ${portal.agentName} (${portal.agencyName}) prowadzi poszukiwania nieruchomości.`
-            : `${portal.agencyName} prowadzi Twoje ogłoszenie — poniżej status i ostatnie działania.`}
-        </p>
-        {(portal.agentPhone || portal.agentEmail) && (
-          <p className="mt-3 text-xs text-[var(--eos-muted)]">
-            Kontakt: {portal.agentPhone || ""} {portal.agentEmail ? `· ${portal.agentEmail}` : ""}
-          </p>
-        )}
+      <header className="rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)] sm:p-8">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+              <CheckCircle2 className="size-3.5" />
+              Panel Klienta EstateOS
+            </span>
+            <h1 className="mt-2 text-3xl font-black text-[var(--eos-text)]">Witaj, {portal.clientName}</h1>
+            <p className="text-sm text-[var(--eos-muted)]">
+              {portal.type === "BUYER"
+                ? `Twój agent prowadzi dopasowanie ofert i poszukiwania nieruchomości.`
+                : `Dedykowany agent i biuro reprezentują Twoją nieruchomość.`}
+            </p>
+          </div>
+
+          {/* Agent Business Card */}
+          <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
+            {portal.agentPhoto ? (
+              <img
+                src={portal.agentPhoto}
+                alt={portal.agentName}
+                className="size-16 rounded-full object-cover ring-2 ring-emerald-500/30"
+              />
+            ) : (
+              <div className="flex size-16 items-center justify-center rounded-full bg-emerald-500/20 text-xl font-black text-emerald-600">
+                {portal.agentName.charAt(0)}
+              </div>
+            )}
+            <div className="space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500">Twój agent</p>
+              <p className="text-base font-bold text-[var(--eos-text)]">{portal.agentName}</p>
+              <p className="text-xs text-[var(--eos-muted)]">{portal.agentTitle || "Doradca ds. Nieruchomości"}</p>
+              <p className="text-xs font-semibold text-emerald-600">{portal.agencyName}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Agency Office Details & Direct Actions */}
+        <div className="mt-6 grid gap-3 border-t border-[var(--eos-border)]/60 pt-6 sm:grid-cols-2 lg:grid-cols-3">
+          {portal.agentPhone && (
+            <a
+              href={`tel:${portal.agentPhone}`}
+              className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
+            >
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                📞
+              </div>
+              <div className="truncate">
+                <p className="text-[10px] text-[var(--eos-muted)]">Zadzwoń do agenta</p>
+                <p className="truncate">{portal.agentPhone}</p>
+              </div>
+            </a>
+          )}
+          {portal.agentEmail && (
+            <a
+              href={`mailto:${portal.agentEmail}`}
+              className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
+            >
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                ✉️
+              </div>
+              <div className="truncate">
+                <p className="text-[10px] text-[var(--eos-muted)]">Wyślij wiadomość</p>
+                <p className="truncate">{portal.agentEmail}</p>
+              </div>
+            </a>
+          )}
+          {(portal.agencySlug || portal.agencyWebsite) && (
+            <a
+              href={portal.agencySlug || portal.agencyWebsite!}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
+            >
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                🏢
+              </div>
+              <div className="truncate">
+                <p className="text-[10px] text-[var(--eos-muted)]">Profil biura</p>
+                <p className="truncate">{portal.agencyName}</p>
+              </div>
+            </a>
+          )}
+        </div>
       </header>
+
+      {portal.type === "SELLER" && portal.listing ? (
+        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
+                Twoja Przypisana Oferta
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)]">
+                {portal.listing.title || "Ogłoszenie nieruchomości"}
+              </h2>
+            </div>
+            <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-black uppercase text-emerald-600">
+              Opublikowana i aktywna
+            </span>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+            {portal.listing.imageUrl && (
+              <img
+                src={portal.listing.imageUrl}
+                alt={portal.listing.title}
+                className="h-32 w-full rounded-2xl object-cover sm:w-48"
+              />
+            )}
+            <div className="space-y-2">
+              <p className="text-2xl font-black text-emerald-600">
+                {portal.listing.price ? `${portal.listing.price.toLocaleString("pl-PL")} PLN` : "Cena na zapytanie"}
+              </p>
+              <p className="text-sm font-semibold text-[var(--eos-text)]">
+                📍 {portal.listing.city} {portal.listing.district ? `· ${portal.listing.district}` : ""}
+              </p>
+              <p className="text-xs text-[var(--eos-muted)]">
+                Ogłoszenie jest promowane w bazie kupujących EstateOS™ oraz w aplikacji mobilnej.
+              </p>
+              <Link
+                href={`/oferta/${portal.listing.id}`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600 hover:underline"
+              >
+                Zobacz publiczną stronę ogłoszenia <ExternalLink className="size-3.5" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {portal.type === "SELLER" && portal.acquisition ? (
         <section className="space-y-5 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)] sm:p-7">

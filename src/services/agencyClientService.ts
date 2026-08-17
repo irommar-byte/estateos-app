@@ -22,6 +22,8 @@ export type AgencyClientListItem = {
   buyerCity: string | null;
   buyerMaxPrice: number | null;
   updatedAt: string;
+  upcomingMeetingStartsAt?: string | null;
+  upcomingMeetingLocation?: string | null;
 };
 
 export type AgencyClientMatch = {
@@ -235,6 +237,17 @@ export async function linkAgencyClientOffer(token: string, clientId: number, off
   const json = await parseJson(res);
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się powiązać oferty.') };
   return { ok: true as const };
+}
+
+export async function createOfferFromAcquisition(token: string, clientId: number) {
+  const res = await fetch(`${API_URL}/api/crm/clients/${clientId}`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create_offer_from_acquisition' }),
+  });
+  const json = await parseJson(res);
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się utworzyć oferty.') };
+  return { ok: true as const, offerId: Number(json.offerId) };
 }
 
 export async function previewPortalListing(token: string, url: string) {

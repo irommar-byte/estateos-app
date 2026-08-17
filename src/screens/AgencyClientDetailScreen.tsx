@@ -33,6 +33,7 @@ import { buildYearBuiltPickerValues } from '../lib/offerYearBuilt';
 import {
   acquisitionAction,
   archiveAgencyClient,
+  createOfferFromAcquisition,
   fetchAcquisition,
   fetchAgencyClient,
   patchAgencyClient,
@@ -127,6 +128,27 @@ export default function AgencyClientDetailScreen() {
     border: isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)',
     input: isDark ? '#2C2C2E' : '#F2F2F7',
     accent: '#34C759',
+  };
+
+  const [creatingOffer, setCreatingOffer] = useState(false);
+
+  const handleCreateOfferFromAcquisition = async () => {
+    if (!token || !client?.id) return;
+    setCreatingOffer(true);
+    try {
+      const res = await createOfferFromAcquisition(token, client.id);
+      if (!res.ok) {
+        Alert.alert('Oferta z karty', res.message);
+        return;
+      }
+      Alert.alert(
+        'Oferta utworzona!',
+        `Nowa oferta #${res.offerId} została pomyślnie utworzona z danych karty pozyskania i przypisana do klienta.`,
+        [{ text: 'OK', onPress: () => void load() }]
+      );
+    } finally {
+      setCreatingOffer(false);
+    }
   };
 
   const load = useCallback(async () => {
@@ -491,6 +513,64 @@ export default function AgencyClientDetailScreen() {
                   {formatPhoneNumber(client.phone || '')} • {client.email || 'Brak e-maila'}
                 </Text>
               </View>
+
+              {/* Offer Creation / Link Section for Sellers */}
+              {client.type === 'SELLER' ? (
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                    OFERTA NIERUCHOMOŚCI
+                  </Text>
+                  {client.linkedOfferId ? (
+                    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>
+                          Oferta #{client.linkedOfferId}
+                        </Text>
+                        <Text style={{ color: '#34C759', fontSize: 12, marginTop: 2, fontWeight: '700' }}>
+                          ● Widoczna w panelu klienta
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => navigation.navigate('OfferDetail', { offerId: client.linkedOfferId })}
+                        style={{ backgroundColor: colors.bg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>Zobacz ofertę</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ color: colors.secondary, fontSize: 13 }}>
+                        Brak przypisanej oferty. Wykorzystaj wprowadzone dane z karty pozyskania do utworzenia oficjalnego ogłoszenia.
+                      </Text>
+                      <Pressable
+                        onPress={handleCreateOfferFromAcquisition}
+                        disabled={creatingOffer}
+                        style={{
+                          marginTop: 12,
+                          backgroundColor: '#34C759',
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          borderRadius: 12,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          opacity: creatingOffer ? 0.7 : 1,
+                        }}
+                      >
+                        {creatingOffer ? (
+                          <ActivityIndicator color="#000" size="small" />
+                        ) : (
+                          <Ionicons name="flash" size={18} color="#000" />
+                        )}
+                        <Text style={{ color: '#000', fontWeight: '900', fontSize: 14 }}>
+                          Utwórz ofertę z karty pozyskania
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              ) : null}
 
               {/* Acquisition Card (For Sellers) */}
               {client.type === 'SELLER' && form ? (
