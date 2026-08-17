@@ -23,6 +23,7 @@ import {
 } from '@/lib/offerAmenities';
 import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
+import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
 import dynamic from 'next/dynamic';
 
