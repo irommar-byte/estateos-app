@@ -26,28 +26,26 @@ function stripNestedRoomScans(raw: unknown): unknown {
 
 function parseRooms(raw: unknown): PropertyRoomScan[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item, index) => {
-      if (!item || typeof item !== 'object') return null;
-      const room = item as Record<string, unknown>;
-      const id = String(room.id || `room-${index}`);
-      const name = String(room.name || `Pomieszczenie ${index + 1}`);
-      return {
-        id,
-        name,
-        widthM: String(room.widthM || ''),
-        lengthM: String(room.lengthM || ''),
-        heightM: String(room.heightM || ''),
-        areaM2: String(room.areaM2 || ''),
-        floorPlanPngUri: room.floorPlanPngUri ? String(room.floorPlanPngUri) : undefined,
-        floorPlan3dUri: room.floorPlan3dUri ? String(room.floorPlan3dUri) : undefined,
-        scanMeta: room.scanMeta
-          ? parseFloorPlanScanMeta(stripNestedRoomScans(room.scanMeta)) || undefined
-          : undefined,
-        scannedAt: room.scannedAt ? String(room.scannedAt) : undefined,
-      } satisfies PropertyRoomScan;
-    })
-    .filter((room): room is PropertyRoomScan => Boolean(room));
+  const rooms: PropertyRoomScan[] = [];
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const room = item as Record<string, unknown>;
+    rooms.push({
+      id: String(room.id || `room-${index}`),
+      name: String(room.name || `Pomieszczenie ${index + 1}`),
+      widthM: String(room.widthM || ''),
+      lengthM: String(room.lengthM || ''),
+      heightM: String(room.heightM || ''),
+      areaM2: String(room.areaM2 || ''),
+      floorPlanPngUri: room.floorPlanPngUri ? String(room.floorPlanPngUri) : undefined,
+      floorPlan3dUri: room.floorPlan3dUri ? String(room.floorPlan3dUri) : undefined,
+      scanMeta: room.scanMeta
+        ? parseFloorPlanScanMeta(stripNestedRoomScans(room.scanMeta)) || undefined
+        : undefined,
+      scannedAt: room.scannedAt ? String(room.scannedAt) : undefined,
+    });
+  });
+  return rooms;
 }
 
 export function parseFloorPlanScanMeta(raw: unknown): FloorPlanScanMeta | null {
