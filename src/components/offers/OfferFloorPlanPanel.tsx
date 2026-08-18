@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react';
 import { FileImage, Maximize2, ScanLine } from 'lucide-react';
 import type { OfferPageCopy } from '@/content/offerPageCopy';
 import type { Locale } from '@/i18n/config';
-import type { FloorPlanScanMeta } from '@/types/roomScan';
+import type { FloorPlanScanMeta, PropertyRoomScan } from '@/types/roomScan';
 import { formatRoomScanRoomCount } from '@/lib/roomScan/roomScanLabels';
+import { resolvePublicAssetUrl } from '@/lib/roomScan/parseFloorPlanScanMeta';
 import FloorPlan3dWalkthrough from '@/components/offers/FloorPlan3dWalkthrough';
 import FloorPlanScanArtboard from '@/components/offers/FloorPlanScanArtboard';
 
@@ -21,6 +22,10 @@ type OfferFloorPlanPanelProps = {
   onEnlarge?: () => void;
 };
 
+function assetUrl(uri?: string | null): string {
+  return uri ? resolvePublicAssetUrl(uri) : '';
+}
+
 export default function OfferFloorPlanPanel({
   floorPlanSrc,
   extraFloorPlanSrcs = [],
@@ -32,70 +37,143 @@ export default function OfferFloorPlanPanel({
   variant = 'full',
   onEnlarge,
 }: OfferFloorPlanPanelProps) {
-  const hasInteractive = Boolean(scanMeta?.walls?.length);
+  const roomScans = Array.isArray(scanMeta?.roomScans) ? scanMeta.roomScans : [];
+  const [planKey, setPlanKey] = useState<'whole' | string>('whole');
+  const selectedRoom: PropertyRoomScan | null =
+    planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
+  const activeMeta = selectedRoom?.scanMeta || scanMeta;
+  const activeImage = assetUrl(selectedRoom?.floorPlanPngUri) || floorPlanSrc;
+  const active3d = assetUrl(selectedRoom?.floorPlan3dUri) || floorPlan3dSrc || '';
+  const hasInteractive = Boolean(activeMeta?.walls?.length);
   const [viewMode, setViewMode] = useState<'image' | 'interactive'>(hasInteractive ? 'interactive' : 'image');
+  const furniture = activeMeta?.objects || [];
 
   const metaLine = useMemo(() => {
-    if (!scanMeta) return null;
+    if (!activeMeta && !selectedRoom) return null;
     const parts: string[] = [];
-    if (scanMeta.roomCount > 0) parts.push(formatRoomScanRoomCount(scanMeta.roomCount, locale));
-    if (scanMeta.totalAreaSqM) parts.push(`~${scanMeta.totalAreaSqM} m²`);
+    if (selectedRoom) {
+      parts.push(selectedRoom.name);
+      if (selectedRoom.widthM && selectedRoom.lengthM) {
+        parts.push(`${selectedRoom.widthM} × ${selectedRoom.lengthM} m`);
+      }
+      if (selectedRoom.areaM2) parts.push(`${selectedRoom.areaM2} m²`);
+      if (selectedRoom.heightM) parts.push(`H ${selectedRoom.heightM} m`);
+      return parts.join(' · ');
+    }
+    if (activeMeta?.roomCount && activeMeta.roomCount > 0) {
+      parts.push(formatRoomScanRoomCount(activeMeta.roomCount, locale));
+    }
+    if (activeMeta?.totalAreaSqM) parts.push(`~${activeMeta.totalAreaSqM} m²`);
+    if (activeMeta?.ceilingHeightM) parts.push(`H ${activeMeta.ceilingHeightM.toFixed(2)} m`);
     return parts.join(' · ');
-  }, [scanMeta, locale]);
+  }, [activeMeta, locale, selectedRoom]);
 
-  if (!floorPlanSrc && !floorPlan3dSrc) return null;
+  if (!floorPlanSrc && !floorPlan3dSrc && !roomScans.length && !scanMeta?.walls?.length) return null;
 
+  const chips = roomScans.length > 0 ? (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => setPlanKey('whole')}
+        className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${
+          planKey === 'whole'
+            ? `${themeColors.bgActiveSoft} text-[var(--eos-text)]`
+            : 'border border-[var(--eos-border)] text-[var(--eos-muted)]'
+        }`}
+      >
+        {copy.floorPlanScan.wholeHome}
+      </button>
+      {roomScans.map((room) => (
+        <button
+          key={room.id || room.name}
+          type="button"
+          onClick={() => setPlanKey(room.id)}
+          className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${
+            planKey === room.id
+              ? `${themeColors.bgActiveSoft} text-[var(--eos-text)]`
+              : 'border border-[var(--eos-border)] text-[var(--eos-muted)]'
+          }`}
+        >
+          {room.name}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
-  if (!floorPlanSrc && floorPlan3dSrc) {
+  const furnitureRow = furniture.length > 0 ? (
+    <div className="flex flex-wrap gap-2">
+      {furniture.map((obj) => (
+        <span
+          key={obj.id}
+          className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold text-sky-100"
+        >
+          {obj.label}
+        </span>
+      ))}
+    </div>
+  ) : null;
+
+  const planCanvas = (
+    <div className="relative z-10 flex h-full w-full items-center justify-center p-4">
+      {viewMode === 'interactive' && hasInteractive && activeMeta ? (
+        <FloorPlanScanArtboard
+          walls={activeMeta.walls}
+          meta={activeMeta}
+          width={variant === 'compact' ? 640 : 960}
+          height={variant === 'compact' ? 480 : 600}
+          locale={locale}
+        />
+      ) : activeImage ? (
+        <img
+          src={activeImage}
+          alt={copy.floorPlan}
+          className="h-full w-full object-contain"
+        />
+      ) : null}
+    </div>
+  );
+
+  if (!floorPlanSrc && floorPlan3dSrc && !roomScans.length && !hasInteractive) {
     return (
       <div className={variant === 'compact' ? 'eos-offer-panel overflow-hidden p-0' : 'eos-offer-panel mb-8 overflow-hidden p-0'}>
         <FloorPlan3dWalkthrough modelUrl={floorPlan3dSrc} copy={copy.floorPlanWalkthrough} compact={variant === 'compact'} />
       </div>
     );
   }
+
   if (variant === 'compact') {
     return (
       <div className="eos-offer-panel overflow-hidden p-0">
-        <button
-          type="button"
-          onClick={onEnlarge}
-          className="group w-full p-4 text-left transition-colors hover:bg-[var(--eos-surface-strong)]"
-        >
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className={`eos-offer-metric-label ${themeColors.textActive}`}>{copy.floorPlan}</p>
-              {scanMeta ? (
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-sky-300/90">
-                  {copy.floorPlanScan.lidarBadge}
-                  {metaLine ? ` · ${metaLine}` : ''}
-                </p>
-              ) : null}
-            </div>
-            <Maximize2 size={14} className="text-[var(--eos-muted)] transition-colors group-hover:text-[var(--eos-text)]" />
-          </div>
-          <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#050505]">
-            {viewMode === 'interactive' && hasInteractive && scanMeta ? (
-              <div className="aspect-[4/3] w-full p-2">
-                <FloorPlanScanArtboard
-                  walls={scanMeta.walls}
-                  meta={scanMeta}
-                  width={640}
-                  height={480}
-                  locale={locale}
-                />
+        <div className="p-4">
+          <button
+            type="button"
+            onClick={onEnlarge}
+            className="group w-full text-left transition-colors"
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className={`eos-offer-metric-label ${themeColors.textActive}`}>{copy.floorPlan}</p>
+                {scanMeta ? (
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-sky-300/90">
+                    {copy.floorPlanScan.lidarBadge}
+                    {metaLine ? ` · ${metaLine}` : ''}
+                  </p>
+                ) : null}
               </div>
-            ) : (
-              <img
-                src={floorPlanSrc}
-                alt={copy.floorPlan}
-                className="aspect-[4/3] w-full object-contain p-3 transition-transform duration-500 group-hover:scale-[1.02]"
-              />
-            )}
-          </div>
-        </button>
-        {floorPlan3dSrc ? (
+              <Maximize2 size={14} className="text-[var(--eos-muted)] transition-colors group-hover:text-[var(--eos-text)]" />
+            </div>
+          </button>
+          {chips ? <div className="mb-3">{chips}</div> : null}
+          <button type="button" onClick={onEnlarge} className="block w-full">
+            <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#050505]">
+              <div className="aspect-[4/3] w-full">{planCanvas}</div>
+            </div>
+          </button>
+        </div>
+        {furnitureRow ? <div className="px-4 pb-3">{furnitureRow}</div> : null}
+        {active3d ? (
           <div className="border-t border-[var(--eos-border)] px-4 pb-4">
-            <FloorPlan3dWalkthrough modelUrl={floorPlan3dSrc} copy={copy.floorPlanWalkthrough} compact />
+            <FloorPlan3dWalkthrough modelUrl={active3d} copy={copy.floorPlanWalkthrough} compact />
           </div>
         ) : null}
       </div>
@@ -160,6 +238,8 @@ export default function OfferFloorPlanPanel({
         </div>
       </div>
 
+      {chips ? <div className="border-b border-[var(--eos-border)] px-6 py-3 md:px-8">{chips}</div> : null}
+
       <button
         type="button"
         onClick={onEnlarge}
@@ -167,34 +247,59 @@ export default function OfferFloorPlanPanel({
       >
         <div className="relative aspect-[16/10] overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[#050505] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
-          {viewMode === 'interactive' && hasInteractive && scanMeta ? (
-            <div className="relative z-10 flex h-full w-full items-center justify-center p-4">
-              <FloorPlanScanArtboard
-                walls={scanMeta.walls}
-                meta={scanMeta}
-                width={960}
-                height={600}
-                locale={locale}
-              />
-            </div>
-          ) : (
-            <img
-              src={floorPlanSrc}
-              className="relative z-10 h-full w-full object-contain p-4 transition-transform duration-700 group-hover:scale-[1.02]"
-              alt={copy.floorPlan}
-            />
-          )}
+          {planCanvas}
           <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-5 py-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/80">{copy.enlarge}</span>
           </div>
         </div>
       </button>
 
-      {floorPlan3dSrc ? (
-        <FloorPlan3dWalkthrough modelUrl={floorPlan3dSrc} copy={copy.floorPlanWalkthrough} />
+      {furnitureRow ? (
+        <div className="border-t border-[var(--eos-border)] px-6 py-4 md:px-8">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+            {copy.floorPlanScan.furniture}
+          </p>
+          {furnitureRow}
+        </div>
       ) : null}
 
-      {extraFloorPlanSrcs.filter((src) => src && src !== floorPlanSrc).length > 0 ? (
+      {active3d ? (
+        <FloorPlan3dWalkthrough
+          modelUrl={active3d}
+          copy={{
+            ...copy.floorPlanWalkthrough,
+            title: selectedRoom ? copy.floorPlanScan.roomWalkthrough : copy.floorPlanWalkthrough.title,
+          }}
+        />
+      ) : null}
+
+      {roomScans.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 border-t border-[var(--eos-border)] p-4 sm:grid-cols-2 md:grid-cols-3">
+          {roomScans.map((room) => (
+            <button
+              key={room.id || room.name}
+              type="button"
+              onClick={() => setPlanKey(room.id)}
+              className={`rounded-2xl border p-3 text-left transition-colors ${
+                planKey === room.id
+                  ? 'border-sky-400/40 bg-sky-500/10'
+                  : 'border-[var(--eos-border)] hover:bg-[var(--eos-surface-strong)]'
+              }`}
+            >
+              <p className="text-sm font-bold text-[var(--eos-text)]">{room.name}</p>
+              <p className="mt-1 text-[11px] text-[var(--eos-muted)]">
+                {[
+                  room.widthM && room.lengthM ? `${room.widthM} × ${room.lengthM} m` : null,
+                  room.areaM2 ? `${room.areaM2} m²` : null,
+                  room.heightM ? `H ${room.heightM} m` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            </button>
+          ))}
+        </div>
+      ) : extraFloorPlanSrcs.filter((src) => src && src !== floorPlanSrc).length > 0 ? (
         <div className="grid grid-cols-2 gap-3 border-t border-[var(--eos-border)] p-4 md:grid-cols-3">
           {extraFloorPlanSrcs.filter((src) => src && src !== floorPlanSrc).map((src) => (
             <img key={src} src={src} alt="Dodatkowy plan" className="h-36 w-full rounded-xl object-contain bg-black/20" />

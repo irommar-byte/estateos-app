@@ -1070,7 +1070,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 ) : null}
 
-                {(floorPlanSrc || floorPlan3dSrc) && !isLocked ? (
+                {(floorPlanSrc || floorPlan3dSrc || floorPlanScanMeta) && !isLocked ? (
                   <OfferFloorPlanPanel
                     floorPlanSrc={floorPlanSrc}
                     extraFloorPlanSrcs={extraFloorPlanSrcs}
@@ -1150,7 +1150,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   ) : null}
                 </div>
 
-                {(floorPlanSrc || floorPlan3dSrc) && !isLocked ? (
+                {(floorPlanSrc || floorPlan3dSrc || floorPlanScanMeta) && !isLocked ? (
                   <OfferFloorPlanPanel
                     floorPlanSrc={floorPlanSrc}
                     extraFloorPlanSrcs={extraFloorPlanSrcs}

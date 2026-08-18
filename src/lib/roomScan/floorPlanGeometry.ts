@@ -1,4 +1,9 @@
-import type { FloorPlanScanMeta, RoomScanSection, RoomScanWallSegment } from '@/types/roomScan';
+import type {
+  FloorPlanScanMeta,
+  RoomScanOpening,
+  RoomScanSection,
+  RoomScanWallSegment,
+} from '@/types/roomScan';
 import type { Locale } from '@/i18n/config';
 import { getRoomScanSectionLabel } from '@/lib/roomScan/roomScanLabels';
 
@@ -26,9 +31,73 @@ export type MappedSection = {
   centerX: number;
   centerZ: number;
   areaSqM?: number;
+  widthM?: number;
+  lengthM?: number;
+  ceilingHeightM?: number;
   x: number;
   y: number;
   fill: string;
+};
+
+export type MappedObject = {
+  id: string;
+  category: string;
+  label: string;
+  x: number;
+  y: number;
+  glyph: string;
+  widthPx: number;
+  depthPx: number;
+  rotationDeg: number;
+  fill: string;
+  stroke: string;
+};
+
+export type MappedOpening = {
+  id: string;
+  kind: string;
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+};
+
+const OBJECT_GLYPH: Record<string, string> = {
+  stove: 'AGD',
+  oven: 'AGD',
+  refrigerator: 'LOD',
+  dishwasher: 'ZM',
+  sink: 'ZL',
+  washerDryer: 'PR',
+  toilet: 'WC',
+  bathtub: 'WAN',
+  bed: 'LOZ',
+  sofa: 'SOF',
+  table: 'ST',
+  chair: 'KR',
+  television: 'TV',
+  fireplace: 'KOM',
+  storage: 'SZ',
+  stairs: 'SCH',
+  unknown: '•',
+};
+
+const OBJECT_FILL: Record<string, { fill: string; stroke: string }> = {
+  stove: { fill: 'rgba(249,115,22,0.28)', stroke: '#fb923c' },
+  oven: { fill: 'rgba(249,115,22,0.28)', stroke: '#fb923c' },
+  refrigerator: { fill: 'rgba(56,189,248,0.22)', stroke: '#38bdf8' },
+  dishwasher: { fill: 'rgba(6,182,212,0.24)', stroke: '#22d3ee' },
+  sink: { fill: 'rgba(56,189,248,0.22)', stroke: '#7dd3fc' },
+  washerDryer: { fill: 'rgba(129,140,248,0.24)', stroke: '#818cf8' },
+  toilet: { fill: 'rgba(45,212,191,0.22)', stroke: '#2dd4bf' },
+  bathtub: { fill: 'rgba(34,211,238,0.22)', stroke: '#22d3ee' },
+  bed: { fill: 'rgba(168,85,247,0.22)', stroke: '#c084fc' },
+  sofa: { fill: 'rgba(244,63,94,0.22)', stroke: '#fb7185' },
+  table: { fill: 'rgba(245,158,11,0.24)', stroke: '#fbbf24' },
+  chair: { fill: 'rgba(251,191,36,0.24)', stroke: '#facc15' },
+  television: { fill: 'rgba(148,163,184,0.22)', stroke: '#94a3b8' },
+  fireplace: { fill: 'rgba(239,68,68,0.24)', stroke: '#f87171' },
+  storage: { fill: 'rgba(148,163,184,0.22)', stroke: '#94a3b8' },
+  stairs: { fill: 'rgba(148,163,184,0.28)', stroke: '#cbd5e1' },
+  unknown: { fill: 'rgba(148,163,184,0.18)', stroke: '#94a3b8' },
 };
 
 const ROOM_FILL_COLORS = [
@@ -229,10 +298,51 @@ export function mapSectionsForRender(
       centerX: section.centerX,
       centerZ: section.centerZ,
       areaSqM: section.areaSqM,
+      widthM: section.widthM,
+      lengthM: section.lengthM,
+      ceilingHeightM: section.ceilingHeightM,
       fill: ROOM_FILL_COLORS[index % ROOM_FILL_COLORS.length],
       ...p,
     };
   });
+}
+
+export function mapObjectsForRender(
+  objects: FloorPlanScanMeta['objects'],
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+): MappedObject[] {
+  return (objects || []).map((obj, index) => {
+    const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, bounds, viewport);
+    const palette = OBJECT_FILL[obj.category] || OBJECT_FILL.unknown;
+    const widthM = obj.widthM && obj.widthM > 0.2 ? obj.widthM : 0.55;
+    const depthM = obj.depthM && obj.depthM > 0.2 ? obj.depthM : 0.4;
+    return {
+      id: obj.id || `obj-${index}`,
+      category: obj.category,
+      label: obj.label,
+      glyph: OBJECT_GLYPH[obj.category] || OBJECT_GLYPH.unknown,
+      widthPx: Math.max(14, Math.min(86, widthM * viewport.scale)),
+      depthPx: Math.max(10, Math.min(72, depthM * viewport.scale)),
+      rotationDeg: obj.rotationDeg || 0,
+      fill: palette.fill,
+      stroke: palette.stroke,
+      ...p,
+    };
+  });
+}
+
+export function mapOpeningsForRender(
+  openings: RoomScanOpening[] | undefined,
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+): MappedOpening[] {
+  return (openings || []).map((opening, index) => ({
+    id: opening.id || `op-${index}`,
+    kind: opening.kind,
+    a: mapFloorPlanPoint(opening.x1, opening.z1, bounds, viewport),
+    b: mapFloorPlanPoint(opening.x2, opening.z2, bounds, viewport),
+  }));
 }
 
 export function sectionMarkerRadiusPx(viewport: FloorPlanViewport, areaSqM?: number): number {

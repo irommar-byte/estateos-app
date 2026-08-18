@@ -62,6 +62,10 @@ export const UK: OfferPageCopy = {
     lidarBadge: "LiDAR",
     viewImage: "Зображення",
     viewInteractive: "Інтерактивний скан",
+    wholeHome: "Уся квартира",
+    roomsTitle: "Приміщення",
+    furniture: "Меблі та техніка",
+    roomWalkthrough: "3D-тур цього приміщення",
   },
   floorPlanWalkthrough: {
     title: "Віртуальна 3D-екскурсія",
