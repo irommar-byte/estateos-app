@@ -35,6 +35,9 @@ export type RoomScanDetectedObject = {
   centerZ: number;
   widthM?: number;
   depthM?: number;
+  heightM?: number;
+  /** Obrót obrysu mebla w płaszczyźnie podłogi (stopnie). */
+  rotationDeg?: number;
 };
 
 export type RoomScanOpeningKind = 'door' | 'window' | 'opening';

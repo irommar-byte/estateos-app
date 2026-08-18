@@ -177,10 +177,227 @@ index 09c58fc..5e3e3d0 100644
        self.roomCaptureView.captureSession.run(configuration: self.configuration)
      }
 diff --git a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
-index 4e0fcdc..61deb08 100644
+index 4e0fcdc..65f274a 100644
 --- a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
 +++ b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
-@@ -95,7 +95,11 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -46,6 +46,12 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+     // is still running, so export can be deferred instead of racing it with a fixed timer.
+     private var isBuildingRoom = false
+     private var pendingExportAfterBuild = false
++    private var isExporting = false
++    private let scanHud = UIView()
++    private let scanHudTitle = UILabel()
++    private let scanHudStats = UILabel()
++    private let scanHudHint = UILabel()
++    private var lastLiveRoom: CapturedRoom?
+ 
+     // UI elements
+     private let activityIndicator = UIActivityIndicatorView(style: .large)
+@@ -82,6 +88,203 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+ 
+         setupButtons()
+         setupConstraints()
++        setupScanHud()
++    }
++
++    private func setupScanHud() {
++        scanHud.translatesAutoresizingMaskIntoConstraints = false
++        scanHud.backgroundColor = UIColor.black.withAlphaComponent(0.72)
++        scanHud.layer.cornerRadius = 18
++        scanHud.layer.masksToBounds = true
++
++        scanHudTitle.translatesAutoresizingMaskIntoConstraints = false
++        scanHudTitle.textColor = UIColor.systemTeal
++        scanHudTitle.font = UIFont.systemFont(ofSize: 11, weight: .heavy)
++        scanHudTitle.text = "KONTROLA SKANU"
++        scanHudTitle.textAlignment = .center
++
++        scanHudStats.translatesAutoresizingMaskIntoConstraints = false
++        scanHudStats.textColor = .white
++        scanHudStats.font = UIFont.systemFont(ofSize: 15, weight: .bold)
++        scanHudStats.numberOfLines = 4
++        scanHudStats.textAlignment = .center
++        scanHudStats.text = "Szukam ścian, podłogi i sufitu…"
++
++        scanHudHint.translatesAutoresizingMaskIntoConstraints = false
++        scanHudHint.textColor = UIColor.white.withAlphaComponent(0.85)
++        scanHudHint.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
++        scanHudHint.numberOfLines = 3
++        scanHudHint.textAlignment = .center
++        scanHudHint.text = "Prowadź telefon wzdłuż ścian. Zakończ, gdy wymiary się pojawią."
++
++        scanHud.addSubview(scanHudTitle)
++        scanHud.addSubview(scanHudStats)
++        scanHud.addSubview(scanHudHint)
++        view.addSubview(scanHud)
++
++        NSLayoutConstraint.activate([
++            scanHud.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
++            scanHud.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
++            scanHud.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
++
++            scanHudTitle.topAnchor.constraint(equalTo: scanHud.topAnchor, constant: 12),
++            scanHudTitle.leadingAnchor.constraint(equalTo: scanHud.leadingAnchor, constant: 12),
++            scanHudTitle.trailingAnchor.constraint(equalTo: scanHud.trailingAnchor, constant: -12),
++
++            scanHudStats.topAnchor.constraint(equalTo: scanHudTitle.bottomAnchor, constant: 6),
++            scanHudStats.leadingAnchor.constraint(equalTo: scanHud.leadingAnchor, constant: 12),
++            scanHudStats.trailingAnchor.constraint(equalTo: scanHud.trailingAnchor, constant: -12),
++
++            scanHudHint.topAnchor.constraint(equalTo: scanHudStats.bottomAnchor, constant: 6),
++            scanHudHint.leadingAnchor.constraint(equalTo: scanHud.leadingAnchor, constant: 12),
++            scanHudHint.trailingAnchor.constraint(equalTo: scanHud.trailingAnchor, constant: -12),
++            scanHudHint.bottomAnchor.constraint(equalTo: scanHud.bottomAnchor, constant: -12),
++        ])
++        finishButton.isEnabled = false
++        finishButton.alpha = 0.45
++    }
++
++    private func liveDimensions(from room: CapturedRoom) -> (width: Double, length: Double, height: Double)? {
++        let walls = room.walls
++        guard walls.count >= 2 else { return nil }
++        var xs: [Double] = []
++        var zs: [Double] = []
++        var heights: [Double] = []
++        for wall in walls {
++            let t = wall.transform
++            xs.append(Double(t.columns.3.x))
++            zs.append(Double(t.columns.3.z))
++            let h = Double(wall.dimensions.y)
++            if h > 1.6 && h < 5.5 { heights.append(h) }
++        }
++        guard let minX = xs.min(), let maxX = xs.max(), let minZ = zs.min(), let maxZ = zs.max() else {
++            return nil
++        }
++        let sideA = maxX - minX
++        let sideB = maxZ - minZ
++        guard sideA > 0.4, sideB > 0.4 else { return nil }
++        let width = min(sideA, sideB)
++        let length = max(sideA, sideB)
++        let height = heights.isEmpty ? 0 : heights.reduce(0, +) / Double(heights.count)
++        return (width, length, height)
++    }
++
++    private func polishObjectName(_ category: CapturedRoom.Object.Category) -> String {
++        switch category {
++        case .storage: return "szafa"
++        case .refrigerator: return "lodówka"
++        case .stove: return "kuchenka"
++        case .bed: return "łóżko"
++        case .sink: return "zlew"
++        case .washerDryer: return "pralka"
++        case .toilet: return "WC"
++        case .bathtub: return "wanna"
++        case .oven: return "piekarnik"
++        case .dishwasher: return "zmywarka"
++        case .table: return "stół"
++        case .sofa: return "sofa"
++        case .chair: return "krzesło"
++        case .fireplace: return "kominek"
++        case .television: return "TV"
++        case .stairs: return "schody"
++        @unknown default: return "mebel"
++        }
++    }
++
++    private func liveFurnitureLine(from room: CapturedRoom) -> String {
++        let names = room.objects.prefix(6).map { polishObjectName($0.category) }
++        if names.isEmpty { return "Szukam mebli i AGD stosownie do pomieszczenia…" }
++        return "Meble: " + names.joined(separator: ", ")
++    }
++
++    private func updateScanHud(from room: CapturedRoom) {
++        lastLiveRoom = room
++        let wallCount = room.walls.count
++        let doorCount = room.doors.count
++        let windowCount = room.windows.count
++        let objectCount = room.objects.count
++        let hasFloor = !room.floors.isEmpty
++        let hasCeiling = !room.ceilings.isEmpty
++        let dims = liveDimensions(from: room)
++        let ready = wallCount >= 3 && (hasFloor || hasCeiling || (dims?.height ?? 0) > 1.8)
++
++        var stats = "Ściany \(wallCount) · drzwi \(doorCount) · okna \(windowCount) · obiekty \(objectCount)"
++        if let dims {
++            let h = dims.height > 0 ? String(format: " · H %.2f m", dims.height) : ""
++            stats += String(format: "\n%.2f × %.2f m%@", dims.width, dims.length, h)
++        }
++        stats += "\n" + liveFurnitureLine(from: room)
++        scanHudStats.text = stats
++
++        if ready {
++            scanHud.backgroundColor = UIColor(red: 0.02, green: 0.35, blue: 0.22, alpha: 0.88)
++            scanHudTitle.text = "MOŻESZ ZAKOŃCZYĆ"
++            scanHudHint.text = "Pomieszczenie jest spójne. Zakończ — wymiary i meble zapiszą się na planie."
++            finishButton.isEnabled = true
++            finishButton.alpha = 1
++            finishButton.setTitle("Zakończ i zapisz", for: .normal)
++        } else if wallCount >= 2, dims != nil {
++            scanHud.backgroundColor = UIColor(red: 0.45, green: 0.28, blue: 0.02, alpha: 0.88)
++            scanHudTitle.text = "DOKOŃCZ OBRYS"
++            scanHudHint.text = "Obejmij jeszcze podłogę, sufit i brakujące ściany. Potem zakończ."
++            finishButton.isEnabled = true
++            finishButton.alpha = 1
++            finishButton.setTitle("Zakończ", for: .normal)
++        } else {
++            scanHud.backgroundColor = UIColor.black.withAlphaComponent(0.72)
++            scanHudTitle.text = "KONTROLA SKANU"
++            scanHudHint.text = "Prowadź telefon powoli wzdłuż ścian. Zakończ, gdy pojawią się wymiary."
++            finishButton.isEnabled = wallCount >= 2
++            finishButton.alpha = wallCount >= 2 ? 1 : 0.45
++            finishButton.setTitle("Zakończ", for: .normal)
++        }
++    }
++
++    private func showProcessingOverlay() {
++        if view.viewWithTag(888) != nil { return }
++        scanHud.isHidden = true
++        let overlay = UIView(frame: view.bounds)
++        overlay.tag = 888
++        overlay.backgroundColor = UIColor(red: 0.07, green: 0.12, blue: 0.20, alpha: 1)
++        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
++
++        let title = UILabel()
++        title.translatesAutoresizingMaskIntoConstraints = false
++        title.text = "Przeliczam metraż"
++        title.textColor = .white
++        title.font = UIFont.systemFont(ofSize: 22, weight: .heavy)
++        title.textAlignment = .center
++
++        let body = UILabel()
++        body.translatesAutoresizingMaskIntoConstraints = false
++        body.numberOfLines = 0
++        body.textAlignment = .center
++        body.textColor = UIColor.white.withAlphaComponent(0.82)
++        body.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
++        if let dims = lastLiveRoom.flatMap({ liveDimensions(from: $0) }) {
++            let h = dims.height > 0 ? String(format: " · wysokość %.2f m", dims.height) : ""
++            body.text = String(format: "Zapisuję %.2f × %.2f m%@\nPlan 2D i model 3D pojawią się za chwilę.", dims.width, dims.length, h)
++        } else {
++            body.text = "Zapisuję ściany, otwory i wysokość. Nie zamykaj aplikacji."
++        }
++
++        activityIndicator.color = UIColor.systemTeal
++        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
++        overlay.addSubview(activityIndicator)
++        overlay.addSubview(title)
++        overlay.addSubview(body)
++        view.addSubview(overlay)
++        NSLayoutConstraint.activate([
++            activityIndicator.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
++            activityIndicator.centerYAnchor.constraint(equalTo: overlay.centerYAnchor, constant: -36),
++            title.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 18),
++            title.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 24),
++            title.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -24),
++            body.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 10),
++            body.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 24),
++            body.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -24),
++        ])
++        activityIndicator.startAnimating()
+     }
+ 
+     private func setupButtons() {
+@@ -95,7 +298,11 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -193,7 +410,7 @@ index 4e0fcdc..61deb08 100644
  
          // Finish should either stop scanning (if running) or confirm exit (if post-scan)
          finishButton.addTarget(
-@@ -117,7 +121,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -117,7 +324,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -203,7 +420,7 @@ index 4e0fcdc..61deb08 100644
          // round corners
          cancelButton.layer.masksToBounds = true
          cancelButton.layer.cornerRadius = 5
-@@ -137,25 +142,25 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -137,25 +345,25 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
          NSLayoutConstraint.activate([
              finishButton.topAnchor.constraint(
                  equalTo: view.safeAreaLayoutGuide.topAnchor,
@@ -237,7 +454,7 @@ index 4e0fcdc..61deb08 100644
          ])
      }
  
-@@ -178,7 +183,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -178,7 +386,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -246,7 +463,7 @@ index 4e0fcdc..61deb08 100644
          // round corners
          exportButton.layer.masksToBounds = true
          exportButton.layer.cornerRadius = 15
-@@ -204,7 +209,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -204,7 +412,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
                  ofSize: 16,
                  weight: .bold
              )
@@ -255,13 +472,13 @@ index 4e0fcdc..61deb08 100644
              // round corners
              anotherScanButton.layer.masksToBounds = true
              anotherScanButton.layer.cornerRadius = 15
-@@ -270,7 +275,21 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -270,7 +478,21 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
      override func viewWillDisappear(_ flag: Bool) {
          super.viewWillDisappear(flag)
 -        stopSession()
-+        // Always tear down ARKit/LiDAR. stopSession() used to leave the camera
-+        // running (pauseARSession: false) and could also fire when dismissing.
++        // Do not kill AR mid-export — that left a black camera frame and empty files.
++        if isExporting || pendingExportAfterBuild { return }
 +        hardStopAR()
 +    }
 +
@@ -278,7 +495,7 @@ index 4e0fcdc..61deb08 100644
      }
  
      @IBAction func superExportResults(_ sender: Any) {
-@@ -544,56 +563,77 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -544,56 +766,79 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
      @objc
      private func finishTapped() {
@@ -340,11 +557,12 @@ index 4e0fcdc..61deb08 100644
 -        { action in
 +    @objc
 +    private func finalizeAndExport() {
++        isExporting = true
 +        finishButton.isEnabled = false
 +        cancelButton.isEnabled = false
 +        anotherScanButton?.isEnabled = false
 +        exportButton?.isEnabled = false
-+        activityIndicator.startAnimating()
++        showProcessingOverlay()
 +        pendingExportAfterBuild = true
 +        if isSessionRunning {
              if #available(iOS 17.0, *) {
@@ -365,12 +583,13 @@ index 4e0fcdc..61deb08 100644
 -            handler: nil
 -        )
 -        alertController.addAction(cancelAction)
-+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
++        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
 +            if self.isBuildingRoom {
-+                DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
++                DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
 +                    guard self.pendingExportAfterBuild else { return }
 +                    self.pendingExportAfterBuild = false
 +                    self.isBuildingRoom = false
++                    self.isExporting = false
 +                    self.sendScanResultAndDismiss(
 +                        status: .Error,
 +                        errorMessage: "Timed out waiting for the scan to finish processing."
@@ -395,3 +614,18 @@ index 4e0fcdc..61deb08 100644
      }
  
      @objc
+@@ -606,12 +851,12 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+ extension RoomPlanCaptureViewController {
+     func captureSession(_ session: RoomCaptureSession, didUpdate: CapturedRoom)
+     {
+-        print("[RoomPlan] didUpdate", didUpdate.objects.count)
++        DispatchQueue.main.async { self.updateScanHud(from: didUpdate) }
+     }
+ 
+     func captureSession(_ session: RoomCaptureSession, didChange: CapturedRoom)
+     {
+-        print("[RoomPlan] didChange", didChange.objects.count)
++        DispatchQueue.main.async { self.updateScanHud(from: didChange) }
+     }
+ }
+ 

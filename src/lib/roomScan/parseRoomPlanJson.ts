@@ -96,7 +96,14 @@ function objectFromRaw(obj: ObjectLike, index: number): RoomScanDetectedObject |
   if (!transform || transform.length < 16) return null;
   const category = normalizeRoomScanObjectCategory(categoryKey(obj.category));
   const widthM = Number(obj.dimensions?.[0] || 0) || undefined;
+  const heightM = Number(obj.dimensions?.[1] || 0) || undefined;
   const depthM = Number(obj.dimensions?.[2] ?? obj.dimensions?.[1] ?? 0) || undefined;
+  const dirX = Number(transform[0] || 0);
+  const dirZ = Number(transform[2] || 0);
+  const rotationDeg =
+    Number.isFinite(dirX) && Number.isFinite(dirZ) && (Math.abs(dirX) > 0.001 || Math.abs(dirZ) > 0.001)
+      ? Number(((Math.atan2(dirZ, dirX) * 180) / Math.PI).toFixed(1))
+      : 0;
   return {
     id: `obj-${index}-${category}`,
     category,
@@ -105,6 +112,8 @@ function objectFromRaw(obj: ObjectLike, index: number): RoomScanDetectedObject |
     centerZ: transform[14],
     widthM,
     depthM,
+    heightM: heightM && heightM > 0.15 && heightM < 3.5 ? heightM : undefined,
+    rotationDeg,
   };
 }
 
@@ -338,7 +347,23 @@ export function buildFloorPlanScanMeta(
   const totalFootprint = estimateFloorAreaFromWalls(walls);
   const overallDimensions = deriveRoomDimensionsFromWalls(walls);
   const enriched = enrichSectionsWithObjects(sections, objects, ceilingHeightM);
-  const displaySections = dedupeRoomSections(enriched);
+  let displaySections = dedupeRoomSections(enriched);
+  if (!displaySections.length && walls.length) {
+    const inferredKey = inferRoomTypeFromObjects(objects.map((item) => item.category));
+    displaySections = [
+      {
+        key: inferredKey,
+        label: getRoomScanSectionLabel(inferredKey),
+        centerX: (minX + maxX) / 2,
+        centerZ: (minZ + maxZ) / 2,
+        areaSqM: totalFootprint > 0 ? Number(totalFootprint.toFixed(1)) : undefined,
+        widthM: overallDimensions?.widthM,
+        lengthM: overallDimensions?.lengthM,
+        ceilingHeightM: ceilingHeightM ?? undefined,
+        inferredFromObjects: inferredKey !== 'unspecified' ? true : undefined,
+      },
+    ];
+  }
   const sectionCount = Math.max(1, displaySections.length);
   const sectionAreaTotal = displaySections.reduce(
     (sum, section) => sum + (typeof section.areaSqM === 'number' ? section.areaSqM : 0),

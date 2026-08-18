@@ -41,6 +41,11 @@ export type MappedObject = {
   x: number;
   y: number;
   glyph: string;
+  widthPx: number;
+  depthPx: number;
+  rotationDeg: number;
+  fill: string;
+  stroke: string;
 };
 
 export type MappedOpening = {
@@ -77,6 +82,26 @@ const OBJECT_GLYPH: Record<string, string> = {
   storage: 'SZ',
   stairs: 'SCH',
   unknown: '•',
+};
+
+const OBJECT_FILL: Record<string, { fill: string; stroke: string }> = {
+  stove: { fill: 'rgba(249,115,22,0.28)', stroke: '#ea580c' },
+  oven: { fill: 'rgba(249,115,22,0.28)', stroke: '#ea580c' },
+  refrigerator: { fill: 'rgba(14,165,233,0.22)', stroke: '#0284c7' },
+  dishwasher: { fill: 'rgba(6,182,212,0.24)', stroke: '#0e7490' },
+  sink: { fill: 'rgba(56,189,248,0.22)', stroke: '#0369a1' },
+  washerDryer: { fill: 'rgba(99,102,241,0.22)', stroke: '#4f46e5' },
+  toilet: { fill: 'rgba(45,212,191,0.22)', stroke: '#0f766e' },
+  bathtub: { fill: 'rgba(34,211,238,0.22)', stroke: '#0e7490' },
+  bed: { fill: 'rgba(168,85,247,0.22)', stroke: '#7c3aed' },
+  sofa: { fill: 'rgba(244,63,94,0.20)', stroke: '#e11d48' },
+  table: { fill: 'rgba(245,158,11,0.24)', stroke: '#d97706' },
+  chair: { fill: 'rgba(251,191,36,0.24)', stroke: '#b45309' },
+  television: { fill: 'rgba(15,23,42,0.18)', stroke: '#334155' },
+  fireplace: { fill: 'rgba(239,68,68,0.22)', stroke: '#b91c1c' },
+  storage: { fill: 'rgba(100,116,139,0.22)', stroke: '#475569' },
+  stairs: { fill: 'rgba(148,163,184,0.28)', stroke: '#64748b' },
+  unknown: { fill: 'rgba(148,163,184,0.18)', stroke: '#64748b' },
 };
 
 export function wallLengthMeters(wall: RoomScanWallSegment): number {
@@ -283,11 +308,19 @@ export function mapObjectsForRender(
 ): MappedObject[] {
   return (objects || []).map((obj, index) => {
     const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, bounds, viewport);
+    const palette = OBJECT_FILL[obj.category] || OBJECT_FILL.unknown;
+    const widthM = obj.widthM && obj.widthM > 0.2 ? obj.widthM : 0.55;
+    const depthM = obj.depthM && obj.depthM > 0.2 ? obj.depthM : 0.4;
     return {
       id: obj.id || `obj-${index}`,
       category: obj.category,
       label: obj.label,
       glyph: OBJECT_GLYPH[obj.category] || OBJECT_GLYPH.unknown,
+      widthPx: Math.max(14, Math.min(86, widthM * viewport.scale)),
+      depthPx: Math.max(10, Math.min(72, depthM * viewport.scale)),
+      rotationDeg: obj.rotationDeg || 0,
+      fill: palette.fill,
+      stroke: palette.stroke,
       ...p,
     };
   });

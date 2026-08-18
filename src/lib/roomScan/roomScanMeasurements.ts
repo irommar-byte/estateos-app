@@ -1,4 +1,4 @@
-import type { RoomScanWallSegment } from '../../types/roomScan';
+import type { FloorPlanScanMeta, RoomScanWallSegment } from '../../types/roomScan';
 
 function segmentLength(wall: RoomScanWallSegment): number {
   if (typeof wall.lengthM === 'number' && wall.lengthM > 0) return wall.lengthM;
@@ -53,5 +53,27 @@ export function deriveRoomDimensionsFromWalls(
   return {
     widthM: Number(Math.min(sideA, sideB).toFixed(2)),
     lengthM: Number(Math.max(sideA, sideB).toFixed(2)),
+  };
+}
+
+export function measurementsFromScanMeta(meta: FloorPlanScanMeta): {
+  widthM: string;
+  lengthM: string;
+  heightM: string;
+  areaM2: string;
+} {
+  const section = meta.sections[0];
+  const fromWalls = deriveRoomDimensionsFromWalls(meta.walls);
+  const width = section?.widthM ?? fromWalls?.widthM;
+  const length = section?.lengthM ?? fromWalls?.lengthM;
+  const height = section?.ceilingHeightM ?? meta.ceilingHeightM;
+  const area = section?.areaSqM ?? meta.totalAreaSqM ?? (width && length ? width * length : undefined);
+  const fmt = (value?: number | null, digits = 2) =>
+    value && value > 0 ? value.toFixed(digits) : '';
+  return {
+    widthM: fmt(width),
+    lengthM: fmt(length),
+    heightM: fmt(height),
+    areaM2: fmt(area, 1),
   };
 }

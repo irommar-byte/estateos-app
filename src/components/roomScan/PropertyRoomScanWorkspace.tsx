@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import RoomScanModal, { isRoomScanSupportedOnDevice } from './RoomScanModal';
-import { deriveRoomDimensionsFromWalls } from '../../lib/roomScan/roomScanMeasurements';
+import { measurementsFromScanMeta } from '../../lib/roomScan/roomScanMeasurements';
 import { getSafeQuickLook } from '../../utils/safeQuickLook';
 import type {
   PropertyRoomScan,
@@ -29,10 +29,6 @@ const ROOM_PRESETS = [
 function numberValue(raw: string): number {
   const value = Number(String(raw || '').replace(',', '.'));
   return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function displayMeasurement(value?: number | null, digits = 2): string {
-  return value && value > 0 ? value.toFixed(digits) : '';
 }
 
 function roomArea(room: PropertyRoomScan): number {
@@ -155,26 +151,33 @@ export default function PropertyRoomScanWorkspace({
       setActiveScan(null);
       return;
     }
-    const section = assets.scanMeta.sections[0];
-    const fromWalls = deriveRoomDimensionsFromWalls(assets.scanMeta.walls);
-    const widthM = displayMeasurement(section?.widthM ?? fromWalls?.widthM);
-    const lengthM = displayMeasurement(section?.lengthM ?? fromWalls?.lengthM);
-    const heightM = displayMeasurement(section?.ceilingHeightM ?? assets.scanMeta.ceilingHeightM);
-    const scannedArea =
-      section?.areaSqM ??
-      assets.scanMeta.totalAreaSqM ??
-      (fromWalls ? Number((fromWalls.widthM * fromWalls.lengthM).toFixed(1)) : undefined);
+    const measured = measurementsFromScanMeta(assets.scanMeta);
     updateRoom(room.id, {
-      widthM: widthM || room.widthM,
-      lengthM: lengthM || room.lengthM,
-      heightM: heightM || room.heightM,
-      areaM2: displayMeasurement(scannedArea, 1) || room.areaM2,
+      widthM: measured.widthM || room.widthM,
+      lengthM: measured.lengthM || room.lengthM,
+      heightM: measured.heightM || room.heightM,
+      areaM2: measured.areaM2 || room.areaM2,
       floorPlanPngUri: assets.floorPlanPngUri,
       floorPlan3dUri: assets.floorPlan3dUri,
       scanMeta: assets.scanMeta,
       scannedAt: assets.scanMeta.scannedAt,
     });
     setActiveScan(null);
+  };
+
+  const applyMeasurements = (meta: RoomScanDraftAssets['scanMeta']) => {
+    if (!activeScan || activeScan.mode !== 'room') return;
+    const room = rooms.find((item) => item.id === activeScan.roomId);
+    if (!room) return;
+    const measured = measurementsFromScanMeta(meta);
+    updateRoom(room.id, {
+      widthM: measured.widthM || room.widthM,
+      lengthM: measured.lengthM || room.lengthM,
+      heightM: measured.heightM || room.heightM,
+      areaM2: measured.areaM2 || room.areaM2,
+      scanMeta: meta,
+      scannedAt: meta.scannedAt,
+    });
   };
 
   const open3d = async (uri?: string) => {
@@ -341,7 +344,17 @@ export default function PropertyRoomScanWorkspace({
                 <Text style={[styles.planTitle, { color: palette.text }]}>Plan przypisany do: {room.name}</Text>
                 <Text style={[styles.planSubtitle, { color: palette.secondary }]}>
                   {room.scanMeta?.openings?.length || 0} przejść, drzwi lub okien · wysokość {room.heightM || '—'} m
+                  {room.scanMeta?.objects?.length ? ` · ${room.scanMeta.objects.length} mebli / AGD` : ''}
                 </Text>
+                {(room.scanMeta?.objects || []).length > 0 ? (
+                  <View style={styles.furnitureWrap}>
+                    {room.scanMeta?.objects.map((obj) => (
+                      <View key={obj.id} style={[styles.furnitureChip, { borderColor: palette.border }]}>
+                        <Text style={[styles.furnitureChipText, { color: palette.text }]}>{obj.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 {room.floorPlan3dUri ? (
                   <Pressable onPress={() => void open3d(room.floorPlan3dUri)} style={styles.inline3d}>
                     <Ionicons name="cube-outline" size={16} color={palette.accent} />
@@ -418,6 +431,7 @@ export default function PropertyRoomScanWorkspace({
         roomName={activeRoom?.name}
         onClose={() => setActiveScan(null)}
         onComplete={applyScan}
+        onMeasurements={applyMeasurements}
       />
     </View>
   );
@@ -461,6 +475,9 @@ const styles = StyleSheet.create({
   roomPlanThumb: { width: 82, height: 68, borderRadius: 10, backgroundColor: '#e2e8f0' },
   planTitle: { fontSize: 11, fontWeight: '900' },
   planSubtitle: { fontSize: 10, lineHeight: 14 },
+  furnitureWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+  furnitureChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  furnitureChipText: { fontSize: 10, fontWeight: '700' },
   inline3d: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingVertical: 3 },
   scanRoomBtn: { minHeight: 43, borderRadius: 12, borderWidth: 1, marginTop: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   wholeCard: { borderRadius: 18, borderWidth: 1, padding: 13, marginTop: 3 },

@@ -6,6 +6,8 @@ import type { FloorPlanScanMeta, RoomScanWallSegment } from '@/types/roomScan';
 import {
   buildFloorPlanViewport,
   formatWallDimension,
+  mapObjectsForRender,
+  mapOpeningsForRender,
   mapSectionsForRender,
   mapWallsForRender,
   sectionMarkerRadiusPx,
@@ -37,6 +39,16 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
   const mappedSections = useMemo(
     () => mapSectionsForRender(meta.sections, meta.bounds, viewport, locale),
     [meta.sections, meta.bounds, viewport, locale],
+  );
+
+  const mappedOpenings = useMemo(
+    () => mapOpeningsForRender(meta.openings, meta.bounds, viewport),
+    [meta.openings, meta.bounds, viewport],
+  );
+
+  const mappedObjects = useMemo(
+    () => mapObjectsForRender(meta.objects, meta.bounds, viewport),
+    [meta.objects, meta.bounds, viewport],
   );
 
   const scaleBar = useMemo(() => {
@@ -123,28 +135,97 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
         </g>
       ))}
 
-      {mappedSections.map((section) => (
-        <g key={`${section.id}-label`}>
-          <rect
-            x={section.x - 54}
-            y={section.y - 22}
-            width={108}
-            height={section.areaSqM ? 40 : 24}
-            rx={12}
-            fill="rgba(15,23,42,0.88)"
-            stroke="rgba(56,189,248,0.35)"
-            strokeWidth={1}
+      {mappedOpenings.map((opening) => (
+        <g key={opening.id}>
+          <line
+            x1={opening.a.x}
+            y1={opening.a.y}
+            x2={opening.b.x}
+            y2={opening.b.y}
+            stroke="#0b1220"
+            strokeWidth={10}
+            strokeLinecap="butt"
           />
-          <text x={section.x} y={section.y - 4} fill="#f8fafc" fontSize={10} fontWeight={800} textAnchor="middle">
-            {section.label}
-          </text>
-          {section.areaSqM ? (
-            <text x={section.x} y={section.y + 12} fill="#94a3b8" fontSize={8} fontWeight={600} textAnchor="middle">
-              {section.areaSqM} m²
-            </text>
-          ) : null}
+          <line
+            x1={opening.a.x}
+            y1={opening.a.y}
+            x2={opening.b.x}
+            y2={opening.b.y}
+            stroke={opening.kind === 'window' ? '#38bdf8' : opening.kind === 'door' ? '#fbbf24' : '#34d399'}
+            strokeWidth={opening.kind === 'door' ? 5 : 3.5}
+            strokeLinecap="butt"
+            strokeDasharray={opening.kind === 'window' ? '6 3' : opening.kind === 'opening' ? '3 3' : undefined}
+          />
         </g>
       ))}
+
+      {mappedObjects.map((obj) => (
+        <g key={obj.id} transform={`rotate(${obj.rotationDeg} ${obj.x} ${obj.y})`}>
+          <rect
+            x={obj.x - obj.widthPx / 2}
+            y={obj.y - obj.depthPx / 2}
+            width={obj.widthPx}
+            height={obj.depthPx}
+            rx={3}
+            fill={obj.fill}
+            stroke={obj.stroke}
+            strokeWidth={1.3}
+          />
+          <text x={obj.x} y={obj.y + 3} fill="#f8fafc" fontSize={6.5} fontWeight={800} textAnchor="middle">
+            {obj.glyph}
+          </text>
+        </g>
+      ))}
+      {mappedObjects.map((obj) => (
+        <text
+          key={`${obj.id}-label`}
+          x={obj.x}
+          y={obj.y + obj.depthPx / 2 + 11}
+          fill="#94a3b8"
+          fontSize={6.5}
+          fontWeight={600}
+          textAnchor="middle"
+        >
+          {obj.label}
+        </text>
+      ))}
+
+      {mappedSections.map((section) => {
+        const hasDimensions = Boolean(section.widthM && section.lengthM);
+        const labelH = section.ceilingHeightM ? (hasDimensions ? 62 : 50) : hasDimensions ? 50 : section.areaSqM ? 40 : 24;
+        return (
+          <g key={`${section.id}-label`}>
+            <rect
+              x={section.x - 58}
+              y={section.y - labelH / 2}
+              width={116}
+              height={labelH}
+              rx={12}
+              fill="rgba(15,23,42,0.88)"
+              stroke="rgba(56,189,248,0.35)"
+              strokeWidth={1}
+            />
+            <text x={section.x} y={section.y - (section.ceilingHeightM || hasDimensions ? 10 : 0)} fill="#f8fafc" fontSize={10} fontWeight={800} textAnchor="middle">
+              {section.label}
+            </text>
+            {section.areaSqM ? (
+              <text x={section.x} y={section.y + 8} fill="#94a3b8" fontSize={8} fontWeight={600} textAnchor="middle">
+                {section.areaSqM} m²
+              </text>
+            ) : null}
+            {hasDimensions ? (
+              <text x={section.x} y={section.y + 22} fill="#cbd5e1" fontSize={7.5} fontWeight={700} textAnchor="middle">
+                {section.widthM?.toFixed(2)} × {section.lengthM?.toFixed(2)} m
+              </text>
+            ) : null}
+            {section.ceilingHeightM ? (
+              <text x={section.x} y={section.y + (hasDimensions ? 34 : 22)} fill="#7dd3fc" fontSize={8} fontWeight={700} textAnchor="middle">
+                H {section.ceilingHeightM.toFixed(2)} m
+              </text>
+            ) : null}
+          </g>
+        );
+      })}
 
       <g>
         <rect

@@ -48,13 +48,19 @@ export default function FloorPlanViewer({
 
   const isDark = theme?.glass === 'dark' || theme?.dark;
   const roomScans = Array.isArray(scanMeta?.roomScans) ? scanMeta.roomScans : [];
+  const [planKey, setPlanKey] = useState<'whole' | string>('whole');
+  const selectedRoom = planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
+  const activeMeta = selectedRoom?.scanMeta || scanMeta;
   const displayImageUrl =
+    absolutePlanAssetUrl(selectedRoom?.floorPlanPngUri) ||
     absolutePlanAssetUrl(imageUrl) ||
     absolutePlanAssetUrl(roomScans.find((room) => room.floorPlanPngUri)?.floorPlanPngUri);
-  const hasVectorPlan = Boolean(scanMeta?.walls?.length);
+  const hasVectorPlan = Boolean(activeMeta?.walls?.length);
   const hasPlan = Boolean(displayImageUrl) || hasVectorPlan || roomScans.length > 0;
-  const has3d = Boolean(model3dUrl?.trim());
-  const roomCount = scanMeta?.roomCount;
+  const active3dUrl = selectedRoom?.floorPlan3dUri || model3dUrl;
+  const has3d = Boolean(absolutePlanAssetUrl(active3dUrl)?.trim());
+  const roomCount = scanMeta?.roomCount || roomScans.length;
+  const furniture = activeMeta?.objects || [];
 
   const openModal = () => {
     if (!hasPlan) return;
@@ -97,13 +103,13 @@ export default function FloorPlanViewer({
   };
 
   const sharePdf = async () => {
-    if (!scanMeta?.walls?.length) return;
+    if (!activeMeta?.walls?.length) return;
     try {
       setExportingPdf(true);
       const pdfUri = await exportFloorPlanPdfFromMeta(
-        scanMeta.walls,
-        scanMeta,
-        t('offer.detail.floorPlan.sectionTitle'),
+        activeMeta.walls,
+        activeMeta,
+        selectedRoom?.name || t('offer.detail.floorPlan.sectionTitle'),
       );
       if (pdfUri) await shareFloorPlanPdf(pdfUri);
     } catch {
@@ -139,10 +145,10 @@ export default function FloorPlanViewer({
               { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
             ]}
           >
-            {hasVectorPlan && scanMeta && !displayImageUrl ? (
+            {hasVectorPlan && activeMeta ? (
               <FloorPlanScanArtboard
-                walls={scanMeta.walls}
-                meta={scanMeta}
+                walls={activeMeta.walls}
+                meta={activeMeta}
                 width={Math.min(screenW - 40, 360)}
                 height={180}
               />
@@ -169,15 +175,64 @@ export default function FloorPlanViewer({
           {subtitle ? <Text style={[styles.subtitle, isDark && { color: '#9ca3af' }]}>{subtitle}</Text> : null}
 
           {roomScans.length > 0 ? (
+            <View style={styles.planChips}>
+              <Pressable
+                onPress={() => setPlanKey('whole')}
+                style={[
+                  styles.planChip,
+                  planKey === 'whole' && styles.planChipActive,
+                  isDark && { borderColor: 'rgba(255,255,255,0.12)' },
+                ]}
+              >
+                <Text style={[styles.planChipText, planKey === 'whole' && styles.planChipTextActive]}>
+                  {t('offer.detail.floorPlan.wholeHome')}
+                </Text>
+              </Pressable>
+              {roomScans.map((room) => (
+                <Pressable
+                  key={room.id || room.name}
+                  onPress={() => setPlanKey(room.id)}
+                  style={[
+                    styles.planChip,
+                    planKey === room.id && styles.planChipActive,
+                    isDark && { borderColor: 'rgba(255,255,255,0.12)' },
+                  ]}
+                >
+                  <Text style={[styles.planChipText, planKey === room.id && styles.planChipTextActive]}>
+                    {room.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {furniture.length > 0 ? (
+            <View style={styles.furnitureBlock}>
+              <Text style={[styles.furnitureTitle, isDark && { color: '#cbd5e1' }]}>
+                {t('offer.detail.floorPlan.furniture')}
+              </Text>
+              <View style={styles.furnitureWrap}>
+                {furniture.map((obj) => (
+                  <View key={obj.id} style={[styles.furnitureChip, isDark && { backgroundColor: '#242427' }]}>
+                    <Text style={[styles.furnitureChipText, isDark && { color: '#e2e8f0' }]}>{obj.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {roomScans.length > 0 ? (
             <View style={styles.roomScansBlock}>
               <Text style={[styles.roomScansTitle, isDark && { color: '#e2e8f0' }]}>
-                Plany pomieszczeń
+                {t('offer.detail.floorPlan.roomsTitle')}
               </Text>
               {roomScans.map((room, index) => (
-                <View
+                <Pressable
                   key={room.id || `${room.name}-${index}`}
+                  onPress={() => setPlanKey(room.id)}
                   style={[
                     styles.roomScanRow,
+                    planKey === room.id && styles.roomScanRowActive,
                     isDark && { backgroundColor: '#242427', borderColor: 'rgba(255,255,255,0.1)' },
                   ]}
                 >
@@ -198,18 +253,23 @@ export default function FloorPlanViewer({
                     {room.floorPlan3dUri && Platform.OS === 'ios' ? (
                       <Pressable onPress={() => void openWalkthrough(absolutePlanAssetUrl(room.floorPlan3dUri))} style={styles.roomScan3dBtn}>
                         <Ionicons name="cube-outline" size={15} color="#0ea5e9" />
-                        <Text style={styles.roomScan3dText}>Otwórz 3D</Text>
+                        <Text style={styles.roomScan3dText}>{t('offer.detail.floorPlan.walkthrough3d')}</Text>
                       </Pressable>
                     ) : null}
+                    {(room.scanMeta?.objects || []).length > 0 ? (
+                      <Text style={[styles.roomScanMeta, isDark && { color: '#94a3b8' }]} numberOfLines={2}>
+                        {(room.scanMeta?.objects || []).map((obj) => obj.label).join(' · ')}
+                      </Text>
+                    ) : null}
                   </View>
-                </View>
+                </Pressable>
               ))}
             </View>
           ) : null}
 
           <View style={styles.actionRow}>
             {has3d && Platform.OS === 'ios' ? (
-              <Pressable onPress={() => void openWalkthrough(model3dUrl)} style={[styles.walkthroughBtn, isDark && styles.walkthroughBtnDark]}>
+              <Pressable onPress={() => void openWalkthrough(absolutePlanAssetUrl(active3dUrl))} style={[styles.walkthroughBtn, isDark && styles.walkthroughBtnDark]}>
                 <View style={styles.walkthroughIcon}>
                   <Ionicons name="cube-outline" size={18} color="#0ea5e9" />
                 </View>
@@ -225,7 +285,7 @@ export default function FloorPlanViewer({
               </Pressable>
             ) : null}
 
-            {hasVectorPlan && scanMeta ? (
+            {hasVectorPlan && activeMeta ? (
               <Pressable
                 onPress={sharePdf}
                 disabled={exportingPdf}
@@ -315,20 +375,20 @@ export default function FloorPlanViewer({
               </View>
 
               <View style={[styles.imageContainer, { backgroundColor: isDark ? '#000' : '#0b1220' }]}>
-                {displayImageUrl ? (
-                  <Image source={{ uri: displayImageUrl }} style={styles.fullImage} resizeMode="contain" />
-                ) : hasVectorPlan && scanMeta ? (
+                {hasVectorPlan && activeMeta ? (
                   <FloorPlanScanArtboard
-                    walls={scanMeta.walls}
-                    meta={scanMeta}
+                    walls={activeMeta.walls}
+                    meta={activeMeta}
                     width={modalArtboardW}
                     height={modalArtboardH}
                   />
+                ) : displayImageUrl ? (
+                  <Image source={{ uri: displayImageUrl }} style={styles.fullImage} resizeMode="contain" />
                 ) : null}
               </View>
 
               <View style={styles.modalActions}>
-                {hasVectorPlan && scanMeta ? (
+                {hasVectorPlan && activeMeta ? (
                   <Pressable onPress={sharePdf} style={styles.modalPdfBtn} disabled={exportingPdf}>
                     {exportingPdf ? (
                       <ActivityIndicator color="#0f172a" />
@@ -341,7 +401,7 @@ export default function FloorPlanViewer({
                   </Pressable>
                 ) : null}
                 {has3d && Platform.OS === 'ios' ? (
-                  <Pressable onPress={() => void openWalkthrough(model3dUrl)} style={styles.modalWalkthroughBtn}>
+                  <Pressable onPress={() => void openWalkthrough(absolutePlanAssetUrl(active3dUrl))} style={styles.modalWalkthroughBtn}>
                     <Ionicons name="cube-outline" size={16} color="#0f172a" />
                     <Text style={styles.modalWalkthroughText}>{t('offer.detail.floorPlan.walkthrough3d')}</Text>
                   </Pressable>
@@ -413,6 +473,30 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   lidarBadgeText: { color: '#e0f2fe', fontSize: 11, fontWeight: '800' },
+  planChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  planChip: {
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#f8fafc',
+  },
+  planChipActive: { backgroundColor: '#0ea5e9', borderColor: '#0ea5e9' },
+  planChipText: { color: '#334155', fontSize: 12, fontWeight: '800' },
+  planChipTextActive: { color: '#fff' },
+  furnitureBlock: { marginTop: 12, gap: 6 },
+  furnitureTitle: { color: '#64748b', fontSize: 10, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
+  furnitureWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  furnitureChip: {
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(14,165,233,0.28)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  furnitureChipText: { color: '#0f172a', fontSize: 11, fontWeight: '700' },
   roomScansBlock: { marginTop: 14, gap: 8 },
   roomScansTitle: { color: '#0f172a', fontSize: 13, fontWeight: '900', marginLeft: 2 },
   roomScanRow: {
@@ -424,6 +508,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.1)',
     backgroundColor: '#f8fafc',
+  },
+  roomScanRowActive: {
+    borderColor: 'rgba(14,165,233,0.55)',
+    backgroundColor: 'rgba(224,242,254,0.7)',
   },
   roomScanImage: { width: 72, height: 60, borderRadius: 10, backgroundColor: '#e2e8f0' },
   roomScanPlaceholder: { alignItems: 'center', justifyContent: 'center' },

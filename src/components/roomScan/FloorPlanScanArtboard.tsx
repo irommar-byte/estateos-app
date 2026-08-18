@@ -231,42 +231,44 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
           ))}
 
           {mappedObjects.map((obj) => {
-            const boxW = Math.max(28, Math.min(46, obj.glyph.length * 8 + 12));
             return (
-              <G key={obj.id}>
+              <G key={obj.id} transform={`rotate(${obj.rotationDeg} ${obj.x} ${obj.y})`}>
                 <Rect
-                  x={obj.x - boxW / 2}
-                  y={obj.y - 11}
-                  width={boxW}
-                  height={22}
-                  rx={6}
-                  fill="#ffffff"
-                  stroke="#94a3b8"
-                  strokeWidth={1}
+                  x={obj.x - obj.widthPx / 2}
+                  y={obj.y - obj.depthPx / 2}
+                  width={obj.widthPx}
+                  height={obj.depthPx}
+                  rx={3}
+                  fill={obj.fill}
+                  stroke={obj.stroke}
+                  strokeWidth={1.4}
                 />
                 <SvgText
                   x={obj.x}
-                  y={obj.y + 4}
+                  y={obj.y + 3}
                   fill="#0f172a"
-                  fontSize={forExport ? 9 : 7.5}
+                  fontSize={forExport ? 8 : 6.5}
                   fontWeight="800"
                   textAnchor="middle"
                 >
                   {obj.glyph}
                 </SvgText>
-                <SvgText
-                  x={obj.x}
-                  y={obj.y + 20}
-                  fill={muted}
-                  fontSize={forExport ? 8 : 7}
-                  fontWeight="600"
-                  textAnchor="middle"
-                >
-                  {obj.label}
-                </SvgText>
               </G>
             );
           })}
+          {mappedObjects.map((obj) => (
+            <SvgText
+              key={`${obj.id}-label`}
+              x={obj.x}
+              y={obj.y + obj.depthPx / 2 + 11}
+              fill={muted}
+              fontSize={forExport ? 8 : 6.5}
+              fontWeight="600"
+              textAnchor="middle"
+            >
+              {obj.label}
+            </SvgText>
+          ))}
 
           {mappedSections.map((section) => {
             const hasDimensions = Boolean(section.widthM && section.lengthM);

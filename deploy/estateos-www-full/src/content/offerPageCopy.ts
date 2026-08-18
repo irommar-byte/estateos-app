@@ -61,6 +61,10 @@ export type OfferPageCopy = {
     lidarBadge: string;
     viewImage: string;
     viewInteractive: string;
+    wholeHome: string;
+    roomsTitle: string;
+    furniture: string;
+    roomWalkthrough: string;
   };
   floorPlanWalkthrough: {
     title: string;
@@ -246,6 +250,10 @@ const PL: OfferPageCopy = {
     lidarBadge: "LiDAR",
     viewImage: "Rzut",
     viewInteractive: "Skan interaktywny",
+    wholeHome: "Całe mieszkanie",
+    roomsTitle: "Pomieszczenia",
+    furniture: "Meble i AGD",
+    roomWalkthrough: "Spacer 3D tego pomieszczenia",
   },
   floorPlanWalkthrough: {
     title: "Wirtualny spacer 3D",
@@ -440,6 +448,10 @@ const EN: OfferPageCopy = {
     lidarBadge: "LiDAR",
     viewImage: "Image",
     viewInteractive: "Interactive scan",
+    wholeHome: "Whole home",
+    roomsTitle: "Rooms",
+    furniture: "Furniture & appliances",
+    roomWalkthrough: "3D walkthrough of this room",
   },
   floorPlanWalkthrough: {
     title: "3D virtual walkthrough",
