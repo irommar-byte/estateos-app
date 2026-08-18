@@ -62,6 +62,7 @@ export async function GET(req: Request) {
         email: true,
         phone: true,
         updatedAt: true,
+        createdAt: true,
       },
     });
 
@@ -77,7 +78,13 @@ export async function GET(req: Request) {
         lastName: c.lastName,
         email: c.email,
         phone: c.phone,
+        createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
+        matchCount: 0,
+        activityCount: 0,
+        buyerCity: null,
+        topMatches: [],
+        activities: [],
         matchedBy: {
           email: Boolean(emailRaw && c.email?.toLowerCase() === emailRaw),
           phone: phonesMatch(c.phone, phoneRaw),
