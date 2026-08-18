@@ -177,10 +177,10 @@ index 09c58fc..5e3e3d0 100644
        self.roomCaptureView.captureSession.run(configuration: self.configuration)
      }
 diff --git a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
-index 4e0fcdc..65f274a 100644
+index 4e0fcdc..f2f6efd 100644
 --- a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
 +++ b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
-@@ -46,6 +46,12 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -46,6 +46,19 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
      // is still running, so export can be deferred instead of racing it with a fixed timer.
      private var isBuildingRoom = false
      private var pendingExportAfterBuild = false
@@ -189,11 +189,33 @@ index 4e0fcdc..65f274a 100644
 +    private let scanHudTitle = UILabel()
 +    private let scanHudStats = UILabel()
 +    private let scanHudHint = UILabel()
++    private let liveMeterCard = UIView()
++    private let liveMeterValue = UILabel()
++    private let liveMeterArea = UILabel()
++    private let livePlanView = LiveRoomOutlineView()
 +    private var lastLiveRoom: CapturedRoom?
++    private var lastCapturedRoomData: CapturedRoomData?
++    private var didDeliverResult = false
++    private var lastSectionCount = 0
  
      // UI elements
      private let activityIndicator = UIActivityIndicatorView(style: .large)
-@@ -82,6 +88,203 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -70,18 +83,351 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+     private func setupRoomCaptureView() {
+         roomCaptureView = RoomCaptureView(frame: view.bounds)
+         roomCaptureView?.captureSession.delegate = self
+-        // On iOS 17+, rooms are built from raw CapturedRoomData via RoomBuilder
+-        // (see captureSession(_:didEndWith:) below), so the view-level review
+-        // delegate is left unset to avoid double-presenting RoomPlan's own UI.
+-        // On iOS 16, RoomBuilder doesn't exist, so we rely on RoomPlan's built-in
+-        // review flow and capture the finished room via captureView(didPresent:).
+-        if #unavailable(iOS 17.0) {
+-            roomCaptureView?.delegate = self
+-        }
++        // Keep the view delegate wired for live didUpdate callbacks on iOS 17+.
++        // We skip Apple's review sheet via captureView(shouldPresent:) -> false.
++        roomCaptureView?.delegate = self
+         view.insertSubview(roomCaptureView, at: 0)
  
          setupButtons()
          setupConstraints()
@@ -249,29 +271,97 @@ index 4e0fcdc..65f274a 100644
 +            scanHudHint.trailingAnchor.constraint(equalTo: scanHud.trailingAnchor, constant: -12),
 +            scanHudHint.bottomAnchor.constraint(equalTo: scanHud.bottomAnchor, constant: -12),
 +        ])
-+        finishButton.isEnabled = false
-+        finishButton.alpha = 0.45
++        setupLiveMeterCard()
++        finishButton.isEnabled = true
++        finishButton.alpha = 1
++    }
++
++    private func setupLiveMeterCard() {
++        liveMeterCard.translatesAutoresizingMaskIntoConstraints = false
++        liveMeterCard.backgroundColor = UIColor.black.withAlphaComponent(0.78)
++        liveMeterCard.layer.cornerRadius = 20
++        liveMeterCard.layer.masksToBounds = true
++        liveMeterCard.isHidden = true
++
++        liveMeterValue.translatesAutoresizingMaskIntoConstraints = false
++        liveMeterValue.textColor = .white
++        liveMeterValue.font = UIFont.systemFont(ofSize: 28, weight: .heavy)
++        liveMeterValue.textAlignment = .center
++        liveMeterValue.adjustsFontSizeToFitWidth = true
++        liveMeterValue.minimumScaleFactor = 0.6
++        liveMeterValue.text = "—"
++
++        liveMeterArea.translatesAutoresizingMaskIntoConstraints = false
++        liveMeterArea.textColor = UIColor.systemTeal
++        liveMeterArea.font = UIFont.systemFont(ofSize: 15, weight: .bold)
++        liveMeterArea.textAlignment = .center
++        liveMeterArea.text = "Metraż na żywo"
++
++        livePlanView.translatesAutoresizingMaskIntoConstraints = false
++        livePlanView.backgroundColor = .clear
++        livePlanView.isOpaque = false
++
++        liveMeterCard.addSubview(livePlanView)
++        liveMeterCard.addSubview(liveMeterValue)
++        liveMeterCard.addSubview(liveMeterArea)
++        view.addSubview(liveMeterCard)
++
++        NSLayoutConstraint.activate([
++            liveMeterCard.centerXAnchor.constraint(equalTo: view.centerXAnchor),
++            liveMeterCard.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 58),
++            liveMeterCard.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -32),
++            liveMeterCard.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 16),
++            liveMeterCard.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
++
++            livePlanView.topAnchor.constraint(equalTo: liveMeterCard.topAnchor, constant: 12),
++            livePlanView.centerXAnchor.constraint(equalTo: liveMeterCard.centerXAnchor),
++            livePlanView.widthAnchor.constraint(equalToConstant: 92),
++            livePlanView.heightAnchor.constraint(equalToConstant: 72),
++
++            liveMeterValue.topAnchor.constraint(equalTo: livePlanView.bottomAnchor, constant: 6),
++            liveMeterValue.leadingAnchor.constraint(equalTo: liveMeterCard.leadingAnchor, constant: 18),
++            liveMeterValue.trailingAnchor.constraint(equalTo: liveMeterCard.trailingAnchor, constant: -18),
++
++            liveMeterArea.topAnchor.constraint(equalTo: liveMeterValue.bottomAnchor, constant: 2),
++            liveMeterArea.leadingAnchor.constraint(equalTo: liveMeterCard.leadingAnchor, constant: 18),
++            liveMeterArea.trailingAnchor.constraint(equalTo: liveMeterCard.trailingAnchor, constant: -18),
++            liveMeterArea.bottomAnchor.constraint(equalTo: liveMeterCard.bottomAnchor, constant: -12),
++        ])
 +    }
 +
 +    private func liveDimensions(from room: CapturedRoom) -> (width: Double, length: Double, height: Double)? {
 +        let walls = room.walls
-+        guard walls.count >= 2 else { return nil }
-+        var xs: [Double] = []
-+        var zs: [Double] = []
++        guard !walls.isEmpty else { return nil }
++        var points: [(Double, Double)] = []
 +        var heights: [Double] = []
++        var wallLengths: [Double] = []
 +        for wall in walls {
 +            let t = wall.transform
-+            xs.append(Double(t.columns.3.x))
-+            zs.append(Double(t.columns.3.z))
++            let cx = Double(t.columns.3.x)
++            let cz = Double(t.columns.3.z)
++            let dirX = Double(t.columns.0.x)
++            let dirZ = Double(t.columns.0.z)
++            let len = max(Double(wall.dimensions.x), 0.35)
++            wallLengths.append(len)
++            let half = len / 2.0
++            points.append((cx - dirX * half, cz - dirZ * half))
++            points.append((cx + dirX * half, cz + dirZ * half))
 +            let h = Double(wall.dimensions.y)
-+            if h > 1.6 && h < 5.5 { heights.append(h) }
++            if h > 1.35 && h < 5.8 { heights.append(h) }
 +        }
++        let xs = points.map { $0.0 }
++        let zs = points.map { $0.1 }
 +        guard let minX = xs.min(), let maxX = xs.max(), let minZ = zs.min(), let maxZ = zs.max() else {
 +            return nil
 +        }
-+        let sideA = maxX - minX
-+        let sideB = maxZ - minZ
-+        guard sideA > 0.4, sideB > 0.4 else { return nil }
++        var sideA = maxX - minX
++        var sideB = maxZ - minZ
++        if sideA < 0.35 || sideB < 0.35 {
++            let longest = wallLengths.max() ?? 0
++            guard longest > 0.35 else { return nil }
++            let height = heights.isEmpty ? 0 : heights.reduce(0, +) / Double(heights.count)
++            return (longest, max(longest * 0.55, 0.35), height)
++        }
 +        let width = min(sideA, sideB)
 +        let length = max(sideA, sideB)
 +        let height = heights.isEmpty ? 0 : heights.reduce(0, +) / Double(heights.count)
@@ -300,10 +390,35 @@ index 4e0fcdc..65f274a 100644
 +        }
 +    }
 +
++    @available(iOS 17.0, *)
++    private func polishSectionName(_ label: CapturedRoom.Section.Label) -> String {
++        switch label {
++        case .kitchen: return "kuchnia"
++        case .bathroom: return "łazienka"
++        case .bedroom: return "sypialnia"
++        case .livingRoom: return "salon"
++        case .diningRoom: return "jadalnia"
++        case .unidentified: return "pomieszczenie"
++        @unknown default: return "pomieszczenie"
++        }
++    }
++
++    private func liveSectionNames(from room: CapturedRoom) -> [String] {
++        guard #available(iOS 17.0, *) else { return [] }
++        return room.sections.map { polishSectionName($0.label) }
++    }
++
 +    private func liveFurnitureLine(from room: CapturedRoom) -> String {
 +        let names = room.objects.prefix(6).map { polishObjectName($0.category) }
 +        if names.isEmpty { return "Szukam mebli i AGD stosownie do pomieszczenia…" }
 +        return "Meble: " + names.joined(separator: ", ")
++    }
++
++    private func hasScannedFloor(_ room: CapturedRoom) -> Bool {
++        if #available(iOS 17.0, *) {
++            return !room.floors.isEmpty
++        }
++        return false
 +    }
 +
 +    private func updateScanHud(from room: CapturedRoom) {
@@ -312,49 +427,97 @@ index 4e0fcdc..65f274a 100644
 +        let doorCount = room.doors.count
 +        let windowCount = room.windows.count
 +        let objectCount = room.objects.count
-+        let hasFloor = !room.floors.isEmpty
-+        let hasCeiling = !room.ceilings.isEmpty
 +        let dims = liveDimensions(from: room)
-+        let ready = wallCount >= 3 && (hasFloor || hasCeiling || (dims?.height ?? 0) > 1.8)
++        let hasFloor = hasScannedFloor(room)
++        let hasHeight = (dims?.height ?? 0) > 1.65
++        let ready = wallCount >= 2 && (dims != nil || hasFloor || hasHeight || objectCount >= 2)
 +
 +        var stats = "Ściany \(wallCount) · drzwi \(doorCount) · okna \(windowCount) · obiekty \(objectCount)"
 +        if let dims {
 +            let h = dims.height > 0 ? String(format: " · H %.2f m", dims.height) : ""
 +            stats += String(format: "\n%.2f × %.2f m%@", dims.width, dims.length, h)
++        } else if wallCount > 0 {
++            stats += "\nJeszcze liczę obrys — prowadź wzdłuż kolejnych ścian"
++        }
++        let sectionNames = liveSectionNames(from: room)
++        if !sectionNames.isEmpty {
++            stats += "\nPomieszczenia (\(sectionNames.count)): " + sectionNames.joined(separator: ", ")
 +        }
 +        stats += "\n" + liveFurnitureLine(from: room)
 +        scanHudStats.text = stats
++        updateLiveMeterCard(walls: wallCount, dims: dims, room: room)
++        announceNewSectionIfNeeded(sectionNames)
++
++        finishButton.isEnabled = true
++        finishButton.alpha = 1
 +
 +        if ready {
 +            scanHud.backgroundColor = UIColor(red: 0.02, green: 0.35, blue: 0.22, alpha: 0.88)
 +            scanHudTitle.text = "MOŻESZ ZAKOŃCZYĆ"
-+            scanHudHint.text = "Pomieszczenie jest spójne. Zakończ — wymiary i meble zapiszą się na planie."
-+            finishButton.isEnabled = true
-+            finishButton.alpha = 1
++            scanHudHint.text = "Pomieszczenie wygląda kompletnie. Kliknij Zakończ i zapisz."
 +            finishButton.setTitle("Zakończ i zapisz", for: .normal)
-+        } else if wallCount >= 2, dims != nil {
++        } else if wallCount >= 1 || dims != nil {
 +            scanHud.backgroundColor = UIColor(red: 0.45, green: 0.28, blue: 0.02, alpha: 0.88)
 +            scanHudTitle.text = "DOKOŃCZ OBRYS"
-+            scanHudHint.text = "Obejmij jeszcze podłogę, sufit i brakujące ściany. Potem zakończ."
-+            finishButton.isEnabled = true
-+            finishButton.alpha = 1
++            scanHudHint.text = "Omiń jeszcze brakujące ściany albo zakończ teraz — zapiszemy to, co jest."
 +            finishButton.setTitle("Zakończ", for: .normal)
 +        } else {
 +            scanHud.backgroundColor = UIColor.black.withAlphaComponent(0.72)
 +            scanHudTitle.text = "KONTROLA SKANU"
-+            scanHudHint.text = "Prowadź telefon powoli wzdłuż ścian. Zakończ, gdy pojawią się wymiary."
-+            finishButton.isEnabled = wallCount >= 2
-+            finishButton.alpha = wallCount >= 2 ? 1 : 0.45
++            scanHudHint.text = "Prowadź telefon wzdłuż ścian. Zakończ, gdy pojawią się wymiary."
 +            finishButton.setTitle("Zakończ", for: .normal)
 +        }
++    }
++
++    private func announceNewSectionIfNeeded(_ sectionNames: [String]) {
++        guard sectionNames.count > lastSectionCount else {
++            lastSectionCount = max(lastSectionCount, sectionNames.count)
++            return
++        }
++        lastSectionCount = sectionNames.count
++        guard let newest = sectionNames.last else { return }
++        scanHudTitle.text = "NOWE POMIESZCZENIE: \(newest.uppercased())"
++        scanHudHint.text = "Wykryłem kolejne pomieszczenie. Obejdź je wzdłuż ścian — nazwy poprawisz po skanie."
++        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
++    }
++
++    private func updateLiveMeterCard(
++        walls: Int,
++        dims: (width: Double, length: Double, height: Double)?,
++        room: CapturedRoom
++    ) {
++        livePlanView.update(from: room)
++        guard let dims else {
++            liveMeterCard.isHidden = walls == 0
++            liveMeterValue.text = walls == 0 ? "—" : "Obrys…"
++            liveMeterArea.text = walls == 0 ? "Metraż na żywo" : "Czekam na zamknięcie pomieszczenia"
++            return
++        }
++        liveMeterCard.isHidden = false
++        let h = dims.height > 0 ? String(format: " · %.2f m", dims.height) : ""
++        liveMeterValue.text = String(format: "%.2f × %.2f m%@", dims.width, dims.length, h)
++        let area = dims.width * dims.length
++        if area > 0.4 {
++            liveMeterArea.text = String(format: "%.1f m²  ·  na żywo", area)
++        } else {
++            liveMeterArea.text = "Metraż na żywo"
++        }
++        liveMeterCard.backgroundColor = walls >= 3
++            ? UIColor(red: 0.02, green: 0.32, blue: 0.20, alpha: 0.90)
++            : UIColor.black.withAlphaComponent(0.78)
 +    }
 +
 +    private func showProcessingOverlay() {
 +        if view.viewWithTag(888) != nil { return }
 +        scanHud.isHidden = true
++        liveMeterCard.isHidden = true
 +        let overlay = UIView(frame: view.bounds)
 +        overlay.tag = 888
-+        overlay.backgroundColor = UIColor(red: 0.07, green: 0.12, blue: 0.20, alpha: 1)
++        overlay.backgroundColor = UIColor(red: 0.04, green: 0.08, blue: 0.14, alpha: 1)
++        let backing = UIView(frame: overlay.bounds)
++        backing.autoresizingMask = [.flexibleWidth, .flexibleHeight]
++        backing.backgroundColor = .white
++        overlay.addSubview(backing)
 +        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 +
 +        let title = UILabel()
@@ -397,7 +560,7 @@ index 4e0fcdc..65f274a 100644
      }
  
      private func setupButtons() {
-@@ -95,7 +298,11 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -95,7 +441,11 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -410,7 +573,7 @@ index 4e0fcdc..65f274a 100644
  
          // Finish should either stop scanning (if running) or confirm exit (if post-scan)
          finishButton.addTarget(
-@@ -117,7 +324,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -117,7 +467,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -420,7 +583,7 @@ index 4e0fcdc..65f274a 100644
          // round corners
          cancelButton.layer.masksToBounds = true
          cancelButton.layer.cornerRadius = 5
-@@ -137,25 +345,25 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -137,25 +488,25 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
          NSLayoutConstraint.activate([
              finishButton.topAnchor.constraint(
                  equalTo: view.safeAreaLayoutGuide.topAnchor,
@@ -454,7 +617,7 @@ index 4e0fcdc..65f274a 100644
          ])
      }
  
-@@ -178,7 +386,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -178,7 +529,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -463,7 +626,7 @@ index 4e0fcdc..65f274a 100644
          // round corners
          exportButton.layer.masksToBounds = true
          exportButton.layer.cornerRadius = 15
-@@ -204,7 +412,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -204,7 +555,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
                  ofSize: 16,
                  weight: .bold
              )
@@ -472,14 +635,15 @@ index 4e0fcdc..65f274a 100644
              // round corners
              anotherScanButton.layer.masksToBounds = true
              anotherScanButton.layer.cornerRadius = 15
-@@ -270,7 +478,21 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -270,7 +621,22 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
      override func viewWillDisappear(_ flag: Bool) {
          super.viewWillDisappear(flag)
 -        stopSession()
 +        // Do not kill AR mid-export — that left a black camera frame and empty files.
 +        if isExporting || pendingExportAfterBuild { return }
-+        hardStopAR()
++        // Avoid a black AR frame while the modal is still visible.
++        if isBeingDismissed || isMovingFromParent { return }
 +    }
 +
 +    @objc
@@ -495,7 +659,195 @@ index 4e0fcdc..65f274a 100644
      }
  
      @IBAction func superExportResults(_ sender: Any) {
-@@ -544,56 +766,79 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -336,6 +702,33 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+         }
+     }
+ 
++    private func ensureCapturedRoomsBeforeExport() async throws {
++        if #available(iOS 17.0, *) {
++            if !capturedRoomArray.isEmpty { return }
++            if let live = lastLiveRoom, !live.walls.isEmpty {
++                capturedRoomArray = [live]
++                return
++            }
++            if let data = lastCapturedRoomData {
++                let roomBuilder = RoomBuilder(options: [.beautifyObjects])
++                let built = try await roomBuilder.capturedRoom(from: data)
++                capturedRoomArray = [built]
++                lastLiveRoom = built
++                return
++            }
++        } else if finalResults != nil {
++            return
++        }
++        throw NSError(
++            domain: "ExpoRoomPlan",
++            code: 2,
++            userInfo: [
++                NSLocalizedDescriptionKey:
++                    "Nie udało się zebrać ścian. Omiń pomieszczenie ponownie wolniej wzdłuż ścian i spróbuj jeszcze raz."
++            ]
++        )
++    }
++
+     func exportResults() {
+         let exportedScanName = scanName ?? "Room"
+ 
+@@ -363,6 +756,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+ 
+         Task {
+             do {
++                try await self.ensureCapturedRoomsBeforeExport()
++
+                 try FileManager.default.createDirectory(
+                     at: destinationFolderURL,
+                     withIntermediateDirectories: true
+@@ -379,15 +774,6 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+                 let jsonEncoder = JSONEncoder()
+ 
+                 if #available(iOS 17.0, *) {
+-                    guard !capturedRoomArray.isEmpty else {
+-                        throw NSError(
+-                            domain: "ExpoRoomPlan",
+-                            code: 2,
+-                            userInfo: [
+-                                NSLocalizedDescriptionKey: "No rooms were successfully captured. Try scanning again, covering more of the walls and floor before finishing."
+-                            ]
+-                        )
+-                    }
+                     finalStructure = try await structureBuilder.capturedStructure(
+                         from: capturedRoomArray
+                     )
+@@ -421,36 +807,43 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+ 
+                 let shouldSendFileLoc = sendFileLoc ?? false
+ 
+-                if (shouldSendFileLoc) {
+-                    self.sendScanResultAndDismiss(status: .OK, scanUrl: destinationURL.absoluteString, jsonUrl: capturedRoomURL.absoluteString)
+-                    return
+-                }
++                await MainActor.run {
++                    if shouldSendFileLoc {
++                        self.sendScanResultAndDismiss(
++                            status: .OK,
++                            scanUrl: destinationURL.absoluteString,
++                            jsonUrl: capturedRoomURL.absoluteString
++                        )
++                        return
++                    }
+ 
+-                let activityVC = UIActivityViewController(
+-                    activityItems: [destinationFolderURL],
+-                    applicationActivities: nil
+-                )
+-                activityVC.modalPresentationStyle = .popover
+-
+-                activityVC.completionWithItemsHandler = {
+-                    activityType,
+-                    completed,
+-                    returnedItems,
+-                    activityError in
+-                    self.sendScanResultAndDismiss(status: .OK)
+-                }
++                    let activityVC = UIActivityViewController(
++                        activityItems: [destinationFolderURL],
++                        applicationActivities: nil
++                    )
++                    activityVC.modalPresentationStyle = .popover
++
++                    activityVC.completionWithItemsHandler = {
++                        activityType,
++                        completed,
++                        returnedItems,
++                        activityError in
++                        self.sendScanResultAndDismiss(status: .OK)
++                    }
+ 
+-                if let popOver = activityVC.popoverPresentationController {
+-                    popOver.sourceView = self.exportButton
+-                }
++                    if let popOver = activityVC.popoverPresentationController {
++                        popOver.sourceView = self.exportButton
++                    }
+ 
+-                present(activityVC, animated: true, completion: nil)
++                    self.present(activityVC, animated: true, completion: nil)
++                }
+ 
+             } catch {
+                 print("[RoomPlan] ERROR MERGING")
+                 print("[RoomPlan] Error = \(error)")
+-                self.sendScanResultAndDismiss(status: .Error, errorMessage: error.localizedDescription)
+-                return
++                await MainActor.run {
++                    self.sendScanResultAndDismiss(status: .Error, errorMessage: error.localizedDescription)
++                }
+             }
+         }
+     }
+@@ -474,34 +867,45 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+             eventData["errorMessage"] = errorMessage
+         }
+ 
+-        // Send the unified event
+-        onDismiss?(eventData)
++        // Deliver the event only once the scanner is off screen. Emitting it while
++        // this view controller is still presented made React Native mount its own
++        // full-screen modal on top of a dismissing controller, which left the user
++        // staring at a black screen with no way back.
++        if didDeliverResult { return }
++        didDeliverResult = true
++        let deliver = { [weak self] in
++            guard let self else { return }
++            self.hardStopAR()
++            self.onDismiss?(eventData)
++            self.onDismiss = nil
++        }
+ 
+-        let dismissAction = {
+-            self.activityIndicator.stopAnimating()
+-            self.dismiss(animated: true, completion: nil)
++        if #available(iOS 17.0, *) {
++            finalStructure = nil
+         }
+ 
+-        // Handle timing and cleanup based on status
+-        if status == .OK {
+-            DispatchQueue.main.asyncAfter(
+-                deadline: .now() + 0.5,
+-                execute: dismissAction
+-            )
+-        } else {
+-            if #available(iOS 17.0, *) {
+-                finalStructure = nil
+-            }
+-            DispatchQueue.main.async(execute: dismissAction)
++        activityIndicator.stopAnimating()
++
++        guard presentingViewController != nil, !isBeingDismissed else {
++            DispatchQueue.main.async(execute: deliver)
++            return
++        }
++
++        dismiss(animated: true) {
++            DispatchQueue.main.async(execute: deliver)
+         }
+     }
+ 
+     public func startSession() {
+         print("[RoomPlan] starting session")
++        roomCaptureView?.captureSession.delegate = self
++        roomCaptureView?.delegate = self
+         roomCaptureView?.captureSession.run(
+             configuration: roomCaptureSessionConfig
+         )
+         isSessionRunning = true
++        finishButton.isEnabled = true
++        finishButton.alpha = 1
+     }
+ 
+     @IBAction func restartSession() {
+@@ -544,56 +948,82 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
      @objc
      private func finishTapped() {
@@ -583,22 +935,25 @@ index 4e0fcdc..65f274a 100644
 -            handler: nil
 -        )
 -        alertController.addAction(cancelAction)
++        let exportNow = {
++            self.pendingExportAfterBuild = false
++            self.exportResults()
++        }
 +        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
 +            if self.isBuildingRoom {
-+                DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
++                DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
 +                    guard self.pendingExportAfterBuild else { return }
 +                    self.pendingExportAfterBuild = false
 +                    self.isBuildingRoom = false
 +                    self.isExporting = false
 +                    self.sendScanResultAndDismiss(
 +                        status: .Error,
-+                        errorMessage: "Timed out waiting for the scan to finish processing."
++                        errorMessage: "Skan trwa zbyt długo. Spróbuj ponownie — prowadź telefon wolniej wzdłuż ścian."
 +                    )
 +                }
 +                return
 +            }
-+            self.pendingExportAfterBuild = false
-+            self.exportResults()
++            exportNow()
 +        }
 +    }
  
@@ -609,23 +964,193 @@ index 4e0fcdc..65f274a 100644
 +            self.finalStructure = nil
 +        }
 +        capturedRoomArray.removeAll()
-+        hardStopAR()
++        isSessionRunning = false
 +        sendScanResultAndDismiss(status: .Canceled)
      }
  
      @objc
-@@ -606,12 +851,12 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
- extension RoomPlanCaptureViewController {
-     func captureSession(_ session: RoomCaptureSession, didUpdate: CapturedRoom)
-     {
--        print("[RoomPlan] didUpdate", didUpdate.objects.count)
-+        DispatchQueue.main.async { self.updateScanHud(from: didUpdate) }
-     }
- 
-     func captureSession(_ session: RoomCaptureSession, didChange: CapturedRoom)
-     {
--        print("[RoomPlan] didChange", didChange.objects.count)
-+        DispatchQueue.main.async { self.updateScanHud(from: didChange) }
+@@ -602,21 +1032,39 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
      }
  }
  
+-@available(iOS 17.0, *)
++@available(iOS 16.0, *)
+ extension RoomPlanCaptureViewController {
+-    func captureSession(_ session: RoomCaptureSession, didUpdate: CapturedRoom)
+-    {
+-        print("[RoomPlan] didUpdate", didUpdate.objects.count)
++    func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
++        DispatchQueue.main.async { self.updateScanHud(from: room) }
+     }
+ 
+-    func captureSession(_ session: RoomCaptureSession, didChange: CapturedRoom)
+-    {
+-        print("[RoomPlan] didChange", didChange.objects.count)
++    func captureSession(_ session: RoomCaptureSession, didChange room: CapturedRoom) {
++        DispatchQueue.main.async { self.updateScanHud(from: room) }
++    }
++
++    func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
++        DispatchQueue.main.async {
++            switch instruction {
++            case .moveCloseToWall:
++                self.scanHudStats.text = "Podejdź bliżej ściany"
++            case .moveAwayFromWall:
++                self.scanHudStats.text = "Odsuń się od ściany"
++            case .slowDown:
++                self.scanHudStats.text = "Poruszaj telefon wolniej"
++            case .turnOnLight:
++                self.scanHudStats.text = "Włącz więcej światła"
++            case .lowTexture:
++                self.scanHudStats.text = "Ściany są zbyt gładkie — szukaj krawędzi i mebli"
++            case .normal:
++                if let room = self.lastLiveRoom {
++                    self.updateScanHud(from: room)
++                }
++            @unknown default:
++                break
++            }
++        }
+     }
+-}
+ 
+-@available(iOS 16.0, *)
+-extension RoomPlanCaptureViewController {
+     // captureSession(_:didEndWith:error:) is a base RoomCaptureSessionDelegate
+     // requirement present since iOS 16 (unlike didUpdate/didChange above, which
+     // are iOS 17+ additions for multi-room support). It must live at the same
+@@ -626,23 +1074,26 @@ extension RoomPlanCaptureViewController {
+     // callback at all and silently never fired.
+     func captureSession(
+         _ session: RoomCaptureSession,
+-        didEndWith: CapturedRoomData,
++        didEndWith data: CapturedRoomData,
+         error: (any Error)?
+     ) {
+         if let error {
+             print("[RoomPlan] Session ended with error: \(error.localizedDescription)")
+         }
+         print("[RoomPlan] didEndWith")
++        lastCapturedRoomData = data
+         guard #available(iOS 17.0, *) else { return }
+         let roomBuilder = RoomBuilder(options: [.beautifyObjects])
+         isBuildingRoom = true
+         Task {
+             do {
+-                let capturedRoom = try await roomBuilder.capturedRoom(
+-                    from: didEndWith
+-                )
+-                print("[RoomPlan] Appending new captured room")
++                let capturedRoom = try await roomBuilder.capturedRoom(from: data)
++                print("[RoomPlan] Appending new captured room (walls=\(capturedRoom.walls.count))")
+                 self.capturedRoomArray.append(capturedRoom)
++                self.lastLiveRoom = capturedRoom
++                await MainActor.run {
++                    self.updateScanHud(from: capturedRoom)
++                }
+             } catch {
+                 print("[RoomPlan] Failed to build captured room: \(error.localizedDescription)")
+             }
+@@ -660,11 +1111,102 @@ extension RoomPlanCaptureViewController {
+         shouldPresent roomDataForProcessing: CapturedRoomData,
+         error: Error?
+     ) -> Bool {
++        lastCapturedRoomData = roomDataForProcessing
++        // Prefer our export flow, but allow Apple's builder if we never got live updates.
++        if #available(iOS 17.0, *) {
++            let hasLiveData = (lastLiveRoom?.walls.isEmpty == false) || !capturedRoomArray.isEmpty
++            return !hasLiveData
++        }
+         return true
+     }
+ 
+     // access the final results
+     func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
++        if let error {
++            print("[RoomPlan] didPresent error: \(error.localizedDescription)")
++            return
++        }
+         finalResults = processedResult
++        lastLiveRoom = processedResult
++        if #available(iOS 17.0, *) {
++            if capturedRoomArray.isEmpty {
++                capturedRoomArray.append(processedResult)
++            }
++        }
++        DispatchQueue.main.async {
++            self.updateScanHud(from: processedResult)
++            if self.pendingExportAfterBuild {
++                self.pendingExportAfterBuild = false
++                self.exportResults()
++            }
++        }
++    }
++}
++
++@available(iOS 16.0, *)
++private final class LiveRoomOutlineView: UIView {
++    private let shape = CAShapeLayer()
++
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++        isUserInteractionEnabled = false
++        shape.fillColor = UIColor.systemTeal.withAlphaComponent(0.18).cgColor
++        shape.strokeColor = UIColor.white.cgColor
++        shape.lineWidth = 2
++        shape.lineJoin = .round
++        layer.addSublayer(shape)
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    override func layoutSubviews() {
++        super.layoutSubviews()
++        shape.frame = bounds
++    }
++
++    func update(from room: CapturedRoom) {
++        var points: [CGPoint] = []
++        for wall in room.walls {
++            let t = wall.transform
++            let cx = CGFloat(t.columns.3.x)
++            let cz = CGFloat(t.columns.3.z)
++            let dirX = CGFloat(t.columns.0.x)
++            let dirZ = CGFloat(t.columns.0.z)
++            let half = CGFloat(max(wall.dimensions.x, 0.2) / 2)
++            points.append(CGPoint(x: cx - dirX * half, y: cz - dirZ * half))
++            points.append(CGPoint(x: cx + dirX * half, y: cz + dirZ * half))
++        }
++        guard points.count >= 2 else {
++            shape.path = nil
++            return
++        }
++        let xs = points.map(\.x)
++        let ys = points.map(\.y)
++        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else {
++            shape.path = nil
++            return
++        }
++        let spanX = max(maxX - minX, 0.4)
++        let spanY = max(maxY - minY, 0.4)
++        let inset: CGFloat = 8
++        let w = max(bounds.width - inset * 2, 1)
++        let h = max(bounds.height - inset * 2, 1)
++        let scale = min(w / spanX, h / spanY)
++        let path = UIBezierPath()
++        for (index, point) in points.enumerated() {
++            let x = inset + (point.x - minX) * scale
++            let y = inset + (point.y - minY) * scale
++            if index == 0 {
++                path.move(to: CGPoint(x: x, y: y))
++            } else {
++                path.addLine(to: CGPoint(x: x, y: y))
++            }
++        }
++        if room.walls.count >= 3 {
++            path.close()
++        }
++        shape.path = path.cgPath
+     }
+ }

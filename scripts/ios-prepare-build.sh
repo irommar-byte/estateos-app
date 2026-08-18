@@ -12,7 +12,7 @@ if [[ ! -f "$PBXPROJ" ]]; then
 fi
 
 # Xcode 26 + CocoaPods 1.16: objectVersion 70 nie jest rozpoznawane; 77 działa.
-if rg -q 'objectVersion = 70;' "$PBXPROJ"; then
+if grep -q 'objectVersion = 70;' "$PBXPROJ"; then
   echo "[ios-prepare] objectVersion 70 → 77 (wymagane przez CocoaPods)"
   sed -i '' 's/objectVersion = 70;/objectVersion = 77;/' "$PBXPROJ"
 fi

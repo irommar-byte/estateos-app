@@ -66,6 +66,8 @@ export default function PropertyRoomScanWorkspace({
   const [showCoachmark, setShowCoachmark] = useState(Boolean(autoOpen));
   const coachmarkHandled = useRef(false);
   const scanAvailable = isRoomScanSupportedOnDevice();
+  const roomsRef = useRef(rooms);
+  roomsRef.current = rooms;
 
   useEffect(() => {
     if (!autoOpen || coachmarkHandled.current) return;
@@ -134,6 +136,44 @@ export default function PropertyRoomScanWorkspace({
     if (!withoutPrevious.includes(next)) onChangePlanImages([...withoutPrevious, next]);
   };
 
+  const roomsFromScanSections = (meta: RoomScanDraftAssets['scanMeta']): PropertyRoomScan[] => {
+    const stamp = Date.now();
+    const fmt = (value?: number | null, digits = 2) => (value && value > 0 ? value.toFixed(digits) : '');
+    return (meta.sections || []).map((section, index) => {
+      const area =
+        section.areaSqM ??
+        (section.widthM && section.lengthM ? section.widthM * section.lengthM : undefined);
+      return {
+        id: `room-${stamp}-${index}-${Math.round(Math.random() * 1000)}`,
+        name: section.label || `Pomieszczenie ${index + 1}`,
+        widthM: fmt(section.widthM),
+        lengthM: fmt(section.lengthM),
+        heightM: fmt(section.ceilingHeightM ?? meta.ceilingHeightM),
+        areaM2: fmt(area, 1),
+        scannedAt: meta.scannedAt,
+      };
+    });
+  };
+
+  const offerDetectedRooms = (meta: RoomScanDraftAssets['scanMeta']) => {
+    const detected = roomsFromScanSections(meta);
+    if (!detected.length) return;
+    Alert.alert(
+      'Wykryte pomieszczenia',
+      `Skan rozpoznał ${detected.length === 1 ? '1 pomieszczenie' : `${detected.length} pomieszczenia`} razem z wymiarami. Dodać je do listy? Nazwy poprawisz ręcznie w każdej pozycji.`,
+      [
+        { text: 'Nie teraz', style: 'cancel' },
+        {
+          text: `Dodaj (${detected.length})`,
+          onPress: () => {
+            onChangeRooms([...roomsRef.current, ...detected]);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          },
+        },
+      ],
+    );
+  };
+
   const applyScan = (assets: RoomScanDraftAssets) => {
     if (!activeScan) return;
     if (activeScan.mode === 'property') {
@@ -143,6 +183,7 @@ export default function PropertyRoomScanWorkspace({
         scannedAt: assets.scanMeta.scannedAt,
       });
       setActiveScan(null);
+      offerDetectedRooms(assets.scanMeta);
       return;
     }
 

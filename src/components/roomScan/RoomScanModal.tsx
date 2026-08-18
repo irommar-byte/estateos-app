@@ -182,8 +182,8 @@ function RoomScanModalBody({
     if (closingRef.current) return;
     closingRef.current = true;
     void stopNativeScanner(roomPlan);
-    reset();
     onCloseRef.current();
+    reset();
   }, [reset, roomPlan]);
 
   const captureHeading = useCallback(async () => {
@@ -219,18 +219,22 @@ function RoomScanModalBody({
     }) => {
       const status = String(event?.status || '').toLowerCase();
       if (status === 'canceled' || status === 'cancelled') {
-        handleClose();
+        scanStartedRef.current = false;
+        void stopNativeScanner(roomPlan);
+        onCloseRef.current();
+        reset();
         return;
       }
       if (status === 'error') {
         setBusy(false);
         scanStartedRef.current = false;
-        setError(
+        const message =
           /not supported|LiDAR/i.test(String(event?.errorMessage || ''))
             ? t('addOffer.step5.roomScan.errors.unsupportedDevice')
-            : event?.errorMessage || t('addOffer.step5.roomScan.errors.scanFailed'),
-        );
+            : event?.errorMessage || t('addOffer.step5.roomScan.errors.scanFailed');
+        setError(message);
         setPhase('launching');
+        Alert.alert(t('addOffer.step5.roomScan.brand'), message);
         return;
       }
       if (status !== 'ok') return;
