@@ -45,6 +45,7 @@ export type AcquisitionFormData = {
     defects: string;
     planImages: string;
     roomsJson: string;
+    wholeScanJson: string;
   };
   strategy: {
     expectedPrice: string;
@@ -172,6 +173,7 @@ export function createDefaultAcquisitionForm(
       defects: "",
       planImages: "",
       roomsJson: "",
+      wholeScanJson: "",
     },
     strategy: {
       expectedPrice: client?.sellerPrice ? String(client.sellerPrice) : "",
