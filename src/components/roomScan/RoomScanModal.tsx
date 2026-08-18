@@ -110,9 +110,6 @@ function RoomScanModalBody({
   const scanStartedRef = useRef(false);
   const processedExportRef = useRef<string | null>(null);
   const closingRef = useRef(false);
-  const onCloseRef = useRef(onClose);
-  const persistExportRef = useRef(persistExport);
-  onCloseRef.current = onClose;
   const headingRef = useRef<{
     northRotationDegrees: number | null;
     headingAccuracyDegrees: number | null;
