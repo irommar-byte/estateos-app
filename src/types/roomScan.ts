@@ -55,13 +55,16 @@ export type RoomScanSection = {
   centerX: number;
   centerZ: number;
   areaSqM?: number;
+  /** Główne wymiary obrysu pomieszczenia, liczone w osi ścian. */
+  widthM?: number;
+  lengthM?: number;
   /** Średnia wysokość pomieszczenia (m), jeśli znana. */
   ceilingHeightM?: number;
   inferredFromObjects?: boolean;
 };
 
 export type FloorPlanScanMeta = {
-  version: 1;
+  version: 1 | 2;
   scannedAt: string;
   roomCount: number;
   totalAreaSqM: number | null;
@@ -72,10 +75,37 @@ export type FloorPlanScanMeta = {
   objects: RoomScanDetectedObject[];
   openings: RoomScanOpening[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** Obrót kierunku północy względem góry rzutu; pomiar kompasem urządzenia. */
+  northRotationDegrees?: number | null;
+  headingAccuracyDegrees?: number | null;
+  headingSource?: 'true' | 'magnetic' | null;
+  /** Osobne skany przypisane do pomieszczeń. */
+  roomScans?: PropertyRoomScan[];
+  roomAreaTotalSqM?: number;
 };
 
 export type RoomScanDraftAssets = {
   floorPlanPngUri: string;
   floorPlan3dUri: string;
   scanMeta: FloorPlanScanMeta;
+};
+
+export type PropertyRoomScan = {
+  id: string;
+  name: string;
+  widthM: string;
+  lengthM: string;
+  heightM: string;
+  areaM2: string;
+  floorPlanPngUri?: string;
+  floorPlan3dUri?: string;
+  scanMeta?: FloorPlanScanMeta;
+  scannedAt?: string;
+};
+
+export type WholePropertyScan = {
+  floorPlanPngUri: string;
+  floorPlan3dUri: string;
+  scanMeta: FloorPlanScanMeta;
+  scannedAt: string;
 };

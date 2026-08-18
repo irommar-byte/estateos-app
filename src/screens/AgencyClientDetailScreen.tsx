@@ -57,6 +57,7 @@ import {
   type AgencyClientMatch,
 } from '../services/agencyClientService';
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
+import type { WholePropertyScan } from '../types/roomScan';
 
 const STEPS = [
   { id: 1, title: 'Spotkanie' },
@@ -194,6 +195,7 @@ export default function AgencyClientDetailScreen() {
   const [dateModalField, setDateModalField] = useState<string | null>(null); // 'startsAt' | 'targetTimeline'
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [planImages, setPlanImages] = useState<string[]>([]);
+  const [wholePropertyScan, setWholePropertyScan] = useState<WholePropertyScan | null>(null);
   const [chatDraft, setChatDraft] = useState('');
   const [presentationAt, setPresentationAt] = useState('');
 
@@ -278,6 +280,14 @@ export default function AgencyClientDetailScreen() {
         } catch {
           /* ignore */
         }
+        try {
+          const storedWholeScan = JSON.parse(
+            String((nextForm.property as Record<string, unknown>)?.wholeScanJson || 'null'),
+          );
+          if (storedWholeScan?.scanMeta) setWholePropertyScan(storedWholeScan);
+        } catch {
+          /* ignore */
+        }
         const storedPlans = String((nextForm.property as Record<string, unknown>)?.planImages || '')
           .split(',')
           .map((s) => s.trim())
@@ -336,14 +346,34 @@ export default function AgencyClientDetailScreen() {
     setForm((current) => {
       if (!current) return current;
       const roomsJson = JSON.stringify(rooms);
+      const wholeScanJson = wholePropertyScan ? JSON.stringify(wholePropertyScan) : '';
       const planJoined = planImages.join(',');
+      const measuredArea = rooms.reduce((sum, room) => {
+        const value = Number(String(room.areaM2 || '').replace(',', '.'));
+        return sum + (Number.isFinite(value) ? value : 0);
+      }, 0);
       const property = (current.property || {}) as Record<string, unknown>;
-      if (String(property.roomsJson || '') === roomsJson && String(property.planImages || '') === planJoined) {
+      if (
+        String(property.roomsJson || '') === roomsJson &&
+        String(property.wholeScanJson || '') === wholeScanJson &&
+        String(property.planImages || '') === planJoined &&
+        (!measuredArea || String(property.area || '') === measuredArea.toFixed(1)) &&
+        (!rooms.length || String(property.rooms || '') === String(rooms.length))
+      ) {
         return current;
       }
-      return setSection(current, 'property', { roomsJson, planImages: planJoined });
+      return setSection(current, 'property', {
+        roomsJson,
+        wholeScanJson,
+        planImages: planJoined,
+        ...(measuredArea ? { area: measuredArea.toFixed(1) } : {}),
+        ...(rooms.length ? { rooms: String(rooms.length) } : {}),
+      });
     });
-  }, [rooms, planImages]);
+  }, [rooms, wholePropertyScan, planImages]);
+
+  const signed = record?.status === 'SIGNED';
+  signedRef.current = signed;
 
   const planUploadInFlight = useRef(false);
   useEffect(() => {
@@ -365,7 +395,13 @@ export default function AgencyClientDetailScreen() {
         );
         if (cancelled) return;
         if (res.ok && res.file?.url) {
-          next[item.index] = res.file.url.startsWith('http') ? res.file.url : `https://estateos.pl${res.file.url}`;
+          const remoteUrl = res.file.url.startsWith('http') ? res.file.url : `https://estateos.pl${res.file.url}`;
+          next[item.index] = remoteUrl;
+          setWholePropertyScan((current) =>
+            current?.floorPlanPngUri === item.uri
+              ? { ...current, floorPlanPngUri: remoteUrl }
+              : current,
+          );
         }
       }
       if (!cancelled) setPlanImages(next);
@@ -376,8 +412,85 @@ export default function AgencyClientDetailScreen() {
     };
   }, [planImages, token, clientId, signed]);
 
-  const signed = record?.status === 'SIGNED';
-  signedRef.current = signed;
+  const scanAssetUploadInFlight = useRef(false);
+  useEffect(() => {
+    if (!token || signed || scanAssetUploadInFlight.current) return;
+    const isLocal = (uri?: string) =>
+      Boolean(uri && !uri.startsWith('http://') && !uri.startsWith('https://') && !uri.startsWith('/'));
+    const hasLocalRoomAsset = rooms.some(
+      (room) => isLocal(room.floorPlanPngUri) || isLocal(room.floorPlan3dUri),
+    );
+    const hasLocalWholeModel = isLocal(wholePropertyScan?.floorPlan3dUri);
+    if (!hasLocalRoomAsset && !hasLocalWholeModel) return;
+
+    let cancelled = false;
+    scanAssetUploadInFlight.current = true;
+    void (async () => {
+      const uploadAsset = async (uri: string, name: string, mimeType: string) => {
+        const result = await uploadAcquisitionPaper(
+          token,
+          clientId,
+          { uri, name, mimeType },
+          'asset',
+        );
+        if (!result.ok || !result.file?.url) {
+          throw new Error(result.ok ? 'Brak adresu zapisanego skanu.' : result.message);
+        }
+        return result.file.url.startsWith('http')
+          ? result.file.url
+          : `https://estateos.pl${result.file.url}`;
+      };
+
+      try {
+        const uploadedRooms: RoomItem[] = [];
+        for (const room of rooms) {
+          let floorPlanPngUri = room.floorPlanPngUri;
+          let floorPlan3dUri = room.floorPlan3dUri;
+          if (isLocal(floorPlanPngUri)) {
+            floorPlanPngUri = await uploadAsset(
+              floorPlanPngUri!,
+              `${room.id}-plan.png`,
+              'image/png',
+            );
+          }
+          if (isLocal(floorPlan3dUri)) {
+            floorPlan3dUri = await uploadAsset(
+              floorPlan3dUri!,
+              `${room.id}-3d.usdz`,
+              'model/vnd.usdz+zip',
+            );
+          }
+          uploadedRooms.push({ ...room, floorPlanPngUri, floorPlan3dUri });
+        }
+        if (!cancelled) setRooms(uploadedRooms);
+
+        if (wholePropertyScan && isLocal(wholePropertyScan.floorPlan3dUri)) {
+          const floorPlan3dUri = await uploadAsset(
+            wholePropertyScan.floorPlan3dUri,
+            `whole-property-${clientId}.usdz`,
+            'model/vnd.usdz+zip',
+          );
+          if (!cancelled) {
+            setWholePropertyScan((current) => (current ? { ...current, floorPlan3dUri } : current));
+          }
+        }
+      } catch (uploadError) {
+        if (!cancelled) {
+          Alert.alert(
+            'Zapis skanu LiDAR',
+            uploadError instanceof Error ? uploadError.message : 'Nie udało się zapisać planu.',
+          );
+        }
+      } finally {
+        scanAssetUploadInFlight.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, rooms, signed, token, wholePropertyScan]);
+
   const expectedPrice = parseGroupedNumber(form?.strategy?.expectedPrice);
   const commissionValue = parseGroupedNumber(form?.cooperation?.commissionValue) || 2.5;
 
@@ -1285,6 +1398,8 @@ export default function AgencyClientDetailScreen() {
                         planImages={planImages}
                         onChangeRooms={setRooms}
                         onChangePlanImages={setPlanImages}
+                        wholeScan={wholePropertyScan}
+                        onChangeWholeScan={setWholePropertyScan}
                         isDark={isDark}
                         disabled={signed}
                         autoOpen={step === 3}

@@ -89,6 +89,8 @@ const initialDraft = {
   floorPlan: null as string | null,
   floorPlan3d: null as string | null,
   floorPlanScanMeta: null as string | null,
+  propertyRoomScans: [],
+  wholePropertyScan: null,
 };
 
 export const useOfferStore = create<OfferStore>((set) => ({

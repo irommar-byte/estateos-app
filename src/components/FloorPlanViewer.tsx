@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,14 @@ import { useI18n } from '../i18n';
 import { getSafeQuickLook } from '../utils/safeQuickLook';
 import FloorPlanScanArtboard from './roomScan/FloorPlanScanArtboard';
 import type { FloorPlanScanMeta } from '../types/roomScan';
+import { API_URL } from '../config/network';
+
+function absolutePlanAssetUrl(uri?: string | null): string | undefined {
+  const value = String(uri || '').trim();
+  if (!value) return undefined;
+  if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('file://')) return value;
+  return `${API_URL.replace(/\/$/, '')}/${value.replace(/^\//, '')}`;
+}
 
 export default function FloorPlanViewer({
   imageUrl,
@@ -39,8 +47,12 @@ export default function FloorPlanViewer({
   const animValue = React.useRef(new Animated.Value(0)).current;
 
   const isDark = theme?.glass === 'dark' || theme?.dark;
+  const roomScans = Array.isArray(scanMeta?.roomScans) ? scanMeta.roomScans : [];
+  const displayImageUrl =
+    absolutePlanAssetUrl(imageUrl) ||
+    absolutePlanAssetUrl(roomScans.find((room) => room.floorPlanPngUri)?.floorPlanPngUri);
   const hasVectorPlan = Boolean(scanMeta?.walls?.length);
-  const hasPlan = Boolean(imageUrl?.trim()) || hasVectorPlan;
+  const hasPlan = Boolean(displayImageUrl) || hasVectorPlan || roomScans.length > 0;
   const has3d = Boolean(model3dUrl?.trim());
   const roomCount = scanMeta?.roomCount;
 
@@ -66,8 +78,8 @@ export default function FloorPlanViewer({
     }).start(() => setIsOpen(false));
   };
 
-  const openWalkthrough = async () => {
-    if (!model3dUrl) return;
+  const openWalkthrough = async (modelUri?: string | null) => {
+    if (!modelUri) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const quickLook = getSafeQuickLook();
     if (!quickLook) {
@@ -75,9 +87,9 @@ export default function FloorPlanViewer({
       return;
     }
     try {
-      const uri = model3dUrl.startsWith('file://') || model3dUrl.startsWith('http')
-        ? model3dUrl
-        : `file://${model3dUrl}`;
+      const uri = modelUri.startsWith('file://') || modelUri.startsWith('http')
+        ? modelUri
+        : `file://${modelUri}`;
       await quickLook.previewFile({ uri });
     } catch {
       Alert.alert(t('offer.detail.floorPlan.walkthrough3d'), t('offer.detail.floorPlan.walkthrough3dHint'));
@@ -127,15 +139,15 @@ export default function FloorPlanViewer({
               { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
             ]}
           >
-            {hasVectorPlan && scanMeta && !imageUrl ? (
+            {hasVectorPlan && scanMeta && !displayImageUrl ? (
               <FloorPlanScanArtboard
                 walls={scanMeta.walls}
                 meta={scanMeta}
                 width={Math.min(screenW - 40, 360)}
                 height={180}
               />
-            ) : imageUrl ? (
-              <Image source={{ uri: imageUrl }} style={styles.thumbnail} resizeMode="cover" />
+            ) : displayImageUrl ? (
+              <Image source={{ uri: displayImageUrl }} style={styles.thumbnail} resizeMode="cover" />
             ) : null}
             <View style={[styles.thumbnailOverlay, (has3d || hasVectorPlan) && { backgroundColor: 'rgba(0,0,0,0.06)' }]}>
               {!has3d && !hasVectorPlan ? (
@@ -156,9 +168,48 @@ export default function FloorPlanViewer({
 
           {subtitle ? <Text style={[styles.subtitle, isDark && { color: '#9ca3af' }]}>{subtitle}</Text> : null}
 
+          {roomScans.length > 0 ? (
+            <View style={styles.roomScansBlock}>
+              <Text style={[styles.roomScansTitle, isDark && { color: '#e2e8f0' }]}>
+                Plany pomieszczeń
+              </Text>
+              {roomScans.map((room, index) => (
+                <View
+                  key={room.id || `${room.name}-${index}`}
+                  style={[
+                    styles.roomScanRow,
+                    isDark && { backgroundColor: '#242427', borderColor: 'rgba(255,255,255,0.1)' },
+                  ]}
+                >
+                  {room.floorPlanPngUri ? (
+                    <Image source={{ uri: absolutePlanAssetUrl(room.floorPlanPngUri) }} style={styles.roomScanImage} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.roomScanImage, styles.roomScanPlaceholder]}>
+                      <Ionicons name="map-outline" size={20} color="#64748b" />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.roomScanName, isDark && { color: '#f8fafc' }]}>{room.name}</Text>
+                    <Text style={[styles.roomScanMeta, isDark && { color: '#94a3b8' }]}>
+                      {[room.widthM && room.lengthM ? `${room.widthM} × ${room.lengthM} m` : null, room.areaM2 ? `${room.areaM2} m²` : null, room.heightM ? `H ${room.heightM} m` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                    {room.floorPlan3dUri && Platform.OS === 'ios' ? (
+                      <Pressable onPress={() => void openWalkthrough(absolutePlanAssetUrl(room.floorPlan3dUri))} style={styles.roomScan3dBtn}>
+                        <Ionicons name="cube-outline" size={15} color="#0ea5e9" />
+                        <Text style={styles.roomScan3dText}>Otwórz 3D</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           <View style={styles.actionRow}>
             {has3d && Platform.OS === 'ios' ? (
-              <Pressable onPress={openWalkthrough} style={[styles.walkthroughBtn, isDark && styles.walkthroughBtnDark]}>
+              <Pressable onPress={() => void openWalkthrough(model3dUrl)} style={[styles.walkthroughBtn, isDark && styles.walkthroughBtnDark]}>
                 <View style={styles.walkthroughIcon}>
                   <Ionicons name="cube-outline" size={18} color="#0ea5e9" />
                 </View>
@@ -264,8 +315,8 @@ export default function FloorPlanViewer({
               </View>
 
               <View style={[styles.imageContainer, { backgroundColor: isDark ? '#000' : '#0b1220' }]}>
-                {imageUrl ? (
-                  <Image source={{ uri: imageUrl }} style={styles.fullImage} resizeMode="contain" />
+                {displayImageUrl ? (
+                  <Image source={{ uri: displayImageUrl }} style={styles.fullImage} resizeMode="contain" />
                 ) : hasVectorPlan && scanMeta ? (
                   <FloorPlanScanArtboard
                     walls={scanMeta.walls}
@@ -290,7 +341,7 @@ export default function FloorPlanViewer({
                   </Pressable>
                 ) : null}
                 {has3d && Platform.OS === 'ios' ? (
-                  <Pressable onPress={openWalkthrough} style={styles.modalWalkthroughBtn}>
+                  <Pressable onPress={() => void openWalkthrough(model3dUrl)} style={styles.modalWalkthroughBtn}>
                     <Ionicons name="cube-outline" size={16} color="#0f172a" />
                     <Text style={styles.modalWalkthroughText}>{t('offer.detail.floorPlan.walkthrough3d')}</Text>
                   </Pressable>
@@ -362,6 +413,24 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   lidarBadgeText: { color: '#e0f2fe', fontSize: 11, fontWeight: '800' },
+  roomScansBlock: { marginTop: 14, gap: 8 },
+  roomScansTitle: { color: '#0f172a', fontSize: 13, fontWeight: '900', marginLeft: 2 },
+  roomScanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 9,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.1)',
+    backgroundColor: '#f8fafc',
+  },
+  roomScanImage: { width: 72, height: 60, borderRadius: 10, backgroundColor: '#e2e8f0' },
+  roomScanPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  roomScanName: { color: '#0f172a', fontSize: 13, fontWeight: '900' },
+  roomScanMeta: { color: '#64748b', fontSize: 10.5, fontWeight: '600', marginTop: 3 },
+  roomScan3dBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, alignSelf: 'flex-start' },
+  roomScan3dText: { color: '#0ea5e9', fontSize: 11, fontWeight: '900' },
   actionRow: { marginTop: 12, gap: 10 },
   walkthroughBtn: {
     borderRadius: 18,

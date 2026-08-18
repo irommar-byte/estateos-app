@@ -25,10 +25,10 @@ import {
   formatMediaCapacityAlert,
 } from '../../utils/offerMediaCapacity';
 import { t, useI18n } from '../../i18n';
-import RoomScanModal, { isRoomScanSupportedOnDevice } from '../../components/roomScan/RoomScanModal';
+import PropertyRoomScanWorkspace from '../../components/roomScan/PropertyRoomScanWorkspace';
 import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
 import MagicalAiDescribeButton from '../../components/MagicalAiDescribeButton';
-import type { RoomScanDraftAssets } from '../../types/roomScan';
+import type { PropertyRoomScan, WholePropertyScan } from '../../types/roomScan';
 import { useAuthStore } from '../../store/useAuthStore';
 import { generateListingDescriptionWithGpt } from '../../services/offerDescriptionAiService';
 
@@ -324,9 +324,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   /** Kolejność podczas przeciągania — bez ciągłego zapisu do Zustand (brak „skakania”). */
   const [dragSnapshot, setDragSnapshot] = useState<string[] | null>(null);
   const dragSnapshotRef = useRef<string[] | null>(null);
-  const [roomScanOpen, setRoomScanOpen] = useState(false);
   const [proPhotoSessionOpen, setProPhotoSessionOpen] = useState(false);
-  const roomScanAvailable = isRoomScanSupportedOnDevice();
 
   const draftImages = Array.isArray(draft.images) ? draft.images : [];
   const displayImages = dragSnapshot ?? draftImages;
@@ -493,17 +491,49 @@ export default function Step5_Media({ theme }: { theme: any }) {
   };
   const removeFloorPlan = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    updateDraft({ floorPlan: null, floorPlan3d: null, floorPlanScanMeta: null });
+    updateDraft({ floorPlan: null, floorPlan3d: null, floorPlanScanMeta: null, wholePropertyScan: null });
   };
 
-  const handleRoomScanComplete = (assets: RoomScanDraftAssets) => {
+  const propertyRoomScans: PropertyRoomScan[] = Array.isArray(draft.propertyRoomScans)
+    ? draft.propertyRoomScans
+    : [];
+  const wholePropertyScan: WholePropertyScan | null =
+    draft.wholePropertyScan && typeof draft.wholePropertyScan === 'object'
+      ? draft.wholePropertyScan
+      : null;
+
+  const handlePropertyRoomsChange = (rooms: PropertyRoomScan[]) => {
+    const measuredArea = rooms.reduce((sum, room) => {
+      const value = Number(String(room.areaM2 || '').replace(',', '.'));
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+    updateDraft({
+      propertyRoomScans: rooms,
+      ...(measuredArea ? { area: measuredArea.toFixed(1) } : {}),
+      ...(rooms.length ? { rooms: String(rooms.length) } : {}),
+    });
+  };
+
+  const handleWholePropertyScanChange = (scan: WholePropertyScan | null) => {
+    if (!scan) {
+      updateDraft({
+        wholePropertyScan: null,
+        floorPlan: null,
+        floorPlan3d: null,
+        floorPlanScanMeta: null,
+      });
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     updateDraft({
-      floorPlan: assets.floorPlanPngUri,
-      floorPlan3d: assets.floorPlan3dUri,
-      floorPlanScanMeta: JSON.stringify(assets.scanMeta),
+      wholePropertyScan: scan,
+      floorPlan: scan.floorPlanPngUri,
+      floorPlan3d: scan.floorPlan3dUri,
+      floorPlanScanMeta: JSON.stringify({
+        ...scan.scanMeta,
+        roomScans: propertyRoomScans,
+      }),
     });
-    setRoomScanOpen(false);
   };
 
   const isDescriptionBusy = isGeneratingGpt;
@@ -725,37 +755,13 @@ export default function Step5_Media({ theme }: { theme: any }) {
             {translate('addOffer.step5.floorPlan.sectionLead')}
           </Text>
 
-          {roomScanAvailable ? (
-            <AppleHover onPress={() => setRoomScanOpen(true)} scaleTo={0.98}>
-              <View
-                style={[
-                  styles.roomScanCta,
-                  {
-                    borderColor: isDark ? 'rgba(56,189,248,0.45)' : 'rgba(14,165,233,0.4)',
-                    backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(224,242,254,0.95)',
-                  },
-                ]}
-              >
-                <View style={[styles.roomScanIconWrap, { width: 52, height: 52, borderRadius: 16 }]}>
-                  <Ionicons name="scan-outline" size={26} color="#0284c7" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>
-                      {translate('addOffer.step5.floorPlan.scan')}
-                    </Text>
-                    <View style={styles.roomScanBadge}>
-                      <Text style={styles.roomScanBadgeText}>{translate('addOffer.step5.floorPlan.scanBadge')}</Text>
-                    </View>
-                  </View>
-                  <Text style={{ fontSize: 13, fontWeight: '500', color: theme.subtitle, marginTop: 5, lineHeight: 18 }}>
-                    {translate('addOffer.step5.floorPlan.scanHint')}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#0284c7" />
-              </View>
-            </AppleHover>
-          ) : null}
+          <PropertyRoomScanWorkspace
+            rooms={propertyRoomScans}
+            onChangeRooms={handlePropertyRoomsChange}
+            wholeScan={wholePropertyScan}
+            onChangeWholeScan={handleWholePropertyScanChange}
+            isDark={isDark}
+          />
 
           <AppleHover onPress={pickFloorPlan} scaleTo={0.98}>
             <View
@@ -764,7 +770,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
                 {
                   borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)',
                   height: draft.floorPlan ? 220 : 72,
-                  marginTop: roomScanAvailable ? 12 : 0,
+                  marginTop: 12,
                 },
               ]}
             >
@@ -792,12 +798,6 @@ export default function Step5_Media({ theme }: { theme: any }) {
             </View>
           </AppleHover>
         </View>
-
-        <RoomScanModal
-          visible={roomScanOpen}
-          onClose={() => setRoomScanOpen(false)}
-          onComplete={handleRoomScanComplete}
-        />
 
         <View style={styles.titleSection}>
           <Text style={[styles.sectionEyebrow, { color: theme.subtitle, marginBottom: 10 }]}>

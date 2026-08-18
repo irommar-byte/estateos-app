@@ -53,12 +53,31 @@ target 'EstateOS' do
   )
 
   post_install do |installer|
+    # RN 0.81 recursively parses every Info.plist below ios/. Vendor/binary
+    # plists are valid for Xcode but cannot be decoded by Ruby as UTF-8.
+    # App/extension plists already declare RCTNewArchEnabled, so skip only
+    # this redundant recursive mutation.
+    NewArchitectureHelper.define_singleton_method(:set_RCTNewArchEnabled_in_info_plist) do |_installer, _enabled|
+      Pod::UI.puts('[EstateOS] RCTNewArchEnabled is managed in app Info.plist files')
+    end
+
     react_native_post_install(
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # fmt 11 bundled with RN 0.81 enables a consteval path rejected by
+    # Apple Clang 21 (Xcode 26.4+). Keep the workaround scoped to fmt;
+    # the remaining React Native targets continue to compile as C++20.
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'fmt'
+
+      target.build_configurations.each do |build_config|
+        build_config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+      end
+    end
 
     # Incomplete pod installs (Xcode 26 / CocoaPods) may skip Headers/Public symlinks.
     fix_headers = File.expand_path('../scripts/fix-ios-pod-headers.sh', __dir__)

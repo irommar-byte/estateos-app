@@ -1,0 +1,57 @@
+import type { RoomScanWallSegment } from '../../types/roomScan';
+
+function segmentLength(wall: RoomScanWallSegment): number {
+  if (typeof wall.lengthM === 'number' && wall.lengthM > 0) return wall.lengthM;
+  return Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1);
+}
+
+function uniqueWalls(walls: RoomScanWallSegment[], tolerance = 0.08): RoomScanWallSegment[] {
+  const result: RoomScanWallSegment[] = [];
+  for (const wall of walls) {
+    const duplicate = result.some(
+      (existing) =>
+        (Math.hypot(existing.x1 - wall.x1, existing.z1 - wall.z1) < tolerance &&
+          Math.hypot(existing.x2 - wall.x2, existing.z2 - wall.z2) < tolerance) ||
+        (Math.hypot(existing.x1 - wall.x2, existing.z1 - wall.z2) < tolerance &&
+          Math.hypot(existing.x2 - wall.x1, existing.z2 - wall.z1) < tolerance),
+    );
+    if (!duplicate) result.push(wall);
+  }
+  return result;
+}
+
+/**
+ * Gabaryty w lokalnej osi ścian. Nie zawyża wymiarów pokoju tylko dlatego,
+ * że użytkownik rozpoczął skan pod kątem do osi świata AR.
+ */
+export function deriveRoomDimensionsFromWalls(
+  walls: RoomScanWallSegment[],
+): { widthM: number; lengthM: number } | null {
+  const deduped = uniqueWalls(walls).filter((wall) => segmentLength(wall) >= 0.65);
+  if (deduped.length < 2) return null;
+
+  const dominant = [...deduped].sort((a, b) => segmentLength(b) - segmentLength(a))[0];
+  const dx = dominant.x2 - dominant.x1;
+  const dz = dominant.z2 - dominant.z1;
+  const magnitude = Math.hypot(dx, dz);
+  if (magnitude < 0.01) return null;
+
+  const ux = dx / magnitude;
+  const uz = dz / magnitude;
+  const vx = -uz;
+  const vz = ux;
+  const points = deduped.flatMap((wall) => [
+    { x: wall.x1, z: wall.z1 },
+    { x: wall.x2, z: wall.z2 },
+  ]);
+  const along = points.map((point) => point.x * ux + point.z * uz);
+  const across = points.map((point) => point.x * vx + point.z * vz);
+  const sideA = Math.max(...along) - Math.min(...along);
+  const sideB = Math.max(...across) - Math.min(...across);
+  if (sideA < 0.3 || sideB < 0.3) return null;
+
+  return {
+    widthM: Number(Math.min(sideA, sideB).toFixed(2)),
+    lengthM: Number(Math.max(sideA, sideB).toFixed(2)),
+  };
+}

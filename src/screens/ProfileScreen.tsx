@@ -4107,6 +4107,134 @@ function ProfileScreenLoggedIn({
       ? personName
       : null;
   const showAgencyOfficeCard = isAgentProfile && Boolean(agencyMembership);
+  const showCrmPanel = isAgentProfile || Boolean(agencyMembership);
+
+  const verificationBadge = (
+    <VerificationBadge
+      phoneVerified={Boolean(user?.isVerifiedPhone)}
+      emailVerified={Boolean(user?.isEmailVerified)}
+      isDark={isDark}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (!user?.isVerifiedPhone || !user?.isEmailVerified || hasPendingEmailChange) {
+          setIsContactVerifyVisible(true);
+        } else {
+          openPublicProfileModal();
+        }
+      }}
+    />
+  );
+
+  const identityBlock = (
+    <View style={styles.headerTopRow}>
+      <Pressable onPress={handleAvatarPick} style={({ pressed }) => [styles.avatarWrapper, { opacity: pressed ? 0.8 : 1 }]}>
+        {(() => {
+          const selfTeamAvatar = agencyMembership?.team?.find((m) => m.isSelf)?.image;
+          const rawAvatar = selfTeamAvatar || user?.avatar || user?.image;
+          const finalAvatar = rawAvatar ? (rawAvatar.startsWith('/') ? `${API_URL}${rawAvatar}` : rawAvatar) : null;
+          return finalAvatar ? <Image source={{ uri: finalAvatar }} style={styles.avatarImage} /> : <View style={styles.avatarPlaceholder}><Ionicons name="person" size={28} color="#fff" /></View>;
+        })()}
+        <View style={styles.editBadge}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '700' }}>{t('profile.header.editAvatar')}</Text></View>
+        <View style={styles.avatarRegionFlag} pointerEvents="none">
+          <UserRegionFlag phone={user?.phone} fallbackIso={getDeviceRegionCountry()} size={22} />
+        </View>
+      </Pressable>
+      <View style={styles.headerInfo}>
+        <View style={styles.headerNameRow}>
+          <Text
+            style={[styles.headerName, { color: theme.text, flex: 1, minWidth: 0 }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+            allowFontScaling={false}
+          >
+            {headerPrimary}
+          </Text>
+          <Pressable
+            onPress={handleHeaderEditName}
+            hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+            style={({ pressed }) => [
+              styles.headerNameEditPaper,
+              isDark ? styles.headerNameEditPaperDark : null,
+              pressed && { opacity: 0.88 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={profileNameLocked ? t('profile.header.nameLockedA11y') : t('profile.header.editNameA11y')}
+          >
+            <View style={styles.headerNameEditBtn}>
+              <Ionicons
+                name="pencil"
+                size={profileNameLocked ? 13 : 15}
+                color={profileNameLocked ? (isDark ? '#636366' : '#AEAEB2') : '#0A84FF'}
+              />
+            </View>
+          </Pressable>
+        </View>
+
+        {headerSecondary ? (
+          <Text style={[styles.headerRole, { color: theme.subtitle, marginTop: 0, marginBottom: 0 }]} numberOfLines={1}>
+            {headerSecondary}
+            {agencyMembership?.titleLabel ? ` · ${agencyMembership.titleLabel}` : ''}
+          </Text>
+        ) : (
+          <Text
+            style={[styles.headerRole, { marginBottom: 0 }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            allowFontScaling={false}
+          >
+            {isZarzad
+              ? 'Zarząd EstateOS™'
+              : isAgentProfile
+                ? agencyMembership?.titleLabel || t('profile.header.roleAgent')
+                : t('profile.header.rolePrivate')}
+          </Text>
+        )}
+
+        <View style={styles.headerMetaRow}>
+          <EliteStatusBadges subject={user} isDark={isDark} compact />
+          <Pressable
+            onPress={() => openPublicProfileModal()}
+            style={({ pressed }) => [styles.profileRatingBtn, { marginBottom: 0 }, pressed && { opacity: 0.75 }]}
+          >
+            <View style={styles.profileRatingStarsInline}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Ionicons
+                  key={s}
+                  name={s <= Math.round(ownAverageRating) ? 'star' : 'star-outline'}
+                  size={11}
+                  color="#f59e0b"
+                />
+              ))}
+            </View>
+            <Text
+              style={styles.profileRatingMetaInline}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+              allowFontScaling={false}
+            >
+              {ownPublicProfileLoading
+                ? t('profile.header.reviewsLoading')
+                : t('profile.header.reviewsMeta', {
+                    rating: ownAverageRating.toFixed(1),
+                    count: ownReviews.length,
+                  })}
+            </Text>
+          </Pressable>
+          <Text
+            style={[styles.headerId, { marginBottom: 0 }]}
+            numberOfLines={1}
+            allowFontScaling={false}
+          >
+            {t('profile.header.userId', { id: user?.id })}
+          </Text>
+          {verificationBadge}
+        </View>
+      </View>
+    </View>
+  );
 
   return (
     <>

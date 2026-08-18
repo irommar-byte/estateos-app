@@ -1,13 +1,13 @@
 import type {
   FloorPlanScanMeta,
   RoomScanDetectedObject,
-  RoomScanObjectCategory,
   RoomScanOpening,
   RoomScanOpeningKind,
   RoomScanSection,
   RoomScanWallSegment,
 } from '../../types/roomScan';
 import {
+  deriveRoomDimensionsFromWalls,
   dedupeRoomSections,
   dedupeWallSegments,
   estimateFloorAreaFromWalls,
@@ -253,6 +253,7 @@ function collectSurfaces(payload: unknown): {
       }
 
       const roomFootprint = roomWalls.length ? estimateFloorAreaFromWalls(roomWalls) : 0;
+      const roomDimensions = deriveRoomDimensionsFromWalls(roomWalls);
       const roomCeiling = averageCeilingHeight(roomWalls);
       const roomSections = Array.isArray(room.sections)
         ? room.sections.map(sectionFromRaw).filter((s): s is RoomScanSection => Boolean(s))
@@ -265,6 +266,8 @@ function collectSurfaces(payload: unknown): {
           sections.push({
             ...section,
             areaSqM: section.areaSqM ?? perSectionArea,
+            widthM: section.widthM ?? roomDimensions?.widthM,
+            lengthM: section.lengthM ?? roomDimensions?.lengthM,
             ceilingHeightM: roomCeiling ?? undefined,
           });
         }
@@ -280,6 +283,8 @@ function collectSurfaces(payload: unknown): {
           centerX: (Math.min(...xs) + Math.max(...xs)) / 2,
           centerZ: (Math.min(...zs) + Math.max(...zs)) / 2,
           areaSqM: Number(roomFootprint.toFixed(1)),
+          widthM: roomDimensions?.widthM,
+          lengthM: roomDimensions?.lengthM,
           ceilingHeightM: roomCeiling ?? undefined,
         });
       }
@@ -303,7 +308,14 @@ export function extractWallSegments(payload: unknown): RoomScanWallSegment[] {
   return collectSurfaces(payload).walls;
 }
 
-export function buildFloorPlanScanMeta(payload: unknown): FloorPlanScanMeta {
+export function buildFloorPlanScanMeta(
+  payload: unknown,
+  compass?: {
+    northRotationDegrees?: number | null;
+    headingAccuracyDegrees?: number | null;
+    headingSource?: 'true' | 'magnetic' | null;
+  },
+): FloorPlanScanMeta {
   const { walls, objects, openings, sections } = collectSurfaces(payload);
   const ceilingHeightM = averageCeilingHeight(walls);
 
@@ -324,33 +336,70 @@ export function buildFloorPlanScanMeta(payload: unknown): FloorPlanScanMeta {
 
   const pad = 0.85;
   const totalFootprint = estimateFloorAreaFromWalls(walls);
+  const overallDimensions = deriveRoomDimensionsFromWalls(walls);
   const enriched = enrichSectionsWithObjects(sections, objects, ceilingHeightM);
   const displaySections = dedupeRoomSections(enriched);
   const sectionCount = Math.max(1, displaySections.length);
+  const sectionAreaTotal = displaySections.reduce(
+    (sum, section) => sum + (typeof section.areaSqM === 'number' ? section.areaSqM : 0),
+    0,
+  );
+  const measuredTotalArea =
+    displaySections.length > 1 && sectionAreaTotal > 0 ? sectionAreaTotal : totalFootprint;
   const finalSections = displaySections.map((section) => ({
     ...section,
     areaSqM:
-      totalFootprint > 0 ? Number((totalFootprint / sectionCount).toFixed(1)) : section.areaSqM,
+      section.areaSqM ??
+      (measuredTotalArea > 0 ? Number((measuredTotalArea / sectionCount).toFixed(1)) : undefined),
+    widthM: section.widthM ?? (sectionCount === 1 ? overallDimensions?.widthM : undefined),
+    lengthM: section.lengthM ?? (sectionCount === 1 ? overallDimensions?.lengthM : undefined),
     ceilingHeightM: section.ceilingHeightM ?? ceilingHeightM ?? undefined,
   }));
 
   return {
-    version: 1,
+    version: 2,
     scannedAt: new Date().toISOString(),
     roomCount: sectionCount,
-    totalAreaSqM: totalFootprint > 0 ? Number(totalFootprint.toFixed(1)) : null,
+    totalAreaSqM: measuredTotalArea > 0 ? Number(measuredTotalArea.toFixed(1)) : null,
     ceilingHeightM,
     sections: finalSections,
     walls,
     objects,
     openings,
     bounds: { minX: minX - pad, maxX: maxX + pad, minZ: minZ - pad, maxZ: maxZ + pad },
+    northRotationDegrees: compass?.northRotationDegrees ?? null,
+    headingAccuracyDegrees: compass?.headingAccuracyDegrees ?? null,
+    headingSource: compass?.headingSource ?? null,
   };
 }
 
 export function normalizeStoredScanMeta(raw: unknown): FloorPlanScanMeta | null {
   if (!raw || typeof raw !== 'object') return null;
   const meta = raw as Partial<FloorPlanScanMeta>;
+  const storedRoomScans = Array.isArray(meta.roomScans) ? meta.roomScans : [];
+  if ((!meta.bounds || !Array.isArray(meta.sections)) && storedRoomScans.length) {
+    const roomAreaTotalSqM =
+      typeof meta.roomAreaTotalSqM === 'number'
+        ? meta.roomAreaTotalSqM
+        : storedRoomScans.reduce((sum, room) => {
+            const value = Number(String(room.areaM2 || '').replace(',', '.'));
+            return sum + (Number.isFinite(value) ? value : 0);
+          }, 0);
+    return {
+      version: 2,
+      scannedAt: meta.scannedAt || new Date().toISOString(),
+      roomCount: storedRoomScans.length,
+      totalAreaSqM: roomAreaTotalSqM || null,
+      ceilingHeightM: null,
+      sections: [],
+      walls: [],
+      objects: [],
+      openings: [],
+      bounds: { minX: -2, maxX: 2, minZ: -2, maxZ: 2 },
+      roomScans: storedRoomScans,
+      roomAreaTotalSqM,
+    };
+  }
   if (!meta.bounds || !Array.isArray(meta.sections)) return null;
   const walls = Array.isArray(meta.walls)
     ? dedupeWallSegments(meta.walls.map((w) => ({ ...w, lengthM: wallLengthMeters(w) })))
@@ -368,7 +417,8 @@ export function normalizeStoredScanMeta(raw: unknown): FloorPlanScanMeta | null 
     (section) => ({
       ...section,
       areaSqM:
-        totalFootprint > 0 ? Number((totalFootprint / sectionCount).toFixed(1)) : section.areaSqM,
+        section.areaSqM ??
+        (totalFootprint > 0 ? Number((totalFootprint / sectionCount).toFixed(1)) : undefined),
     }),
   );
   return {
@@ -382,10 +432,23 @@ export function normalizeStoredScanMeta(raw: unknown): FloorPlanScanMeta | null 
     objects,
     openings,
     bounds: meta.bounds,
+    northRotationDegrees: meta.northRotationDegrees ?? null,
+    headingAccuracyDegrees: meta.headingAccuracyDegrees ?? null,
+    headingSource: meta.headingSource ?? null,
+    roomScans: storedRoomScans.length ? storedRoomScans : undefined,
+    roomAreaTotalSqM:
+      typeof meta.roomAreaTotalSqM === 'number' ? meta.roomAreaTotalSqM : undefined,
   };
 }
 
-export async function parseRoomPlanJsonFile(jsonUri: string): Promise<{
+export async function parseRoomPlanJsonFile(
+  jsonUri: string,
+  compass?: {
+    northRotationDegrees?: number | null;
+    headingAccuracyDegrees?: number | null;
+    headingSource?: 'true' | 'magnetic' | null;
+  },
+): Promise<{
   walls: RoomScanWallSegment[];
   meta: FloorPlanScanMeta;
   raw: unknown;
@@ -393,7 +456,7 @@ export async function parseRoomPlanJsonFile(jsonUri: string): Promise<{
   const { readAsStringAsync } = await import('expo-file-system/legacy');
   const text = await readAsStringAsync(jsonUri);
   const raw = JSON.parse(text) as unknown;
-  const meta = buildFloorPlanScanMeta(raw);
+  const meta = buildFloorPlanScanMeta(raw, compass);
   return {
     raw,
     walls: meta.walls,

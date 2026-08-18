@@ -152,20 +152,6 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
             );
           })}
 
-          {mappedOpenings.map((opening) => (
-            <Line
-              key={opening.id}
-              x1={opening.a.x}
-              y1={opening.a.y}
-              x2={opening.b.x}
-              y2={opening.b.y}
-              stroke={opening.kind === 'window' ? '#38bdf8' : '#f59e0b'}
-              strokeWidth={opening.kind === 'door' ? 5 : 3.5}
-              strokeLinecap="butt"
-              strokeDasharray={opening.kind === 'window' ? '6 3' : undefined}
-            />
-          ))}
-
           {mappedWalls.map((wall) => (
             <G key={wall.id}>
               <Line
@@ -213,6 +199,37 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
             </G>
           ))}
 
+          {/* Otwory są nad ścianami, żeby drzwi, okna i przejścia nie znikały pod obrysem. */}
+          {mappedOpenings.map((opening) => (
+            <G key={opening.id}>
+              <Line
+                x1={opening.a.x}
+                y1={opening.a.y}
+                x2={opening.b.x}
+                y2={opening.b.y}
+                stroke="#f8fafc"
+                strokeWidth={forExport ? 13 : 10}
+                strokeLinecap="butt"
+              />
+              <Line
+                x1={opening.a.x}
+                y1={opening.a.y}
+                x2={opening.b.x}
+                y2={opening.b.y}
+                stroke={
+                  opening.kind === 'window'
+                    ? '#0284c7'
+                    : opening.kind === 'door'
+                      ? '#f59e0b'
+                      : '#10b981'
+                }
+                strokeWidth={opening.kind === 'door' ? 5 : 3.5}
+                strokeLinecap="butt"
+                strokeDasharray={opening.kind === 'window' ? '6 3' : opening.kind === 'opening' ? '3 3' : undefined}
+              />
+            </G>
+          ))}
+
           {mappedObjects.map((obj) => {
             const boxW = Math.max(28, Math.min(46, obj.glyph.length * 8 + 12));
             return (
@@ -252,7 +269,8 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
           })}
 
           {mappedSections.map((section) => {
-            const labelH = section.ceilingHeightM ? 52 : section.areaSqM ? 40 : 24;
+            const hasDimensions = Boolean(section.widthM && section.lengthM);
+            const labelH = section.ceilingHeightM ? (hasDimensions ? 68 : 54) : hasDimensions ? 54 : section.areaSqM ? 40 : 24;
             return (
               <G key={`${section.id}-label`}>
                 <Rect
@@ -287,10 +305,22 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                     {section.areaSqM} m²
                   </SvgText>
                 ) : null}
+                {hasDimensions ? (
+                  <SvgText
+                    x={section.x}
+                    y={section.y + (section.ceilingHeightM ? 20 : 25)}
+                    fill="#334155"
+                    fontSize={forExport ? 9 : 7.5}
+                    fontWeight="700"
+                    textAnchor="middle"
+                  >
+                    {section.widthM?.toFixed(2)} × {section.lengthM?.toFixed(2)} m
+                  </SvgText>
+                ) : null}
                 {section.ceilingHeightM ? (
                   <SvgText
                     x={section.x}
-                    y={section.y + 20}
+                    y={section.y + (hasDimensions ? 33 : 20)}
                     fill="#0369a1"
                     fontSize={forExport ? 9 : 8}
                     fontWeight="700"
@@ -350,33 +380,28 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
         <G>
           <Circle cx={compassCx} cy={compassCy} r={compassR} fill="#ffffff" stroke="#94a3b8" strokeWidth={1.2} />
           <Circle cx={compassCx} cy={compassCy} r={compassR - 7} fill="none" stroke="#e2e8f0" strokeWidth={1} />
-          <Polygon
-            points={`${compassCx},${compassCy - compassR + 8} ${compassCx + 7},${compassCy + 2} ${compassCx},${compassCy - 2} ${compassCx - 7},${compassCy + 2}`}
-            fill="#dc2626"
-          />
-          <Polygon
-            points={`${compassCx},${compassCy + compassR - 8} ${compassCx + 6},${compassCy - 1} ${compassCx},${compassCy + 2} ${compassCx - 6},${compassCy - 1}`}
-            fill="#475569"
-          />
-          <SvgText
-            x={compassCx}
-            y={compassCy - compassR + 3}
-            fill="#0f172a"
-            fontSize={10}
-            fontWeight="900"
-            textAnchor="middle"
-          >
-            N
-          </SvgText>
-          <SvgText x={compassCx} y={compassCy + compassR + 1} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
-            S
-          </SvgText>
-          <SvgText x={compassCx + compassR + 1} y={compassCy + 3} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
-            E
-          </SvgText>
-          <SvgText x={compassCx - compassR - 1} y={compassCy + 3} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
-            W
-          </SvgText>
+          <G transform={`rotate(${meta.northRotationDegrees || 0} ${compassCx} ${compassCy})`}>
+            <Polygon
+              points={`${compassCx},${compassCy - compassR + 8} ${compassCx + 7},${compassCy + 2} ${compassCx},${compassCy - 2} ${compassCx - 7},${compassCy + 2}`}
+              fill="#dc2626"
+            />
+            <Polygon
+              points={`${compassCx},${compassCy + compassR - 8} ${compassCx + 6},${compassCy - 1} ${compassCx},${compassCy + 2} ${compassCx - 6},${compassCy - 1}`}
+              fill="#475569"
+            />
+            <SvgText x={compassCx} y={compassCy - compassR + 3} fill="#0f172a" fontSize={10} fontWeight="900" textAnchor="middle">
+              N
+            </SvgText>
+            <SvgText x={compassCx} y={compassCy + compassR + 1} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
+              S
+            </SvgText>
+            <SvgText x={compassCx + compassR + 1} y={compassCy + 3} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
+              E
+            </SvgText>
+            <SvgText x={compassCx - compassR - 1} y={compassCy + 3} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
+              W
+            </SvgText>
+          </G>
           <SvgText
             x={compassCx}
             y={compassCy + compassR + 14}

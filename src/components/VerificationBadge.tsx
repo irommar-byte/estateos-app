@@ -42,18 +42,18 @@ export const VerificationBadge = ({ phoneVerified, emailVerified, isVerified, on
             flexDirection: 'row',
             alignItems: 'center',
             backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 12,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 999,
             borderWidth: 1,
             borderColor: 'rgba(16, 185, 129, 0.3)',
             flexShrink: 1,
             maxWidth: '100%',
           }}
         >
-          <Ionicons name="shield-checkmark" size={16} color="#10b981" style={{ marginRight: 6 }} />
+          <Ionicons name="shield-checkmark" size={13} color="#10b981" style={{ marginRight: 5 }} />
           <Text
-            style={{ color: '#10b981', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, flexShrink: 1 }}
+            style={{ color: '#10b981', fontSize: 10, fontWeight: '800', letterSpacing: 0.4, flexShrink: 1 }}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -82,9 +82,9 @@ export const VerificationBadge = ({ phoneVerified, emailVerified, isVerified, on
               flexDirection: 'row',
               alignItems: 'center',
               backgroundColor: 'rgba(255, 159, 10, 0.12)',
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-              borderRadius: 10,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 999,
               borderWidth: 1,
               borderColor: 'rgba(255, 159, 10, 0.4)',
               flexShrink: 1,

@@ -25,9 +25,8 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Image } from 'expo-image';
-import RoomScanModal, { isRoomScanSupportedOnDevice } from '../components/roomScan/RoomScanModal';
-import type { RoomScanDraftAssets } from '../types/roomScan';
-import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
+import PropertyRoomScanWorkspace from '../components/roomScan/PropertyRoomScanWorkspace';
+import type { PropertyRoomScan, RoomScanDraftAssets, WholePropertyScan } from '../types/roomScan';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
@@ -408,8 +407,7 @@ export default function EditOfferScreen({ route }: any) {
   const [originalFloorPlanKey, setOriginalFloorPlanKey] = useState<string | null>(null);
   const [originalFloorPlan3dKey, setOriginalFloorPlan3dKey] = useState<string | null>(null);
   const [originalFloorPlanScanMeta, setOriginalFloorPlanScanMeta] = useState<string | null>(null);
-  const [roomScanOpen, setRoomScanOpen] = useState(false);
-  const roomScanAvailable = isRoomScanSupportedOnDevice();
+  const [propertyRoomScans, setPropertyRoomScans] = useState<PropertyRoomScan[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [area, setArea] = useState('');
@@ -613,6 +611,14 @@ export default function EditOfferScreen({ route }: any) {
           const scanMetaRaw = offer.floorPlanScanMeta ? String(offer.floorPlanScanMeta) : null;
           setOriginalFloorPlanScanMeta(scanMetaRaw);
           setFloorPlanScanMetaLocal(scanMetaRaw);
+          try {
+            const parsedScanMeta = scanMetaRaw ? JSON.parse(scanMetaRaw) : null;
+            setPropertyRoomScans(
+              Array.isArray(parsedScanMeta?.roomScans) ? parsedScanMeta.roomScans : [],
+            );
+          } catch {
+            setPropertyRoomScans([]);
+          }
           setDropServerFloorPlan3d(false);
 
           setAmenities({
@@ -741,6 +747,7 @@ export default function EditOfferScreen({ route }: any) {
     if (floorPlanCleared && (originalFloorPlanKey || originalFloorPlan3dKey)) diffs.push('floorPlan');
     if (floorPlanLocalUri || floorPlan3dLocalUri) diffs.push('floorPlan');
     if (dropServerFloorPlan3d && (originalFloorPlan3dKey || originalFloorPlanScanMeta)) diffs.push('floorPlan');
+    if (floorPlanScanMetaLocal !== originalFloorPlanScanMeta) diffs.push('floorPlan');
     const dirtySummaryLabels = diffs.map((key) => translateDirtyField(key));
     const dirtySummary =
       dirtySummaryLabels.length <= 3
@@ -773,6 +780,7 @@ export default function EditOfferScreen({ route }: any) {
     dropServerFloorPlan3d,
     floorPlanLocalUri,
     floorPlan3dLocalUri,
+    floorPlanScanMetaLocal,
     originalFloorPlanScanMeta,
     originalFloorPlanKey,
     originalFloorPlan3dKey,
@@ -858,7 +866,35 @@ export default function EditOfferScreen({ route }: any) {
     setFloorPlanScanMetaLocal(JSON.stringify(assets.scanMeta));
     setDropServerFloorPlan3d(false);
     setFloorPlanCleared(false);
-    setRoomScanOpen(false);
+  };
+
+  const handlePropertyRoomScansChange = (rooms: PropertyRoomScan[]) => {
+    setPropertyRoomScans(rooms);
+    let baseMeta: Record<string, unknown> = {};
+    try {
+      baseMeta = floorPlanScanMetaLocal ? JSON.parse(floorPlanScanMetaLocal) : {};
+    } catch {
+      baseMeta = {};
+    }
+    const roomAreaTotalSqM = rooms.reduce((sum, room) => {
+      const value = Number(String(room.areaM2 || '').replace(',', '.'));
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+    setFloorPlanScanMetaLocal(JSON.stringify({ ...baseMeta, roomScans: rooms, roomAreaTotalSqM }));
+    if (roomAreaTotalSqM > 0) setArea(roomAreaTotalSqM.toFixed(1));
+    if (rooms.length > 0) setRooms(String(rooms.length));
+  };
+
+  const handleWholePropertyScanChange = (scan: WholePropertyScan | null) => {
+    if (!scan) {
+      removeFloorPlan();
+      return;
+    }
+    handleRoomScanComplete({
+      floorPlanPngUri: scan.floorPlanPngUri,
+      floorPlan3dUri: scan.floorPlan3dUri,
+      scanMeta: { ...scan.scanMeta, roomScans: propertyRoomScans },
+    });
   };
 
   const removeFloorPlan = () => {
@@ -1336,6 +1372,7 @@ export default function EditOfferScreen({ route }: any) {
         floorPlanCleared ||
         Boolean(floorPlanLocalUri) ||
         Boolean(floorPlan3dLocalUri) ||
+        floorPlanScanMetaLocal !== originalFloorPlanScanMeta ||
         dropServerFloorPlan3d;
 
       for (let i = 0; i < localImages.length; i += 1) {
@@ -1434,10 +1471,90 @@ export default function EditOfferScreen({ route }: any) {
         nextScanMeta = floorPlanScanMetaLocal;
       }
 
+      if (!floorPlanCleared && (propertyRoomScans.length > 0 || floorPlanScanMetaLocal !== originalFloorPlanScanMeta)) {
+        const isLocalAsset = (uri?: string) =>
+          Boolean(uri && !uri.startsWith('http://') && !uri.startsWith('https://') && !uri.startsWith('/'));
+        const uploadRoomAsset = async (uri: string | undefined, name: string, type: string) => {
+          if (!uri || !isLocalAsset(uri)) return uri;
+          const assetForm = new FormData();
+          assetForm.append('offerId', String(offerId));
+          assetForm.append('purpose', 'roomPlanAsset');
+          assetForm.append('file', { uri, name, type } as any);
+          const assetResponse = await fetch(`${API_URL}/api/upload/mobile`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: assetForm,
+          });
+          const assetPayload = await assetResponse.json().catch(() => ({}));
+          if (!assetResponse.ok) {
+            throw new Error(assetPayload?.error || `Nie udało się zapisać ${name}.`);
+          }
+          return String(assetPayload?.url || assetPayload?.path || uri);
+        };
+
+        const uploadedRooms: PropertyRoomScan[] = [];
+        for (let index = 0; index < propertyRoomScans.length; index += 1) {
+          const room = propertyRoomScans[index];
+          const safeName = String(room.name || `room-${index + 1}`)
+            .replace(/[^a-zA-Z0-9_-]+/g, '-')
+            .slice(0, 48);
+          uploadedRooms.push({
+            ...room,
+            floorPlanPngUri: await uploadRoomAsset(
+              room.floorPlanPngUri,
+              `${safeName || 'room'}-plan.png`,
+              'image/png',
+            ),
+            floorPlan3dUri: await uploadRoomAsset(
+              room.floorPlan3dUri,
+              `${safeName || 'room'}-3d.usdz`,
+              'model/vnd.usdz+zip',
+            ),
+          });
+        }
+
+        let baseMeta: Record<string, unknown> = {};
+        try {
+          baseMeta = floorPlanScanMetaLocal ? JSON.parse(floorPlanScanMetaLocal) : {};
+        } catch {
+          baseMeta = {};
+        }
+        nextScanMeta = JSON.stringify({
+          ...baseMeta,
+          roomScans: uploadedRooms,
+          roomAreaTotalSqM: uploadedRooms.reduce((sum, room) => {
+            const value = Number(String(room.areaM2 || '').replace(',', '.'));
+            return sum + (Number.isFinite(value) ? value : 0);
+          }, 0),
+        });
+        const metaResponse = await fetch(`${API_URL}/api/mobile/v1/offers/${offerId}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ floorPlanScanMeta: nextScanMeta }),
+        });
+        if (!metaResponse.ok) {
+          const metaPayload = await metaResponse.json().catch(() => ({}));
+          throw new Error(metaPayload?.message || 'Nie udało się zapisać planów pomieszczeń.');
+        }
+        setPropertyRoomScans(uploadedRooms);
+      }
+
       if (floorPlanCleared) {
         nextFloorPlanKey = null;
         nextFloorPlan3dKey = null;
-        nextScanMeta = null;
+        nextScanMeta = propertyRoomScans.length
+          ? JSON.stringify({
+              version: 2,
+              roomScans: propertyRoomScans,
+              roomAreaTotalSqM: propertyRoomScans.reduce((sum, room) => {
+                const value = Number(String(room.areaM2 || '').replace(',', '.'));
+                return sum + (Number.isFinite(value) ? value : 0);
+              }, 0),
+            })
+          : null;
         setFloorPlanPreview(null);
       } else if (dropServerFloorPlan3d && !floorPlan3dLocalUri) {
         nextFloorPlan3dKey = null;
@@ -1680,6 +1797,28 @@ export default function EditOfferScreen({ route }: any) {
   const displayGalleryImages = dragSnapshot ?? images;
   const galleryGridHeight =
     Math.ceil((displayGalleryImages.length + 1) / EDIT_GALLERY_COLUMNS) * (TILE + EDIT_GALLERY_GAP);
+  let currentScanMeta: RoomScanDraftAssets['scanMeta'] | null = null;
+  try {
+    currentScanMeta = floorPlanScanMetaLocal
+      ? (JSON.parse(floorPlanScanMetaLocal) as RoomScanDraftAssets['scanMeta'])
+      : null;
+  } catch {
+    currentScanMeta = null;
+  }
+  const currentModel3dUri =
+    floorPlan3dLocalUri ||
+    (originalFloorPlan3dKey && !dropServerFloorPlan3d
+      ? toAbsoluteImageUrl(originalFloorPlan3dKey)
+      : '');
+  const currentWholePropertyScan: WholePropertyScan | null =
+    currentScanMeta && floorPlanPreview
+      ? {
+          floorPlanPngUri: floorPlanPreview,
+          floorPlan3dUri: currentModel3dUri || '',
+          scanMeta: currentScanMeta,
+          scannedAt: currentScanMeta.scannedAt,
+        }
+      : null;
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
@@ -1890,32 +2029,13 @@ export default function EditOfferScreen({ route }: any) {
             </Text>
           </View>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, padding: 12 }]}>
-            {roomScanAvailable ? (
-              <Pressable
-                onPress={() => setRoomScanOpen(true)}
-                style={[
-                  styles.editRoomScanCta,
-                  {
-                    borderColor: isDark ? 'rgba(56,189,248,0.35)' : 'rgba(14,165,233,0.35)',
-                    backgroundColor: isDark ? 'rgba(15,23,42,0.85)' : 'rgba(240,249,255,0.95)',
-                    marginBottom: 10,
-                  },
-                ]}
-              >
-                <View style={styles.editRoomScanIcon}>
-                  <Ionicons name="scan-outline" size={20} color="#0ea5e9" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.editRoomScanTitle, { color: txtColor }]}>
-                    {t('offer.edit.floorPlan.scan')}
-                  </Text>
-                  <Text style={[styles.editRoomScanHint, { color: subColor }]}>
-                    {t('offer.edit.floorPlan.scanHint')}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={subColor} />
-              </Pressable>
-            ) : null}
+            <PropertyRoomScanWorkspace
+              rooms={propertyRoomScans}
+              onChangeRooms={handlePropertyRoomScansChange}
+              wholeScan={currentWholePropertyScan}
+              onChangeWholeScan={handleWholePropertyScanChange}
+              isDark={isDark}
+            />
             <Pressable
               onPress={pickFloorPlan}
               style={[
@@ -1961,11 +2081,6 @@ export default function EditOfferScreen({ route }: any) {
               </View>
             ) : null}
           </View>
-          <RoomScanModal
-            visible={roomScanOpen}
-            onClose={() => setRoomScanOpen(false)}
-            onComplete={handleRoomScanComplete}
-          />
           <Text style={styles.sectionFooter}>{t('offer.edit.floorPlan.hint')}</Text>
 
           {/* ====== INFORMACJE GŁÓWNE ====== */}

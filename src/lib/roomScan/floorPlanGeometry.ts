@@ -1,5 +1,6 @@
 import type { FloorPlanScanMeta, RoomScanSection, RoomScanWallSegment } from '../../types/roomScan';
 import { getRoomScanSectionLabel } from './roomScanLabels';
+export { deriveRoomDimensionsFromWalls } from './roomScanMeasurements';
 
 export type FloorPlanViewport = {
   scale: number;
@@ -25,6 +26,8 @@ export type MappedSection = {
   centerX: number;
   centerZ: number;
   areaSqM?: number;
+  widthM?: number;
+  lengthM?: number;
   ceilingHeightM?: number;
   x: number;
   y: number;
@@ -264,6 +267,8 @@ export function mapSectionsForRender(
       centerX: section.centerX,
       centerZ: section.centerZ,
       areaSqM: section.areaSqM,
+      widthM: section.widthM,
+      lengthM: section.lengthM,
       ceilingHeightM: section.ceilingHeightM,
       fill: ROOM_FILL_COLORS[index % ROOM_FILL_COLORS.length],
       ...p,

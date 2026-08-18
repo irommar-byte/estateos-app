@@ -861,6 +861,85 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           }
       }
 
+      // 5. OSOBNE PLANY POMIESZCZEŃ — nie nadpisują planu całej nieruchomości.
+      if (createdOfferId && Array.isArray(draft.propertyRoomScans) && draft.propertyRoomScans.length) {
+        const uploadRoomAsset = async (
+          uri: string | undefined,
+          name: string,
+          mimeType: string,
+        ): Promise<string | undefined> => {
+          if (!uri || uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('/')) {
+            return uri;
+          }
+          const form = new FormData();
+          form.append('offerId', String(createdOfferId));
+          form.append('purpose', 'roomPlanAsset');
+          form.append('file', { uri, name, type: mimeType } as any);
+          const response = await fetch(`${API_URL}/api/upload/mobile`, {
+            method: 'POST',
+            body: form,
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || `Nie udało się zapisać zasobu ${name}.`);
+          }
+          return String(payload?.url || payload?.path || uri);
+        };
+
+        const uploadedRooms = [];
+        for (let index = 0; index < draft.propertyRoomScans.length; index += 1) {
+          const room = draft.propertyRoomScans[index];
+          setUploadProgressText(
+            `Zapisywanie planu pomieszczenia ${index + 1}/${draft.propertyRoomScans.length}…`,
+          );
+          const safeName = String(room.name || `room-${index + 1}`)
+            .replace(/[^a-zA-Z0-9_-]+/g, '-')
+            .slice(0, 48);
+          const floorPlanPngUri = await uploadRoomAsset(
+            room.floorPlanPngUri,
+            `${safeName || 'room'}-plan.png`,
+            'image/png',
+          );
+          const floorPlan3dUri = await uploadRoomAsset(
+            room.floorPlan3dUri,
+            `${safeName || 'room'}-3d.usdz`,
+            'model/vnd.usdz+zip',
+          );
+          uploadedRooms.push({ ...room, floorPlanPngUri, floorPlan3dUri });
+        }
+
+        let baseMeta: Record<string, unknown> = {};
+        try {
+          baseMeta =
+            typeof draft.floorPlanScanMeta === 'string'
+              ? JSON.parse(draft.floorPlanScanMeta)
+              : draft.floorPlanScanMeta || {};
+        } catch {
+          baseMeta = {};
+        }
+        const finalScanMeta = JSON.stringify({
+          ...baseMeta,
+          roomScans: uploadedRooms,
+          roomAreaTotalSqM: uploadedRooms.reduce((sum, room) => {
+            const value = Number(String(room.areaM2 || '').replace(',', '.'));
+            return sum + (Number.isFinite(value) ? value : 0);
+          }, 0),
+        });
+        const metaResponse = await fetch(`${API_URL}/api/mobile/v1/offers/${createdOfferId}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ floorPlanScanMeta: finalScanMeta }),
+        });
+        if (!metaResponse.ok) {
+          const payload = await metaResponse.json().catch(() => ({}));
+          throw new Error(payload?.message || 'Nie udało się przypisać planów do pomieszczeń.');
+        }
+      }
+
       let legalQueueSubmitted = false;
       if (createdOfferId && token && isPolandOffer) {
         const kwSubmit = String(draft.landRegistryNumber || '').trim();

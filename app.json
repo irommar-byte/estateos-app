@@ -117,7 +117,8 @@
             "kotlinVersion": "2.2.0"
           },
           "ios": {
-            "deploymentTarget": "17.0"
+            "deploymentTarget": "17.0",
+            "buildReactNativeFromSource": true
           }
         }
       ],

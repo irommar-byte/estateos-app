@@ -231,7 +231,7 @@ export async function uploadAcquisitionPaper(
   token: string,
   clientId: number,
   file: { uri: string; name: string; mimeType: string },
-  purpose: 'paper' | 'plan' = 'paper',
+  purpose: 'paper' | 'plan' | 'asset' = 'paper',
 ) {
   const payload = new FormData();
   payload.append('file', {
