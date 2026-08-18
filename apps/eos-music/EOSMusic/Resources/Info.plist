@@ -121,6 +121,8 @@
 	<string>EOS™ Music łączy się z Twoim QNAP w sieci lokalnej, aby odtwarzać muzykę przez WebDAV.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>EOS™ Music używa zdjęć do okładki playlisty.</string>
+	<key>RCTNewArchEnabled</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

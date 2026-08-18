@@ -12,7 +12,7 @@ Natywny odtwarzacz muzyki dla biblioteki Nostalgie™ Legacy (ten sam backend co
 ## Otwarcie projektu
 
 ```bash
-cd ios/EOSMusic
+cd apps/eos-music
 python3 generate_xcode_project.py   # jeśli dodajesz pliki Swift
 open EOSMusic.xcodeproj
 ```

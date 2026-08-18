@@ -82,9 +82,8 @@ video-downloader/data/cda-hd-catalog-cache.json
 !ios/StoreKit/
 !ios/StoreKit/**
 
-# EOS Music — MobileVLCKit vendored binary (large; download via showbie release 3.7.3)
-ios/EOSMusic/Vendor/*.zip
-ios/EOSMusic/Vendor/MobileVLCKit.xcframework/
-
-# EOS Music local xcodebuild DerivedData
-ios/EOSMusic/build/
+# EOS Music — osobna aplikacja w apps/eos-music (nie należy do targetu EstateOS)
+apps/eos-music/Vendor/*.zip
+apps/eos-music/Vendor/MobileVLCKit.xcframework/
+apps/eos-music/build/
+apps/eos-music/**/xcuserdata/
