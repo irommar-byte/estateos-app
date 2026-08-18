@@ -501,6 +501,10 @@ export const addOffer = {
       compassHint: 'N — góra planu',
       detectedObjects: 'Wykryte meble i AGD',
       ready: 'Gotowy',
+      dimensions: 'Wymiary',
+      launchRoom: 'SKAN POMIESZCZENIA',
+      launchProperty: 'SKAN CAŁEJ NIERUCHOMOŚCI',
+      launchHint: 'Otwieram natywny skaner LiDAR. Użyj przycisków Anuluj i Zakończ u góry ekranu Apple. Po skanie wymiary i metraż wstawią się do pomieszczenia.',
       rescan: 'Skanuj ponownie',
       usePlan: 'Użyj tego planu',
       exportPdf: 'Eksportuj PDF',
@@ -513,6 +517,7 @@ export const addOffer = {
         previewFailed: 'Nie udało się wygenerować podglądu planu.',
         pdfFailed: 'Nie udało się wyeksportować PDF.',
         walkthroughUnavailable: 'Nie udało się otworzyć spaceru 3D. Zbuduj aplikację ponownie i spróbuj jeszcze raz.',
+        unsupportedDevice: 'Ten iPhone lub iPad nie ma LiDAR. Skaner RoomPlan działa na iPhonie Pro (12+) i iPadzie Pro z LiDAR. Wymiary możesz wpisać ręcznie.',
       },
       roomTypes: {
         livingRoom: 'Salon',

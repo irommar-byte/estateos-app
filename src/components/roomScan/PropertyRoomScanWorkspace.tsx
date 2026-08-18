@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import RoomScanModal, { isRoomScanSupportedOnDevice } from './RoomScanModal';
+import { deriveRoomDimensionsFromWalls } from '../../lib/roomScan/roomScanMeasurements';
 import { getSafeQuickLook } from '../../utils/safeQuickLook';
 import type {
   PropertyRoomScan,
@@ -155,10 +156,14 @@ export default function PropertyRoomScanWorkspace({
       return;
     }
     const section = assets.scanMeta.sections[0];
-    const widthM = displayMeasurement(section?.widthM);
-    const lengthM = displayMeasurement(section?.lengthM);
+    const fromWalls = deriveRoomDimensionsFromWalls(assets.scanMeta.walls);
+    const widthM = displayMeasurement(section?.widthM ?? fromWalls?.widthM);
+    const lengthM = displayMeasurement(section?.lengthM ?? fromWalls?.lengthM);
     const heightM = displayMeasurement(section?.ceilingHeightM ?? assets.scanMeta.ceilingHeightM);
-    const scannedArea = section?.areaSqM ?? assets.scanMeta.totalAreaSqM;
+    const scannedArea =
+      section?.areaSqM ??
+      assets.scanMeta.totalAreaSqM ??
+      (fromWalls ? Number((fromWalls.widthM * fromWalls.lengthM).toFixed(1)) : undefined);
     updateRoom(room.id, {
       widthM: widthM || room.widthM,
       lengthM: lengthM || room.lengthM,
@@ -403,6 +408,11 @@ export default function PropertyRoomScanWorkspace({
       </View>
 
       <RoomScanModal
+        key={
+          activeScan
+            ? `${activeScan.mode}-${activeScan.mode === 'room' ? activeScan.roomId : 'property'}`
+            : 'idle'
+        }
         visible={Boolean(activeScan)}
         scanMode={activeScan?.mode || 'room'}
         roomName={activeRoom?.name}

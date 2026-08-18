@@ -5,7 +5,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -37,8 +36,22 @@ function loadRoomPlanModule(): RoomPlanModule | null {
   }
 }
 
+function getNativeRoomPlan(roomPlan: RoomPlanModule | null) {
+  if (!roomPlan) return null;
+  const nested = roomPlan as RoomPlanModule & { default?: RoomPlanModule };
+  return nested.ExpoRoomplan ?? nested.default?.ExpoRoomplan ?? null;
+}
+
 export function isRoomScanSupportedOnDevice(): boolean {
   return Platform.OS === 'ios' && loadRoomPlanModule() !== null;
+}
+
+async function stopNativeScanner(roomPlan: RoomPlanModule | null): Promise<void> {
+  try {
+    await getNativeRoomPlan(roomPlan)?.stopCapture?.();
+  } catch {
+    // Native session may already be gone.
+  }
 }
 
 type RoomScanModalProps = {
@@ -49,7 +62,7 @@ type RoomScanModalProps = {
   roomName?: string;
 };
 
-type Phase = 'scan' | 'preview' | 'processing';
+type Phase = 'launching' | 'preview' | 'processing';
 
 export default function RoomScanModal({
   visible,
@@ -59,19 +72,14 @@ export default function RoomScanModal({
   roomName,
 }: RoomScanModalProps) {
   const roomPlan = loadRoomPlanModule();
-  if (!roomPlan) return null;
-
-  const { RoomPlanView, useRoomPlanView, ExportType } = roomPlan;
-  if (!RoomPlanView || !useRoomPlanView) return null;
+  if (!getNativeRoomPlan(roomPlan) || !roomPlan?.ExportType) return null;
 
   return (
     <RoomScanModalBody
       visible={visible}
       onClose={onClose}
       onComplete={onComplete}
-      RoomPlanView={RoomPlanView}
-      useRoomPlanView={useRoomPlanView}
-      ExportType={ExportType}
+      roomPlan={roomPlan}
       scanMode={scanMode}
       roomName={roomName}
     />
@@ -82,9 +90,7 @@ type BodyProps = {
   visible: boolean;
   onClose: () => void;
   onComplete: (assets: RoomScanDraftAssets) => void;
-  RoomPlanView: RoomPlanModule['RoomPlanView'];
-  useRoomPlanView: RoomPlanModule['useRoomPlanView'];
-  ExportType: RoomPlanModule['ExportType'];
+  roomPlan: RoomPlanModule;
   scanMode: 'room' | 'property';
   roomName?: string;
 };
@@ -93,9 +99,7 @@ function RoomScanModalBody({
   visible,
   onClose,
   onComplete,
-  RoomPlanView,
-  useRoomPlanView,
-  ExportType,
+  roomPlan,
   scanMode,
   roomName,
 }: BodyProps) {
@@ -105,6 +109,10 @@ function RoomScanModalBody({
   const svgCaptureRef = useRef<Svg>(null);
   const scanStartedRef = useRef(false);
   const processedExportRef = useRef<string | null>(null);
+  const closingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const persistExportRef = useRef(persistExport);
+  onCloseRef.current = onClose;
   const headingRef = useRef<{
     northRotationDegrees: number | null;
     headingAccuracyDegrees: number | null;
@@ -115,24 +123,23 @@ function RoomScanModalBody({
     headingSource: null,
   });
 
-  const [phase, setPhase] = useState<Phase>('scan');
+  const [phase, setPhase] = useState<Phase>('launching');
   const [walls, setWalls] = useState<RoomScanWallSegment[]>([]);
   const [meta, setMeta] = useState<FloorPlanScanMeta | null>(null);
   const [usdzUri, setUsdzUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [capturedRoomCount, setCapturedRoomCount] = useState(1);
 
   const reset = useCallback(() => {
-    setPhase('scan');
+    setPhase('launching');
     setWalls([]);
     setMeta(null);
     setUsdzUri(null);
     setBusy(false);
     setError(null);
-    setCapturedRoomCount(1);
     scanStartedRef.current = false;
     processedExportRef.current = null;
+    closingRef.current = false;
   }, []);
 
   const persistExport = useCallback(async (rawScanUrl?: string | null, rawJsonUrl?: string | null) => {
@@ -140,10 +147,7 @@ function RoomScanModalBody({
       throw new Error(t('addOffer.step5.roomScan.errors.exportMissing'));
     }
 
-    const scanUrlLocal = rawScanUrl.startsWith('file://') ? rawScanUrl : rawScanUrl;
-    const jsonUrlLocal = rawJsonUrl.startsWith('file://') ? rawJsonUrl : rawJsonUrl;
-
-    const parsed = await parseRoomPlanJsonFile(jsonUrlLocal, headingRef.current);
+    const parsed = await parseRoomPlanJsonFile(rawJsonUrl, headingRef.current);
     if (!parsed.walls.length) {
       throw new Error(t('addOffer.step5.roomScan.errors.noWalls'));
     }
@@ -156,7 +160,7 @@ function RoomScanModalBody({
       .replace(/^-+|-+$/g, '')
       .slice(0, 48);
     const usdzTarget = `${scansDir}/${safeRoomName || 'scan'}-${stamp}.usdz`;
-    await FileSystem.copyAsync({ from: scanUrlLocal, to: usdzTarget });
+    await FileSystem.copyAsync({ from: rawScanUrl, to: usdzTarget });
 
     setWalls(parsed.walls);
     setMeta(parsed.meta);
@@ -165,61 +169,18 @@ function RoomScanModalBody({
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [roomName, scanMode]);
 
-  const handleNativeExport = useCallback((event: {
-    nativeEvent?: { scanUrl?: string | null; jsonUrl?: string | null };
-  }) => {
-    const scanUrl = event?.nativeEvent?.scanUrl;
-    const jsonUrl = event?.nativeEvent?.jsonUrl;
-    if (!scanUrl || !jsonUrl) return;
-    const exportKey = `${scanUrl}|${jsonUrl}`;
-    if (processedExportRef.current === exportKey) return;
-    processedExportRef.current = exportKey;
+  const onCloseRef = useRef(onClose);
+  const persistExportRef = useRef(persistExport);
+  onCloseRef.current = onClose;
+  persistExportRef.current = persistExport;
 
-    (async () => {
-      try {
-        setBusy(true);
-        setError(null);
-        await persistExport(scanUrl, jsonUrl);
-      } catch (exportError) {
-        const message =
-          exportError instanceof Error
-            ? exportError.message
-            : t('addOffer.step5.roomScan.errors.scanFailed');
-        setError(message);
-        setPhase('scan');
-        scanStartedRef.current = false;
-        processedExportRef.current = null;
-        Alert.alert(t('addOffer.step5.roomScan.brand'), message);
-      } finally {
-        setBusy(false);
-      }
-    })();
-  }, [persistExport]);
-
-  const handleNativeStatus = useCallback((event: {
-    nativeEvent?: { status?: string; errorMessage?: string };
-  }) => {
-    const status = String(event?.nativeEvent?.status || '').toLowerCase();
-    if (status === 'error') {
-      setError(event?.nativeEvent?.errorMessage || t('addOffer.step5.roomScan.errors.scanFailed'));
-      setBusy(false);
-      scanStartedRef.current = false;
-    }
-    if (status === 'canceled' || status === 'cancelled') {
-      setBusy(false);
-      scanStartedRef.current = false;
-    }
-  }, []);
-
-  const { viewProps, controls, state: nativeState } = useRoomPlanView({
-    scanName: `EstateOS-${scanMode}-${Date.now()}`,
-    exportType: ExportType.Parametric,
-    exportOnFinish: true,
-    sendFileLoc: true,
-    autoCloseOnTerminalStatus: true,
-    onStatus: handleNativeStatus,
-    onExported: handleNativeExport,
-  });
+  const handleClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    void stopNativeScanner(roomPlan);
+    reset();
+    onCloseRef.current();
+  }, [reset, roomPlan]);
 
   const captureHeading = useCallback(async () => {
     try {
@@ -243,34 +204,101 @@ function RoomScanModalBody({
     }
   }, []);
 
-  const handleClose = useCallback(() => {
-    controls.cancel();
-    controls.reset();
-    reset();
-    onClose();
-  }, [controls, onClose, reset]);
+  useEffect(() => {
+    const native = getNativeRoomPlan(roomPlan);
+    if (!native?.addListener) return undefined;
+    const sub = native.addListener('onDismissEvent', (event: {
+      status?: string;
+      scanUrl?: string;
+      jsonUrl?: string;
+      errorMessage?: string;
+    }) => {
+      const status = String(event?.status || '').toLowerCase();
+      if (status === 'canceled' || status === 'cancelled') {
+        handleClose();
+        return;
+      }
+      if (status === 'error') {
+        setBusy(false);
+        scanStartedRef.current = false;
+        setError(
+          /not supported|LiDAR/i.test(String(event?.errorMessage || ''))
+            ? t('addOffer.step5.roomScan.errors.unsupportedDevice')
+            : event?.errorMessage || t('addOffer.step5.roomScan.errors.scanFailed'),
+        );
+        setPhase('launching');
+        return;
+      }
+      if (status !== 'ok') return;
+      const scanUrl = event?.scanUrl;
+      const jsonUrl = event?.jsonUrl;
+      if (!scanUrl || !jsonUrl) {
+        setBusy(false);
+        scanStartedRef.current = false;
+        setError(t('addOffer.step5.roomScan.errors.exportMissing'));
+        setPhase('launching');
+        return;
+      }
+      const exportKey = `${scanUrl}|${jsonUrl}`;
+      if (processedExportRef.current === exportKey) return;
+      processedExportRef.current = exportKey;
+      void (async () => {
+        try {
+          setBusy(true);
+          setError(null);
+          await persistExportRef.current(scanUrl, jsonUrl);
+        } catch (exportError) {
+          const message =
+            exportError instanceof Error
+              ? exportError.message
+              : t('addOffer.step5.roomScan.errors.scanFailed');
+          setError(message);
+          setPhase('launching');
+          scanStartedRef.current = false;
+          processedExportRef.current = null;
+          Alert.alert(t('addOffer.step5.roomScan.brand'), message);
+        } finally {
+          setBusy(false);
+        }
+      })();
+    });
+    return () => {
+      sub?.remove();
+    };
+  }, [handleClose, roomPlan]);
 
   useEffect(() => {
     if (!visible) {
-      if (nativeState.isRunning) controls.cancel();
+      void stopNativeScanner(roomPlan);
       reset();
       return;
     }
-    if (phase !== 'scan' || scanStartedRef.current) return;
+    if (scanStartedRef.current) return;
 
     scanStartedRef.current = true;
     processedExportRef.current = null;
+    closingRef.current = false;
+    setPhase('launching');
     setError(null);
-    controls.reset();
-    void captureHeading().finally(() => controls.start());
-  }, [captureHeading, controls, nativeState.isRunning, phase, reset, visible]);
+
+    const scanName = `${scanMode === 'room' ? 'EOS-AUTO' : 'EOS-MULTI'}-${Date.now()}`;
+    void (async () => {
+      await stopNativeScanner(roomPlan);
+      await captureHeading();
+      try {
+        await getNativeRoomPlan(roomPlan)?.startCapture(scanName, roomPlan.ExportType.Parametric, true);
+      } catch {
+        scanStartedRef.current = false;
+        setError(t('addOffer.step5.roomScan.errors.scanFailed'));
+      }
+    })();
+  }, [captureHeading, reset, roomPlan, scanMode, visible]);
 
   useEffect(
     () => () => {
-      controls.cancel();
-      controls.reset();
+      void stopNativeScanner(roomPlan);
     },
-    [controls],
+    [roomPlan],
   );
 
   const confirmPreview = async () => {
@@ -330,8 +358,28 @@ function RoomScanModalBody({
     }
   };
 
+  const retryNativeScan = () => {
+    setError(null);
+    processedExportRef.current = null;
+    scanStartedRef.current = false;
+    setPhase('launching');
+    const scanName = `${scanMode === 'room' ? 'EOS-AUTO' : 'EOS-MULTI'}-${Date.now()}`;
+    scanStartedRef.current = true;
+    void (async () => {
+      await stopNativeScanner(roomPlan);
+      await captureHeading();
+      try {
+        await getNativeRoomPlan(roomPlan)?.startCapture(scanName, roomPlan.ExportType.Parametric, true);
+      } catch {
+        scanStartedRef.current = false;
+        setError(t('addOffer.step5.roomScan.errors.scanFailed'));
+      }
+    })();
+  };
+
   const artboardW = Math.min(width - 32, 520);
   const artboardH = Math.min(Math.round(artboardW * 0.92), Math.round(windowH * 0.42));
+  const showLaunching = visible && phase === 'launching';
   const showPreviewModal = visible && (phase === 'preview' || phase === 'processing');
   const detectedObjects = meta?.objects || [];
   const primarySection = meta?.sections?.[0];
@@ -339,72 +387,34 @@ function RoomScanModalBody({
   return (
     <>
       <Modal
-        visible={visible && phase === 'scan'}
+        visible={showLaunching}
         animationType="fade"
         presentationStyle="fullScreen"
         onRequestClose={handleClose}
       >
-        <View style={styles.scannerRoot}>
-          <RoomPlanView {...viewProps} style={StyleSheet.absoluteFill} />
-          <SafeAreaView pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-            <View style={styles.scannerTopBar}>
-              <Pressable onPress={handleClose} style={styles.scannerCircleBtn} hitSlop={12}>
-                <Ionicons name="close" size={23} color="#fff" />
+        <View style={[styles.launchRoot, { paddingTop: insets.top + 18, paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <Pressable onPress={handleClose} style={styles.launchClose} hitSlop={16}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+          <View style={styles.launchCopy}>
+            <ActivityIndicator size="large" color="#7dd3fc" />
+            <Text style={styles.launchEyebrow}>
+              {scanMode === 'room' ? t('addOffer.step5.roomScan.launchRoom') : t('addOffer.step5.roomScan.launchProperty')}
+            </Text>
+            <Text style={styles.launchTitle}>{roomName || t('addOffer.step5.roomScan.brand')}</Text>
+            <Text style={styles.launchHint}>{t('addOffer.step5.roomScan.launchHint')}</Text>
+            {error ? <Text style={styles.launchError}>{error}</Text> : null}
+          </View>
+          <View style={styles.launchActions}>
+            {error ? (
+              <Pressable onPress={retryNativeScan} style={styles.launchRetry}>
+                <Text style={styles.launchRetryText}>{t('addOffer.step5.roomScan.rescan')}</Text>
               </Pressable>
-              <View style={styles.scannerTitlePill}>
-                <Text style={styles.scannerEyebrow}>
-                  {scanMode === 'room' ? 'SKAN POMIESZCZENIA' : 'SKAN CAŁEJ NIERUCHOMOŚCI'}
-                </Text>
-                <Text numberOfLines={1} style={styles.scannerTitle}>
-                  {scanMode === 'room' ? roomName || 'Pomieszczenie' : `${capturedRoomCount} pomieszczenie`}
-                </Text>
-              </View>
-              <View style={[styles.scannerCircleBtn, styles.scannerStatus]}>
-                <View style={[styles.liveDot, nativeState.isRunning && styles.liveDotActive]} />
-              </View>
-            </View>
-
-            <View style={styles.scannerGuide}>
-              <Ionicons name="scan-outline" size={18} color="#7dd3fc" />
-              <Text style={styles.scannerGuideText}>
-                Prowadź iPhone’a lub iPada powoli wzdłuż ścian. Obejmij podłogę, sufit, drzwi i okna.
-              </Text>
-            </View>
-
-            <View style={styles.scannerBottomBar}>
-              {error ? <Text style={styles.scannerError}>{error}</Text> : null}
-              {scanMode === 'property' ? (
-                <Pressable
-                  onPress={() => {
-                    controls.addRoom();
-                    setCapturedRoomCount((count) => count + 1);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  }}
-                  disabled={busy || !nativeState.isRunning}
-                  style={[styles.scannerSecondaryBtn, (busy || !nativeState.isRunning) && styles.disabledBtn]}
-                >
-                  <Ionicons name="add-circle-outline" size={21} color="#fff" />
-                  <Text style={styles.scannerSecondaryText}>Zapisz pokój i skanuj następny</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={() => {
-                  setBusy(true);
-                  controls.finishScan();
-                }}
-                disabled={busy || !nativeState.isRunning}
-                style={[styles.scannerFinishBtn, (busy || !nativeState.isRunning) && styles.disabledBtn]}
-              >
-                {busy ? <ActivityIndicator color="#06243a" /> : <Ionicons name="checkmark-circle" size={22} color="#06243a" />}
-                <Text style={styles.scannerFinishText}>
-                  {nativeState.isPreviewVisible ? 'Zatwierdź plan Apple' : 'Zakończ, zsumuj i zapisz'}
-                </Text>
-              </Pressable>
-              <Text style={styles.scannerFootnote}>
-                Zamknięcie skanera zawsze zatrzymuje sesję LiDAR i aparat.
-              </Text>
-            </View>
-          </SafeAreaView>
+            ) : null}
+            <Pressable onPress={handleClose} style={styles.launchCancel}>
+              <Text style={styles.launchCancelText}>{t('addOffer.step5.roomScan.cancel')}</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
 
@@ -461,7 +471,7 @@ function RoomScanModalBody({
               ) : null}
               {primarySection?.widthM && primarySection?.lengthM ? (
                 <View style={styles.statPill}>
-                  <Text style={styles.statLabel}>WYMIARY</Text>
+                  <Text style={styles.statLabel}>{t('addOffer.step5.roomScan.dimensions')}</Text>
                   <Text style={styles.statValue}>
                     {primarySection.widthM.toFixed(2)} × {primarySection.lengthM.toFixed(2)} m
                   </Text>
@@ -503,15 +513,7 @@ function RoomScanModalBody({
                 <Text style={styles.secondaryBtnText}>{t('addOffer.step5.roomScan.exportPdf')}</Text>
               </Pressable>
             </View>
-            <Pressable
-              onPress={() => {
-                setError(null);
-                processedExportRef.current = null;
-                scanStartedRef.current = false;
-                setPhase('scan');
-              }}
-              style={styles.rescanBtn}
-            >
+            <Pressable onPress={retryNativeScan} style={styles.rescanBtn}>
               <Text style={styles.rescanBtnText}>{t('addOffer.step5.roomScan.rescan')}</Text>
             </Pressable>
             <Pressable onPress={confirmPreview} style={styles.primaryBtnWide} disabled={busy}>
@@ -537,143 +539,79 @@ function RoomScanModalBody({
 }
 
 const styles = StyleSheet.create({
-  scannerRoot: {
+  launchRoot: {
     flex: 1,
     backgroundColor: '#020617',
+    paddingHorizontal: 20,
   },
-  scannerTopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingTop: 8,
-  },
-  scannerCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(2,6,23,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  scannerStatus: {
-    backgroundColor: 'rgba(2,6,23,0.62)',
-  },
-  liveDot: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: '#64748b',
-  },
-  liveDotActive: {
-    backgroundColor: '#22c55e',
-    shadowColor: '#22c55e',
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-  },
-  scannerTitlePill: {
-    flex: 1,
-    minHeight: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(2,6,23,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  scannerEyebrow: {
-    color: '#7dd3fc',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  scannerTitle: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  scannerGuide: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    top: 82,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 16,
-    backgroundColor: 'rgba(2,6,23,0.75)',
-    borderWidth: 1,
-    borderColor: 'rgba(125,211,252,0.28)',
-  },
-  scannerGuideText: {
-    flex: 1,
-    color: '#e2e8f0',
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '600',
-  },
-  scannerBottomBar: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 8,
-    gap: 8,
-    padding: 12,
+  launchClose: {
+    width: 48,
+    height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(2,6,23,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  scannerSecondaryBtn: {
-    minHeight: 48,
-    borderRadius: 16,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    backgroundColor: 'rgba(15,23,42,0.88)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignSelf: 'flex-start',
   },
-  scannerSecondaryText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  scannerFinishBtn: {
-    minHeight: 54,
-    borderRadius: 18,
-    flexDirection: 'row',
+  launchCopy: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 9,
-    backgroundColor: '#7dd3fc',
+    gap: 12,
+    paddingHorizontal: 12,
   },
-  scannerFinishText: {
-    color: '#06243a',
-    fontSize: 14,
+  launchEyebrow: {
+    color: '#7dd3fc',
+    fontSize: 11,
     fontWeight: '900',
-  },
-  scannerFootnote: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '600',
+    letterSpacing: 1.1,
     textAlign: 'center',
   },
-  scannerError: {
+  launchTitle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  launchHint: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  launchError: {
     color: '#fecaca',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
   },
-  disabledBtn: {
-    opacity: 0.48,
+  launchActions: {
+    gap: 10,
+  },
+  launchRetry: {
+    minHeight: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7dd3fc',
+  },
+  launchRetryText: {
+    color: '#06243a',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  launchCancel: {
+    minHeight: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  launchCancelText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
   },
   previewRoot: {
     flex: 1,

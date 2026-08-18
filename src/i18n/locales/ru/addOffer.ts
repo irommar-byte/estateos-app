@@ -493,6 +493,10 @@ export const addOffer = {
       compassHint: 'N — верх плана',
       detectedObjects: 'Обнаруженная мебель и техника',
       ready: 'Готово',
+      dimensions: 'Размеры',
+      launchRoom: 'СКАН КОМНАТЫ',
+      launchProperty: 'СКАН ВСЕЙ НЕДВИЖИМОСТИ',
+      launchHint: 'Открываю нативный сканер LiDAR. Используйте кнопки Apple «Отмена» и «Завершить» вверху. После скана ширина, длина, высота и площадь заполнятся автоматически.',
       rescan: 'Сканировать снова',
       usePlan: 'Использовать план',
       exportPdf: 'Экспорт PDF',
@@ -505,6 +509,7 @@ export const addOffer = {
         previewFailed: 'Не удалось создать предпросмотр плана.',
         pdfFailed: 'Не удалось экспортировать PDF.',
         walkthroughUnavailable: 'Не удалось открыть 3D-тур. Пересоберите приложение и попробуйте снова.',
+        unsupportedDevice: 'У этого iPhone или iPad нет LiDAR. RoomPlan работает на iPhone Pro (12+) и iPad Pro с LiDAR. Размеры можно ввести вручную.',
       },
       roomTypes: {
         livingRoom: 'Гостиная',

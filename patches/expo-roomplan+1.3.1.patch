@@ -1,0 +1,397 @@
+diff --git a/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift b/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
+index 99b99f4..7b16159 100644
+--- a/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
++++ b/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
+@@ -1,10 +1,50 @@
+ import ExpoModulesCore
++import RoomPlan
+ import UIKit
+ 
+ @available(iOS 16.0, *)
+ public class ExpoRoomPlanModule: Module {
+     private var captureViewController: RoomPlanCaptureViewController?
+ 
++    private static func topViewController(from base: UIViewController? = nil) -> UIViewController? {
++        let resolvedBase: UIViewController?
++        if let base {
++            resolvedBase = base
++        } else {
++            let windows = UIApplication.shared.connectedScenes
++                .compactMap { $0 as? UIWindowScene }
++                .flatMap { $0.windows }
++            let key = windows.first(where: { $0.isKeyWindow }) ?? windows.first(where: { !$0.isHidden })
++            resolvedBase = key?.rootViewController
++        }
++
++        if let nav = resolvedBase as? UINavigationController {
++            return topViewController(from: nav.visibleViewController ?? nav.topViewController)
++        }
++        if let tab = resolvedBase as? UITabBarController {
++            return topViewController(from: tab.selectedViewController)
++        }
++        if let presented = resolvedBase?.presentedViewController {
++            return topViewController(from: presented)
++        }
++        return resolvedBase
++    }
++
++    private func dismissExisting(completion: @escaping () -> Void) {
++        guard let existing = captureViewController else {
++            completion()
++            return
++        }
++        existing.hardStopAR()
++        existing.onDismiss = nil
++        captureViewController = nil
++        if existing.presentingViewController != nil {
++            existing.dismiss(animated: false, completion: completion)
++        } else {
++            completion()
++        }
++    }
++
+     public func definition() -> ModuleDefinition {
+         Name("ExpoRoomPlan")
+ 
+@@ -13,37 +53,43 @@ public class ExpoRoomPlanModule: Module {
+         AsyncFunction("startCapture") {
+             (scanName: String, exportType: String, sendFileLoc: Bool) in
+             DispatchQueue.main.async {
+-                let captureVC = RoomPlanCaptureViewController()
++                self.dismissExisting {
++                    guard RoomCaptureSession.isSupported else {
++                        self.sendEvent("onDismissEvent", [
++                            "status": "Error",
++                            "errorMessage":
++                                "RoomPlan is not supported on this device. A LiDAR-equipped iPhone or iPad Pro is required.",
++                        ])
++                        return
++                    }
+ 
+-                captureVC.scanName = scanName
+-                captureVC.modalPresentationStyle = .fullScreen
+-                captureVC.exportType = exportType
+-                captureVC.sendFileLoc = sendFileLoc
++                    guard let presenter = Self.topViewController() else {
++                        self.sendEvent("onDismissEvent", [
++                            "status": "Error",
++                            "errorMessage": "Could not present the RoomPlan scanner.",
++                        ])
++                        return
++                    }
+ 
+-                captureVC.onDismiss = { eventData in
+-                    self.sendEvent("onDismissEvent", eventData)
+-                }
++                    let captureVC = RoomPlanCaptureViewController()
++                    captureVC.scanName = scanName
++                    captureVC.modalPresentationStyle = .fullScreen
++                    captureVC.exportType = exportType
++                    captureVC.sendFileLoc = sendFileLoc
++                    captureVC.onDismiss = { eventData in
++                        self.sendEvent("onDismissEvent", eventData)
++                        self.captureViewController = nil
++                    }
+ 
+-                guard
+-                    let rootVC = UIApplication.shared.connectedScenes
+-                        .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+-                        .first?.rootViewController
+-                else {
+-                    return
++                    presenter.present(captureVC, animated: true, completion: nil)
++                    self.captureViewController = captureVC
+                 }
+-
+-                rootVC.present(captureVC, animated: true, completion: nil)
+-                self.captureViewController = captureVC
+             }
+         }
+ 
+         AsyncFunction("stopCapture") {
+             DispatchQueue.main.async {
+-                self.captureViewController?.stopSession()
+-                self.captureViewController?.dismiss(
+-                    animated: true,
+-                    completion: nil
+-                )
++                self.dismissExisting {}
+             }
+         }
+     }
+diff --git a/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift b/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift
+index 09c58fc..5e3e3d0 100644
+--- a/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift
++++ b/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift
+@@ -65,9 +65,25 @@ class RoomPlanCaptureUIView: ExpoView, RoomCaptureSessionDelegate, RoomCaptureVi
+     if running {
+       // Check device support before starting
+       if !RoomCaptureSession.isSupported {
++        isRunning = false
+         sendError("RoomPlan is not supported on this device.")
+         return
+       }
++      // A stopped RoomCaptureView cannot be reliably restarted. Recreate it.
++      roomCaptureView.removeFromSuperview()
++      roomCaptureView = RoomCaptureView(frame: .zero)
++      roomCaptureView.translatesAutoresizingMaskIntoConstraints = false
++      roomCaptureView.captureSession.delegate = self
++      if #unavailable(iOS 17.0) {
++        roomCaptureView.delegate = self
++      }
++      addSubview(roomCaptureView)
++      NSLayoutConstraint.activate([
++        roomCaptureView.topAnchor.constraint(equalTo: topAnchor),
++        roomCaptureView.bottomAnchor.constraint(equalTo: bottomAnchor),
++        roomCaptureView.leadingAnchor.constraint(equalTo: leadingAnchor),
++        roomCaptureView.trailingAnchor.constraint(equalTo: trailingAnchor)
++      ])
+       // Check/request camera permission
+       let status = AVCaptureDevice.authorizationStatus(for: .video)
+       switch status {
+@@ -93,7 +109,7 @@ class RoomPlanCaptureUIView: ExpoView, RoomCaptureSessionDelegate, RoomCaptureVi
+       }
+     } else {
+       if #available(iOS 17.0, *) {
+-        roomCaptureView.captureSession.stop(pauseARSession: false)
++        roomCaptureView.captureSession.stop(pauseARSession: true)
+       } else {
+         roomCaptureView.captureSession.stop()
+       }
+@@ -128,7 +144,7 @@ class RoomPlanCaptureUIView: ExpoView, RoomCaptureSessionDelegate, RoomCaptureVi
+   // Stop capturing to finalize current room; preview will be presented by RoomPlan
+   pendingFinish = true
+     if #available(iOS 17.0, *) {
+-      roomCaptureView.captureSession.stop(pauseARSession: false)
++      roomCaptureView.captureSession.stop(pauseARSession: true)
+     } else {
+       roomCaptureView.captureSession.stop()
+     }
+@@ -147,7 +163,7 @@ class RoomPlanCaptureUIView: ExpoView, RoomCaptureSessionDelegate, RoomCaptureVi
+   pendingFinish = false
+   pendingExport = false
+   previewEmitted = false
+-  roomCaptureView.captureSession.stop(pauseARSession: false)
++  roomCaptureView.captureSession.stop(pauseARSession: true)
+     DispatchQueue.main.async {
+       self.roomCaptureView.captureSession.run(configuration: self.configuration)
+     }
+diff --git a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
+index 4e0fcdc..61deb08 100644
+--- a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
++++ b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
+@@ -95,7 +95,11 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+             ofSize: 16,
+             weight: .bold
+         )
+-        finishButton.setTitle("Finish", for: .normal)
++        finishButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.95)
++        finishButton.layer.masksToBounds = true
++        finishButton.layer.cornerRadius = 18
++        finishButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
++        finishButton.setTitle("Zakończ", for: .normal)
+ 
+         // Finish should either stop scanning (if running) or confirm exit (if post-scan)
+         finishButton.addTarget(
+@@ -117,7 +121,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+             ofSize: 16,
+             weight: .bold
+         )
+-        cancelButton.setTitle("Cancel", for: .normal)
++        cancelButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
++        cancelButton.setTitle("Anuluj", for: .normal)
+         // round corners
+         cancelButton.layer.masksToBounds = true
+         cancelButton.layer.cornerRadius = 5
+@@ -137,25 +142,25 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+         NSLayoutConstraint.activate([
+             finishButton.topAnchor.constraint(
+                 equalTo: view.safeAreaLayoutGuide.topAnchor,
+-                constant: 10
++                constant: 12
+             ),
+             finishButton.trailingAnchor.constraint(
+                 equalTo: view.safeAreaLayoutGuide.trailingAnchor,
+-                constant: -20
++                constant: -16
+             ),
+-            finishButton.widthAnchor.constraint(equalToConstant: 80),
+-            finishButton.heightAnchor.constraint(equalToConstant: 30),
++            finishButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 118),
++            finishButton.heightAnchor.constraint(equalToConstant: 48),
+ 
+             cancelButton.topAnchor.constraint(
+                 equalTo: view.safeAreaLayoutGuide.topAnchor,
+-                constant: 10
++                constant: 12
+             ),
+             cancelButton.leadingAnchor.constraint(
+                 equalTo: view.safeAreaLayoutGuide.leadingAnchor,
+-                constant: 20
++                constant: 16
+             ),
+-            cancelButton.widthAnchor.constraint(equalToConstant: 80),
+-            cancelButton.heightAnchor.constraint(equalToConstant: 30),
++            cancelButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 110),
++            cancelButton.heightAnchor.constraint(equalToConstant: 48),
+         ])
+     }
+ 
+@@ -178,7 +183,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+             ofSize: 16,
+             weight: .bold
+         )
+-        exportButton.setTitle("Export Results", for: .normal)  // text
++        exportButton.setTitle("Zapisz plan i wymiary", for: .normal)
+         // round corners
+         exportButton.layer.masksToBounds = true
+         exportButton.layer.cornerRadius = 15
+@@ -204,7 +209,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+                 ofSize: 16,
+                 weight: .bold
+             )
+-            anotherScanButton.setTitle("Add Another Room to Scan", for: .normal)  // text
++            anotherScanButton.setTitle("Dodaj kolejne pomieszczenie", for: .normal)
+             // round corners
+             anotherScanButton.layer.masksToBounds = true
+             anotherScanButton.layer.cornerRadius = 15
+@@ -270,7 +275,21 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+ 
+     override func viewWillDisappear(_ flag: Bool) {
+         super.viewWillDisappear(flag)
+-        stopSession()
++        // Always tear down ARKit/LiDAR. stopSession() used to leave the camera
++        // running (pauseARSession: false) and could also fire when dismissing.
++        hardStopAR()
++    }
++
++    @objc
++    public func hardStopAR() {
++        // Always pause ARKit, even if capture already stopped with pauseARSession: false.
++        // Otherwise the camera stays on after Finish/Cancel.
++        if #available(iOS 17.0, *) {
++            roomCaptureView?.captureSession.stop(pauseARSession: true)
++        } else {
++            roomCaptureView?.captureSession.stop()
++        }
++        isSessionRunning = false
+     }
+ 
+     @IBAction func superExportResults(_ sender: Any) {
+@@ -544,56 +563,77 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+ 
+     @objc
+     private func finishTapped() {
++        // Single-room EstateOS scans auto-export on Finish.
++        // Whole-property scans stop first so the user can add more rooms, then tap Zapisz.
++        let autoExport = scanName?.hasPrefix("EOS-AUTO") == true
++        if autoExport {
++            finalizeAndExport()
++            return
++        }
+         if isSessionRunning {
+-            // Current behavior during scanning: stop the session and show post-scan UI
+             stopSession()
+-        } else {
+-            // Post-scan (or no active session): confirm finishing and exit the view
+-            let alertController = UIAlertController(
+-                title: "Finish Scanning?",
+-                message:
+-                    "You're about to close the scanner. You can export results first or finish now.",
+-                preferredStyle: .alert
+-            )
+-
+-            let confirmAction = UIAlertAction(title: "Finish", style: .destructive) { _ in
+-                self.sendScanResultAndDismiss(status: .OK)
+-            }
+-            alertController.addAction(confirmAction)
+-
+-            let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
+-            alertController.addAction(cancelAction)
+-
+-            self.present(alertController, animated: true, completion: nil)
++            return
++        }
++        if sendFileLoc == true {
++            finalizeAndExport()
++            return
+         }
+-    }
+-
+-    @objc
+-    func cancelSession() {
+         let alertController = UIAlertController(
+-            title: "Cancel Room Scan?",
+-            message:
+-                "If a scan is canceled, you'll have to start over again next time.",
++            title: "Zakończyć skan?",
++            message: "Możesz najpierw zapisać wyniki albo zamknąć skaner bez zapisu.",
+             preferredStyle: .alert
+         )
++        let confirmAction = UIAlertAction(title: "Zamknij", style: .destructive) { _ in
++            self.sendScanResultAndDismiss(status: .OK)
++        }
++        alertController.addAction(confirmAction)
++        alertController.addAction(UIAlertAction(title: "Anuluj", style: .cancel, handler: nil))
++        present(alertController, animated: true, completion: nil)
++    }
+ 
+-        let confirmAction = UIAlertAction(title: "Confirm", style: .destructive)
+-        { action in
++    @objc
++    private func finalizeAndExport() {
++        finishButton.isEnabled = false
++        cancelButton.isEnabled = false
++        anotherScanButton?.isEnabled = false
++        exportButton?.isEnabled = false
++        activityIndicator.startAnimating()
++        pendingExportAfterBuild = true
++        if isSessionRunning {
+             if #available(iOS 17.0, *) {
+-                self.finalStructure = nil
++                isBuildingRoom = true
++                roomCaptureView?.captureSession.stop(pauseARSession: false)
++            } else {
++                roomCaptureView?.captureSession.stop()
+             }
+-            self.sendScanResultAndDismiss(status: .Canceled)
++            isSessionRunning = false
+         }
+-        alertController.addAction(confirmAction)
+-
+-        let cancelAction = UIAlertAction(
+-            title: "Cancel",
+-            style: .cancel,
+-            handler: nil
+-        )
+-        alertController.addAction(cancelAction)
++        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
++            if self.isBuildingRoom {
++                DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
++                    guard self.pendingExportAfterBuild else { return }
++                    self.pendingExportAfterBuild = false
++                    self.isBuildingRoom = false
++                    self.sendScanResultAndDismiss(
++                        status: .Error,
++                        errorMessage: "Timed out waiting for the scan to finish processing."
++                    )
++                }
++                return
++            }
++            self.pendingExportAfterBuild = false
++            self.exportResults()
++        }
++    }
+ 
+-        self.present(alertController, animated: true, completion: nil)
++    @objc
++    func cancelSession() {
++        if #available(iOS 17.0, *) {
++            self.finalStructure = nil
++        }
++        capturedRoomArray.removeAll()
++        hardStopAR()
++        sendScanResultAndDismiss(status: .Canceled)
+     }
+ 
+     @objc
