@@ -39,19 +39,19 @@ type LookupMatch = {
   email: string | null;
   phone: string | null;
   notes: string | null;
-  createdAt: string;
+  createdAt?: string;
   updatedAt: string;
-  matchCount: number;
-  activityCount: number;
-  buyerCity: string | null;
-  topMatches: Array<{
+  matchCount?: number;
+  activityCount?: number;
+  buyerCity?: string | null;
+  topMatches?: Array<{
     score: number;
     offerId: number;
     offerTitle: string;
     city: string;
     price: number;
   }>;
-  activities: Array<{
+  activities?: Array<{
     id: number;
     kind: string;
     title: string | null;
@@ -59,7 +59,7 @@ type LookupMatch = {
     offerId: number | null;
     createdAt: string;
   }>;
-  matchedBy: { email: boolean; phone: boolean };
+  matchedBy?: { email: boolean; phone: boolean };
 };
 
 type FieldStatus = "idle" | "checking" | "available" | "taken" | "invalid";
@@ -522,17 +522,20 @@ export default function AgencyClientFormModal({
                             {primaryMatch.email || "brak e-mail"} · {primaryMatch.phone || "brak telefonu"}
                           </p>
                           <p className="mt-2 text-xs text-[var(--eos-muted)]">
-                            W bazie od {new Date(primaryMatch.createdAt).toLocaleDateString("pl-PL")} ·{" "}
-                            {primaryMatch.activityCount} aktywności · {primaryMatch.matchCount} dopasowań
+                            W bazie od{" "}
+                            {primaryMatch.createdAt
+                              ? new Date(primaryMatch.createdAt).toLocaleDateString("pl-PL")
+                              : "—"}{" "}
+                            · {primaryMatch.activityCount ?? 0} aktywności · {primaryMatch.matchCount ?? 0} dopasowań
                             {primaryMatch.buyerCity ? ` · ${primaryMatch.buyerCity}` : ""}
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {primaryMatch.matchedBy.email ? (
+                            {primaryMatch.matchedBy?.email ? (
                               <span className="rounded-full bg-amber-500/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800">
                                 ten sam e-mail
                               </span>
                             ) : null}
-                            {primaryMatch.matchedBy.phone ? (
+                            {primaryMatch.matchedBy?.phone ? (
                               <span className="rounded-full bg-amber-500/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800">
                                 ten sam telefon
                               </span>
@@ -545,10 +548,11 @@ export default function AgencyClientFormModal({
                             <History className="size-3.5" />
                             Historia w CRM
                           </p>
-                          {primaryMatch.activities.length === 0 && primaryMatch.topMatches.length === 0 ? (
+                          {(primaryMatch.activities?.length ?? 0) === 0 &&
+                          (primaryMatch.topMatches?.length ?? 0) === 0 ? (
                             <p className="text-sm text-[var(--eos-muted)]">Brak zapisanych aktywności.</p>
                           ) : null}
-                          {primaryMatch.topMatches.slice(0, 3).map((m) => (
+                          {(primaryMatch.topMatches || []).slice(0, 3).map((m) => (
                             <div
                               key={`m-${m.offerId}`}
                               className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/70 px-3 py-2.5 shadow-[0_4px_14px_rgba(0,0,0,0.06)]"
@@ -557,11 +561,11 @@ export default function AgencyClientFormModal({
                                 Match {m.score}% · {m.offerTitle}
                               </p>
                               <p className="mt-0.5 text-xs text-[var(--eos-muted)]">
-                                {m.city} · {Math.round(m.price).toLocaleString("pl-PL")} zł
+                                {m.city} · {Number.isFinite(Number(m.price)) ? Math.round(Number(m.price)).toLocaleString("pl-PL") : "—"} zł
                               </p>
                             </div>
                           ))}
-                          {primaryMatch.activities.slice(0, 8).map((a) => (
+                          {(primaryMatch.activities || []).slice(0, 8).map((a) => (
                             <div
                               key={a.id}
                               className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/70 px-3 py-2.5 shadow-[0_4px_14px_rgba(0,0,0,0.06)]"
