@@ -215,6 +215,34 @@ export async function createOfferFromAcquisitionRecord(params: {
     .split(',')
     .map((item: string) => item.trim())
     .filter((item: string) => item.startsWith('http') || item.startsWith('/'));
+  let roomScans: unknown[] = [];
+  let wholeScan: Record<string, any> | null = null;
+  try {
+    const parsedRooms = JSON.parse(String(property.roomsJson || '[]'));
+    if (Array.isArray(parsedRooms)) roomScans = parsedRooms;
+  } catch {
+    roomScans = [];
+  }
+  try {
+    const parsedWhole = JSON.parse(String(property.wholeScanJson || 'null'));
+    if (parsedWhole && typeof parsedWhole === 'object') wholeScan = parsedWhole;
+  } catch {
+    wholeScan = null;
+  }
+  const wholePlan2d = String(wholeScan?.floorPlanPngUri || '').trim();
+  const wholePlan3d = String(wholeScan?.floorPlan3dUri || '').trim();
+  const floorPlanScanMeta = wholeScan?.scanMeta
+    ? JSON.stringify({
+        ...wholeScan.scanMeta,
+        roomScans,
+        roomAreaTotalSqM: roomScans.reduce((sum: number, item: any) => {
+          const value = Number(String(item?.areaM2 || '').replace(',', '.'));
+          return sum + (Number.isFinite(value) ? value : 0);
+        }, 0),
+      })
+    : roomScans.length
+      ? JSON.stringify({ version: 2, roomScans })
+      : null;
 
   try {
     const createdOffer = await createOffer({
@@ -238,14 +266,23 @@ export async function createOfferFromAcquisitionRecord(params: {
         [property.advantages || client.sellerDescription || client.notes, extraBits.join('. ')].filter(Boolean).join('\n\n') ||
         'Oferta utworzona z karty pozyskania CRM EstateOS.',
       status: 'ACTIVE',
-      floorPlanUrl: planImages[0] || undefined,
+      floorPlanUrl:
+        (wholePlan2d.startsWith('http') || wholePlan2d.startsWith('/') ? wholePlan2d : '') ||
+        planImages[0] ||
+        undefined,
       ...amenityFlags,
     });
 
     const offerId = Number(createdOffer.id);
     await prisma.offer.update({
       where: { id: offerId },
-      data: { managementStatus: 'AGENCY_MANAGED' },
+      data: {
+        managementStatus: 'AGENCY_MANAGED',
+        ...(wholePlan3d.startsWith('http') || wholePlan3d.startsWith('/')
+          ? { floorPlan3dUrl: wholePlan3d }
+          : {}),
+        ...(floorPlanScanMeta ? { floorPlanScanMeta } : {}),
+      },
     }).catch(() => {});
     await linkOfferToAgencyClient({ agencyUserId: params.agencyUserId, clientId: params.clientId, offerId });
     return { ok: true, offerId };

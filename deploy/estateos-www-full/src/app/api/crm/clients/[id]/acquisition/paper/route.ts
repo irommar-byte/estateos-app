@@ -51,6 +51,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   const purpose = String(formData.get("purpose") || "paper").trim().toLowerCase();
+  if (purpose === "asset") {
+    return NextResponse.json({
+      success: true,
+      file: { url: saved.url, name: saved.name, mimeType: saved.mimeType },
+    });
+  }
   const fallback = createDefaultAcquisitionForm(client);
   const current = normalizeAcquisitionForm(client.acquisition?.formData, fallback);
   const nextForm: AcquisitionFormData =

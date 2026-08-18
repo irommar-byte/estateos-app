@@ -107,6 +107,36 @@ export async function POST(req: Request) {
     const scanMetaJson = String(formData.get('floorPlanScanMeta') || '').trim() || null;
     const mimeType = String(file.type || '');
     const lowerName = String((file as Blob & { name?: string }).name || '').toLowerCase();
+
+    /*
+     * Osobne plany pomieszczeń nie mogą nadpisywać głównego floorPlanUrl /
+     * floorPlan3dUrl ani wpadać do galerii zdjęć. Zapisujemy je jako
+     * autoryzowane zasoby oferty, a ich URL-e trafiają do floorPlanScanMeta.
+     */
+    if (purpose === 'roomPlanAsset') {
+      const asset = await saveOfferBinaryAttachment({
+        offerId: offerIdNum,
+        actorUserId: userId,
+        buffer,
+        originalFilename:
+          lowerName ||
+          (mimeType ? `room-plan-${mimeType.replace(/[/\s]+/g, '_')}` : 'room-plan-asset'),
+        maxBytes: 40 * 1024 * 1024,
+      });
+      if (!asset.ok) {
+        return NextResponse.json(
+          { success: false, error: asset.error },
+          { status: asset.status },
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        url: asset.url,
+        path: asset.url,
+        backendRegistered: true,
+      });
+    }
+
     let isImage =
       mimeType.startsWith('image/') ||
       /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(lowerName);
