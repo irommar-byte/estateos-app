@@ -169,8 +169,7 @@ function RoomScanModalBody({
     setMeta(parsed.meta);
     setUsdzUri(usdzTarget);
     onMeasurements?.(parsed.meta);
-    setPhase('preview');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    return parsed.meta;
   }, [onMeasurements, roomName, scanMode]);
 
   const onCloseRef = useRef(onClose);
@@ -238,15 +237,15 @@ function RoomScanModalBody({
         return;
       }
       if (status !== 'ok') return;
-      setPhase('processing');
-      setBusy(true);
       const scanUrl = event?.scanUrl;
       const jsonUrl = event?.jsonUrl;
       if (!scanUrl || !jsonUrl) {
-        setBusy(false);
         scanStartedRef.current = false;
         setError(t('addOffer.step5.roomScan.errors.exportMissing'));
-        setPhase('launching');
+        void (async () => {
+          await stopNativeScanner(roomPlan);
+          setPhase('launching');
+        })();
         return;
       }
       const exportKey = `${scanUrl}|${jsonUrl}`;
@@ -257,15 +256,19 @@ function RoomScanModalBody({
           setBusy(true);
           setError(null);
           await persistExportRef.current(scanUrl, jsonUrl);
+          await stopNativeScanner(roomPlan);
+          setPhase('preview');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (exportError) {
           const message =
             exportError instanceof Error
               ? exportError.message
               : t('addOffer.step5.roomScan.errors.scanFailed');
           setError(message);
-          setPhase('launching');
           scanStartedRef.current = false;
           processedExportRef.current = null;
+          await stopNativeScanner(roomPlan);
+          setPhase('launching');
           Alert.alert(t('addOffer.step5.roomScan.brand'), message);
         } finally {
           setBusy(false);
