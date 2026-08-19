@@ -1,14 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import ffmpegStatic from "ffmpeg-static";
 import { solveTurnstileToken, turnstileSolverConfigured } from "./turnstile-solver.js";
+import { enqueueAppleMusicResolve } from "./apl-resolve-queue.js";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const APLMATE_BASE = (process.env.APLMATE_BASE || "https://aplmate.com").replace(/\/$/, "");
 const ITUNES_COUNTRY = process.env.APPLE_MUSIC_COUNTRY || "PL";
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const YT_DLP_PATH = process.env.YT_DLP_PATH || path.join(MODULE_DIR, "bin", "yt-dlp");
 
 class CookieJar {
   constructor() {
@@ -561,38 +565,124 @@ function extractDownloadUrl(html) {
 }
 
 const downloadUrlCache = new Map(); // appleUrl -> { url, expiresAt }
+const downloadUrlInflight = new Map(); // appleUrl -> Promise<string>
 const DOWNLOAD_URL_CACHE_TTL_MS = 20 * 60 * 1000;
 
-export async function resolveAppleMusicDownloadUrl(appleUrl) {
+export function invalidateAppleMusicDownloadCache(appleUrl) {
   const key = String(appleUrl || "").trim();
+  if (key) downloadUrlCache.delete(key);
+}
+
+function cacheTtlForDownloadUrl(url) {
+  try {
+    const token = new URL(url).searchParams.get("token");
+    if (!token) return DOWNLOAD_URL_CACHE_TTL_MS;
+    const parts = token.split(".");
+    if (parts.length === 3) {
+      const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const json = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+      if (Number.isFinite(json?.exp)) {
+        return Math.max(30_000, Math.min(DOWNLOAD_URL_CACHE_TTL_MS, json.exp * 1000 - Date.now() - 60_000));
+      }
+    }
+  } catch {}
+  return DOWNLOAD_URL_CACHE_TTL_MS;
+}
+
+export async function resolveAppleMusicDownloadUrl(appleUrl, { forceRefresh = false } = {}) {
+  const key = String(appleUrl || "").trim();
+  if (forceRefresh) downloadUrlCache.delete(key);
   const cached = downloadUrlCache.get(key);
-  if (cached && cached.expiresAt > Date.now() && cached.url) {
+  if (!forceRefresh && cached && cached.expiresAt > Date.now() && cached.url) {
     return cached.url;
   }
-  const resolved = await resolveAppleMusicDownloadUrlUncached(key);
-  if (resolved) {
-    downloadUrlCache.set(key, { url: resolved, expiresAt: Date.now() + DOWNLOAD_URL_CACHE_TTL_MS });
+  if (downloadUrlInflight.has(key)) return downloadUrlInflight.get(key);
+
+  const task = (async () => {
+    const resolved = await resolveAppleMusicDownloadUrlUncached(key);
+    if (resolved) {
+      downloadUrlCache.set(key, {
+        url: resolved,
+        expiresAt: Date.now() + cacheTtlForDownloadUrl(resolved),
+      });
+    }
+    return resolved;
+  })();
+  downloadUrlInflight.set(key, task);
+  try {
+    return await task;
+  } finally {
+    downloadUrlInflight.delete(key);
   }
-  return resolved;
 }
 
 
 const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || "http://127.0.0.1:8191").replace(/\/$/, "");
-const APLMATE_FLARE_WAIT_S = Number(process.env.APLMATE_FLARE_WAIT_S || 30);
+const APLMATE_FLARE_WAIT_S = Number(process.env.APLMATE_FLARE_WAIT_S || 3);
+const APLMATE_SESSION_TTL_MS = Number(process.env.APLMATE_SESSION_TTL_MS || 12 * 60 * 1000);
+const FLARESOLVERR_RESTART_REQUEST =
+  process.env.FLARESOLVERR_RESTART_REQUEST || "/tmp/flaresolverr-restart-request";
+
+let aplmateSessionCache = null;
+let aplmateSessionPromise = null;
+let aplmateResolveTail = Promise.resolve();
+
+function requestFlareSolverrRestart(reason) {
+  try {
+    fs.writeFileSync(
+      FLARESOLVERR_RESTART_REQUEST,
+      JSON.stringify({ at: Date.now(), reason: String(reason || "unknown").slice(0, 500) }) + "\n"
+    );
+  } catch {
+    // Watchdog is optional; resolver still returns a useful error.
+  }
+}
+
+function isFlareSolverrFailure(err) {
+  return /FlareSolverr|chrome not reachable|session not created|solving the challenge|ECONNREFUSED|aborted due to timeout/i.test(
+    String(err?.message || err || "")
+  );
+}
 
 async function flareSolverrCall(payload) {
-  const res = await fetch(`${FLARESOLVERR_URL}/v1`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(100000),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.status !== "ok") {
-    throw new Error(data.message || `FlareSolverr błąd (HTTP ${res.status}).`);
+  const maxTimeout = Math.max(5000, Math.min(Number(payload?.maxTimeout) || 60000, 70000));
+  const delays = [0, 500, 2000];
+  let lastErr;
+  for (let attempt = 0; attempt < delays.length; attempt += 1) {
+    if (delays[attempt]) {
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+    try {
+      const res = await fetch(`${FLARESOLVERR_URL}/v1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, maxTimeout }),
+        signal: AbortSignal.timeout(maxTimeout + 5000),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.status !== "ok") {
+        throw new Error(data.message || `FlareSolverr błąd (HTTP ${res.status}).`);
+      }
+      return data;
+    } catch (err) {
+      lastErr = err;
+      const transient = /timeout|ECONNREFUSED|aborted|FlareSolverr błąd \(HTTP 5/i.test(
+        String(err?.message || err || "")
+      );
+      if (!transient || attempt === delays.length - 1) throw err;
+    }
   }
-  return data;
+  throw lastErr || new Error("FlareSolverr niedostępny.");
 }
+
+flareSolverrCall({ cmd: "sessions.list", maxTimeout: 8000 }).catch((err) => {
+  console.warn(
+    "FlareSolverr niedostępny pod",
+    FLARESOLVERR_URL,
+    "—",
+    err?.message || err
+  );
+});
 
 function parseAplmateJsonResponse(raw) {
   const text = String(raw || "").trim();
@@ -601,23 +691,33 @@ function parseAplmateJsonResponse(raw) {
   return JSON.parse(candidate);
 }
 
-function extractTurnstileToken(html) {
-  const match = String(html || "").match(/name="cf-turnstile-response"[^>]*value="([^"]+)"/i);
-  return match?.[1] || "";
+function cookiesArrayToMap(cookies) {
+  return new Map((cookies || []).filter((c) => c?.name).map((c) => [c.name, c.value || ""]));
 }
 
-function cookiesArrayToHeader(cookies) {
-  return (cookies || []).map((c) => `${c.name}=${c.value}`).join("; ");
+function cookieMapHeader(cookies) {
+  return [...cookies.entries()].map(([name, value]) => `${name}=${value}`).join("; ");
 }
 
-async function aplmateFetchWithCookies(pathname, { method = "GET", body, cookieHeader, userAgent }) {
+function ingestResponseCookies(cookies, response) {
+  const setCookies =
+    typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+  for (const line of setCookies) {
+    const pair = String(line || "").split(";")[0];
+    const eq = pair.indexOf("=");
+    if (eq > 0) cookies.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+  }
+}
+
+async function aplmateFetchWithSession(pathname, { session, method = "GET", body }) {
   const headers = {
-    "User-Agent": userAgent || UA,
+    "User-Agent": session.userAgent || UA,
     Accept: "*/*",
     "X-Requested-With": "XMLHttpRequest",
     Referer: `${APLMATE_BASE}/`,
     Origin: APLMATE_BASE,
   };
+  const cookieHeader = cookieMapHeader(session.cookies);
   if (cookieHeader) headers.Cookie = cookieHeader;
   if (body) headers["Content-Type"] = "application/x-www-form-urlencoded";
   const res = await fetch(`${APLMATE_BASE}${pathname}`, {
@@ -626,88 +726,132 @@ async function aplmateFetchWithCookies(pathname, { method = "GET", body, cookieH
     body,
     signal: AbortSignal.timeout(60000),
   });
-  return res.text();
+  ingestResponseCookies(session.cookies, res);
+  const text = await res.text();
+  if (!res.ok) throw new Error(`APLMate HTTP ${res.status}: ${text.slice(0, 160)}`);
+  return text;
 }
 
-async function resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl) {
+async function createAplmateSession() {
   let sessionId = "";
   try {
     const created = await flareSolverrCall({ cmd: "sessions.create" });
     sessionId = created.session;
-
-    // Load APLMate homepage – FlareSolverr solves Cloudflare challenge and collects cf_clearance cookie
     const landing = await flareSolverrCall({
       cmd: "request.get",
       url: `${APLMATE_BASE}/`,
       session: sessionId,
-      maxTimeout: 90000,
+      maxTimeout: 65000,
       waitInSeconds: APLMATE_FLARE_WAIT_S,
     });
-
     const cookies = landing.solution?.cookies || [];
-    const ua = landing.solution?.userAgent || UA;
-    // cf_clearance is only present when Cloudflare issued a challenge; if absent but
-    // FlareSolverr succeeded, the page loaded without a challenge (cookies still valid)
-    const hasSession = cookies.length > 0;
-    if (!hasSession) {
+    if (!cookies.length) {
       throw new Error("FlareSolverr nie uzyskał żadnych cookies od APLMate.");
     }
-    const cookieHeader = cookiesArrayToHeader(cookies);
-
-    // Try to get Turnstile token from HTML (may be present after JS execution)
-    let turnstileToken = extractTurnstileToken(landing.solution?.response || "");
-
-    // If token not in HTML, get it via userverify endpoint using cf_clearance cookies
-    if (!turnstileToken) {
-      const verifyRaw = await aplmateFetchWithCookies("/action/userverify", {
-        method: "POST",
-        body: new URLSearchParams({ url: appleUrl }).toString(),
-        cookieHeader,
-        userAgent: ua,
-      });
-      let verify = {};
-      try { verify = JSON.parse(verifyRaw); } catch { /* ignore */ }
-      if (verify.success && verify.token) {
-        turnstileToken = verify.token;
-      }
-    }
-
-    if (!turnstileToken) {
-      throw new Error("FlareSolverr: nie udało się uzyskać tokenu Turnstile ani przez HTML ani userverify.");
-    }
-
-    // Step 1: submit Apple Music URL with Turnstile token
-    const step1Raw = await aplmateFetchWithCookies("/action", {
-      method: "POST",
-      body: new URLSearchParams({ url: appleUrl, "cf-turnstile-response": turnstileToken }).toString(),
-      cookieHeader,
-      userAgent: ua,
-    });
-    const step1 = parseAplmateJsonResponse(step1Raw);
-    if (step1.error) throw new Error(step1.message || "APLMate odrzucił żądanie.");
-    if (!step1.success || !step1.html) throw new Error("APLMate nie zwrócił formularza utworu.");
-
-    // Step 2: submit track form
-    const form = extractTrackForm(step1.html);
-    const step2Raw = await aplmateFetchWithCookies("/action/track", {
-      method: "POST",
-      body: new URLSearchParams(form).toString(),
-      cookieHeader,
-      userAgent: ua,
-    });
-    const step2 = parseAplmateJsonResponse(step2Raw);
-    if (step2.error) throw new Error(step2.message || "APLMate nie wygenerował linku MP3.");
-    return extractDownloadUrl(step2.data || "");
+    return {
+      cookies: cookiesArrayToMap(cookies),
+      userAgent: landing.solution?.userAgent || UA,
+      expiresAt: Date.now() + APLMATE_SESSION_TTL_MS,
+    };
   } catch (err) {
-    if (err?.cause?.code === "ECONNREFUSED" || /fetch failed|ECONNREFUSED/i.test(String(err?.message))) {
-      throw new Error(`FlareSolverr niedostępny (${FLARESOLVERR_URL}).`);
-    }
+    if (isFlareSolverrFailure(err)) requestFlareSolverrRestart(err?.message || err);
     throw err;
   } finally {
     if (sessionId) {
       flareSolverrCall({ cmd: "sessions.destroy", session: sessionId }).catch(() => {});
     }
   }
+}
+
+async function getAplmateSession(forceRefresh = false) {
+  if (!forceRefresh && aplmateSessionCache?.expiresAt > Date.now()) {
+    return aplmateSessionCache;
+  }
+  if (!forceRefresh && aplmateSessionPromise) return aplmateSessionPromise;
+
+  aplmateSessionPromise = createAplmateSession()
+    .then((session) => {
+      aplmateSessionCache = session;
+      return session;
+    })
+    .finally(() => {
+      aplmateSessionPromise = null;
+    });
+  return aplmateSessionPromise;
+}
+
+function invalidateAplmateSession(session) {
+  if (!session || aplmateSessionCache === session) aplmateSessionCache = null;
+}
+
+async function resolveWithAplmateSession(appleUrl, session) {
+  const verifyRaw = await aplmateFetchWithSession("/action/userverify", {
+    session,
+    method: "POST",
+    body: new URLSearchParams({ url: appleUrl }).toString(),
+  });
+  let verify = {};
+  try {
+    verify = JSON.parse(verifyRaw);
+  } catch {
+    throw new Error("APLMate zwrócił nieprawidłową sesję weryfikacji.");
+  }
+  const turnstileToken = verify.success && verify.token ? verify.token : "";
+  if (!turnstileToken) throw new Error("APLMate nie zwrócił tokenu sesji.");
+
+  const step1Raw = await aplmateFetchWithSession("/action", {
+    session,
+    method: "POST",
+    body: new URLSearchParams({
+      url: appleUrl,
+      "cf-turnstile-response": turnstileToken,
+    }).toString(),
+  });
+  const step1 = parseAplmateJsonResponse(step1Raw);
+  if (step1.error) throw new Error(step1.message || "APLMate odrzucił żądanie.");
+  if (!step1.success || !step1.html) throw new Error("APLMate nie zwrócił formularza utworu.");
+
+  const form = extractTrackForm(step1.html);
+  const step2Raw = await aplmateFetchWithSession("/action/track", {
+    session,
+    method: "POST",
+    body: new URLSearchParams(form).toString(),
+  });
+  const step2 = parseAplmateJsonResponse(step2Raw);
+  if (step2.error) throw new Error(step2.message || "APLMate nie wygenerował linku MP3.");
+  return extractDownloadUrl(step2.data || "");
+}
+
+function shouldRefreshAplmateSession(err) {
+  return /refresh the page|token|session|weryfik|odrzucił|403|captcha|turnstile/i.test(
+    String(err?.message || err || "")
+  );
+}
+
+function enqueueAplmateResolve(work) {
+  const run = aplmateResolveTail.then(work, work);
+  aplmateResolveTail = run.catch(() => {});
+  return run;
+}
+
+async function resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl) {
+  return enqueueAplmateResolve(async () => {
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const session = await getAplmateSession(attempt > 0);
+      try {
+        return await resolveWithAplmateSession(appleUrl, session);
+      } catch (err) {
+        lastError = err;
+        if (attempt === 0 && shouldRefreshAplmateSession(err)) {
+          invalidateAplmateSession(session);
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastError || new Error("APLMate nie przygotował linku MP3.");
+  });
 }
 
 async function aplmateUserVerifyToken(jar, appleUrl) {
@@ -788,13 +932,101 @@ async function resolveAppleMusicDownloadUrlDirect(appleUrl) {
   return extractDownloadUrl(step2.data || "");
 }
 
-async function resolveAppleMusicDownloadUrlUncached(appleUrl) {
+function runYtDlp(args, timeoutMs = 35000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(YT_DLP_PATH, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PATH: `${process.env.PATH || ""}:/usr/bin:/bin` },
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("Awaryjne źródło audio przekroczyło limit czasu."));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => {
+      if (stdout.length < 1024 * 1024) stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      if (stderr.length < 256 * 1024) stderr += chunk;
+    });
+    child.once("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(stderr.trim().slice(-500) || `yt-dlp zakończył się kodem ${code}.`));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+async function resolveAppleMusicDownloadUrlViaYouTube(appleUrl) {
+  if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
+  const track = await buildAppleMusicInfo(appleUrl);
+  const query = [track.uploader, track.title, track.album, "official audio"]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+  const stdout = await runYtDlp([
+    "--no-playlist",
+    "--no-warnings",
+    "--socket-timeout",
+    "12",
+    "--retries",
+    "2",
+    "-f",
+    "bestaudio[ext=m4a]/bestaudio",
+    "-g",
+    `ytsearch1:${query}`,
+  ]);
+  const url = String(stdout)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^https?:\/\//i.test(line));
+  if (!url) throw new Error("Nie znaleziono zgodnego awaryjnego źródła audio.");
+  return url;
+}
+
+export function resolvedAudioContentType(url) {
   try {
-    return await resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl);
-  } catch (flareErr) {
-    console.warn("APLMate via FlareSolverr:", flareErr?.message || flareErr);
+    const parsed = new URL(String(url || ""));
+    const mime = parsed.searchParams.get("mime");
+    if (mime?.startsWith("audio/")) return mime;
+    if (/googlevideo\.com$/i.test(parsed.hostname)) return "audio/mp4";
+  } catch {
+    // Fall through to APLMate MP3 default.
   }
-  return resolveAppleMusicDownloadUrlDirect(appleUrl);
+  return "audio/mpeg";
+}
+
+async function resolveAppleMusicDownloadUrlUncached(appleUrl) {
+  let youtubeError;
+  try {
+    return await resolveAppleMusicDownloadUrlViaYouTube(appleUrl);
+  } catch (err) {
+    youtubeError = err;
+    console.warn("Apple Music fallback via YouTube:", err?.message || err);
+  }
+
+  return enqueueAppleMusicResolve(appleUrl, async () => {
+    try {
+      return await resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl);
+    } catch (flareErr) {
+      console.warn("APLMate via FlareSolverr:", flareErr?.message || flareErr);
+      if (!turnstileSolverConfigured()) {
+        throw new Error("Nie udało się przygotować źródła audio. Serwis spróbuje ponownie automatycznie.", {
+          cause: youtubeError || flareErr,
+        });
+      }
+    }
+    return resolveAppleMusicDownloadUrlDirect(appleUrl);
+  });
 }
 
 function sanitizeFilename(name) {
@@ -815,6 +1047,41 @@ async function downloadCoverArt(coverUrl, destPath) {
   const buf = Buffer.from(await res.arrayBuffer());
   if (!buf.length) throw new Error("Pusta okładka albumu.");
   fs.writeFileSync(destPath, buf);
+}
+
+function transcodeToMp3InPlace(filePath) {
+  const sourcePath = `${filePath}.source-audio`;
+  fs.renameSync(filePath, sourcePath);
+  const result = spawnSync(
+    ffmpegStatic,
+    [
+      "-nostdin",
+      "-y",
+      "-i",
+      sourcePath,
+      "-map",
+      "0:a:0",
+      "-vn",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "256k",
+      "-f",
+      "mp3",
+      filePath,
+    ],
+    { encoding: "utf8", timeout: 180000 }
+  );
+  if (result.status !== 0 || !fs.existsSync(filePath) || fs.statSync(filePath).size < 32 * 1024) {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      fs.renameSync(sourcePath, filePath);
+    } catch {}
+    throw new Error(result.stderr?.slice(-500) || "Nie udało się przekonwertować awaryjnego źródła do MP3.");
+  }
+  try {
+    fs.unlinkSync(sourcePath);
+  } catch {}
 }
 
 export function embedMp3Tags({ mp3Path, coverPath, title, artist, album }) {
@@ -855,6 +1122,48 @@ export function embedMp3Tags({ mp3Path, coverPath, title, artist, album }) {
   fs.renameSync(outPath, mp3Path);
 }
 
+function isGoogleVideoAudioUrl(url) {
+  try {
+    return /(^|\.)googlevideo\.com$/i.test(new URL(String(url || "")).hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function downloadGoogleVideoInChunks(url, destPath, onProgress) {
+  const parsed = new URL(url);
+  let total = Number(parsed.searchParams.get("clen")) || 0;
+  const chunkSize = 512 * 1024;
+  let downloaded = 0;
+  const file = await fs.promises.open(destPath, "w");
+  try {
+    while (!total || downloaded < total) {
+      const end = total
+        ? Math.min(total - 1, downloaded + chunkSize - 1)
+        : downloaded + chunkSize - 1;
+      const res = await fetch(url, {
+        headers: { Range: `bytes=${downloaded}-${end}` },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (res.status !== 206 && !res.ok) {
+        throw new Error(`Awaryjne źródło audio HTTP ${res.status}`);
+      }
+      const contentRange = res.headers.get("content-range") || "";
+      const rangeTotal = Number(contentRange.match(/\/(\d+)$/)?.[1]) || 0;
+      if (!total && rangeTotal) total = rangeTotal;
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (!buffer.length) throw new Error("Awaryjne źródło zwróciło pusty fragment audio.");
+      await file.write(buffer, 0, buffer.length, downloaded);
+      downloaded += buffer.length;
+      if (total > 0) onProgress?.(5 + (downloaded / total) * 83);
+      if (!total && buffer.length < chunkSize) break;
+    }
+  } finally {
+    await file.close();
+  }
+  return { downloaded, total };
+}
+
 export async function downloadAppleMusicToFile({
   appleUrl,
   destPath,
@@ -863,33 +1172,58 @@ export async function downloadAppleMusicToFile({
   downloadUrl: presetDownloadUrl = null,
 }) {
   const track = trackMeta || (await buildAppleMusicInfo(appleUrl));
-  const downloadUrl =
-    presetDownloadUrl || (await resolveAppleMusicDownloadUrl(track.webpageUrl || appleUrl));
+  const sourceUrl = track.webpageUrl || appleUrl;
+  let downloadUrl =
+    presetDownloadUrl || (await resolveAppleMusicDownloadUrl(sourceUrl));
+
+  const pullToFile = async (url) => {
+    if (isGoogleVideoAudioUrl(url)) {
+      await downloadGoogleVideoInChunks(url, destPath, onProgress);
+      return;
+    }
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA },
+      redirect: "follow",
+      signal: AbortSignal.timeout(600000),
+    });
+    if (!res.ok) {
+      const err = new Error(`Pobieranie MP3 HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    const total = Number(res.headers.get("content-length")) || 0;
+    const file = fs.createWriteStream(destPath);
+    let downloaded = 0;
+    for await (const chunk of res.body) {
+      file.write(chunk);
+      downloaded += chunk.length;
+      if (total > 0) onProgress?.(5 + (downloaded / total) * 85);
+    }
+    await new Promise((resolve, reject) => {
+      file.end(resolve);
+      file.on("error", reject);
+    });
+  };
 
   onProgress?.(5);
-  const res = await fetch(downloadUrl, {
-    headers: { "User-Agent": UA },
-    redirect: "follow",
-    signal: AbortSignal.timeout(600000),
-  });
-  if (!res.ok) throw new Error(`Pobieranie MP3 HTTP ${res.status}`);
-
-  const total = Number(res.headers.get("content-length")) || 0;
-  const file = fs.createWriteStream(destPath);
-  let downloaded = 0;
-
-  for await (const chunk of res.body) {
-    file.write(chunk);
-    downloaded += chunk.length;
-    if (total > 0) {
-      onProgress?.(5 + (downloaded / total) * 85);
+  try {
+    await pullToFile(downloadUrl);
+  } catch (err) {
+    const status = Number(err?.status);
+    if (status === 403 || status === 410 || /HTTP 403|HTTP 410/.test(String(err?.message || ""))) {
+      invalidateAppleMusicDownloadCache(sourceUrl);
+      downloadUrl = await resolveAppleMusicDownloadUrl(sourceUrl, { forceRefresh: true });
+      await pullToFile(downloadUrl);
+    } else {
+      throw err;
     }
   }
 
-  await new Promise((resolve, reject) => {
-    file.end(() => resolve());
-    file.on("error", reject);
-  });
+  if (resolvedAudioContentType(downloadUrl) !== "audio/mpeg") {
+    onProgress?.(88);
+    transcodeToMp3InPlace(destPath);
+  }
 
   onProgress?.(92);
 

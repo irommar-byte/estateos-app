@@ -173,26 +173,14 @@ final class AppModel: ObservableObject {
         user = session.user
         hydrateLibraryFromCacheIfNeeded()
         do {
-            // Hard 5-second cap: if internet is slow we still enter the app quickly.
-            let meTask = Task { try await self.api.me() }
-            let timeoutTask = Task {
-                try await Task.sleep(nanoseconds: 5_000_000_000)
-                meTask.cancel()
-            }
-            do {
-                let me = try await meTask.value
-                timeoutTask.cancel()
-                user = me
-            } catch {
-                timeoutTask.cancel()
-                // Keep cached user from session on timeout or error
-            }
+            // Hard network cap: cached/offline library never waits longer than five seconds.
+            user = try await api.me(timeoutInterval: 5)
             await syncLocalAppleLink(from: user)
             hydrateLibraryFromCacheIfNeeded()
             serverDownloads.start()
             Task { await refreshWorkspace(soft: true) }
             Task { await onlineMovies.refreshDownloads() }
-            await serverDownloads.refreshOnce()
+            Task { await serverDownloads.refreshOnce() }
             movieDownloads.resumePersistedBatchIfNeeded()
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
@@ -210,7 +198,7 @@ final class AppModel: ObservableObject {
                 serverDownloads.start()
                 Task { await refreshWorkspace(soft: true) }
                 Task { await onlineMovies.refreshDownloads() }
-                await serverDownloads.refreshOnce()
+                Task { await serverDownloads.refreshOnce() }
                 movieDownloads.resumePersistedBatchIfNeeded()
             }
         }
@@ -442,10 +430,58 @@ final class AppModel: ObservableObject {
 
     /// Apple Music–style “+”: adds to primary library playlist and warms durable server asset.
     func addToLibrary(_ track: MusicTrackPayload) async throws {
-        if isInLibrary(track.url) { return }
+        if let existing = musicTracks.first(where: { $0.url == track.url }) {
+            guard !isOnServer(track.url) else { return }
+            downloads.ensureOnServer(
+                url: track.url,
+                folderId: existing.folderId,
+                api: api,
+                onLibraryChanged: { [weak self] in
+                    try? await self?.refreshMusicLibrary()
+                    await self?.refreshServerAssets()
+                },
+                onReady: { [weak self] in
+                    await self?.presentToast(.savedOnServer(trackTitle: track.title))
+                }
+            )
+            return
+        }
         let folderId = try await ensurePrimaryLibraryFolderId()
         try await addTrackToFolder(folderId: folderId, track: track)
         presentToast(.addedToLibrary(trackTitle: track.title))
+    }
+
+    /// Cloud action: transfer an already-server-backed track to this device.
+    func downloadToDevice(
+        _ track: MusicTrackPayload,
+        preferredFolderId: String? = nil
+    ) async throws {
+        let folderId: String
+        if let existing = musicTracks.first(where: { $0.url == track.url }) {
+            folderId = existing.folderId
+        } else if let preferredFolderId {
+            folderId = preferredFolderId
+        } else {
+            folderId = try await ensurePrimaryLibraryFolderId()
+        }
+
+        if !isInLibrary(track.url) {
+            let prepared = try await prepareLibraryPayload(track)
+            _ = try await api.addTrackToFolder(folderId: folderId, track: prepared)
+            try await refreshMusicLibrary()
+        }
+
+        try await downloads.downloadAssetToDevice(
+            url: track.url,
+            title: track.title,
+            artist: track.artist,
+            api: api,
+            folderId: folderId,
+            onLibraryChanged: { [weak self] in
+                try? await self?.refreshMusicLibrary()
+                await self?.refreshServerAssets()
+            }
+        )
     }
 
     func presentToast(_ toast: MusicToast) {
@@ -1056,8 +1092,20 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func downloadAll(in tracks: [MusicTrack], folderId: String, destination: MusicDownloadDestination = .server) {
-        downloads.downloadAllPending(tracks: tracks, folderId: folderId, destination: destination, api: api) { [weak self] in
+    func downloadAll(
+        in tracks: [MusicTrack],
+        folderId: String,
+        destination: MusicDownloadDestination = .server,
+        label: String = "Pobieranie playlisty"
+    ) {
+        downloads.downloadAllPending(
+            tracks: tracks,
+            folderId: folderId,
+            destination: destination,
+            api: api,
+            label: label,
+            isOnServer: { [weak self] url in self?.isOnServer(url) == true }
+        ) { [weak self] in
             try? await self?.refreshMusicLibrary()
         }
     }

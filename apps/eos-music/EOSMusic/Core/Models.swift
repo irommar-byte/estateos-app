@@ -11,7 +11,11 @@ enum APIError: LocalizedError {
         case .unauthorized: return "Sesja wygasła — zaloguj się ponownie."
         case .server(let msg): return msg
         case .decode: return "Nie udało się odczytać odpowiedzi serwera."
-        case .network(let err): return err.localizedDescription
+        case .network(let err):
+            if let urlError = err as? URLError, urlError.code == .timedOut {
+                return "Serwer nie odpowiedział na czas — przygotowanie utworu może trwać w tle. Spróbuj ponownie za chwilę."
+            }
+            return err.localizedDescription
         }
     }
 
@@ -72,6 +76,23 @@ struct FavoriteItem: Codable, Identifiable, Hashable {
 
 struct FavoritesResponse: Codable {
     let items: [FavoriteItem]
+}
+
+extension FavoriteItem {
+    var musicPayload: MusicTrackPayload {
+        MusicTrackPayload(
+            url: url,
+            title: title,
+            artist: detail,
+            album: nil,
+            thumbnail: thumbnail,
+            duration: duration,
+            quality: nil,
+            source: source,
+            artistId: nil,
+            albumId: nil
+        )
+    }
 }
 
 struct SearchResultItem: Codable, Identifiable, Hashable {

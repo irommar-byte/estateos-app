@@ -245,7 +245,6 @@ private struct MiniPlayerContent: View {
     @EnvironmentObject private var ui: UIPreferences
     @Environment(\.colorScheme) private var colorScheme
     @State private var showQueueSheet = false
-    @State private var isAddingToLibrary = false
 
     init(engine: MusicPlaybackEngine) {
         self.engine = engine
@@ -316,34 +315,10 @@ private struct MiniPlayerContent: View {
                 }
 
                 if !track.isExternal {
-                    let trackInLibrary = app.isInLibrary(track.url)
-                    if !trackInLibrary {
-                        Button {
-                            Task { await addCurrentToLibrary(track) }
-                        } label: {
-                            Group {
-                                if isAddingToLibrary {
-                                    ProgressView().controlSize(.small)
-                                } else {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title3.weight(.semibold))
-                                        .symbolRenderingMode(.hierarchical)
-                                        .foregroundStyle(EOSTheme.accent)
-                                }
-                            }
-                            .frame(minWidth: 36, minHeight: 36)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isAddingToLibrary)
-                        .accessibilityLabel("Dodaj do biblioteki")
-                    }
-                    DownloadCloudButton(
-                        state: app.playbackCloudState(for: track),
-                        inLibrary: trackInLibrary,
-                        size: 20,
-                        onDownload: { app.downloadCurrentPlayback() },
-                        onCancel: { app.cancelDownload(for: track.url) },
-                        onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
+                    TrackStorageActionButton(
+                        track: track.payload,
+                        folderId: track.folderId,
+                        frameSize: 36
                     )
                 }
 
@@ -418,27 +393,6 @@ private struct MiniPlayerContent: View {
         }
     }
 
-    private func addCurrentToLibrary(_ track: MusicPlaybackTrack) async {
-        guard !app.isInLibrary(track.url) else { return }
-        isAddingToLibrary = true
-        defer { isAddingToLibrary = false }
-        let payload = MusicTrackPayload(
-            url: track.url,
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            thumbnail: track.thumbnail,
-            duration: track.duration,
-            quality: nil,
-            source: nil,
-            artistId: track.artistId,
-            albumId: track.albumId
-        )
-        do {
-            try await app.addToLibrary(payload)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } catch { }
-    }
 }
 
 /// Subtle scale on press — Apple Music–like micro interaction.

@@ -866,15 +866,18 @@ final class MusicDownloadService: ObservableObject {
         folderId: String,
         destination: MusicDownloadDestination = .serverAndPhone,
         api: MusicAPIClient,
+        label: String = "Pobieranie playlisty",
+        isOnServer: ((String) -> Bool)? = nil,
         onLibraryChanged: @escaping () async -> Void
     ) {
         queueBulkDownload(
-            label: "Pobieranie playlisty",
+            label: label,
             tracks: tracks,
             folderId: folderId,
             destination: destination,
             api: api,
             isAlreadyOnServer: { [weak self] url in
+                if isOnServer?(url) == true { return true }
                 guard let self else { return false }
                 let track = tracks.first(where: { $0.url == url })
                 return self.uiState(for: url, isOnServer: track?.isOnServer ?? false) == .onServer

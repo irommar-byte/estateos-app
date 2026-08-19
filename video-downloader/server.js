@@ -105,6 +105,7 @@ import {
   downloadAppleMusicToFile,
   buildAppleMusicFilename,
   resolveAppleMusicDownloadUrl,
+  invalidateAppleMusicDownloadCache,
 } from "./apple-music.js";
 import {
   fetchSpotifyPlaylist,
@@ -122,6 +123,7 @@ import {
   findAssetByUrl,
   assetFileReady,
   restoreJobFromAsset,
+  reapStalledMusicAcquires,
 } from "./music-assets.js";
 import {
   listActiveDownloads,
@@ -2098,7 +2100,11 @@ async function proxyHlsPlaylist(req, res, job) {
 }
 
 async function proxyRemoteUrl(req, res, job, targetUrl, { forceContentType = null } = {}) {
-  const headers = { "User-Agent": UA, Referer: job.streamReferer || "" };
+  let googleVideo = false;
+  try {
+    googleVideo = /(^|\.)googlevideo\.com$/i.test(new URL(targetUrl).hostname);
+  } catch {}
+  const headers = googleVideo ? {} : { "User-Agent": UA, Referer: job.streamReferer || "" };
   if (req.headers.range) headers.Range = req.headers.range;
 
   let upstream = null;
@@ -2151,7 +2157,8 @@ async function proxyRemoteUrl(req, res, job, targetUrl, { forceContentType = nul
     }
     if (!/\.m3u8(\?|$)/i.test(targetUrl)) {
       const maxTime = String(Math.ceil(STREAM_PROXY_TIMEOUT_MS / 1000));
-      const args = ["-sL", "-A", UA, "--max-time", maxTime];
+      const args = ["-sL", "--max-time", maxTime];
+      if (!googleVideo) args.push("-A", UA);
       if (insecure) args.push("-k");
       if (job.streamReferer) args.push("-H", `Referer: ${job.streamReferer}`);
       if (req.headers.range) args.push("--range", String(req.headers.range).replace(/^bytes=/, ""));
@@ -2628,10 +2635,32 @@ function getOrRestoreMusicJob(jobId, req) {
 function friendlyAppleMusicError(err) {
   const msg = String(err?.message || err || "");
   if (/Nie znaleziono utworu/i.test(msg)) return msg;
+  if (/FlareSolverr niedostępny|FlareSolverr błąd|chrome not reachable|ECONNREFUSED/i.test(msg)) {
+    return "Usługa Cloudflare (FlareSolverr) nie działa na serwerze — sprawdź kontener na NAS.";
+  }
+  if (/Turnstile|CAPTCHA_API_KEY/i.test(msg)) {
+    return "APLMate wymaga tokenu Turnstile — skonfiguruj CAPTCHA_API_KEY lub FlareSolverr.";
+  }
+  if (/Przekroczono czas oczekiwania na przygotowanie/i.test(msg)) return msg;
+  if (/Przygotowanie utworu trwa zbyt długo/i.test(msg)) return msg;
   if (/APLMate HTTP/i.test(msg)) return "Serwer pobierania muzyki jest chwilowo niedostępny — spróbuj za chwilę.";
   if (/linku MP3|formularza utworu/i.test(msg)) return msg;
   if (/HTTP 403|HTTP 502|HTTP 503/i.test(msg)) return "Nie udało się pobrać pliku MP3 — spróbuj ponownie.";
   return msg || "Nie udało się pobrać utworu z Apple Music.";
+}
+
+async function refreshMusicStreamUrl(job) {
+  if (!job?.url || job.kind !== "music") return false;
+  try {
+    invalidateAppleMusicDownloadCache(job.url);
+    const next = await resolveAppleMusicDownloadUrl(job.url, { forceRefresh: true });
+    if (!next) return false;
+    job.streamUrl = next;
+    return true;
+  } catch (err) {
+    console.warn("music stream refresh:", err?.message || err);
+    return false;
+  }
 }
 
 function startMirrorDownloadJob({
@@ -3094,6 +3123,7 @@ function failStalledMovieDownload(job) {
 
 function reapStalledMovieDownloads() {
   for (const job of jobs.values()) failStalledMovieDownload(job);
+  reapStalledMusicAcquires(jobs, { sendEvent });
 }
 
 function sendEvent(job, payload) {
@@ -5442,7 +5472,9 @@ app.post("/api/music/play", async (req, res) => {
       ensurePlayToken,
       downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
       friendlyError: friendlyAppleMusicError,
-      waitUntilPlayable: downloadIntent !== "download",
+      // Always acknowledge immediately. Both play and download clients poll /api/job/:jobId;
+      // holding this request open races the iOS 30 s timeout against a 120 s acquire.
+      waitUntilPlayable: false,
       intent: downloadIntent,
     });
     res.json({
@@ -5568,10 +5600,19 @@ app.get("/api/music/stream/:jobId", async (req, res) => {
     try {
       // APLMate often serves application/octet-stream — AVPlayer needs audio/mpeg.
       return await proxyRemoteUrl(req, res, job, job.streamUrl, {
-        forceContentType: "audio/mpeg",
+        forceContentType: job.streamContentType || "audio/mpeg",
       });
     } catch (err) {
       console.error("music stream proxy:", err?.message || err);
+      if (await refreshMusicStreamUrl(job)) {
+        try {
+          return await proxyRemoteUrl(req, res, job, job.streamUrl, {
+            forceContentType: job.streamContentType || "audio/mpeg",
+          });
+        } catch (err2) {
+          console.error("music stream proxy retry:", err2?.message || err2);
+        }
+      }
       return res.status(502).send("Błąd streamu audio.");
     }
   }
@@ -5597,16 +5638,20 @@ app.head("/api/music/stream/:jobId", async (req, res) => {
   }
   if (job.mode === "stream-proxy" && job.streamUrl && job.status === "done") {
     try {
+      let streamHeaders = { "User-Agent": UA, Referer: job.streamReferer || "" };
+      try {
+        if (/(^|\.)googlevideo\.com$/i.test(new URL(job.streamUrl).hostname)) streamHeaders = {};
+      } catch {}
       const upstream = await fetch(job.streamUrl, {
         method: "HEAD",
-        headers: { "User-Agent": UA, Referer: job.streamReferer || "" },
+        headers: streamHeaders,
         signal: AbortSignal.timeout(15000),
       });
       res.status(upstream.status);
       res.set("Accept-Ranges", upstream.headers.get("accept-ranges") || "bytes");
       const len = upstream.headers.get("content-length");
       if (len) res.set("Content-Length", len);
-      res.set("Content-Type", "audio/mpeg");
+      res.set("Content-Type", job.streamContentType || "audio/mpeg");
       return res.end();
     } catch {
       return res.status(502).end();

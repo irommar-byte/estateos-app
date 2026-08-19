@@ -402,9 +402,8 @@ export async function ensureMusicAsset({
   };
 
   const playable = (job) => {
-    if (!job) return false;
-    if (job.file && fs.existsSync(job.file) && fs.statSync(job.file).size > 32 * 1024) return true;
-    return job.mode === "stream-proxy" && !!job.streamUrl && (job.ready === true || job.status === "done");
+    if (!job?.file || !fs.existsSync(job.file)) return false;
+    return fs.statSync(job.file).size > 32 * 1024;
   };
 
   const pack = (jobId, { reused, ready, job }) => ({
@@ -529,37 +528,24 @@ export async function ensureMusicAsset({
         if (fs.existsSync(partPath)) fs.unlinkSync(partPath);
       } catch {}
 
-      // Resolve remote MP3 once — open stream-proxy ASAP so playback doesn't wait for full download.
+      // Resolve once, then persist the complete file before declaring the track ready.
+      // This keeps "+" semantics honest: "on server" always means a durable local asset.
       sendEvent?.(job, { status: "preparing", progress: 8, purpose: job.purpose, assetId });
       const downloadUrl = await resolveAppleMusicDownloadUrl(track.webpageUrl || url);
 
-      job.mode = "stream-proxy";
-      job.streamUrl = downloadUrl;
-      job.streamContentType = "audio/mpeg";
-      job.status = "done";
-      job.ready = true;
+      job.status = "downloading";
+      job.ready = false;
       job.progress = 18;
       job.persisting = true;
-      ensurePlayToken?.(job);
       sendEvent?.(job, {
-        status: "done",
-        ready: true,
+        status: "downloading",
+        ready: false,
         progress: 18,
         purpose: job.purpose,
         assetId,
-        streaming: true,
       });
 
-      // Persist to durable library in background (same URL, no second APLMate handshake).
-      sendEvent?.(job, {
-        status: "downloading",
-        progress: 22,
-        purpose: job.purpose,
-        assetId,
-        streaming: true,
-      });
-
-      // Fresh APLMate resolve for disk copy — keep streamUrl reserved for the player.
+      // Download the resolved source into the durable per-user asset.
       await downloadAppleMusicToFile({
         appleUrl: url,
         destPath: partPath,
@@ -567,15 +553,13 @@ export async function ensureMusicAsset({
         downloadUrl: downloadUrl,
         onProgress: (pct) => {
           if (job.cancelled) return;
-          // Keep stream-proxy playable while bytes land on disk.
           job.progress = Math.min(97, Math.max(22, Math.round(pct)));
           sendEvent?.(job, {
             status: "downloading",
             progress: job.progress,
             purpose: job.purpose,
             assetId,
-            streaming: true,
-            ready: true,
+            ready: false,
           });
         },
       });
@@ -660,16 +644,13 @@ export async function ensureMusicAsset({
       try {
         if (partPath && fs.existsSync(partPath)) fs.unlinkSync(partPath);
       } catch {}
-      // If stream-proxy was already open, keep it playable unless resolve failed entirely.
-      if (!job.streamUrl && !job.file) {
-        job.status = "error";
-        job.ready = false;
-        job.error = friendlyError ? friendlyError(err) : err?.message || String(err);
-        sendEvent?.(job, { status: "error", error: job.error, purpose: job.purpose, assetId });
-      } else {
-        console.warn("music asset persist:", err?.message || err);
-        job.persisting = false;
-      }
+      job.mode = null;
+      job.streamUrl = null;
+      job.persisting = false;
+      job.status = "error";
+      job.ready = false;
+      job.error = friendlyError ? friendlyError(err) : err?.message || String(err);
+      sendEvent?.(job, { status: "error", error: job.error, purpose: job.purpose, assetId });
     } finally {
       activeAcquire.delete(inflightKey);
     }
@@ -691,6 +672,55 @@ export function resolveAssetJob(userKey, jobId, downloadsRoot, { ensurePlayToken
   const asset = findAssetById(userKey, jobId);
   if (!asset || !assetFileReady(downloadsRoot, asset)) return null;
   return restoreJobFromAsset({ ...asset, userKey }, downloadsRoot, { ensurePlayToken, jobs });
+}
+
+
+const MUSIC_ACQUIRE_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_IDLE_MS || 180_000);
+const MUSIC_ACQUIRE_MAX_MS = Number(process.env.MUSIC_ACQUIRE_MAX_MS || 300_000);
+
+export function clearActiveAcquire(job) {
+  if (!job?.userKey || !job?.url) return;
+  activeAcquire.delete(`${job.userKey}:${canonicalMusicKey(job.url)}`);
+}
+
+export function isStalledMusicAcquire(job, now = Date.now()) {
+  if (!job || job.kind !== "music") return false;
+  if (job.ready || job.status === "done" || job.status === "error" || job.status === "cancelled") return false;
+  if (job.persisting) return false;
+  const status = String(job.status || "");
+  if (!["preparing", "starting", "downloading", "processing"].includes(status)) return false;
+  const started = Number(job.queuedAt || job.createdAt || 0);
+  if (started > 0 && now - started > MUSIC_ACQUIRE_MAX_MS) return true;
+  const anchor = Number(job.lastProgressAt || started || 0);
+  return anchor > 0 && now - anchor > MUSIC_ACQUIRE_IDLE_MS;
+}
+
+export function failStalledMusicAcquire(job, { sendEvent } = {}) {
+  if (!isStalledMusicAcquire(job)) return false;
+  const message =
+    "Przygotowanie utworu trwa zbyt długo — serwer APLMate/Cloudflare jest zajęty. Spróbuj ponownie za chwilę.";
+  job.status = "error";
+  job.error = message;
+  job.ready = false;
+  job.cancelled = false;
+  clearActiveAcquire(job);
+  sendEvent?.(job, { status: "error", phase: "error", error: message });
+  return true;
+}
+
+export function reapStalledMusicAcquires(jobs, { sendEvent } = {}) {
+  if (!jobs) return 0;
+  let n = 0;
+  for (const job of jobs.values()) {
+    if (failStalledMusicAcquire(job, { sendEvent })) n += 1;
+  }
+  for (const [key, jobId] of [...activeAcquire.entries()]) {
+    const job = jobs.get(jobId);
+    if (!job || ["error", "cancelled", "done"].includes(String(job.status || ""))) {
+      activeAcquire.delete(key);
+    }
+  }
+  return n;
 }
 
 export function cleanupMusicJobCancel(job) {

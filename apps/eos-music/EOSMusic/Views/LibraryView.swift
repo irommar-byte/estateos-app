@@ -82,14 +82,24 @@ struct LibraryView: View {
 
                         LazyVGrid(columns: recentColumns, spacing: recentLayout == .list ? 4 : 20) {
                             ForEach(recentItems) { item in
-                                Button {
-                                    Task { await playRecent(item.track) }
-                                } label: {
-                                    RecentLibraryCell(item: item, style: recentLayout)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    recentContextMenu(for: item)
+                                ZStack(alignment: .topTrailing) {
+                                    Button {
+                                        Task { await playRecent(item.track) }
+                                    } label: {
+                                        RecentLibraryCell(item: item, style: recentLayout)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        recentContextMenu(for: item)
+                                    }
+
+                                    TrackStorageActionButton(
+                                        track: item.track.payload,
+                                        folderId: item.track.folderId,
+                                        size: 18,
+                                        frameSize: 30
+                                    )
+                                    .padding(6)
                                 }
                             }
                         }

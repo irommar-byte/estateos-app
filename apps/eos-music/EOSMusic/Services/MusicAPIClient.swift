@@ -45,9 +45,13 @@ final class MusicAPIClient {
         let _: Ok = try await requestJSON("DELETE", path: "/api/auth/apple/link", encodable: Body(appleUserId: appleUserId), authorized: true)
     }
 
-    func me() async throws -> AuthUser {
+    func me(timeoutInterval: TimeInterval? = nil) async throws -> AuthUser {
         struct Wrapper: Codable { let user: AuthUser }
-        let json: Wrapper = try await request("GET", path: "/api/auth/me")
+        var req = makeRequest(method: "GET", path: "/api/auth/me", authorized: true)
+        if let timeoutInterval {
+            req.timeoutInterval = timeoutInterval
+        }
+        let json: Wrapper = try await perform(req)
         return json.user
     }
 
@@ -182,7 +186,41 @@ final class MusicAPIClient {
         var body: [String: Any] = ["url": url, "intent": intent]
         if let folderId { body["folderId"] = folderId }
         if let trackUrl { body["trackUrl"] = trackUrl }
-        return try await request("POST", path: "/api/music/play", body: body)
+        do {
+            return try await request("POST", path: "/api/music/play", body: body)
+        } catch {
+            guard APIError.isTimeout(error) else { throw error }
+            if let recovered = await recoverMusicPlayJob(url: url) {
+                return recovered
+            }
+            throw error
+        }
+    }
+
+    /// POST /api/music/play may time out after the NAS already queued the acquire.
+    private func recoverMusicPlayJob(url: String) async -> DownloadStartResponse? {
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline {
+            if Task.isCancelled { return nil }
+            if let active = try? await fetchActiveServerDownloads() {
+                let match = (active.music + active.items).first {
+                    $0.isMusic && !$0.jobId.isEmpty && $0.url == url
+                }
+                if let match {
+                    return DownloadStartResponse(
+                        jobId: match.jobId,
+                        assetId: match.assetId,
+                        reused: true,
+                        ready: match.ready,
+                        status: match.status,
+                        progress: match.progress,
+                        token: nil
+                    )
+                }
+            }
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+        return nil
     }
 
     /// Shared account queue — server-side music + movie downloads in flight.
@@ -550,6 +588,9 @@ final class MusicAPIClient {
             req.timeoutInterval = 90
         } else if path.hasPrefix("/api/cda-hd/") || path.hasPrefix("/api/films/") || path.hasPrefix("/api/search") {
             req.timeoutInterval = 60
+        } else if path.hasPrefix("/api/music/play") {
+            // Fast acknowledgement only; preparation continues under /api/job/:jobId.
+            req.timeoutInterval = 20
         } else if path.hasPrefix("/api/download") {
             req.timeoutInterval = 90
         } else if path.hasPrefix("/api/job/") || path.hasPrefix("/api/downloads/") {

@@ -254,13 +254,19 @@ struct LibraryArtistsView: View {
 struct LibraryArtistSongsView: View {
     @EnvironmentObject private var app: AppModel
     let artistName: String
+    var artistId: String? = nil
     @State private var query = ""
 
     private var allTracks: [MusicTrack] {
-        app.libraryTracksForBrowsing.filter {
-            ($0.artist ?? "Nieznany wykonawca")
+        app.libraryTracksForBrowsing.filter { track in
+            if let artistId, !artistId.isEmpty, track.artistId == artistId { return true }
+            return (track.artist ?? "Nieznany wykonawca")
                 .localizedCaseInsensitiveCompare(artistName) == .orderedSame
         }
+    }
+
+    private var artworkURL: URL? {
+        allTracks.first(where: { $0.artworkURL != nil })?.artworkURL
     }
 
     /// Apple Music artist songs: album → title (dense flat list, no A–Z sections).
@@ -300,6 +306,16 @@ struct LibraryArtistSongsView: View {
             } else {
                 List {
                     Section {
+                        LibraryEntityHeader(
+                            title: artistName,
+                            subtitle: "\(allTracks.count) utworów",
+                            artworkURL: artworkURL
+                        )
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+
+                    Section {
                         Button {
                             Task { await play(at: 0) }
                         } label: {
@@ -321,23 +337,30 @@ struct LibraryArtistSongsView: View {
 
                     Section {
                         ForEach(Array(filteredTracks.enumerated()), id: \.element.url) { index, track in
-                            Button {
-                                Task { await play(at: index) }
-                            } label: {
-                                TrackRowView(
-                                    index: index + 1,
-                                    title: track.title,
-                                    subtitle: track.album,
-                                    duration: track.duration,
-                                    artworkURL: track.artworkURL,
-                                    isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                                    downloadState: app.downloads.uiState(
-                                        for: track.url,
-                                        isOnServer: track.isOnServer
+                            HStack(spacing: 6) {
+                                Button {
+                                    Task { await play(at: index) }
+                                } label: {
+                                    TrackRowView(
+                                        index: index + 1,
+                                        title: track.title,
+                                        subtitle: track.album,
+                                        duration: track.duration,
+                                        artworkURL: track.artworkURL,
+                                        isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                                        downloadState: app.downloads.uiState(
+                                            for: track.url,
+                                            isOnServer: app.isOnServer(track.url)
+                                        )
                                     )
+                                }
+                                .buttonStyle(.plain)
+
+                                TrackStorageActionButton(
+                                    track: track.payload,
+                                    folderId: track.folderId
                                 )
                             }
-                            .buttonStyle(.plain)
                             .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                         }
                     } header: {
@@ -516,26 +539,33 @@ struct LibraryAlbumSongsView: View {
 
                     Section {
                         ForEach(Array(tracks.enumerated()), id: \.element.url) { index, track in
-                            Button {
-                                Task {
-                                    let folder = app.musicFolders.first(where: { $0.id == track.folderId })
-                                    await app.playTracks(tracks, startIndex: index, folder: folder)
-                                }
-                            } label: {
-                                TrackRowView(
-                                    index: index + 1,
-                                    title: track.title,
-                                    subtitle: track.artist,
-                                    duration: track.duration,
-                                    artworkURL: track.artworkURL,
-                                    isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                                    downloadState: app.downloads.uiState(
-                                        for: track.url,
-                                        isOnServer: track.isOnServer
+                            HStack(spacing: 6) {
+                                Button {
+                                    Task {
+                                        let folder = app.musicFolders.first(where: { $0.id == track.folderId })
+                                        await app.playTracks(tracks, startIndex: index, folder: folder)
+                                    }
+                                } label: {
+                                    TrackRowView(
+                                        index: index + 1,
+                                        title: track.title,
+                                        subtitle: track.artist,
+                                        duration: track.duration,
+                                        artworkURL: track.artworkURL,
+                                        isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                                        downloadState: app.downloads.uiState(
+                                            for: track.url,
+                                            isOnServer: app.isOnServer(track.url)
+                                        )
                                     )
+                                }
+                                .buttonStyle(.plain)
+
+                                TrackStorageActionButton(
+                                    track: track.payload,
+                                    folderId: track.folderId
                                 )
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -646,23 +676,30 @@ struct LibrarySongsListView: View {
     }
 
     private func songRow(_ track: MusicTrack, displayIndex: Int) -> some View {
-        Button {
-            Task { await play(track: track) }
-        } label: {
-            TrackRowView(
-                index: displayIndex,
-                title: track.title,
-                subtitle: track.artist,
-                duration: track.duration,
-                artworkURL: track.artworkURL,
-                isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                downloadState: app.downloads.uiState(
-                    for: track.url,
-                    isOnServer: track.isOnServer
+        HStack(spacing: 6) {
+            Button {
+                Task { await play(track: track) }
+            } label: {
+                TrackRowView(
+                    index: displayIndex,
+                    title: track.title,
+                    subtitle: track.artist,
+                    duration: track.duration,
+                    artworkURL: track.artworkURL,
+                    isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                    downloadState: app.downloads.uiState(
+                        for: track.url,
+                        isOnServer: app.isOnServer(track.url)
+                    )
                 )
+            }
+            .buttonStyle(.plain)
+
+            TrackStorageActionButton(
+                track: track.payload,
+                folderId: track.folderId
             )
         }
-        .buttonStyle(.plain)
         .contextMenu {
             Button {
                 Task { await play(track: track) }

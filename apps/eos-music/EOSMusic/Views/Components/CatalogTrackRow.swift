@@ -17,7 +17,7 @@ struct CatalogTrackRow: View {
     private var cloudState: TrackDownloadUIState {
         app.downloads.uiState(
             for: item.url,
-            isOnServer: libraryTrack?.isOnServer == true
+            isOnServer: app.isOnServer(item.url)
         )
     }
 
@@ -41,29 +41,10 @@ struct CatalogTrackRow: View {
             FavoriteButton(item: item.favoriteItem, size: 16)
                 .frame(width: 28)
 
-            // Cloud icon: visible for all states when in library; for non-library tracks only show when downloading
-            if inLibrary || cloudState.isBusy {
-                DownloadCloudButton(
-                    state: cloudState,
-                    inLibrary: inLibrary,
-                    size: 20,
-                    onDownload: {
-                        if let track = libraryTrack {
-                            app.downloadTrack(track, folderId: track.folderId)
-                        } else {
-                            Task { await downloadCatalogToDevice() }
-                        }
-                    },
-                    onCancel: { app.cancelDownload(for: item.url) },
-                    onRemoveOffline: { app.removeOfflineDownload(for: item.url) }
-                )
-                .frame(width: 34, height: 34)
-            }
-
-            // Plus: shown only when NOT in library; adding to library also triggers server download
-            if !inLibrary {
-                libraryAddButton
-            }
+            TrackStorageActionButton(
+                track: item.payload,
+                folderId: libraryTrack?.folderId
+            )
         }
         .contextMenu {
             Button {
@@ -81,13 +62,13 @@ struct CatalogTrackRow: View {
                 )
             }
 
-            if inLibrary {
-                Label("W bibliotece", systemImage: "checkmark.circle.fill")
+            if app.isOnServer(item.url) {
+                Label("Na serwerze EOS", systemImage: "checkmark.icloud.fill")
             } else {
                 Button {
                     Task { await addToLibrary() }
                 } label: {
-                    Label("Dodaj do biblioteki", systemImage: "plus")
+                    Label("Dodaj na serwer EOS", systemImage: "plus")
                 }
             }
 
@@ -133,63 +114,13 @@ struct CatalogTrackRow: View {
         return item.title
     }
 
-    @ViewBuilder
-    private var libraryAddButton: some View {
-        Button {
-            Task { await addToLibrary() }
-        } label: {
-            Group {
-                if isAddingToLibrary {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: inLibrary ? "checkmark.circle.fill" : "plus.circle.fill")
-                        .font(.title3)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(inLibrary ? LibraryAccent.icon : Color.secondary)
-                }
-            }
-            .frame(width: 34, height: 34)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(inLibrary || isAddingToLibrary)
-        .accessibilityLabel(inLibrary ? "W bibliotece" : "Dodaj do biblioteki")
-    }
-
     private func addToLibrary() async {
-        guard !inLibrary else { return }
+        guard !app.isOnServer(item.url) else { return }
         isAddingToLibrary = true
         defer { isAddingToLibrary = false }
         do {
             try await app.addToLibrary(item.payload)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } catch {
-            rowError = error.localizedDescription
-        }
-    }
-
-    private func downloadCatalogToDevice() async {
-        do {
-            let folderId = try await app.ensurePrimaryLibraryFolderId()
-            let track = MusicTrackPayload(
-                url: item.url,
-                title: item.title,
-                artist: item.uploader ?? item.detail,
-                album: item.album,
-                thumbnail: item.thumbnail,
-                duration: item.duration,
-                quality: nil,
-                source: nil,
-                artistId: item.artistId,
-                albumId: item.albumId
-            )
-            if !app.isInLibrary(item.url) {
-                try await app.addTrackToFolder(folderId: folderId, track: track)
-            }
-            if let libraryTrack = app.musicTracks.first(where: { $0.url == item.url }) {
-                app.downloadTrack(libraryTrack, folderId: folderId)
-            }
         } catch {
             rowError = error.localizedDescription
         }

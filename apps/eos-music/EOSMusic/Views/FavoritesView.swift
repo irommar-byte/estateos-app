@@ -251,6 +251,8 @@ struct FavoritesView: View {
 
             FavoriteButton(item: item, size: 17)
                 .frame(width: 36, height: 44)
+
+            TrackStorageActionButton(track: item.musicPayload)
         }
         .contextMenu {
             Button {

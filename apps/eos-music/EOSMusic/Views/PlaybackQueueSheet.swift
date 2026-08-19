@@ -55,16 +55,25 @@ struct PlaybackQueueSheet: View {
 
                 Section {
                     ForEach(engine.playbackQueueRows) { row in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            Task {
-                                await engine.jumpToOrderIndex(row.orderIndex)
-                                dismiss()
+                        HStack(spacing: 6) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                Task {
+                                    await engine.jumpToOrderIndex(row.orderIndex)
+                                    dismiss()
+                                }
+                            } label: {
+                                PlaybackQueueRowView(row: row)
                             }
-                        } label: {
-                            PlaybackQueueRowView(row: row)
+                            .buttonStyle(.plain)
+
+                            if !row.track.isExternal {
+                                TrackStorageActionButton(
+                                    track: row.track.payload,
+                                    folderId: row.track.folderId
+                                )
+                            }
                         }
-                        .buttonStyle(.plain)
                         .listRowBackground(rowBackground(for: row))
                         .id(row.id)
                     }

@@ -246,67 +246,118 @@ struct LibrarySyncStatusBar: View {
 /// Kolejka zapisu albumu / playlisty na serwer EOS.
 struct ServerDownloadQueuePanel: View {
     let queue: MusicDownloadService.BulkServerQueueProgress
+    @Binding var isMinimized: Bool
     var onCancel: (() -> Void)?
 
+    private var phaseTitle: String {
+        if queue.destination == .serverAndPhone, queue.phase == .device {
+            return "Pobieranie na iPhone"
+        }
+        return "Zapis na serwer EOS"
+    }
+
+    private var countLabel: String {
+        if queue.destination == .serverAndPhone, queue.phase == .device {
+            return "\(queue.deviceCompleted)/\(max(queue.deviceTotal, 1))"
+        }
+        return "\(queue.completed)/\(max(queue.total, 1))"
+    }
+
+    private var activeItem: MusicDownloadService.ServerQueueItem? {
+        queue.phase == .device ? queue.deviceActive : queue.active
+    }
+
+    private var activePercent: Double? {
+        queue.phase == .device ? queue.deviceActiveProgress : queue.activeProgress
+    }
+
+    private var pendingItems: [MusicDownloadService.ServerQueueItem] {
+        queue.phase == .device ? queue.devicePending : queue.pending
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Zapis na serwer EOS", systemImage: "icloud.and.arrow.down")
+        VStack(alignment: .leading, spacing: isMinimized ? 4 : 8) {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(EOSMotion.snappy) { isMinimized.toggle() }
+                } label: {
+                    Image(systemName: isMinimized ? "chevron.up.circle" : "chevron.down.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(EOSTheme.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isMinimized ? "Rozwiń kolejkę" : "Zwiń kolejkę")
+
+                Text(phaseTitle)
                     .font(.caption.weight(.semibold))
-                Spacer()
-                Text("\(queue.completed)/\(queue.total)")
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(Int((queue.overallProgress * 100).rounded()))%")
                     .font(.caption.monospacedDigit().weight(.bold))
                     .foregroundStyle(EOSTheme.accent)
+                Text(countLabel)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 if onCancel != nil {
                     Button("Anuluj", role: .cancel) { onCancel?() }
                         .font(.caption2.weight(.semibold))
                 }
             }
 
-            ProgressView(value: Double(queue.completed), total: Double(max(queue.total, 1)))
+            ProgressView(value: queue.overallProgress)
                 .tint(EOSTheme.accent)
 
-            if let active = queue.active {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Teraz: \(active.title)")
+            if !isMinimized {
+                if let active = activeItem {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Teraz: \(active.title)")
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                            if let pct = activePercent {
+                                Text(queue.phase == .device
+                                     ? "Pobieranie na urządzenie · \(Int(pct))%"
+                                     : "Przygotowanie na serwerze · \(Int(pct))%")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text(queue.phase == .device ? "Pobieranie na urządzenie…" : "Przygotowanie na serwerze…")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                if queue.destination == .serverAndPhone, queue.phase == .server, queue.deviceTotal > 0 {
+                    Text("Potem na iPhone: \(queue.deviceTotal) utworów")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                if !pendingItems.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("W kolejce (\(pendingItems.count)) · zostało \(queue.remainingCount)")
                             .font(.caption2.weight(.semibold))
-                            .lineLimit(1)
-                        if let pct = queue.activeProgress {
-                            Text("Przygotowanie na serwerze · \(Int(pct))%")
+                            .foregroundStyle(.secondary)
+                        ForEach(Array(pendingItems.prefix(4).enumerated()), id: \.offset) { idx, item in
+                            Text("\(idx + 2). \(item.title)")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Przygotowanie na serwerze…")
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                        if pendingItems.count > 4 {
+                            Text("… i \(pendingItems.count - 4) kolejnych")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tertiary)
                         }
                     }
                 }
             }
-
-            if !queue.pending.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("W kolejce (\(queue.pending.count))")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(Array(queue.pending.prefix(4).enumerated()), id: \.offset) { idx, item in
-                        Text("\(queue.completed + idx + 2). \(item.title)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                    if queue.pending.count > 4 {
-                        Text("… i \(queue.pending.count - 4) kolejnych")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
         }
-        .padding(12)
+        .padding(isMinimized ? EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12) : EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

@@ -369,23 +369,30 @@ struct SearchCatalogView: View {
             sectionHeader("Utwory")
             VStack(spacing: 0) {
                 ForEach(Array(data.songs.prefix(compact ? 6 : 20).enumerated()), id: \.element.url) { index, track in
-                    Button {
-                        Task { await playLibraryTrack(track, in: data.songs) }
-                    } label: {
-                        TrackRowView(
-                            index: index + 1,
-                            title: track.title,
-                            subtitle: track.artist,
-                            duration: track.duration,
-                            artworkURL: track.artworkURL,
-                            isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                            downloadState: app.downloads.uiState(
-                                for: track.url,
-                                isDownloaded: app.isOfflineAvailable(track.url)
+                    HStack(spacing: 6) {
+                        Button {
+                            Task { await playLibraryTrack(track, in: data.songs) }
+                        } label: {
+                            TrackRowView(
+                                index: index + 1,
+                                title: track.title,
+                                subtitle: track.artist,
+                                duration: track.duration,
+                                artworkURL: track.artworkURL,
+                                isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                                downloadState: app.downloads.uiState(
+                                    for: track.url,
+                                    isOnServer: app.isOnServer(track.url)
+                                )
                             )
+                        }
+                        .buttonStyle(.plain)
+
+                        TrackStorageActionButton(
+                            track: track.payload,
+                            folderId: track.folderId
                         )
                     }
-                    .buttonStyle(.plain)
                     if index < min(compact ? 5 : 19, data.songs.count - 1) {
                         Divider().opacity(0.2)
                     }

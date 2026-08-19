@@ -380,41 +380,19 @@ struct TrackRowView: View {
         HStack(spacing: rowSpacing) {
             if let index {
                 Group {
-                    switch downloadState {
-                    case .done:
+                    if isPlaying {
+                        Image(systemName: "waveform")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(EOSTheme.accent)
+                            .symbolEffect(.variableColor.iterative, options: .speed(0.6), isActive: true)
+                    } else {
                         Text("\(index)")
                             .font(indexFont)
-                            .foregroundStyle(isPlaying ? EOSTheme.accent : EOSTheme.textMuted)
-                    case .acquiringServer(let progress):
-                        ServerCloudProgressIcon(progress: progress, size: indexWidth)
-                    case .downloading(let progress):
-                        ServerCloudProgressIcon(progress: progress, size: indexWidth)
-                    case .onServer:
-                        // Stonowana, ale zawsze widoczna: „utwór jest na serwerze EOS".
-                        Image(systemName: "icloud.fill")
-                            .font(.system(size: 10, weight: .medium))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(EOSTheme.accent.opacity(0.85))
-                            .frame(width: 20, height: 20)
-                            .background(EOSTheme.accent.opacity(0.1), in: Circle())
-                            .accessibilityLabel("Na serwerze EOS")
-                    case .failed:
-                        Image(systemName: "exclamationmark.icloud")
-                            .font(.caption2)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(EOSTheme.accent)
-                    case .idle:
-                        // „Do pobrania" — delikatna fioletowa pastylka.
-                        Image(systemName: "icloud.and.arrow.down")
-                            .font(.system(size: 10, weight: .medium))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(EOSTheme.accentSecondary.opacity(0.9))
-                            .frame(width: 20, height: 20)
-                            .background(EOSTheme.accentSecondary.opacity(0.09), in: Circle())
-                            .accessibilityLabel("Do pobrania")
+                            .foregroundStyle(EOSTheme.textMuted)
                     }
                 }
-                .frame(width: max(indexWidth, 22), alignment: .trailing)
+                .frame(width: max(indexWidth, 22), alignment: .center)
+                .accessibilityHidden(true)
             }
             ArtworkImage(url: artworkURL, size: artSize, cornerRadius: artRadius)
             VStack(alignment: .leading, spacing: textSpacing) {

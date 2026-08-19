@@ -26,7 +26,13 @@ struct MainTabView: View {
             }
 
             if let queue = app.downloads.bulkServerQueue {
-                ServerDownloadQueuePanel(queue: queue) {
+                ServerDownloadQueuePanel(
+                    queue: queue,
+                    isMinimized: Binding(
+                        get: { app.downloads.isBulkQueueMinimized },
+                        set: { app.downloads.isBulkQueueMinimized = $0 }
+                    )
+                ) {
                     app.cancelBulkMusicQueue()
                 }
                 .padding(.horizontal, 12)

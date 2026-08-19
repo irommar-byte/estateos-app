@@ -93,6 +93,103 @@ struct DownloadCloudButton: View {
     }
 }
 
+/// Canonical per-track storage action:
+/// + = add/ensure durable server copy, cloud = download server copy to this device.
+struct TrackStorageActionButton: View {
+    @EnvironmentObject private var app: AppModel
+
+    let track: MusicTrackPayload
+    var folderId: String? = nil
+    var size: CGFloat = 20
+    var frameSize: CGFloat = 34
+
+    @State private var isQueuingServerCopy = false
+    @State private var errorMessage: String?
+
+    private var state: TrackDownloadUIState {
+        app.downloads.uiState(
+            for: track.url,
+            isOnServer: app.isOnServer(track.url)
+        )
+    }
+
+    var body: some View {
+        Group {
+            switch state {
+            case .idle, .failed:
+                Button {
+                    Task { await ensureServerCopy() }
+                } label: {
+                    Group {
+                        if isQueuingServerCopy {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: size, weight: .semibold))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(EOSTheme.accent)
+                        }
+                    }
+                    .frame(width: frameSize, height: frameSize)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isQueuingServerCopy || app.isOfflinePlaybackActive)
+                .accessibilityLabel("Dodaj na serwer EOS")
+
+            case .onServer, .acquiringServer, .downloading, .done:
+                DownloadCloudButton(
+                    state: state,
+                    inLibrary: app.isInLibrary(track.url),
+                    size: size,
+                    onDownload: {
+                        Task { await downloadToDevice() }
+                    },
+                    onCancel: {
+                        app.cancelDownload(for: track.url)
+                    },
+                    onRemoveOffline: {
+                        app.removeOfflineDownload(for: track.url)
+                    }
+                )
+                .frame(width: frameSize, height: frameSize)
+            }
+        }
+        .alert(
+            "Błąd",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func ensureServerCopy() async {
+        guard !app.isOnServer(track.url) else { return }
+        isQueuingServerCopy = true
+        defer { isQueuingServerCopy = false }
+        do {
+            try await app.addToLibrary(track)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func downloadToDevice() async {
+        do {
+            try await app.downloadToDevice(track, preferredFolderId: folderId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
 /// Chmurka wypełnia się kolorem w miarę progressu i „oddycha” (mruga) podczas zapisu.
 struct ServerCloudProgressIcon: View {
     let progress: Double

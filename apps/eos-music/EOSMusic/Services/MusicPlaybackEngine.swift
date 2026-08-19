@@ -820,7 +820,7 @@ final class MusicPlaybackEngine: ObservableObject {
         switch status {
         case "preparing": return "Analiza utworu Apple Music…"
         case "starting": return "Start zadania na serwerze…"
-        case "downloading": return "Zapis trwa — stream już może grać"
+        case "downloading": return "Zapisuję trwałą kopię na serwerze…"
         case "done": return "Gotowe — łączę ze streamem"
         default: return status.isEmpty ? "Czekam na serwer…" : status
         }

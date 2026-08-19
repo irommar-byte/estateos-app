@@ -18,6 +18,8 @@ struct FolderDetailView: View {
     @State private var isUploadingCover = false
     @State private var showCoverPicker = false
     @State private var showDownloadDestinationSheet = false
+    @State private var downloadSheetTracks: [MusicTrack] = []
+    @State private var selectedTrackIDs: Set<String> = []
 
     private var isEditing: Bool { editMode == .active }
 
@@ -41,6 +43,10 @@ struct FolderDetailView: View {
     /// Visible playlist rows — offline mode shows only downloaded tracks.
     private var displayTracks: [MusicTrack] {
         app.tracksMatchingOfflineAvailability(tracks)
+    }
+
+    private var selectedTracks: [MusicTrack] {
+        displayTracks.filter { selectedTrackIDs.contains($0.url) }
     }
 
     var body: some View {
@@ -67,12 +73,13 @@ struct FolderDetailView: View {
                 .scrollContentBackground(.hidden)
                 .transition(.opacity)
             } else {
-                List {
+                List(selection: $selectedTrackIDs) {
                     if !isEditing {
                         Section {
                             playlistHeader
                         }
                         .listRowBackground(Color.clear)
+                        .selectionDisabled(true)
 
                         Section {
                             Button {
@@ -85,7 +92,7 @@ struct FolderDetailView: View {
 
                             if pendingCount > 0, !app.isOfflinePlaybackActive {
                                 Button {
-                                    showDownloadDestinationSheet = true
+                                    openDownloadSheet(for: tracks)
                                 } label: {
                                     Label("Pobierz wszystkie (\(pendingCount))", systemImage: "icloud.and.arrow.down")
                                         .font(.subheadline.weight(.semibold))
@@ -93,12 +100,28 @@ struct FolderDetailView: View {
                                 }
                             }
                         }
+                        .selectionDisabled(true)
+                    } else if !app.isOfflinePlaybackActive, !selectedTracks.isEmpty {
+                        Section {
+                            Button {
+                                openDownloadSheet(for: selectedTracks)
+                            } label: {
+                                Label(
+                                    "Pobierz zaznaczone (\(selectedTracks.count))",
+                                    systemImage: "icloud.and.arrow.down"
+                                )
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(EOSTheme.accentSecondary)
+                            }
+                        }
+                        .selectionDisabled(true)
                     }
                     Section(app.isOfflinePlaybackActive
                             ? "\(displayTracks.count) pobranych"
                             : "\(displayTracks.count) utworów") {
                         ForEach(displayTracks) { track in
                             trackRow(for: track)
+                                .tag(track.url)
                         }
                         .onMove(perform: app.isOfflinePlaybackActive ? nil : moveTracks)
                         .onDelete(perform: app.isOfflinePlaybackActive ? nil : deleteTracks)
@@ -118,10 +141,21 @@ struct FolderDetailView: View {
         .sheet(isPresented: $showDownloadDestinationSheet) {
             MusicDownloadDestinationSheet(
                 title: folder.name,
-                subtitle: "Pobierz \(pendingCount) utworów",
-                trackCount: pendingCount
+                subtitle: downloadSheetTracks.count == tracks.count
+                    ? "Pobierz \(pendingCount) utworów"
+                    : "Pobierz zaznaczone (\(downloadSheetTracks.count))",
+                trackCount: downloadSheetTracks.count == tracks.count
+                    ? pendingCount
+                    : downloadSheetTracks.count
             ) { destination in
-                app.downloadAll(in: tracks, folderId: folder.id, destination: destination)
+                app.downloadAll(
+                    in: downloadSheetTracks,
+                    folderId: folder.id,
+                    destination: destination,
+                    label: downloadSheetTracks.count == tracks.count
+                        ? folder.name
+                        : "Zaznaczone utwory"
+                )
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -129,6 +163,13 @@ struct FolderDetailView: View {
             ToolbarItem(placement: .topBarLeading) {
                 EditButton()
                     .disabled(app.isOfflinePlaybackActive)
+            }
+            if isEditing, !selectedTracks.isEmpty, !app.isOfflinePlaybackActive {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Pobierz") {
+                        openDownloadSheet(for: selectedTracks)
+                    }
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -161,6 +202,9 @@ struct FolderDetailView: View {
         .onChange(of: coverPickerItem) { _, item in
             guard let item else { return }
             Task { await uploadCover(from: item) }
+        }
+        .onChange(of: isEditing) { _, editing in
+            if !editing { selectedTrackIDs.removeAll() }
         }
         .task { await load() }
         .sheet(item: $trackToAdd) { payload in
@@ -209,7 +253,7 @@ struct FolderDetailView: View {
         let index = displayTracks.firstIndex(where: { $0.url == track.url }) ?? 0
         let downloadState = app.downloads.uiState(
             for: track.url,
-            isOnServer: track.isOnServer
+            isOnServer: app.isOnServer(track.url)
         )
 
         let rowContent = HStack(spacing: 8) {
@@ -246,17 +290,11 @@ struct FolderDetailView: View {
                 FavoriteButton(item: track.favoriteItem, size: 16)
                     .frame(width: 28)
 
-                DownloadCloudButton(
-                    state: downloadState,
-                    inLibrary: true,
-                    onDownload: { app.downloadTrack(track, folderId: folder.id) },
-                    onCancel: { app.cancelDownload(for: track.url) },
-                    onRemoveOffline: {
-                        offlineRemovalTitle = track.title
-                        offlineRemovalURL = track.url
-                    }
+                TrackStorageActionButton(
+                    track: track.payload,
+                    folderId: folder.id,
+                    frameSize: 36
                 )
-                .frame(width: 36)
             }
         }
 
@@ -414,6 +452,11 @@ struct FolderDetailView: View {
             }
             // Keep cached tracks when network fails.
         }
+    }
+
+    private func openDownloadSheet(for tracksToDownload: [MusicTrack]) {
+        downloadSheetTracks = tracksToDownload
+        showDownloadDestinationSheet = true
     }
 
     private func playAll(from index: Int) async {
