@@ -1,15 +1,17 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Building2, Layers, CheckCircle, BedDouble, Calendar, Box, Sparkles, Map, LayoutGrid } from "lucide-react";
+import {
+  Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Building2, Layers,
+  CheckCircle, BedDouble, Calendar, Box, Sparkles, Map, LayoutGrid, Flame, DoorOpen, Castle, Briefcase,
+} from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import AgentCommissionEditor from '@/components/offer/AgentCommissionEditor';
 import PriceReductionPreview from '@/components/offer/PriceReductionPreview';
 import { isAgentCommissionAccount } from '@/lib/agentCommission';
-import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useFxRate } from '@/contexts/FxRateContext';
 import { buildYearBuiltSelectOptions } from '@/lib/offerYearBuilt';
@@ -21,10 +23,12 @@ import {
   readAmenitySelectionFromOffer,
   type OfferAmenityId,
 } from '@/lib/offerAmenities';
-import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
 import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
+import AddOfferDocVerificationPanel from '@/components/offer/AddOfferDocVerificationPanel';
+import { HEATING_DICT_KEYS } from '@/i18n/addOfferDictionary';
+import { isValidLandRegistryNumber, normalizeLandRegistryInput } from '@/lib/landRegistryInput';
 import dynamic from 'next/dynamic';
 
 const NeighborhoodMapPreview = dynamic(
@@ -48,6 +52,26 @@ const formatNum = (val: string) => val.replace(/\D/g, "").replace(/\B(?=(\d{3})+
 
 /** Zgodne z limitem w `/api/upload`. */
 const OFFER_MAX_IMAGES = 20;
+
+function isPolishLocality(countryCode: unknown) {
+  return String(countryCode || 'PL').trim().toUpperCase() === 'PL';
+}
+
+function conditionForForm(raw: unknown): string {
+  const n = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (n === 'NEEDS_RENOVATION' || n === 'TO_RENOVATION' || n === 'RENOVATION') return 'RENOVATION';
+  if (n === 'DEVELOPER_STATE' || n === 'DEVELOPER') return 'DEVELOPER';
+  if (n === 'NOT_APPLICABLE') return 'NOT_APPLICABLE';
+  return n || 'READY';
+}
+
+function legalStatusFromOffer(offer: { legalCheckStatus?: unknown; isLegalSafeVerified?: unknown }): 'NONE' | 'PENDING' | 'REJECTED' | 'VERIFIED' {
+  const raw = String(offer.legalCheckStatus || '').trim().toUpperCase();
+  if (raw === 'VERIFIED' || raw === 'APPROVED' || offer.isLegalSafeVerified) return 'VERIFIED';
+  if (raw === 'PENDING') return 'PENDING';
+  if (raw === 'REJECTED') return 'REJECTED';
+  return 'NONE';
+}
 
 // --- KOMPONENT DRAG & DROP ZDJĘĆ ---
 const SortablePhoto = ({
@@ -97,6 +121,26 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const eo = dict.editOffer;
   const { rate: fxRate } = useFxRate();
   const amenityOptions = React.useMemo(() => buildAmenityOptions(ao), [ao]);
+  const CONDITION_TYPES = useMemo(
+    () => [
+      { id: 'READY', label: ao.conditionReady },
+      { id: 'RENOVATION', label: ao.conditionRenovation },
+      { id: 'DEVELOPER', label: ao.conditionDeveloper },
+    ],
+    [ao],
+  );
+  const HEATING_TYPES = useMemo(() => HEATING_DICT_KEYS.map((key) => ao[key]), [ao]);
+  const PROPERTY_TYPES = useMemo(
+    () => [
+      { id: 'FLAT', label: ao.propertyFlat, icon: Building2 },
+      { id: 'HOUSE', label: ao.propertyHouse, icon: Castle },
+      { id: 'PLOT', label: ao.propertyPlot, icon: Map },
+      { id: 'COMMERCIAL', label: ao.propertyCommercial, icon: Briefcase },
+    ],
+    [ao],
+  );
+  const landRegistryInputRef = useRef<HTMLInputElement | null>(null);
+  const kwSectionRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const crmReturnHref = React.useMemo(() => {
@@ -172,8 +216,18 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             buildingNumber: offer.buildingNumber,
           }),
           isExactLocation: offer.isExactLocation !== false,
-          apartmentNumber: offer.apartmentNumber || "",
-          propertyType: offer.propertyType || "FLAT",
+          apartmentNumber: offer.apartmentNumber || '',
+          landRegistryNumber: offer.landRegistryNumber || '',
+          propertyType: offer.propertyType || 'FLAT',
+          transactionType: String(offer.transactionType || 'SELL').toUpperCase() === 'RENT' ? 'RENT' : 'SELL',
+          condition: conditionForForm(offer.condition),
+          heating: offer.heating || '',
+          isFurnished: offer.isFurnished === true,
+          city: offer.city || '',
+          totalFloors: offer.totalFloors != null && offer.totalFloors !== '' ? String(offer.totalFloors) : '',
+          localityCountryCode: offer.localityCountryCode || 'PL',
+          legalCheckStatus: offer.legalCheckStatus || 'NONE',
+          isLegalSafeVerified: Boolean(offer.isLegalSafeVerified),
         });
         setSelectedAmenities(readAmenitySelectionFromOffer(offer));
         const cp = offer.agentCommissionPercent;
@@ -306,18 +360,24 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   };
 
   const handleSave = async () => {
-    setIsSubmitting(true);
     const exactLocation = data.isExactLocation !== false;
     const streetName = String(data.streetName || data.address || '').trim();
     const buildingNumber = String(data.buildingNumber || '').trim();
     const storedStreet = streetFieldsForOfferStorage(streetName, buildingNumber, exactLocation);
-    // Przed wysłaniem usuwamy spacje z ceny
-    const listingCurrency = (String(data.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as ListingCurrency;
+    const listingCurrencySave = (String(data.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as ListingCurrency;
+    const kwNormalized = normalizeLandRegistryInput(String(data.landRegistryNumber || ''));
+    if (kwNormalized && !isValidLandRegistryNumber(kwNormalized)) {
+      alert(ao.docVerificationKwFormatError);
+      landRegistryInputRef.current?.focus();
+      kwSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    setIsSubmitting(true);
     const payload = {
       title: data.title,
       description: descriptionForStorageFromEdit(data.description),
       price: String(data.price || '').replace(/\s/g, ''),
-      priceCurrency: listingCurrency,
+      priceCurrency: listingCurrencySave,
       images: JSON.stringify(imagesList),
       floorPlanUrl: floorPlanUrl || null,
       floorPlan: floorPlanUrl || null,
@@ -327,24 +387,35 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       area: data.area,
       rooms: data.rooms,
       floor: data.floor,
+      totalFloors: data.totalFloors ? Number(data.totalFloors) : null,
       adminFee: data.adminFee ? Number(String(data.adminFee).replace(/\D/g, '')) : null,
       street: storedStreet.street,
       buildingNumber: storedStreet.buildingNumber,
       isExactLocation: exactLocation,
       lat: data.lat,
       lng: data.lng,
+      city: data.city || '',
       district: data.district,
+      propertyType: data.propertyType,
+      transactionType: data.transactionType === 'RENT' ? 'RENT' : 'SELL',
+      condition: data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : data.condition || 'READY',
+      heating: data.propertyType === 'PLOT' ? null : (data.heating || null),
+      isFurnished: data.propertyType === 'PLOT' ? false : Boolean(data.isFurnished),
+      plotArea: data.plotArea ? String(data.plotArea).replace(',', '.') : null,
+      apartmentNumber: data.apartmentNumber || '',
+      landRegistryNumber: kwNormalized || '',
       ...amenityBooleanPatch(selectedAmenities),
       ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
         ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
         : {}),
     };
     const res = await fetch(`/api/offers/${offerId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await res.json().catch(() => ({}));
     if (res.ok) { 
       setIsSuccess(true); 
       setTimeout(() => goBackFromEdit(), 2500); 
     } else { 
-      alert("Wystąpił błąd zapisu."); 
+      alert(result.error || result.message || 'Wystąpił błąd zapisu.'); 
       setIsSubmitting(false); 
     }
   };
@@ -354,6 +425,29 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   };
 
   const listingCurrency = (String(data.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as ListingCurrency;
+  const isPolishOfferLocation = isPolishLocality(data.localityCountryCode);
+  const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ''));
+  const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
+  const landRegistryValid =
+    !isPolishOfferLocation || !hasLandRegistryInput || isValidLandRegistryNumber(normalizedLandRegistryNumber);
+  const legalStatus = legalStatusFromOffer(data);
+  const kwLocked = (legalStatus === 'VERIFIED' || Boolean(data.isLegalSafeVerified)) && String(viewerRole || '').toUpperCase() !== 'ADMIN';
+  const requiresPlot = ['HOUSE', 'PLOT'].includes(String(data.propertyType || ''));
+  const isPlot = data.propertyType === 'PLOT';
+  const crmPro = (dict as { crm?: { proTools?: { openHouseTitle?: string; auctionTitle?: string; openHouseSubtitle?: string } } }).crm?.proTools;
+
+  useEffect(() => {
+    if (isLoading) return;
+    const focus = String(searchParams.get('focus') || '').toLowerCase();
+    if (focus !== 'kw' && focus !== 'tarcza' && typeof window !== 'undefined' && window.location.hash !== '#kw') {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      kwSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      landRegistryInputRef.current?.focus();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, searchParams, offerId]);
 
   if (isLoading) return <div className="theme-aware-dashboard flex min-h-screen flex-col items-center justify-center gap-6 bg-[var(--eos-bg)]"><Loader2 className="size-10 animate-spin text-[var(--eos-accent)]" /></div>;
   if (authError) return <div className="theme-aware-dashboard flex min-h-screen items-center justify-center bg-[var(--eos-bg)] font-bold uppercase tracking-widest text-red-500">{authError}</div>;
@@ -399,6 +493,61 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                 <input value={data.title || ''} onChange={e => updateData({ title: e.target.value })} className={inputPremium} placeholder="Np. Luksusowy Apartament w Centrum" />
               </div>
             </div>
+
+            <div className="bg-[#111] border border-white/10 rounded-full p-1.5 flex shadow-inner relative w-full max-w-[400px]">
+              <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(50%-6px)] bg-[#0a0a0a] border border-emerald-500/30 rounded-full transition-transform duration-500 ${data.transactionType === 'RENT' ? 'translate-x-[calc(100%+12px)]' : 'translate-x-0'}`} />
+              <button type="button" onClick={() => updateData({ transactionType: 'SELL' })} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest ${data.transactionType === 'RENT' ? 'text-white/40' : 'text-emerald-400'}`}>
+                {ao.sell}
+              </button>
+              <button type="button" onClick={() => updateData({ transactionType: 'RENT' })} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest ${data.transactionType === 'RENT' ? 'text-emerald-400' : 'text-white/40'}`}>
+                {ao.rent}
+              </button>
+            </div>
+
+            <div>
+              <label className={labelPremium}>{ao.step1Title}</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {PROPERTY_TYPES.map((cat) => {
+                  const isActive = data.propertyType === cat.id;
+                  const Icon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => updateData({
+                        propertyType: cat.id,
+                        condition: cat.id === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition === 'NOT_APPLICABLE' ? 'READY' : data.condition),
+                      })}
+                      className={`h-24 rounded-2xl flex flex-col items-center justify-center gap-2 border transition-all ${isActive ? 'bg-emerald-500 border-emerald-400 text-black' : 'bg-white/5 border-white/10 text-zinc-400 hover:border-white/25'}`}
+                    >
+                      <Icon size={22} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {!isPlot ? (
+              <div>
+                <label className={labelPremium}>{ao.conditionLabel}</label>
+                <div className="flex flex-wrap gap-3">
+                  {CONDITION_TYPES.map((condition) => {
+                    const isActive = data.condition === condition.id;
+                    return (
+                      <button
+                        key={condition.id}
+                        type="button"
+                        onClick={() => updateData({ condition: condition.id })}
+                        className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:border-white/20'}`}
+                      >
+                        {condition.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -458,6 +607,21 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                   <input type="number" value={data.area || ''} onChange={e => updateData({ area: e.target.value })} className={inputPremium} placeholder="Np. 65" />
                 </div>
               </div>
+              {requiresPlot ? (
+                <div className="md:col-span-2">
+                  <label className={labelPremium}>{ao.plotAreaLabel}</label>
+                  <div className={inputWrapper}>
+                    <Box className={iconGlow} size={20} />
+                    <input
+                      type="text"
+                      value={data.plotArea || ''}
+                      onChange={(e) => updateData({ plotArea: e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.').slice(0, 8) })}
+                      className={inputPremium}
+                      placeholder="450"
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
             {isAgentCommissionAccount({ role: viewerRole }) ? (
               <div className="pt-4 border-t border-white/5">
@@ -468,11 +632,6 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                   onPercentChange={setAgentCommissionPercent}
                 />
               </div>
-            ) : null}
-            {data.propertyType ? (
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-4">
-                Typ: {formatOfferPropertyType(data.propertyType, 'pl') || '—'}
-              </p>
             ) : null}
           </div>
         </motion.div>
@@ -488,22 +647,41 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-            <div>
-              <label className={labelPremium}>Liczba Pokoi</label>
-              <div className={inputWrapper}>
-                <BedDouble className={iconGlow} size={20} />
-                <input type="number" value={data.rooms || ''} onChange={e => updateData({ rooms: e.target.value })} className={inputPremium} placeholder="Np. 3" />
+            {!isPlot ? (
+              <div>
+                <label className={labelPremium}>{ao.rooms}</label>
+                <div className={inputWrapper}>
+                  <BedDouble className={iconGlow} size={20} />
+                  <input type="number" value={data.rooms || ''} onChange={e => updateData({ rooms: e.target.value })} className={inputPremium} placeholder="Np. 3" />
+                </div>
               </div>
-            </div>
-            <div>
-              <label className={labelPremium}>Piętro / Liczba Pięter</label>
-              <div className={inputWrapper}>
-                <Layers className={iconGlow} size={20} />
-                <input value={data.floor || ''} onChange={e => updateData({ floor: e.target.value })} className={inputPremium} placeholder="Np. 2/4" />
+            ) : null}
+            {!isPlot ? (
+              <div>
+                <label className={labelPremium}>{ao.floor}</label>
+                <div className={inputWrapper}>
+                  <Layers className={iconGlow} size={20} />
+                  <select value={data.floor === 0 || data.floor === '0' ? '0' : (data.floor || '')} onChange={e => updateData({ floor: e.target.value })} className={`${inputPremium} appearance-none cursor-pointer`}>
+                    <option value="">—</option>
+                    <option value="0">{ao.floorGround}</option>
+                    {Array.from({ length: 30 }, (_, i) => String(i + 1)).map((floor) => (
+                      <option key={floor} value={floor}>{floor}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            ) : null}
+            {!isPlot ? (
+              <div>
+                <label className={labelPremium}>Liczba pięter</label>
+                <div className={inputWrapper}>
+                  <Layers className={iconGlow} size={20} />
+                  <input type="number" value={data.totalFloors || ''} onChange={e => updateData({ totalFloors: e.target.value })} className={inputPremium} placeholder="Np. 4" />
+                </div>
+              </div>
+            ) : null}
             <div>
-              <label className={labelPremium}>Rok Budowy</label>
+              <label className={labelPremium}>{ao.buildYearLabel}</label>
               <div className={inputWrapper}>
                 <Calendar className={iconGlow} size={20} />
                 <select value={data.year || ''} onChange={e => updateData({ year: e.target.value })} className={`${inputPremium} appearance-none cursor-pointer`}>
@@ -515,6 +693,30 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               </div>
             </div>
           </div>
+
+          {!isPlot ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+              <div>
+                <label className={labelPremium}>{ao.heatingTypeLabel}</label>
+                <div className={inputWrapper}>
+                  <Flame className={iconGlow} size={20} />
+                  <select value={data.heating || ''} onChange={(e) => updateData({ heating: e.target.value })} className={`${inputPremium} appearance-none cursor-pointer`}>
+                    <option value="">{ao.selectPlaceholder}</option>
+                    {HEATING_TYPES.map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={labelPremium}>{ao.furnishedLabel}</label>
+                <div className="flex gap-4">
+                  <button type="button" onClick={() => updateData({ isFurnished: true })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20'}`}>{ao.yes}</button>
+                  <button type="button" onClick={() => updateData({ isFurnished: false })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'bg-red-500/10 border-red-500 text-red-400' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20'}`}>{ao.no}</button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <label className={labelPremium}>{ao.adminFeeLabel}</label>
@@ -582,6 +784,30 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
+                <label className={labelPremium}>{ao.city}</label>
+                <div className={inputWrapper}>
+                  <MapPin className={iconGlow} size={20} />
+                  <input
+                    value={data.city || ''}
+                    onChange={(e) => updateData({ city: e.target.value })}
+                    className={inputPremium}
+                    placeholder={ao.cityPlaceholder}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelPremium}>{ao.district}</label>
+                <div className={inputWrapper}>
+                  <MapPin className={iconGlow} size={20} />
+                  <input
+                    value={data.district || ''}
+                    onChange={(e) => updateData({ district: e.target.value })}
+                    className={inputPremium}
+                    placeholder={ao.areaPlaceholder}
+                  />
+                </div>
+              </div>
+              <div>
                 <label className={labelPremium}>Nazwa ulicy</label>
                 <div className={inputWrapper}>
                   <MapPin className={iconGlow} size={20} />
@@ -624,6 +850,26 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             )}
           </div>
         </motion.div>
+
+        {isPolishOfferLocation ? (
+          <div ref={kwSectionRef} id="kw">
+            <AddOfferDocVerificationPanel
+              ao={ao}
+              inputPremium={inputPremium}
+              labelPremium={labelPremium}
+              propertyType={String(data.propertyType || 'FLAT')}
+              apartmentNumber={String(data.apartmentNumber || '')}
+              landRegistryNumber={normalizedLandRegistryNumber}
+              landRegistryValid={landRegistryValid}
+              hasLandRegistryInput={hasLandRegistryInput}
+              onApartmentChange={(value) => updateData({ apartmentNumber: value })}
+              onLandRegistryChange={(value) => updateData({ landRegistryNumber: normalizeLandRegistryInput(value) })}
+              landRegistryInputRef={landRegistryInputRef}
+              kwLocked={kwLocked}
+              legalStatus={legalStatus}
+            />
+          </div>
+        ) : null}
 
         {/* --- MULTIMEDIA --- */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className={glassPanel}>
@@ -730,6 +976,32 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             </div>
           </div>
           <textarea value={data.description || ''} onChange={e => updateData({ description: e.target.value })} className={`${inputPremium} min-h-[250px] resize-y leading-relaxed pl-5`} placeholder="Opisz wszystkie atuty swojej nieruchomości. Dobry opis to klucz do sukcesu..." />
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }} className={glassPanel}>
+          <div className="flex items-center gap-4 mb-6 border-b border-white/5 pb-6">
+            <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-amber-500/20 to-amber-900/20 flex items-center justify-center border border-amber-500/30">
+              <DoorOpen className="text-amber-400" size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">
+                {crmPro?.openHouseTitle || 'Dzień otwartych drzwi'}
+              </h2>
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">
+                {crmPro?.auctionTitle || 'Licytacje'} · CRM
+              </p>
+            </div>
+          </div>
+          <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+            {crmPro?.openHouseSubtitle || 'Terminy dni otwartych i licytacji ustawiasz w CRM — nie w tym formularzu.'}
+          </p>
+          <a
+            href={`/moje-konto/crm?return=/edytuj-oferte/${offerId}`}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-amber-300 hover:bg-amber-500 hover:text-black transition-all"
+          >
+            <DoorOpen size={16} />
+            {eo.backToCrm}
+          </a>
         </motion.div>
 
       </div>

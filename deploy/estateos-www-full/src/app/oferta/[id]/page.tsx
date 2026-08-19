@@ -1,5 +1,5 @@
 "use client";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import PublicProfileModal from "@/components/PublicProfileModal";
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState, use } from "react";
@@ -24,6 +24,7 @@ import OfferShareLink from "@/components/offer/OfferShareLink";
 import OfferOwnerPublishPanel from "@/components/offer/OfferOwnerPublishPanel";
 import OfferDiscountPriceHero from "@/components/offer/OfferDiscountPriceHero";
 import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryProSection";
+import OfferMarketAnalysis from "@/components/market/OfferMarketAnalysis";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import DiscoveryOfferExplainer from "@/components/discovery/DiscoveryOfferExplainer";
@@ -76,6 +77,7 @@ const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
   const { locale, dict } = useLocale();
+  const router = useRouter();
   const { formatOffer, pricePerSqmLabel, rate, preference } = useFormatOfferPrice();
   const t = getOfferPageCopy(locale);
   const priceFormatted = formatOffer(offer);
@@ -750,6 +752,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 onOpenProfile={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
                 onAsk={() => setIsGuestAskOpen(true)}
                 onOpenHousePress={openOpenHouseModal}
+                onLegalShieldPress={() => router.push(`/edytuj-oferte/${offer?.id || offer?._id}?focus=kw`)}
               />
 
             {showAuctionBanner && auctionEvent ? (
@@ -906,6 +909,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   onOpenProfile={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
                   onAsk={() => setIsGuestAskOpen(true)}
                   onOpenHousePress={openOpenHouseModal}
+                onLegalShieldPress={() => router.push(`/edytuj-oferte/${offer?.id || offer?._id}?focus=kw`)}
                 />
               </div>
             ) : null}
@@ -1124,6 +1128,19 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   offerId={Number(offer.id ?? offer._id)}
                   enabled={Boolean(isPro && !isLocked)}
                 />
+                {!isLocked ? (
+                  <OfferMarketAnalysis
+                    lat={Number(offer.lat)}
+                    lng={Number(offer.lng)}
+                    area={numericArea || null}
+                    rooms={Number(offer.rooms) || null}
+                    floor={Number(offer.floor) || null}
+                    city={cityRaw || "Warszawa"}
+                    district={districtSpecified ? districtRaw : null}
+                    address={[streetRaw, cityRaw].filter(Boolean).join(", ")}
+                    price={plnResolved?.displayAmount || listingPrice.plnAmount || listingPrice.amount || null}
+                  />
+                ) : null}
 
             </div>
           </div>
