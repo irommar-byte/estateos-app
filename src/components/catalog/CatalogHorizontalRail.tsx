@@ -19,6 +19,8 @@ export type CatalogRailItem = {
   subtitle?: string;
   imageUrl?: string | null;
   priceLabel?: string;
+  badge?: string;
+  badgeTone?: 'good' | 'fair' | 'high' | 'low';
 };
 
 export type CatalogRailSection = {
@@ -305,6 +307,27 @@ export default function CatalogHorizontalRail({
                           colors={['transparent', 'rgba(0,0,0,0.22)']}
                           style={styles.imageBottomShade}
                         />
+                        {item.badge ? (
+                          <View
+                            style={[
+                              styles.tapeBadge,
+                              {
+                                backgroundColor:
+                                  item.badgeTone === 'high'
+                                    ? 'rgba(239,68,68,0.92)'
+                                    : item.badgeTone === 'low'
+                                      ? 'rgba(14,165,233,0.92)'
+                                      : item.badgeTone === 'fair'
+                                        ? 'rgba(245,158,11,0.92)'
+                                        : 'rgba(16,185,129,0.92)',
+                              },
+                            ]}
+                          >
+                            <Text style={styles.tapeBadgeText} numberOfLines={1}>
+                              {item.badge}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                       <View style={styles.cardBody}>
                         <Text
@@ -496,6 +519,7 @@ const styles = StyleSheet.create({
     width: '100%',
     overflow: 'hidden',
     backgroundColor: '#1E293B',
+    position: 'relative',
   },
   image: { width: '100%', height: '100%' },
   imageFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -512,6 +536,22 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: '28%',
+  },
+  tapeBadge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    maxWidth: '86%',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  tapeBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   cardBody: { paddingHorizontal: 11, paddingVertical: 10, gap: 2 },
   cardTitle: { fontWeight: '700', letterSpacing: -0.2 },

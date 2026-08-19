@@ -30,6 +30,7 @@ import {
 import SlidingIconSegment from '../catalog/SlidingIconSegment';
 import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
+import { fetchListingTape, formatTapeDelta } from '../../services/marketService';
 import ApplePressable from '../ApplePressable';
 import MarketUnreadQuickReplyBubble from '../messaging/MarketUnreadQuickReplyBubble';
 import DiscoveryForYouRail from '../discovery/DiscoveryForYouRail';
@@ -250,6 +251,7 @@ export default function RadarOfferGallery({
   const isTabletLike = width >= 600;
   const [viewMode, setViewMode] = useState<GalleryViewMode>(isTabletLike ? 'grid' : 'cover');
   const [railDensity, setRailDensity] = useState<CatalogRailDensity>('comfortable');
+  const [deedTapeItems, setDeedTapeItems] = useState<CatalogRailItem[]>([]);
   const [page, setPage] = useState(1);
   const horizontalPad = 20;
   /** Cover = duże karty. Siatka (4 kwadraty) = 2 kolumny. Lista (3 kreski) = 3 kolumny, gęściej. */
@@ -337,6 +339,37 @@ export default function RadarOfferGallery({
       );
   }, [featuredOffersProp, offers]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (transactionFilter === 'RENT' || countryFilter === 'ABROAD') {
+      setDeedTapeItems([]);
+      return;
+    }
+    void fetchListingTape(locale)
+      .then((items) => {
+        if (cancelled) return;
+        setDeedTapeItems(
+          items.map((row) => ({
+            id: row.id,
+            title: String(row.title || 'Oferta'),
+            subtitle: row.marketTape
+              ? `${formatTapeDelta(row.marketTape.vsMedianPct, locale)} · ${row.marketTape.listingPpsm.toLocaleString('pl-PL')} zł/m²`
+              : undefined,
+            imageUrl: row.imageUrl,
+            priceLabel: formatPrice(row as unknown as Record<string, unknown>).primary,
+            badge: row.marketTape ? formatTapeDelta(row.marketTape.vsMedianPct, locale) : undefined,
+            badgeTone: row.marketTape?.tone,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setDeedTapeItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locale, transactionFilter, countryFilter, formatPrice]);
+
   const marketRailSections = useMemo(() => {
     const toHome = (item: GalleryOffer | CatalogRailItem & { raw?: Record<string, unknown>; lat?: number; lng?: number }) => {
       if ('raw' in item && item.raw) {
@@ -395,17 +428,24 @@ export default function RadarOfferGallery({
     const catalog = offers.map(toHome);
     void favFromIds;
 
+    const showDeedTape =
+      transactionFilter !== 'RENT' &&
+      countryFilter !== 'ABROAD' &&
+      (propertyFilter === 'ALL' || propertyFilter === 'FLAT');
+
     return buildHomeMarketRailSections({
       favorites,
       mine,
       catalog,
       userLocation,
+      deedTape: showDeedTape ? deedTapeItems : [],
       labels: {
         favorites: t('radar.home.galleryRailFavorites'),
         mine: t('radar.home.galleryRailMine'),
         newest: t('radar.home.galleryRailNewest'),
         nearest: t('radar.home.galleryRailNearest'),
         discounted: t('radar.home.galleryRailDiscounted'),
+        nearDeeds: t('radar.home.galleryRailNearDeeds'),
         flats: t('radar.home.galleryRailFlats'),
         houses: t('radar.home.galleryRailHouses'),
         plots: t('radar.home.galleryRailPlots'),
@@ -414,7 +454,18 @@ export default function RadarOfferGallery({
         mineEmpty: t('radar.home.galleryRailMineEmpty'),
       },
     });
-  }, [offers, favoriteRailItems, mineRailItems, userLocation, formatPrice, t]);
+  }, [
+    offers,
+    favoriteRailItems,
+    mineRailItems,
+    userLocation,
+    formatPrice,
+    t,
+    deedTapeItems,
+    transactionFilter,
+    countryFilter,
+    propertyFilter,
+  ]);
 
   useEffect(() => {
     setPage(1);

@@ -74,6 +74,7 @@ type HomeLabels = {
   newest: string;
   nearest: string;
   discounted: string;
+  nearDeeds: string;
   flats: string;
   houses: string;
   plots: string;
@@ -88,8 +89,9 @@ export function buildHomeMarketRailSections(args: {
   catalog: HomeRailOffer[];
   userLocation: Loc;
   labels: HomeLabels;
+  deedTape?: CatalogRailItem[];
 }): CatalogRailSection[] {
-  const { favorites, mine, catalog, userLocation, labels } = args;
+  const { favorites, mine, catalog, userLocation, labels, deedTape = [] } = args;
 
   const newest = [...catalog]
     .sort((a, b) => publishedAtMs(b.raw) - publishedAtMs(a.raw))
@@ -155,6 +157,13 @@ export function buildHomeMarketRailSections(args: {
       icon: 'sparkles',
       accent: '#6366F1',
       items: newest,
+    },
+    {
+      id: 'near-deeds',
+      title: labels.nearDeeds,
+      icon: 'analytics',
+      accent: '#10b981',
+      items: deedTape,
     },
     {
       id: 'nearest',

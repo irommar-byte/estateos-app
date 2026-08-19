@@ -78,3 +78,45 @@ export function formatPln(n: number) {
 export function formatPpsm(n: number) {
   return `${Math.round(n).toLocaleString('pl-PL')} zł/m²`;
 }
+
+export function formatTapeDelta(vsMedianPct: number, locale: string): string {
+  if (!Number.isFinite(vsMedianPct)) return '';
+  if (Math.abs(vsMedianPct) < 3) {
+    if (locale === 'en') return 'at deed prices';
+    if (locale === 'ru') return 'у актов';
+    return 'przy aktach';
+  }
+  const n = Math.abs(Math.round(vsMedianPct));
+  const sign = vsMedianPct > 0 ? '+' : '−';
+  if (locale === 'en') return `${sign}${n}% vs deeds`;
+  if (locale === 'ru') return `${sign}${n}% vs акты`;
+  return `${sign}${n}% vs akty`;
+}
+
+export type ListingTapeItem = {
+  id: number;
+  title?: string | null;
+  imageUrl?: string | null;
+  city?: string | null;
+  district?: string | null;
+  area?: number | null;
+  price?: number | null;
+  pricePln?: number | null;
+  marketTape?: {
+    vsMedianPct: number;
+    listingPpsm: number;
+    medianPpsm: number;
+    score: number;
+    tone: 'good' | 'fair' | 'high' | 'low';
+    label: string;
+    district: string;
+  };
+};
+
+export async function fetchListingTape(locale: string): Promise<ListingTapeItem[]> {
+  const res = await fetch(
+    `${API_URL}/api/market/listing-tape?locale=${encodeURIComponent(locale)}&limit=48`,
+  );
+  const json = await res.json().catch(() => ({}));
+  return Array.isArray(json?.items) ? (json.items as ListingTapeItem[]) : [];
+}

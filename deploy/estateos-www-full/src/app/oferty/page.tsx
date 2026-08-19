@@ -16,6 +16,7 @@ import {
   Loader2,
   MapPin,
   Navigation,
+  Scale,
   Search,
   Sparkles,
   Store,
@@ -57,6 +58,8 @@ import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
 import { computePriceDiscountPercent } from "@/lib/offerPriceHistoryShared";
+import { canonicalizeCity } from "@/lib/location/locationCatalog";
+import { formatTapeDelta } from "@/lib/market/format";
 
 type CatalogOffer = {
   id: number;
@@ -85,6 +88,15 @@ type CatalogOffer = {
   lng?: number | null;
   isDiscounted?: boolean | null;
   priceDiscountPercent?: number | null;
+  marketTape?: {
+    vsMedianPct: number;
+    listingPpsm: number;
+    medianPpsm: number;
+    score: number;
+    tone: "good" | "fair" | "high" | "low";
+    label: string;
+    district: string;
+  } | null;
 };
 
 type PropertyRailKey = "FLAT" | "HOUSE" | "PLOT" | "COMMERCIAL";
@@ -172,6 +184,7 @@ export default function CatalogPage() {
   const [propertyTypeFilter, setPropertyTypeFilter] = useState<CatalogPropertyTypeFilter>("ALL");
   const [strictCityDistricts, setStrictCityDistricts] = useState<Record<string, string[]>>({});
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [deedTape, setDeedTape] = useState<CatalogOffer[]>([]);
   const { location, denied, pending, request } = useUserLocation();
 
   const accent = transactionMode;
@@ -209,6 +222,13 @@ export default function CatalogPage() {
     discounted:
       locale === "en" ? "Discounted" : locale === "uk" ? "Зі знижкою" : "Przecenione",
     mine: locale === "en" ? "My listings" : locale === "uk" ? "Мої" : "Moje",
+    nearDeeds: locale === "en" ? "At deed prices" : locale === "uk" ? "Біля актів" : "Przy aktach",
+    nearDeedsLead:
+      locale === "en"
+        ? "Closest to RCN transaction prices → most overpriced vs deeds"
+        : locale === "uk"
+          ? "Від найближчих до цін угод RCN до найбільш завищених"
+          : "Od najbliższych cenom z aktów RCN do najbardziej przewartościowanych",
     filtersEyebrow:
       locale === "en" ? "Search" : locale === "uk" ? "Пошук" : "Parametry wyszukiwania",
     filtersTitle:
@@ -303,6 +323,23 @@ export default function CatalogPage() {
 
   useEffect(() => {
     let cancelled = false;
+    fetch(`/api/market/listing-tape?locale=${encodeURIComponent(locale)}&limit=48`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const items = Array.isArray(json?.items) ? (json.items as CatalogOffer[]) : [];
+        setDeedTape(items);
+      })
+      .catch(() => {
+        if (!cancelled) setDeedTape([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+
+  useEffect(() => {
+    let cancelled = false;
     fetch("/api/location/districts", { cache: "no-store" })
       .then((res) => res.json())
       .then((json) => {
@@ -378,6 +415,17 @@ export default function CatalogPage() {
   );
 
   const newestOffers = useMemo(() => sortByNewest(browseOffers), [browseOffers]);
+  const visibleDeedTape = useMemo(() => {
+    if (transactionMode !== "sale") return [];
+    if (propertyTypeFilter !== "ALL" && propertyTypeFilter !== "FLAT") return [];
+    if (locationFilter.countryCode && locationFilter.countryCode !== "PL") return [];
+    if (locationFilter.city && canonicalizeCity(locationFilter.city) !== "Warszawa") return [];
+    if (!locationFilter.district) return deedTape;
+    const want = locationFilter.district.trim().toLowerCase();
+    return deedTape.filter(
+      (offer) => String(offer.marketTape?.district || offer.district || "").toLowerCase() === want,
+    );
+  }, [deedTape, transactionMode, propertyTypeFilter, locationFilter]);
   const favoriteOffers = useMemo(() => {
     const rows = (favoriteOfferRecords as CatalogOffer[]).filter(
       (offer) => normalizeTransactionType(offer.transactionType) === transactionMode,
@@ -431,7 +479,7 @@ export default function CatalogPage() {
     [featuredOffers, labels, formatOffer, dict.homePremium.pricePerMonth, railTitles.featured],
   );
 
-  const railCard = (offer: CatalogOffer, opts?: { showDistance?: boolean }) => {
+  const railCard = (offer: CatalogOffer, opts?: { showDistance?: boolean; showTape?: boolean }) => {
     const showNewBadge = isOfferNew(offer.createdAt);
     const distance = distanceByOfferId.get(offer.id);
     return (
@@ -500,6 +548,21 @@ export default function CatalogPage() {
               {formatDistanceKm(distance, locale)}
             </span>
           ) : null}
+          {opts?.showTape && offer.marketTape ? (
+            <span
+              className={`absolute right-3 z-10 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-widest backdrop-blur-md ${
+                offer.marketTape.tone === "good"
+                  ? "border-emerald-400/50 bg-emerald-500/90 text-black"
+                  : offer.marketTape.tone === "high"
+                    ? "border-red-400/50 bg-red-500/90 text-white"
+                    : offer.marketTape.tone === "low"
+                      ? "border-sky-400/50 bg-sky-500/90 text-black"
+                      : "border-amber-400/50 bg-amber-500/90 text-black"
+              } ${opts?.showDistance && distance != null ? "bottom-12" : "bottom-3"}`}
+            >
+              {formatTapeDelta(offer.marketTape.vsMedianPct, locale)}
+            </span>
+          ) : null}
         </div>
         <div className="space-y-2 p-4">
           <p className={`text-[11px] font-black uppercase tracking-[0.12em] ${accentText}`}>
@@ -511,6 +574,13 @@ export default function CatalogPage() {
           <p className={`text-base font-bold tabular-nums ${accentPrice}`}>
             {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
           </p>
+          {opts?.showTape && offer.marketTape ? (
+            <p className="text-[11px] tabular-nums text-[var(--eos-muted)]">
+              {offer.marketTape.listingPpsm.toLocaleString(locale === "en" ? "en-GB" : "pl-PL")} zł/m² ·{" "}
+              {locale === "en" ? "deeds" : locale === "uk" ? "акти" : "akty"}{" "}
+              {offer.marketTape.medianPpsm.toLocaleString(locale === "en" ? "en-GB" : "pl-PL")}
+            </p>
+          ) : null}
         </div>
       </Link>
     );
@@ -664,6 +734,20 @@ export default function CatalogPage() {
                   items={newestOffers}
                   getKey={(offer) => offer.id}
                   renderItem={(offer) => railCard(offer)}
+                />
+              </RailSection>
+            ) : null}
+
+            {visibleDeedTape.length > 0 ? (
+              <RailSection
+                title={railTitles.nearDeeds}
+                icon={Scale}
+                trailing={<span className="max-w-[22rem] text-right text-xs text-[var(--eos-muted)]">{railTitles.nearDeedsLead}</span>}
+              >
+                <InfiniteHorizontalRail
+                  items={visibleDeedTape}
+                  getKey={(offer) => offer.id}
+                  renderItem={(offer) => railCard(offer, { showTape: true })}
                 />
               </RailSection>
             ) : null}
