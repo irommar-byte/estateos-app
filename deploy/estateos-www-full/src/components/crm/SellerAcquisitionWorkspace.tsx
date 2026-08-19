@@ -32,6 +32,23 @@ import MarketValuationPanel from "@/components/market/MarketValuationPanel";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { COMMISSION_RATE_DEFAULT } from "@/lib/leadTransferShared";
 import { PROPERTY_AMENITIES } from "@/lib/crm/clientJourney";
+import { getDistrictsForCity } from "@/lib/location/locationCatalog";
+
+const OFFER_CITIES = [
+  "Warszawa",
+  "Kraków",
+  "Wrocław",
+  "Poznań",
+  "Łódź",
+  "Lublin",
+  "Gdańsk",
+  "Gdynia",
+  "Sopot",
+  "Katowice",
+  "Rybnik",
+  "Białystok",
+  "Zamość",
+];
 
 type SellerClient = {
   id: number;
@@ -211,6 +228,49 @@ export default function SellerAcquisitionWorkspace({
   ) => {
     if (!form || signed) return;
     setForm({ ...form, [section]: { ...(form[section] as object), ...patch } });
+  };
+
+  const applyPropertyAddress = async (
+    value: string,
+    meta?: { city?: string; lat?: number; lng?: number },
+  ) => {
+    if (!form || signed) return;
+    const lat = meta?.lat;
+    const lng = meta?.lng;
+    updateSection("property", {
+      address: value,
+      city: meta?.city || form.property.city,
+      lat: lat != null ? String(lat) : form.property.lat,
+      lng: lng != null ? String(lng) : form.property.lng,
+    });
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    try {
+      const qs = new URLSearchParams({
+        lat: String(lat),
+        lng: String(lng),
+        streetHint: value,
+      });
+      if (meta?.city) qs.set("preferredCity", meta.city);
+      const response = await fetch(`/api/location/reverse?${qs.toString()}`);
+      const json = await response.json();
+      if (!response.ok) return;
+      setForm((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          property: {
+            ...current.property,
+            address: value,
+            city: String(json.city || meta?.city || current.property.city || ""),
+            district: String(json.district || current.property.district || ""),
+            lat: String(lat),
+            lng: String(lng),
+          },
+        };
+      });
+    } catch {
+      /* keep manual city/district */
+    }
   };
 
   const save = async (targetStep = step, status = "IN_MEETING") => {
@@ -443,18 +503,38 @@ export default function SellerAcquisitionWorkspace({
             <AddressSuggestInput
               label="Pełny adres nieruchomości"
               value={form.property.address}
-              onChange={(value, meta) =>
-                updateSection("property", {
-                  address: value,
-                  city: meta?.city || form.property.city,
-                  lat: meta?.lat != null ? String(meta.lat) : form.property.lat,
-                  lng: meta?.lng != null ? String(meta.lng) : form.property.lng,
-                })
-              }
+              onChange={(value, meta) => void applyPropertyAddress(value, meta)}
               placeholder="Ulica, numer, miasto"
               disabled={signed}
             />
             </div>
+            <ChipRow
+              label="Miasto"
+              options={OFFER_CITIES}
+              value={form.property.city}
+              onChange={(value) => {
+                const districts = getDistrictsForCity(value);
+                updateSection("property", {
+                  city: value,
+                  district: districts.includes(form.property.district) ? form.property.district : "",
+                });
+              }}
+            />
+            {getDistrictsForCity(form.property.city).length > 0 ? (
+              <ChipRow
+                label="Dzielnica"
+                options={getDistrictsForCity(form.property.city)}
+                value={form.property.district}
+                onChange={(value) => updateSection("property", { district: value })}
+              />
+            ) : (
+              <Field
+                label="Dzielnica / miejscowość"
+                value={form.property.district}
+                onChange={(value) => updateSection("property", { district: value, city: form.property.city || "Reszta kraju" })}
+                placeholder="Wykrywana z mapy — możesz poprawić"
+              />
+            )}
             <div className="sm:col-span-2 lg:col-span-3">
               <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">Przyległości i dodatki</p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -520,6 +600,7 @@ export default function SellerAcquisitionWorkspace({
               rooms={Number(String(form.property.rooms || "").replace(/\s/g, "")) || null}
               floor={Number(String(form.property.floor || "").replace(/\s/g, "")) || null}
               city={form.property.city || "Warszawa"}
+              district={form.property.district || undefined}
               address={form.property.address}
               listingPrice={Number(String(form.strategy.expectedPrice || "").replace(/\s/g, "").replace(",", ".")) || null}
               purpose="crm"

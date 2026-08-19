@@ -11,16 +11,19 @@ export default function AcquisitionStepIndicator({
   steps,
   currentStep,
   completedSteps = [],
+  errorSteps = [],
   onSelectStep,
   isDark,
 }: {
   steps: StepItem[];
   currentStep: number;
   completedSteps?: number[];
+  errorSteps?: number[];
   onSelectStep: (stepId: number) => void;
   isDark?: boolean;
 }) {
   const activeColor = '#34C759'; // Apple Green
+  const errorColor = '#FF3B30';
   const mutedBorder = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
   const mutedBg = isDark ? '#2C2C2E' : '#E5E5EA';
   const mutedText = isDark ? '#8E8E93' : '#8E8E93';
@@ -32,7 +35,22 @@ export default function AcquisitionStepIndicator({
         {steps.map((step, index) => {
           const isActive = step.id === currentStep;
           const isDone = completedSteps.includes(step.id) || step.id < currentStep;
+          const isError = errorSteps.includes(step.id);
           const showLine = index < steps.length - 1;
+          const ring = isError ? errorColor : isActive || isDone ? activeColor : mutedBorder;
+          const fill = isError
+            ? isActive
+              ? errorColor
+              : isDark
+                ? 'rgba(255,59,48,0.18)'
+                : 'rgba(255,59,48,0.12)'
+            : isActive
+              ? activeColor
+              : isDone
+                ? isDark
+                  ? 'rgba(52,199,89,0.2)'
+                  : 'rgba(52,199,89,0.12)'
+                : mutedBg;
 
           return (
             <React.Fragment key={step.id}>
@@ -41,19 +59,19 @@ export default function AcquisitionStepIndicator({
                   style={[
                     styles.circle,
                     {
-                      borderColor: isActive ? activeColor : isDone ? activeColor : mutedBorder,
-                      backgroundColor: isActive ? activeColor : isDone ? (isDark ? 'rgba(52,199,89,0.2)' : 'rgba(52,199,89,0.12)') : mutedBg,
+                      borderColor: ring,
+                      backgroundColor: fill,
                     },
                   ]}
                 >
-                  {isDone && !isActive ? (
+                  {isDone && !isActive && !isError ? (
                     <Ionicons name="checkmark" size={16} color={activeColor} />
                   ) : (
                     <Text
                       style={[
                         styles.circleText,
                         {
-                          color: isActive ? '#000' : isDone ? activeColor : mutedText,
+                          color: isActive ? '#000' : isError ? errorColor : isDone ? activeColor : mutedText,
                           fontWeight: isActive ? '900' : '700',
                         },
                       ]}
@@ -68,8 +86,8 @@ export default function AcquisitionStepIndicator({
                   style={[
                     styles.title,
                     {
-                      color: isActive ? activeColor : isDone ? textColor : mutedText,
-                      fontWeight: isActive ? '800' : '600',
+                      color: isError ? errorColor : isActive ? activeColor : isDone ? textColor : mutedText,
+                      fontWeight: isActive || isError ? '800' : '600',
                     },
                   ]}
                 >

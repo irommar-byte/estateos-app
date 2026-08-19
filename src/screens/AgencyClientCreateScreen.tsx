@@ -73,6 +73,7 @@ export default function AgencyClientCreateScreen() {
   const [address, setAddress] = useState<AcquisitionAddressValue>({
     address: '',
     city: null,
+    district: null,
     lat: null,
     lng: null,
   });
@@ -131,7 +132,7 @@ export default function AgencyClientCreateScreen() {
                 if (parsed.form) setForm((current) => ({ ...current, ...parsed.form }));
                 if (parsed.type) setType(parsed.type);
                 if (parsed.alsoSearching !== undefined) setAlsoSearching(parsed.alsoSearching);
-                if (parsed.address) setAddress(parsed.address);
+                if (parsed.address) setAddress({ district: null, ...parsed.address });
                 if (Array.isArray(parsed.prepItems)) setPrepItems(parsed.prepItems);
                 if (parsed.buyerFilters) setBuyerFilters((current) => ({ ...current, ...parsed.buyerFilters }));
               },
@@ -270,6 +271,7 @@ export default function AgencyClientCreateScreen() {
         setAddress({
           address: label || address.address,
           city: draft.city || address.city,
+          district: draft.district || address.district,
           lat: draft.lat ?? address.lat,
           lng: draft.lng ?? address.lng,
         });
@@ -294,8 +296,8 @@ export default function AgencyClientCreateScreen() {
         notes: form.comments.trim() || null,
         ...(type === 'SELLER'
           ? {
-              sellerCity: address.address || form.sellerCity || null,
-              sellerDistrict: address.city || null,
+              sellerCity: address.city || form.sellerCity || null,
+              sellerDistrict: address.district || null,
               sellerPrice: form.sellerPrice ? parseGroupedNumber(form.sellerPrice) : null,
               listingUrl: form.listingUrl.trim() || null,
               prepItems,
@@ -467,7 +469,7 @@ export default function AgencyClientCreateScreen() {
                   value={address}
                   onChange={(next) => {
                     setAddress(next);
-                    setForm((current) => ({ ...current, sellerCity: next.address }));
+                    setForm((current) => ({ ...current, sellerCity: next.city || current.sellerCity }));
                   }}
                   isDark={isDark}
                 />

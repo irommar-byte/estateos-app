@@ -11,6 +11,8 @@ import {
   normalizeAcquisitionForm,
   type AcquisitionFormData,
 } from '@/lib/acquisitionWorkflow';
+import { validateCityDistrict } from '@/lib/location/locationCatalog';
+import { resolveOfferLocationFromCoordinates } from '@/lib/location/resolveOfferLocationFromCoordinates';
 
 export type ListingProgressStep = {
   id: 'signed' | 'draft' | 'photos' | 'published' | 'live';
@@ -157,7 +159,8 @@ export function seedAcquisitionForm(params: {
       property: {
         ...form.property,
         address: params.meeting?.location || form.property.address,
-        city: params.client.sellerDistrict || form.property.city,
+        city: params.client.sellerCity || form.property.city,
+        district: params.client.sellerDistrict || form.property.district,
         lat: params.lat != null ? String(params.lat) : form.property.lat,
         lng: params.lng != null ? String(params.lng) : form.property.lng,
       },
@@ -189,6 +192,7 @@ export async function createOfferFromAcquisitionRecord(params: {
   const form = (client.acquisition?.formData || {}) as Record<string, any>;
   const property = (form.property || {}) as Record<string, any>;
   const strategy = (form.strategy || {}) as Record<string, any>;
+  const ownership = (form.ownership || {}) as Record<string, any>;
   const coords = resolveAcquisitionCoords(property);
   if (!coords) {
     return {
@@ -197,13 +201,63 @@ export async function createOfferFromAcquisitionRecord(params: {
     };
   }
 
-  const city = resolveAcquisitionCity(property, client);
-  const districtRaw = String(client.sellerDistrict || '').trim();
-  const district = districtRaw && districtRaw !== city ? districtRaw : undefined;
+  const cityHint = resolveAcquisitionCity(property, client);
+  const districtHint = String(property.district || client.sellerDistrict || '').trim();
   const address = String(property.address || client.sellerCity || '').trim();
-  const areaVal = Number(property.area) || client.sellerArea || 50;
-  const roomsVal = Number(property.rooms) || client.sellerRooms || 2;
-  const priceVal = Number(String(strategy.expectedPrice || '').replace(/\s/g, '').replace(',', '.')) || client.sellerPrice || 500000;
+  const areaVal = Number(String(property.area || '').replace(/\s/g, '').replace(',', '.')) || client.sellerArea || 0;
+  const roomsVal = Number(property.rooms) || client.sellerRooms || 0;
+  const priceVal =
+    Number(String(strategy.expectedPrice || '').replace(/\s/g, '').replace(',', '.')) || client.sellerPrice || 0;
+  if (!(areaVal > 0)) {
+    return { ok: false, error: 'Uzupełnij powierzchnię w kroku „Nieruchomość”.' };
+  }
+  if (!(roomsVal > 0)) {
+    return { ok: false, error: 'Uzupełnij liczbę pokoi w kroku „Nieruchomość”.' };
+  }
+  if (!(priceVal > 0)) {
+    return { ok: false, error: 'Uzupełnij cenę oczekiwaną w kroku „Strategia”.' };
+  }
+
+  const userLocation = validateCityDistrict(cityHint, districtHint);
+  const resolvedFromPin = await resolveOfferLocationFromCoordinates({
+    lat: coords.lat,
+    lng: coords.lng,
+    preferredCity: cityHint || undefined,
+    streetHint: address || undefined,
+  });
+  let city = userLocation.city || cityHint;
+  let district = userLocation.district || districtHint;
+  if (userLocation.valid) {
+    city = userLocation.city;
+    district = userLocation.district;
+  } else if (resolvedFromPin?.validation.valid) {
+    city = resolvedFromPin.validation.city;
+    district = resolvedFromPin.validation.district;
+  } else if (resolvedFromPin && !resolvedFromPin.strictCity) {
+    const fallback = validateCityDistrict(
+      resolvedFromPin.city || cityHint,
+      resolvedFromPin.district || districtHint || 'Inny obszar',
+    );
+    if (!fallback.valid) {
+      return {
+        ok: false,
+        error:
+          fallback.message ||
+          userLocation.message ||
+          'Uzupełnij miasto i dzielnicę w kroku „Nieruchomość”.',
+      };
+    }
+    city = fallback.city;
+    district = fallback.district;
+  } else {
+    return {
+      ok: false,
+      error:
+        userLocation.message ||
+        resolvedFromPin?.validation.message ||
+        'Uzupełnij dzielnicę w kroku „Nieruchomość” — mapa wybierze ją sama po ustawieniu pinezki.',
+    };
+  }
   const amenityFlags = amenitiesToOfferFlags(property.amenities);
   const amenityLine = amenitiesSummary(property.amenities);
   const extraBits = [
@@ -244,6 +298,37 @@ export async function createOfferFromAcquisitionRecord(params: {
       ? JSON.stringify({ version: 2, roomScans })
       : null;
 
+  const kw = String(ownership.landRegisterNumber || '').trim().toUpperCase();
+  const landRegistryNumber = /^[A-Z]{2}[A-Z0-9]{2}\/\d{8}\/\d$/.test(kw) ? kw : undefined;
+
+  if (client.acquisition?.id) {
+    await prisma.agencyClientAcquisition.update({
+      where: { id: client.acquisition.id },
+      data: {
+        formData: {
+          ...form,
+          property: {
+            ...property,
+            city,
+            district,
+            lat: String(coords.lat),
+            lng: String(coords.lng),
+          },
+        },
+      },
+    }).catch(() => {});
+  }
+  await prisma.agencyClient.update({
+    where: { id: client.id },
+    data: {
+      sellerCity: city,
+      sellerDistrict: district,
+      sellerArea: areaVal,
+      sellerRooms: Math.round(roomsVal),
+      sellerPrice: priceVal,
+    },
+  }).catch(() => {});
+
   try {
     const createdOffer = await createOffer({
       userId: params.agencyUserId,
@@ -262,6 +347,7 @@ export async function createOfferFromAcquisitionRecord(params: {
       yearBuilt: property.yearBuilt ? Number(property.yearBuilt) : undefined,
       lat: coords.lat,
       lng: coords.lng,
+      landRegistryNumber,
       description:
         [property.advantages || client.sellerDescription || client.notes, extraBits.join('. ')].filter(Boolean).join('\n\n') ||
         'Oferta utworzona z karty pozyskania CRM EstateOS.',

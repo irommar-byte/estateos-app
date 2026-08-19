@@ -14,6 +14,7 @@ type Props = {
   theme: { text: string; subtitle: string };
   cardBg: string;
   cardBorder: string;
+  invalid?: boolean;
   showScrollHint?: boolean;
   scrollHintLabel?: string;
 };
@@ -28,6 +29,7 @@ export default function AddOfferWheelPickerColumn({
   theme,
   cardBg,
   cardBorder,
+  invalid = false,
   showScrollHint = false,
   scrollHintLabel = '',
 }: Props) {
@@ -51,7 +53,8 @@ export default function AddOfferWheelPickerColumn({
           styles.box,
           {
             backgroundColor: cardBg,
-            borderColor: cardBorder,
+            borderColor: invalid ? '#FF3B30' : cardBorder,
+            borderWidth: invalid ? 2 : 1,
           },
           disabled && styles.boxDisabled,
         ]}

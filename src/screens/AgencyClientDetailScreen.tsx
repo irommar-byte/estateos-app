@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Linking,
   Platform,
   Pressable,
@@ -10,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,6 +25,7 @@ import { useThemeStore } from '../store/useThemeStore';
 import CommissionRateSlider from '../components/agency/CommissionRateSlider';
 import SignaturePad from '../components/agency/SignaturePad';
 import AcquisitionStepIndicator from '../components/agency/AcquisitionStepIndicator';
+import AcquisitionGuideChrome from '../components/agency/AcquisitionGuideChrome';
 import AcquisitionDatePickerModal from '../components/agency/AcquisitionDatePickerModal';
 import AcquisitionAddressMapField from '../components/agency/AcquisitionAddressMapField';
 import AcquisitionRoomScanner, { type RoomItem } from '../components/agency/AcquisitionRoomScanner';
@@ -59,15 +62,19 @@ import {
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
 import type { WholePropertyScan } from '../types/roomScan';
 import MarketValuationCard from '../components/market/MarketValuationCard';
+import {
+  ACQUISITION_GUIDE_STEPS,
+  acquisitionOfferErrorKeys,
+  acquisitionOfferErrorSteps,
+  findAcquisitionOfferGaps,
+} from '../lib/acquisitionOfferReady';
 
-const STEPS = [
-  { id: 1, title: 'Spotkanie' },
-  { id: 2, title: 'Stan prawny' },
-  { id: 3, title: 'Nieruchomość' },
-  { id: 4, title: 'Strategia' },
-  { id: 5, title: 'Współpraca' },
-  { id: 6, title: 'Podpis' },
-];
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const STEPS = ACQUISITION_GUIDE_STEPS.map((item) => ({ id: item.id, title: item.title }));
+const ERROR_RED = '#FF3B30';
 
 const ROOM_OPTIONS = ['', ...Array.from({ length: 10 }, (_, i) => String(i + 1))].map((value) => ({
   value,
@@ -215,13 +222,13 @@ export default function AgencyClientDetailScreen() {
   };
 
   const [creatingOffer, setCreatingOffer] = useState(false);
+  const [showOfferErrors, setShowOfferErrors] = useState(false);
 
   const DRAFT_KEY = `@eos_acq_detail_draft_${clientId}`;
   const savedSnapshotRef = useRef('');
   const hydratedRef = useRef(false);
   const draftPromptedRef = useRef(false);
   const persistInFlightRef = useRef(false);
-  const queuedPersistRef = useRef(false);
   const formRef = useRef<AcquisitionFormData | null>(null);
   const stepRef = useRef(1);
   const signedRef = useRef(false);
@@ -230,17 +237,35 @@ export default function AgencyClientDetailScreen() {
 
   const handleCreateOfferFromAcquisition = async () => {
     if (!token || !client?.id) return;
+    const gaps = findAcquisitionOfferGaps(formRef.current);
+    if (gaps.length) {
+      setShowOfferErrors(true);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setStep(gaps[0].step);
+      Alert.alert(
+        'Oferta z karty',
+        `Uzupełnij pola podświetlone na czerwono: ${gaps.map((item) => item.label).join(', ')}.`,
+      );
+      return;
+    }
     setCreatingOffer(true);
     try {
+      const saved = await persist(stepRef.current, { silent: true });
+      if (!saved) {
+        Alert.alert('Oferta z karty', 'Nie udało się zapisać karty przed utworzeniem oferty.');
+        return;
+      }
       const res = await createOfferFromAcquisition(token, client.id);
       if (!res.ok) {
+        setShowOfferErrors(true);
         Alert.alert('Oferta z karty', res.message);
         return;
       }
+      setShowOfferErrors(false);
       Alert.alert(
         'Oferta utworzona!',
         `Nowa oferta #${res.offerId} została pomyślnie utworzona z danych karty pozyskania i przypisana do klienta.`,
-        [{ text: 'OK', onPress: () => void load() }]
+        [{ text: 'OK', onPress: () => void load() }],
       );
     } finally {
       setCreatingOffer(false);
@@ -492,16 +517,15 @@ export default function AgencyClientDetailScreen() {
     };
   }, [clientId, rooms, signed, token, wholePropertyScan]);
 
-  const expectedPrice = parseGroupedNumber(form?.strategy?.expectedPrice);
-  const commissionValue = parseGroupedNumber(form?.cooperation?.commissionValue) || 2.5;
+  const expectedPrice = parseGroupedNumber(String(form?.strategy?.expectedPrice ?? ''));
+  const commissionValue = parseGroupedNumber(String(form?.cooperation?.commissionValue ?? '')) || 2.5;
 
-  const persist = async (nextStep = stepRef.current, opts?: { silent?: boolean }) => {
+  const persist = async (nextStep = stepRef.current, opts?: { silent?: boolean }): Promise<boolean> => {
     const silent = Boolean(opts?.silent);
     const currentForm = formRef.current;
-    if (!token || !currentForm || signedRef.current) return;
-    if (persistInFlightRef.current) {
-      queuedPersistRef.current = true;
-      return;
+    if (!token || !currentForm || signedRef.current) return true;
+    while (persistInFlightRef.current) {
+      await new Promise((resolve) => setTimeout(resolve, 60));
     }
     persistInFlightRef.current = true;
     if (!silent) setBusy('save');
@@ -513,19 +537,19 @@ export default function AgencyClientDetailScreen() {
       });
       if (!res.ok) {
         if (!silent) Alert.alert('Pozyskanie', res.message);
-        return;
+        return false;
       }
       savedSnapshotRef.current = acquisitionSnapshot(currentForm, nextStep);
       await AsyncStorage.removeItem(DRAFT_KEY);
       setRecord(res.acquisition);
-      if (nextStep !== stepRef.current) setStep(nextStep);
+      if (nextStep !== stepRef.current) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setStep(nextStep);
+      }
+      return true;
     } finally {
       persistInFlightRef.current = false;
       if (!silent) setBusy('');
-      if (queuedPersistRef.current) {
-        queuedPersistRef.current = false;
-        void persist(stepRef.current, { silent: true });
-      }
     }
   };
 
@@ -559,6 +583,14 @@ export default function AgencyClientDetailScreen() {
   const lngNum = Number(String(form?.property?.lng || '').replace(',', '.'));
   const roomsNum = parseGroupedNumber(form?.property?.rooms);
   const floorNum = parseGroupedNumber(form?.property?.floor);
+  const offerGaps = findAcquisitionOfferGaps(form);
+  const errorKeys = showOfferErrors ? acquisitionOfferErrorKeys(offerGaps) : new Set<string>();
+  const errorSteps = showOfferErrors ? acquisitionOfferErrorSteps(offerGaps) : [];
+
+  const goToStep = (next: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setStep(next);
+  };
 
   const runAction = async (name: 'prepare_terms' | 'send_preview' | 'sign') => {
     if (!token || !form) return;
@@ -608,9 +640,10 @@ export default function AgencyClientDetailScreen() {
     extra?: { address?: boolean; isDate?: boolean; isKW?: boolean }
   ) => {
     const value = String((form?.[section] as Record<string, unknown>)?.[key] || '');
+    const invalid = errorKeys.has(`${section}.${key}`);
     return (
       <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>{label}</Text>
+        <Text style={{ color: invalid ? ERROR_RED : colors.secondary, fontSize: 11, fontWeight: '800' }}>{label}</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
           <TextInput
             editable={!signed}
@@ -621,7 +654,15 @@ export default function AgencyClientDetailScreen() {
                 setAddressHints(await suggestAddresses(token, text));
               }
             }}
-            style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+            style={[
+              styles.input,
+              {
+                flex: 1,
+                backgroundColor: colors.input,
+                color: colors.text,
+                borderColor: invalid ? ERROR_RED : colors.border,
+              },
+            ]}
           />
           {extra?.isDate && (
             <Pressable
@@ -664,9 +705,10 @@ export default function AgencyClientDetailScreen() {
     const value = String((form?.[section] as Record<string, unknown>)?.[key] || '');
     const numeric = parseGroupedNumber(value);
     const display = money ? (value ? formatPriceInput(String(numeric || value)) : '') : value;
+    const invalid = errorKeys.has(`${section}.${key}`);
     return (
       <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>{label}</Text>
+        <Text style={{ color: invalid ? ERROR_RED : colors.secondary, fontSize: 11, fontWeight: '800' }}>{label}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
           <Pressable
             disabled={signed}
@@ -679,7 +721,7 @@ export default function AgencyClientDetailScreen() {
                   : current
               )
             }
-            style={[styles.stepBtn, { borderColor: colors.border }]}
+            style={[styles.stepBtn, { borderColor: invalid ? ERROR_RED : colors.border }]}
           >
             <Ionicons name="remove" size={18} color={colors.text} />
           </Pressable>
@@ -694,7 +736,13 @@ export default function AgencyClientDetailScreen() {
             }
             style={[
               styles.input,
-              { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border, textAlign: 'center' },
+              {
+                flex: 1,
+                backgroundColor: colors.input,
+                color: colors.text,
+                borderColor: invalid ? ERROR_RED : colors.border,
+                textAlign: 'center',
+              },
             ]}
           />
           <Pressable
@@ -1146,6 +1194,11 @@ export default function AgencyClientDetailScreen() {
                           Utwórz ofertę z karty pozyskania
                         </Text>
                       </Pressable>
+                      {showOfferErrors && offerGaps.length > 0 ? (
+                        <Text style={{ color: ERROR_RED, fontSize: 12, fontWeight: '700', marginTop: 8 }}>
+                          Brakuje: {offerGaps.map((item) => item.label).join(', ')}. Kroki i pola podświetlone na czerwono.
+                        </Text>
+                      ) : null}
                     </View>
                   )}
                 </View>
@@ -1154,15 +1207,19 @@ export default function AgencyClientDetailScreen() {
               {/* Acquisition Card (For Sellers) */}
               {client.type === 'SELLER' && form ? (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>Karta pozyskania</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '900', letterSpacing: 1.2, textAlign: 'center' }}>
+                    PRZEWODNIK POZYSKANIA
+                  </Text>
 
-                  {/* Connected Circle Step Indicator */}
                   <AcquisitionStepIndicator
                     steps={STEPS}
                     currentStep={step}
-                    onSelectStep={setStep}
+                    errorSteps={errorSteps}
+                    onSelectStep={goToStep}
                     isDark={isDark}
                   />
+
+                  <AcquisitionGuideChrome step={step} hasError={errorSteps.includes(step)} isDark={isDark} />
 
                   {/* Step 1: Spotkanie */}
                   {step === 1 ? (
@@ -1313,6 +1370,7 @@ export default function AgencyClientDetailScreen() {
                         value={{
                           address: String(form.property.address || ''),
                           city: String((form.property as Record<string, string>).city || client?.sellerCity || ''),
+                          district: String((form.property as Record<string, string>).district || client?.sellerDistrict || ''),
                           lat: Number((form.property as Record<string, string>).lat)
                             ? Number((form.property as Record<string, string>).lat)
                             : null,
@@ -1326,11 +1384,24 @@ export default function AgencyClientDetailScreen() {
                               ? setSection(current, 'property', {
                                   address: next.address,
                                   city: next.city || '',
+                                  district: next.district || '',
                                   lat: next.lat != null ? String(next.lat) : '',
                                   lng: next.lng != null ? String(next.lng) : '',
                                 })
                               : current
                           )
+                        }
+                        isDark={isDark}
+                        disabled={signed}
+                        errorKeys={errorKeys}
+                      />
+
+                      <MultiSelectChipGroup
+                        label="RODZAJ NIERUCHOMOŚCI"
+                        options={['Mieszkanie', 'Dom', 'Działka', 'Lokal']}
+                        selected={[String(form.property.propertyType || 'Mieszkanie')]}
+                        onToggle={(opt) =>
+                          setForm((current) => (current ? setSection(current, 'property', { propertyType: opt }) : current))
                         }
                         isDark={isDark}
                         disabled={signed}
@@ -1346,6 +1417,7 @@ export default function AgencyClientDetailScreen() {
                           theme={{ text: colors.text, subtitle: colors.secondary }}
                           cardBg={colors.input}
                           cardBorder={colors.border}
+                          invalid={errorKeys.has('property.rooms')}
                         />
                         <AddOfferWheelPickerColumn
                           title="Piętro"
@@ -1372,6 +1444,7 @@ export default function AgencyClientDetailScreen() {
                           theme={{ text: colors.text, subtitle: colors.secondary }}
                           cardBg={colors.input}
                           cardBorder={colors.border}
+                          invalid={errorKeys.has('property.area')}
                         />
                         <AddOfferWheelPickerColumn
                           title="Rok budowy"
@@ -1421,9 +1494,9 @@ export default function AgencyClientDetailScreen() {
                         rooms={roomsNum || null}
                         floor={floorNum}
                         city={form?.property?.city || client?.sellerCity || 'Warszawa'}
-                        district={client?.sellerDistrict}
+                        district={String(form?.property?.district || client?.sellerDistrict || '')}
                         address={form?.property?.address}
-                        listingPrice={parseGroupedNumber(form?.strategy?.expectedPrice)}
+                        listingPrice={parseGroupedNumber(String(form?.strategy?.expectedPrice ?? ''))}
                         purpose="crm"
                         colors={colors}
                         reportEmail={client?.email}
@@ -1640,10 +1713,25 @@ export default function AgencyClientDetailScreen() {
                     </>
                   ) : null}
 
-                  {!signed && step < 6 ? (
-                    <Pressable onPress={() => void persist(step + 1)} style={styles.primary}>
-                      <Text style={styles.primaryText}>{busy === 'save' ? 'Zapisuję…' : 'Zapisz i przejdź dalej'}</Text>
-                    </Pressable>
+                  {!signed ? (
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+                      {step > 1 ? (
+                        <Pressable
+                          onPress={() => goToStep(step - 1)}
+                          style={[styles.secondary, { flex: 1, borderColor: colors.border, marginTop: 14 }]}
+                        >
+                          <Text style={{ color: colors.text, fontWeight: '800' }}>Wstecz</Text>
+                        </Pressable>
+                      ) : null}
+                      {step < 6 ? (
+                        <Pressable
+                          onPress={() => void persist(step + 1)}
+                          style={[styles.primary, { flex: 1, marginTop: 14 }]}
+                        >
+                          <Text style={styles.primaryText}>{busy === 'save' ? 'Zapisuję…' : 'Dalej'}</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   ) : null}
                 </View>
               ) : null}

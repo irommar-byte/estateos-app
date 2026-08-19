@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -12,14 +13,28 @@ import MapView, { Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { suggestAddresses } from '../../services/agencyClientService';
+import { API_URL } from '../../config/network';
+import {
+  detectOfferLocationFromPin,
+  districtsForCity,
+  isStrictOfferCity,
+  polishStrictCities,
+} from '../../lib/detectOfferDistrict';
+import {
+  REST_OF_COUNTRY_CITY,
+  streetLineFromGeocodedPlace,
+  type GeocodedPlaceInput,
+} from '../../constants/locationEcosystem';
 
 const DEFAULT_LAT = 52.2297;
 const DEFAULT_LNG = 21.0122;
 const DEFAULT_DELTA = 0.012;
+const ERROR_RED = '#FF3B30';
 
 export type AcquisitionAddressValue = {
   address: string;
   city: string | null;
+  district: string | null;
   lat: number | null;
   lng: number | null;
 };
@@ -33,6 +48,47 @@ type Suggestion = {
   lng?: number | null;
 };
 
+function placeFromGeocode(place?: Location.LocationGeocodedAddress | null): GeocodedPlaceInput {
+  return {
+    city: place?.city,
+    subregion: place?.subregion,
+    name: place?.name,
+    region: place?.region,
+    district: place?.district,
+    street: place?.street,
+    isoCountryCode: place?.isoCountryCode,
+    country: place?.country,
+  };
+}
+
+async function refineFromServer(params: {
+  token: string;
+  lat: number;
+  lng: number;
+  streetHint?: string;
+  preferredCity?: string | null;
+}): Promise<{ city?: string; district?: string } | null> {
+  const qs = new URLSearchParams({
+    lat: String(params.lat),
+    lng: String(params.lng),
+  });
+  if (params.streetHint) qs.set('streetHint', params.streetHint);
+  if (params.preferredCity) qs.set('preferredCity', params.preferredCity);
+  try {
+    const res = await fetch(`${API_URL}/api/location/reverse?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${params.token}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { city?: string; district?: string };
+    return {
+      city: String(json.city || '').trim() || undefined,
+      district: String(json.district || '').trim() || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function AcquisitionAddressMapField({
   token,
   value,
@@ -40,6 +96,7 @@ export default function AcquisitionAddressMapField({
   isDark,
   disabled,
   label = 'ADRES NIERUCHOMOŚCI',
+  errorKeys,
 }: {
   token: string | null;
   value: AcquisitionAddressValue;
@@ -47,10 +104,14 @@ export default function AcquisitionAddressMapField({
   isDark?: boolean;
   disabled?: boolean;
   label?: string;
+  errorKeys?: Set<string>;
 }) {
   const mapRef = useRef<MapView>(null);
   const seq = useRef(0);
+  const suggestSeq = useRef(0);
   const skipRegion = useRef(false);
+  const suppressSuggestRef = useRef(false);
+  const districtLockedRef = useRef(false);
   const [query, setQuery] = useState(value.address);
   const [hints, setHints] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,6 +129,13 @@ export default function AcquisitionAddressMapField({
   const pinReady = Number.isFinite(value.lat) && Number.isFinite(value.lng);
   const mapLat = value.lat ?? DEFAULT_LAT;
   const mapLng = value.lng ?? DEFAULT_LNG;
+  const addressError = Boolean(errorKeys?.has('property.address') || errorKeys?.has('property.pin'));
+  const cityError = Boolean(errorKeys?.has('property.city'));
+  const districtError = Boolean(errorKeys?.has('property.district'));
+  const city = String(value.city || '').trim();
+  const district = String(value.district || '').trim();
+  const cityDistricts = districtsForCity(city);
+  const restOfCountry = city === REST_OF_COUNTRY_CITY || (!cityDistricts.length && Boolean(city));
 
   useEffect(() => {
     setQuery(value.address);
@@ -75,18 +143,21 @@ export default function AcquisitionAddressMapField({
 
   useEffect(() => {
     const q = query.trim();
-    if (!token || disabled || q.length < 3) {
-      setHints([]);
+    if (suppressSuggestRef.current || !token || disabled || q.length < 3) {
+      if (suppressSuggestRef.current || q.length < 3) setHints([]);
       return;
     }
+    const request = ++suggestSeq.current;
     const handle = setTimeout(async () => {
       setLoading(true);
       try {
-        setHints(await suggestAddresses(token, q));
+        const next = await suggestAddresses(token, q);
+        if (request !== suggestSeq.current || suppressSuggestRef.current) return;
+        setHints(next);
       } catch {
-        setHints([]);
+        if (request === suggestSeq.current) setHints([]);
       } finally {
-        setLoading(false);
+        if (request === suggestSeq.current) setLoading(false);
       }
     }, 280);
     return () => clearTimeout(handle);
@@ -101,39 +172,84 @@ export default function AcquisitionAddressMapField({
   }, []);
 
   const applyCoords = useCallback(
-    async (lat: number, lng: number, preferredLabel?: string, city?: string | null) => {
+    async (lat: number, lng: number, preferredLabel?: string, preferredCity?: string | null) => {
       const request = ++seq.current;
+      suppressSuggestRef.current = true;
+      suggestSeq.current += 1;
+      setHints([]);
+      setLoading(false);
+      districtLockedRef.current = false;
       try {
         const reverse = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
         if (request !== seq.current) return;
-        const place = reverse[0];
-        const street = [place?.street, place?.streetNumber].filter(Boolean).join(' ').trim();
-        const locality = String(place?.city || place?.subAdministrativeArea || '').trim();
-        const label =
-          preferredLabel ||
-          [street || place?.name, locality, place?.postalCode].filter(Boolean).join(', ');
-        onChange({
-          address: label,
-          city: city || locality || null,
+        const rawPlace = reverse[0];
+        const place = placeFromGeocode(rawPlace);
+        const street = streetLineFromGeocodedPlace(
+          { street: rawPlace?.street, streetNumber: rawPlace?.streetNumber, name: rawPlace?.name },
+          preferredLabel || '',
+        );
+        const locality = String(rawPlace?.city || rawPlace?.subregion || '').trim();
+        const detected = detectOfferLocationFromPin({
           lat,
           lng,
+          place,
+          streetHint: street,
+          preferredCity: preferredCity || city || null,
         });
+        const label =
+          preferredLabel ||
+          [street || rawPlace?.name, detected.city === REST_OF_COUNTRY_CITY ? locality : detected.city, rawPlace?.postalCode]
+            .filter(Boolean)
+            .join(', ');
+        const next: AcquisitionAddressValue = {
+          address: label,
+          city: detected.city || preferredCity || locality || null,
+          district: detected.district || null,
+          lat,
+          lng,
+        };
+        onChange(next);
         setQuery(label);
+
+        if (token) {
+          const refined = await refineFromServer({
+            token,
+            lat,
+            lng,
+            streetHint: street || label,
+            preferredCity: next.city,
+          });
+          if (request !== seq.current || districtLockedRef.current || !refined) return;
+          const refinedCity = refined.city || next.city;
+          const refinedDistrict = refined.district || next.district;
+          if (refinedCity !== next.city || refinedDistrict !== next.district) {
+            onChange({
+              ...next,
+              city: refinedCity,
+              district: refinedDistrict,
+            });
+          }
+        }
       } catch {
         if (request !== seq.current) return;
         onChange({
           address: preferredLabel || query,
-          city: city || value.city,
+          city: preferredCity || value.city,
+          district: value.district,
           lat,
           lng,
         });
       }
     },
-    [onChange, query, value.city],
+    [city, onChange, query, token, value.city, value.district],
   );
 
   const selectHint = (item: Suggestion) => {
+    suppressSuggestRef.current = true;
+    suggestSeq.current += 1;
     setHints([]);
+    setLoading(false);
+    setQuery(item.label || item.address);
     const lat = Number(item.lat);
     const lng = Number(item.lng);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -144,10 +260,10 @@ export default function AcquisitionAddressMapField({
     onChange({
       address: item.label || item.address,
       city: item.city || null,
+      district: value.district,
       lat: null,
       lng: null,
     });
-    setQuery(item.label || item.address);
   };
 
   const onRegionComplete = (region: Region, details?: { isGesture?: boolean }) => {
@@ -174,14 +290,20 @@ export default function AcquisitionAddressMapField({
     }
   };
 
+  const patchLocation = (patch: Partial<AcquisitionAddressValue>) => {
+    districtLockedRef.current = true;
+    onChange({ ...value, ...patch });
+  };
+
   return (
     <View style={{ marginBottom: 14 }}>
-      <Text style={[styles.label, { color: colors.secondary }]}>{label}</Text>
+      <Text style={[styles.label, { color: addressError ? ERROR_RED : colors.secondary }]}>{label}</Text>
       <View style={styles.inputRow}>
         <TextInput
           editable={!disabled}
           value={query}
           onChangeText={(text) => {
+            suppressSuggestRef.current = false;
             setQuery(text);
             onChange({ ...value, address: text });
           }}
@@ -190,7 +312,12 @@ export default function AcquisitionAddressMapField({
           autoCorrect={false}
           style={[
             styles.input,
-            { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, flex: 1 },
+            {
+              backgroundColor: colors.input,
+              color: colors.text,
+              borderColor: addressError ? ERROR_RED : colors.border,
+              flex: 1,
+            },
           ]}
         />
         <Pressable
@@ -222,7 +349,7 @@ export default function AcquisitionAddressMapField({
           ))
         : null}
 
-      <View style={[styles.mapWrap, { borderColor: pinReady ? colors.accent : colors.border }]}>
+      <View style={[styles.mapWrap, { borderColor: addressError ? ERROR_RED : pinReady ? colors.accent : colors.border }]}>
         <MapView
           ref={mapRef}
           style={styles.map}
@@ -250,13 +377,112 @@ export default function AcquisitionAddressMapField({
         <View style={styles.okRow}>
           <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
           <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12, flex: 1 }}>
-            Pinezka ustawiona — adres zweryfikowany na mapie
+            Pinezka ustawiona — miasto i dzielnica wykryte z mapy
           </Text>
         </View>
       ) : (
-        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>
-          Wybierz podpowiedź albo przesuń mapę, aż pinezka wskaże nieruchomość.
+        <Text style={{ color: addressError ? ERROR_RED : colors.secondary, fontSize: 11, marginTop: 6 }}>
+          Wybierz podpowiedź jednym kliknięciem albo przesuń mapę, aż pinezka wskaże nieruchomość.
         </Text>
+      )}
+
+      <Text style={[styles.label, { color: cityError ? ERROR_RED : colors.secondary, marginTop: 14 }]}>MIASTO</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cityRow}>
+        {polishStrictCities().map((item) => {
+          const active = city === item;
+          return (
+            <Pressable
+              key={item}
+              disabled={disabled}
+              onPress={() => {
+                const nextDistricts = districtsForCity(item);
+                patchLocation({
+                  city: item,
+                  district: nextDistricts.includes(district) ? district : '',
+                });
+              }}
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: active ? colors.accent : colors.input,
+                  borderColor: cityError ? ERROR_RED : active ? colors.accent : colors.border,
+                },
+              ]}
+            >
+              <Text style={{ color: active ? '#000' : colors.text, fontWeight: '800', fontSize: 12 }}>{item}</Text>
+            </Pressable>
+          );
+        })}
+        <Pressable
+          disabled={disabled}
+          onPress={() =>
+            patchLocation({
+              city: REST_OF_COUNTRY_CITY,
+              district: isStrictOfferCity(city) ? '' : district,
+            })
+          }
+          style={[
+            styles.pill,
+            {
+              backgroundColor: restOfCountry ? colors.accent : colors.input,
+              borderColor: cityError ? ERROR_RED : restOfCountry ? colors.accent : colors.border,
+            },
+          ]}
+        >
+          <Text style={{ color: restOfCountry ? '#000' : colors.text, fontWeight: '800', fontSize: 12 }}>
+            {REST_OF_COUNTRY_CITY}
+          </Text>
+        </Pressable>
+      </ScrollView>
+
+      {cityDistricts.length > 0 ? (
+        <>
+          <Text style={[styles.label, { color: districtError ? ERROR_RED : colors.secondary, marginTop: 12 }]}>
+            DZIELNICA
+          </Text>
+          <View style={styles.districtWrap}>
+            {cityDistricts.map((item) => {
+              const active = district === item;
+              return (
+                <Pressable
+                  key={item}
+                  disabled={disabled}
+                  onPress={() => patchLocation({ district: item })}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor: active ? colors.accent : colors.input,
+                      borderColor: districtError ? ERROR_RED : active ? colors.accent : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: active ? '#000' : colors.text, fontWeight: '800', fontSize: 12 }}>{item}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={[styles.label, { color: districtError ? ERROR_RED : colors.secondary, marginTop: 12 }]}>
+            DZIELNICA / MIEJSCOWOŚĆ
+          </Text>
+          <TextInput
+            editable={!disabled}
+            value={district}
+            onChangeText={(text) => patchLocation({ district: text, city: city || REST_OF_COUNTRY_CITY })}
+            placeholder="Np. Piaseczno, Konstancin…"
+            placeholderTextColor={colors.secondary}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                color: colors.text,
+                borderColor: districtError ? ERROR_RED : colors.border,
+              },
+            ]}
+          />
+        </>
       )}
     </View>
   );
@@ -324,4 +550,12 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   okRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  cityRow: { gap: 8, paddingBottom: 4, paddingHorizontal: 2 },
+  districtWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
 });
