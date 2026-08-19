@@ -8,7 +8,7 @@ struct MarqueeText: View {
     var foreground: Color = .primary
     var spacing: CGFloat = 36
     var speedPointsPerSecond: CGFloat = 28
-    var pauseBeforeLoop: TimeInterval = 1.1
+    var pauseBeforeLoop: TimeInterval = 30.0
 
     @State private var textWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0

@@ -17,6 +17,7 @@ struct FolderDetailView: View {
     @State private var coverPickerItem: PhotosPickerItem?
     @State private var isUploadingCover = false
     @State private var showCoverPicker = false
+    @State private var showDownloadDestinationSheet = false
 
     private var isEditing: Bool { editMode == .active }
 
@@ -84,7 +85,7 @@ struct FolderDetailView: View {
 
                             if pendingCount > 0, !app.isOfflinePlaybackActive {
                                 Button {
-                                    app.downloadAll(in: tracks, folderId: folder.id)
+                                    showDownloadDestinationSheet = true
                                 } label: {
                                     Label("Pobierz wszystkie (\(pendingCount))", systemImage: "icloud.and.arrow.down")
                                         .font(.subheadline.weight(.semibold))
@@ -114,6 +115,15 @@ struct FolderDetailView: View {
         .animation(EOSMotion.snappy, value: tracks.count)
         .background(EOSAmbientBackground())
         .navigationTitle(liveFolder.name)
+        .sheet(isPresented: $showDownloadDestinationSheet) {
+            MusicDownloadDestinationSheet(
+                title: folder.name,
+                subtitle: "Pobierz \(pendingCount) utworów",
+                trackCount: pendingCount
+            ) { destination in
+                app.downloadAll(in: tracks, folderId: folder.id, destination: destination)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

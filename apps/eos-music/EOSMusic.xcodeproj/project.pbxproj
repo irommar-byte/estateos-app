@@ -90,6 +90,7 @@
 		CB28A4336DE5459A8FEB745E /* LibraryCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5AAE46CC79408B8520F230 /* LibraryCacheStore.swift */; };
 		CC96F3EE306B433E8F64C650 /* AppDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = F729BE0FAB9E437FB1E51E39 /* AppDocuments.swift */; };
 		CDBA2C66944244318112F6A9 /* DownloadCloudButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CCE93DE37944AEAE99E9EF /* DownloadCloudButton.swift */; };
+		F2E1D0C9B8A7F6E5D4C3B2A1 /* MusicDownloadDestinationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* MusicDownloadDestinationSheet.swift */; };
 		D305D0650D5E45B29A5B5643 /* MiniPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18CC6299A4E43D08D625357 /* MiniPlayerBar.swift */; };
 		D3466AAA40534E70859E1898 /* MediaDownloadOptionsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 827D701E9BBF411B9EDDDF38 /* MediaDownloadOptionsSheet.swift */; };
 		D5C3AB0687E645978B58D2FB /* FolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0098369FDCD740C0A294C0BE /* FolderDetailView.swift */; };
@@ -173,6 +174,7 @@
 		500109A848644E24A7C5A078 /* StorageCapacity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageCapacity.swift; sourceTree = "<group>"; };
 		51EECFBBBF7147A999C92985 /* GoogleDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveClient.swift; sourceTree = "<group>"; };
 		52CCE93DE37944AEAE99E9EF /* DownloadCloudButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadCloudButton.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* MusicDownloadDestinationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicDownloadDestinationSheet.swift; sourceTree = "<group>"; };
 		546589175F2A40C3AEFE6213 /* MusicPlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlaybackEngine.swift; sourceTree = "<group>"; };
 		55EE355C30DB454BABDEA67B /* OnlineMoviesModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMoviesModels.swift; sourceTree = "<group>"; };
 		5B0CAF67261A478186F5AF7C /* VideoAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAppModel.swift; sourceTree = "<group>"; };
@@ -446,6 +448,7 @@
 				4FD78D288C6C434F9D5AF4B5 /* AddToPlaylistSheet.swift */,
 				23819C86375D425F81D04A75 /* CatalogTrackRow.swift */,
 				52CCE93DE37944AEAE99E9EF /* DownloadCloudButton.swift */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* MusicDownloadDestinationSheet.swift */,
 				ECE278E315094ACDBAC2E01C /* EOSLaunchIntroView.swift */,
 				A347FD5162954A8DBE223DE2 /* FavoriteButton.swift */,
 				ED3A8C615AF546D0BF6AC44A /* FilesStyleComponents.swift */,
@@ -636,6 +639,7 @@
 				438362FE0F194B8BA97DB15D /* AddToPlaylistSheet.swift in Sources */,
 				00D93498AC984CADBE4D6297 /* CatalogTrackRow.swift in Sources */,
 				CDBA2C66944244318112F6A9 /* DownloadCloudButton.swift in Sources */,
+				F2E1D0C9B8A7F6E5D4C3B2A1 /* MusicDownloadDestinationSheet.swift in Sources */,
 				F746505A1B584F66BBB2D953 /* EOSLaunchIntroView.swift in Sources */,
 				B4266519B36A42A49A0AE52B /* FavoriteButton.swift in Sources */,
 				601510B4F68D46FFB03195FD /* FilesStyleComponents.swift in Sources */,

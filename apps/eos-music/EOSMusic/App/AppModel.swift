@@ -169,9 +169,24 @@ final class AppModel: ObservableObject {
         defer { isBootstrapping = false }
         guard let session = SessionStore.load() else { return }
         api.setToken(session.token)
+        // Hydrate from cache immediately so offline tracks are available right away.
+        user = session.user
+        hydrateLibraryFromCacheIfNeeded()
         do {
-            // Splash only waits for session validation — library loads in-app.
-            user = try await api.me()
+            // Hard 5-second cap: if internet is slow we still enter the app quickly.
+            let meTask = Task { try await self.api.me() }
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                meTask.cancel()
+            }
+            do {
+                let me = try await meTask.value
+                timeoutTask.cancel()
+                user = me
+            } catch {
+                timeoutTask.cancel()
+                // Keep cached user from session on timeout or error
+            }
             await syncLocalAppleLink(from: user)
             hydrateLibraryFromCacheIfNeeded()
             serverDownloads.start()
@@ -1041,8 +1056,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func downloadAll(in tracks: [MusicTrack], folderId: String) {
-        downloads.downloadAllPending(tracks: tracks, folderId: folderId, api: api) { [weak self] in
+    func downloadAll(in tracks: [MusicTrack], folderId: String, destination: MusicDownloadDestination = .server) {
+        downloads.downloadAllPending(tracks: tracks, folderId: folderId, destination: destination, api: api) { [weak self] in
             try? await self?.refreshMusicLibrary()
         }
     }
