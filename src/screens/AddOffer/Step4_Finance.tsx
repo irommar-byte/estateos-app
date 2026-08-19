@@ -50,6 +50,8 @@ import {
   shouldWarnCommissionPercentDraft,
 } from '../../lib/agentCommission';
 import { useI18n } from '../../i18n';
+import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
+import MarketValuationCard from '../../components/market/MarketValuationCard';
 
 const Colors = { primary: '#10b981', danger: '#ef4444', warning: '#f59e0b' };
 
@@ -63,7 +65,9 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   const { t } = useI18n();
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
   const isAgent = isAgentCommissionAccount(user);
+  const isProActive = hasActiveInvestorProMembership(user);
   const navigation = useNavigation<any>();
   const scrollRef = useRef<ScrollView>(null);
   const [bottomPad, setBottomPad] = useState(220);
@@ -396,6 +400,32 @@ export default function Step4_Finance({ theme }: { theme: any }) {
             )}
           </View>
         )}
+
+        {!isRent && isProActive ? (
+          <View style={{ marginTop: 12 }}>
+            <MarketValuationCard
+              token={token}
+              lat={Number(draft.lat) || null}
+              lng={Number(draft.lng) || null}
+              area={areaNum || null}
+              rooms={parseFloat(String(draft.rooms || '').replace(',', '.')) || null}
+              floor={parseFloat(String(draft.floor || '').replace(',', '.'))}
+              city={draft.city || 'Warszawa'}
+              district={draft.district}
+              address={draft.street || draft.address}
+              listingPrice={listingCurrency === 'PLN' ? priceNum : null}
+              purpose="listing"
+              colors={{
+                card: cardBg,
+                text: theme.text,
+                secondary: theme.subtitle,
+                border: cardBorder,
+                accent: '#34C759',
+              }}
+              onApply={(price) => updateDraft({ price: String(price) })}
+            />
+          </View>
+        ) : null}
 
         <View style={styles.splitInputs}>
           <View style={styles.halfCol}>

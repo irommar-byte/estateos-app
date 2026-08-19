@@ -58,6 +58,7 @@ import {
 } from '../services/agencyClientService';
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
 import type { WholePropertyScan } from '../types/roomScan';
+import MarketValuationCard from '../components/market/MarketValuationCard';
 
 const STEPS = [
   { id: 1, title: 'Spotkanie' },
@@ -553,9 +554,11 @@ export default function AgencyClientDetailScreen() {
     return sub;
   }, [navigation, signed]);
 
-  // Recommended price computation
-  const areaNum = parseGroupedNumber(form?.property?.area) || 50;
-  const calculatedRecommendedPrice = Math.round(areaNum * 14500);
+  const areaNum = parseGroupedNumber(form?.property?.area) || 0;
+  const latNum = Number(String(form?.property?.lat || '').replace(',', '.'));
+  const lngNum = Number(String(form?.property?.lng || '').replace(',', '.'));
+  const roomsNum = parseGroupedNumber(form?.property?.rooms);
+  const floorNum = parseGroupedNumber(form?.property?.floor);
 
   const runAction = async (name: 'prepare_terms' | 'send_preview' | 'sign') => {
     if (!token || !form) return;
@@ -1410,36 +1413,34 @@ export default function AgencyClientDetailScreen() {
                   {/* Step 4: Strategia */}
                   {step === 4 ? (
                     <>
-                      {/* Recommended price banner */}
-                      <View style={[styles.recomBox, { backgroundColor: 'rgba(52,199,89,0.12)', borderColor: colors.accent }]}>
-                        <Ionicons name="sparkles" size={20} color={colors.accent} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 12 }}>
-                            SUGEROWANA CENA RYNCKOWA ESTATEOS
-                          </Text>
-                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginTop: 2 }}>
-                            {formatCurrencyPLN(calculatedRecommendedPrice)} (~14 500 zł/m²)
-                          </Text>
-                          <Pressable
-                            disabled={signed}
-                            onPress={() =>
-                              setForm((c) =>
-                                c
-                                  ? setSection(c, 'strategy', {
-                                      expectedPrice: formatPriceInput(String(calculatedRecommendedPrice)),
-                                      recommendedPrice: formatPriceInput(String(calculatedRecommendedPrice)),
-                                    })
-                                  : c
-                              )
-                            }
-                            style={{ marginTop: 6 }}
-                          >
-                            <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 12 }}>
-                              ✓ Zastosuj cenę rekomendowaną
-                            </Text>
-                          </Pressable>
-                        </View>
-                      </View>
+                      <MarketValuationCard
+                        token={token}
+                        lat={Number.isFinite(latNum) ? latNum : null}
+                        lng={Number.isFinite(lngNum) ? lngNum : null}
+                        area={areaNum || null}
+                        rooms={roomsNum || null}
+                        floor={floorNum}
+                        city={form?.property?.city || client?.sellerCity || 'Warszawa'}
+                        district={client?.sellerDistrict}
+                        address={form?.property?.address}
+                        listingPrice={parseGroupedNumber(form?.strategy?.expectedPrice)}
+                        purpose="crm"
+                        colors={colors}
+                        reportEmail={client?.email}
+                        onApply={
+                          signed
+                            ? undefined
+                            : (price) =>
+                                setForm((c) =>
+                                  c
+                                    ? setSection(c, 'strategy', {
+                                        expectedPrice: formatPriceInput(String(price)),
+                                        recommendedPrice: formatPriceInput(String(price)),
+                                      })
+                                    : c,
+                                )
+                        }
+                      />
 
                       {stepper('strategy', 'expectedPrice', 'CENA OCZEKIWANA (zł)', 5000, true)}
                       {stepper('strategy', 'recommendedPrice', 'CENA REKOMENDOWANA (zł)', 5000, true)}

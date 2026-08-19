@@ -2595,6 +2595,26 @@ export default function OfferDetail({ route, navigation }: any) {
                     ) : null}
                   </View>
                 ) : null}
+                {!isRentForStats && Number(offer?.lat) && Number(offer?.lng) ? (
+                  <Pressable
+                    onPress={() =>
+                      navigation.navigate('EstateOsMarket', {
+                        lat: Number(offer.lat),
+                        lng: Number(offer.lng),
+                        area: areaNumForStats,
+                        rooms: Number(offer.rooms) || undefined,
+                        floor: Number(offer.floor) || undefined,
+                        district: offer.district,
+                        price: priceNumForStats,
+                      })
+                    }
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text style={{ color: '#34C759', fontWeight: '800', fontSize: 11 }}>
+                      EstateOS™ Market — analiza ceny
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
               {estimatedRoi !== null ? (
                 <View
@@ -2689,6 +2709,26 @@ export default function OfferDetail({ route, navigation }: any) {
                         </Text>
                       </View>
                     </View>
+                  ) : null}
+                  {!isRentForStats && Number(offer?.lat) && Number(offer?.lng) ? (
+                    <Pressable
+                      onPress={() =>
+                        navigation.navigate('EstateOsMarket', {
+                          lat: Number(offer.lat),
+                          lng: Number(offer.lng),
+                          area: areaNumForStats,
+                          rooms: Number(offer.rooms) || undefined,
+                          floor: Number(offer.floor) || undefined,
+                          district: offer.district,
+                          price: priceNumForStats,
+                        })
+                      }
+                      style={{ marginTop: 8 }}
+                    >
+                      <Text style={{ color: '#34C759', fontWeight: '800', fontSize: 11 }}>
+                        EstateOS™ Market — analiza ceny
+                      </Text>
+                    </Pressable>
                   ) : null}
                 </View>
                 {estimatedRoi !== null ? (

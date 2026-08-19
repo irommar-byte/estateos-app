@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Globe, TrendingUp, Newspaper, UserPlus, HandCoins, CheckCircle2, Zap, Activity, LineChart, ChevronLeft, ChevronRight, PenTool, X, type LucideIcon } from "lucide-react";
+import Link from "next/link";
 import { useLocale } from "@/contexts/LocaleContext";
 import {
   demandLabelForLevel,
@@ -287,6 +288,12 @@ export default function ProWidget({
           <sup className="eos-pro-system-title-tm">™</sup>
         </p>
         <p className="eos-pro-system-title-suffix">{pw.systemTitleSuffix}</p>
+        <Link
+          href="/market"
+          className="mt-3 inline-flex text-[11px] font-black uppercase tracking-[0.14em] text-emerald-500"
+        >
+          EstateOS™ Market — ceny transakcyjne
+        </Link>
       </header>
 
     <div className="eos-pro-widget eos-pro-shell relative overflow-hidden rounded-[2.5rem] backdrop-blur-3xl">

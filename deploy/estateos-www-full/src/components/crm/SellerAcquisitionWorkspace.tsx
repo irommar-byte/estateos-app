@@ -28,6 +28,7 @@ import SignaturePad from "@/components/crm/SignaturePad";
 import AddressSuggestInput from "@/components/crm/AddressSuggestInput";
 import NumberStepper from "@/components/crm/NumberStepper";
 import CommissionRateSlider from "@/components/crm/CommissionRateSlider";
+import MarketValuationPanel from "@/components/market/MarketValuationPanel";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { COMMISSION_RATE_DEFAULT } from "@/lib/leadTransferShared";
 import { PROPERTY_AMENITIES } from "@/lib/crm/clientJourney";
@@ -512,6 +513,23 @@ export default function SellerAcquisitionWorkspace({
 
         {step === 4 ? (
           <div className="space-y-5">
+            <MarketValuationPanel
+              lat={Number(String(form.property.lat || "").replace(",", ".")) || null}
+              lng={Number(String(form.property.lng || "").replace(",", ".")) || null}
+              area={Number(String(form.property.area || "").replace(/\s/g, "").replace(",", ".")) || null}
+              rooms={Number(String(form.property.rooms || "").replace(/\s/g, "")) || null}
+              floor={Number(String(form.property.floor || "").replace(/\s/g, "")) || null}
+              city={form.property.city || "Warszawa"}
+              address={form.property.address}
+              listingPrice={Number(String(form.strategy.expectedPrice || "").replace(/\s/g, "").replace(",", ".")) || null}
+              purpose="crm"
+              reportEmail={client.email || undefined}
+              applyLabel="Zastosuj cenę rekomendowaną"
+              onApply={(price) => {
+                const formatted = String(price).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+                updateSection("strategy", { recommendedPrice: formatted, expectedPrice: formatted });
+              }}
+            />
             <div className="grid gap-4 sm:grid-cols-3">
               <NumberStepper label="Cena oczekiwana" value={form.strategy.expectedPrice} onChange={(value) => updateSection("strategy", { expectedPrice: value })} step={5000} suffix="PLN" disabled={signed} />
               <NumberStepper label="Cena rekomendowana" value={form.strategy.recommendedPrice} onChange={(value) => updateSection("strategy", { recommendedPrice: value })} step={5000} suffix="PLN" disabled={signed} />

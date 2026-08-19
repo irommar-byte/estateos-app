@@ -117,6 +117,7 @@ import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
 import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
 import AgencyClientCreateScreen from './src/screens/AgencyClientCreateScreen';
 import AgencyClientDetailScreen from './src/screens/AgencyClientDetailScreen';
+import EstateOsMarketScreen from './src/screens/EstateOsMarketScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import CarsCatalogScreen from './src/screens/CarsCatalogScreen';
 import CarDetailScreen from './src/screens/CarDetailScreen';
@@ -2004,6 +2005,11 @@ export default function App() {
             <AppStack.Screen
               name="AgencyClientDetail"
               component={AgencyClientDetailScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="EstateOsMarket"
+              component={EstateOsMarketScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

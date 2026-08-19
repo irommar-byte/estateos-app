@@ -65,6 +65,18 @@ module.exports = {
       time: true,
     },
     {
+      name: "rcn-market-ingest",
+      cwd: root,
+      script: "npx",
+      args: "tsx scripts/ingest-rcn-market.ts",
+      env_file: path.join(root, ".env"),
+      env: sharedEnv,
+      env_production: sharedEnv,
+      autorestart: false,
+      cron_restart: "20 3 * * 0",
+      time: true,
+    },
+    {
       name: "partner-growth-nurture",
       cwd: root,
       script: "npx",
