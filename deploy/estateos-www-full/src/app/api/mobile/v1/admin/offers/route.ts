@@ -6,6 +6,8 @@ import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
 import { completeAdminOfferApproval, adminForceArchiveOffer, adminReactivateArchivedOffer } from '@/lib/offerPublication';
 import { notifyOwnerOfferModeration } from '@/lib/ownerLifecyclePush';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
+import { loadPendingEditChangesByOfferIds } from '@/lib/offerEditReview';
+import { ensureOfferLegalColumns } from '@/lib/services/offer.service';
 
 const OFFER_ADMIN_STATUSES: OfferStatus[] = ['PENDING', 'ACTIVE', 'ARCHIVED', 'REJECTED', 'SOLD', 'IN_DEAL'];
 
@@ -14,6 +16,7 @@ export async function GET(req: Request) {
   if (!gate.ok) return gate.response;
 
   try {
+    await ensureOfferLegalColumns();
     const { searchParams } = new URL(req.url);
     const rawStatus = searchParams.get('status') || 'PENDING';
     const status = (OFFER_ADMIN_STATUSES.includes(rawStatus as OfferStatus) ? rawStatus : 'PENDING') as OfferStatus;
@@ -26,7 +29,13 @@ export async function GET(req: Request) {
       }
     });
 
-    return NextResponse.json({ success: true, offers });
+    const pendingEdits = await loadPendingEditChangesByOfferIds(offers.map((o) => o.id));
+    const shaped = offers.map((offer) => ({
+      ...offer,
+      pendingEditChanges: pendingEdits.get(offer.id) || [],
+    }));
+
+    return NextResponse.json({ success: true, offers: shaped });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

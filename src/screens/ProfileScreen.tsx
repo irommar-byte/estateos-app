@@ -2439,6 +2439,18 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
           {formatOffer(item).primary} • {formatOfferLocationLine(item) || item.city || '—'}
         </Text>
       <Text style={styles.offerUser}>Autor: {item.user?.email}</Text>
+        {Array.isArray(item.pendingEditChanges) && item.pendingEditChanges.length > 0 ? (
+          <View style={{ marginTop: 8, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,159,10,0.12)' : 'rgba(255,159,10,0.1)' }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.4, color: '#FF9F0A', textTransform: 'uppercase', marginBottom: 6 }}>
+              Zmiany do akceptacji
+            </Text>
+            {item.pendingEditChanges.map((change, idx) => (
+              <Text key={`${change.field || change.label}-${idx}`} style={{ fontSize: 12, color: theme.text, lineHeight: 18 }}>
+                {change.label || change.field}: {change.from || '—'} → {change.to || '—'}
+              </Text>
+            ))}
+          </View>
+        ) : null}
         <View style={styles.adminActionRow}>
         {activeTab === 'PENDING' && (
           <>

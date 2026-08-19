@@ -52,6 +52,7 @@ type AdminOffer = {
   sourceIsActive?: boolean | null;
   sourceListingExpired?: boolean;
   sourceLastCheckAt?: string | null;
+  pendingEditChanges?: Array<{ field?: string; label?: string; from?: string; to?: string }>;
 };
 
 type LookupUser = {
@@ -578,6 +579,24 @@ export default function AdminOffersWorkspace() {
                             {formatPrice(selectedOffer.price)}
                           </p>
                         </div>
+
+                        {Array.isArray(selectedOffer.pendingEditChanges) && selectedOffer.pendingEditChanges.length > 0 ? (
+                          <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                              Co zmienił właściciel
+                            </p>
+                            <ul className="mt-2 space-y-1.5">
+                              {selectedOffer.pendingEditChanges.map((change, idx) => (
+                                <li key={`${change.field || change.label}-${idx}`} className="text-[12px] leading-snug">
+                                  <span className="font-bold">{change.label || change.field}: </span>
+                                  <span className="text-[var(--eos-muted)]">{change.from || '—'}</span>
+                                  <span className="mx-1 text-amber-600 dark:text-amber-400">→</span>
+                                  <span className="font-semibold">{change.to || '—'}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
 
                         <dl className="grid grid-cols-2 gap-2 text-[11px]">
                           <div className="rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] px-2.5 py-2">

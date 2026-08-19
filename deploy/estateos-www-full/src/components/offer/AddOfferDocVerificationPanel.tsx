@@ -51,7 +51,6 @@ export default function AddOfferDocVerificationPanel({
   kwLocked = false,
   legalStatus = "NONE",
 }: Props) {
-  const isFlat = propertyType === "FLAT";
   const readyForReview = Boolean(landRegistryNumber.trim() && landRegistryValid);
   const shieldActive =
     legalStatus === "VERIFIED" || legalStatus === "PENDING" || readyForReview;
@@ -110,23 +109,7 @@ export default function AddOfferDocVerificationPanel({
             ))}
           </ul>
 
-          <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-2">
-            <div className="min-w-0">
-              <label className={labelPremium}>{ao.docVerificationApartmentLabel}</label>
-              <input
-                type="text"
-                inputMode="text"
-                placeholder={isFlat ? ao.aptNumberPlaceholder : ao.apartmentPlaceholder}
-                disabled={!isFlat || kwLocked}
-                className={`${inputPremium} min-w-0 w-full text-sm sm:text-base ${!isFlat || kwLocked ? "cursor-not-allowed opacity-45" : ""}`}
-                value={apartmentNumber}
-                onChange={(e) => onApartmentChange(e.target.value)}
-              />
-              {!isFlat ? (
-                <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">{ao.docVerificationApartmentHintNonFlat}</p>
-              ) : null}
-            </div>
-
+          <div className="grid w-full grid-cols-1 gap-5">
             <div className="min-w-0">
               <label className={labelPremium}>{ao.docVerificationKwLabel}</label>
               <input

@@ -79,6 +79,7 @@ export async function GET(req: Request, context: RouteContext) {
       ...legalOffer,
       localityCountry: localityResolved.localityCountry,
       localityCountryCode: localityResolved.localityCountryCode,
+      favoritesCount: await prisma.favoriteOffer.count({ where: { offerId } }).catch(() => 0),
       listPricePln:
         Number(
           (

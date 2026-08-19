@@ -1290,13 +1290,11 @@ export default function EditOfferScreen({ route }: any) {
       city: locationState.city || originalData?.city || null,
       district: locationState.district || originalData?.district || null,
       street: locationState.street || null,
-      status: originalData?.status || 'ACTIVE',
       images: remoteImages,
       ...amenities,
       heating: heating.trim() || null,
       ...(showLandRegistryVerification
         ? {
-            apartmentNumber: apartmentNumber.trim() || null,
             landRegistryNumber: landRegistryNumber.trim() || null,
           }
         : {}),
@@ -1709,7 +1707,7 @@ export default function EditOfferScreen({ route }: any) {
             Number(offerId),
             {
               landRegistryNumber: landRegistryRaw,
-              apartmentNumber: apartmentNumber.trim() || null,
+              apartmentNumber: null,
               ownerNote: null,
             },
             token.trim(),
@@ -3117,36 +3115,6 @@ export default function EditOfferScreen({ route }: any) {
 
           {/* Formularz danych */}
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
-            {/* Numer mieszkania — ten sam styl pola co KW */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
-              <Text style={[styles.inputLabelPremium, styles.inputLabelFlex, { color: txtColor, marginBottom: 2 }]}>
-                {t('offer.edit.kw.apartmentNumber')}
-              </Text>
-              <Text style={[styles.kwFormatHint, { color: subColor, marginBottom: 8 }]}>
-                {t('offer.edit.kw.apartmentOptional')}
-              </Text>
-              <TextInput
-                style={[
-                  styles.kwInput,
-                  {
-                    color: txtColor,
-                    borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-                    backgroundColor: isKwLocked
-                      ? isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
-                      : isDark ? '#2C2C2E' : '#F6F6F8',
-                  },
-                ]}
-                value={apartmentNumber}
-                onChangeText={setApartmentNumber}
-                placeholder={t('offer.edit.kw.apartmentPlaceholder')}
-                placeholderTextColor={subColor}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                editable={!isKwLocked}
-              />
-            </View>
-            <View style={[styles.divider, { backgroundColor: borderColor }]} />
-
             {/* Numer KW z formatowaniem i walidacją */}
             <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
               <View style={styles.kwLabelRow}>

@@ -178,6 +178,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const topBarIconColor = isDark ? '#FFFFFF' : '#000000';
   const theme = { glass: isDark ? 'dark' : 'light' };
   const [isFavorite, setIsFavorite] = useState(false);
+  const [favoritesCountOverride, setFavoritesCountOverride] = useState<number | null>(null);
   /*
    * Wysokość bottom baru mierzymy dynamicznie. Bottom bar może mieć różną wysokość:
    *   • baseline (cena + CTA),
@@ -583,6 +584,7 @@ export default function OfferDetail({ route, navigation }: any) {
       setIsFavorite(isFavoriteId(offer.id, ids));
     };
     void checkFavorite();
+    setFavoritesCountOverride(null);
   }, [offer?.id, token]);
 
   const handleFavorite = async () => {
@@ -591,6 +593,13 @@ export default function OfferDetail({ route, navigation }: any) {
     const ids = await loadFavoriteIds(favoriteSync);
     const { ids: nextIds, added } = await toggleFavoriteId(offer.id, ids, favoriteSync);
     setIsFavorite(added);
+    setFavoritesCountOverride((prev) => {
+      const base = Number(
+        prev ?? firstDefined(offer?.favoritesCount, 0),
+      );
+      const current = Number.isFinite(base) ? Math.max(0, Math.round(base)) : 0;
+      return added ? current + 1 : Math.max(0, current - 1);
+    });
     if (added) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
@@ -846,6 +855,10 @@ export default function OfferDetail({ route, navigation }: any) {
   })();
   const viewsCountRaw = Number(firstDefined(offer?.views, offer?.viewCount, offer?.viewsCount, offer?.stats?.views, 0));
   const viewsCount = Number.isFinite(viewsCountRaw) && viewsCountRaw > 0 ? Math.round(viewsCountRaw) : 0;
+  const favoritesCountRaw = Number(
+    firstDefined(favoritesCountOverride, offer?.favoritesCount, offer?.stats?.favorites, 0),
+  );
+  const favoritesCount = Number.isFinite(favoritesCountRaw) && favoritesCountRaw > 0 ? Math.round(favoritesCountRaw) : 0;
   const isNewOfferListing = useMemo(() => isOfferNewListing(offer), [offer]);
   const isFeaturedListing = useMemo(
     () => isOfferFeatured(offer && typeof offer === 'object' ? (offer as Record<string, unknown>) : null),
@@ -952,6 +965,13 @@ export default function OfferDetail({ route, navigation }: any) {
     viewsCount > 0
       ? t('offer.detail.views.countCompact', { count: viewsCount.toLocaleString(dateLocale) })
       : t('offer.detail.views.countZeroCompact');
+  const favoritesCountLabel = t('offer.detail.views.favoritesCount', {
+    count: favoritesCount.toLocaleString(dateLocale),
+  });
+  const favoritesA11yLabel =
+    favoritesCount > 0
+      ? t('offer.detail.views.favoritesA11y', { count: favoritesCount.toLocaleString(dateLocale) })
+      : t('offer.detail.views.favoritesA11yZero');
   const handleOwnerLegalStatusChanged = useCallback((next: any) => {
     const status = String(next?.status || '').toUpperCase();
     const verified =
@@ -1905,6 +1925,8 @@ export default function OfferDetail({ route, navigation }: any) {
           <OfferDetailMetaBadgesSection
             isDark={isDark}
             viewsCountLabel={viewsCountLabel}
+            favoritesCountLabel={favoritesCountLabel}
+            favoritesA11yLabel={favoritesA11yLabel}
             isFeatured={showFeaturedMetaBadge}
             showFeatureCta={showFeatureMetaCta}
             featureCtaBusy={promotingFeatured}

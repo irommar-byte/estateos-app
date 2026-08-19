@@ -461,13 +461,6 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
                 <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 20 }]}>{t('addOffer.step3.sections.landRegistry')}</Text>
                 <View style={[styles.docsCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
                   <TextInput
-                    style={[styles.docsInput, { color: theme.text, borderBottomColor: cardBorder }]}
-                    placeholder={t('addOffer.step3.placeholders.apartmentNumber')}
-                    placeholderTextColor={theme.subtitle}
-                    value={draft.apartmentNumber || ''}
-                    onChangeText={(value) => updateDraft({ apartmentNumber: value })}
-                  />
-                  <TextInput
                     style={[styles.docsInput, { color: theme.text }]}
                     placeholder={t('addOffer.step3.placeholders.landRegistryNumber')}
                     placeholderTextColor={theme.subtitle}

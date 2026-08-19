@@ -1,7 +1,7 @@
 import { sendNotification } from '@/lib/core/notification.core';
 import { prisma } from '@/lib/prisma';
 
-export type AdminAttentionKind = 'offer_pending' | 'legal_verification' | 'content_report' | 'photo_session';
+export type AdminAttentionKind = 'offer_pending' | 'offer_edit_review' | 'legal_verification' | 'content_report' | 'photo_session';
 
 export type AdminAttentionPayload = {
   kind: AdminAttentionKind;
@@ -76,6 +76,24 @@ export function notifyAdminsOfferPending(offerId: number, title?: string | null)
     entityId: offerId,
     title: 'Centrala — nowa oferta',
     body: `${label} czeka na weryfikację.`,
+  });
+}
+
+export function notifyAdminsOfferEdited(
+  offerId: number,
+  title?: string | null,
+  changes?: Array<{ label: string; from: string; to: string }>,
+) {
+  const label = title?.trim() ? `„${title.trim().slice(0, 72)}”` : `#${offerId}`;
+  const first = (changes || [])
+    .slice(0, 2)
+    .map((item) => `${item.label}: ${item.from} → ${item.to}`)
+    .join(' · ');
+  notifyAdminsAttention({
+    kind: 'offer_edit_review',
+    entityId: `${offerId}:edit:${Date.now()}`,
+    title: 'Centrala — oferta po edycji',
+    body: first ? `${label}. ${first}` : `${label} wróciła do weryfikacji po zmianie treści.`,
   });
 }
 

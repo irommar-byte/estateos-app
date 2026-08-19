@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Eye, Star } from 'lucide-react-native';
+import { Eye, Heart, Star } from 'lucide-react-native';
 import LegalVerifiedShieldBadge from '../LegalVerifiedShieldBadge';
 import OpenHouseMetaMark from './OpenHouseMetaMark';
 import { useI18n } from '../../i18n';
@@ -9,6 +9,8 @@ import { useI18n } from '../../i18n';
 type Props = {
   isDark: boolean;
   viewsCountLabel: string;
+  favoritesCountLabel: string;
+  favoritesA11yLabel: string;
   isFeatured: boolean;
   showFeatureCta: boolean;
   featureCtaBusy?: boolean;
@@ -29,6 +31,8 @@ type Props = {
 export default function OfferDetailMetaBadgesSection({
   isDark,
   viewsCountLabel,
+  favoritesCountLabel,
+  favoritesA11yLabel,
   isFeatured,
   showFeatureCta,
   featureCtaBusy = false,
@@ -134,6 +138,25 @@ export default function OfferDetailMetaBadgesSection({
               {viewsCountLabel}
             </Text>
           </View>
+          <View style={styles.favoritesWrap} accessibilityRole="text" accessibilityLabel={favoritesA11yLabel}>
+            <View
+              style={[
+                styles.viewsBadge,
+                {
+                  backgroundColor: isDark ? 'rgba(225,29,72,0.16)' : 'rgba(225,29,72,0.08)',
+                  borderColor: isDark ? 'rgba(251,113,133,0.45)' : 'rgba(225,29,72,0.28)',
+                },
+              ]}
+            >
+              <Heart color="#e11d48" fill="#e11d48" size={11} />
+              <Text style={[styles.viewsBadgeText, { color: isDark ? '#fecdd3' : '#be123c' }]} numberOfLines={1}>
+                {favoritesCountLabel}
+              </Text>
+            </View>
+            <Text style={[styles.favoritesCaption, { color: isDark ? 'rgba(254,205,211,0.72)' : '#9f1239' }]} numberOfLines={1}>
+              {t('offer.detail.views.favoritesHint')}
+            </Text>
+          </View>
           {isNewListing ? (
             <Animated.View
               style={[
@@ -220,6 +243,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.1,
+  },
+  favoritesWrap: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  favoritesCaption: {
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   featuredBadge: {
     flexShrink: 0,

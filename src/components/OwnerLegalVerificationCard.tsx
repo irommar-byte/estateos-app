@@ -147,7 +147,7 @@ export default function OwnerLegalVerificationCard({
     try {
       const next = await submitOwnerLegalVerification(
         offerId,
-        { landRegistryNumber: kw, apartmentNumber: apt || null, ownerNote: formNote.trim() || null },
+        { landRegistryNumber: kw, apartmentNumber: null, ownerNote: formNote.trim() || null },
         token,
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -302,24 +302,6 @@ export default function OwnerLegalVerificationCard({
                     Właściwy sąd: {kwSelectedCourt.courtName}
                   </Text>
                 ) : null}
-
-                <Text style={[styles.fieldLabel, { color: isDark ? '#9ca3af' : '#6b7280' }]}>
-                  Numer mieszkania
-                </Text>
-                <TextInput
-                  value={formApt}
-                  onChangeText={setFormApt}
-                  placeholder='np. „14A" lub „—" dla domu'
-                  placeholderTextColor={isDark ? '#52525b' : '#9ca3af'}
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                      color: isDark ? '#FFFFFF' : '#1d1d1f',
-                      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                    },
-                  ]}
-                />
 
                 <Text style={[styles.fieldLabel, { color: isDark ? '#9ca3af' : '#6b7280' }]}>
                   Notatka do administratora (opcjonalnie)

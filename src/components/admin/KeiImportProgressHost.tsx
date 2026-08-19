@@ -317,13 +317,24 @@ function KeiBackgroundPill({
   const engravedColor = isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.48)';
   const capsuleBg = isDark ? 'rgba(22,22,24,0.28)' : 'rgba(255,255,255,0.22)';
   const border = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.55)';
+  const slide = useRef(new Animated.Value(72)).current;
+
+  useEffect(() => {
+    slide.setValue(72);
+    Animated.timing(slide, {
+      toValue: 0,
+      duration: 480,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [slide]);
 
   return (
-    <View
+    <Animated.View
       pointerEvents="box-none"
       style={[
         styles.pillHost,
-        { bottom: Math.max(insets.bottom, 10) + 58 },
+        { bottom: Math.max(insets.bottom, 10) + 58, transform: [{ translateY: slide }] },
         collapsed ? styles.pillHostCollapsed : null,
       ]}
     >
@@ -397,7 +408,7 @@ function KeiBackgroundPill({
           </View>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -417,6 +428,7 @@ export default function KeiImportProgressHost() {
   const items = useKeiAmerExportStore((s) => s.items);
   const results = useKeiAmerExportStore((s) => s.results);
   const skipped = useKeiAmerExportStore((s) => s.skipped);
+  const targetCount = useKeiAmerExportStore((s) => s.targetCount);
   const autoEnabled = useKeiAmerExportStore((s) => s.autoEnabled);
   const sessionImportedCount = useKeiAmerExportStore((s) => s.sessionImportedCount);
   const sessionSkippedCount = useKeiAmerExportStore((s) => s.sessionSkippedCount);
@@ -433,9 +445,10 @@ export default function KeiImportProgressHost() {
   const overallPercent = computeKeiOverallPercent(items);
   const activeItem = useMemo(() => items.find((item) => item.status === 'active'), [items]);
   const doneCount = useMemo(
-    () => items.filter((item) => item.status === 'done' || item.status === 'skipped').length,
+    () => items.filter((item) => item.status === 'done').length,
     [items],
   );
+  const publishedTarget = targetCount > 0 ? targetCount : source === 'auto' ? 3 : items.length;
   const stageLabel = activeItem
     ? [activeItem.stepLabel, activeItem.stepDetail].filter(Boolean).join(' · ')
     : running
@@ -449,7 +462,7 @@ export default function KeiImportProgressHost() {
         ? 'Automatyczny import — w toku na serwerze'
         : 'Automatyczny import załączony — czeka na kolejny cykl'
       : message;
-  const statsLabel = autoEnabled
+  const statsLabel = autoEnabled || source === 'auto'
     ? `Od startu: ${sessionImportedCount} ofert` +
       (sessionSkippedCount ? ` · ${sessionSkippedCount} pominiętych` : '')
     : results.length > 0
@@ -466,8 +479,8 @@ export default function KeiImportProgressHost() {
     [items],
   );
 
-  const showPill = !modalVisible && (running || autoEnabled);
-  const showModal = modalVisible && (running || items.length > 0 || autoEnabled);
+  const showPill = !modalVisible && running;
+  const showModal = modalVisible && (running || (source !== 'auto' && items.length > 0));
 
   useEffect(() => {
     if (token) void hydrateFromServer(token);
@@ -522,7 +535,7 @@ export default function KeiImportProgressHost() {
           stageLabel={stageLabel}
           statsLabel={statsLabel}
           doneCount={doneCount}
-          totalCount={items.length}
+          totalCount={publishedTarget}
           isDark={colors.isDark}
           isAuto={source === 'auto' || autoEnabled}
           collapsed={pillCollapsed}

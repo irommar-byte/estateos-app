@@ -308,6 +308,7 @@ export async function tickKeiAutoImport(opts?: {
       targetUserId: cfg.targetUserId,
       agentCommissionPercent: cfg.agentCommissionPercent,
       selections,
+      count: cfg.count,
       source: 'auto',
     });
     await prisma.$executeRawUnsafe(

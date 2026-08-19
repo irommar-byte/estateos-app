@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { clearPendingEditChanges } from '@/lib/offerEditReview';
 import { notifyAdminsOfferPending } from '@/lib/adminAttentionPush';
 import { logWalletCouponConsume, logWalletCreditConsume } from '@/lib/walletLedger';
 import {
@@ -526,6 +527,21 @@ export async function stageOfferPublicationForReview(params: {
   const alreadyActive = await activePublicationForOffer(db, params.offerId);
   if (alreadyActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
 
+  const existingPending = await readPendingPublication(params.offerId);
+  if (existingPending?.kind && existingPending.entitlementConsumed) {
+    const titleRow = await db.offer.findUnique({
+      where: { id: params.offerId },
+      select: { title: true },
+    });
+    return {
+      offerId: params.offerId,
+      status: 'PENDING' as const,
+      kind: existingPending.kind,
+      awaitingModeration: true,
+      offerTitle: titleRow?.title ?? null,
+    };
+  }
+
   const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
   if (params.kind === 'PLUS_PAID' && !txId) {
     throw new Error('IAP_TRANSACTION_REQUIRED');
@@ -870,6 +886,7 @@ export async function completeAdminOfferApproval(params: {
 }): Promise<AdminOfferApprovalResult> {
   await ensureOfferPublicationSchema();
   const offerId = params.offerId;
+  await clearPendingEditChanges(offerId);
 
   const active = await activePublicationForOffer(prisma, offerId);
   if (active) {

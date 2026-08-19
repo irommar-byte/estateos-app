@@ -9,6 +9,7 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush, dispatchFavoritesStatusChangePush } from '@/lib/favoritesPricePush';
+import { applyOfferReapproval, diffOfferForReview, withPriceChangeIfReviewing } from '@/lib/offerEditReview';
 import { enrichOfferPriceDiscountFields, ensureOfferPriceHistorySchema, syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import {
   ensureOfferLegalColumns,
@@ -238,6 +239,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       Number(resolvedParams.id)
     );
     const viewsCount = Number(viewsRows?.[0]?.total || 0);
+    let favoritesCount = 0;
+    try {
+      favoritesCount = await prisma.favoriteOffer.count({ where: { offerId: Number(resolvedParams.id) } });
+    } catch {
+      favoritesCount = 0;
+    }
 
     const legalOverrides = await legalStatusOverridesForOffers(prisma, [Number(resolvedParams.id)]);
     const legalOffer = applyLegalStatusOverride(offer as any, legalOverrides);
@@ -428,6 +435,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,
+      favoritesCount,
       galleryPlan,
       galleryPersonalized,
     }),
@@ -530,26 +538,22 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     );
 
     let requireReverification = false;
-    
-    const sensitiveFields = [
-      'title', 'description', 'district', 'city', 'area', 'images', 'propertyType',
-      'rooms', 'floor', 'yearBuilt', 'plotArea', 'floorPlanUrl', 'street', 'buildingNumber',
-      'lat', 'lng', 'transactionType', 'heating', 'isFurnished', 'condition',
-    ];
-
-    for (const field of sensitiveFields) {
-       const currentVal = String(currentOffer[field as keyof typeof currentOffer] ?? '').trim();
-       const newVal = String(body[field] ?? '').trim();
-       
-       if (currentVal !== newVal) {
-           requireReverification = true;
-           console.log(`Zmieniono pole: ${field}. Wymagana ponowna weryfikacja.`);
-           break;
-       }
-    }
+    const reviewChanges = withPriceChangeIfReviewing(
+      currentOffer as Record<string, unknown>,
+      body as Record<string, unknown>,
+      diffOfferForReview(currentOffer as Record<string, unknown>, body as Record<string, unknown>),
+    );
+    const reapproval = applyOfferReapproval({
+      existingStatus: String(currentOffer.status),
+      isAdmin,
+      changes: reviewChanges,
+      offerId: Number(resolvedParams.id),
+      offerTitle: currentOffer.title,
+    });
+    requireReverification = reapproval.needsReview;
 
     let newStatus: OfferStatus = currentOffer.status;
-    if (requireReverification && currentOffer.status === 'ACTIVE') {
+    if (requireReverification) {
         newStatus = 'PENDING';
     }
 

@@ -618,7 +618,6 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       heating: String(draft.heating || '').trim() || null,
       ...(isPolandOffer
         ? {
-            apartmentNumber: String(draft.apartmentNumber || '').trim() || undefined,
             landRegistryNumber: String(draft.landRegistryNumber || '').trim() || undefined,
           }
         : {}),
@@ -943,12 +942,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       let legalQueueSubmitted = false;
       if (createdOfferId && token && isPolandOffer) {
         const kwSubmit = String(draft.landRegistryNumber || '').trim();
-        const aptSubmit = String(draft.apartmentNumber || '').trim();
         if (kwSubmit && isValidLandRegistryNumber(kwSubmit)) {
           try {
             await submitOwnerLegalVerification(
               createdOfferId,
-              { landRegistryNumber: kwSubmit, apartmentNumber: aptSubmit || null, ownerNote: null },
+              { landRegistryNumber: kwSubmit, apartmentNumber: null, ownerNote: null },
               token,
             );
             legalQueueSubmitted = true;

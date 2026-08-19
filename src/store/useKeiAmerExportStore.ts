@@ -61,6 +61,7 @@ type KeiAmerExportState = {
   pillCollapsed: boolean;
   message: string;
   source: 'manual' | 'auto';
+  targetCount: number;
   items: KeiExportItemProgress[];
   results: KeiExportResultItem[];
   skipped: number;
@@ -107,6 +108,7 @@ function applyJobSnapshot(
     jobId: job.id,
     running,
     source: job.source === 'auto' ? 'auto' : 'manual',
+    targetCount: Number(job.targetCount || 0),
     message: job.message || (running ? 'Import w toku na serwerze…' : 'Import zakończony.'),
     items: mapJobItems(job),
     results: job.exported || [],
@@ -168,7 +170,11 @@ async function pollOnce() {
       return;
     }
     const onComplete = useKeiAmerExportStore.getState().onComplete;
-    useKeiAmerExportStore.setState(applyJobSnapshot(job, onComplete));
+    const autoTerminal = job.source === 'auto' && job.status !== 'queued' && job.status !== 'running';
+    useKeiAmerExportStore.setState({
+      ...applyJobSnapshot(job, onComplete),
+      ...(autoTerminal ? { items: [], modalVisible: false } : {}),
+    });
     if (job.status !== 'queued' && job.status !== 'running' && !useKeiAmerExportStore.getState().autoEnabled) {
       stopPolling();
     }
@@ -207,6 +213,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   pillCollapsed: true,
   message: '',
   source: 'manual',
+  targetCount: 0,
   items: [],
   results: [],
   skipped: 0,
