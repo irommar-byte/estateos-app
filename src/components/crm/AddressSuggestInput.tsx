@@ -38,6 +38,7 @@ export default function AddressSuggestInput({
   const [items, setItems] = useState<Suggestion[]>([]);
   const seq = useRef(0);
   const wrapRef = useRef<HTMLLabelElement>(null);
+  const acceptedRef = useRef<string | null>(null);
 
   useEffect(() => {
     const onDoc = (event: MouseEvent) => {
@@ -50,6 +51,11 @@ export default function AddressSuggestInput({
   useEffect(() => {
     const query = value.trim();
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (acceptedRef.current && query === acceptedRef.current) {
+      setItems([]);
+      setOpen(false);
+      return;
+    }
     if (disabled || query.length < 3 || !token) {
       setItems([]);
       return;
@@ -100,7 +106,10 @@ export default function AddressSuggestInput({
           value={value}
           disabled={disabled}
           placeholder={placeholder}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            acceptedRef.current = null;
+            onChange(event.target.value);
+          }}
           onFocus={() => items.length && setOpen(true)}
           className={`${fieldClass} pl-10`}
         />
@@ -114,12 +123,16 @@ export default function AddressSuggestInput({
               type="button"
               className="block w-full px-3.5 py-2.5 text-left text-sm text-[var(--eos-text)] hover:bg-emerald-500/10"
               onClick={() => {
-                onChange(item.address, {
+                const next = item.address;
+                acceptedRef.current = next;
+                seq.current += 1;
+                setItems([]);
+                setOpen(false);
+                onChange(next, {
                   city: item.city,
                   lat: Number.isFinite(item.lat) ? item.lat : undefined,
                   lng: Number.isFinite(item.lng) ? item.lng : undefined,
                 });
-                setOpen(false);
               }}
             >
               {item.label}

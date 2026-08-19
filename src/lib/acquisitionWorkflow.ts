@@ -26,6 +26,7 @@ export type AcquisitionFormData = {
   property: {
     address: string;
     city: string;
+    district: string;
     lat: string;
     lng: string;
     propertyType: string;
@@ -154,6 +155,7 @@ export function createDefaultAcquisitionForm(
     property: {
       address,
       city: client?.sellerCity || "",
+      district: client?.sellerDistrict || "",
       lat: "",
       lng: "",
       propertyType: "Mieszkanie",
@@ -262,6 +264,8 @@ export function buildAcquisitionAgreementText(params: {
     "",
     "2. NIERUCHOMOŚĆ I OŚWIADCZENIA KLIENTA",
     line("Adres", form.property.address),
+    line("Miasto", form.property.city),
+    line("Dzielnica", form.property.district),
     line("Rodzaj", form.property.propertyType),
     line("Powierzchnia", form.property.area ? `${form.property.area} m²` : ""),
     line("Liczba pokoi", form.property.rooms),

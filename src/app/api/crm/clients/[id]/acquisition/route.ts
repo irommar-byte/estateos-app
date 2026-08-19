@@ -222,6 +222,21 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     clientName: `${client.firstName} ${client.lastName}`.trim(),
     form: formData,
   });
+  const sellerCity = String(formData.property.city || "").trim();
+  const sellerDistrict = String(formData.property.district || "").trim();
+  const sellerArea = Number(String(formData.property.area || "").replace(/\s/g, "").replace(",", "."));
+  const sellerRooms = Number(formData.property.rooms);
+  const sellerPrice = Number(String(formData.strategy.expectedPrice || "").replace(/\s/g, "").replace(",", "."));
+  await prisma.agencyClient.update({
+    where: { id: clientId },
+    data: {
+      ...(sellerCity ? { sellerCity } : {}),
+      ...(sellerDistrict ? { sellerDistrict } : {}),
+      ...(Number.isFinite(sellerArea) && sellerArea > 0 ? { sellerArea } : {}),
+      ...(Number.isFinite(sellerRooms) && sellerRooms > 0 ? { sellerRooms: Math.round(sellerRooms) } : {}),
+      ...(Number.isFinite(sellerPrice) && sellerPrice > 0 ? { sellerPrice } : {}),
+    },
+  }).catch(() => {});
 
   return NextResponse.json({ success: true, acquisition: shapeAcquisition(record, formData) });
 }
