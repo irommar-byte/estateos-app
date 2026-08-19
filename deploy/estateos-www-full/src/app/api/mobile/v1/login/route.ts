@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
-import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { MOBILE_USER_SELECT } from '@/lib/mobileUserShape';
+import { shapeMobileUserEntitled } from '@/lib/mobileUserShapeEntitled';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 export async function POST(req: Request) {
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      user: fullUser ? { ...shapeMobileUser(fullUser), hasPasskey } : null,
+      user: fullUser ? { ...await shapeMobileUserEntitled(fullUser), hasPasskey } : null,
       token,
     });
   } catch (error) {

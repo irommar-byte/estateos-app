@@ -382,7 +382,7 @@ export default function CRMDashboard() {
     currentUser?.role === 'ADMIN' ||
     eliteBadges?.isInvestorPro === true ||
     isInvestorProIdentity(currentUser);
-  const isPremium = isInvestorPro;
+  const isPremium = Boolean(isInvestorPro || currentUser?.hasMarketPro || currentUser?.officePro);
   const showDualRadarPro = Boolean(eliteBadges?.isProgramPartner);
   const radarSummary = formatRadarSummary(
     radarDisplayFilters || defaultWebRadarFilters("Warszawa"),

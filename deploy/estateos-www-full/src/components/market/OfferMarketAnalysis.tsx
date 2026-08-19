@@ -1,6 +1,7 @@
 "use client";
 
 import MarketValuationPanel from "@/components/market/MarketValuationPanel";
+import MarketProTeaser from "@/components/market/MarketProTeaser";
 
 type Props = {
   lat?: number | null;
@@ -12,10 +13,16 @@ type Props = {
   district?: string | null;
   address?: string | null;
   price?: number | null;
+  hasMarketPro?: boolean;
+  teaserHref?: string;
+  teaserCta?: string;
 };
 
 export default function OfferMarketAnalysis(props: Props) {
   if (!props.lat || !props.lng || !props.area) return null;
+  if (!props.hasMarketPro) {
+    return <MarketProTeaser href={props.teaserHref} ctaLabel={props.teaserCta} />;
+  }
   return (
     <div className="mt-8">
       <MarketValuationPanel

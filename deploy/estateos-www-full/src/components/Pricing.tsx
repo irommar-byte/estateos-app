@@ -16,6 +16,7 @@ import {
   Home,
   Users,
   Wallet,
+  Scale,
 } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import {
@@ -81,6 +82,7 @@ function partnerCopyForPlan(
         p.partnerStartF3,
         p.partnerStartF4,
         p.partnerStartF5,
+        p.partnerStartF6,
       ].map((line) => fillTemplate(line, vars)),
     };
   }
@@ -96,6 +98,9 @@ function partnerCopyForPlan(
         p.partnerProF4,
         p.partnerProF5,
         p.partnerProF6,
+        p.partnerProF7,
+        p.partnerProF8,
+        p.partnerProF9,
       ].map((line) => fillTemplate(line, vars)),
     };
   }
@@ -109,6 +114,8 @@ function partnerCopyForPlan(
       p.partnerEnterpriseF3,
       p.partnerEnterpriseF4,
       p.partnerEnterpriseF5,
+      p.partnerEnterpriseF6,
+      p.partnerEnterpriseF7,
     ].map((line) => fillTemplate(line, vars)),
   };
 }
@@ -327,6 +334,7 @@ export default function Pricing() {
     { Icon: Radar, text: p.proF3 },
     { Icon: Crown, text: p.proF4 },
     { Icon: Zap, text: p.proF5 },
+    { Icon: Scale, text: p.proF6 },
   ];
 
   const goRegisterOffice = () => {

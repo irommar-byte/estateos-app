@@ -7,7 +7,7 @@ import { parseLooseNumber } from '@/lib/market/format';
 import {
   canUseAgentMarket,
   canUseListingMarketHelper,
-  isActivePro,
+  canUsePublicMarket,
   loadMarketUser,
 } from '@/lib/market/access';
 import { hitRateLimit } from '@/lib/market/rateLimit';
@@ -32,6 +32,25 @@ export async function POST(req: Request) {
     }
 
     const user = userId ? await loadMarketUser(userId) : null;
+    if (purpose === 'consumer') {
+      if (!user) {
+        return NextResponse.json(
+          { ok: false, code: 'AUTH', message: 'Zaloguj się, żeby sprawdzić cenę przy aktach.' },
+          { status: 401 },
+        );
+      }
+      if (!(await canUsePublicMarket(user))) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: 'PRO_REQUIRED',
+            message:
+              'Porównanie ceny z aktami notarialnymi jest dostępne w Investor Pro albo Partner Pro biura.',
+          },
+          { status: 403 },
+        );
+      }
+    }
     if (purpose === 'listing') {
       if (!user) return NextResponse.json({ ok: false, code: 'AUTH', message: 'Zaloguj się.' }, { status: 401 });
       if (!canUseListingMarketHelper(user)) {
@@ -77,7 +96,7 @@ export async function POST(req: Request) {
       ...result,
       access: {
         purpose,
-        isPro: Boolean(user && isActivePro(user)),
+        isPro: Boolean(user && (await canUsePublicMarket(user))),
         marketReportCredits: user?.marketReportCredits ?? 0,
       },
     });

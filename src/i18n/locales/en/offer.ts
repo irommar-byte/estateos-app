@@ -35,6 +35,12 @@ export const offer = {
     deleteAccountDisclaimer:
       'Deleting your EstateOS account does not cancel Apple subscriptions — manage them in Apple ID settings.',
   },
+  marketDeeds: {
+    title: 'Check if the price is fair against deeds',
+    body: 'Tap to see how far the ask is from notarized transactions. Pro also unlocks “At deed prices” tapes in the catalog.',
+    cta: 'Unlock Pro',
+    partnerCta: 'Upgrade to Partner Pro',
+  },
   badges: {
     investorPro: 'Investor Pro',
     partner: 'Partner EstateOS',

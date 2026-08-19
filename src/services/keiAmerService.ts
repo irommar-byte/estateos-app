@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { API_URL } from '../config/network';
 import type {
+  KeiAutoImportConfig,
   KeiExportProgressEvent,
   KeiExportRequest,
   KeiImportJobSnapshot,
@@ -445,4 +446,34 @@ export function reconcileExportItemsFromResult(
     });
   }
   return patches;
+}
+
+export async function keiAmerFetchAutoImport(token: string): Promise<{ ok: boolean; config: KeiAutoImportConfig }> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/auto-import`, {
+    headers: authHeaders(token),
+  });
+  return parseJson<{ ok: boolean; config: KeiAutoImportConfig }>(res);
+}
+
+export async function keiAmerSaveAutoImport(
+  token: string,
+  patch: Partial<
+    Pick<
+      KeiAutoImportConfig,
+      | 'enabled'
+      | 'intervalMinutes'
+      | 'count'
+      | 'targetUserId'
+      | 'agentCommissionPercent'
+      | 'propertyKind'
+      | 'transactionKind'
+    >
+  >,
+): Promise<{ ok: boolean; config: KeiAutoImportConfig }> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/auto-import`, {
+    method: 'PUT',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return parseJson<{ ok: boolean; config: KeiAutoImportConfig }>(res);
 }

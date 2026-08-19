@@ -88,5 +88,17 @@ module.exports = {
       cron_restart: "0 8 * * *",
       time: true,
     },
+    {
+      name: "kei-auto-import",
+      cwd: root,
+      script: "npx",
+      args: "tsx scripts/kei-auto-import.ts",
+      env_file: path.join(root, ".env"),
+      env: sharedEnv,
+      env_production: sharedEnv,
+      autorestart: false,
+      cron_restart: "*/5 * * * *",
+      time: true,
+    },
   ],
 };

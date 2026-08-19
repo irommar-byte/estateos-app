@@ -37,6 +37,12 @@ import {
   saveKeiOutreachTemplate,
   type KeiOutreachSenderProfile,
 } from "@/lib/keiAmerOutreachMessage";
+import {
+  KEI_AUTO_INTERVALS_MIN,
+  KEI_AUTO_MAX_COUNT,
+  keiAutoIntervalLabel,
+  type KeiAutoImportConfig,
+} from "@/lib/keiAutoImportShared";
 
 type ActionMode = "import" | "outreach";
 type PropertyKind = "apartment" | "house";
@@ -596,6 +602,18 @@ export default function KeiAmerWorkspace() {
   });
   const [outreachSenderMissing, setOutreachSenderMissing] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [autoImport, setAutoImport] = useState<KeiAutoImportConfig | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [autoMessage, setAutoMessage] = useState("");
+  const [autoDraft, setAutoDraft] = useState({
+    enabled: false,
+    intervalMinutes: 60,
+    count: "3",
+    targetUserId: "55",
+    agentCommissionPercent: "2",
+    propertyKind: "apartment" as PropertyKind,
+    transactionKind: "sale" as TransactionKind,
+  });
   const [preview, setPreview] = useState<PreviewState>({
     loading: false,
     error: "",
@@ -631,6 +649,69 @@ export default function KeiAmerWorkspace() {
     const saved = loadKeiOutreachSender();
     setOutreachSender(saved);
   }, []);
+
+  const applyAutoConfig = useCallback((config: KeiAutoImportConfig) => {
+    setAutoImport(config);
+    setAutoDraft({
+      enabled: config.enabled,
+      intervalMinutes: config.intervalMinutes,
+      count: String(config.count),
+      targetUserId: String(config.targetUserId),
+      agentCommissionPercent: String(config.agentCommissionPercent),
+      propertyKind: config.propertyKind,
+      transactionKind: config.transactionKind,
+    });
+  }, []);
+
+  const loadAutoImport = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/kei-amer/auto-import", { credentials: "include", cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.config) applyAutoConfig(data.config as KeiAutoImportConfig);
+    } catch {
+      /* ignore */
+    }
+  }, [applyAutoConfig]);
+
+  useEffect(() => {
+    void loadAutoImport();
+  }, [loadAutoImport]);
+
+  const saveAutoImport = useCallback(
+    async (patch?: Partial<KeiAutoImportConfig>) => {
+      setAutoSaving(true);
+      setAutoMessage("");
+      try {
+        const res = await fetch("/api/admin/kei-amer/auto-import", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enabled: patch?.enabled ?? autoDraft.enabled,
+            intervalMinutes: patch?.intervalMinutes ?? autoDraft.intervalMinutes,
+            count: patch?.count ?? Number(autoDraft.count),
+            targetUserId: patch?.targetUserId ?? Number(autoDraft.targetUserId),
+            agentCommissionPercent:
+              patch?.agentCommissionPercent ?? Number(autoDraft.agentCommissionPercent),
+            propertyKind: patch?.propertyKind ?? autoDraft.propertyKind,
+            transactionKind: patch?.transactionKind ?? autoDraft.transactionKind,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.config) {
+          setAutoMessage(String(data?.error || "Nie udało się zapisać harmonogramu."));
+          return;
+        }
+        applyAutoConfig(data.config as KeiAutoImportConfig);
+        setAutoMessage(data.config.enabled ? "Harmonogram zapisany — import działa na serwerze." : "Harmonogram wyłączony.");
+      } catch {
+        setAutoMessage("Błąd sieci przy zapisie harmonogramu.");
+      } finally {
+        setAutoSaving(false);
+      }
+    },
+    [applyAutoConfig, autoDraft],
+  );
 
   const loadOutreachProfile = useCallback(async () => {
     try {
@@ -1185,6 +1266,124 @@ export default function KeiAmerWorkspace() {
               )}
               {primaryActionLabel}
             </motion.button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.06] p-4 md:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Automatyczny import</p>
+              <p className="mt-1 text-sm text-white/70 leading-relaxed">
+                Serwer sam wrzuca ogłoszenia według interwału, liczby, ID użytkownika, prowizji, typu i transakcji.
+                Aplikację możesz zamknąć.
+              </p>
+            </div>
+            <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/80">
+              <input
+                type="checkbox"
+                checked={autoDraft.enabled}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setAutoDraft((prev) => ({ ...prev, enabled }));
+                  void saveAutoImport({ enabled });
+                }}
+                className="h-4 w-4 accent-emerald-500"
+              />
+              {autoDraft.enabled ? "Włączony" : "Wyłączony"}
+            </label>
+          </div>
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <label className="flex flex-col gap-1.5 col-span-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Interwał</span>
+              <select
+                value={autoDraft.intervalMinutes}
+                onChange={(e) => setAutoDraft((prev) => ({ ...prev, intervalMinutes: Number(e.target.value) }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              >
+                {KEI_AUTO_INTERVALS_MIN.map((min) => (
+                  <option key={min} value={min}>
+                    {keiAutoIntervalLabel(min)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Ilość (max {KEI_AUTO_MAX_COUNT})</span>
+              <input
+                type="number"
+                min={1}
+                max={KEI_AUTO_MAX_COUNT}
+                value={autoDraft.count}
+                onChange={(e) => setAutoDraft((prev) => ({ ...prev, count: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">ID użytkownika</span>
+              <input
+                type="number"
+                min={1}
+                value={autoDraft.targetUserId}
+                onChange={(e) => setAutoDraft((prev) => ({ ...prev, targetUserId: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Prowizja %</span>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={autoDraft.agentCommissionPercent}
+                onChange={(e) => setAutoDraft((prev) => ({ ...prev, agentCommissionPercent: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Nieruchomość</span>
+              <select
+                value={autoDraft.propertyKind}
+                onChange={(e) => setAutoDraft((prev) => ({ ...prev, propertyKind: e.target.value as PropertyKind }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              >
+                <option value="apartment">Mieszkanie</option>
+                <option value="house">Dom</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Transakcja</span>
+              <select
+                value={autoDraft.transactionKind}
+                onChange={(e) => setAutoDraft((prev) => ({ ...prev, transactionKind: e.target.value as TransactionKind }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              >
+                <option value="sale">Sprzedaż</option>
+                <option value="rent">Najem</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={autoSaving}
+              onClick={() => void saveAutoImport()}
+              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-black disabled:opacity-60"
+            >
+              {autoSaving ? <Loader2 size={14} className="animate-spin" /> : null}
+              Zapisz harmonogram
+            </button>
+            {autoImport?.lastRunAt ? (
+              <p className="text-[11px] text-white/45">
+                Ostatni start: {new Date(autoImport.lastRunAt).toLocaleString("pl-PL")}
+                {autoImport.lastJobId ? ` · job ${autoImport.lastJobId.slice(0, 8)}` : ""}
+              </p>
+            ) : (
+              <p className="text-[11px] text-white/40">Jeszcze nie uruchomiono.</p>
+            )}
+            {autoImport?.lastError ? (
+              <p className="text-[11px] text-amber-300">{autoImport.lastError}</p>
+            ) : null}
+            {autoMessage ? <p className="text-[11px] text-emerald-300">{autoMessage}</p> : null}
           </div>
         </div>
 

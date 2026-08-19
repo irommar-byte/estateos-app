@@ -32,6 +32,15 @@ export function hasActiveInvestorProMembership(user: unknown): boolean {
   return false;
 }
 
+/** Investor Pro albo Partner Pro / Enterprise biura (Off Market, Market, taśmy, widget). Nie kredyty Investor. */
+export function hasMarketProPrivileges(user: unknown): boolean {
+  if (!user || typeof user !== 'object') return false;
+  const u = user as Record<string, unknown>;
+  if (String(u.role || '').toUpperCase() === 'ADMIN') return true;
+  if (u.hasMarketPro === true || u.officePro === true) return true;
+  return hasActiveInvestorProMembership(user);
+}
+
 export function parseProExpiryMs(value: unknown): number | null {
   if (!value) return null;
   const ts = new Date(String(value)).getTime();

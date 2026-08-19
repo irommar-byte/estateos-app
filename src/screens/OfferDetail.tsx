@@ -3,7 +3,7 @@ import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, StatusBar, useWindowDimensions, type GestureResponderEvent } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, StatusBar, useWindowDimensions, Linking, type GestureResponderEvent } from 'react-native';
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -72,6 +72,8 @@ import { getBestUserAvatarUrl } from '../utils/userAvatar';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
 import { requestInvestorProUpsell } from '../services/investorProUpsell';
+import { hasMarketProPrivileges } from '../utils/investorProMembership';
+import MarketValuationCard from '../components/market/MarketValuationCard';
 import { describeOfferAgentCommission, parseOfferNumeric, formatCommissionAmountForDisplay } from '../lib/agentCommission';
 import ReportSheet from '../components/ReportSheet';
 import BlockUserSheet from '../components/BlockUserSheet';
@@ -194,7 +196,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const introHeightRef = useRef(0);
   const bottomBarWrapRef = useRef<View>(null);
   const heartScale = useSharedValue(1);
-  const { user, token, refreshUser } = useAuthStore() as any;
+  const { user, token, refreshUser, agencyMembership } = useAuthStore() as any;
   const [promotingFeatured, setPromotingFeatured] = useState(false);
   const [featureSheetVisible, setFeatureSheetVisible] = useState(false);
   const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
@@ -228,15 +230,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const listingOwnerUserId = ownerCandidateIds[0] ?? null;
   const isOwner = viewerUserId > 0 && ownerCandidateIds.includes(viewerUserId);
   const isPlatformAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
-  const proExpiryMs = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
-  const isProStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
-  const viewerPlanType = String(user?.planType || '').trim().toUpperCase();
-  const isProUser = Boolean(
-    (viewerPlanType !== 'PLUS' && user?.isPro && isProStillActive) ||
-    user?.role === 'ADMIN' ||
-    viewerPlanType === 'PRO' ||
-    viewerPlanType === 'AGENCY'
-  );
+  const isProUser = hasMarketProPrivileges(user);
   const [timeLeftMs, setTimeLeftMs] = useState(0);
 
   const createdAtMs = offer?.createdAt ? new Date(offer.createdAt).getTime() : null;
@@ -386,6 +380,18 @@ export default function OfferDetail({ route, navigation }: any) {
   const handleBecomePro = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     requestInvestorProUpsell('off_market');
+  };
+
+  const handleMarketDeedsTeaser = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const officeMember = String(agencyMembership?.status || '').toUpperCase() === 'ACTIVE';
+    if (officeMember) {
+      void Linking.openURL('https://estateos.pl/moje-konto/firma?upgrade=pro#pakiet').catch(() => {
+        requestInvestorProUpsell('market_deeds');
+      });
+      return;
+    }
+    requestInvestorProUpsell('market_deeds');
   };
 
   const handleGoBack = useCallback(() => {
@@ -2081,6 +2087,63 @@ export default function OfferDetail({ route, navigation }: any) {
 
           <Text style={[styles.sectionTitle, { marginTop: 28 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
           <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
+
+          {Number.isFinite(parseOfferNumeric(offer?.lat)) &&
+          Number.isFinite(parseOfferNumeric(offer?.lng)) &&
+          Number.isFinite(areaNumForStats) &&
+          areaNumForStats > 0 ? (
+            isProUser ? (
+              <View style={{ marginTop: 18 }}>
+                <MarketValuationCard
+                  token={token || null}
+                  lat={parseOfferNumeric(offer?.lat)}
+                  lng={parseOfferNumeric(offer?.lng)}
+                  area={areaNumForStats}
+                  rooms={parseOfferNumeric(offer?.rooms)}
+                  floor={parseOfferNumeric(offer?.floor)}
+                  city={String(offer?.city || 'Warszawa')}
+                  district={offer?.district ? String(offer.district) : null}
+                  address={[offer?.street, offer?.city].filter(Boolean).join(', ')}
+                  listingPrice={priceNumForStats}
+                  purpose="consumer"
+                  colors={{
+                    card: isDark ? '#1c1c1e' : '#ffffff',
+                    text: isDark ? '#ffffff' : '#111827',
+                    secondary: isDark ? '#9ca3af' : '#6b7280',
+                    border: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.08)',
+                    accent: '#34C759',
+                  }}
+                />
+              </View>
+            ) : (
+              <Pressable
+                onPress={handleMarketDeedsTeaser}
+                style={{
+                  marginTop: 18,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: 'rgba(52,199,89,0.28)',
+                  backgroundColor: isDark ? 'rgba(52,199,89,0.08)' : 'rgba(52,199,89,0.06)',
+                  padding: 16,
+                }}
+              >
+                <Text style={{ color: '#34C759', fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                  EstateOS™ Market
+                </Text>
+                <Text style={{ marginTop: 8, fontSize: 18, fontWeight: '800', color: isDark ? '#ffffff' : '#111827' }}>
+                  {t('offer.marketDeeds.title')}
+                </Text>
+                <Text style={{ marginTop: 8, fontSize: 14, lineHeight: 20, color: isDark ? '#9ca3af' : '#6b7280' }}>
+                  {t('offer.marketDeeds.body')}
+                </Text>
+                <Text style={{ marginTop: 14, fontSize: 13, fontWeight: '800', color: '#059669' }}>
+                  {String(agencyMembership?.status || '').toUpperCase() === 'ACTIVE'
+                    ? t('offer.marketDeeds.partnerCta')
+                    : t('offer.marketDeeds.cta')}
+                </Text>
+              </Pressable>
+            )
+          ) : null}
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.keyParameters')}</Text>

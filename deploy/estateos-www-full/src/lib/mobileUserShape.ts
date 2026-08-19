@@ -33,7 +33,10 @@ export function computeIsProActive(user: { role: string; isPro: boolean; proExpi
  * email-verify confirm). Wylicza `emailVerified` jako `isVerified === true || !!emailVerifiedAt`,
  * żeby uniknąć rozjazdu „isVerified=true ale emailVerified=false”.
  */
-export function shapeMobileUser(user: MobileUserCore, opts?: { displayImage?: string | null }) {
+export function shapeMobileUser(
+  user: MobileUserCore,
+  opts?: { displayImage?: string | null; officePro?: boolean },
+) {
   const fullName = String(user.name || '').trim();
   const parts = fullName ? fullName.split(/\s+/) : [];
   const firstName = parts[0] || '';
@@ -46,6 +49,13 @@ export function shapeMobileUser(user: MobileUserCore, opts?: { displayImage?: st
 
   const phone = user.phone;
   const image = opts?.displayImage ?? user.image;
+
+  const investorPro = computeIsProActive({
+    role: user.role,
+    isPro: user.isPro,
+    proExpiresAt: user.proExpiresAt,
+  });
+  const officePro = Boolean(opts?.officePro);
 
   return {
     id: user.id,
@@ -62,11 +72,9 @@ export function shapeMobileUser(user: MobileUserCore, opts?: { displayImage?: st
     role: user.role,
     planType: user.planType,
     extraListings: user.extraListings ?? 0,
-    isPro: computeIsProActive({
-      role: user.role,
-      isPro: user.isPro,
-      proExpiresAt: user.proExpiresAt,
-    }),
+    isPro: investorPro,
+    officePro,
+    hasMarketPro: investorPro || officePro,
     proExpiresAt: user.proExpiresAt,
     plusExpiresAt: user.plusExpiresAt ?? null,
     emailVerified,
@@ -103,5 +111,5 @@ export const MOBILE_USER_SELECT = {
   companyName: true,
   pendingEmail: true,
   intelligenceEnabled: true,
-  intelligenceDecidedAt: true,
+    intelligenceDecidedAt: true,
 } as const;

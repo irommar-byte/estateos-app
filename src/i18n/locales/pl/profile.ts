@@ -343,6 +343,10 @@ export const profile = {
         title: 'Dzień otwartych drzwi — Investor Pro',
         body: 'Zorganizuj dzień otwartych drzwi dla swojej oferty i przyjmuj rezerwacje wizyt w aplikacji.',
       },
+      market_deeds: {
+        title: 'Sprawdź cenę przy aktach',
+        body: 'Investor Pro pokazuje, jak daleko cena odbiega od transakcji notarialnych. W katalogu zobaczysz też taśmy „Przy aktach”. Partnerzy biura dostają to samo w pakiecie Partner Pro.',
+      },
     },
     investorProFooter:
       'Investor Pro to auto-odnawialna subskrypcja miesięczna: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. Cena jest widoczna na ekranie zakupu z App Store. Może obowiązywać 3-dniowy okres próbny przed pierwszą opłatą. Anuluj w Ustawienia → Apple ID → Subskrypcje (najlepiej ≥24 h przed końcem okresu). To nie jest Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',

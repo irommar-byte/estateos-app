@@ -31,6 +31,8 @@ import SlidingIconSegment from '../catalog/SlidingIconSegment';
 import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
 import { fetchListingTape, formatTapeDelta } from '../../services/marketService';
+import { useAuthStore } from '../../store/useAuthStore';
+import { hasMarketProPrivileges } from '../../utils/investorProMembership';
 import ApplePressable from '../ApplePressable';
 import MarketUnreadQuickReplyBubble from '../messaging/MarketUnreadQuickReplyBubble';
 import DiscoveryForYouRail from '../discovery/DiscoveryForYouRail';
@@ -243,6 +245,9 @@ export default function RadarOfferGallery({
   navigation,
 }: Props) {
   const { width } = useWindowDimensions();
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const canSeeDeedTape = hasMarketProPrivileges(user);
   const { colors, elevation, isDark: _carIsDark } = useCarScreenTheme();
   const listRef = useRef<FlatList<GalleryOffer>>(null);
   const [scrollY, setScrollY] = useState(0);
@@ -341,11 +346,11 @@ export default function RadarOfferGallery({
 
   useEffect(() => {
     let cancelled = false;
-    if (transactionFilter === 'RENT' || countryFilter === 'ABROAD') {
+    if (!canSeeDeedTape || transactionFilter === 'RENT' || countryFilter === 'ABROAD') {
       setDeedTapeItems([]);
       return;
     }
-    void fetchListingTape(locale)
+    void fetchListingTape(locale, token)
       .then((items) => {
         if (cancelled) return;
         setDeedTapeItems(
@@ -368,7 +373,7 @@ export default function RadarOfferGallery({
     return () => {
       cancelled = true;
     };
-  }, [locale, transactionFilter, countryFilter, formatPrice]);
+  }, [locale, transactionFilter, countryFilter, formatPrice, canSeeDeedTape, token]);
 
   const marketRailSections = useMemo(() => {
     const toHome = (item: GalleryOffer | CatalogRailItem & { raw?: Record<string, unknown>; lat?: number; lng?: number }) => {
@@ -429,6 +434,7 @@ export default function RadarOfferGallery({
     void favFromIds;
 
     const showDeedTape =
+      canSeeDeedTape &&
       transactionFilter !== 'RENT' &&
       countryFilter !== 'ABROAD' &&
       (propertyFilter === 'ALL' || propertyFilter === 'FLAT');
@@ -465,6 +471,7 @@ export default function RadarOfferGallery({
     transactionFilter,
     countryFilter,
     propertyFilter,
+    canSeeDeedTape,
   ]);
 
   useEffect(() => {

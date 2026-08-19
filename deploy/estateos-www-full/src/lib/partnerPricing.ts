@@ -144,5 +144,16 @@ export function describePartnerPlanChange(params: {
     lines.push('Aktywacja Partner — CRM, zespół, pula kredytów i Concierge w jednym miejscu.');
   }
 
+  if (to.id === 'pro' || to.id === 'enterprise') {
+    lines.push(
+      'Cały zespół (aktywni agenci i kierownik) dostaje status Pro: Off Market, Market na każdej ofercie, taśmy „Przy aktach” i tytanowe okienko w aplikacji.',
+    );
+    lines.push('5 raportów wyceny na e-mail do klientów — na osobę, w okresie 30 dni. Bez kredytów publikacji Investor Pro.');
+  } else if (to.id === 'start') {
+    lines.push(
+      'Partner Start nie odblokowuje Off Market, Market przy aktach, taśm w katalogu ani raportów e-mail — to zalety Partner Pro, najchętniej wybieranego pakietu.',
+    );
+  }
+
   return lines;
 }

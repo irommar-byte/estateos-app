@@ -35,6 +35,12 @@ export const offer = {
     deleteAccountDisclaimer:
       'Удаление аккаунта EstateOS не отменяет подписку Apple — управляйте ею в настройках Apple ID.',
   },
+  marketDeeds: {
+    title: 'Проверьте, справедлива ли цена по актам',
+    body: 'Нажмите, чтобы увидеть, насколько цена отличается от нотариальных сделок. В Pro также появятся ленты «При актах» в каталоге.',
+    cta: 'Открыть Pro',
+    partnerCta: 'Перейти на Partner Pro',
+  },
   badges: {
     investorPro: 'Инвестор Про',
     partner: 'Партнер EstateOS',

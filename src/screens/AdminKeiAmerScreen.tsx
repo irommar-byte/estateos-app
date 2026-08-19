@@ -24,6 +24,8 @@ import { BlurView } from 'expo-blur';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import {
+  KEI_AUTO_INTERVALS_MIN,
+  KEI_AUTO_MAX_COUNT,
   KEI_FALLBACK_APARTMENT_AREA_RANGES,
   KEI_FALLBACK_DISTRICTS,
   KEI_FALLBACK_HOUSE_AREA_RANGES,
@@ -31,7 +33,9 @@ import {
   KEI_FALLBACK_SALE_PRICE_RANGES,
   KEI_MAX_SELECT,
   KEI_PAGE_SIZE,
+  keiAutoIntervalLabel,
   keiFallbackDatePresets,
+  type KeiAutoImportConfig,
   type KeiFloorPlanSelection,
   type KeiPreviewListing,
   type KeiPropertyKind,
@@ -39,11 +43,13 @@ import {
   type KeiTransactionKind,
 } from '../contracts/keiAmerContract';
 import {
+  keiAmerFetchAutoImport,
   keiAmerFetchFacets,
   keiAmerFetchPreview,
   keiAmerPeekImageUrl,
   keiAmerPeekListing,
   keiAmerRefreshSession,
+  keiAmerSaveAutoImport,
 } from '../services/keiAmerService';
 import { useKeiAmerExportStore } from '../store/useKeiAmerExportStore';
 import NumericKeyboardAccessory, {
@@ -141,6 +147,17 @@ export default function AdminKeiAmerScreen() {
   const [targetUserId, setTargetUserId] = useState('55');
   const [commission, setCommission] = useState('2');
   const [autoCount, setAutoCount] = useState('1');
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleInterval, setScheduleInterval] = useState(60);
+  const [scheduleCount, setScheduleCount] = useState('3');
+  const [scheduleUserId, setScheduleUserId] = useState('55');
+  const [scheduleCommission, setScheduleCommission] = useState('2');
+  const [scheduleProperty, setScheduleProperty] = useState<KeiPropertyKind>('apartment');
+  const [scheduleTransaction, setScheduleTransaction] = useState<KeiTransactionKind>('sale');
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState('');
+  const [scheduleLastRun, setScheduleLastRun] = useState<string | null>(null);
+  const [scheduleLastError, setScheduleLastError] = useState<string | null>(null);
 
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
@@ -257,6 +274,66 @@ export default function AdminKeiAmerScreen() {
       setSessionLoading(false);
     }
   }, [token]);
+
+  const applyScheduleConfig = useCallback((config: KeiAutoImportConfig) => {
+    setScheduleEnabled(config.enabled);
+    setScheduleInterval(config.intervalMinutes);
+    setScheduleCount(String(config.count));
+    setScheduleUserId(String(config.targetUserId));
+    setScheduleCommission(String(config.agentCommissionPercent));
+    setScheduleProperty(config.propertyKind);
+    setScheduleTransaction(config.transactionKind);
+    setScheduleLastRun(config.lastRunAt);
+    setScheduleLastError(config.lastError);
+  }, []);
+
+  const loadSchedule = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await keiAmerFetchAutoImport(token);
+      if (res.config) applyScheduleConfig(res.config);
+    } catch {
+      /* ignore */
+    }
+  }, [token, applyScheduleConfig]);
+
+  const saveSchedule = useCallback(
+    async (patch?: { enabled?: boolean }) => {
+      if (!token) return;
+      setScheduleSaving(true);
+      setScheduleMessage('');
+      try {
+        const res = await keiAmerSaveAutoImport(token, {
+          enabled: patch?.enabled ?? scheduleEnabled,
+          intervalMinutes: scheduleInterval,
+          count: Number(scheduleCount),
+          targetUserId: Number(scheduleUserId),
+          agentCommissionPercent: Number(scheduleCommission),
+          propertyKind: scheduleProperty,
+          transactionKind: scheduleTransaction,
+        });
+        applyScheduleConfig(res.config);
+        setScheduleMessage(
+          res.config.enabled ? 'Harmonogram zapisany — import działa na serwerze.' : 'Harmonogram wyłączony.',
+        );
+      } catch (e) {
+        setScheduleMessage(e instanceof Error ? e.message : 'Nie udało się zapisać harmonogramu.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [
+      token,
+      scheduleEnabled,
+      scheduleInterval,
+      scheduleCount,
+      scheduleUserId,
+      scheduleCommission,
+      scheduleProperty,
+      scheduleTransaction,
+      applyScheduleConfig,
+    ],
+  );
 
   const loadPreview = useCallback(
     async (nextPage = 1) => {
@@ -480,7 +557,8 @@ export default function AdminKeiAmerScreen() {
 
   useEffect(() => {
     void loadSession();
-  }, [loadSession]);
+    void loadSchedule();
+  }, [loadSession, loadSchedule]);
 
   useEffect(() => {
     if (sessionOk) void loadFacets();
@@ -672,6 +750,143 @@ export default function AdminKeiAmerScreen() {
                 {...numericInputProps}
                 style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
               />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sectionPad}>
+          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>AUTOMATYCZNY IMPORT</Text>
+          <View style={[styles.configCard, { backgroundColor: colors.card }]}>
+            <View style={styles.configRow}>
+              <Text style={[styles.configLabel, { color: colors.secondary, width: 180 }]}>Włącz harmonogram</Text>
+              <Switch
+                value={scheduleEnabled}
+                onValueChange={(enabled) => {
+                  void Haptics.selectionAsync();
+                  setScheduleEnabled(enabled);
+                  void saveSchedule({ enabled });
+                }}
+                trackColor={{ false: colors.segmentBg, true: colors.accent }}
+              />
+            </View>
+            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+            <Text style={[styles.hint, { color: colors.tertiary, paddingHorizontal: 14, marginTop: 0, marginBottom: 8 }]}>
+              Serwer sam importuje według interwału, ilości, ID, prowizji, typu i transakcji. Aplikację możesz zamknąć.
+            </Text>
+            <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
+              <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto' }]}>Interwał</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {KEI_AUTO_INTERVALS_MIN.map((min) => {
+                  const active = scheduleInterval === min;
+                  return (
+                    <Pressable
+                      key={min}
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        setScheduleInterval(min);
+                      }}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        backgroundColor: active ? colors.accent : colors.cardSecondary,
+                      }}
+                    >
+                      <Text style={{ color: active ? '#000' : colors.text, fontWeight: '700', fontSize: 13 }}>
+                        {keiAutoIntervalLabel(min)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+            <View style={styles.configRow}>
+              <Text style={[styles.configLabel, { color: colors.secondary }]}>Ilość</Text>
+              <TextInput
+                value={scheduleCount}
+                onChangeText={setScheduleCount}
+                keyboardType="number-pad"
+                {...numericInputProps}
+                style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
+              />
+            </View>
+            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+            <View style={styles.configRow}>
+              <Text style={[styles.configLabel, { color: colors.secondary }]}>ID użytkownika</Text>
+              <TextInput
+                value={scheduleUserId}
+                onChangeText={setScheduleUserId}
+                keyboardType="number-pad"
+                {...numericInputProps}
+                style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
+              />
+            </View>
+            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+            <View style={styles.configRow}>
+              <Text style={[styles.configLabel, { color: colors.secondary }]}>Prowizja %</Text>
+              <TextInput
+                value={scheduleCommission}
+                onChangeText={setScheduleCommission}
+                keyboardType="decimal-pad"
+                {...numericInputProps}
+                style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
+              />
+            </View>
+            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+              <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
+                Nieruchomość
+              </Text>
+              <SegmentedControl
+                value={scheduleProperty}
+                onChange={setScheduleProperty}
+                options={[
+                  { id: 'apartment', label: 'Mieszkanie' },
+                  { id: 'house', label: 'Dom' },
+                ]}
+                colors={colors}
+              />
+            </View>
+            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+              <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
+                Transakcja
+              </Text>
+              <SegmentedControl
+                value={scheduleTransaction}
+                onChange={setScheduleTransaction}
+                options={[
+                  { id: 'sale', label: 'Sprzedaż' },
+                  { id: 'rent', label: 'Najem' },
+                ]}
+                colors={colors}
+              />
+            </View>
+            <View style={{ padding: 14, paddingTop: 4 }}>
+              <Pressable
+                onPress={() => void saveSchedule()}
+                disabled={scheduleSaving}
+                style={[styles.autoBtn, { backgroundColor: colors.accent }]}
+              >
+                {scheduleSaving ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={[styles.autoBtnText, { color: '#000' }]}>Zapisz harmonogram</Text>
+                )}
+              </Pressable>
+              {scheduleLastRun ? (
+                <Text style={[styles.hint, { color: colors.tertiary }]}>
+                  Ostatni start: {new Date(scheduleLastRun).toLocaleString('pl-PL')}
+                </Text>
+              ) : null}
+              {scheduleLastError ? (
+                <Text style={[styles.hint, { color: colors.accentAmber }]}>{scheduleLastError}</Text>
+              ) : null}
+              {scheduleMessage ? (
+                <Text style={[styles.hint, { color: colors.accent }]}>{scheduleMessage}</Text>
+              ) : null}
+              <Text style={[styles.hint, { color: colors.tertiary }]}>Max {KEI_AUTO_MAX_COUNT} ogłoszeń na cykl.</Text>
             </View>
           </View>
         </View>

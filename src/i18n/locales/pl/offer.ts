@@ -35,6 +35,12 @@ export const offer = {
     deleteAccountDisclaimer:
       'Usunięcie konta w EstateOS nie anuluje subskrypcji Apple — zarządzaj nią w ustawieniach Apple ID.',
   },
+  marketDeeds: {
+    title: 'Sprawdź, czy cena jest dobra przy aktach',
+    body: 'Kliknij, aby zobaczyć jak daleko cena odbiega od transakcji notarialnych. W Pro zobaczysz też taśmy „Przy aktach” w katalogu nieruchomości.',
+    cta: 'Odblokuj Pro',
+    partnerCta: 'Ulepsz do Partner Pro',
+  },
   badges: {
     investorPro: 'Investor Pro',
     partner: 'Partner EstateOS',

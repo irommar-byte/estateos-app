@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { signMobileToken } from '@/lib/jwtMobile';
-import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { MOBILE_USER_SELECT } from '@/lib/mobileUserShape';
+import { shapeMobileUserEntitled } from '@/lib/mobileUserShapeEntitled';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail } from '@/lib/email/transactional';
 import {
@@ -67,7 +68,7 @@ async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown, req?:
 
   return NextResponse.json({
     success: true,
-    user: fullUser ? { ...shapeMobileUser(fullUser), hasPasskey } : null,
+    user: fullUser ? { ...await shapeMobileUserEntitled(fullUser), hasPasskey } : null,
     token,
   });
 }
@@ -96,7 +97,7 @@ export async function GET(req: Request) {
     const hasPasskey = await userHasRegisteredPasskey(userId);
     // Sesja przywrócona z tokenu = użytkownik aktywny w aplikacji → ONLINE od razu.
     await recordUserLogin(userId, getClientIp(req));
-    return NextResponse.json({ success: true, user: { ...shapeMobileUser(user), hasPasskey } });
+    return NextResponse.json({ success: true, user: { ...await shapeMobileUserEntitled(user), hasPasskey } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Błąd serwera';
     return NextResponse.json({ success: false, message }, { status: 500 });
@@ -186,7 +187,7 @@ export async function POST(req: Request) {
       const token = signMobileToken({ id: user.id, email: user.email, role: user.role });
       return NextResponse.json({
         success: true,
-        user: { ...shapeMobileUser(user), hasPasskey: false },
+        user: { ...await shapeMobileUserEntitled(user), hasPasskey: false },
         token,
         phone: phoneE164,
         contactPhone: phoneE164,
@@ -216,7 +217,7 @@ export async function POST(req: Request) {
         select: MOBILE_USER_SELECT,
       });
       const hasPasskey = await userHasRegisteredPasskey(updatedUser.id);
-      return NextResponse.json({ success: true, user: { ...shapeMobileUser(updatedUser), hasPasskey } });
+      return NextResponse.json({ success: true, user: { ...await shapeMobileUserEntitled(updatedUser), hasPasskey } });
     }
 
     return NextResponse.json({ success: false, message: 'Błędna akcja' }, { status: 400 });

@@ -2,7 +2,8 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
-import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { MOBILE_USER_SELECT } from '@/lib/mobileUserShape';
+import { shapeMobileUserEntitled } from '@/lib/mobileUserShapeEntitled';
 import { reconcileFreeAgencyPlanTypeIfNeeded } from '@/lib/partnerPlanReconcile';
 
 export async function GET() {
@@ -33,7 +34,7 @@ export async function GET() {
       }
     }
 
-    const shaped = shapeMobileUser(user);
+    const shaped = await shapeMobileUserEntitled(user);
     return NextResponse.json({
       success: true,
       loggedIn: true, 

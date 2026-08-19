@@ -17,7 +17,8 @@ import {
   getPasskeyLoginChallenge,
 } from '@/lib/passkeyChallengeDb';
 import { extractAuthenticationResponse } from '@/lib/passkeyMobileRequest';
-import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { MOBILE_USER_SELECT } from '@/lib/mobileUserShape';
+import { shapeMobileUserEntitled } from '@/lib/mobileUserShapeEntitled';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 export async function POST(req: Request) {
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
       success: true,
       hasPasskey,
       user: profile
-        ? { ...shapeMobileUser(profile), hasPasskey: true }
+        ? { ...await shapeMobileUserEntitled(profile), hasPasskey: true }
         : { id: user.id, email: user.email, hasPasskey: true },
     });
   } catch (error) {

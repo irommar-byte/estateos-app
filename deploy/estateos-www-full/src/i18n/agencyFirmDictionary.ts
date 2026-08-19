@@ -86,6 +86,10 @@ export type AgencyFirmDictionary = {
     noActivePoolHint: string;
     highestPackage: string;
     recommended: string;
+    perkOfficePro: string;
+    perkReports: string;
+    perkMarket: string;
+    perkStartGap: string;
     per30Days: string;
     creditsOnPool: (n: number) => string;
     agentsInTeam: (label: string) => string;
@@ -201,7 +205,12 @@ const pl: AgencyFirmDictionary = {
     noActivePool: 'Brak aktywnej puli',
     noActivePoolHint: 'Aktywuj płatny pakiet, aby odnowić kredyty firmy.',
     highestPackage: 'Masz już najwyższy pakiet Partner Enterprise.',
-    recommended: 'Polecany',
+    recommended: 'Najchętniej wybierany',
+    perkOfficePro:
+      'Cały zespół dostaje status Pro: Off Market, Market na ofertach, taśmy w katalogu i tytanowe okienko',
+    perkReports: '5 raportów wyceny na e-mail do klientów — na osobę / 30 dni',
+    perkMarket: 'Na każdej ofercie widać, jak daleko cena odbiega od transakcji notarialnych',
+    perkStartGap: 'Bez Off Market, Market, taśm i raportów — to zalety Partner Pro',
     per30Days: 'zł / 30 dni',
     creditsOnPool: (n) => `${n} kredytów na pulę`,
     agentsInTeam: (label) => `${label} w zespole`,
@@ -320,7 +329,12 @@ const en: AgencyFirmDictionary = {
     noActivePool: 'No active pool',
     noActivePoolHint: 'Activate a paid plan to renew company credits.',
     highestPackage: 'You already have Partner Enterprise.',
-    recommended: 'Recommended',
+    recommended: 'Most chosen',
+    perkOfficePro:
+      'The whole team gets Pro status: Off Market, Market on listings, catalog tapes and the titanium panel',
+    perkReports: '5 valuation reports emailed to clients — per person / 30 days',
+    perkMarket: 'Every listing shows how far the ask is from notarized transactions',
+    perkStartGap: 'No Off Market, Market, tapes or reports — those are Partner Pro perks',
     per30Days: 'PLN / 30 days',
     creditsOnPool: (n) => `${n} credits for the pool`,
     agentsInTeam: (label) => `${label} on the team`,
@@ -383,6 +397,12 @@ const uk: AgencyFirmDictionary = {
       'У вас активний Partner Free. Оберіть платний пакет, коли потрібно більше кредитів або місць у команді.',
     trialCheckoutNote: (price, periodDays) =>
       `Платний Pro: ${price} zł / ${periodDays} дн. після пробного. Partner Free (90 дн.) активується при реєстрації офісу.`,
+    recommended: 'Найчастіше обирають',
+    perkOfficePro:
+      'Уся команда отримує статус Pro: Off Market, Market, стрічки в каталозі та титанову панель',
+    perkReports: '5 звітів оцінки на e-mail клієнтам — на особу / 30 днів',
+    perkMarket: 'На кожній пропозиції видно, наскільки ціна відхиляється від нотаріальних угод',
+    perkStartGap: 'Без Off Market, Market, стрічок і звітів — це переваги Partner Pro',
     trialCta: 'Розпочати пробний період',
     upgradeCta: 'Покращити пакет',
     activateCta: 'Активувати пакет',

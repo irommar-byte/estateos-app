@@ -14,7 +14,7 @@ import ProMembershipCountdownBar from './ProMembershipCountdownBar';
 import TitaniumHomeKeyBackdrop from './TitaniumHomeKeyBackdrop';
 import { profilePremiumCardShellStyle } from './profileCardElevation';
 import InsetMetalRecess, { InsetMetalIconWell } from './InsetMetalRecess';
-import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
+import { hasMarketProPrivileges } from '../../utils/investorProMembership';
 import { useAuthStore } from '../../store/useAuthStore';
 import PricePulseCard from '../market/PricePulseCard';
 
@@ -242,7 +242,7 @@ function FeatureRow({
 export default function ProfileProExtrasSection({ user, isDark = true, onFeaturePress }: Props) {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
-  const isPro = hasActiveInvestorProMembership(user);
+  const isPro = hasMarketProPrivileges(user);
   const isAgency =
     String(user?.role || '').trim().toUpperCase() === 'AGENT' ||
     String(user?.planType || '').trim().toUpperCase() === 'AGENCY';

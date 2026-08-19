@@ -29,6 +29,8 @@ export interface User {
   role: string;
   planType: string | null;
   isPro?: boolean;
+  officePro?: boolean;
+  hasMarketPro?: boolean;
   proExpiresAt?: string | null;
   plusExpiresAt?: string | null;
   /** Licznik kupionych publikacji Plus (zużywany przy publikacji ogłoszenia). */

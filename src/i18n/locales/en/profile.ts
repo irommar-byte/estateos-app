@@ -339,6 +339,10 @@ export const profile = {
         title: 'Open house day — Investor Pro',
         body: 'Host an open house for your listing and accept visit reservations in the app.',
       },
+      market_deeds: {
+        title: 'Check the price against deeds',
+        body: 'Investor Pro shows how far the ask is from notarized transactions. You will also see “At deed prices” tapes in the catalog. Office teams get the same with Partner Pro.',
+      },
     },
     investorProFooter:
       'Investor Pro is an auto-renewable monthly subscription: portal import, off-market preview and Pro tools. Price is shown on the purchase screen from the App Store. A 3-day free trial may apply before the first charge. Cancel in Settings → Apple ID → Subscriptions (ideally ≥24 hours before the period ends). Separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',

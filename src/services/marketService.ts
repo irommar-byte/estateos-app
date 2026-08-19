@@ -171,9 +171,12 @@ export type ListingTapeItem = {
   };
 };
 
-export async function fetchListingTape(locale: string): Promise<ListingTapeItem[]> {
+export async function fetchListingTape(locale: string, token?: string | null): Promise<ListingTapeItem[]> {
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(
     `${API_URL}/api/market/listing-tape?locale=${encodeURIComponent(locale)}&limit=48`,
+    { headers },
   );
   const json = await res.json().catch(() => ({}));
   return Array.isArray(json?.items) ? (json.items as ListingTapeItem[]) : [];

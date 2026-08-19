@@ -53,6 +53,7 @@ import { isSellerOnlineFromLastLogin } from '@/lib/offerGuestInquiry';
 import { planDiscoveryGallery, isPersonalizedGalleryPlan } from '@/lib/discovery/gallery';
 import { topStatEntries } from '@/lib/discoveryInsights';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
+import { userHasMarketPro } from '@/lib/officePartnerPro';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -221,28 +222,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     let isRealPro = false;
-    let loggedInEmail: string | null = null;
-    const cookieStore = await cookies();
-    const sessionToken =
-      cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value || '';
-
-    if (sessionToken) {
-      try {
-        const sessionData = decryptSession(sessionToken) as { email?: string } | null;
-        loggedInEmail = sessionData?.email ? String(sessionData.email).trim().toLowerCase() : null;
-      } catch {
-        loggedInEmail = null;
-      }
-    }
-
-    if (loggedInEmail) {
-      const realUser = await prisma.user.findUnique({ where: { email: loggedInEmail } });
+    const viewerId = await resolveWebUserId(req);
+    if (viewerId) {
+      const realUser = await prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { id: true, role: true, isPro: true, proExpiresAt: true },
+      });
       if (realUser) {
-        const proExpiresAt = realUser.proExpiresAt ? new Date(realUser.proExpiresAt) : null;
-        isRealPro = Boolean(
-          realUser.role === 'ADMIN' ||
-          (realUser.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
-        );
+        isRealPro = await userHasMarketPro(realUser);
       }
     }
 

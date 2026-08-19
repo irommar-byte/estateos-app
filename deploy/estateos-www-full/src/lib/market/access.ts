@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import { computeIsProActive } from '@/lib/mobileUserShape';
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
-import { PRO_REPORT_DAILY_CAP } from '@/lib/market/constants';
+import {
+  OFFICE_PRO_REPORT_CAP,
+  OFFICE_PRO_REPORT_WINDOW_DAYS,
+  PRO_REPORT_DAILY_CAP,
+} from '@/lib/market/constants';
+import { userHasMarketPro, userHasOfficePartnerPro } from '@/lib/officePartnerPro';
 
 export type MarketUser = {
   id: number;
@@ -52,10 +57,27 @@ export async function loadMarketUser(userId: number): Promise<MarketUser | null>
 export async function proReportsToday(userId: number) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
+  return marketReportsSince(userId, start);
+}
+
+export async function marketReportsSince(userId: number, since: Date) {
   return prisma.marketValuationReport.count({
-    where: { userId, createdAt: { gte: start }, purpose: { in: ['consumer', 'crm'] } },
+    where: { userId, createdAt: { gte: since }, purpose: { in: ['consumer', 'crm'] } },
   });
 }
+
+export async function officeProReportsInWindow(userId: number) {
+  const since = new Date();
+  since.setDate(since.getDate() - OFFICE_PRO_REPORT_WINDOW_DAYS);
+  return marketReportsSince(userId, since);
+}
+
+export async function canUsePublicMarket(user: MarketUser | null): Promise<boolean> {
+  if (!user) return false;
+  return userHasMarketPro(user);
+}
+
+export { OFFICE_PRO_REPORT_CAP, OFFICE_PRO_REPORT_WINDOW_DAYS, userHasOfficePartnerPro };
 
 export async function consumeMarketReportCredit(userId: number): Promise<boolean> {
   const updated = await prisma.user.updateMany({

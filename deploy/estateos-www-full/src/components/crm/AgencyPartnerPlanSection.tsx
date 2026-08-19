@@ -309,6 +309,27 @@ export default function AgencyPartnerPlanSection({
                       <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
                       {pp.agentsInTeam(agents)}
                     </li>
+                    {plan.id === 'start' ? (
+                      <li className="flex gap-2">
+                        <Check size={14} className="mt-0.5 shrink-0 text-emerald-500/50" />
+                        {pp.perkStartGap}
+                      </li>
+                    ) : (
+                      <>
+                        <li className="flex gap-2">
+                          <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                          {pp.perkOfficePro}
+                        </li>
+                        <li className="flex gap-2">
+                          <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                          {pp.perkReports}
+                        </li>
+                        <li className="flex gap-2">
+                          <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                          {pp.perkMarket}
+                        </li>
+                      </>
+                    )}
                   </ul>
                 </button>
               );
