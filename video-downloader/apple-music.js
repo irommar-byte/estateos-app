@@ -646,9 +646,11 @@ async function resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl) {
 
     const cookies = landing.solution?.cookies || [];
     const ua = landing.solution?.userAgent || UA;
-    const cfClearance = cookies.find((c) => c.name === "cf_clearance");
-    if (!cfClearance) {
-      throw new Error("FlareSolverr nie uzyskał cf_clearance od Cloudflare na APLMate.");
+    // cf_clearance is only present when Cloudflare issued a challenge; if absent but
+    // FlareSolverr succeeded, the page loaded without a challenge (cookies still valid)
+    const hasSession = cookies.length > 0;
+    if (!hasSession) {
+      throw new Error("FlareSolverr nie uzyskał żadnych cookies od APLMate.");
     }
     const cookieHeader = cookiesArrayToHeader(cookies);
 
