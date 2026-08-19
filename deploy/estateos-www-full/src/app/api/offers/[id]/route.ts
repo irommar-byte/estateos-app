@@ -217,6 +217,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const access = await resolveOfferDetailAccess(prisma, offerRow, {
       userId: currentUser?.id,
       role: currentUser?.role,
+      portalToken,
     });
     if (!access.allowed) {
       return NextResponse.json({ error: 'Oferta niedostępna' }, { status: 404 });

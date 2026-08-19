@@ -28,10 +28,30 @@ export async function isDealParticipantForOffer(
   return Boolean(deal);
 }
 
+/** Klient CRM z linku e-mail / panelu — wgląd w ofertę, którą agent mu dopasował albo wysłał. */
+export async function isCrmPortalGrantedOfferAccess(
+  db: PrismaClient,
+  offerId: number,
+  portalToken?: string | null,
+): Promise<boolean> {
+  const token = String(portalToken || '').trim();
+  if (!token || token.length < 16 || !Number.isFinite(offerId) || offerId <= 0) return false;
+  const client = await db.agencyClient.findFirst({
+    where: { portalToken: token, status: 'ACTIVE' },
+    select: { id: true },
+  });
+  if (!client) return false;
+  const match = await db.agencyClientMatch.findFirst({
+    where: { clientId: client.id, offerId },
+    select: { id: true },
+  });
+  return Boolean(match);
+}
+
 export async function resolveOfferDetailAccess(
   db: PrismaClient,
   offer: OfferVisibilityRow | null,
-  viewer?: { userId?: number | null; role?: string | null },
+  viewer?: { userId?: number | null; role?: string | null; portalToken?: string | null },
 ): Promise<{ allowed: boolean; notFound: boolean; dealParticipant?: boolean }> {
   if (!offer) return { allowed: false, notFound: true };
 
@@ -43,13 +63,17 @@ export async function resolveOfferDetailAccess(
   const viewerId = Number(viewer?.userId);
   const isOwner = Number.isFinite(viewerId) && viewerId > 0 && Number(offer.userId) === viewerId;
   const isAdmin = String(viewer?.role || '').toUpperCase() === 'ADMIN';
+  const crmPortal =
+    !isPublic && !isOwner && !isAdmin
+      ? await isCrmPortalGrantedOfferAccess(db, Number(offer.id), viewer?.portalToken)
+      : false;
   const dealParticipant =
-    !isPublic && !isOwner && !isAdmin && Number.isFinite(viewerId)
+    !isPublic && !isOwner && !isAdmin && !crmPortal && Number.isFinite(viewerId)
       ? await isDealParticipantForOffer(db, Number(offer.id), viewerId)
       : false;
 
   return {
-    allowed: isPublic || isOwner || isAdmin || dealParticipant,
+    allowed: isPublic || isOwner || isAdmin || crmPortal || dealParticipant,
     notFound: false,
     dealParticipant,
   };

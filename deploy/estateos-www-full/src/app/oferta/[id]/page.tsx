@@ -1574,6 +1574,12 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
   const [offer, setOffer] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const portal = searchParams.get("portal");
+  const agent = searchParams.get("agent");
+  const offerQs = new URLSearchParams();
+  if (portal) offerQs.set("portal", portal);
+  else if (agent) offerQs.set("agent", agent);
+  const offerQuery = offerQs.toString() ? `?${offerQs.toString()}` : "";
   
   useEffect(() => {
     const fetchUserAndOffer = async () => {
@@ -1591,12 +1597,6 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
         setLoadState("error");
         return;
       }
-      const portal = searchParams.get("portal");
-      const agent = searchParams.get("agent");
-      const offerQs = new URLSearchParams();
-      if (portal) offerQs.set("portal", portal);
-      else if (agent) offerQs.set("agent", agent);
-      const offerQuery = offerQs.toString() ? `?${offerQs.toString()}` : "";
       try {
         fetch(`/api/offers/${id}/view`, {
           method: 'POST',
@@ -1616,7 +1616,7 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
       }
     };
     void fetchUserAndOffer();
-  }, [resolvedParams, searchParams]);
+  }, [resolvedParams, offerQuery]);
 
   useEffect(() => {
     if (loadState !== "ready" || !offer) return;
@@ -1673,7 +1673,7 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
         </p>
         <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row">
           <Link
-            href={`/o/${resolvedParams.id}`}
+            href={`/o/${resolvedParams.id}${offerQuery}`}
             className="inline-flex min-h-[48px] min-w-[200px] items-center justify-center rounded-full bg-emerald-500 px-8 text-[15px] font-semibold text-black"
           >
             Wizytówka oferty
