@@ -144,4 +144,6 @@ export type MarketIntelligencePayload = {
   mostExpensive: Array<{ district: string; medianPpsm: number; txnCount: number }>;
   mostDeals: Array<{ district: string; txnCount: number; medianPpsm: number }>;
   updatedAt: string | null;
+  asOf: string | null;
+  lagNote: string | null;
 };

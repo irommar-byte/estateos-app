@@ -33,6 +33,8 @@ import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
+import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
+import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -382,6 +384,28 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
     return NextResponse.json({ success: true, offerId: result.offerId });
+  }
+
+  if (action === 'add_external_portal') {
+    const url = String(body.url || '').trim();
+    if (!url) {
+      return NextResponse.json({ error: 'Wklej link do ogłoszenia na innym portalu.' }, { status: 400 });
+    }
+    try {
+      const preview = await fetchPublicLinkPreview(url);
+      const recorded = await recordExternalPortalListing({
+        clientId,
+        agencyUserId,
+        preview,
+      });
+      if (!recorded.ok) {
+        return NextResponse.json({ error: recorded.error }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, preview, emailed: recorded.emailed });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nie udało się zapisać linku.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
   if (action === 'send_email_code') {

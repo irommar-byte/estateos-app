@@ -13,6 +13,7 @@ import {
 import { hitRateLimit } from '@/lib/market/rateLimit';
 import { VALUATION_RATE_LIMIT_PER_10MIN } from '@/lib/market/constants';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
+import { getMarketReportQuota } from '@/lib/market/reportQuota';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,12 +93,14 @@ export async function POST(req: Request) {
       const status = result.code === 'SYNCING' ? 503 : 422;
       return NextResponse.json(result, { status });
     }
+    const quota = user ? await getMarketReportQuota(user) : null;
     return NextResponse.json({
       ...result,
       access: {
         purpose,
         isPro: Boolean(user && (await canUsePublicMarket(user))),
         marketReportCredits: user?.marketReportCredits ?? 0,
+        quota,
       },
     });
   } catch (error) {

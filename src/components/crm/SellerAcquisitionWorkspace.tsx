@@ -524,6 +524,7 @@ export default function SellerAcquisitionWorkspace({
               listingPrice={Number(String(form.strategy.expectedPrice || "").replace(/\s/g, "").replace(",", ".")) || null}
               purpose="crm"
               reportEmail={client.email || undefined}
+              clientId={client.id}
               applyLabel="Zastosuj cenę rekomendowaną"
               onApply={(price) => {
                 const formatted = String(price).replace(/\B(?=(\d{3})+(?!\d))/g, " ");

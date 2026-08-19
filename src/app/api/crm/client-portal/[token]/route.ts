@@ -145,6 +145,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           status: true,
           managementStatus: true,
           images: true,
+          promotedUntil: true,
         },
       },
       acquisition: {
@@ -172,6 +173,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'OFFER_SHARED',
               'ACQUISITION_MEETING',
               'ACQUISITION_SIGNED',
+              'MARKET_REPORT_SENT',
+              'LISTING_FEATURED',
+              'EXTERNAL_PORTAL',
               JOURNEY_ACTIVITY.MEETING_CHANGE,
               JOURNEY_ACTIVITY.MEETING_CONFIRMED,
               JOURNEY_ACTIVITY.PRESENTATION,
@@ -181,8 +185,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 16,
-        select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true },
+        take: 40,
+        select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true, metadata: true },
       },
     },
   });
@@ -280,6 +284,12 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             statusLabel: listingStatusLabel(client.linkedOffer.status),
             managementStatus: client.linkedOffer.managementStatus,
             imageUrl: resolveOfferPrimaryImage(client.linkedOffer),
+            promotedUntil: client.linkedOffer.promotedUntil
+              ? client.linkedOffer.promotedUntil.toISOString()
+              : null,
+            featured:
+              Boolean(client.linkedOffer.promotedUntil) &&
+              client.linkedOffer.promotedUntil.getTime() > Date.now(),
           }
         : null,
       listingProgress: buildListingProgress({
@@ -308,6 +318,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
         body: a.body,
         offerId: a.offerId,
         createdAt: a.createdAt.toISOString(),
+        metadata: a.metadata,
       })),
     },
   });

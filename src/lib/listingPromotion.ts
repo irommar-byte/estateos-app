@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logWalletCreditConsume } from "@/lib/walletLedger";
 import { ensureCarsStorage } from "@/lib/carsStorage";
+import { notifyLinkedClientsOfferFeatured } from "@/lib/crm/sellerSaleUpdates";
 
 export const FEATURED_PROMOTION_DAYS = 7;
 export const FEATURED_PROMOTION_MAX_CREDITS = 12;
@@ -93,6 +94,15 @@ export async function promoteOfferListing(params: {
     label: "Wyróżnienie ogłoszenia w katalogu",
     meta: { days: FEATURED_PROMOTION_DAYS * credits, credits },
     amount: credits,
+  });
+
+  await notifyLinkedClientsOfferFeatured({
+    offerId: params.offerId,
+    agencyUserId: params.userId,
+    until: promotedUntil,
+    days: FEATURED_PROMOTION_DAYS * credits,
+  }).catch((error) => {
+    console.error("[listingPromotion.featured.notify]", error);
   });
 
   return { promotedUntil: promotedUntil.toISOString(), credits, days: FEATURED_PROMOTION_DAYS * credits };

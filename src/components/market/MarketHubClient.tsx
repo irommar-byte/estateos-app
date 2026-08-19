@@ -29,6 +29,8 @@ export default function MarketHubClient() {
   const [cityStat, setCityStat] = useState<MarketAreaStatView | null>(null);
   const [districts, setDistricts] = useState<MarketAreaStatView[]>([]);
   const [intel, setIntel] = useState<MarketIntelligencePayload | null>(null);
+  const [lagNote, setLagNote] = useState<string | null>(null);
+  const [asOfLabel, setAsOfLabel] = useState<string | null>(null);
   const [area, setArea] = useState("62");
   const [rooms, setRooms] = useState("3");
   const [floor, setFloor] = useState("4");
@@ -44,6 +46,8 @@ export default function MarketHubClient() {
       if (cancelled) return;
       setCityStat(stats.cityStat || null);
       setDistricts(Array.isArray(stats.districts) ? stats.districts : []);
+      setLagNote(stats.lagNote || intelligence?.lagNote || null);
+      setAsOfLabel(stats.asOfLabel || null);
       if (intelligence?.ok) setIntel(intelligence);
     });
     return () => {
@@ -90,6 +94,12 @@ export default function MarketHubClient() {
           </button>
         ))}
       </div>
+      {lagNote ? (
+        <p className="max-w-3xl text-[12px] leading-relaxed text-[var(--eos-muted)]">
+          {asOfLabel ? `Kompletne akty do ${asOfLabel}. ` : ""}
+          {lagNote}
+        </p>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-4">
         {[
