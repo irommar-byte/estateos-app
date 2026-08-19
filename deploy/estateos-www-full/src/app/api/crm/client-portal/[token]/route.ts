@@ -18,6 +18,7 @@ import {
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
+import { isPromotionActive } from '@/lib/listingPromotion';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -287,9 +288,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             promotedUntil: client.linkedOffer.promotedUntil
               ? client.linkedOffer.promotedUntil.toISOString()
               : null,
-            featured:
-              Boolean(client.linkedOffer.promotedUntil) &&
-              client.linkedOffer.promotedUntil.getTime() > Date.now(),
+            featured: isPromotionActive(client.linkedOffer.promotedUntil),
           }
         : null,
       listingProgress: buildListingProgress({
