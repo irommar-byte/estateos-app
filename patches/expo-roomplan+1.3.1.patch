@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift b/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
-index 99b99f4..a8ff21a 100644
+index 99b99f4..0f820e3 100644
 --- a/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
 +++ b/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
 @@ -1,10 +1,51 @@
@@ -54,44 +54,50 @@ index 99b99f4..a8ff21a 100644
      public func definition() -> ModuleDefinition {
          Name("ExpoRoomPlan")
  
-@@ -13,37 +54,46 @@ public class ExpoRoomPlanModule: Module {
+@@ -12,38 +53,54 @@ public class ExpoRoomPlanModule: Module {
+ 
          AsyncFunction("startCapture") {
              (scanName: String, exportType: String, sendFileLoc: Bool) in
-             DispatchQueue.main.async {
+-            DispatchQueue.main.async {
 -                let captureVC = RoomPlanCaptureViewController()
-+                self.dismissExisting {
-+                    guard RoomCaptureSession.isSupported else {
-+                        self.sendEvent("onDismissEvent", [
-+                            "status": "Error",
-+                            "errorMessage":
-+                                "RoomPlan is not supported on this device. A LiDAR-equipped iPhone or iPad Pro is required.",
-+                        ])
-+                        return
-+                    }
++            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
++                DispatchQueue.main.async {
++                    self.dismissExisting {
++                        guard RoomCaptureSession.isSupported else {
++                            self.sendEvent("onDismissEvent", [
++                                "status": "Error",
++                                "errorMessage":
++                                    "RoomPlan is not supported on this device. A LiDAR-equipped iPhone or iPad Pro is required.",
++                            ])
++                            continuation.resume()
++                            return
++                        }
  
 -                captureVC.scanName = scanName
 -                captureVC.modalPresentationStyle = .fullScreen
 -                captureVC.exportType = exportType
 -                captureVC.sendFileLoc = sendFileLoc
-+                    guard let presenter = Self.topViewController() else {
-+                        self.sendEvent("onDismissEvent", [
-+                            "status": "Error",
-+                            "errorMessage": "Could not present the RoomPlan scanner.",
-+                        ])
-+                        return
-+                    }
++                        guard let presenter = Self.topViewController(),
++                              presenter.viewIfLoaded?.window != nil else {
++                            self.sendEvent("onDismissEvent", [
++                                "status": "Error",
++                                "errorMessage": "Could not present the RoomPlan scanner.",
++                            ])
++                            continuation.resume()
++                            return
++                        }
  
 -                captureVC.onDismiss = { eventData in
 -                    self.sendEvent("onDismissEvent", eventData)
 -                }
-+                    let captureVC = RoomPlanCaptureViewController()
-+                    captureVC.scanName = scanName
-+                    captureVC.modalPresentationStyle = .fullScreen
-+                    captureVC.exportType = exportType
-+                    captureVC.sendFileLoc = sendFileLoc
-+                    captureVC.onDismiss = { eventData in
-+                        self.sendEvent("onDismissEvent", eventData)
-+                    }
++                        let captureVC = RoomPlanCaptureViewController()
++                        captureVC.scanName = scanName
++                        captureVC.modalPresentationStyle = .fullScreen
++                        captureVC.exportType = exportType
++                        captureVC.sendFileLoc = sendFileLoc
++                        captureVC.onDismiss = { eventData in
++                            self.sendEvent("onDismissEvent", eventData)
++                        }
  
 -                guard
 -                    let rootVC = UIApplication.shared.connectedScenes
@@ -99,8 +105,11 @@ index 99b99f4..a8ff21a 100644
 -                        .first?.rootViewController
 -                else {
 -                    return
-+                    presenter.present(captureVC, animated: true, completion: nil)
-+                    self.captureViewController = captureVC
++                        self.captureViewController = captureVC
++                        presenter.present(captureVC, animated: true) {
++                            continuation.resume()
++                        }
++                    }
                  }
 -
 -                rootVC.present(captureVC, animated: true, completion: nil)

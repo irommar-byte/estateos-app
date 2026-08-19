@@ -132,6 +132,8 @@ function RoomScanModalBody({
   const [usdzUri, setUsdzUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [presenterReady, setPresenterReady] = useState(false);
+  const [scanRequestToken, setScanRequestToken] = useState(0);
 
   const reset = useCallback(() => {
     setPhase('launching');
@@ -143,6 +145,7 @@ function RoomScanModalBody({
     scanStartedRef.current = false;
     processedExportRef.current = null;
     closingRef.current = false;
+    setPresenterReady(false);
   }, []);
 
   const persistExport = useCallback(async (rawScanUrl?: string | null, rawJsonUrl?: string | null) => {
@@ -278,7 +281,7 @@ function RoomScanModalBody({
     return () => {
       sub?.remove();
     };
-  }, [handleClose, roomPlan]);
+  }, [reset, roomPlan]);
 
   useEffect(() => {
     if (!visible) {
@@ -286,6 +289,10 @@ function RoomScanModalBody({
       reset();
       return;
     }
+    // React Native presents <Modal> asynchronously. Starting RoomPlan before
+    // onShow means UIKit may attach it to a controller that is still moving
+    // into the window, resulting in camera-only sessions with no RoomPlan scan.
+    if (!presenterReady) return;
     if (scanStartedRef.current) return;
 
     scanStartedRef.current = true;
@@ -306,7 +313,7 @@ function RoomScanModalBody({
         setError(t('addOffer.step5.roomScan.errors.scanFailed'));
       }
     })();
-  }, [captureHeading, reset, roomPlan, scanMode, visible]);
+  }, [captureHeading, presenterReady, reset, roomPlan, scanMode, scanRequestToken, visible]);
 
   useEffect(
     () => () => {
@@ -382,22 +389,16 @@ function RoomScanModalBody({
   };
 
   const retryNativeScan = () => {
-    setError(null);
-    processedExportRef.current = null;
-    scanStartedRef.current = false;
-    setPhase('launching');
-    const scanName = `${scanMode === 'room' ? 'EOS-AUTO' : 'EOS-MULTI'}-${Date.now()}`;
-    scanStartedRef.current = true;
     void (async () => {
       await stopNativeScanner(roomPlan);
-      await captureHeading();
-      try {
-        await getNativeRoomPlan(roomPlan)?.startCapture(scanName, roomPlan.ExportType.Parametric, true);
-        setPhase('scanning');
-      } catch {
-        scanStartedRef.current = false;
-        setError(t('addOffer.step5.roomScan.errors.scanFailed'));
-      }
+      setError(null);
+      processedExportRef.current = null;
+      scanStartedRef.current = false;
+      // Preview and launcher use different native modal presenters. Wait for
+      // the launcher onShow callback when switching back from preview.
+      if (phase !== 'launching') setPresenterReady(false);
+      setPhase('launching');
+      setScanRequestToken((token) => token + 1);
     })();
   };
 
@@ -420,6 +421,7 @@ function RoomScanModalBody({
         animationType="fade"
         presentationStyle="fullScreen"
         onRequestClose={handleClose}
+        onShow={() => setPresenterReady(true)}
       >
         <View style={[styles.launchRoot, { paddingTop: insets.top + 18, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <Pressable onPress={handleClose} style={styles.launchClose} hitSlop={16}>
