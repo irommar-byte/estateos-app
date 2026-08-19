@@ -2,9 +2,9 @@ import SwiftUI
 
 struct DownloadCloudButton: View {
     let state: TrackDownloadUIState
-    var size: CGFloat = 22
     /// When true, cloud icon for .idle state shows "waiting for server" instead of "download to device"
     var inLibrary: Bool = false
+    var size: CGFloat = 22
     var onDownload: () -> Void = {}
     var onCancel: () -> Void = {}
     var onRemoveOffline: () -> Void = {}

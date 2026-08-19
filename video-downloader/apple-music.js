@@ -585,7 +585,7 @@ async function flareSolverrCall(payload) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(240000),
+    signal: AbortSignal.timeout(100000),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.status !== "ok") {
@@ -640,7 +640,7 @@ async function resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl) {
       cmd: "request.get",
       url: `${APLMATE_BASE}/`,
       session: sessionId,
-      maxTimeout: 200000,
+      maxTimeout: 90000,
       waitInSeconds: APLMATE_FLARE_WAIT_S,
     });
 

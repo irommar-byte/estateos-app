@@ -32,6 +32,7 @@ private struct PlayerContent: View {
     @State private var artistRoute: MusicArtistRoute?
     @State private var albumRoute: MusicAlbumRoute?
     @State private var browseError: String?
+    @State private var isAddingToLibrary = false
     @State private var thermal = ProcessInfo.processInfo.thermalState
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
 
@@ -413,9 +414,31 @@ private struct PlayerContent: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             if !track.isExternal {
+                let trackInLibrary = app.isInLibrary(track.url)
+                if !trackInLibrary {
+                    Button {
+                        Task { await addCurrentTrackToLibrary(track) }
+                    } label: {
+                        Group {
+                            if isAddingToLibrary {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title3.weight(.semibold))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(EOSTheme.accent)
+                            }
+                        }
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAddingToLibrary)
+                    .accessibilityLabel("Dodaj do biblioteki i pobierz na serwer")
+                }
                 DownloadCloudButton(
                     state: app.playbackCloudState(for: track),
-                    inLibrary: true,
+                    inLibrary: trackInLibrary,
                     size: 20,
                     onDownload: { app.downloadCurrentPlayback() },
                     onCancel: { app.cancelDownload(for: track.url) },
@@ -511,6 +534,30 @@ private struct PlayerContent: View {
         }
         .padding(.top, 4)
         .padding(.horizontal, layout.isPad || layout.wide ? 4 : 10)
+    }
+
+    private func addCurrentTrackToLibrary(_ track: MusicPlaybackTrack) async {
+        guard !app.isInLibrary(track.url) else { return }
+        isAddingToLibrary = true
+        defer { isAddingToLibrary = false }
+        let payload = MusicTrackPayload(
+            url: track.url,
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            thumbnail: track.thumbnail,
+            duration: track.duration,
+            quality: nil,
+            source: nil,
+            artistId: track.artistId,
+            albumId: track.albumId
+        )
+        do {
+            try await app.addToLibrary(payload)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } catch {
+            browseError = error.localizedDescription
+        }
     }
 
     private func openAlbum(for track: MusicPlaybackTrack) {
