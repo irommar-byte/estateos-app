@@ -769,3 +769,37 @@ extension SearchResultItem {
         )
     }
 }
+
+// MARK: - Music download destination
+
+/// Gdzie zapisać utwór: tylko serwer EOS lub serwer + to urządzenie.
+enum MusicDownloadDestination: String, Equatable, CaseIterable {
+    case server
+    case serverAndPhone
+
+    var label: String {
+        switch self {
+        case .server: return "Tylko serwer EOS"
+        case .serverAndPhone: return "Serwer + to urządzenie"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .server: return "Trwała kopia na NAS — odtwarzanie online"
+        case .serverAndPhone: return "Najpierw serwer, potem plik offline na urządzeniu"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .server: return "icloud.fill"
+        case .serverAndPhone: return "icloud.and.arrow.down.fill"
+        }
+    }
+}
+
+enum MusicBulkQueuePhase: String, Equatable {
+    case server
+    case device
+}

@@ -51,8 +51,15 @@ final class MusicDownloadService: ObservableObject {
     @Published private(set) var states: [String: TrackDownloadUIState] = [:]
     /// Postęp masowego zapisu albumu / playlisty na serwerze EOS.
     @Published private(set) var bulkServerQueue: BulkServerQueueProgress?
+    @Published var isBulkQueueMinimized = false
 
     private var activeTasks: [String: Task<Void, Never>] = [:]
+    private var bulkDestination: MusicDownloadDestination = .server
+    private var bulkTrackByURL: [String: MusicTrack] = [:]
+    private var bulkActiveURLs: Set<String> = []
+    private var activeServerJobIds: [String: String] = [:]
+    /// User dismissed the bulk panel — don't rebuild from remote poll until a new bulk starts.
+    private var suppressRemoteBulkQueuePanel = false
     private var bulkServerTask: Task<Void, Never>?
     private var bulkBackgroundTaskId: UIBackgroundTaskIdentifier = .invalid
     private let offline = OfflineMusicStore.shared
@@ -73,7 +80,43 @@ final class MusicDownloadService: ObservableObject {
         let active: ServerQueueItem?
         let pending: [ServerQueueItem]
         let activeProgress: Double?
-        var currentTitle: String? { active?.title }
+        var destination: MusicDownloadDestination = .server
+        var phase: MusicBulkQueuePhase = .server
+        var deviceCompleted: Int = 0
+        var deviceTotal: Int = 0
+        var deviceActive: ServerQueueItem? = nil
+        var devicePending: [ServerQueueItem] = []
+        var deviceActiveProgress: Double? = nil
+
+        var currentTitle: String? {
+            phase == .device ? (deviceActive?.title ?? active?.title) : active?.title
+        }
+
+        var remainingCount: Int {
+            let serverLeft = max(0, total - completed - (active == nil ? 0 : 1)) + pending.count
+            let deviceLeft = destination == .serverAndPhone
+                ? max(0, deviceTotal - deviceCompleted - (deviceActive == nil ? 0 : 1)) + devicePending.count
+                : 0
+            if phase == .device { return deviceLeft }
+            return serverLeft + (destination == .serverAndPhone ? deviceTotal - deviceCompleted : 0)
+        }
+
+        var overallProgress: Double {
+            if destination == .server {
+                guard total > 0 else { return 0 }
+                let activeBump = activeProgress.map { $0 / 100 / Double(total) } ?? 0
+                return min(1, Double(completed) / Double(total) + activeBump)
+            }
+            let serverWeight = 0.58
+            let serverDone = total > 0 ? Double(completed) / Double(total) : 1
+            let serverActive = (activeProgress ?? 0) / 100 / Double(max(total, 1))
+            if phase == .server {
+                return min(serverWeight, (serverDone + serverActive) * serverWeight)
+            }
+            let deviceDone = deviceTotal > 0 ? Double(deviceCompleted) / Double(deviceTotal) : 1
+            let deviceActive = (deviceActiveProgress ?? 0) / 100 / Double(max(deviceTotal, 1))
+            return min(1, serverWeight + (deviceDone + deviceActive) * (1 - serverWeight))
+        }
     }
 
     struct ServerQueueItem: Equatable {
@@ -169,6 +212,7 @@ final class MusicDownloadService: ObservableObject {
         onAllComplete: (() async -> Void)? = nil
     ) {
         guard !items.isEmpty else { return }
+        suppressRemoteBulkQueuePanel = false
         bulkServerTask?.cancel()
         bulkServerTask = Task {
             beginBulkBackgroundTask()
@@ -207,6 +251,7 @@ final class MusicDownloadService: ObservableObject {
                     onLibraryChanged: onLibraryChanged,
                     onAcquireProgress: { [weak self] progress in
                         Task { @MainActor in
+                            guard self?.bulkServerTask != nil else { return }
                             self?.bulkServerQueue = makeProgress(activeIndex: index, progress: progress)
                         }
                     }
@@ -223,11 +268,180 @@ final class MusicDownloadService: ObservableObject {
         }
     }
 
-    func cancelBulkServerQueue() {
+    func cancelBulkServerQueue(api: MusicAPIClient? = nil, remoteMusicJobs: [ActiveServerDownload] = []) {
+        let snapshot = bulkServerQueue
+        var urlsToStop = bulkActiveURLs
+        if let active = snapshot?.active { urlsToStop.insert(active.url) }
+        snapshot?.pending.forEach { urlsToStop.insert($0.url) }
+        if let deviceActive = snapshot?.deviceActive { urlsToStop.insert(deviceActive.url) }
+        snapshot?.devicePending.forEach { urlsToStop.insert($0.url) }
+
+        var jobIds = Set<String>()
+        for url in urlsToStop {
+            if let jobId = activeServerJobIds[url] { jobIds.insert(jobId) }
+        }
+        for item in remoteMusicJobs where item.isMusic && !item.isTerminal {
+            jobIds.insert(item.jobId)
+        }
+
+        suppressRemoteBulkQueuePanel = true
         bulkServerTask?.cancel()
         bulkServerTask = nil
         bulkServerQueue = nil
+        bulkTrackByURL = [:]
+        bulkActiveURLs = []
         endBulkBackgroundTask()
+
+        for url in urlsToStop {
+            cancelDownload(for: url, isOnServer: wasOnServer[url] == true, api: api)
+            if !offline.isAvailable(url), wasOnServer[url] != true {
+                states[url] = .idle
+            }
+            activeServerJobIds.removeValue(forKey: url)
+        }
+
+        if let api, !jobIds.isEmpty {
+            Task {
+                for jobId in jobIds {
+                    try? await api.cancelJob(jobId: jobId)
+                }
+            }
+        }
+    }
+
+    /// Kolejka playlisty / zaznaczenia: najpierw serwer (po kolei), potem opcjonalnie urządzenie.
+    func queueBulkDownload(
+        label: String,
+        tracks: [MusicTrack],
+        folderId: String,
+        destination: MusicDownloadDestination,
+        api: MusicAPIClient,
+        isAlreadyOnServer: @escaping (String) -> Bool,
+        onLibraryChanged: (() async -> Void)? = nil
+    ) {
+        let serverItems: [ServerQueueItem] = tracks.compactMap { track in
+            guard !offline.isAvailable(track.url) else { return nil }
+            guard !isAlreadyOnServer(track.url) else { return nil }
+            return ServerQueueItem(url: track.url, folderId: folderId, title: track.title)
+        }
+        let deviceCandidates = destination == .serverAndPhone
+            ? tracks.filter { !offline.isAvailable($0.url) }
+            : []
+        let deviceItems: [ServerQueueItem] = deviceCandidates.map {
+            ServerQueueItem(url: $0.url, folderId: folderId, title: $0.title)
+        }
+
+        guard !serverItems.isEmpty || (destination == .serverAndPhone && !deviceItems.isEmpty) else { return }
+
+        suppressRemoteBulkQueuePanel = false
+        bulkDestination = destination
+        bulkTrackByURL = Dictionary(uniqueKeysWithValues: tracks.map { ($0.url, $0) })
+        bulkActiveURLs = Set(serverItems.map(\.url) + deviceItems.map(\.url))
+        bulkServerTask?.cancel()
+        bulkServerTask = Task {
+            beginBulkBackgroundTask()
+            defer {
+                endBulkBackgroundTask()
+                bulkServerTask = nil
+                bulkTrackByURL = [:]
+                bulkActiveURLs = []
+            }
+
+            var completed = 0
+            let allServer = serverItems
+            func serverProgress(activeIndex: Int, progress: Double? = nil) -> BulkServerQueueProgress {
+                let active = allServer.indices.contains(activeIndex) ? allServer[activeIndex] : nil
+                let pending = activeIndex + 1 < allServer.count ? Array(allServer[(activeIndex + 1)...]) : []
+                return BulkServerQueueProgress(
+                    label: label,
+                    completed: completed,
+                    total: max(allServer.count, 1),
+                    active: active,
+                    pending: pending,
+                    activeProgress: progress,
+                    destination: destination,
+                    phase: .server,
+                    deviceTotal: deviceItems.count
+                )
+            }
+
+            bulkServerQueue = serverProgress(activeIndex: 0)
+            for (index, item) in allServer.enumerated() {
+                if Task.isCancelled { break }
+                bulkServerQueue = serverProgress(activeIndex: index)
+                await ensureOnServerWithRetry(
+                    url: item.url,
+                    folderId: item.folderId,
+                    title: item.title,
+                    api: api,
+                    onLibraryChanged: onLibraryChanged,
+                    onAcquireProgress: { [weak self] progress in
+                        Task { @MainActor in
+                            guard self?.bulkServerTask != nil else { return }
+                            self?.bulkServerQueue = serverProgress(activeIndex: index, progress: progress)
+                        }
+                    }
+                )
+                if Task.isCancelled { break }
+                completed += 1
+                bulkServerQueue = serverProgress(activeIndex: min(index + 1, max(allServer.count - 1, 0)))
+            }
+
+            guard destination == .serverAndPhone, !Task.isCancelled else {
+                bulkServerQueue = nil
+                return
+            }
+
+            var deviceCompleted = 0
+            let allDevice = deviceItems
+            func deviceProgress(activeIndex: Int, progress: Double? = nil) -> BulkServerQueueProgress {
+                let active = allDevice.indices.contains(activeIndex) ? allDevice[activeIndex] : nil
+                let pending = activeIndex + 1 < allDevice.count ? Array(allDevice[(activeIndex + 1)...]) : []
+                return BulkServerQueueProgress(
+                    label: label,
+                    completed: completed,
+                    total: max(allServer.count, 1),
+                    active: nil,
+                    pending: [],
+                    activeProgress: nil,
+                    destination: destination,
+                    phase: .device,
+                    deviceCompleted: deviceCompleted,
+                    deviceTotal: max(allDevice.count, 1),
+                    deviceActive: active,
+                    devicePending: pending,
+                    deviceActiveProgress: progress
+                )
+            }
+
+            bulkServerQueue = deviceProgress(activeIndex: 0)
+            for (index, item) in allDevice.enumerated() {
+                if Task.isCancelled { break }
+                if offline.isAvailable(item.url) {
+                    deviceCompleted += 1
+                    continue
+                }
+                guard let track = bulkTrackByURL[item.url] else { continue }
+                bulkServerQueue = deviceProgress(activeIndex: index)
+                await downloadAndWait(
+                    track: track,
+                    folderId: folderId,
+                    api: api,
+                    onLibraryChanged: { await onLibraryChanged?() },
+                    onDeviceProgress: { [weak self] pct in
+                        Task { @MainActor in
+                            guard self?.bulkServerTask != nil else { return }
+                            self?.bulkServerQueue = deviceProgress(activeIndex: index, progress: pct)
+                            self?.states[item.url] = .downloading(progress: pct)
+                        }
+                    }
+                )
+                if Task.isCancelled { break }
+                deviceCompleted += 1
+                bulkServerQueue = deviceProgress(activeIndex: min(index + 1, max(allDevice.count - 1, 0)))
+            }
+            bulkServerQueue = nil
+        }
     }
 
     private func beginBulkBackgroundTask() {
@@ -266,8 +480,10 @@ final class MusicDownloadService: ObservableObject {
                 }
                 wasOnServer[url] = true
                 states[url] = .onServer
+                activeServerJobIds.removeValue(forKey: url)
                 return
             } catch is CancellationError {
+                activeServerJobIds.removeValue(forKey: url)
                 return
             } catch {
                 guard let delay = DownloadRetryPolicy.delayNanoseconds(afterAttempt: attempt) else {
@@ -311,6 +527,7 @@ final class MusicDownloadService: ObservableObject {
             intent: "download"
         )
         let jobId = ensure.jobId
+        activeServerJobIds[url] = jobId
         if ensure.ready != true {
             try await pollServerAcquire(
                 jobId: jobId,
@@ -332,6 +549,7 @@ final class MusicDownloadService: ObservableObject {
         }
         wasOnServer[url] = true
         scheduleLibraryRefresh(onLibraryChanged)
+        activeServerJobIds.removeValue(forKey: url)
         if Task.isCancelled { throw CancellationError() }
     }
 
@@ -359,6 +577,7 @@ final class MusicDownloadService: ObservableObject {
             fileData: fileData
         )
         let jobId = ensure.jobId
+        activeServerJobIds[url] = jobId
         if ensure.ready != true {
             try await pollServerAcquire(
                 jobId: jobId,
@@ -379,6 +598,7 @@ final class MusicDownloadService: ObservableObject {
         }
         wasOnServer[url] = true
         scheduleLibraryRefresh(onLibraryChanged)
+        activeServerJobIds.removeValue(forKey: url)
         if Task.isCancelled { throw CancellationError() }
     }
 
@@ -603,7 +823,8 @@ final class MusicDownloadService: ObservableObject {
         track: MusicTrack,
         folderId: String,
         api: MusicAPIClient,
-        onLibraryChanged: @escaping () async -> Void
+        onLibraryChanged: @escaping () async -> Void,
+        onProgress: ((Double) -> Void)? = nil
     ) async throws {
         try await coordinator.withPhaseSlot(trackUrl: track.url, kind: .deviceTransfer) {
             self.states[track.url] = .downloading(progress: 8)
@@ -625,6 +846,7 @@ final class MusicDownloadService: ObservableObject {
                         return
                     }
                     self?.states[track.url] = .downloading(progress: progress)
+                    onProgress?(progress)
                 }
             }
             self.states[track.url] = .done
@@ -642,16 +864,24 @@ final class MusicDownloadService: ObservableObject {
     func downloadAllPending(
         tracks: [MusicTrack],
         folderId: String,
+        destination: MusicDownloadDestination = .serverAndPhone,
         api: MusicAPIClient,
         onLibraryChanged: @escaping () async -> Void
     ) {
-        Task {
-            for track in tracks {
-                let state = uiState(for: track.url, isOnServer: track.isOnServer)
-                guard state == .idle || state == .onServer || state.isFailed else { continue }
-                await downloadAndWait(track: track, folderId: folderId, api: api, onLibraryChanged: onLibraryChanged)
-            }
-        }
+        queueBulkDownload(
+            label: "Pobieranie playlisty",
+            tracks: tracks,
+            folderId: folderId,
+            destination: destination,
+            api: api,
+            isAlreadyOnServer: { [weak self] url in
+                guard let self else { return false }
+                let track = tracks.first(where: { $0.url == url })
+                return self.uiState(for: url, isOnServer: track?.isOnServer ?? false) == .onServer
+                    || track?.isOnServer == true
+            },
+            onLibraryChanged: onLibraryChanged
+        )
     }
 
     func removeOffline(_ url: String) {
@@ -661,11 +891,15 @@ final class MusicDownloadService: ObservableObject {
         states[url] = .onServer
     }
 
-    func cancelDownload(for url: String, isOnServer: Bool? = nil) {
+    func cancelDownload(for url: String, isOnServer: Bool? = nil, api: MusicAPIClient? = nil) {
         let serverHint = isOnServer ?? wasOnServer[url] ?? (states[url] == .onServer)
         if case .onServer = states[url] { wasOnServer[url] = true }
         if case .acquiringServer = states[url] { /* may still land on server */ }
         if case .downloading = states[url] { wasOnServer[url] = true }
+
+        if let jobId = activeServerJobIds.removeValue(forKey: url), let api {
+            Task { try? await api.cancelJob(jobId: jobId) }
+        }
 
         Task { await coordinator.cancel(trackUrl: url) }
         activeTasks[url]?.cancel()
@@ -703,12 +937,34 @@ final class MusicDownloadService: ObservableObject {
         track: MusicTrack,
         folderId: String,
         api: MusicAPIClient,
-        onLibraryChanged: @escaping () async -> Void
+        onLibraryChanged: @escaping () async -> Void,
+        onDeviceProgress: ((Double) -> Void)? = nil
     ) async {
+        if offline.isAvailable(track.url) { return }
+        let current = uiState(for: track.url, isOnServer: track.isOnServer)
+        if current == .onServer || track.isOnServer, let jobId = track.durableJobId {
+            do {
+                try await transferServerJobToDevice(
+                    jobId: jobId,
+                    track: track,
+                    folderId: folderId,
+                    api: api,
+                    onLibraryChanged: onLibraryChanged,
+                    onProgress: onDeviceProgress
+                )
+            } catch {
+                states[track.url] = .failed(error.localizedDescription)
+            }
+            return
+        }
         await withCheckedContinuation { continuation in
             download(track: track, folderId: folderId, api: api, onLibraryChanged: onLibraryChanged)
             Task {
                 while states[track.url]?.isBusy == true {
+                    if Task.isCancelled { break }
+                    if case .downloading(let p)? = states[track.url] {
+                        onDeviceProgress?(p)
+                    }
                     try? await Task.sleep(nanoseconds: 350_000_000)
                 }
                 continuation.resume()
@@ -758,6 +1014,7 @@ final class MusicDownloadService: ObservableObject {
         var touched = false
 
         for item in remote where item.isMusic && !item.url.isEmpty {
+            if suppressRemoteBulkQueuePanel, !item.isTerminal { continue }
             if offline.isAvailable(item.url) {
                 if states[item.url] != .done {
                     states[item.url] = .done
@@ -809,9 +1066,10 @@ final class MusicDownloadService: ObservableObject {
         }
 
         // Rebuild bulk panel from remote music items when local bulk task isn't driving it.
-        if bulkServerTask == nil {
+        if bulkServerTask == nil, !suppressRemoteBulkQueuePanel {
             let activeRemote = remote.filter { $0.isMusic && !$0.isTerminal && !$0.url.isEmpty }
             if activeRemote.isEmpty {
+                suppressRemoteBulkQueuePanel = false
                 if bulkServerQueue != nil {
                     bulkServerQueue = nil
                     touched = true

@@ -1047,7 +1047,14 @@ final class AppModel: ObservableObject {
     }
 
     func cancelDownload(for url: String) {
-        downloads.cancelDownload(for: url)
+        downloads.cancelDownload(for: url, api: api)
+    }
+
+    func cancelBulkMusicQueue() {
+        downloads.cancelBulkServerQueue(
+            api: api,
+            remoteMusicJobs: serverDownloads.items.filter(\.isMusic)
+        )
     }
 
     func removeOfflineDownload(for url: String) {

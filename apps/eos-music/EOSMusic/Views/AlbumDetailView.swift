@@ -87,7 +87,7 @@ struct AlbumDetailView: View {
 
                         if let queue = app.downloads.bulkServerQueue, queue.label == detail.album.title {
                             ServerDownloadQueuePanel(queue: queue) {
-                                app.downloads.cancelBulkServerQueue()
+                                app.cancelBulkMusicQueue()
                             }
                         }
                     }
