@@ -14,6 +14,7 @@ import {
 } from '@/lib/market/constants';
 import { prisma } from '@/lib/prisma';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
+import { marketPriceScore } from '@/lib/market/format';
 import { haversineMeters } from '@/lib/market/warsawDistricts';
 import type { MarketComp, PriceScore, ValuationResult, ValuationSubject } from '@/lib/market/types';
 
@@ -68,7 +69,7 @@ function similarEnough(
 
 function scoreListing(listingPpsm: number, medianPpsm: number, compsPpsm: number[]): PriceScore {
   const vsMedianPct = medianPpsm > 0 ? ((listingPpsm - medianPpsm) / medianPpsm) * 100 : 0;
-  const score = Math.round(Math.min(99, Math.max(15, 100 - Math.abs(vsMedianPct) * 3.5)));
+  const score = marketPriceScore(vsMedianPct);
   const sorted = [...compsPpsm].sort((a, b) => a - b);
   const inUpper = listingPpsm >= percentile(sorted, 0.75);
   let tone: PriceScore['tone'] = 'fair';

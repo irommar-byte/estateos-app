@@ -83,6 +83,56 @@ export type MarketAreaStatView = {
   yoyChangePct: number | null;
 };
 
+export type PricePulseTone = 'up' | 'down' | 'flat';
+export type PricePulseDirection = 'rising' | 'falling' | 'stable';
+
+export type PricePulseWindow = {
+  days: number;
+  listingPpsm: number | null;
+  deedPpsm: number | null;
+  vsDeedsPct: number | null;
+  listingChangePct: number | null;
+  deedChangePct: number | null;
+  listingCount: number;
+  deedCount: number;
+};
+
+export type PricePulsePoint = {
+  date: string;
+  listingPpsm: number | null;
+  deedPpsm: number | null;
+  vsDeedsPct: number | null;
+};
+
+export type PricePulseDistrict = {
+  district: string;
+  vsDeedsPct: number;
+  listingPpsm: number;
+  deedPpsm: number;
+  listingCount: number;
+};
+
+export type PricePulsePayload = {
+  ok: true;
+  city: string;
+  source: string;
+  disclaimer: string;
+  updatedAt: string;
+  vsDeedsPct: number | null;
+  listingPpsm: number | null;
+  deedPpsm: number | null;
+  tone: PricePulseTone;
+  direction: PricePulseDirection;
+  windows: {
+    d7: PricePulseWindow;
+    d30: PricePulseWindow;
+    d90: PricePulseWindow;
+  };
+  series: PricePulsePoint[];
+  sparkline: Array<number | null>;
+  districts: PricePulseDistrict[];
+};
+
 export type MarketIntelligencePayload = {
   city: string;
   periodDays: number;

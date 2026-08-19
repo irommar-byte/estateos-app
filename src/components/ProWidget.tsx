@@ -14,6 +14,7 @@ import OtodomImportProCard from "@/components/otodom/OtodomImportProCard";
 import OpenHouseProCard from "@/components/openHouse/OpenHouseProCard";
 import AuctionProCard from "@/components/crm/AuctionProCard";
 import PulseUpcomingSchedule from "@/components/PulseUpcomingSchedule";
+import PricePulseWidget from "@/components/market/PricePulseWidget";
 import { buildInvestorProBarPalette, buildInvestorProPeriodStatus } from "@/lib/investorProMembership";
 import { isPlusCreditActive } from "@/lib/offerListingLimits";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
@@ -311,6 +312,7 @@ export default function ProWidget({
                  <h1 className="text-4xl font-black tabular-nums leading-none tracking-tighter text-[var(--eos-text)] drop-shadow-sm md:text-5xl">{today.toLocaleTimeString(dateTag, { hour: '2-digit', minute: '2-digit' })}</h1>
               </div>
            </div>
+           {!isBooting ? <PricePulseWidget locale={locale} /> : null}
            {membershipPeriod && membershipPalette ? (
              <div className="eos-pro-panel eos-pro-panel-inset rounded-2xl p-4">
                <div className="flex items-start justify-between gap-3">
