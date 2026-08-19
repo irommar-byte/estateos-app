@@ -5,6 +5,7 @@ import { decryptSession } from '@/lib/sessionUtils';
 import {
   PAKIET_PLUS_STRIPE_AMOUNT,
   PUBLICATION_RENEWAL_STRIPE_AMOUNT,
+  MARKET_REPORT_STRIPE_AMOUNT,
 } from '@/lib/publicationConstants';
 import {
   assertPartnerCheckoutAllowed,
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     const finalReturnUrl = returnUrl || `${origin}/moje-konto/crm`;
     const finalCancelUrl = cancelUrl || `${origin}/cennik?tab=partner`;
     const sessionData = sessionCookie ? decryptSession(sessionCookie.value) : null;
-    const customerEmail = sessionData?.email || undefined;
+    const customerEmail = body.email || sessionData?.email || undefined;
     const userId = Number(sessionData?.id || 0);
 
     const normalizedPlan = String(plan || 'unknown').trim().toLowerCase();
@@ -73,6 +74,13 @@ export async function POST(req: Request) {
       productDesc =
         'Jeden kredyt publikacji na 30 dni na szerokim rynku. Nie jest to abonament ani slot — zużywasz kredyt przy wystawieniu lub odnowieniu.';
       unitAmount = PAKIET_PLUS_STRIPE_AMOUNT;
+    } else if (normalizedPlan === 'market_report') {
+      productName = 'EstateOS™ Market — raport wyceny';
+      productDesc =
+        '1 kredyt: profesjonalna analiza porównywalnych transakcji z Rejestru Cen Nieruchomości, wysłana na e-mail.';
+      unitAmount = MARKET_REPORT_STRIPE_AMOUNT;
+      if (userId) metadata.user_id = String(userId);
+      if (body.draftId) metadata.market_draft_id = String(body.draftId);
     } else if (isStripePartnerPlan(normalizedPlan)) {
       if (!userId) {
         return NextResponse.json({ error: 'Zaloguj się jako administrator biura.' }, { status: 401 });

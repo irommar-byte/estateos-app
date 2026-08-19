@@ -150,6 +150,49 @@ export async function POST(req: Request) {
           console.log(
             `[stripe:webhook] investor_pro_granted email=${customerEmail} session=${checkoutSessionId} until=${grant.proExpiresAt.toISOString()}`
           );
+        } else if (rawPlanType === 'market_report') {
+          const user = metadataUserId
+            ? await prisma.user.findUnique({ where: { id: metadataUserId }, select: { id: true, email: true } })
+            : await prisma.user.findUnique({ where: { email: customerEmail }, select: { id: true, email: true } });
+          if (!user?.id) {
+            console.warn(`[stripe:webhook] market_report user not found email=${customerEmail} session=${checkoutSessionId}`);
+          } else {
+            const { grantMarketReportCredits } = await import('@/lib/market/access');
+            const { ensureMarketTables } = await import('@/lib/market/ensureMarketTables');
+            await ensureMarketTables();
+            await grantMarketReportCredits(Number(user.id), 1);
+            const draftId = Number(session.metadata?.market_draft_id || 0);
+            if (Number.isFinite(draftId) && draftId > 0) {
+              const draft = await prisma.marketValuationDraft.findUnique({ where: { id: draftId } });
+              if (draft && !draft.consumedAt) {
+                try {
+                  const { valueProperty } = await import('@/lib/market/compsEngine');
+                  const { deliverMarketReport } = await import('@/lib/market/deliverReport');
+                  const { consumeMarketReportCredit } = await import('@/lib/market/access');
+                  const subject = JSON.parse(draft.subjectJson);
+                  const valued = await valueProperty(subject, draft.listingPrice);
+                  if (valued.ok) {
+                    await consumeMarketReportCredit(Number(user.id));
+                    await deliverMarketReport({
+                      userId: Number(user.id),
+                      email: customerEmail,
+                      purpose: 'consumer',
+                      creditUsed: true,
+                      subject,
+                      result: valued,
+                    });
+                    await prisma.marketValuationDraft.update({
+                      where: { id: draft.id },
+                      data: { consumedAt: new Date() },
+                    });
+                  }
+                } catch (err) {
+                  console.error('[stripe:webhook] market_report deliver failed', err);
+                }
+              }
+            }
+            console.log(`[stripe:webhook] market_report credit granted email=${customerEmail} session=${checkoutSessionId}`);
+          }
         } else {
           console.warn(
             `[stripe:webhook] unknown_plan_type plan=${rawPlanType} email=${customerEmail} session=${checkoutSessionId}`

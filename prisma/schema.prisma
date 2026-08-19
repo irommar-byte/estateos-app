@@ -27,6 +27,7 @@ model User {
   role                      Role                          @default(USER)
   planType                  PlanType?                     @default(NONE)
   extraListings             Int                           @default(0)
+  marketReportCredits       Int                           @default(0)
   plusExpiresAt             DateTime?
   proExpiresAt              DateTime?
   isVerified                Boolean                       @default(false)
@@ -97,6 +98,7 @@ model User {
   approvedAgencyMembers     AgencyCompanyMember[]         @relation("AgencyMemberApprover")
   agencyCreditsReceived     AgencyCompanyCreditTransfer[] @relation("AgencyCreditRecipient")
   agencyCreditsGranted      AgencyCompanyCreditTransfer[] @relation("AgencyCreditCreator")
+  marketValuationReports    MarketValuationReport[]
 }
 
 model Alert {
@@ -1288,4 +1290,102 @@ model PhotoSessionEvent {
   request PhotoSessionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId, createdAt], map: "PhotoSessionEvent_requestId_createdAt_idx")
+}
+
+/// Transakcja z Rejestru Cen Nieruchomości (GUGiK) — magazyn EstateOS™ Market.
+model MarketTransaction {
+  id            Int       @id @default(autoincrement())
+  gmlId         String    @unique @db.VarChar(64)
+  sourceIip     String    @db.VarChar(64)
+  unitId        String?   @db.VarChar(191)
+  kind          String    @default("LOCAL") @db.VarChar(16)
+  teryt         String?   @db.VarChar(16)
+  city          String?   @db.VarChar(96)
+  district      String?   @db.VarChar(96)
+  street        String?   @db.VarChar(191)
+  address       String?   @db.VarChar(255)
+  lat           Float?
+  lng           Float?
+  deedAt        DateTime?
+  marketType    String?   @db.VarChar(24)
+  transactionKind String? @db.VarChar(48)
+  share         String?   @db.VarChar(24)
+  shareRatio    Float?
+  rooms         Int?
+  floor         Int?
+  areaM2        Float?
+  ancillaryM2   Float?
+  functionCode  String?   @db.VarChar(48)
+  priceGross    Float?
+  vatAmount     Float?
+  pricePerM2    Float?
+  qualityOk     Boolean   @default(false)
+  qualityFlags  String?   @db.VarChar(255)
+  ingestedAt    DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([kind, qualityOk, deedAt])
+  @@index([city, district, qualityOk, deedAt])
+  @@index([lat, lng])
+  @@index([pricePerM2])
+  @@index([sourceIip])
+}
+
+model MarketAreaStat {
+  id           Int      @id @default(autoincrement())
+  city         String   @db.VarChar(96)
+  district     String   @default("") @db.VarChar(96)
+  periodDays   Int
+  kind         String   @default("LOCAL") @db.VarChar(16)
+  marketType   String   @default("all") @db.VarChar(24)
+  txnCount     Int      @default(0)
+  avgPpsm      Float?
+  medianPpsm   Float?
+  p25Ppsm      Float?
+  p75Ppsm      Float?
+  yoyChangePct Float?
+  computedAt   DateTime @default(now())
+
+  @@unique([city, district, periodDays, kind, marketType])
+  @@index([city, periodDays, kind])
+}
+
+model MarketIngestRun {
+  id         Int      @id @default(autoincrement())
+  status     String   @db.VarChar(24)
+  source     String   @db.VarChar(64)
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  fetched    Int      @default(0)
+  upserted   Int      @default(0)
+  skipped    Int      @default(0)
+  error      String?  @db.Text
+}
+
+model MarketValuationReport {
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  email       String   @db.VarChar(191)
+  purpose     String   @db.VarChar(24)
+  creditUsed  Boolean  @default(false)
+  subjectJson String   @db.LongText
+  resultJson  String   @db.LongText
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+  @@index([userId, createdAt])
+}
+
+model MarketValuationDraft {
+  id          Int      @id @default(autoincrement())
+  email       String   @db.VarChar(191)
+  userId      Int?
+  subjectJson String   @db.LongText
+  listingPrice Float?
+  createdAt   DateTime @default(now())
+  consumedAt  DateTime?
+
+  @@index([email])
 }

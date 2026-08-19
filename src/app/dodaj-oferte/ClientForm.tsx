@@ -16,6 +16,7 @@ import { Home,
 } from "lucide-react";
 
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
+import MarketValuationPanel from '@/components/market/MarketValuationPanel';
 import HomePublishSuccessModal from '@/components/offer/HomePublishSuccessModal';
 import NoCreditsModal from '@/components/publication/NoCreditsModal';
 import PublishAuthGate, { type AuthGateContext } from '@/components/auth/PublishAuthGate';
@@ -52,6 +53,7 @@ import {
   pickBestGeocodeFeature,
 } from "@/lib/mapboxGeocodeClient";
 import { buildYearBuiltSelectOptions } from "@/lib/offerYearBuilt";
+import { computeIsProActive } from "@/lib/mobileUserShape";
 import {
   buildRentAdditionalFeeSelectOptions,
   parseRentAdditionalFeeForApi,
@@ -426,6 +428,15 @@ export default function ClientForm({
     if (isLoggedIn) return isAgentOrAgencySeller(initialUser);
     return data.advertiserType === "agency";
   }, [initialUser, data.advertiserType]);
+
+  const listingMarketHelper = useMemo(() => {
+    if (data.transactionType === "RENT") return false;
+    return computeIsProActive({
+      role: String(initialUser?.role || ""),
+      isPro: Boolean(initialUser?.isPro),
+      proExpiresAt: initialUser?.proExpiresAt ? new Date(initialUser.proExpiresAt) : null,
+    });
+  }, [data.transactionType, initialUser?.role, initialUser?.isPro, initialUser?.proExpiresAt]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -2223,6 +2234,24 @@ export default function ClientForm({
                     </motion.div>
                   );
                 })()}
+                {listingMarketHelper ? (
+                  <div className="mt-4 lg:col-span-4">
+                    <MarketValuationPanel
+                      lat={Number(data.lat) || null}
+                      lng={Number(data.lng) || null}
+                      area={parseFloat(String(data.area || "").replace(",", ".")) || null}
+                      rooms={Number(data.rooms) || null}
+                      floor={Number(data.floor) || null}
+                      city={String(data.city || "Warszawa")}
+                      district={data.district ? String(data.district) : null}
+                      address={[data.street, data.city].filter(Boolean).join(", ")}
+                      listingPrice={parseInt(String(data.price || "").replace(/\D/g, ""), 10) || null}
+                      purpose="listing"
+                      onApply={(price) => updateData({ price: String(price) })}
+                      applyLabel="Wstaw rekomendowaną cenę"
+                    />
+                  </div>
+                ) : null}
               </div>
             </section>
 
