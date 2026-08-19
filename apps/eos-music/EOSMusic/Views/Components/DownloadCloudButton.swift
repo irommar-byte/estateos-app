@@ -3,6 +3,8 @@ import SwiftUI
 struct DownloadCloudButton: View {
     let state: TrackDownloadUIState
     var size: CGFloat = 22
+    /// When true, cloud icon for .idle state shows "waiting for server" instead of "download to device"
+    var inLibrary: Bool = false
     var onDownload: () -> Void = {}
     var onCancel: () -> Void = {}
     var onRemoveOffline: () -> Void = {}
@@ -65,16 +67,26 @@ struct DownloadCloudButton: View {
                 .accessibilityLabel("Błąd pobierania — spróbuj ponownie")
 
             case .idle:
-                Button(action: onDownload) {
+                if inLibrary {
+                    // Track is in library but server hasn't acquired it yet — show waiting indicator
                     Image(systemName: "icloud.and.arrow.down")
                         .font(.system(size: size * 0.82, weight: .medium))
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(EOSTheme.accentSecondary.opacity(0.9))
+                        .foregroundStyle(EOSTheme.textMuted.opacity(0.5))
                         .padding(size * 0.24)
-                        .background(EOSTheme.accentSecondary.opacity(0.09), in: Circle())
+                        .accessibilityLabel("Oczekuje na serwer")
+                } else {
+                    Button(action: onDownload) {
+                        Image(systemName: "icloud.and.arrow.down")
+                            .font(.system(size: size * 0.82, weight: .medium))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(EOSTheme.accentSecondary.opacity(0.9))
+                            .padding(size * 0.24)
+                            .background(EOSTheme.accentSecondary.opacity(0.09), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Pobierz na ten iPhone")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Pobierz do biblioteki EOS i na ten iPhone")
             }
         }
         .animation(EOSMotion.snappy, value: state.isBusy)

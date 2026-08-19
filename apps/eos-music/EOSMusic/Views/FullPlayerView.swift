@@ -415,6 +415,7 @@ private struct PlayerContent: View {
             if !track.isExternal {
                 DownloadCloudButton(
                     state: app.playbackCloudState(for: track),
+                    inLibrary: true,
                     size: 20,
                     onDownload: { app.downloadCurrentPlayback() },
                     onCancel: { app.cancelDownload(for: track.url) },

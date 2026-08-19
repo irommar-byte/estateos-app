@@ -41,9 +41,11 @@ struct CatalogTrackRow: View {
             FavoriteButton(item: item.favoriteItem, size: 16)
                 .frame(width: 28)
 
-            if inLibrary {
+            // Cloud icon: visible for all states when in library; for non-library tracks only show when downloading
+            if inLibrary || cloudState.isBusy {
                 DownloadCloudButton(
                     state: cloudState,
+                    inLibrary: inLibrary,
                     size: 20,
                     onDownload: {
                         if let track = libraryTrack {
@@ -58,7 +60,10 @@ struct CatalogTrackRow: View {
                 .frame(width: 34, height: 34)
             }
 
-            libraryAddButton
+            // Plus: shown only when NOT in library; adding to library also triggers server download
+            if !inLibrary {
+                libraryAddButton
+            }
         }
         .contextMenu {
             Button {

@@ -39,6 +39,19 @@ struct ArtistDetailView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.985)))
             } else if let detail {
                 VStack(alignment: .leading, spacing: 24) {
+                    // Artist header with artwork
+                    let artistArtworkURL: URL? = ([detail.artist.thumbnail]
+                        + sortedAlbums.compactMap { $0.thumbnail }
+                        + detail.topSongs.compactMap { $0.thumbnail }
+                    ).first(where: { !($0?.isEmpty ?? true) })
+                     .flatMap { $0 }
+                     .flatMap(URL.init(string:))
+                    LibraryEntityHeader(
+                        title: detail.artist.name,
+                        subtitle: detail.artist.genre,
+                        artworkURL: artistArtworkURL
+                    )
+
                     if !sortedAlbums.isEmpty {
                         Text("Albumy")
                             .font(.headline)

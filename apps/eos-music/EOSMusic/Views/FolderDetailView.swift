@@ -238,6 +238,7 @@ struct FolderDetailView: View {
 
                 DownloadCloudButton(
                     state: downloadState,
+                    inLibrary: true,
                     onDownload: { app.downloadTrack(track, folderId: folder.id) },
                     onCancel: { app.cancelDownload(for: track.url) },
                     onRemoveOffline: {

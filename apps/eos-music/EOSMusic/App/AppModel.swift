@@ -209,7 +209,8 @@ final class AppModel: ObservableObject {
         } else {
             CredentialsStore.clear()
         }
-        // Enter the app immediately; playlist sync continues in background.
+        // Mark loading before entering the app so LibraryView shows a spinner immediately.
+        isLibraryLoading = true
         serverDownloads.start()
         Task { await refreshWorkspace(soft: true) }
         await serverDownloads.refreshOnce()

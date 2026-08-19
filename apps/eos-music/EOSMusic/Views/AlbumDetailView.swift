@@ -39,10 +39,11 @@ struct AlbumDetailView: View {
                             .filter { !$0.isEmpty }
                             .joined(separator: " · "),
                             // Brak okładki albumu → użyj okładki pierwszego utworu.
-                            artworkURL: (
-                                detail.album.thumbnail
-                                    ?? detail.tracks.first(where: { $0.thumbnail?.isEmpty == false })?.thumbnail
+                            artworkURL: ([detail.album.thumbnail]
+                                + detail.tracks.compactMap { $0.thumbnail }
                             )
+                            .first(where: { !($0?.isEmpty ?? true) })
+                            .flatMap { $0 }
                             .flatMap(URL.init(string:))
                         )
 
