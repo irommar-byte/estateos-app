@@ -112,6 +112,8 @@ type PortalData = {
     statusLabel?: string;
     managementStatus: string | null;
     imageUrl: string;
+    promotedUntil?: string | null;
+    featured?: boolean;
   } | null;
   listingProgress?: Array<{ id: string; label: string; done: boolean; current: boolean }>;
   acquisition: {
@@ -133,6 +135,7 @@ type PortalData = {
     title: string | null;
     body: string | null;
     createdAt: string;
+    metadata?: Record<string, unknown> | null;
   }>;
 };
 
@@ -702,6 +705,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </section>
       ) : null}
 
+      {portal.type === "SELLER" ? (
+        <SellerWorkBoard
+          featured={Boolean(portal.listing?.featured)}
+          featuredUntil={portal.listing?.promotedUntil || null}
+          activities={portal.activities}
+        />
+      ) : null}
+
       {portal.type === "SELLER" && portal.acquisition ? (
         <section className="space-y-5 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)] sm:p-7">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -723,32 +734,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               {portal.acquisition.status === "SIGNED" ? <ShieldCheck className="size-3.5" /> : <CalendarCheck2 className="size-3.5" />}
               {portal.acquisition.status === "SIGNED" ? "Współpraca zawarta" : "Przygotowanie"}
             </span>
-          </div>
-
-          {/* Marketing Activity Highlights */}
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emerald-600">
-              <Zap className="size-4" />
-              Aktywne promowanie Twojej nieruchomości
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
-                <p className="text-xs font-bold text-[var(--eos-text)]">⚡ Priorytetowe wyróżnienie</p>
-                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Ogłoszenie wyróżnione na górze listy w serwisie EstateOS™ oraz w aplikacji mobilnej agentów.</p>
-              </div>
-              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
-                <p className="text-xs font-bold text-[var(--eos-text)]">🎯 Baza aktywnych kupujących</p>
-                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Oferta trafiła bezpośrednio do zweryfikowanych poszukujących o pasującym budżecie.</p>
-              </div>
-              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
-                <p className="text-xs font-bold text-[var(--eos-text)]">📸 Profesjonalna prezentacja</p>
-                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Opracowano plan pomieszczeń, opis rynkowy oraz przygotowano pakiet zdjęciowy.</p>
-              </div>
-              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3">
-                <p className="text-xs font-bold text-[var(--eos-text)]">📊 Bieżący monitoring</p>
-                <p className="mt-1 text-[11px] text-[var(--eos-muted)]">Agent na bieżąco analizuje zainteresowanie i przekazuje Ci sprawozdania z prezentacji.</p>
-              </div>
-            </div>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-5">
@@ -1115,5 +1100,107 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
     </div>
     </main>
+  );
+}
+
+function asMeta(raw: unknown): Record<string, unknown> {
+  return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+}
+
+function SellerWorkBoard({
+  featured,
+  featuredUntil,
+  activities,
+}: {
+  featured: boolean;
+  featuredUntil: string | null;
+  activities: PortalData["activities"];
+}) {
+  const reports = activities.filter((a) => a.kind === "MARKET_REPORT_SENT");
+  const portals = activities.filter((a) => a.kind === "EXTERNAL_PORTAL");
+  const featuredActs = activities.filter((a) => a.kind === "LISTING_FEATURED");
+  const untilLabel = featuredUntil
+    ? new Date(featuredUntil).toLocaleDateString("pl-PL")
+    : null;
+
+  return (
+    <section className="space-y-4 rounded-[1.75rem] border border-emerald-500/25 bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
+      <div>
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+          <Zap className="size-4" /> Sprzedaż — co już zrobiliśmy
+        </p>
+        <h2 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Nie czekasz w ciemno</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
+          Tu widać konkretną pracę: raport z aktów, wyróżnienie na stronie głównej EstateOS™ i publikacje na innych portalach — z podglądem, nie gołym linkiem.
+        </p>
+      </div>
+
+      {featured || featuredActs.length ? (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4">
+          <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">Wyróżnienie na stronie głównej</p>
+          <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">
+            Twoje ogłoszenie jest na górze katalogu EstateOS™{untilLabel ? ` do ${untilLabel}` : ""}.
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--eos-muted)]">
+            Kupujący i agenci widzą je od razu, bez przewijania. To realne miejsce na stronie głównej i w aplikacji — nie pusty znaczek.
+          </p>
+        </div>
+      ) : null}
+
+      {reports.map((a) => (
+        <div key={a.id} className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 p-4">
+          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Raport z aktów</p>
+          <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">{a.title}</p>
+          {a.body ? <p className="mt-1 text-[12px] leading-relaxed text-[var(--eos-muted)]">{a.body}</p> : null}
+          <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
+            {new Date(a.createdAt).toLocaleString("pl-PL")}
+          </p>
+        </div>
+      ))}
+
+      {portals.map((a) => {
+        const meta = asMeta(a.metadata);
+        const url = String(meta.url || "");
+        const image = String(meta.image || "");
+        const siteName = String(meta.siteName || meta.host || "Portal");
+        const title = String(meta.title || a.title || siteName);
+        const description = String(meta.description || a.body || "");
+        return (
+          <a
+            key={a.id}
+            href={url || undefined}
+            target="_blank"
+            rel="noreferrer"
+            className="block overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 transition hover:border-emerald-500/40"
+          >
+            <div className="flex flex-col sm:flex-row">
+              {image ? (
+                <img src={image} alt="" className="h-40 w-full object-cover sm:h-auto sm:w-52" />
+              ) : (
+                <div className="flex h-28 items-center justify-center bg-emerald-500/10 sm:w-40">
+                  <ExternalLink className="size-6 text-emerald-600" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">{siteName}</p>
+                <p className="mt-1 text-sm font-black text-[var(--eos-text)]">{title}</p>
+                {description ? (
+                  <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-[var(--eos-muted)]">{description}</p>
+                ) : null}
+                {url ? (
+                  <p className="mt-2 truncate text-[11px] font-semibold text-emerald-700">{url}</p>
+                ) : null}
+              </div>
+            </div>
+          </a>
+        );
+      })}
+
+      {!featured && !featuredActs.length && !reports.length && !portals.length ? (
+        <p className="text-sm leading-relaxed text-[var(--eos-muted)]">
+          Gdy agent wyśle raport z aktów, wyróżni ogłoszenie na stronie głównej albo wrzuci je na Otodom / OLX — zobaczysz to tutaj od razu, z opisem co zrobiliśmy.
+        </p>
+      ) : null}
+    </section>
   );
 }

@@ -5,6 +5,15 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import type { MarketComp, PriceScore, ValuationResult } from "@/lib/market/types";
 
+type ReportQuota = {
+  kind: "admin" | "investor" | "office" | "credits" | "none";
+  used: number;
+  cap: number | null;
+  remaining: number;
+  windowLabel: string;
+  message: string;
+};
+
 type Props = {
   lat?: number | null;
   lng?: number | null;
@@ -20,6 +29,7 @@ type Props = {
   applyLabel?: string;
   showReport?: boolean;
   reportEmail?: string;
+  clientId?: number | null;
 };
 
 function pln(n: number) {
@@ -83,12 +93,36 @@ export default function MarketValuationPanel({
   applyLabel = "Zastosuj rekomendację",
   showReport = true,
   reportEmail,
+  clientId,
 }: Props) {
-  const [result, setResult] = useState<ValuationResult | null>(null);
+  const [result, setResult] = useState<(ValuationResult & { access?: { quota?: ReportQuota | null } }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [reportState, setReportState] = useState<"idle" | "sending" | "sent" | "pay">("idle");
+  const [reportState, setReportState] = useState<"idle" | "previewing" | "sending" | "sent" | "pay">("idle");
   const [reportMsg, setReportMsg] = useState("");
+  const [email, setEmail] = useState(reportEmail || "");
+  const [alternateEmail, setAlternateEmail] = useState("");
+  const [quota, setQuota] = useState<ReportQuota | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewEmails, setPreviewEmails] = useState<string[]>([]);
+
+  useEffect(() => {
+    setEmail(reportEmail || "");
+  }, [reportEmail]);
+
+  const loadQuota = useCallback(async () => {
+    try {
+      const res = await fetch("/api/market/report", { cache: "no-store", credentials: "include" });
+      const json = await res.json();
+      if (json?.quota) setQuota(json.quota);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadQuota();
+  }, [loadQuota]);
 
   const load = useCallback(async () => {
     if (lat == null || lng == null || !area) {
@@ -102,6 +136,7 @@ export default function MarketValuationPanel({
       const res = await fetch("/api/market/valuation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           lat,
           lng,
@@ -122,6 +157,7 @@ export default function MarketValuationPanel({
         return;
       }
       setResult(json as ValuationResult);
+      if (json?.access?.quota) setQuota(json.access.quota);
     } catch {
       setError("Brak połączenia z EstateOS™ Market.");
     } finally {
@@ -134,27 +170,64 @@ export default function MarketValuationPanel({
     return () => clearTimeout(t);
   }, [load]);
 
-  const sendReport = async () => {
+  const reportBody = () => ({
+    lat,
+    lng,
+    area,
+    rooms,
+    floor,
+    city,
+    district,
+    address,
+    listingPrice,
+    email,
+    alternateEmail,
+    clientId: clientId || undefined,
+  });
+
+  const openPreview = async () => {
     if (!result) return;
+    if (!email.trim() && !alternateEmail.trim() && !reportEmail) {
+      setReportMsg("Wpisz e-mail klienta albo adres alternatywny.");
+      return;
+    }
+    setReportState("previewing");
+    setReportMsg("");
+    try {
+      const res = await fetch("/api/market/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...reportBody(), preview: true }),
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        setReportState("idle");
+        setReportMsg(String(json?.message || "Nie przygotowano podglądu."));
+        if (json?.quota) setQuota(json.quota);
+        return;
+      }
+      setPreviewHtml(String(json.html || ""));
+      setPreviewEmails(Array.isArray(json.emails) ? json.emails : []);
+      if (json.quota) setQuota(json.quota);
+      setReportState("idle");
+    } catch {
+      setReportState("idle");
+      setReportMsg("Nie udało się przygotować podglądu.");
+    }
+  };
+
+  const confirmSend = async () => {
     setReportState("sending");
     try {
       const res = await fetch("/api/market/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lat,
-          lng,
-          area,
-          rooms,
-          floor,
-          city,
-          district,
-          address,
-          listingPrice,
-          email: reportEmail,
-        }),
+        credentials: "include",
+        body: JSON.stringify(reportBody()),
       });
       const json = await res.json();
+      if (json?.quota) setQuota(json.quota);
       if (res.status === 402 || json?.code === "NEEDS_CREDIT") {
         setReportState("pay");
         setReportMsg(String(json?.message || "Potrzebny 1 kredyt raportu."));
@@ -165,8 +238,15 @@ export default function MarketValuationPanel({
         setReportMsg(String(json?.message || "Nie wysłano raportu."));
         return;
       }
+      setPreviewHtml(null);
       setReportState("sent");
-      setReportMsg(json.emailed ? "Raport wyszedł na e-mail." : "Raport zapisany — sprawdź skrzynkę, jeśli mail nie doszedł.");
+      const dest = Array.isArray(json.emails) ? json.emails.join(", ") : email;
+      setReportMsg(
+        json.emailed
+          ? `Raport wyszedł na ${dest}.${json.clientRecorded ? " Zapisaliśmy to też w panelu klienta." : ""}`
+          : "Raport zapisany — sprawdź skrzynkę, jeśli mail nie doszedł.",
+      );
+      void loadQuota();
     } catch {
       setReportState("idle");
       setReportMsg("Nie udało się wysłać raportu.");
@@ -177,18 +257,20 @@ export default function MarketValuationPanel({
     const draftRes = await fetch("/api/market/draft", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
-        lat, lng, area, rooms, floor, city, district, address, listingPrice, email: reportEmail,
+        lat, lng, area, rooms, floor, city, district, address, listingPrice, email,
       }),
     });
     const draft = await draftRes.json();
     const checkout = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         plan: "market_report",
         draftId: draft.draftId,
-        email: reportEmail,
+        email,
         returnUrl: typeof window !== "undefined" ? window.location.href : "/wycena",
         cancelUrl: typeof window !== "undefined" ? window.location.href : "/wycena",
       }),
@@ -196,6 +278,13 @@ export default function MarketValuationPanel({
     const pay = await checkout.json();
     if (pay?.url) window.location.href = pay.url;
   };
+
+  const remainingLabel =
+    quota && quota.cap != null
+      ? `${quota.remaining} / ${quota.cap}`
+      : quota?.kind === "credits"
+        ? `${quota.remaining}`
+        : null;
 
   return (
     <div className="overflow-hidden rounded-[1.75rem] border border-emerald-500/20 bg-[var(--eos-card)]">
@@ -246,30 +335,111 @@ export default function MarketValuationPanel({
               </div>
             ) : null}
             {showReport ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  disabled={reportState === "sending"}
-                  onClick={() => void sendReport()}
-                  className="rounded-full bg-emerald-500 px-4 py-2 text-[12px] font-black uppercase tracking-[0.12em] text-black disabled:opacity-50"
-                >
-                  {reportState === "sending" ? "Wysyłam…" : "Generuj raport dla właściciela"}
-                </button>
-                {reportState === "pay" ? (
-                  <button type="button" onClick={() => void buyCredit()} className="text-[12px] font-bold text-emerald-500">
-                    Kup 1 kredyt (49 zł)
-                  </button>
+              <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">Raport dla właściciela</p>
+                  {quota ? (
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                      {remainingLabel ? `Zostało ${remainingLabel}` : quota.message}
+                    </span>
+                  ) : null}
+                </div>
+                {quota?.message ? (
+                  <p className="text-[12px] leading-relaxed text-[var(--eos-muted)]">{quota.message}</p>
                 ) : null}
-                <Link href="/market" className="text-[12px] font-bold text-[var(--eos-muted)] hover:text-[var(--eos-text)]">
-                  Otwórz Market
-                </Link>
-                {reportMsg ? <p className="w-full text-[12px] text-[var(--eos-muted)]">{reportMsg}</p> : null}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+                      E-mail klienta
+                    </span>
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="z karty klienta, jeśli jest"
+                      className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+                    />
+                  </label>
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+                      E-mail alternatywny
+                    </span>
+                    <input
+                      type="email"
+                      autoComplete="off"
+                      value={alternateEmail}
+                      onChange={(e) => setAlternateEmail(e.target.value)}
+                      placeholder="np. współwłaściciel"
+                      className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+                    />
+                  </label>
+                </div>
+                <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">
+                  Domyślnie bierzemy e-mail z karty klienta. Możesz go poprawić i dodać drugi adres — raport pójdzie na oba po Twoim zatwierdzeniu podglądu.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={reportState === "previewing" || reportState === "sending" || reportState === "sent"}
+                    onClick={() => void openPreview()}
+                    className="rounded-full bg-emerald-500 px-4 py-2 text-[12px] font-black uppercase tracking-[0.12em] text-black disabled:opacity-50"
+                  >
+                    {reportState === "previewing" ? "Przygotowuję podgląd…" : reportState === "sent" ? "Wysłano" : "Generuj raport dla właściciela"}
+                  </button>
+                  {reportState === "pay" ? (
+                    <button type="button" onClick={() => void buyCredit()} className="text-[12px] font-bold text-emerald-500">
+                      Kup 1 kredyt (49 zł)
+                    </button>
+                  ) : null}
+                  <Link href="/market" className="text-[12px] font-bold text-[var(--eos-muted)] hover:text-[var(--eos-text)]">
+                    Otwórz Market
+                  </Link>
+                </div>
+                {reportMsg ? <p className="text-[12px] text-[var(--eos-muted)]">{reportMsg}</p> : null}
               </div>
             ) : null}
             <p className="text-[10px] leading-relaxed text-[var(--eos-muted)]">{result.coverage.disclaimer}</p>
           </>
         ) : null}
       </div>
+
+      {previewHtml ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl">
+            <div className="border-b border-[var(--eos-border)] px-5 py-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Podgląd raportu</p>
+              <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Zatwierdź, zanim wyślemy do klienta</h3>
+              <p className="mt-1 text-sm text-[var(--eos-muted)]">
+                Wyślemy na: {previewEmails.join(", ") || "—"}
+                {quota && quota.cap != null ? ` · po wysyłce zostanie ${Math.max(0, quota.remaining - 1)} z ${quota.cap}` : ""}
+              </p>
+            </div>
+            <iframe
+              title="Podgląd raportu EstateOS Market"
+              srcDoc={previewHtml}
+              className="min-h-[52vh] w-full flex-1 bg-white"
+            />
+            <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--eos-border)] px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setPreviewHtml(null)}
+                className="rounded-full border border-[var(--eos-border)] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[var(--eos-text)]"
+              >
+                Cofnij
+              </button>
+              <button
+                type="button"
+                disabled={reportState === "sending"}
+                onClick={() => void confirmSend()}
+                className="rounded-full bg-emerald-500 px-5 py-2 text-[11px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+              >
+                {reportState === "sending" ? "Wysyłam…" : "Zatwierdź i wyślij"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { MARKET_KIND_LOCAL, WARSAW_CITY } from '@/lib/market/constants';
 import { WARSAW_DISTRICT_CENTROIDS } from '@/lib/market/warsawDistricts';
+import { rcnLagNote, resolveRcnAsOfDate, windowStart } from '@/lib/market/asOf';
 import type { MarketAreaStatView, MarketIntelligencePayload } from '@/lib/market/types';
 
 const PERIODS = [30, 90, 180, 365, 730];
@@ -26,7 +27,7 @@ async function ppsmFor(city: string, district: string | null, since: Date, until
       kind: MARKET_KIND_LOCAL,
       qualityOk: true,
       ...(district ? { district } : {}),
-      deedAt: until ? { gte: since, lt: until } : { gte: since },
+      deedAt: until ? { gte: since, lte: until } : { gte: since },
       pricePerM2: { not: null },
     },
     select: { pricePerM2: true },
@@ -38,12 +39,13 @@ export async function recomputeWarsawAreaStats() {
   const city = WARSAW_CITY;
   const districts = ['', ...Object.keys(WARSAW_DISTRICT_CENTROIDS)];
   const now = new Date();
+  const asOf = await resolveRcnAsOfDate(city);
 
   for (const periodDays of PERIODS) {
-    const since = new Date(now.getTime() - periodDays * 86400000);
-    const prevSince = new Date(since.getTime() - periodDays * 86400000);
+    const since = windowStart(asOf, periodDays);
+    const prevSince = windowStart(since, periodDays);
     for (const district of districts) {
-      const values = await ppsmFor(city, district || null, since);
+      const values = await ppsmFor(city, district || null, since, asOf);
       const prev = await ppsmFor(city, district || null, prevSince, since);
       const median = percentile(values, 0.5);
       const prevMedian = percentile(prev, 0.5);
@@ -132,6 +134,7 @@ export async function getDistrictStats(city: string, periodDays: number): Promis
 }
 
 export async function buildMarketIntelligence(city = WARSAW_CITY, periodDays = 365): Promise<MarketIntelligencePayload> {
+  const asOf = await resolveRcnAsOfDate(city);
   const cityStat = await getCityStats(city, periodDays);
   const districts = await getDistrictStats(city, periodDays);
   const yoy = cityStat?.yoyChangePct ?? null;
@@ -184,5 +187,7 @@ export async function buildMarketIntelligence(city = WARSAW_CITY, periodDays = 3
     mostExpensive,
     mostDeals,
     updatedAt: cityStat ? new Date().toISOString() : null,
+    asOf: asOf.toISOString(),
+    lagNote: rcnLagNote(asOf, periodDays),
   };
 }

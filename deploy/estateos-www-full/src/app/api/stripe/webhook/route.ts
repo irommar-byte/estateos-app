@@ -175,7 +175,7 @@ export async function POST(req: Request) {
                     await consumeMarketReportCredit(Number(user.id));
                     await deliverMarketReport({
                       userId: Number(user.id),
-                      email: customerEmail,
+                      emails: [customerEmail],
                       purpose: 'consumer',
                       creditUsed: true,
                       subject,

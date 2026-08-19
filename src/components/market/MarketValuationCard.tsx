@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
 import {
+  fetchMarketReportQuota,
   fetchMarketValuation,
   formatPln,
   formatPpsm,
+  previewMarketReport,
   sendMarketReport,
+  type MarketReportQuota,
   type ValuationResult,
 } from '../../services/marketService';
 
@@ -23,6 +26,7 @@ type Props = {
   colors: { card: string; text: string; secondary: string; border: string; accent: string };
   onApply?: (price: number) => void;
   reportEmail?: string | null;
+  clientId?: number | null;
 };
 
 export default function MarketValuationCard({
@@ -40,11 +44,26 @@ export default function MarketValuationCard({
   colors,
   onApply,
   reportEmail,
+  clientId,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ValuationResult | null>(null);
   const [reportMsg, setReportMsg] = useState('');
+  const [email, setEmail] = useState(reportEmail || '');
+  const [alternateEmail, setAlternateEmail] = useState('');
+  const [quota, setQuota] = useState<MarketReportQuota | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setEmail(reportEmail || '');
+  }, [reportEmail]);
+
+  useEffect(() => {
+    void fetchMarketReportQuota(token).then((q) => {
+      if (q) setQuota(q);
+    });
+  }, [token]);
 
   useEffect(() => {
     if (lat == null || lng == null || !area) {
@@ -65,6 +84,7 @@ export default function MarketValuationCard({
           setError(json.message);
         } else {
           setResult(json);
+          if (json.access?.quota) setQuota(json.access.quota);
         }
       }).finally(() => {
         if (!cancelled) setLoading(false);
@@ -75,6 +95,54 @@ export default function MarketValuationCard({
       clearTimeout(t);
     };
   }, [token, lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose]);
+
+  const payload = {
+    lat, lng, area, rooms, floor, city, district, address, listingPrice,
+    email,
+    alternateEmail,
+    clientId: clientId || undefined,
+  };
+
+  const startReport = () => {
+    if (!email.trim() && !alternateEmail.trim()) {
+      setReportMsg('Wpisz e-mail klienta albo adres alternatywny.');
+      return;
+    }
+    setBusy(true);
+    void previewMarketReport(token, payload).then((r) => {
+      setBusy(false);
+      if (!r.ok) {
+        setReportMsg(String(r.json?.message || 'Nie przygotowano podglądu.'));
+        if (r.json?.quota) setQuota(r.json.quota);
+        return;
+      }
+      if (r.json?.quota) setQuota(r.json.quota);
+      const dest = Array.isArray(r.json?.emails) ? r.json.emails.join(', ') : email;
+      const mid = result ? formatPln(result.estimated.mid) : '';
+      Alert.alert(
+        'Podgląd raportu',
+        `Wyślemy na: ${dest}\nWartość rynkowa: ${mid}\n${quota?.message || ''}\n\nZatwierdź, żeby wysłać do klienta i zapisać w jego panelu.`,
+        [
+          { text: 'Cofnij', style: 'cancel' },
+          {
+            text: 'Zatwierdź i wyślij',
+            onPress: () => {
+              setBusy(true);
+              void sendMarketReport(token, payload).then((sent) => {
+                setBusy(false);
+                if (sent.json?.quota) setQuota(sent.json.quota);
+                setReportMsg(
+                  sent.ok
+                    ? `Raport wysłany na ${dest}.${sent.json?.clientRecorded ? ' Zapisano w panelu klienta.' : ''}`
+                    : String(sent.json?.message || 'Nie wysłano raportu.'),
+                );
+              });
+            },
+          },
+        ],
+      );
+    });
+  };
 
   return (
     <View style={{ borderRadius: 18, borderWidth: 1, borderColor: 'rgba(52,199,89,0.28)', backgroundColor: colors.card, overflow: 'hidden', marginBottom: 14 }}>
@@ -118,17 +186,50 @@ export default function MarketValuationCard({
                 <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 13 }}>Zastosuj cenę rekomendowaną · {formatPln(result.estimated.recommendedAsk)}</Text>
               </Pressable>
             ) : null}
-            {reportEmail ? (
-              <Pressable
-                onPress={() => {
-                  void sendMarketReport(token, {
-                    lat, lng, area, rooms, floor, city, district, address, listingPrice, email: reportEmail,
-                  }).then((r) => setReportMsg(r.ok ? 'Raport wysłany na e-mail.' : String(r.json?.message || 'Nie wysłano raportu.')));
-                }}
-              >
-                <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>Generuj raport dla właściciela</Text>
-              </Pressable>
+            {quota ? (
+              <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
+                {quota.cap != null ? `Raporty: ${quota.remaining} / ${quota.cap} (${quota.windowLabel})` : quota.message}
+              </Text>
             ) : null}
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="E-mail klienta"
+              placeholderTextColor={colors.secondary}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={{
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: colors.text,
+                fontSize: 14,
+              }}
+            />
+            <TextInput
+              value={alternateEmail}
+              onChangeText={setAlternateEmail}
+              placeholder="E-mail alternatywny (opcjonalnie)"
+              placeholderTextColor={colors.secondary}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={{
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: colors.text,
+                fontSize: 14,
+              }}
+            />
+            <Pressable onPress={startReport} disabled={busy}>
+              <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>
+                {busy ? 'Przygotowuję…' : 'Generuj raport dla właściciela'}
+              </Text>
+            </Pressable>
             {reportMsg ? <Text style={{ color: colors.secondary, fontSize: 12 }}>{reportMsg}</Text> : null}
             <Text style={{ color: colors.secondary, fontSize: 10, lineHeight: 14 }}>{result.coverage.disclaimer}</Text>
           </>

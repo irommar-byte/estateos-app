@@ -204,7 +204,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 8,
-  },
     zIndex: 2,
   },
   viewsBadge: {

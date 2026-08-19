@@ -1427,6 +1427,7 @@ export default function AgencyClientDetailScreen() {
                         purpose="crm"
                         colors={colors}
                         reportEmail={client?.email}
+                        clientId={client?.id}
                         onApply={
                           signed
                             ? undefined

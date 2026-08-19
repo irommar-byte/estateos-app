@@ -27,6 +27,16 @@ export type ValuationResult = {
   } | null;
   comps: MarketComp[];
   coverage: { city: string; source: string; ingestedAt: string | null; transactionCount: number; disclaimer: string };
+  access?: { quota?: MarketReportQuota | null; marketReportCredits?: number };
+};
+
+export type MarketReportQuota = {
+  kind: 'admin' | 'investor' | 'office' | 'credits' | 'none';
+  used: number;
+  cap: number | null;
+  remaining: number;
+  windowLabel: string;
+  message: string;
 };
 
 function authHeaders(token?: string | null) {
@@ -59,6 +69,16 @@ export async function sendMarketReport(token: string | null, body: Record<string
   });
   const json = await res.json().catch(() => ({}));
   return { ok: Boolean(json?.ok), status: res.status, json };
+}
+
+export async function previewMarketReport(token: string | null, body: Record<string, unknown>) {
+  return sendMarketReport(token, { ...body, preview: true });
+}
+
+export async function fetchMarketReportQuota(token: string | null): Promise<MarketReportQuota | null> {
+  const res = await fetch(`${API_URL}/api/market/report`, { headers: authHeaders(token) });
+  const json = await res.json().catch(() => ({}));
+  return json?.quota || null;
 }
 
 export async function fetchMarketStats(periodDays = 365) {
