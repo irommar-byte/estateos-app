@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
 import { completeAdminOfferApproval, adminForceArchiveOffer, adminReactivateArchivedOffer } from '@/lib/offerPublication';
+import { notifyOwnerOfferModeration } from '@/lib/ownerLifecyclePush';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 
 const OFFER_ADMIN_STATUSES: OfferStatus[] = ['PENDING', 'ACTIVE', 'ARCHIVED', 'REJECTED', 'SOLD', 'IN_DEAL'];
@@ -75,6 +76,13 @@ export async function POST(req: Request) {
           data: { status: 'ACTIVE', expiresAt: reactivation.endsAt },
         });
 
+        notifyOwnerOfferModeration({
+          ownerUserId: Number(existing.userId),
+          offerId: Number(offerId),
+          approved: true,
+          offerTitle: existing.title,
+        });
+
         return NextResponse.json({ success: true, offer });
       }
 
@@ -96,6 +104,13 @@ export async function POST(req: Request) {
         data: { status: 'ACTIVE', expiresAt: approval.endsAt },
       });
 
+      notifyOwnerOfferModeration({
+        ownerUserId: Number(existing.userId),
+        offerId: Number(offerId),
+        approved: true,
+        offerTitle: existing.title,
+      });
+
       return NextResponse.json({ success: true, offer });
     }
 
@@ -103,6 +118,15 @@ export async function POST(req: Request) {
       where: { id: Number(offerId) },
       data: { status: newStatus },
     });
+
+    if (['PENDING', 'REJECTED', 'ARCHIVED'].includes(normalizedStatus)) {
+      notifyOwnerOfferModeration({
+        ownerUserId: Number(existing.userId),
+        offerId: Number(offerId),
+        approved: false,
+        offerTitle: existing.title,
+      });
+    }
 
     return NextResponse.json({ success: true, offer });
   } catch (error: any) {

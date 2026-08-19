@@ -131,4 +131,13 @@ export async function notifyAuctionStartingSoon(input: AuctionNotifyBase & {
   const key = `auction-scheduled-${input.eventId}`;
 
   await createInAppNotification(input.hostUserId, title, body, input.offerId, key);
+  await notificationService.sendPushToUser(
+    input.hostUserId,
+    {
+      title,
+      body,
+      data: { type: 'AUCTION_STARTING_SOON', eventId: input.eventId, offerId: input.offerId },
+    },
+    { offerId: input.offerId }
+  );
 }

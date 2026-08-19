@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { notifyAdminsLegalVerificationPending } from '@/lib/adminAttentionPush';
+import { notifyOwnerLegalVerificationResult } from '@/lib/ownerLifecyclePush';
 import { prisma } from '@/lib/prisma';
 import { setVerificationStatusInDescription } from '@/lib/offerVerification';
 import {
@@ -185,9 +186,6 @@ export async function submitOwnerLegalVerification(req: Request, offerId: number
   if (!landRegistryNumber) {
     return NextResponse.json({ success: false, message: 'Brak numeru księgi wieczystej.' }, { status: 400 });
   }
-  if (!apartmentNumber) {
-    return NextResponse.json({ success: false, message: 'Brak numeru mieszkania.' }, { status: 400 });
-  }
 
   const offer = await prisma.offer.findUnique({
     where: { id: offerId },
@@ -198,6 +196,24 @@ export async function submitOwnerLegalVerification(req: Request, offerId: number
   }
   if (offer.userId !== userId) {
     return NextResponse.json({ success: false, message: 'Brak uprawnień do tej oferty.' }, { status: 403 });
+  }
+
+  const latestPending = await prisma.legalVerificationRequest.findFirst({
+    where: { offerId, status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (
+    latestPending &&
+    String(latestPending.landRegistryNumber || '').trim().toUpperCase() === landRegistryNumber &&
+    String(latestPending.apartmentNumber || '') === String(apartmentNumber || '')
+  ) {
+    const offerState: any = await prisma.offer.findUnique({
+      where: { id: offerId },
+      select: OFFER_LEGAL_SELECT,
+    });
+    return NextResponse.json(await offerViewFromState(offerId, offerState, latestPending), {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    });
   }
 
   const now = new Date();
@@ -212,7 +228,7 @@ export async function submitOwnerLegalVerification(req: Request, offerId: number
         requesterId: userId,
         status: 'PENDING',
         landRegistryNumber,
-        apartmentNumber,
+        apartmentNumber: apartmentNumber || null,
         note: ownerNote,
       },
     });
@@ -220,7 +236,7 @@ export async function submitOwnerLegalVerification(req: Request, offerId: number
       where: { id: offerId },
       data: {
         landRegistryNumber,
-        apartmentNumber,
+        apartmentNumber: apartmentNumber || null,
         legalCheckStatus: 'PENDING',
         legalCheckSubmittedAt: now,
         legalCheckReviewedAt: null,
@@ -323,6 +339,19 @@ export async function approveLegalVerification(req: Request, offerId: number) {
     });
     return { updatedRequest, updatedOffer };
   });
+  const ownerRow = await prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { userId: true, title: true },
+  });
+  if (ownerRow?.userId) {
+    notifyOwnerLegalVerificationResult({
+      ownerUserId: ownerRow.userId,
+      offerId,
+      approved: true,
+      offerTitle: ownerRow.title,
+      requestId: result.updatedRequest.id,
+    });
+  }
   return NextResponse.json(await offerViewFromState(offerId, result.updatedOffer, result.updatedRequest), {
     headers: { 'Cache-Control': 'no-store, max-age=0' },
   });
@@ -375,6 +404,20 @@ export async function rejectLegalVerification(req: Request, offerId: number) {
     });
     return { updatedRequest, updatedOffer };
   });
+  const ownerRow = await prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { userId: true, title: true },
+  });
+  if (ownerRow?.userId) {
+    notifyOwnerLegalVerificationResult({
+      ownerUserId: ownerRow.userId,
+      offerId,
+      approved: false,
+      offerTitle: ownerRow.title,
+      rejectionText: reasonText,
+      requestId: result.updatedRequest.id,
+    });
+  }
   return NextResponse.json(await offerViewFromState(offerId, result.updatedOffer, result.updatedRequest), {
     headers: { 'Cache-Control': 'no-store, max-age=0' },
   });

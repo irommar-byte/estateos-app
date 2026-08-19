@@ -17,6 +17,7 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush, dispatchFavoritesStatusChangePush, dispatchFavoritesNewSimilarPush } from '@/lib/favoritesPricePush';
+import { notifyAdminsLegalVerificationPending } from '@/lib/adminAttentionPush';
 import { syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
@@ -384,9 +385,7 @@ export async function createOffer(body: any) {
     String(body.description || ''),
     verificationMeta
   );
-  const hasLegalVerificationSeed = Boolean(
-    verificationMeta.apartmentNumber && verificationMeta.landRegistryNumber
-  );
+  const hasLegalVerificationSeed = Boolean(verificationMeta.landRegistryNumber);
 
   let agentCommissionPercent: number | null | undefined = undefined;
   if (body.agentCommissionPercent !== undefined && body.agentCommissionPercent !== null) {
@@ -503,6 +502,18 @@ export async function createOffer(body: any) {
         source: 'offer_create',
       });
     }
+    if (hasLegalVerificationSeed && verificationMeta.landRegistryNumber) {
+      await prisma.legalVerificationRequest.create({
+        data: {
+          offerId: Number(created.id),
+          requesterId: Number(userId),
+          status: 'PENDING',
+          landRegistryNumber: verificationMeta.landRegistryNumber,
+          apartmentNumber: verificationMeta.apartmentNumber || null,
+        },
+      });
+      notifyAdminsLegalVerificationPending(Number(created.id), created.title ?? null);
+    }
     return created;
   } catch (error) {
     if (
@@ -529,6 +540,18 @@ export async function createOffer(body: any) {
         previousListPricePln: null,
         source: 'offer_create',
       });
+    }
+    if (hasLegalVerificationSeed && verificationMeta.landRegistryNumber) {
+      await prisma.legalVerificationRequest.create({
+        data: {
+          offerId: Number(fallbackCreated.id),
+          requesterId: Number(userId),
+          status: 'PENDING',
+          landRegistryNumber: verificationMeta.landRegistryNumber,
+          apartmentNumber: verificationMeta.apartmentNumber || null,
+        },
+      });
+      notifyAdminsLegalVerificationPending(Number(fallbackCreated.id), fallbackCreated.title ?? null);
     }
     return fallbackCreated;
   }
@@ -671,8 +694,13 @@ export async function updateOffer(body: any) {
       : existingVerification.verification.apartmentNumber;
   const legalFieldsChanged =
     body.landRegistryNumber !== undefined || body.apartmentNumber !== undefined;
+  const previousKw = String(existingVerification.verification.landRegistryNumber || '')
+    .trim()
+    .toUpperCase();
+  const nextKwNormalized = String(nextLandRegistryNumber || '').trim().toUpperCase();
+  const kwChanged = previousKw !== nextKwNormalized;
   const shouldResetLegalVerification = Boolean(
-    legalFieldsChanged && nextLandRegistryNumber && nextApartmentNumber
+    legalFieldsChanged && nextLandRegistryNumber && kwChanged
   );
   const nextDescription = attachVerificationMetaToDescription(
     String(body.description !== undefined ? body.description : existingVerification.cleanDescription || ''),
@@ -870,6 +898,27 @@ export async function updateOffer(body: any) {
       changedByUserId: Number(userId) || null,
       source: 'mobile_offers_put',
     });
+  }
+  if (shouldResetLegalVerification && nextLandRegistryNumber) {
+    const latest = await prisma.legalVerificationRequest.findFirst({
+      where: { offerId: Number(id) },
+      orderBy: { createdAt: 'desc' },
+    });
+    const samePending =
+      String(latest?.status || '').toUpperCase() === 'PENDING' &&
+      String(latest?.landRegistryNumber || '').trim().toUpperCase() === nextKwNormalized;
+    if (!samePending) {
+      await prisma.legalVerificationRequest.create({
+        data: {
+          offerId: Number(id),
+          requesterId: Number(existing.userId),
+          status: 'PENDING',
+          landRegistryNumber: nextLandRegistryNumber,
+          apartmentNumber: nextApartmentNumber,
+        },
+      });
+      notifyAdminsLegalVerificationPending(Number(id), updatedOffer.title ?? null);
+    }
   }
   return updatedOffer;
 }

@@ -138,6 +138,8 @@ export const UK: OfferPageCopy = {
     bannerTitle: "День відкритих дверей",
     bannerSubtitle: (date, spots) => `Найближчий термін: ${date} · ${spots} вільних місць`,
     bannerCta: "Забронювати візит",
+    markLabel: "День відкритих дверей",
+    markDate: (date: string) => date,
     modalTitle: "День відкритих дверей",
     modalSubtitle: "Оберіть час візиту",
     slotsSection: "Терміни візитів",

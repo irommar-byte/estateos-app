@@ -318,6 +318,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const openOpenHouseModal = () => setIsOpenHouseModalOpen(true);
   const openAuctionModal = () => setIsAuctionModalOpen(true);
   const offerLocale = locale === "uk" ? "uk" : locale === "en" ? "en" : "pl";
+  const openHouseDateLabel = (() => {
+    const raw = openHouseEvent?.nextSlotStartsAt;
+    if (!raw) return null;
+    const start = new Date(raw);
+    if (!Number.isFinite(start.getTime()) || start.getTime() < Date.now()) return null;
+    return start.toLocaleString(offerLocale === "en" ? "en-GB" : "pl-PL", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  })();
 
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericArea = parseFloat(rawAreaStr) || 0;
@@ -733,9 +744,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   legalVerifiedKwSublabel: t.legalVerifiedKwSublabel,
                   newOfferBadge: t.newOfferBadge,
                   noData: t.noData,
+                  openHouseMark: t.openHouse.markLabel,
+                  openHouseDate: openHouseDateLabel,
                 }}
                 onOpenProfile={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
                 onAsk={() => setIsGuestAskOpen(true)}
+                onOpenHousePress={openOpenHouseModal}
               />
 
             {showAuctionBanner && auctionEvent ? (
@@ -886,9 +900,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     legalVerifiedKwSublabel: t.legalVerifiedKwSublabel,
                     newOfferBadge: t.newOfferBadge,
                     noData: t.noData,
+                    openHouseMark: t.openHouse.markLabel,
+                    openHouseDate: openHouseDateLabel,
                   }}
                   onOpenProfile={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
                   onAsk={() => setIsGuestAskOpen(true)}
+                  onOpenHousePress={openOpenHouseModal}
                 />
               </div>
             ) : null}
@@ -1422,8 +1439,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             <button onClick={() => setIsFloorplanModalOpen(false)} className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors z-50">
               <X size={24} />
             </button>
-            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="relative w-full max-w-5xl max-h-screen flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-              <img src={floorPlanSrc} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 bg-[#0a0a0a]" alt={t.floorPlan} />
+            <motion.div initial={{ scale: 0.96, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 16 }} className="relative w-full max-w-6xl" onClick={(e) => e.stopPropagation()}>
+              <OfferFloorPlanPanel
+                floorPlanSrc={floorPlanSrc}
+                extraFloorPlanSrcs={extraFloorPlanSrcs}
+                floorPlan3dSrc={floorPlan3dSrc || undefined}
+                scanMeta={floorPlanScanMeta}
+                locale={locale}
+                copy={t}
+                themeColors={themeColors}
+                variant="full"
+              />
             </motion.div>
           </motion.div>
         )}

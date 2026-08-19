@@ -3823,6 +3823,17 @@ html:not(.light) .eos-car-form-cancel {
   background: rgba(16, 185, 129, 0.1);
 }
 .eos-offer-hero-bar__cell.is-warn { border-color: rgba(161, 161, 170, 0.28); }
+.eos-offer-hero-bar__cell.is-oh {
+  border-color: rgba(201, 162, 116, 0.42);
+  background: rgba(180, 132, 78, 0.12);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.eos-offer-hero-bar__cell.is-oh .eos-offer-hero-bar__k { color: #e8c9a8; }
+.eos-offer-hero-bar__cell.is-oh .eos-offer-hero-bar__v { color: #f3e6d4; }
+.eos-offer-hero-bar__cell.is-oh .eos-offer-hero-bar__v svg { color: #e8c9a8; opacity: 1; }
 .eos-offer-hero-bar__k {
   font-size: 0.58rem;
   font-weight: 800;

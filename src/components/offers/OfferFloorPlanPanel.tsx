@@ -87,7 +87,10 @@ export default function OfferFloorPlanPanel({
         <button
           key={room.id || room.name}
           type="button"
-          onClick={() => setPlanKey(room.id)}
+        onClick={() => {
+          setPlanKey(room.id);
+          onEnlarge?.();
+        }}
           className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${
             planKey === room.id
               ? `${themeColors.bgActiveSoft} text-[var(--eos-text)]`
@@ -279,7 +282,10 @@ export default function OfferFloorPlanPanel({
             <button
               key={room.id || room.name}
               type="button"
-              onClick={() => setPlanKey(room.id)}
+              onClick={() => {
+                setPlanKey(room.id);
+                onEnlarge?.();
+              }}
               className={`rounded-2xl border p-3 text-left transition-colors ${
                 planKey === room.id
                   ? 'border-sky-400/40 bg-sky-500/10'

@@ -6,6 +6,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { extractVerificationMeta, setVerificationStatusInDescription, type OfferVerificationStatus } from '@/lib/offerVerification';
 import { completeAdminOfferApproval, adminForceArchiveOffer, adminReactivateArchivedOffer } from '@/lib/offerPublication';
+import { notifyOwnerOfferModeration } from '@/lib/ownerLifecyclePush';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
 import { listOfferImportSourceMeta } from '@/lib/offerPrivateNotes';
@@ -409,6 +410,13 @@ export async function PUT(req: Request) {
         },
       });
 
+      notifyOwnerOfferModeration({
+        ownerUserId,
+        offerId,
+        approved: true,
+        offerTitle: existing.title,
+      });
+
       return NextResponse.json({ success: true, offer: updated });
     }
 
@@ -433,6 +441,15 @@ export async function PUT(req: Request) {
         },
       },
     });
+
+    if (['PENDING', 'REJECTED', 'ARCHIVED'].includes(normalizedStatus)) {
+      notifyOwnerOfferModeration({
+        ownerUserId: Number(existing.userId),
+        offerId,
+        approved: false,
+        offerTitle: existing.title,
+      });
+    }
 
     return NextResponse.json({ success: true, offer: updated });
   } catch (error) {

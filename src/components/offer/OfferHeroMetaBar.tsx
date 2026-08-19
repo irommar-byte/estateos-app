@@ -1,6 +1,6 @@
 "use client";
 
-import { Briefcase, Eye, MessageCircleQuestion, ShieldCheck, Star } from "lucide-react";
+import { Briefcase, CalendarDays, Eye, MessageCircleQuestion, ShieldCheck, Star } from "lucide-react";
 
 type Props = {
   sellerLabel: string;
@@ -35,10 +35,13 @@ type Props = {
     legalVerifiedKwSublabel: string;
     newOfferBadge: string;
     noData: string;
+    openHouseMark?: string;
+    openHouseDate?: string | null;
   };
   locale?: string;
   onOpenProfile: () => void;
   onAsk: () => void;
+  onOpenHousePress?: () => void;
 };
 
 function formatLastSeenLabel(iso: string | null | undefined, locale: string): string | null {
@@ -96,6 +99,7 @@ export default function OfferHeroMetaBar({
   locale = "pl",
   onOpenProfile,
   onAsk,
+  onOpenHousePress,
 }: Props) {
   const filledStars = totalReviews > 0 ? Math.max(0, Math.min(5, Math.round(averageRating))) : 0;
   const kwLabel = isLegalKwVerified ? labels.legalVerifiedKw : labels.legalUnverifiedKw;
@@ -188,6 +192,24 @@ export default function OfferHeroMetaBar({
             {kwLabel}
           </span>
         </div>
+
+        {labels.openHouseDate ? (
+          <button
+            type="button"
+            className="eos-offer-hero-bar__cell is-oh"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenHousePress?.();
+            }}
+          >
+            <span className="eos-offer-hero-bar__k">{labels.openHouseMark || "OH"}</span>
+            <span className="eos-offer-hero-bar__v eos-offer-hero-bar__v--wrap">
+              <CalendarDays size={14} aria-hidden />
+              {labels.openHouseDate}
+            </span>
+          </button>
+        ) : null}
 
         <div className="eos-offer-hero-bar__cell">
           <span className="eos-offer-hero-bar__k">{labels.offerId}</span>
