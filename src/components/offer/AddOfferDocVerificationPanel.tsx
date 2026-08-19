@@ -17,6 +17,8 @@ const KW_COURT_SUGGESTIONS = [
   { prefix: "ZA1Z", court: "Zamość" },
 ];
 
+type LegalStatus = "NONE" | "PENDING" | "REJECTED" | "VERIFIED";
+
 type Props = {
   ao: AddOfferDictionary;
   inputPremium: string;
@@ -29,6 +31,9 @@ type Props = {
   onApartmentChange: (value: string) => void;
   onLandRegistryChange: (value: string) => void;
   landRegistryInputRef?: React.RefObject<HTMLInputElement | null>;
+  /** Po akceptacji admina KW jest zablokowane dla właściciela. */
+  kwLocked?: boolean;
+  legalStatus?: LegalStatus;
 };
 
 export default function AddOfferDocVerificationPanel({
@@ -43,9 +48,19 @@ export default function AddOfferDocVerificationPanel({
   onApartmentChange,
   onLandRegistryChange,
   landRegistryInputRef,
+  kwLocked = false,
+  legalStatus = "NONE",
 }: Props) {
   const isFlat = propertyType === "FLAT";
-  const readyForReview = Boolean(apartmentNumber.trim() && landRegistryNumber.trim() && landRegistryValid);
+  const readyForReview = Boolean(landRegistryNumber.trim() && landRegistryValid);
+  const shieldActive =
+    legalStatus === "VERIFIED" || legalStatus === "PENDING" || readyForReview;
+  const statusLabel =
+    legalStatus === "VERIFIED"
+      ? ao.docVerificationBadgeLabel
+      : legalStatus === "PENDING" || readyForReview
+        ? ao.docVerificationStatusReady
+        : ao.docVerificationStatusSkip;
 
   const kwInputClass = `${inputPremium} min-w-0 w-full font-mono text-sm uppercase tracking-[0.08em] sm:text-base`;
 
@@ -72,12 +87,14 @@ export default function AddOfferDocVerificationPanel({
             </div>
             <span
               className={`inline-flex shrink-0 self-start rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${
-                readyForReview
+                legalStatus === "VERIFIED" || readyForReview
                   ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                  : "border-white/10 bg-white/5 text-zinc-500"
+                  : legalStatus === "PENDING"
+                    ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+                    : "border-white/10 bg-white/5 text-zinc-500"
               }`}
             >
-              {readyForReview ? ao.docVerificationStatusReady : ao.docVerificationStatusSkip}
+              {statusLabel}
             </span>
           </div>
 
@@ -100,8 +117,8 @@ export default function AddOfferDocVerificationPanel({
                 type="text"
                 inputMode="text"
                 placeholder={isFlat ? ao.aptNumberPlaceholder : ao.apartmentPlaceholder}
-                disabled={!isFlat}
-                className={`${inputPremium} min-w-0 w-full text-sm sm:text-base ${!isFlat ? "cursor-not-allowed opacity-45" : ""}`}
+                disabled={!isFlat || kwLocked}
+                className={`${inputPremium} min-w-0 w-full text-sm sm:text-base ${!isFlat || kwLocked ? "cursor-not-allowed opacity-45" : ""}`}
                 value={apartmentNumber}
                 onChange={(e) => onApartmentChange(e.target.value)}
               />
@@ -122,7 +139,8 @@ export default function AddOfferDocVerificationPanel({
                 autoCorrect="off"
                 spellCheck={false}
                 maxLength={15}
-                className={`${kwInputClass} ${
+                disabled={kwLocked}
+                className={`${kwInputClass} ${kwLocked ? "cursor-not-allowed opacity-60" : ""} ${
                   hasLandRegistryInput && !landRegistryValid ? "border-red-500/50 focus:border-red-400" : ""
                 }`}
                 value={landRegistryNumber}
@@ -158,10 +176,14 @@ export default function AddOfferDocVerificationPanel({
 
           <EstateOS3DVerifiedShield
             size="hero"
-            label={readyForReview ? ao.docVerificationBadgeLabel : ao.docVerificationBadgeInactiveLabel}
+            label={
+              legalStatus === "VERIFIED" || shieldActive
+                ? ao.docVerificationBadgeLabel
+                : ao.docVerificationBadgeInactiveLabel
+            }
             sublabel={ao.docVerificationBadgeSublabel}
-            active={readyForReview}
-            tilt={readyForReview}
+            active={shieldActive}
+            tilt={legalStatus === "VERIFIED" || readyForReview}
           />
 
           <div className="mt-6 flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-2">

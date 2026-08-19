@@ -1,6 +1,6 @@
 import { decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
-import type { OfferStatus } from '@prisma/client';
+import { OfferStatus, PropertyCondition } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import {
@@ -10,7 +10,15 @@ import {
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush, dispatchFavoritesStatusChangePush } from '@/lib/favoritesPricePush';
 import { enrichOfferPriceDiscountFields, ensureOfferPriceHistorySchema, syncOfferPriceHistory } from '@/lib/offerPriceHistory';
-import { ensureOfferLegalColumns, ensureOfferMoneyColumns, ensureOfferLocalityCountryColumns, ensureOfferExtendedAmenityColumns } from '@/lib/services/offer.service';
+import {
+  ensureOfferLegalColumns,
+  ensureOfferMoneyColumns,
+  ensureOfferLocalityCountryColumns,
+  ensureOfferExtendedAmenityColumns,
+  OfferValidationError,
+  validateLandRegistryNumberInput,
+} from '@/lib/services/offer.service';
+import { notifyAdminsLegalVerificationPending } from '@/lib/adminAttentionPush';
 import { enrichOfferMoneyFieldsForApi, resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
 import { enrichOfferMoneyFields, parsePriceAmount, getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
@@ -24,6 +32,7 @@ import {
 } from '@/lib/offerLegalStatusOverlay';
 import {
   getOfferSchemaCompatibilityMessage,
+  isOfferLegalColumnMissingError,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
@@ -83,7 +92,32 @@ const OFFER_WEB_PUT_SELECT = {
   lng: true,
   isExactLocation: true,
   status: true,
+  city: true,
+  totalFloors: true,
+  landRegistryNumber: true,
+  apartmentNumber: true,
+  legalCheckStatus: true,
+  isLegalSafeVerified: true,
+  localityCountryCode: true,
 } as const;
+
+function mapWebCondition(val: unknown): PropertyCondition | undefined {
+  if (val === undefined || val === null || String(val).trim() === '') return undefined;
+  const n = String(val).trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (n === 'NEEDS_RENOVATION' || n === 'RENOVATION' || n === 'TO_RENOVATION') {
+    return PropertyCondition.NEEDS_RENOVATION;
+  }
+  if (n === 'DEVELOPER' || n === 'DEVELOPER_STATE') return PropertyCondition.DEVELOPER_STATE;
+  if (n === 'NOT_APPLICABLE') return PropertyCondition.NOT_APPLICABLE;
+  return PropertyCondition.READY;
+}
+
+function mapWebTransactionType(val: unknown): 'SELL' | 'RENT' | undefined {
+  const n = String(val || '').trim().toUpperCase();
+  if (n === 'RENT') return 'RENT';
+  if (n === 'SELL' || n === 'SALE') return 'SELL';
+  return undefined;
+}
 
 async function resolveCurrentUser() {
   const cookieStore = await cookies();
@@ -388,7 +422,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       conditionLabel: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'pl'),
       conditionLabelEn: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'en'),
       description: cleanDescription,
-      apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || legalOffer.buildingNumber || '',
+      apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || '',
       landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',
       ...legal,
       yearBuilt,
@@ -427,6 +461,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     await ensureOfferLegalColumns();
     await ensureOfferMoneyColumns();
+    await ensureOfferLocalityCountryColumns();
     await ensureOfferExtendedAmenityColumns();
     await ensureOfferPriceHistorySchema();
     const resolvedParams = await params;
@@ -452,24 +487,67 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const existingVerification = extractVerificationMeta(currentOffer.description);
+    const existingKw = String(
+      (currentOffer as { landRegistryNumber?: string | null }).landRegistryNumber ||
+        existingVerification.verification.landRegistryNumber ||
+        '',
+    )
+      .trim()
+      .toUpperCase();
+    const existingApt = String(
+      (currentOffer as { apartmentNumber?: string | null }).apartmentNumber ||
+        existingVerification.verification.apartmentNumber ||
+        '',
+    ).trim();
+    const legalVerified =
+      String((currentOffer as { legalCheckStatus?: string | null }).legalCheckStatus || '').toUpperCase() ===
+        'VERIFIED' || Boolean((currentOffer as { isLegalSafeVerified?: boolean }).isLegalSafeVerified);
+
+    let requestedKw = existingKw;
+    let requestedApt = existingApt;
+    if (body.landRegistryNumber !== undefined) {
+      requestedKw = String(body.landRegistryNumber || '').trim().toUpperCase().slice(0, 64);
+    }
+    if (body.apartmentNumber !== undefined) {
+      requestedApt = String(body.apartmentNumber || '').trim().slice(0, 32);
+    }
+    if (legalVerified && !isAdmin) {
+      requestedKw = existingKw;
+      requestedApt = existingApt;
+    }
+    if (requestedKw) {
+      try {
+        validateLandRegistryNumberInput(requestedKw);
+      } catch (error) {
+        if (error instanceof OfferValidationError) {
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        throw error;
+      }
+    }
+
     const hasVerificationPayload =
       body.apartmentNumber !== undefined || body.landRegistryNumber !== undefined || body.verificationStatus !== undefined;
     const nextVerification = hasVerificationPayload
       ? buildOfferVerificationMeta({
-          apartmentNumber: body.apartmentNumber ?? existingVerification.verification.apartmentNumber,
-          landRegistryNumber: body.landRegistryNumber ?? existingVerification.verification.landRegistryNumber,
+          apartmentNumber: requestedApt,
+          landRegistryNumber: requestedKw,
         })
       : existingVerification.verification;
     const nextDescription = body.description != null
       ? attachVerificationMetaToDescription(String(body.description), nextVerification)
       : attachVerificationMetaToDescription(existingVerification.cleanDescription, nextVerification);
+    const kwChanged = existingKw !== String(nextVerification.landRegistryNumber || '').trim().toUpperCase();
+    const shouldResetLegalVerification = Boolean(
+      hasVerificationPayload && nextVerification.landRegistryNumber && kwChanged,
+    );
 
     let requireReverification = false;
     
     const sensitiveFields = [
-      'title', 'description', 'district', 'area', 'images', 'propertyType',
+      'title', 'description', 'district', 'city', 'area', 'images', 'propertyType',
       'rooms', 'floor', 'yearBuilt', 'plotArea', 'floorPlanUrl', 'street', 'buildingNumber',
-      'lat', 'lng', 'transactionType', 'heating', 'isFurnished'
+      'lat', 'lng', 'transactionType', 'heating', 'isFurnished', 'condition',
     ];
 
     for (const field of sensitiveFields) {
@@ -525,6 +603,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       body.floor !== undefined && String(body.floor).trim() !== ''
         ? parseInt(String(body.floor), 10)
         : currentOffer.floor;
+    const parsedTotalFloors =
+      body.totalFloors !== undefined
+        ? String(body.totalFloors).trim() === ''
+          ? null
+          : parseInt(String(body.totalFloors), 10)
+        : (currentOffer as { totalFloors?: number | null }).totalFloors;
     const parsedPlot =
       body.plotArea !== undefined && String(body.plotArea).trim() !== ''
         ? parseFloat(String(body.plotArea).replace(',', '.'))
@@ -551,13 +635,24 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
-    const updatedOffer = await prisma.offer.update({
-      where: { id: Number(resolvedParams.id) },
-      data: {
+    const mappedCondition =
+      body.condition !== undefined
+        ? String(body.propertyType || currentOffer.propertyType || '').toUpperCase() === 'PLOT'
+          ? PropertyCondition.NOT_APPLICABLE
+          : mapWebCondition(body.condition)
+        : undefined;
+    const mappedTransaction =
+      body.transactionType !== undefined ? mapWebTransactionType(body.transactionType) : undefined;
+
+    const updateData: Record<string, unknown> = {
         title: body.title != null ? String(body.title) : currentOffer.title,
         description: nextDescription,
         propertyType: body.propertyType ?? currentOffer.propertyType,
         district: body.district != null ? String(body.district) : currentOffer.district,
+        city:
+          body.city != null
+            ? String(body.city)
+            : (currentOffer as { city?: string | null }).city,
         price: Number.isFinite(parsedPrice) ? parsedPrice : currentOffer.price,
         ...(pricePatch as Record<string, unknown>),
         area: Number.isFinite(parsedArea) ? parsedArea : currentOffer.area,
@@ -568,7 +663,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
               : JSON.stringify(body.images)
             : currentOffer.images,
         rooms: parsedRooms ?? null,
-        floor: parsedFloor ?? null,
+        floor: Number.isFinite(Number(parsedFloor)) ? parsedFloor : currentOffer.floor,
+        totalFloors:
+          parsedTotalFloors === null || Number.isFinite(Number(parsedTotalFloors))
+            ? parsedTotalFloors
+            : (currentOffer as { totalFloors?: number | null }).totalFloors ?? null,
         yearBuilt: parsedYear ?? null,
         plotArea: parsedPlot ?? null,
         floorPlanUrl:
@@ -628,12 +727,54 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         hasAirConditioning:
           body.hasAirConditioning !== undefined ? !!body.hasAirConditioning : currentOffer.hasAirConditioning,
         isDuplex: body.isDuplex !== undefined ? !!body.isDuplex : currentOffer.isDuplex,
-        condition: body.condition !== undefined ? body.condition : currentOffer.condition,
+        condition: mappedCondition ?? currentOffer.condition,
+        ...(mappedTransaction ? { transactionType: mappedTransaction } : {}),
+        ...(hasVerificationPayload
+          ? {
+              landRegistryNumber: requestedKw || null,
+              apartmentNumber: requestedApt || null,
+            }
+          : {}),
+        ...(shouldResetLegalVerification
+          ? {
+              legalCheckStatus: 'PENDING',
+              legalCheckSubmittedAt: new Date(),
+              legalCheckReviewedAt: null,
+              legalCheckReviewedBy: null,
+              legalCheckRejectionReason: null,
+              legalCheckRejectionText: null,
+              isLegalSafeVerified: false,
+            }
+          : {}),
         ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
         status: newStatus,
-      },
-      select: OFFER_WEB_PUT_SELECT,
-    });
+      };
+
+    let updatedOffer: typeof currentOffer;
+    try {
+      updatedOffer = await prisma.offer.update({
+        where: { id: Number(resolvedParams.id) },
+        data: updateData as never,
+        select: OFFER_WEB_PUT_SELECT,
+      });
+    } catch (error) {
+      if (!isOfferLegalColumnMissingError(error)) throw error;
+      const fallbackData = { ...updateData };
+      delete fallbackData.landRegistryNumber;
+      delete fallbackData.apartmentNumber;
+      delete fallbackData.legalCheckStatus;
+      delete fallbackData.legalCheckSubmittedAt;
+      delete fallbackData.legalCheckReviewedAt;
+      delete fallbackData.legalCheckReviewedBy;
+      delete fallbackData.legalCheckRejectionReason;
+      delete fallbackData.legalCheckRejectionText;
+      delete fallbackData.isLegalSafeVerified;
+      updatedOffer = await prisma.offer.update({
+        where: { id: Number(resolvedParams.id) },
+        data: fallbackData as never,
+        select: OFFER_WEB_PUT_SELECT,
+      });
+    }
 
     const oldPrice = oldPricePln;
     const newPrice = getCanonicalOfferPricePln(updatedOffer as { pricePln?: number; price?: number });
@@ -667,6 +808,35 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         changedByUserId: Number(currentOffer.userId) || null,
         source: 'web_offers_put',
       });
+    }
+
+    if (shouldResetLegalVerification && requestedKw) {
+      try {
+        const latest = await prisma.legalVerificationRequest.findFirst({
+          where: { offerId: Number(resolvedParams.id) },
+          orderBy: { createdAt: 'desc' },
+        });
+        const samePending =
+          String(latest?.status || '').toUpperCase() === 'PENDING' &&
+          String(latest?.landRegistryNumber || '').trim().toUpperCase() === requestedKw;
+        if (!samePending) {
+          await prisma.legalVerificationRequest.create({
+            data: {
+              offerId: Number(resolvedParams.id),
+              requesterId: Number(currentOffer.userId),
+              status: 'PENDING',
+              landRegistryNumber: requestedKw,
+              apartmentNumber: requestedApt || null,
+            },
+          });
+          notifyAdminsLegalVerificationPending(
+            Number(resolvedParams.id),
+            typeof updatedOffer.title === 'string' ? updatedOffer.title : null,
+          );
+        }
+      } catch (error) {
+        console.error('[PUT /api/offers/:id] legal verification enqueue', error);
+      }
     }
     
     return NextResponse.json({

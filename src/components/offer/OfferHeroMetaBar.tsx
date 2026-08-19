@@ -42,6 +42,7 @@ type Props = {
   onOpenProfile: () => void;
   onAsk: () => void;
   onOpenHousePress?: () => void;
+  onLegalShieldPress?: () => void;
 };
 
 function formatLastSeenLabel(iso: string | null | undefined, locale: string): string | null {
@@ -100,6 +101,7 @@ export default function OfferHeroMetaBar({
   onOpenProfile,
   onAsk,
   onOpenHousePress,
+  onLegalShieldPress,
 }: Props) {
   const filledStars = totalReviews > 0 ? Math.max(0, Math.min(5, Math.round(averageRating))) : 0;
   const kwLabel = isLegalKwVerified ? labels.legalVerifiedKw : labels.legalUnverifiedKw;
@@ -185,13 +187,31 @@ export default function OfferHeroMetaBar({
           </span>
         </div>
 
-        <div className={`eos-offer-hero-bar__cell ${isLegalKwVerified ? "is-ok" : "is-warn"}`}>
-          <span className="eos-offer-hero-bar__k">{labels.legalVerifiedKwSublabel}</span>
-          <span className="eos-offer-hero-bar__v eos-offer-hero-bar__v--wrap">
-            <ShieldCheck size={14} aria-hidden />
-            {kwLabel}
-          </span>
-        </div>
+        {isOwner && !isLegalKwVerified && onLegalShieldPress ? (
+          <button
+            type="button"
+            className="eos-offer-hero-bar__cell is-warn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onLegalShieldPress();
+            }}
+          >
+            <span className="eos-offer-hero-bar__k">{labels.legalVerifiedKwSublabel}</span>
+            <span className="eos-offer-hero-bar__v eos-offer-hero-bar__v--wrap">
+              <ShieldCheck size={14} aria-hidden />
+              {kwLabel}
+            </span>
+          </button>
+        ) : (
+          <div className={`eos-offer-hero-bar__cell ${isLegalKwVerified ? "is-ok" : "is-warn"}`}>
+            <span className="eos-offer-hero-bar__k">{labels.legalVerifiedKwSublabel}</span>
+            <span className="eos-offer-hero-bar__v eos-offer-hero-bar__v--wrap">
+              <ShieldCheck size={14} aria-hidden />
+              {kwLabel}
+            </span>
+          </div>
+        )}
 
         {labels.openHouseDate ? (
           <button

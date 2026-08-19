@@ -219,7 +219,7 @@ const pl: Omit<AddOfferDictionary, keyof AddOfferFormExtended> = {
   docVerificationTitle: "Weryfikacja księgi wieczystej",
   docVerificationOptionalBadge: "Opcjonalnie",
   docVerificationIntro:
-    "Możesz pominąć ten krok — oferta zostanie opublikowana bez znaczka. Podanie numeru lokalu i KW pozwala nam zweryfikować własność i wyróżnić ogłoszenie na stronie.",
+    "Możesz pominąć ten krok — oferta zostanie opublikowana bez znaczka. Wpis numeru KW wystarczy, żebyśmy mogli zweryfikować własność i wyróżnić ogłoszenie tarczą. Numer lokalu jest opcjonalny.",
   docVerificationApartmentLabel: "Nr lokalu (opcjonalnie)",
   docVerificationApartmentHintNonFlat: "Pole aktywne dla mieszkań — dla domu lub działki nie jest wymagane.",
   docVerificationKwLabel: "Numer księgi wieczystej (opcjonalnie)",
@@ -343,7 +343,7 @@ const en: Omit<AddOfferDictionary, keyof AddOfferFormExtended> = {
   docVerificationTitle: "Land registry verification",
   docVerificationOptionalBadge: "Optional",
   docVerificationIntro:
-    "You can skip this step — your listing will publish without the badge. Unit number + land registry no. let us verify ownership and highlight your listing.",
+    "You can skip this step — your listing will publish without the badge. The land registry number is enough for ownership review and the shield. Unit number is optional.",
   docVerificationApartmentLabel: "Unit no. (optional)",
   docVerificationApartmentHintNonFlat: "Active for apartments — not required for houses or plots.",
   docVerificationKwLabel: "Land registry no. (optional)",
@@ -468,7 +468,7 @@ const uk: Omit<AddOfferDictionary, keyof AddOfferFormExtended> = {
   docVerificationTitle: "Верифікація книги постійних прав",
   docVerificationOptionalBadge: "Необов'язково",
   docVerificationIntro:
-    "Можна пропустити — оголошення опублікується без значка. Номер приміщення та KW дозволяють перевірити власність і виділити оголошення.",
+    "Можна пропустити — оголошення опублікується без значка. Номера KW достатньо для перевірки власності та щита. Номер приміщення необов'язковий.",
   docVerificationApartmentLabel: "№ приміщення (необов'язково)",
   docVerificationApartmentHintNonFlat: "Активне для квартир — для будинку чи ділянки не потрібно.",
   docVerificationKwLabel: "Номер KW (необов'язково)",
