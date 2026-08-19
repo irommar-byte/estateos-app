@@ -512,7 +512,10 @@ export async function createOffer(body: any) {
           apartmentNumber: verificationMeta.apartmentNumber || null,
         },
       });
-      notifyAdminsLegalVerificationPending(Number(created.id), created.title ?? null);
+      notifyAdminsLegalVerificationPending(
+        Number(created.id),
+        typeof created.title === 'string' ? created.title : null,
+      );
     }
     return created;
   } catch (error) {
@@ -551,7 +554,10 @@ export async function createOffer(body: any) {
           apartmentNumber: verificationMeta.apartmentNumber || null,
         },
       });
-      notifyAdminsLegalVerificationPending(Number(fallbackCreated.id), fallbackCreated.title ?? null);
+      notifyAdminsLegalVerificationPending(
+        Number(fallbackCreated.id),
+        typeof fallbackCreated.title === 'string' ? fallbackCreated.title : null,
+      );
     }
     return fallbackCreated;
   }
@@ -917,7 +923,10 @@ export async function updateOffer(body: any) {
           apartmentNumber: nextApartmentNumber,
         },
       });
-      notifyAdminsLegalVerificationPending(Number(id), updatedOffer.title ?? null);
+      notifyAdminsLegalVerificationPending(
+        Number(id),
+        typeof updatedOffer.title === 'string' ? updatedOffer.title : null,
+      );
     }
   }
   return updatedOffer;
