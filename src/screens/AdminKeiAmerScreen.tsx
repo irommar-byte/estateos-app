@@ -1462,6 +1462,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
   },
+  exportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
