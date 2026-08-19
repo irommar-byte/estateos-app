@@ -115,7 +115,9 @@ export async function loadOfferShareCard(
 
   const row = offer as any;
 
-  const access = await resolveOfferDetailAccess(prisma, row, {});
+  const access = await resolveOfferDetailAccess(prisma, row, {
+    portalToken: opts?.portalToken,
+  });
   if (!access.allowed) return null;
 
   const isRent = String(row.transactionType || '').toUpperCase() === 'RENT';

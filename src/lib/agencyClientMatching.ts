@@ -4,6 +4,8 @@ import {
   scoreOfferForBuyerPref,
 } from '@/lib/agencyClientShape';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 
 const OFFER_SELECT = {
   id: true,
@@ -28,6 +30,7 @@ const OFFER_SELECT = {
   isFurnished: true,
   images: true,
   status: true,
+  expiresAt: true,
 } as const;
 
 export async function refreshAgencyClientMatches(clientId: number) {
@@ -39,10 +42,16 @@ export async function refreshAgencyClientMatches(clientId: number) {
     return { upserted: 0, matches: [] };
   }
 
-  const offers = await prisma.offer.findMany({
-    where: { status: 'ACTIVE' },
+  const now = new Date();
+  const candidates = await prisma.offer.findMany({
+    where: {
+      status: 'ACTIVE',
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
     select: OFFER_SELECT,
   });
+  const publicIds = await activePublicationOfferIds(candidates.map((offer) => offer.id));
+  const offers = candidates.filter((offer) => canShowOfferOnPublicMarket(offer, publicIds));
 
   const upserts: { offerId: number; score: number }[] = [];
   for (const offer of offers) {
@@ -73,9 +82,11 @@ export async function refreshAgencyClientMatches(clientId: number) {
   const keepIds = new Set(upserts.slice(0, 100).map((u) => u.offerId));
   const existing = await prisma.agencyClientMatch.findMany({
     where: { clientId },
-    select: { id: true, offerId: true },
+    select: { id: true, offerId: true, notifiedAt: true, sharedAt: true },
   });
-  const stale = existing.filter((e) => !keepIds.has(e.offerId));
+  const stale = existing.filter(
+    (e) => !keepIds.has(e.offerId) && !e.notifiedAt && !e.sharedAt,
+  );
   if (stale.length) {
     await prisma.agencyClientMatch.deleteMany({
       where: { id: { in: stale.map((s) => s.id) } },

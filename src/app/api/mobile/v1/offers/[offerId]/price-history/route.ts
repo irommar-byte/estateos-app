@@ -42,9 +42,11 @@ export async function GET(req: Request, context: RouteContext) {
     }
 
     const offer = await findUniqueMobileListOffer(offerId);
+    const portalToken = new URL(req.url).searchParams.get('portal');
     const access = await resolveOfferDetailAccess(prisma, offer as any, {
       userId: authUserId,
       role: viewerRole,
+      portalToken,
     });
     if (access.notFound || !offer) {
       return NextResponse.json({ success: false, message: 'Nie znaleziono oferty' }, { status: 404 });
