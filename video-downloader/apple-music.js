@@ -4,7 +4,6 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import ffmpegStatic from "ffmpeg-static";
 import { solveTurnstileToken, turnstileSolverConfigured } from "./turnstile-solver.js";
-import { enqueueAppleMusicResolve } from "./apl-resolve-queue.js";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -965,32 +964,162 @@ function runYtDlp(args, timeoutMs = 35000) {
   });
 }
 
+function youtubeSearchQueries(track) {
+  const artist = String(track?.uploader || track?.artistName || "").trim();
+  const title = String(track?.title || track?.trackName || "").trim();
+  const album = String(track?.album || "").trim();
+  const queries = [
+    [artist, title, "official audio"].filter(Boolean).join(" "),
+    [artist, title, "audio"].filter(Boolean).join(" "),
+    [artist, title].filter(Boolean).join(" "),
+    [title, album, "audio"].filter(Boolean).join(" "),
+  ];
+  return [...new Set(queries.map((q) => q.replace(/[\r\n]+/g, " ").trim()).filter(Boolean))];
+}
+
+function ytDlpPlayerArgs() {
+  return [
+    "--extractor-args",
+    "youtube:player_client=android,ios,tv",
+  ];
+}
+
 async function resolveAppleMusicDownloadUrlViaYouTube(appleUrl) {
   if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
   const track = await buildAppleMusicInfo(appleUrl);
-  const query = [track.uploader, track.title, track.album, "official audio"]
-    .filter(Boolean)
-    .join(" ")
-    .replace(/[\r\n]+/g, " ")
-    .trim();
-  const stdout = await runYtDlp([
-    "--no-playlist",
-    "--no-warnings",
-    "--socket-timeout",
-    "12",
-    "--retries",
-    "2",
-    "-f",
-    "bestaudio[ext=m4a]/bestaudio",
-    "-g",
-    `ytsearch1:${query}`,
-  ]);
-  const url = String(stdout)
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => /^https?:\/\//i.test(line));
-  if (!url) throw new Error("Nie znaleziono zgodnego awaryjnego źródła audio.");
-  return url;
+  let lastErr;
+  for (const query of youtubeSearchQueries(track)) {
+    try {
+      const stdout = await runYtDlp([
+        "--no-playlist",
+        "--no-warnings",
+        "--socket-timeout",
+        "12",
+        "--retries",
+        "2",
+        ...ytDlpPlayerArgs(),
+        "-f",
+        "bestaudio[ext=m4a]/bestaudio/best",
+        "-g",
+        `ytsearch1:${query}`,
+      ]);
+      const url = String(stdout)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => /^https?:\/\//i.test(line));
+      if (url) return url;
+      lastErr = new Error("Nie znaleziono zgodnego awaryjnego źródła audio.");
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Nie znaleziono zgodnego awaryjnego źródła audio.");
+}
+
+function parseYtDlpProgress(line) {
+  const match = String(line || "").match(/\[download\]\s+([0-9.]+)%/);
+  if (!match) return null;
+  const pct = Number(match[1]);
+  return Number.isFinite(pct) ? pct : null;
+}
+
+function runYtDlpDownload(args, { timeoutMs = 180000, onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(YT_DLP_PATH, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PATH: `${process.env.PATH || ""}:/usr/bin:/bin` },
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("Pobieranie audio przekroczyło limit czasu."));
+    }, timeoutMs);
+    const handleChunk = (chunk, isErr) => {
+      const text = String(chunk);
+      if (isErr) {
+        if (stderr.length < 256 * 1024) stderr += text;
+      } else if (stdout.length < 256 * 1024) {
+        stdout += text;
+      }
+      for (const line of text.split(/\r?\n/)) {
+        const pct = parseYtDlpProgress(line);
+        if (pct != null) onProgress?.(pct);
+      }
+    };
+    child.stdout.on("data", (chunk) => handleChunk(chunk, false));
+    child.stderr.on("data", (chunk) => handleChunk(chunk, true));
+    child.once("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(stderr.trim().slice(-500) || `yt-dlp zakończył się kodem ${code}.`));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+async function downloadAppleMusicViaYtDlp(track, destPath, onProgress) {
+  if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
+  const queries = youtubeSearchQueries(track);
+  if (!queries.length) throw new Error("Brak tytułu utworu do wyszukania źródła audio.");
+
+  const tmpBase = `${destPath}.ytsrc`;
+  for (const extra of [".m4a", ".webm", ".mp4", ".opus", ".ogg", ".mp3", ".part"]) {
+    try {
+      if (fs.existsSync(tmpBase + extra)) fs.unlinkSync(tmpBase + extra);
+    } catch {}
+  }
+
+  let lastErr;
+  for (const query of queries) {
+    try {
+      await runYtDlpDownload(
+        [
+          "--no-playlist",
+          "--no-warnings",
+          "--newline",
+          "--socket-timeout",
+          "15",
+          "--retries",
+          "3",
+          "--fragment-retries",
+          "3",
+          ...ytDlpPlayerArgs(),
+          "-f",
+          "bestaudio[ext=m4a]/bestaudio/best",
+          "-o",
+          `${tmpBase}.%(ext)s`,
+          `ytsearch1:${query}`,
+        ],
+        {
+          timeoutMs: 180000,
+          onProgress: (pct) => onProgress?.(5 + (pct / 100) * 75),
+        }
+      );
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      console.warn("yt-dlp audio:", query, err?.message || err);
+    }
+  }
+  if (lastErr) throw lastErr;
+
+  const dir = path.dirname(tmpBase);
+  const prefix = path.basename(tmpBase) + ".";
+  const found = fs.readdirSync(dir).find((name) => name.startsWith(prefix) && !name.endsWith(".part"));
+  if (!found) throw new Error("yt-dlp nie zapisał pliku audio.");
+  const srcPath = path.join(dir, found);
+  try {
+    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+  } catch {}
+  fs.renameSync(srcPath, destPath);
 }
 
 export function resolvedAudioContentType(url) {
@@ -1006,27 +1135,10 @@ export function resolvedAudioContentType(url) {
 }
 
 async function resolveAppleMusicDownloadUrlUncached(appleUrl) {
-  let youtubeError;
-  try {
-    return await resolveAppleMusicDownloadUrlViaYouTube(appleUrl);
-  } catch (err) {
-    youtubeError = err;
-    console.warn("Apple Music fallback via YouTube:", err?.message || err);
-  }
-
-  return enqueueAppleMusicResolve(appleUrl, async () => {
-    try {
-      return await resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl);
-    } catch (flareErr) {
-      console.warn("APLMate via FlareSolverr:", flareErr?.message || flareErr);
-      if (!turnstileSolverConfigured()) {
-        throw new Error("Nie udało się przygotować źródła audio. Serwis spróbuje ponownie automatycznie.", {
-          cause: youtubeError || flareErr,
-        });
-      }
-    }
-    return resolveAppleMusicDownloadUrlDirect(appleUrl);
-  });
+  // Music acquire is yt-dlp → file. URL resolve exists only for leftover stream-proxy.
+  // Do not send Apple Music through FlareSolverr/APLMate — that path fights Cloudflare
+  // and starves CDA-HD of the same Flare instance.
+  return resolveAppleMusicDownloadUrlViaYouTube(appleUrl);
 }
 
 function sanitizeFilename(name) {
@@ -1172,14 +1284,11 @@ export async function downloadAppleMusicToFile({
   downloadUrl: presetDownloadUrl = null,
 }) {
   const track = trackMeta || (await buildAppleMusicInfo(appleUrl));
-  const sourceUrl = track.webpageUrl || appleUrl;
-  let downloadUrl =
-    presetDownloadUrl || (await resolveAppleMusicDownloadUrl(sourceUrl));
+  let usedYoutube = false;
 
-  const pullToFile = async (url) => {
+  const pullHttpToFile = async (url) => {
     if (isGoogleVideoAudioUrl(url)) {
-      await downloadGoogleVideoInChunks(url, destPath, onProgress);
-      return;
+      throw new Error("Odrzucono bezpośrednie pobieranie googlevideo — użyj yt-dlp.");
     }
     const res = await fetch(url, {
       headers: { "User-Agent": UA },
@@ -1207,20 +1316,19 @@ export async function downloadAppleMusicToFile({
   };
 
   onProgress?.(5);
-  try {
-    await pullToFile(downloadUrl);
-  } catch (err) {
-    const status = Number(err?.status);
-    if (status === 403 || status === 410 || /HTTP 403|HTTP 410/.test(String(err?.message || ""))) {
-      invalidateAppleMusicDownloadCache(sourceUrl);
-      downloadUrl = await resolveAppleMusicDownloadUrl(sourceUrl, { forceRefresh: true });
-      await pullToFile(downloadUrl);
-    } else {
-      throw err;
-    }
+  const canUseDirectHttp =
+    typeof presetDownloadUrl === "string" &&
+    /^https?:\/\//i.test(presetDownloadUrl) &&
+    !isGoogleVideoAudioUrl(presetDownloadUrl);
+
+  if (canUseDirectHttp) {
+    await pullHttpToFile(presetDownloadUrl);
+  } else {
+    await downloadAppleMusicViaYtDlp(track, destPath, onProgress);
+    usedYoutube = true;
   }
 
-  if (resolvedAudioContentType(downloadUrl) !== "audio/mpeg") {
+  if (usedYoutube) {
     onProgress?.(88);
     transcodeToMp3InPlace(destPath);
   }

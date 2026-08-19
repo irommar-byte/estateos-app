@@ -1,6 +1,6 @@
 /**
  * Durable per-user music asset registry.
- * After first successful APLMate acquisition, tracks live under:
+ * After first successful yt-dlp acquisition, tracks live under:
  *   downloads/music/<userKey>/<artist>/<album>/<file>.mp3
  * Play and Download share ensureMusicAsset — no ephemeral play jobs.
  */
@@ -15,7 +15,6 @@ import {
   downloadAppleMusicToFile,
   buildAppleMusicFilename,
   parseAppleMusicTrackId,
-  resolveAppleMusicDownloadUrl,
 } from "./apple-music.js";
 import { updateTrackDownloadByKey, getMusicFolderByKey, playlistDownloadDir } from "./music-library.js";
 
@@ -528,10 +527,9 @@ export async function ensureMusicAsset({
         if (fs.existsSync(partPath)) fs.unlinkSync(partPath);
       } catch {}
 
-      // Resolve once, then persist the complete file before declaring the track ready.
-      // This keeps "+" semantics honest: "on server" always means a durable local asset.
+      // yt-dlp writes the audio file itself. Fetching googlevideo URLs from Node
+      // gets HTTP 403; FlareSolverr/APLMate is reserved for CDA-HD, not music.
       sendEvent?.(job, { status: "preparing", progress: 8, purpose: job.purpose, assetId });
-      const downloadUrl = await resolveAppleMusicDownloadUrl(track.webpageUrl || url);
 
       job.status = "downloading";
       job.ready = false;
@@ -545,12 +543,10 @@ export async function ensureMusicAsset({
         assetId,
       });
 
-      // Download the resolved source into the durable per-user asset.
       await downloadAppleMusicToFile({
         appleUrl: url,
         destPath: partPath,
         trackMeta: track,
-        downloadUrl: downloadUrl,
         onProgress: (pct) => {
           if (job.cancelled) return;
           job.progress = Math.min(97, Math.max(22, Math.round(pct)));
