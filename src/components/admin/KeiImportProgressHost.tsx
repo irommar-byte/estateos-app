@@ -211,6 +211,7 @@ function KeiBackgroundPill({
   doneCount,
   totalCount,
   isDark,
+  isAuto,
   onPress,
   onStop,
 }: {
@@ -219,6 +220,7 @@ function KeiBackgroundPill({
   doneCount: number;
   totalCount: number;
   isDark: boolean;
+  isAuto?: boolean;
   onPress: () => void;
   onStop: () => void;
 }) {
@@ -284,7 +286,9 @@ function KeiBackgroundPill({
               <View style={[styles.pillDot, { backgroundColor: '#34C759' }]} />
               <Animated.View style={[styles.pillCopy, { opacity: engravedFlash }]}>
                 <View style={styles.pillTitleRow}>
-                  <Text style={[styles.pillEngravedBrand, { color: engravedColor }]}>KEI</Text>
+                  <Text style={[styles.pillEngravedBrand, { color: engravedColor }]}>
+                    {isAuto ? 'AUTO' : 'KEI'}
+                  </Text>
                   <Text style={[styles.pillEngravedSep, { color: engravedColor }]}>·</Text>
                   <Text style={[styles.pillEngravedPct, { color: engravedColor }]}>{percent}%</Text>
                   <Text style={[styles.pillEngravedCount, { color: engravedColor }]}>
@@ -322,6 +326,7 @@ export default function KeiImportProgressHost() {
   const running = useKeiAmerExportStore((s) => s.running);
   const modalVisible = useKeiAmerExportStore((s) => s.modalVisible);
   const message = useKeiAmerExportStore((s) => s.message);
+  const source = useKeiAmerExportStore((s) => s.source);
   const items = useKeiAmerExportStore((s) => s.items);
   const results = useKeiAmerExportStore((s) => s.results);
   const skipped = useKeiAmerExportStore((s) => s.skipped);
@@ -340,7 +345,13 @@ export default function KeiImportProgressHost() {
   );
   const stageLabel = activeItem
     ? [activeItem.stepLabel, activeItem.stepDetail].filter(Boolean).join(' · ')
-    : message || 'Import na serwerze…';
+    : source === 'auto'
+      ? 'Automatyczny import załączony — w trakcie importowania'
+      : message || 'Import na serwerze…';
+  const progressHeadline =
+    source === 'auto'
+      ? 'Automatyczny import załączony — w trakcie importowania'
+      : message;
   const activeExportIndex = useMemo(
     () => items.findIndex((item) => item.status === 'active'),
     [items],
@@ -394,10 +405,15 @@ export default function KeiImportProgressHost() {
       {showPill ? (
         <KeiBackgroundPill
           percent={overallPercent}
-          stageLabel={stageLabel}
+          stageLabel={
+            source === 'auto'
+              ? `Automatyczny import załączony · ${stageLabel}`
+              : stageLabel
+          }
           doneCount={doneCount}
           totalCount={items.length}
           isDark={colors.isDark}
+          isAuto={source === 'auto'}
           onPress={handleOpen}
           onStop={handleStop}
         />
@@ -411,7 +427,9 @@ export default function KeiImportProgressHost() {
       >
         <View style={[styles.modalRoot, { backgroundColor: colors.bg }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.separator, paddingTop: insets.top + 8 }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Import KEI</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              {source === 'auto' ? 'Automatyczny import KEI' : 'Import KEI'}
+            </Text>
             <View style={styles.modalHeaderActions}>
               {running ? (
                 <Pressable onPress={handleStop} hitSlop={8}>
@@ -426,7 +444,7 @@ export default function KeiImportProgressHost() {
             </View>
           </View>
           <ScrollView ref={exportScrollRef} contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24 }}>
-            <Text style={[styles.exportSummary, { color: colors.secondary }]}>{message}</Text>
+            <Text style={[styles.exportSummary, { color: colors.secondary }]}>{progressHeadline}</Text>
             <ProgressBar percent={overallPercent} color={colors.accent} />
             <Text style={[styles.percentLabel, { color: colors.text }]}>{overallPercent}%</Text>
 

@@ -2091,7 +2091,8 @@ export default function OfferDetail({ route, navigation }: any) {
           {Number.isFinite(parseOfferNumeric(offer?.lat)) &&
           Number.isFinite(parseOfferNumeric(offer?.lng)) &&
           Number.isFinite(areaNumForStats) &&
-          areaNumForStats > 0 ? (
+          areaNumForStats > 0 &&
+          !isRentForStats ? (
             isProUser ? (
               <View style={{ marginTop: 18 }}>
                 <MarketValuationCard

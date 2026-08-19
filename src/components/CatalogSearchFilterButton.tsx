@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import ApplePressable from './ApplePressable';
@@ -29,16 +29,57 @@ export default function CatalogSearchFilterButton({
   onPress,
   accessibilityLabel,
 }: Props) {
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (active) {
+      pulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(11000),
+        Animated.timing(pulse, {
+          toValue: 1.08,
+          duration: 420,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 420,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1.06,
+          duration: 280,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 320,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [active, pulse]);
+
   const a11y = accessibilityLabel || (hint ? `${label}. ${hint}` : label);
 
   return (
+    <Animated.View style={[styles.wrap, lightChrome && styles.wrapLight, { transform: [{ scale: pulse }] }]}>
     <ApplePressable
       onPress={onPress}
       haptic="medium"
       pressScale={0.96}
       accessibilityRole="button"
       accessibilityLabel={a11y}
-      style={[styles.wrap, lightChrome && styles.wrapLight]}
+      style={StyleSheet.absoluteFill}
     >
       <BlurView
         intensity={lightChrome ? 96 : isDark ? 82 : 92}
@@ -77,6 +118,7 @@ export default function CatalogSearchFilterButton({
         {active ? <View style={[styles.dot, { backgroundColor: accent }]} /> : null}
       </BlurView>
     </ApplePressable>
+    </Animated.View>
   );
 }
 

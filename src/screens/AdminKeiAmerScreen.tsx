@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Keyboard,
   KeyboardAvoidingView,
   Linking,
@@ -124,6 +126,99 @@ function SegmentedControl<T extends string>({
   );
 }
 
+function ScheduleBubbleSwitch({
+  value,
+  onValueChange,
+  accent,
+  trackOff,
+}: {
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  accent: string;
+  trackOff: string;
+}) {
+  const bubbles = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    if (!value) {
+      bubbles.forEach((b) => b.setValue(0));
+      return;
+    }
+    const loops = bubbles.map((bubble, index) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(index * 280),
+          Animated.timing(bubble, {
+            toValue: 1,
+            duration: 1400,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(bubble, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ]),
+      ),
+    );
+    loops.forEach((loop) => loop.start());
+    return () => loops.forEach((loop) => loop.stop());
+  }, [value, bubbles]);
+
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      style={{
+        width: 56,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: value ? accent : trackOff,
+        justifyContent: 'center',
+        overflow: 'hidden',
+        paddingHorizontal: 3,
+      }}
+    >
+      {value
+        ? bubbles.map((bubble, index) => (
+            <Animated.View
+              key={index}
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: 'rgba(255,255,255,0.78)',
+                top: 6 + (index % 3) * 6,
+                opacity: bubble.interpolate({ inputRange: [0, 0.2, 0.8, 1], outputRange: [0, 0.9, 0.55, 0] }),
+                transform: [
+                  {
+                    translateX: bubble.interpolate({ inputRange: [0, 1], outputRange: [4, 42] }),
+                  },
+                  {
+                    scale: bubble.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.6, 1.15, 0.7] }),
+                  },
+                ],
+              }}
+            />
+          ))
+        : null}
+      <View
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 13,
+          backgroundColor: '#fff',
+          alignSelf: value ? 'flex-end' : 'flex-start',
+          shadowColor: '#000',
+          shadowOpacity: 0.18,
+          shadowRadius: 2,
+          shadowOffset: { width: 0, height: 1 },
+        }}
+      />
+    </Pressable>
+  );
+}
+
 export default function AdminKeiAmerScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -158,6 +253,7 @@ export default function AdminKeiAmerScreen() {
   const [scheduleMessage, setScheduleMessage] = useState('');
   const [scheduleLastRun, setScheduleLastRun] = useState<string | null>(null);
   const [scheduleLastError, setScheduleLastError] = useState<string | null>(null);
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
 
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
@@ -284,7 +380,11 @@ export default function AdminKeiAmerScreen() {
     setScheduleProperty(config.propertyKind);
     setScheduleTransaction(config.transactionKind);
     setScheduleLastRun(config.lastRunAt);
-    setScheduleLastError(config.lastError);
+    setScheduleLastError(
+      config.lastError && /after['’]? was called outside a request scope/i.test(config.lastError)
+        ? null
+        : config.lastError,
+    );
   }, []);
 
   const loadSchedule = useCallback(async () => {
@@ -755,139 +855,166 @@ export default function AdminKeiAmerScreen() {
         </View>
 
         <View style={styles.sectionPad}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>AUTOMATYCZNY IMPORT</Text>
-          <View style={[styles.configCard, { backgroundColor: colors.card }]}>
-            <View style={styles.configRow}>
-              <Text style={[styles.configLabel, { color: colors.secondary, width: 180 }]}>Włącz harmonogram</Text>
-              <Switch
+          <View style={[styles.autoImportShell, { borderColor: scheduleEnabled ? 'rgba(52,199,89,0.55)' : colors.separator, backgroundColor: colors.isDark ? 'rgba(52,199,89,0.08)' : 'rgba(52,199,89,0.06)' }]}>
+            <View style={styles.autoImportHead}>
+              <Pressable
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  setScheduleExpanded((v) => !v);
+                }}
+                style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' }}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.sectionLabel, { color: colors.secondary, marginBottom: 4 }]}>
+                    AUTOMATYCZNY IMPORT
+                  </Text>
+                  <Text style={[styles.autoImportLead, { color: colors.text }]} numberOfLines={2}>
+                    {scheduleEnabled
+                      ? 'Załączony — serwer importuje sam, niezależnie od przycisku Importuj.'
+                      : 'Wyłączony — tylko ręczny import z listy poniżej.'}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.secondary}
+                  style={{ marginRight: 8 }}
+                />
+              </Pressable>
+              <ScheduleBubbleSwitch
                 value={scheduleEnabled}
                 onValueChange={(enabled) => {
                   void Haptics.selectionAsync();
                   setScheduleEnabled(enabled);
                   void saveSchedule({ enabled });
                 }}
-                trackColor={{ false: colors.segmentBg, true: colors.accent }}
+                accent={colors.accent}
+                trackOff={colors.segmentBg}
               />
             </View>
-            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-            <Text style={[styles.hint, { color: colors.tertiary, paddingHorizontal: 14, marginTop: 0, marginBottom: 8 }]}>
-              Serwer sam importuje według interwału, ilości, ID, prowizji, typu i transakcji. Aplikację możesz zamknąć.
-            </Text>
-            <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
-              <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto' }]}>Interwał</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {KEI_AUTO_INTERVALS_MIN.map((min) => {
-                  const active = scheduleInterval === min;
-                  return (
-                    <Pressable
-                      key={min}
-                      onPress={() => {
-                        void Haptics.selectionAsync();
-                        setScheduleInterval(min);
-                      }}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 10,
-                        backgroundColor: active ? colors.accent : colors.cardSecondary,
-                      }}
-                    >
-                      <Text style={{ color: active ? '#000' : colors.text, fontWeight: '700', fontSize: 13 }}>
-                        {keiAutoIntervalLabel(min)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-            <View style={styles.configRow}>
-              <Text style={[styles.configLabel, { color: colors.secondary }]}>Ilość</Text>
-              <TextInput
-                value={scheduleCount}
-                onChangeText={setScheduleCount}
-                keyboardType="number-pad"
-                {...numericInputProps}
-                style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
-              />
-            </View>
-            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-            <View style={styles.configRow}>
-              <Text style={[styles.configLabel, { color: colors.secondary }]}>ID użytkownika</Text>
-              <TextInput
-                value={scheduleUserId}
-                onChangeText={setScheduleUserId}
-                keyboardType="number-pad"
-                {...numericInputProps}
-                style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
-              />
-            </View>
-            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-            <View style={styles.configRow}>
-              <Text style={[styles.configLabel, { color: colors.secondary }]}>Prowizja %</Text>
-              <TextInput
-                value={scheduleCommission}
-                onChangeText={setScheduleCommission}
-                keyboardType="decimal-pad"
-                {...numericInputProps}
-                style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
-              />
-            </View>
-            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-            <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-              <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
-                Nieruchomość
-              </Text>
-              <SegmentedControl
-                value={scheduleProperty}
-                onChange={setScheduleProperty}
-                options={[
-                  { id: 'apartment', label: 'Mieszkanie' },
-                  { id: 'house', label: 'Dom' },
-                ]}
-                colors={colors}
-              />
-            </View>
-            <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-            <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-              <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
-                Transakcja
-              </Text>
-              <SegmentedControl
-                value={scheduleTransaction}
-                onChange={setScheduleTransaction}
-                options={[
-                  { id: 'sale', label: 'Sprzedaż' },
-                  { id: 'rent', label: 'Najem' },
-                ]}
-                colors={colors}
-              />
-            </View>
-            <View style={{ padding: 14, paddingTop: 4 }}>
-              <Pressable
-                onPress={() => void saveSchedule()}
-                disabled={scheduleSaving}
-                style={[styles.autoBtn, { backgroundColor: colors.accent }]}
-              >
-                {scheduleSaving ? (
-                  <ActivityIndicator color="#000" />
-                ) : (
-                  <Text style={[styles.autoBtnText, { color: '#000' }]}>Zapisz harmonogram</Text>
-                )}
-              </Pressable>
-              {scheduleLastRun ? (
-                <Text style={[styles.hint, { color: colors.tertiary }]}>
-                  Ostatni start: {new Date(scheduleLastRun).toLocaleString('pl-PL')}
+
+            {scheduleExpanded ? (
+              <View style={[styles.configCard, { backgroundColor: colors.card, marginTop: 10 }]}>
+                <Text style={[styles.hint, { color: colors.tertiary, paddingHorizontal: 14, marginTop: 10, marginBottom: 8 }]}>
+                  Osobny kanał od ręcznego „Importuj”. Jeśli jeden już trwa, drugi czeka. Aplikację możesz zamknąć.
                 </Text>
-              ) : null}
-              {scheduleLastError ? (
-                <Text style={[styles.hint, { color: colors.accentAmber }]}>{scheduleLastError}</Text>
-              ) : null}
-              {scheduleMessage ? (
-                <Text style={[styles.hint, { color: colors.accent }]}>{scheduleMessage}</Text>
-              ) : null}
-              <Text style={[styles.hint, { color: colors.tertiary }]}>Max {KEI_AUTO_MAX_COUNT} ogłoszeń na cykl.</Text>
-            </View>
+                <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
+                  <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto' }]}>Interwał</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {KEI_AUTO_INTERVALS_MIN.map((min) => {
+                      const active = scheduleInterval === min;
+                      return (
+                        <Pressable
+                          key={min}
+                          onPress={() => {
+                            void Haptics.selectionAsync();
+                            setScheduleInterval(min);
+                          }}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 10,
+                            backgroundColor: active ? colors.accent : colors.cardSecondary,
+                          }}
+                        >
+                          <Text style={{ color: active ? '#000' : colors.text, fontWeight: '700', fontSize: 13 }}>
+                            {keiAutoIntervalLabel(min)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+                <View style={styles.configRow}>
+                  <Text style={[styles.configLabel, { color: colors.secondary }]}>Ilość</Text>
+                  <TextInput
+                    value={scheduleCount}
+                    onChangeText={setScheduleCount}
+                    keyboardType="number-pad"
+                    {...numericInputProps}
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
+                  />
+                </View>
+                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+                <View style={styles.configRow}>
+                  <Text style={[styles.configLabel, { color: colors.secondary }]}>ID użytkownika</Text>
+                  <TextInput
+                    value={scheduleUserId}
+                    onChangeText={setScheduleUserId}
+                    keyboardType="number-pad"
+                    {...numericInputProps}
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
+                  />
+                </View>
+                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+                <View style={styles.configRow}>
+                  <Text style={[styles.configLabel, { color: colors.secondary }]}>Prowizja %</Text>
+                  <TextInput
+                    value={scheduleCommission}
+                    onChangeText={setScheduleCommission}
+                    keyboardType="decimal-pad"
+                    {...numericInputProps}
+                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
+                  />
+                </View>
+                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+                <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
+                    Nieruchomość
+                  </Text>
+                  <SegmentedControl
+                    value={scheduleProperty}
+                    onChange={setScheduleProperty}
+                    options={[
+                      { id: 'apartment', label: 'Mieszkanie' },
+                      { id: 'house', label: 'Dom' },
+                    ]}
+                    colors={colors}
+                  />
+                </View>
+                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
+                <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
+                    Transakcja
+                  </Text>
+                  <SegmentedControl
+                    value={scheduleTransaction}
+                    onChange={setScheduleTransaction}
+                    options={[
+                      { id: 'sale', label: 'Sprzedaż' },
+                      { id: 'rent', label: 'Najem' },
+                    ]}
+                    colors={colors}
+                  />
+                </View>
+                <View style={{ padding: 14, paddingTop: 4 }}>
+                  <Pressable
+                    onPress={() => void saveSchedule()}
+                    disabled={scheduleSaving}
+                    style={[styles.autoBtn, { backgroundColor: colors.accent }]}
+                  >
+                    {scheduleSaving ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={[styles.autoBtnText, { color: '#000' }]}>Zapisz harmonogram</Text>
+                    )}
+                  </Pressable>
+                  {scheduleLastRun ? (
+                    <Text style={[styles.hint, { color: colors.tertiary }]}>
+                      Ostatni start: {new Date(scheduleLastRun).toLocaleString('pl-PL')}
+                    </Text>
+                  ) : null}
+                  {scheduleLastError ? (
+                    <Text style={[styles.hint, { color: colors.accentAmber }]}>{scheduleLastError}</Text>
+                  ) : null}
+                  {scheduleMessage ? (
+                    <Text style={[styles.hint, { color: colors.accent }]}>{scheduleMessage}</Text>
+                  ) : null}
+                  <Text style={[styles.hint, { color: colors.tertiary }]}>Max {KEI_AUTO_MAX_COUNT} ogłoszeń na cykl.</Text>
+                </View>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -1320,7 +1447,21 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     overflow: 'hidden',
   },
-  exportBtn: {
+  autoImportShell: {
+    borderWidth: 1.5,
+    borderRadius: 20,
+    padding: 12,
+  },
+  autoImportHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  autoImportLead: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

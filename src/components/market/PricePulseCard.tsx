@@ -84,8 +84,8 @@ function dualPaths(a: Array<number | null>, b: Array<number | null>, width: numb
 }
 
 function toneColor(tone: PricePulseTone) {
-  if (tone === 'up') return '#F43F5E';
-  if (tone === 'down') return '#34C759';
+  if (tone === 'up') return '#34C759';
+  if (tone === 'down') return '#F43F5E';
   return '#8E8E93';
 }
 
@@ -106,8 +106,8 @@ function narrative(data: PricePulsePayload, win: PricePulseWindow) {
 
 function toneOfChange(value: number | null): PricePulseTone {
   if (value == null) return 'flat';
-  if (value > 1) return 'up';
-  if (value < -1) return 'down';
+  if (value > 0.3) return 'up';
+  if (value < -0.3) return 'down';
   return 'flat';
 }
 
@@ -154,6 +154,10 @@ export default function PricePulseCard({
 
   const spark = useMemo(() => sparklinePath(data?.sparkline || [], 280, 64), [data]);
   const win = data?.windows[windowKey] ?? null;
+  const headlinePct = win?.listingChangePct ?? data?.windows.d30.listingChangePct ?? null;
+  const tone = toneOfChange(headlinePct);
+  const pctColor = toneColor(tone);
+  const stroke = tone === 'down' ? '#F43F5E' : '#34C759';
   const dual = useMemo(() => {
     const series = data?.series || [];
     const take = windowKey === 'd7' ? 14 : windowKey === 'd30' ? 30 : 90;
@@ -165,10 +169,6 @@ export default function PricePulseCard({
       120,
     );
   }, [data, windowKey]);
-
-  const tone = data?.tone ?? 'flat';
-  const pctColor = toneColor(tone);
-  const stroke = tone === 'up' ? '#F43F5E' : '#34C759';
 
   const openDetails = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -187,7 +187,7 @@ export default function PricePulseCard({
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.eyebrow, { color: muted }]}>PULS CENOWY</Text>
             <Text style={[styles.hint, { color: muted }]} numberOfLines={1}>
-              Nowe oferty vs akty
+              {windowKey === 'd7' ? '7 dni' : windowKey === 'd90' ? '3 miesiące' : '30 dni'} · oferty
             </Text>
           </View>
           {loading && !data ? (
@@ -196,7 +196,7 @@ export default function PricePulseCard({
             <Animated.Text
               style={[styles.pct, { color: pctColor, transform: [{ scale: pulse }] }]}
             >
-              {formatSignedPct(data?.vsDeedsPct ?? null)}
+              {formatSignedPct(headlinePct)}
             </Animated.Text>
           )}
         </View>
@@ -205,7 +205,7 @@ export default function PricePulseCard({
           <View style={styles.chartWrap}>
             {spark.line ? (
               <Svg width="100%" height={64} viewBox="0 0 280 64" preserveAspectRatio="none">
-                <Path d={spark.area} fill={tone === 'up' ? 'rgba(244,63,94,0.18)' : 'rgba(52,199,89,0.18)'} />
+                <Path d={spark.area} fill={tone === 'down' ? 'rgba(244,63,94,0.18)' : 'rgba(52,199,89,0.18)'} />
                 <Path d={spark.line} fill="none" stroke={stroke} strokeWidth={1.8} />
                 {spark.last ? <Circle cx={spark.last.x} cy={spark.last.y} r={3.2} fill={stroke} /> : null}
               </Svg>
@@ -234,9 +234,11 @@ export default function PricePulseCard({
 
           <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} showsVerticalScrollIndicator={false}>
             <View style={styles.hero}>
-              <Text style={[styles.hint, { color: muted }]}>Oferty vs akty</Text>
+              <Text style={[styles.hint, { color: muted }]}>
+                Zmiana cen ofertowych · {windowKey === 'd7' ? '7 dni' : windowKey === 'd90' ? '3 miesiące' : '30 dni'}
+              </Text>
               <Animated.Text style={[styles.heroPct, { color: pctColor, transform: [{ scale: pulse }] }]}>
-                {formatSignedPct(data?.vsDeedsPct ?? null)}
+                {formatSignedPct(headlinePct)}
               </Animated.Text>
               <Text style={[styles.narrative, { color: muted }]}>
                 {data && win ? narrative(data, win) : 'Brak pulsu.'}

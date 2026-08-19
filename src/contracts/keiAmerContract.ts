@@ -88,6 +88,7 @@ export type KeiImportJobSnapshot = {
   message: string;
   propertyKind: KeiPropertyKind;
   transactionKind: KeiTransactionKind;
+  source?: 'manual' | 'auto';
   items: Array<{
     index: number;
     keiListingId: string;

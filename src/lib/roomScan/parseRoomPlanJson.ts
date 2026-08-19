@@ -8,6 +8,7 @@ import type {
 } from '../../types/roomScan';
 import {
   deriveRoomDimensionsFromWalls,
+  dedupeDetectedObjects,
   dedupeRoomSections,
   dedupeWallSegments,
   estimateFloorAreaFromWalls,
@@ -429,7 +430,7 @@ export function normalizeStoredScanMeta(raw: unknown): FloorPlanScanMeta | null 
   const walls = Array.isArray(meta.walls)
     ? dedupeWallSegments(meta.walls.map((w) => ({ ...w, lengthM: wallLengthMeters(w) })))
     : [];
-  const objects = Array.isArray(meta.objects) ? meta.objects : [];
+  const objects = dedupeDetectedObjects(Array.isArray(meta.objects) ? meta.objects : []);
   const openings = Array.isArray(meta.openings) ? meta.openings : [];
   const sections = dedupeRoomSections(meta.sections);
   const totalFootprint = estimateFloorAreaFromWalls(walls);

@@ -56,6 +56,7 @@ type KeiAmerExportState = {
   running: boolean;
   modalVisible: boolean;
   message: string;
+  source: 'manual' | 'auto';
   items: KeiExportItemProgress[];
   results: KeiExportResultItem[];
   skipped: number;
@@ -82,6 +83,7 @@ function applyJobSnapshot(
   const patch: Partial<KeiAmerExportState> = {
     jobId: job.id,
     running,
+    source: job.source === 'auto' ? 'auto' : 'manual',
     message: job.message || (running ? 'Import w toku na serwerze…' : 'Import zakończony.'),
     items: mapJobItems(job),
     results: job.exported || [],
@@ -164,6 +166,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   running: false,
   modalVisible: false,
   message: '',
+  source: 'manual',
   items: [],
   results: [],
   skipped: 0,
@@ -247,6 +250,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
       running: true,
       modalVisible: false,
       message: 'Uruchamiam import na serwerze…',
+      source: 'manual',
       items: initialItems,
       results: [],
       skipped: 0,

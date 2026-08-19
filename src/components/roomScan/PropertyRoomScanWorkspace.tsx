@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import RoomScanModal, { isRoomScanSupportedOnDevice } from './RoomScanModal';
+import FloorPlanFurnitureEditor from './FloorPlanFurnitureEditor';
 import { measurementsFromScanMeta } from '../../lib/roomScan/roomScanMeasurements';
 import { getSafeQuickLook } from '../../utils/safeQuickLook';
 import type {
@@ -387,14 +388,18 @@ export default function PropertyRoomScanWorkspace({
                   {room.scanMeta?.openings?.length || 0} przejść, drzwi lub okien · wysokość {room.heightM || '—'} m
                   {room.scanMeta?.objects?.length ? ` · ${room.scanMeta.objects.length} mebli / AGD` : ''}
                 </Text>
-                {(room.scanMeta?.objects || []).length > 0 ? (
-                  <View style={styles.furnitureWrap}>
-                    {room.scanMeta?.objects.map((obj) => (
-                      <View key={obj.id} style={[styles.furnitureChip, { borderColor: palette.border }]}>
-                        <Text style={[styles.furnitureChipText, { color: palette.text }]}>{obj.label}</Text>
-                      </View>
-                    ))}
-                  </View>
+                {(room.scanMeta?.objects || []).length > 0 || room.scanMeta ? (
+                  room.scanMeta ? (
+                    <FloorPlanFurnitureEditor
+                      meta={room.scanMeta}
+                      onChange={(next) => updateRoom(room.id, { scanMeta: next })}
+                      textColor={palette.text}
+                      secondaryColor={palette.secondary}
+                      borderColor={palette.border}
+                      accent={palette.accent}
+                      disabled={disabled}
+                    />
+                  ) : null
                 ) : null}
                 {room.floorPlan3dUri ? (
                   <Pressable onPress={() => void open3d(room.floorPlan3dUri)} style={styles.inline3d}>
@@ -446,6 +451,15 @@ export default function PropertyRoomScanWorkspace({
                 <Text style={{ color: palette.accent, fontSize: 12, fontWeight: '800' }}>Całość 3D</Text>
               </Pressable>
             </View>
+            <FloorPlanFurnitureEditor
+              meta={wholeScan.scanMeta}
+              onChange={(next) => onChangeWholeScan?.({ ...wholeScan, scanMeta: next })}
+              textColor={palette.text}
+              secondaryColor={palette.secondary}
+              borderColor={palette.border}
+              accent={palette.accent}
+              disabled={disabled}
+            />
           </View>
         ) : null}
 

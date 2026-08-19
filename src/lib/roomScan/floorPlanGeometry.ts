@@ -1,4 +1,10 @@
-import type { FloorPlanScanMeta, RoomScanSection, RoomScanWallSegment } from '../../types/roomScan';
+import type {
+  FloorPlanScanMeta,
+  RoomScanDetectedObject,
+  RoomScanOpening,
+  RoomScanSection,
+  RoomScanWallSegment,
+} from '../../types/roomScan';
 import { getRoomScanSectionLabel } from './roomScanLabels';
 export { deriveRoomDimensionsFromWalls } from './roomScanMeasurements';
 
@@ -266,16 +272,7 @@ export function mapWallsForRender(
     return { id: `w-${index}`, a, b, midX, midY, lx, ly, len, showLabel: false };
   });
 
-  const candidates = mapped
-    .filter((w) => w.len >= 0.85)
-    .sort((a, b) => b.len - a.len)
-    .slice(0, forExport ? 10 : 7);
-
-  const labeledIds = new Set(candidates.map((w) => w.id));
-  return mapped.map((wall) => ({
-    ...wall,
-    showLabel: labeledIds.has(wall.id),
-  }));
+  return mapped;
 }
 
 export function mapSectionsForRender(
@@ -306,7 +303,7 @@ export function mapObjectsForRender(
   bounds: FloorPlanScanMeta['bounds'],
   viewport: FloorPlanViewport,
 ): MappedObject[] {
-  return (objects || []).map((obj, index) => {
+  return dedupeDetectedObjects(objects || []).map((obj, index) => {
     const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, bounds, viewport);
     const palette = OBJECT_FILL[obj.category] || OBJECT_FILL.unknown;
     const widthM = obj.widthM && obj.widthM > 0.2 ? obj.widthM : 0.55;
@@ -343,4 +340,205 @@ export function sectionMarkerRadiusPx(viewport: FloorPlanViewport, areaSqM?: num
   const area = areaSqM && areaSqM > 0 ? areaSqM : 8;
   const sideM = Math.sqrt(area);
   return Math.max(20, Math.min(44, sideM * viewport.scale * 0.24));
+}
+
+export function dedupeDetectedObjects(
+  objects: RoomScanDetectedObject[],
+  opts?: { maxStorage?: number },
+): RoomScanDetectedObject[] {
+  const maxStorage = opts?.maxStorage ?? 4;
+  const sorted = [...(objects || [])].sort((a, b) => {
+    const areaA = (a.widthM || 0.5) * (a.depthM || 0.4);
+    const areaB = (b.widthM || 0.5) * (b.depthM || 0.4);
+    return areaB - areaA;
+  });
+  const kept: RoomScanDetectedObject[] = [];
+  for (const obj of sorted) {
+    const mergeM = obj.category === 'storage' || obj.category === 'unknown' ? 0.58 : 0.32;
+    const duplicate = kept.some(
+      (existing) =>
+        (existing.category === obj.category ||
+          (existing.category === 'storage' && obj.category === 'unknown') ||
+          (existing.category === 'unknown' && obj.category === 'storage')) &&
+        Math.hypot(existing.centerX - obj.centerX, existing.centerZ - obj.centerZ) < mergeM,
+    );
+    if (duplicate) continue;
+    kept.push({
+      ...obj,
+      label: obj.label || obj.category,
+    });
+  }
+  const storage = kept.filter((obj) => obj.category === 'storage');
+  if (storage.length <= maxStorage) return kept;
+  const keepIds = new Set(storage.slice(0, maxStorage).map((obj) => obj.id));
+  return kept.filter((obj) => obj.category !== 'storage' || keepIds.has(obj.id));
+}
+
+export type DimensionSegment = {
+  id: string;
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  label: string;
+  lx: number;
+  ly: number;
+  kind: 'wall' | 'opening';
+};
+
+export type DimensionChain = {
+  id: string;
+  overall: DimensionSegment;
+  segments: DimensionSegment[];
+};
+
+function projectT(px: number, pz: number, wall: RoomScanWallSegment): number {
+  const dx = wall.x2 - wall.x1;
+  const dz = wall.z2 - wall.z1;
+  const len2 = dx * dx + dz * dz || 1;
+  return ((px - wall.x1) * dx + (pz - wall.z1) * dz) / len2;
+}
+
+function distToWall(px: number, pz: number, wall: RoomScanWallSegment): number {
+  const t = Math.max(0, Math.min(1, projectT(px, pz, wall)));
+  const qx = wall.x1 + (wall.x2 - wall.x1) * t;
+  const qz = wall.z1 + (wall.z2 - wall.z1) * t;
+  return Math.hypot(px - qx, pz - qz);
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function offsetPoint(
+  x: number,
+  y: number,
+  nx: number,
+  ny: number,
+  dist: number,
+) {
+  return { x: x + nx * dist, y: y + ny * dist };
+}
+
+function dimLabel(a: { x: number; y: number }, b: { x: number; y: number }, nx: number, ny: number, extra: number) {
+  return {
+    lx: (a.x + b.x) / 2 + nx * extra,
+    ly: (a.y + b.y) / 2 + ny * extra,
+  };
+}
+
+/**
+ * Łańcuchy wymiarowe jak na profesjonalnym rzucie: odcinki ściana→otwór,
+ * szerokość otworu, otwór→ściana oraz wymiar ogólny dalej na zewnątrz.
+ */
+export function buildWallDimensionChains(
+  walls: RoomScanWallSegment[],
+  openings: RoomScanOpening[],
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+): DimensionChain[] {
+  const significant = dedupeWallSegments(walls).filter((wall) => wallLengthMeters(wall) >= 1.15);
+  const used = new Set<string>();
+  const chains: DimensionChain[] = [];
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cz = (bounds.minZ + bounds.maxZ) / 2;
+
+  significant
+    .sort((a, b) => wallLengthMeters(b) - wallLengthMeters(a))
+    .slice(0, 6)
+    .forEach((wall, wallIndex) => {
+      const key = [wall.x1.toFixed(2), wall.z1.toFixed(2), wall.x2.toFixed(2), wall.z2.toFixed(2)].join(':');
+      if (used.has(key)) return;
+      used.add(key);
+
+      const midX = (wall.x1 + wall.x2) / 2;
+      const midZ = (wall.z1 + wall.z2) / 2;
+      const wallDx = wall.x2 - wall.x1;
+      const wallDz = wall.z2 - wall.z1;
+      const wallLen = Math.hypot(wallDx, wallDz) || 1;
+      const toCenterX = cx - midX;
+      const toCenterZ = cz - midZ;
+      const side = wallDx * toCenterZ - wallDz * toCenterX >= 0 ? 1 : -1;
+      const nxM = ((-wallDz / wallLen) * side);
+      const nzM = ((wallDx / wallLen) * side);
+
+      const hits = (openings || [])
+        .map((opening) => {
+          const ox = (opening.x1 + opening.x2) / 2;
+          const oz = (opening.z1 + opening.z2) / 2;
+          const dist = distToWall(ox, oz, wall);
+          if (dist > 0.32) return null;
+          const t0 = Math.max(0, Math.min(1, projectT(opening.x1, opening.z1, wall)));
+          const t1 = Math.max(0, Math.min(1, projectT(opening.x2, opening.z2, wall)));
+          const from = Math.min(t0, t1);
+          const to = Math.max(t0, t1);
+          if (to - from < 0.04) return null;
+          return { from, to, kind: opening.kind || 'opening' };
+        })
+        .filter((row): row is { from: number; to: number; kind: string } => Boolean(row))
+        .sort((a, b) => a.from - b.from);
+
+      const cuts: Array<{ from: number; to: number; kind: 'wall' | 'opening' }> = [];
+      let cursor = 0;
+      for (const hit of hits) {
+        if (hit.from - cursor > 0.035) cuts.push({ from: cursor, to: hit.from, kind: 'wall' });
+        cuts.push({ from: hit.from, to: hit.to, kind: 'opening' });
+        cursor = hit.to;
+      }
+      if (1 - cursor > 0.035) cuts.push({ from: cursor, to: 1, kind: 'wall' });
+      if (!cuts.length) cuts.push({ from: 0, to: 1, kind: 'wall' });
+
+      const a0 = mapFloorPlanPoint(wall.x1, wall.z1, bounds, viewport);
+      const b0 = mapFloorPlanPoint(wall.x2, wall.z2, bounds, viewport);
+      const pxDx = b0.x - a0.x;
+      const pxDy = b0.y - a0.y;
+      const pxLen = Math.hypot(pxDx, pxDy) || 1;
+      const nx = -pxDy / pxLen;
+      const ny = pxDx / pxLen;
+      const outward = nx * (viewport.offsetX + (cx - bounds.minX) * viewport.scale - (a0.x + b0.x) / 2) +
+        ny * (viewport.offsetY + (cz - bounds.minZ) * viewport.scale - (a0.y + b0.y) / 2);
+      const sign = outward > 0 ? -1 : 1;
+      const innerOff = 18 * sign;
+      const outerOff = 34 * sign;
+
+      const worldPoint = (t: number) =>
+        mapFloorPlanPoint(lerp(wall.x1, wall.x2, t), lerp(wall.z1, wall.z2, t), bounds, viewport);
+
+      const segments: DimensionSegment[] = cuts.map((cut, i) => {
+        const a = worldPoint(cut.from);
+        const b = worldPoint(cut.to);
+        const oa = offsetPoint(a.x, a.y, nx * sign, ny * sign, innerOff);
+        const ob = offsetPoint(b.x, b.y, nx * sign, ny * sign, innerOff);
+        const meters = wallLen * (cut.to - cut.from);
+        const mid = dimLabel(oa, ob, nx * sign, ny * sign, 10);
+        return {
+          id: `dim-${wallIndex}-${i}`,
+          a: oa,
+          b: ob,
+          label: formatWallDimension(meters),
+          lx: mid.lx,
+          ly: mid.ly,
+          kind: cut.kind,
+        };
+      });
+
+      const oa = offsetPoint(a0.x, a0.y, nx * sign, ny * sign, outerOff);
+      const ob = offsetPoint(b0.x, b0.y, nx * sign, ny * sign, outerOff);
+      const omid = dimLabel(oa, ob, nx * sign, ny * sign, 11);
+      chains.push({
+        id: `chain-${wallIndex}`,
+        overall: {
+          id: `dim-${wallIndex}-all`,
+          a: oa,
+          b: ob,
+          label: formatWallDimension(wallLen),
+          lx: omid.lx,
+          ly: omid.ly,
+          kind: 'wall',
+        },
+        segments,
+      });
+      void nxM;
+      void nzM;
+    });
+
+  return chains;
 }

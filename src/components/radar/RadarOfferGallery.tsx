@@ -30,9 +30,11 @@ import {
 import SlidingIconSegment from '../catalog/SlidingIconSegment';
 import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
-import { fetchListingTape, formatTapeDelta } from '../../services/marketService';
+import { fetchListingTape, formatTapeBadge, formatTapeDelta } from '../../services/marketService';
+import { fetchDiscoveryForYou } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { hasMarketProPrivileges } from '../../utils/investorProMembership';
+import { resolveMediaUrl } from '../../utils/userAvatar';
 import ApplePressable from '../ApplePressable';
 import MarketUnreadQuickReplyBubble from '../messaging/MarketUnreadQuickReplyBubble';
 import DiscoveryForYouRail from '../discovery/DiscoveryForYouRail';
@@ -257,6 +259,9 @@ export default function RadarOfferGallery({
   const [viewMode, setViewMode] = useState<GalleryViewMode>(isTabletLike ? 'grid' : 'cover');
   const [railDensity, setRailDensity] = useState<CatalogRailDensity>('comfortable');
   const [deedTapeItems, setDeedTapeItems] = useState<CatalogRailItem[]>([]);
+  const [deedTapeHasMore, setDeedTapeHasMore] = useState(false);
+  const [deedTapeLoadingMore, setDeedTapeLoadingMore] = useState(false);
+  const [intelligenceTapeItems, setIntelligenceTapeItems] = useState<CatalogRailItem[]>([]);
   const [page, setPage] = useState(1);
   const horizontalPad = 20;
   /** Cover = duże karty. Siatka (4 kwadraty) = 2 kolumny. Lista (3 kreski) = 3 kolumny, gęściej. */
@@ -348,32 +353,101 @@ export default function RadarOfferGallery({
     let cancelled = false;
     if (!canSeeDeedTape || transactionFilter === 'RENT' || countryFilter === 'ABROAD') {
       setDeedTapeItems([]);
+      setDeedTapeHasMore(false);
       return;
     }
-    void fetchListingTape(locale, token)
-      .then((items) => {
+    void fetchListingTape(locale, token, { offset: 0, limit: 24 })
+      .then((res) => {
         if (cancelled) return;
+        const catalogById = new Map(offers.map((o) => [String(o.id), o.image]));
         setDeedTapeItems(
-          items.map((row) => ({
+          res.items.map((row) => ({
             id: row.id,
             title: String(row.title || 'Oferta'),
             subtitle: row.marketTape
               ? `${formatTapeDelta(row.marketTape.vsMedianPct, locale)} · ${row.marketTape.listingPpsm.toLocaleString('pl-PL')} zł/m²`
               : undefined,
-            imageUrl: row.imageUrl,
+            imageUrl: resolveMediaUrl(row.imageUrl) || catalogById.get(String(row.id)) || null,
             priceLabel: formatPrice(row as unknown as Record<string, unknown>).primary,
-            badge: row.marketTape ? formatTapeDelta(row.marketTape.vsMedianPct, locale) : undefined,
+            badge: row.marketTape ? formatTapeBadge(row.marketTape.vsMedianPct) : undefined,
             badgeTone: row.marketTape?.tone,
           })),
         );
+        setDeedTapeHasMore(res.hasMore);
       })
       .catch(() => {
-        if (!cancelled) setDeedTapeItems([]);
+        if (!cancelled) {
+          setDeedTapeItems([]);
+          setDeedTapeHasMore(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [locale, transactionFilter, countryFilter, formatPrice, canSeeDeedTape, token]);
+  }, [locale, transactionFilter, countryFilter, formatPrice, canSeeDeedTape, token, offers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!token) {
+      setIntelligenceTapeItems([]);
+      return;
+    }
+    void fetchDiscoveryForYou(token, {
+      limit: 18,
+      transaction: transactionFilter === 'RENT' ? 'RENT' : transactionFilter === 'SELL' ? 'SALE' : '',
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setIntelligenceTapeItems(
+          (res.items || [])
+            .filter((row) => {
+              const tx = String(row.transactionType || '').toUpperCase();
+              if (transactionFilter === 'RENT') return tx === 'RENT';
+              if (transactionFilter === 'SELL') return tx !== 'RENT';
+              return true;
+            })
+            .map((row) => ({
+              id: row.offerId || row.id,
+              title: row.title || 'Oferta',
+              subtitle: [row.district || row.city, row.reason].filter(Boolean).join(' · ') || undefined,
+              imageUrl: resolveMediaUrl(row.imageUrl),
+              priceLabel: formatPrice(row as unknown as Record<string, unknown>).primary,
+            })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setIntelligenceTapeItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, transactionFilter, formatPrice]);
+
+  const loadMoreDeedTape = useCallback(() => {
+    if (deedTapeLoadingMore || !deedTapeHasMore) return;
+    setDeedTapeLoadingMore(true);
+    void fetchListingTape(locale, token, { offset: deedTapeItems.length, limit: 24 })
+      .then((res) => {
+        const catalogById = new Map(offers.map((o) => [String(o.id), o.image]));
+        const mapped = res.items.map((row) => ({
+          id: row.id,
+          title: String(row.title || 'Oferta'),
+          subtitle: row.marketTape
+            ? `${formatTapeDelta(row.marketTape.vsMedianPct, locale)} · ${row.marketTape.listingPpsm.toLocaleString('pl-PL')} zł/m²`
+            : undefined,
+          imageUrl: resolveMediaUrl(row.imageUrl) || catalogById.get(String(row.id)) || null,
+          priceLabel: formatPrice(row as unknown as Record<string, unknown>).primary,
+          badge: row.marketTape ? formatTapeBadge(row.marketTape.vsMedianPct) : undefined,
+          badgeTone: row.marketTape?.tone,
+        }));
+        setDeedTapeItems((prev) => {
+          const seen = new Set(prev.map((item) => String(item.id)));
+          return [...prev, ...mapped.filter((item) => !seen.has(String(item.id)))];
+        });
+        setDeedTapeHasMore(res.hasMore);
+      })
+      .finally(() => setDeedTapeLoadingMore(false));
+  }, [deedTapeHasMore, deedTapeItems.length, deedTapeLoadingMore, formatPrice, locale, offers, token]);
 
   const marketRailSections = useMemo(() => {
     const toHome = (item: GalleryOffer | CatalogRailItem & { raw?: Record<string, unknown>; lat?: number; lng?: number }) => {
@@ -445,6 +519,13 @@ export default function RadarOfferGallery({
       catalog,
       userLocation,
       deedTape: showDeedTape ? deedTapeItems : [],
+      intelligenceTape: intelligenceTapeItems,
+      intelligenceTitle: t('radar.home.galleryRailIntelligence'),
+      intelligenceEyebrow: t('radar.home.galleryRailIntelligenceEyebrow'),
+      nearDeedsEyebrow: t('radar.home.galleryRailNearDeedsEyebrow'),
+      onNeedMoreDeeds: loadMoreDeedTape,
+      deedHasMore: deedTapeHasMore,
+      deedLoadingMore: deedTapeLoadingMore,
       labels: {
         favorites: t('radar.home.galleryRailFavorites'),
         mine: t('radar.home.galleryRailMine'),
@@ -468,6 +549,10 @@ export default function RadarOfferGallery({
     formatPrice,
     t,
     deedTapeItems,
+    intelligenceTapeItems,
+    loadMoreDeedTape,
+    deedTapeHasMore,
+    deedTapeLoadingMore,
     transactionFilter,
     countryFilter,
     propertyFilter,
@@ -507,7 +592,7 @@ export default function RadarOfferGallery({
           </Text>
         </View>
 
-        {navigation ? (
+        {navigation && contentMode !== 'rails' ? (
           <View style={{ paddingHorizontal: horizontalPad, marginTop: 4 }}>
             <DiscoveryForYouRail
               navigation={navigation}
@@ -660,6 +745,7 @@ export default function RadarOfferGallery({
       wrapFilterChange,
       transactionFilter,
       changeViewMode,
+      contentMode,
     ],
   );
 

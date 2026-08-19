@@ -100,11 +100,10 @@ export function formatPpsm(n: number) {
 }
 
 export function formatSignedPct(value: number | null | undefined, digits = 1): string {
-  if (value == null || !Number.isFinite(value)) return '—';
-  const n = Math.abs(value);
-  const shown = n < 10 ? n.toFixed(digits) : String(Math.round(n));
-  if (Math.abs(value) < 0.05) return '0%';
-  return `${value > 0 ? '+' : '−'}${shown}%`;
+  if (value == null || !Number.isFinite(value)) return 'n/d';
+  if (Math.abs(value) < 0.05) return '0,0%';
+  const shown = Math.abs(value).toFixed(digits).replace('.', ',');
+  return `${value > 0 ? '+' : '-'}${shown}%`;
 }
 
 export type PricePulseTone = 'up' | 'down' | 'flat';
@@ -165,10 +164,19 @@ export function formatTapeDelta(vsMedianPct: number, locale: string): string {
     return 'przy aktach';
   }
   const n = Math.abs(Math.round(vsMedianPct));
-  const sign = vsMedianPct > 0 ? '+' : '−';
-  if (locale === 'en') return `${sign}${n}% vs deeds`;
-  if (locale === 'ru') return `${sign}${n}% vs акты`;
-  return `${sign}${n}% vs akty`;
+  if (vsMedianPct > 0) {
+    if (locale === 'en') return `+${n}% above deeds`;
+    if (locale === 'ru') return `+${n}% над актами`;
+    return `+${n}% powyżej aktów`;
+  }
+  if (locale === 'en') return `-${n}% below deeds`;
+  if (locale === 'ru') return `-${n}% под актами`;
+  return `-${n}% poniżej aktów`;
+}
+
+export function formatTapeBadge(vsMedianPct: number): string {
+  if (!Number.isFinite(vsMedianPct) || Math.abs(vsMedianPct) < 3) return '0%';
+  return `${vsMedianPct > 0 ? '+' : '-'}${Math.abs(Math.round(vsMedianPct))}%`;
 }
 
 export type ListingTapeItem = {
@@ -191,13 +199,23 @@ export type ListingTapeItem = {
   };
 };
 
-export async function fetchListingTape(locale: string, token?: string | null): Promise<ListingTapeItem[]> {
+export async function fetchListingTape(
+  locale: string,
+  token?: string | null,
+  opts?: { offset?: number; limit?: number },
+): Promise<{ items: ListingTapeItem[]; hasMore: boolean; total: number }> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  const offset = Math.max(0, opts?.offset ?? 0);
+  const limit = Math.min(80, Math.max(8, opts?.limit ?? 24));
   const res = await fetch(
-    `${API_URL}/api/market/listing-tape?locale=${encodeURIComponent(locale)}&limit=48`,
+    `${API_URL}/api/market/listing-tape?locale=${encodeURIComponent(locale)}&limit=${limit}&offset=${offset}`,
     { headers },
   );
   const json = await res.json().catch(() => ({}));
-  return Array.isArray(json?.items) ? (json.items as ListingTapeItem[]) : [];
+  return {
+    items: Array.isArray(json?.items) ? (json.items as ListingTapeItem[]) : [],
+    hasMore: Boolean(json?.hasMore),
+    total: Number(json?.total || 0),
+  };
 }

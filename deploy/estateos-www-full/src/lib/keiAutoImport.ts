@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { enqueueKeiImportJob, ensureKeiAmerImportJobTable } from '@/lib/keiAmerImportJobs';
+import { enqueueKeiImportJob, hasActiveKeiImportJob } from '@/lib/keiAmerImportJobs';
 import {
   KEI_AUTO_INTERVALS_MIN,
   KEI_AUTO_MAX_COUNT,
@@ -104,7 +104,7 @@ export async function saveKeiAutoImportConfig(
   await prisma.$executeRawUnsafe(
     `INSERT INTO KeiAutoImportSchedule
       (id, enabled, intervalMinutes, count, targetUserId, agentCommissionPercent, propertyKind, transactionKind, adminUserId, lastRunAt, lastJobId, lastError)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON DUPLICATE KEY UPDATE
       enabled = VALUES(enabled),
       intervalMinutes = VALUES(intervalMinutes),
@@ -113,7 +113,8 @@ export async function saveKeiAutoImportConfig(
       agentCommissionPercent = VALUES(agentCommissionPercent),
       propertyKind = VALUES(propertyKind),
       transactionKind = VALUES(transactionKind),
-      adminUserId = VALUES(adminUserId)`,
+      adminUserId = VALUES(adminUserId),
+      lastError = NULL`,
     next.enabled ? 1 : 0,
     next.intervalMinutes,
     next.count,
@@ -124,17 +125,12 @@ export async function saveKeiAutoImportConfig(
     next.adminUserId,
     current.lastRunAt ? new Date(current.lastRunAt) : null,
     current.lastJobId,
-    current.lastError,
   );
   return getKeiAutoImportConfig();
 }
 
 async function hasRunningJob(): Promise<boolean> {
-  await ensureKeiAmerImportJobTable();
-  const rows = (await prisma.$queryRawUnsafe<Array<{ total: number | bigint }>>(
-    `SELECT COUNT(*) AS total FROM KeiAmerImportJob WHERE status IN ('queued','running')`,
-  )) as Array<{ total: number | bigint }>;
-  return Number(rows[0]?.total || 0) > 0;
+  return hasActiveKeiImportJob();
 }
 
 export async function tickKeiAutoImport(): Promise<{ ran: boolean; reason: string; jobId?: string }> {
@@ -155,6 +151,7 @@ export async function tickKeiAutoImport(): Promise<{ ran: boolean; reason: strin
       targetUserId: cfg.targetUserId,
       agentCommissionPercent: cfg.agentCommissionPercent,
       count: cfg.count,
+      source: 'auto',
     });
     await prisma.$executeRawUnsafe(
       `UPDATE KeiAutoImportSchedule SET lastRunAt = NOW(3), lastJobId = ?, lastError = NULL WHERE id = 1`,

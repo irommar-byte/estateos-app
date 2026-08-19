@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -12,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import ApplePressable from '../ApplePressable';
 import SlidingIconSegment from './SlidingIconSegment';
+
+export type CatalogRailVariant = 'default' | 'proExclusive' | 'rainbow';
 
 export type CatalogRailItem = {
   id: number | string;
@@ -32,6 +35,11 @@ export type CatalogRailSection = {
   /** Pokaż pustą taśmę (Ulubione / Moje). */
   showWhenEmpty?: boolean;
   emptyLabel?: string;
+  variant?: CatalogRailVariant;
+  eyebrow?: string;
+  onNeedMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
 };
 
 export type CatalogRailDensity = 'compact' | 'comfortable' | 'large';
@@ -46,6 +54,11 @@ type Props = {
   onPressItem: (id: number | string) => void;
   pageSize?: number;
   density?: CatalogRailDensity;
+  variant?: CatalogRailVariant;
+  eyebrow?: string;
+  onNeedMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
 };
 
 const DEFAULT_PAGE_SIZE = 12;
@@ -79,6 +92,11 @@ export default function CatalogHorizontalRail({
   onPressItem,
   pageSize = DEFAULT_PAGE_SIZE,
   density = 'comfortable',
+  variant = 'default',
+  eyebrow,
+  onNeedMore,
+  hasMore = false,
+  loadingMore = false,
 }: Props) {
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const loadingMoreRef = useRef(false);
@@ -93,16 +111,26 @@ export default function CatalogHorizontalRail({
     [items, visibleCount],
   );
 
-  const canLoadMore = visibleCount < items.length;
+  const canLoadMore = visibleCount < items.length || hasMore;
 
   const loadMore = useCallback(() => {
-    if (!canLoadMore || loadingMoreRef.current) return;
-    loadingMoreRef.current = true;
-    setVisibleCount((prev) => Math.min(prev + pageSize, items.length));
-    setTimeout(() => {
-      loadingMoreRef.current = false;
-    }, 120);
-  }, [canLoadMore, items.length, pageSize]);
+    if (loadingMoreRef.current) return;
+    if (visibleCount < items.length) {
+      loadingMoreRef.current = true;
+      setVisibleCount((prev) => Math.min(prev + pageSize, items.length));
+      setTimeout(() => {
+        loadingMoreRef.current = false;
+      }, 120);
+      return;
+    }
+    if (hasMore && onNeedMore && !loadingMore) {
+      loadingMoreRef.current = true;
+      onNeedMore();
+      setTimeout(() => {
+        loadingMoreRef.current = false;
+      }, 400);
+    }
+  }, [hasMore, items.length, loadingMore, onNeedMore, pageSize, visibleCount]);
 
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -115,23 +143,34 @@ export default function CatalogHorizontalRail({
   );
 
   // Płynne zabarwienie: znika u góry i dołu — bez ostrej krawędzi między taśmami.
-  const panelBg = isDark
-    ? [
-        'transparent',
-        hexToRgba(accent, 0.08),
-        hexToRgba(accent, 0.28),
-        hexToRgba(accent, 0.18),
-        hexToRgba(accent, 0.06),
-        'transparent',
-      ]
-    : [
-        'transparent',
-        hexToRgba(accent, 0.1),
-        hexToRgba(accent, 0.26),
-        hexToRgba(accent, 0.16),
-        hexToRgba(accent, 0.06),
-        'transparent',
-      ];
+  const exclusive = variant === 'proExclusive';
+  const rainbow = variant === 'rainbow';
+  const railAccent = exclusive ? '#C9A227' : accent;
+  const panelBg = exclusive
+    ? isDark
+      ? ['transparent', 'rgba(201,162,39,0.12)', 'rgba(201,162,39,0.28)', 'rgba(12,10,6,0.55)', 'rgba(201,162,39,0.1)', 'transparent']
+      : ['transparent', 'rgba(201,162,39,0.14)', 'rgba(201,162,39,0.32)', 'rgba(255,248,230,0.9)', 'rgba(201,162,39,0.12)', 'transparent']
+    : rainbow
+      ? isDark
+        ? ['transparent', 'rgba(255,55,95,0.12)', 'rgba(48,209,88,0.16)', 'rgba(100,210,255,0.16)', 'rgba(191,90,242,0.12)', 'transparent']
+        : ['transparent', 'rgba(255,55,95,0.1)', 'rgba(48,209,88,0.12)', 'rgba(100,210,255,0.12)', 'rgba(191,90,242,0.1)', 'transparent']
+    : isDark
+      ? [
+          'transparent',
+          hexToRgba(accent, 0.08),
+          hexToRgba(accent, 0.28),
+          hexToRgba(accent, 0.18),
+          hexToRgba(accent, 0.06),
+          'transparent',
+        ]
+      : [
+          'transparent',
+          hexToRgba(accent, 0.1),
+          hexToRgba(accent, 0.26),
+          hexToRgba(accent, 0.16),
+          hexToRgba(accent, 0.06),
+          'transparent',
+        ];
 
   return (
     <View style={styles.panel}>
@@ -169,6 +208,11 @@ export default function CatalogHorizontalRail({
           <Ionicons name={icon} size={15} color={accent} />
         </View>
         <View style={styles.headCopy}>
+          {eyebrow ? (
+            <Text style={[styles.eyebrow, { color: exclusive ? '#C9A227' : railAccent }]} numberOfLines={1}>
+              {eyebrow}
+            </Text>
+          ) : null}
           <Text style={[styles.title, { color: isDark ? '#F8FAFC' : '#0F172A' }]} numberOfLines={1}>
             {title}
           </Text>
@@ -176,9 +220,13 @@ export default function CatalogHorizontalRail({
             {items.length > 0 ? `${items.length} w taśmie` : emptyLabel || 'Pusto'}
           </Text>
         </View>
-        {items.length > 0 ? (
-          <View style={[styles.countPill, { backgroundColor: hexToRgba(accent, isDark ? 0.32 : 0.18) }]}>
-            <Text style={[styles.count, { color: accent }]}>{items.length}</Text>
+        {exclusive ? (
+          <View style={styles.proSeal}>
+            <Text style={styles.proSealText}>PRO</Text>
+          </View>
+        ) : items.length > 0 ? (
+          <View style={[styles.countPill, { backgroundColor: hexToRgba(railAccent, isDark ? 0.32 : 0.18) }]}>
+            <Text style={[styles.count, { color: railAccent }]}>{items.length}</Text>
           </View>
         ) : null}
       </View>
@@ -359,7 +407,11 @@ export default function CatalogHorizontalRail({
               </View>
             </ApplePressable>
           ))}
-          {canLoadMore ? <View style={styles.sentinel} /> : null}
+          {canLoadMore ? (
+            <View style={styles.sentinel}>
+              {loadingMore ? <ActivityIndicator color={railAccent} /> : null}
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -401,6 +453,11 @@ export function CatalogHorizontalRailStack({
             isDark={isDark}
             onPressItem={onPressItem}
             density={density}
+            variant={section.variant}
+            eyebrow={section.eyebrow}
+            onNeedMore={section.onNeedMore}
+            hasMore={section.hasMore}
+            loadingMore={section.loadingMore}
           />
         </View>
       ))}
@@ -474,6 +531,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headCopy: { flex: 1, minWidth: 0, gap: 1 },
+  eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
   title: { fontSize: 16, fontWeight: '800', letterSpacing: -0.35 },
   headMeta: { fontSize: 11, fontWeight: '500', color: '#8E8E93' },
   countPill: {
@@ -484,6 +542,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   count: { fontSize: 12, fontWeight: '800' },
+  proSeal: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#C9A227',
+  },
+  proSealText: { color: '#1A1404', fontSize: 11, fontWeight: '900', letterSpacing: 0.6 },
   empty: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 18,

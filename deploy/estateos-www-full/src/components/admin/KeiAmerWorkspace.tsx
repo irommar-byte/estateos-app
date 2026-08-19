@@ -605,6 +605,7 @@ export default function KeiAmerWorkspace() {
   const [autoImport, setAutoImport] = useState<KeiAutoImportConfig | null>(null);
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoMessage, setAutoMessage] = useState("");
+  const [autoExpanded, setAutoExpanded] = useState(false);
   const [autoDraft, setAutoDraft] = useState({
     enabled: false,
     intervalMinutes: 60,
@@ -1271,13 +1272,15 @@ export default function KeiAmerWorkspace() {
 
         <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.06] p-4 md:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
+            <button type="button" className="text-left min-w-0" onClick={() => setAutoExpanded((v) => !v)}>
               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Automatyczny import</p>
               <p className="mt-1 text-sm text-white/70 leading-relaxed">
-                Serwer sam wrzuca ogłoszenia według interwału, liczby, ID użytkownika, prowizji, typu i transakcji.
-                Aplikację możesz zamknąć.
+                {autoDraft.enabled
+                  ? "Załączony — serwer importuje sam, niezależnie od ręcznego Importuj."
+                  : "Wyłączony — tylko ręczny import z listy."}{" "}
+                {autoExpanded ? "Zwiń ustawienia." : "Rozwiń, żeby zmienić interwał i ilość."}
               </p>
-            </div>
+            </button>
             <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/80">
               <input
                 type="checkbox"
@@ -1292,6 +1295,8 @@ export default function KeiAmerWorkspace() {
               {autoDraft.enabled ? "Włączony" : "Wyłączony"}
             </label>
           </div>
+          {autoExpanded ? (
+          <div>
           <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <label className="flex flex-col gap-1.5 col-span-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Interwał</span>
@@ -1380,11 +1385,13 @@ export default function KeiAmerWorkspace() {
             ) : (
               <p className="text-[11px] text-white/40">Jeszcze nie uruchomiono.</p>
             )}
-            {autoImport?.lastError ? (
+            {autoImport?.lastError && !/after['’]? was called outside a request scope/i.test(autoImport.lastError) ? (
               <p className="text-[11px] text-amber-300">{autoImport.lastError}</p>
             ) : null}
             {autoMessage ? <p className="text-[11px] text-emerald-300">{autoMessage}</p> : null}
           </div>
+          </div>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

@@ -90,8 +90,29 @@ export function buildHomeMarketRailSections(args: {
   userLocation: Loc;
   labels: HomeLabels;
   deedTape?: CatalogRailItem[];
+  intelligenceTape?: CatalogRailItem[];
+  intelligenceTitle?: string;
+  intelligenceEyebrow?: string;
+  nearDeedsEyebrow?: string;
+  onNeedMoreDeeds?: () => void;
+  deedHasMore?: boolean;
+  deedLoadingMore?: boolean;
 }): CatalogRailSection[] {
-  const { favorites, mine, catalog, userLocation, labels, deedTape = [] } = args;
+  const {
+    favorites,
+    mine,
+    catalog,
+    userLocation,
+    labels,
+    deedTape = [],
+    intelligenceTape = [],
+    intelligenceTitle,
+    intelligenceEyebrow,
+    nearDeedsEyebrow,
+    onNeedMoreDeeds,
+    deedHasMore,
+    deedLoadingMore,
+  } = args;
 
   const newest = [...catalog]
     .sort((a, b) => publishedAtMs(b.raw) - publishedAtMs(a.raw))
@@ -158,12 +179,30 @@ export function buildHomeMarketRailSections(args: {
       accent: '#6366F1',
       items: newest,
     },
+    ...(intelligenceTape.length
+      ? [
+          {
+            id: 'intelligence',
+            title: intelligenceTitle || 'Dla Ciebie',
+            icon: 'color-wand' as IconName,
+            accent: '#BF5AF2',
+            items: intelligenceTape,
+            variant: 'rainbow' as const,
+            eyebrow: intelligenceEyebrow || 'EstateOS Intelligence',
+          },
+        ]
+      : []),
     {
       id: 'near-deeds',
       title: labels.nearDeeds,
-      icon: 'analytics',
-      accent: '#10b981',
+      icon: 'diamond',
+      accent: '#C9A227',
       items: deedTape,
+      variant: 'proExclusive' as const,
+      eyebrow: nearDeedsEyebrow || 'Pakiet Pro · tylko dla Ciebie',
+      onNeedMore: onNeedMoreDeeds,
+      hasMore: deedHasMore,
+      loadingMore: deedLoadingMore,
     },
     {
       id: 'nearest',
