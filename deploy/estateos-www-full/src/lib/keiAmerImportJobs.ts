@@ -637,6 +637,8 @@ export async function resumeOrphanKeiImportJobs(): Promise<number> {
   }
   return resumed;
 }
+
+export async function reapStaleKeiImportJobs(): Promise<number> {
   await ensureKeiAmerImportJobTable();
   const queued = await prisma.$executeRawUnsafe(
     `UPDATE KeiAmerImportJob
