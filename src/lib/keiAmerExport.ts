@@ -24,7 +24,7 @@ import {
 const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
 const DEFAULT_EXPORT_COUNT = 1;
-const MAX_EXPORT_COUNT = 25;
+const MAX_EXPORT_COUNT = 80;
 const KEI_MAX_IMPORT_IMAGES = 8;
 
 function resolveExportUserId(raw?: unknown): number {
@@ -157,6 +157,8 @@ export async function exportKeiListingsToEstateOS(options?: {
   selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
+  /** Auto: pomijaj duplikaty i leć dalej aż wystawisz `count` ofert. */
+  fillUntilPublished?: boolean;
   onProgress?: KeiExportProgressEmitter;
   /** Cooperative cancel between items (durable server jobs). */
   shouldCancel?: () => boolean | Promise<boolean>;
@@ -198,7 +200,9 @@ export async function exportKeiListingsToEstateOS(options?: {
     }))
     .filter((row) => row.portalUrl);
 
-  const count = selections.length > 0 ? selections.length : resolveExportCount(options?.count);
+  const fillUntilPublished = Boolean(options?.fillUntilPublished) || selections.length === 0;
+  const publishTarget = resolveExportCount(options?.count);
+  const count = fillUntilPublished ? publishTarget : selections.length;
 
   const owner = await prisma.user.findUnique({
     where: { id: targetUserId },
@@ -244,9 +248,9 @@ export async function exportKeiListingsToEstateOS(options?: {
   }
 
   const plannedTotal =
-    selections.length > 0
-      ? exportTargets.length
-      : Math.min(exportTargets.length, count);
+    fillUntilPublished
+      ? Math.min(Math.max(publishTarget, 1), exportTargets.length || publishTarget)
+      : exportTargets.length;
 
   emit?.({ type: 'batch_start', total: plannedTotal });
 
@@ -255,7 +259,7 @@ export async function exportKeiListingsToEstateOS(options?: {
   let itemIndex = 0;
 
   for (const target of exportTargets) {
-    if (selections.length === 0 && exported.length >= count) break;
+    if (fillUntilPublished && exported.length >= count) break;
     if (await checkCancel()) {
       throw new Error('Import anulowany.');
     }

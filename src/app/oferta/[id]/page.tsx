@@ -721,6 +721,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 isOwner={isOwner}
                 canAsk={canContactSeller && Boolean(offer?.user?.id || offer?.userId)}
                 views={Number(offer?.views || 0)}
+                favoritesCount={Number(offer?.favoritesCount || 0)}
                 offerId={offer?.id || offer?._id}
                 listedAtLabel={
                   offer?.createdAt
@@ -736,6 +737,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 labels={{
                   ask: t.askSeller,
                   views: t.views,
+                  favorites: t.favorites,
+                  favoritesHint: t.favoritesHint,
                   offerId: t.offerId,
                   listedSince: t.listedSince,
                   online: t.sellerOnline,
@@ -878,6 +881,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   isOwner={isOwner}
                   canAsk={canContactSeller && Boolean(offer?.user?.id || offer?.userId)}
                   views={Number(offer?.views || 0)}
+                  favoritesCount={Number(offer?.favoritesCount || 0)}
                   offerId={offer?.id || offer?._id}
                   listedAtLabel={
                     offer?.createdAt
@@ -893,6 +897,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   labels={{
                     ask: t.askSeller,
                     views: t.views,
+                    favorites: t.favorites,
+                    favoritesHint: t.favoritesHint,
                     offerId: t.offerId,
                     listedSince: t.listedSince,
                     online: t.sellerOnline,

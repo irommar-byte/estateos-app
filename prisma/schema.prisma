@@ -223,6 +223,8 @@ model Offer {
   legalCheckRejectionText   String?                    @db.Text
   legalCheckOwnerNote       String?                    @db.Text
   isLegalSafeVerified       Boolean                    @default(false)
+  /// JSON: [{ field, label, from, to }] — ostatnia edycja czekająca na admina.
+  pendingEditChanges        Json?
   status                    OfferStatus                @default(ACTIVE)
   expiresAt                 DateTime?
   promotedUntil             DateTime?

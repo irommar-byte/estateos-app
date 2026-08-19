@@ -5,6 +5,8 @@ export type OfferPageCopy = {
   backToMap: string;
   offerId: string;
   views: string;
+  favorites: string;
+  favoritesHint: string;
   listedSince: string;
   agency: string;
   privateOwner: string;
@@ -195,6 +197,8 @@ const PL: OfferPageCopy = {
   backToMap: "← Powrót do mapy",
   offerId: "ID Oferty",
   views: "Odsłony",
+  favorites: "W ulubionych",
+  favoritesHint: "Ile osób dodało tę ofertę do ulubionych",
   listedSince: "Dodano",
   agency: "Agencja",
   privateOwner: "Właściciel prywatny",
@@ -395,6 +399,8 @@ const EN: OfferPageCopy = {
   backToMap: "← Back to map",
   offerId: "Listing ID",
   views: "Views",
+  favorites: "Saved",
+  favoritesHint: "How many people saved this listing",
   listedSince: "Listed",
   agency: "Agency",
   privateOwner: "Private owner",

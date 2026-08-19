@@ -11,6 +11,8 @@ import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
 import { listOfferImportSourceMeta } from '@/lib/offerPrivateNotes';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { loadPendingEditChangesByOfferIds } from '@/lib/offerEditReview';
+import { ensureOfferLegalColumns } from '@/lib/services/offer.service';
 
 type AdminUser = { id: number; role: string } | null;
 
@@ -80,6 +82,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    await ensureOfferLegalColumns();
     const url = new URL(req.url);
     const segmentRaw = String(url.searchParams.get('segment') || 'all').trim().toLowerCase();
     const segment =
@@ -121,6 +124,7 @@ export async function GET(req: Request) {
     const offerIds = offers.map((o) => o.id);
     // Tylko cache z DB — bez synchronicznych HTTP do Otodom/OLX (to blokowało otwarcie zakładki).
     const sourceMeta = await listOfferImportSourceMeta(offerIds);
+    const pendingEdits = await loadPendingEditChangesByOfferIds(offerIds);
 
     const counts = { pending: 0, active: 0, archived: 0, total: offers.length };
     const enriched = offers.map((offer) => {
@@ -147,6 +151,7 @@ export async function GET(req: Request) {
         sourceIsActive: source?.sourceIsActive ?? null,
         sourceListingExpired: source?.sourceIsActive === false,
         sourceLastCheckAt: source?.sourceLastCheckAt ?? null,
+        pendingEditChanges: pendingEdits.get(offer.id) || [],
         _tab: tab as 'pending' | 'active' | 'archived',
       };
     });

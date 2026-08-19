@@ -36,6 +36,7 @@ export type KeiImportJobSnapshot = {
   propertyKind: KeiPropertyKind;
   transactionKind: KeiTransactionKind;
   source: KeiImportJobSource;
+  targetCount: number;
   items: KeiImportJobItem[];
   exported: Array<{
     keiListingId?: string;
@@ -254,12 +255,19 @@ function applyEventToItems(items: KeiImportJobItem[], event: KeiExportProgressEv
   return items;
 }
 
-function parseJobSource(payloadJson: string | null | undefined): KeiImportJobSource {
+function parseJobPayload(payloadJson: string | null | undefined): {
+  source: KeiImportJobSource;
+  targetCount: number;
+} {
   try {
-    const payload = JSON.parse(payloadJson || '{}') as { source?: string };
-    return payload.source === 'auto' ? 'auto' : 'manual';
+    const payload = JSON.parse(payloadJson || '{}') as { source?: string; count?: unknown };
+    const count = Number(payload.count);
+    return {
+      source: payload.source === 'auto' ? 'auto' : 'manual',
+      targetCount: Number.isFinite(count) && count > 0 ? Math.floor(count) : 0,
+    };
   } catch {
-    return 'manual';
+    return { source: 'manual', targetCount: 0 };
   }
 }
 
@@ -291,7 +299,8 @@ function mapRow(row: JobRow): KeiImportJobSnapshot {
     message: row.message || '',
     propertyKind: (row.propertyKind as KeiPropertyKind) || 'apartment',
     transactionKind: (row.transactionKind as KeiTransactionKind) || 'sale',
-    source: parseJobSource(row.payloadJson),
+    source: parseJobPayload(row.payloadJson).source,
+    targetCount: parseJobPayload(row.payloadJson).targetCount,
     items,
     exported,
     skipped,
@@ -542,6 +551,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         selections: payload.selections,
         floorPlanOverrides: payload.floorPlanOverrides,
         floorPlanSelections: payload.floorPlanSelections,
+        fillUntilPublished: payload.source === 'auto',
         shouldCancel: () => isCancelRequested(jobId),
         onProgress: enqueueProgress,
       });

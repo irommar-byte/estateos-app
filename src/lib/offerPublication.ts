@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { clearPendingEditChanges } from '@/lib/offerEditReview';
 import { notifyAdminsOfferPending } from '@/lib/adminAttentionPush';
 import { logWalletCouponConsume, logWalletCreditConsume } from '@/lib/walletLedger';
 import {
@@ -885,6 +886,7 @@ export async function completeAdminOfferApproval(params: {
 }): Promise<AdminOfferApprovalResult> {
   await ensureOfferPublicationSchema();
   const offerId = params.offerId;
+  await clearPendingEditChanges(offerId);
 
   const active = await activePublicationForOffer(prisma, offerId);
   if (active) {

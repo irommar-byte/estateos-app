@@ -244,11 +244,12 @@ export async function pickNewestKeiListingsForImport(options: {
   transactionKind: KeiTransactionKind;
   count: number;
 }): Promise<Array<{ keiId: string; portalUrl: string; address?: string }>> {
-  const count = Math.max(1, Math.min(25, Math.floor(options.count) || 1));
+  const publishCount = Math.max(1, Math.min(25, Math.floor(options.count) || 1));
+  const poolSize = Math.min(80, Math.max(publishCount * 8, publishCount));
   const picked: Array<{ keiId: string; portalUrl: string; address?: string }> = [];
   const seen = new Set<string>();
 
-  for (let page = 1; page <= 8 && picked.length < count; page += 1) {
+  for (let page = 1; page <= 16 && picked.length < poolSize; page += 1) {
     const preview = await previewKeiExportListings({
       propertyKind: options.propertyKind,
       transactionKind: options.transactionKind,
@@ -264,7 +265,7 @@ export async function pickNewestKeiListingsForImport(options: {
         portalUrl: row.portalUrl,
         address: row.address,
       });
-      if (picked.length >= count) break;
+      if (picked.length >= poolSize) break;
     }
     if (!preview.hasNextPage) break;
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Briefcase, CalendarDays, Eye, MessageCircleQuestion, ShieldCheck, Star } from "lucide-react";
+import { Briefcase, CalendarDays, Eye, Heart, MessageCircleQuestion, ShieldCheck, Star } from "lucide-react";
 
 type Props = {
   sellerLabel: string;
@@ -15,6 +15,7 @@ type Props = {
   isOwner: boolean;
   canAsk: boolean;
   views: number;
+  favoritesCount?: number;
   offerId: string | number;
   listedAtLabel: string;
   isLegalKwVerified: boolean;
@@ -25,6 +26,8 @@ type Props = {
   labels: {
     ask: string;
     views: string;
+    favorites?: string;
+    favoritesHint?: string;
     offerId: string;
     listedSince: string;
     online: string;
@@ -92,6 +95,7 @@ export default function OfferHeroMetaBar({
   isOwner,
   canAsk,
   views,
+  favoritesCount = 0,
   offerId,
   listedAtLabel,
   isLegalKwVerified,
@@ -184,6 +188,17 @@ export default function OfferHeroMetaBar({
           <span className="eos-offer-hero-bar__v">
             <Eye size={14} aria-hidden />
             {views}
+          </span>
+        </div>
+
+        <div
+          className="eos-offer-hero-bar__cell"
+          title={labels.favoritesHint || "Liczba osób, które dodały tę ofertę do ulubionych"}
+        >
+          <span className="eos-offer-hero-bar__k">{labels.favorites || "W ulubionych"}</span>
+          <span className="eos-offer-hero-bar__v" style={{ color: "#e11d48" }}>
+            <Heart size={14} aria-hidden fill="currentColor" />
+            {favoritesCount}
           </span>
         </div>
 

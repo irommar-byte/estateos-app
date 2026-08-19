@@ -5,6 +5,8 @@ export const UK: OfferPageCopy = {
   backToMap: "← Повернутися до карти",
   offerId: "ID оголошення",
   views: "Перегляди",
+  favorites: "В обраному",
+  favoritesHint: "Скільки людей додали оголошення до обраного",
   listedSince: "Додано",
   agency: "Агентство",
   privateOwner: "Приватний власник",

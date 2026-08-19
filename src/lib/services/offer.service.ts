@@ -18,6 +18,7 @@ import {
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush, dispatchFavoritesStatusChangePush, dispatchFavoritesNewSimilarPush } from '@/lib/favoritesPricePush';
 import { notifyAdminsLegalVerificationPending } from '@/lib/adminAttentionPush';
+import { applyOfferReapproval, diffOfferForReview, withPriceChangeIfReviewing } from '@/lib/offerEditReview';
 import { syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
@@ -161,6 +162,7 @@ export async function ensureOfferLegalColumns() {
     await ensureOfferColumn('legalCheckRejectionText', 'TEXT');
     await ensureOfferColumn('legalCheckOwnerNote', 'TEXT');
     await ensureOfferColumn('isLegalSafeVerified', 'BOOLEAN');
+    await ensureOfferColumn('pendingEditChanges', 'JSON');
     // Legacy rows may have NULL in fields now modeled as non-null in Prisma.
     await prisma.$executeRawUnsafe(
       `UPDATE \`Offer\` SET \`legalCheckStatus\` = 'NONE' WHERE \`legalCheckStatus\` IS NULL OR TRIM(\`legalCheckStatus\`) = ''`
@@ -621,6 +623,7 @@ export async function updateOffer(body: any) {
       localityCountryCode: true,
       street: true,
       buildingNumber: true,
+      landRegistryNumber: true,
       status: true,
       agentCommissionPercent: true,
     }
@@ -718,9 +721,30 @@ export async function updateOffer(body: any) {
 
   const requestedStatusRaw = String(body.newStatus ?? body.status ?? '').toUpperCase();
   const requestedStatus = requestedStatusRaw ? mapStatus(requestedStatusRaw) : null;
-  if (requestedStatus === OfferStatus.ACTIVE && existing.status !== OfferStatus.ACTIVE) {
+  if (requestedStatus === OfferStatus.ACTIVE && existing.status !== OfferStatus.ACTIVE && isAdmin) {
     throw new OfferValidationError('Aktywacja oferty wymaga dedykowanego endpointu publikacji.');
   }
+  if (requestedStatus === OfferStatus.ACTIVE && existing.status !== OfferStatus.ACTIVE && !isAdmin) {
+    throw new OfferValidationError('Aktywacja oferty wymaga dedykowanego endpointu publikacji.');
+  }
+
+  const reviewChanges = withPriceChangeIfReviewing(
+    existing as Record<string, unknown>,
+    body as Record<string, unknown>,
+    diffOfferForReview(existing as Record<string, unknown>, body as Record<string, unknown>),
+  );
+  const reapproval = applyOfferReapproval({
+    existingStatus: String(existing.status),
+    isAdmin,
+    changes: reviewChanges,
+    offerId: Number(id),
+    offerTitle: typeof existing.title === 'string' ? existing.title : null,
+  });
+  const nextStatus = reapproval.needsReview
+    ? OfferStatus.PENDING
+    : isAdmin && requestedStatus
+      ? requestedStatus
+      : existing.status;
 
   const pricePatch = bodyTouchesOfferPrice(body)
     ? await resolveOfferPriceFromBody({
@@ -839,8 +863,8 @@ export async function updateOffer(body: any) {
         legalCheckRejectionText: null,
         isLegalSafeVerified: false,
       }),
-      ...((body.status !== undefined || body.newStatus !== undefined) && {
-        status: requestedStatus,
+      ...((reapproval.needsReview || isAdmin) && {
+        status: nextStatus,
       }),
       ...(agentCommissionPercent !== undefined && { agentCommissionPercent })
     };
