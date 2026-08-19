@@ -17,8 +17,9 @@ export async function GET(req: Request) {
     }
     const url = new URL(req.url);
     const locale = String(url.searchParams.get('locale') || 'pl');
-    const limit = Number(url.searchParams.get('limit') || 48);
-    const tape = await buildListingTape({ locale, limit });
+    const limit = Number(url.searchParams.get('limit') || 24);
+    const offset = Number(url.searchParams.get('offset') || 0);
+    const tape = await buildListingTape({ locale, limit, offset });
     return NextResponse.json(tape);
   } catch (error) {
     console.error('[market.listing-tape]', error);

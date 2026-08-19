@@ -72,10 +72,10 @@ function roundOrNull(value: number | null, digits = 1): number | null {
   return Math.round(value * f) / f;
 }
 
-function toneOf(vsDeedsPct: number | null): PricePulseTone {
-  if (vsDeedsPct == null) return 'flat';
-  if (vsDeedsPct >= 1.5) return 'up';
-  if (vsDeedsPct <= -1.5) return 'down';
+function toneOf(changePct: number | null): PricePulseTone {
+  if (changePct == null) return 'flat';
+  if (changePct >= 0.4) return 'up';
+  if (changePct <= -0.4) return 'down';
   return 'flat';
 }
 
@@ -232,10 +232,21 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
   const d30 = windowStats(listingsByDay, deedsByDay, lookbackDays, 30);
   const d90 = windowStats(listingsByDay, deedsByDay, lookbackDays, 90);
 
-  const vsDeedsPct = d7.vsDeedsPct ?? d30.vsDeedsPct;
-  const listingPpsm = d7.listingPpsm ?? d30.listingPpsm;
-  const deedPpsm = d7.deedPpsm ?? d30.deedPpsm;
-  const tone = toneOf(vsDeedsPct);
+  const seriesChange = (days: number): number | null => {
+    const slice = series.filter((point) => point.listingPpsm != null).slice(-Math.max(days, 2));
+    if (slice.length < 2) return null;
+    const first = slice[0].listingPpsm;
+    const last = slice[slice.length - 1].listingPpsm;
+    return roundOrNull(pctChange(last, first));
+  };
+  if (d7.listingChangePct == null) d7.listingChangePct = seriesChange(7);
+  if (d30.listingChangePct == null) d30.listingChangePct = seriesChange(30);
+  if (d90.listingChangePct == null) d90.listingChangePct = seriesChange(90);
+
+  const vsDeedsPct = d30.vsDeedsPct ?? d7.vsDeedsPct;
+  const listingPpsm = d30.listingPpsm ?? d7.listingPpsm;
+  const deedPpsm = d30.deedPpsm ?? d7.deedPpsm;
+  const tone = toneOf(d30.listingChangePct ?? d7.listingChangePct);
   const direction = directionOf(d30.listingChangePct ?? d7.listingChangePct);
 
   const deedByDistrict = new Map<string, number>();
@@ -277,7 +288,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     direction,
     windows: { d7, d30, d90 },
     series,
-    sparkline: series.slice(-30).map((point) => point.vsDeedsPct),
+    sparkline: series.slice(-30).map((point) => point.listingPpsm),
     districts: districts.slice(0, 12),
   };
 

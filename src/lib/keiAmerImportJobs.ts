@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   exportKeiListingsToEstateOS,
@@ -36,6 +35,7 @@ export type KeiImportJobSnapshot = {
   message: string;
   propertyKind: KeiPropertyKind;
   transactionKind: KeiTransactionKind;
+  source: KeiImportJobSource;
   items: KeiImportJobItem[];
   exported: Array<{
     keiListingId?: string;
@@ -56,6 +56,8 @@ export type KeiImportJobSnapshot = {
   finishedAt: string | null;
 };
 
+export type KeiImportJobSource = 'manual' | 'auto';
+
 export type KeiImportJobCreateInput = {
   adminUserId: number;
   propertyKind: KeiPropertyKind;
@@ -66,6 +68,8 @@ export type KeiImportJobCreateInput = {
   selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
+  /** Cron vs ręczny Importuj — jeden job na raz, żeby się nie gryzły. */
+  source?: KeiImportJobSource;
 };
 
 type JobRow = {
@@ -250,6 +254,15 @@ function applyEventToItems(items: KeiImportJobItem[], event: KeiExportProgressEv
   return items;
 }
 
+function parseJobSource(payloadJson: string | null | undefined): KeiImportJobSource {
+  try {
+    const payload = JSON.parse(payloadJson || '{}') as { source?: string };
+    return payload.source === 'auto' ? 'auto' : 'manual';
+  } catch {
+    return 'manual';
+  }
+}
+
 function mapRow(row: JobRow): KeiImportJobSnapshot {
   let items: KeiImportJobItem[] = [];
   let exported: KeiImportJobSnapshot['exported'] = [];
@@ -278,6 +291,7 @@ function mapRow(row: JobRow): KeiImportJobSnapshot {
     message: row.message || '',
     propertyKind: (row.propertyKind as KeiPropertyKind) || 'apartment',
     transactionKind: (row.transactionKind as KeiTransactionKind) || 'sale',
+    source: parseJobSource(row.payloadJson),
     items,
     exported,
     skipped,
@@ -440,6 +454,7 @@ export async function createKeiImportJob(input: KeiImportJobCreateInput): Promis
     selections: input.selections,
     floorPlanOverrides: input.floorPlanOverrides,
     floorPlanSelections: input.floorPlanSelections,
+    source: input.source === 'auto' ? 'auto' : 'manual',
   };
 
   await prisma.$executeRawUnsafe(
@@ -590,13 +605,26 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
   }
 }
 
-/** Enqueue durable job and keep processing after the HTTP response ends. */
+export async function hasActiveKeiImportJob(): Promise<boolean> {
+  await ensureKeiAmerImportJobTable();
+  const rows = (await prisma.$queryRawUnsafe<Array<{ total: number | bigint }>>(
+    `SELECT COUNT(*) AS total FROM KeiAmerImportJob
+     WHERE status = 'running'
+        OR (status = 'queued' AND updatedAt > DATE_SUB(NOW(3), INTERVAL 15 MINUTE))`,
+  )) as Array<{ total: number | bigint }>;
+  return Number(rows[0]?.total || 0) > 0;
+}
+
+/**
+ * Kolejkuje job i od razu odpala worker w tym procesie.
+ * Nie używamy Next.js `after()` — cron PM2 / skrypt nie mają request scope
+ * (`'after' was called outside a request scope`) i przerywały auto-import.
+ */
 export async function enqueueKeiImportJob(input: KeiImportJobCreateInput): Promise<KeiImportJobSnapshot> {
+  if (await hasActiveKeiImportJob()) {
+    throw new Error('Inny import KEI już trwa. Poczekaj, aż się skończy — automatyczny i ręczny nie mogą iść naraz.');
+  }
   const job = await createKeiImportJob(input);
-  after(() => {
-    void runKeiImportJob(job.id);
-  });
-  // Also kick immediately in case `after` is delayed.
   void runKeiImportJob(job.id);
   return job;
 }

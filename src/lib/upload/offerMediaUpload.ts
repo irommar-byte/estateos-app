@@ -23,6 +23,15 @@ const MIME_TO_EXT: Record<string, string> = {
 
 const activeUploads = new Set<number>();
 
+async function actorMayEditOffer(offerUserId: number, actorUserId: number): Promise<boolean> {
+  if (offerUserId === actorUserId) return true;
+  const actor = await prisma.user.findUnique({
+    where: { id: actorUserId },
+    select: { role: true },
+  });
+  return String(actor?.role || '').toUpperCase() === 'ADMIN';
+}
+
 export async function acquireOfferUploadLock(offerId: number, timeoutMs = 20_000) {
   const started = Date.now();
   while (activeUploads.has(offerId)) {
@@ -252,7 +261,7 @@ export async function saveOfferGalleryOrFloorplan(params: {
     select: { userId: true },
   });
   if (!offerCheck) return { ok: false, status: 404, error: 'Nie znaleziono oferty.' };
-  if (offerCheck.userId !== params.ownerUserId) {
+  if (offerCheck.userId !== params.ownerUserId && !(await actorMayEditOffer(offerCheck.userId, params.ownerUserId))) {
     return { ok: false, status: 403, error: 'Brak uprawnień.' };
   }
 
@@ -348,7 +357,7 @@ export async function saveOfferFloorPlan3d(params: {
   if (!offer) {
     return { ok: false, status: 404, error: 'Nie znaleziono oferty.' };
   }
-  if (offer.userId !== params.ownerUserId) {
+  if (offer.userId !== params.ownerUserId && !(await actorMayEditOffer(offer.userId, params.ownerUserId))) {
     return { ok: false, status: 403, error: 'Brak uprawnień do edycji oferty.' };
   }
 
@@ -388,7 +397,7 @@ export async function saveOfferFloorPlanScanMeta(params: {
   if (!offer) {
     return { ok: false, status: 404, error: 'Nie znaleziono oferty.' };
   }
-  if (offer.userId !== params.ownerUserId) {
+  if (offer.userId !== params.ownerUserId && !(await actorMayEditOffer(offer.userId, params.ownerUserId))) {
     return { ok: false, status: 403, error: 'Brak uprawnień do edycji oferty.' };
   }
 
@@ -529,7 +538,7 @@ export async function saveOfferBinaryAttachment(params: {
       select: { userId: true },
     });
     if (!offer) return { ok: false, status: 404, error: 'Nie znaleziono oferty.' };
-    if (offer.userId !== params.actorUserId) {
+    if (offer.userId !== params.actorUserId && !(await actorMayEditOffer(offer.userId, params.actorUserId))) {
       return { ok: false, status: 403, error: 'Brak uprawnień.' };
     }
   } else {

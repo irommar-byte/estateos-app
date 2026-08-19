@@ -32,7 +32,8 @@ export type ListingTapeMeta = {
 
 export type ListingTapeOffer = PublicListOffer & { marketTape: ListingTapeMeta };
 
-const TAPE_LIMIT = 48;
+const TAPE_LIMIT = 24;
+const TAPE_MAX = 80;
 const MIN_MEDIAN_TXNS = 8;
 const CACHE_MS = 60_000;
 
@@ -40,13 +41,10 @@ const cache = new Map<
   string,
   {
     at: number;
-    payload: {
-      ok: true;
-      title: string;
-      source: string;
-      periodDays: number;
-      items: ListingTapeOffer[];
-    };
+    items: ListingTapeOffer[];
+    title: string;
+    source: string;
+    periodDays: number;
   }
 >();
 
@@ -136,20 +134,38 @@ async function loadMedianByDistrict(periodDays: number): Promise<{
   return { cityMedian: liveCity, byDistrict: live };
 }
 
-export async function buildListingTape(opts?: { limit?: number; locale?: string }): Promise<{
+export async function buildListingTape(opts?: {
+  limit?: number;
+  offset?: number;
+  locale?: string;
+}): Promise<{
   ok: true;
   title: string;
   source: string;
   periodDays: number;
+  offset: number;
+  hasMore: boolean;
+  total: number;
   items: ListingTapeOffer[];
 }> {
-  const limit = Math.min(80, Math.max(8, opts?.limit ?? TAPE_LIMIT));
+  const limit = Math.min(TAPE_MAX, Math.max(8, opts?.limit ?? TAPE_LIMIT));
+  const offset = Math.max(0, Math.floor(opts?.offset ?? 0));
   const locale = opts?.locale || 'pl';
-  const cacheKey = `${locale}:${limit}`;
+  const cacheKey = locale;
   const now = Date.now();
   const hit = cache.get(cacheKey);
   if (hit && now - hit.at < CACHE_MS) {
-    return hit.payload;
+    const items = hit.items.slice(offset, offset + limit);
+    return {
+      ok: true,
+      title: hit.title,
+      source: hit.source,
+      periodDays: hit.periodDays,
+      offset,
+      hasMore: offset + items.length < hit.items.length,
+      total: hit.items.length,
+      items,
+    };
   }
 
   await ensureMarketTables();
@@ -166,7 +182,7 @@ export async function buildListingTape(opts?: { limit?: number; locale?: string 
       area: { gte: 15 },
     },
     orderBy: { updatedAt: 'desc' },
-    take: 400,
+    take: 900,
     select: {
       id: true,
       title: true,
@@ -242,7 +258,7 @@ export async function buildListingTape(opts?: { limit?: number; locale?: string 
   }
 
   ranked.sort((a, b) => a.vsMedianPct - b.vsMedianPct);
-  const sliced = ranked.slice(0, limit);
+  const allRanked = ranked;
 
   let fx = { rate: DEFAULT_EUR_PLN_RATE, date: new Date().toISOString().slice(0, 10) };
   try {
@@ -253,10 +269,10 @@ export async function buildListingTape(opts?: { limit?: number; locale?: string 
   }
   const legalOverrides = await legalStatusOverridesForOffers(
     prisma,
-    sliced.map((row) => row.offer.id),
+    allRanked.map((row) => row.offer.id),
   );
 
-  const items: ListingTapeOffer[] = sliced.map((row) => {
+  const items: ListingTapeOffer[] = allRanked.map((row) => {
     const shaped = shapePublicListOffer(row.offer as unknown as Record<string, unknown>, {
       viewsCount: 0,
       fx,
@@ -277,13 +293,17 @@ export async function buildListingTape(opts?: { limit?: number; locale?: string 
     };
   });
 
-  const payload = {
+  const title = 'Przy aktach';
+  cache.set(cacheKey, { at: now, items, title, source: RCN_SOURCE_LABEL, periodDays });
+  const page = items.slice(offset, offset + limit);
+  return {
     ok: true as const,
-    title: 'Przy aktach',
+    title,
     source: RCN_SOURCE_LABEL,
     periodDays,
-    items,
+    offset,
+    hasMore: offset + page.length < items.length,
+    total: items.length,
+    items: page,
   };
-  cache.set(cacheKey, { at: now, payload });
-  return payload;
 }
