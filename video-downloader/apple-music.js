@@ -578,14 +578,14 @@ export async function resolveAppleMusicDownloadUrl(appleUrl) {
 
 
 const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || "http://127.0.0.1:8191").replace(/\/$/, "");
-const APLMATE_FLARE_WAIT_S = Number(process.env.APLMATE_FLARE_WAIT_S || 15);
+const APLMATE_FLARE_WAIT_S = Number(process.env.APLMATE_FLARE_WAIT_S || 30);
 
 async function flareSolverrCall(payload) {
   const res = await fetch(`${FLARESOLVERR_URL}/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(180000),
+    signal: AbortSignal.timeout(240000),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.status !== "ok") {
@@ -606,55 +606,95 @@ function extractTurnstileToken(html) {
   return match?.[1] || "";
 }
 
+function cookiesArrayToHeader(cookies) {
+  return (cookies || []).map((c) => `${c.name}=${c.value}`).join("; ");
+}
+
+async function aplmateFetchWithCookies(pathname, { method = "GET", body, cookieHeader, userAgent }) {
+  const headers = {
+    "User-Agent": userAgent || UA,
+    Accept: "*/*",
+    "X-Requested-With": "XMLHttpRequest",
+    Referer: `${APLMATE_BASE}/`,
+    Origin: APLMATE_BASE,
+  };
+  if (cookieHeader) headers.Cookie = cookieHeader;
+  if (body) headers["Content-Type"] = "application/x-www-form-urlencoded";
+  const res = await fetch(`${APLMATE_BASE}${pathname}`, {
+    method,
+    headers,
+    body,
+    signal: AbortSignal.timeout(60000),
+  });
+  return res.text();
+}
+
 async function resolveAppleMusicDownloadUrlViaFlareSolverr(appleUrl) {
   let sessionId = "";
   try {
     const created = await flareSolverrCall({ cmd: "sessions.create" });
     sessionId = created.session;
+
+    // Load APLMate homepage – FlareSolverr solves Cloudflare challenge and collects cf_clearance cookie
     const landing = await flareSolverrCall({
       cmd: "request.get",
       url: `${APLMATE_BASE}/`,
       session: sessionId,
-      maxTimeout: 180000,
+      maxTimeout: 200000,
       waitInSeconds: APLMATE_FLARE_WAIT_S,
     });
-    const turnstileToken = extractTurnstileToken(landing.solution?.response || "");
+
+    const cookies = landing.solution?.cookies || [];
+    const ua = landing.solution?.userAgent || UA;
+    const cfClearance = cookies.find((c) => c.name === "cf_clearance");
+    if (!cfClearance) {
+      throw new Error("FlareSolverr nie uzyskał cf_clearance od Cloudflare na APLMate.");
+    }
+    const cookieHeader = cookiesArrayToHeader(cookies);
+
+    // Try to get Turnstile token from HTML (may be present after JS execution)
+    let turnstileToken = extractTurnstileToken(landing.solution?.response || "");
+
+    // If token not in HTML, get it via userverify endpoint using cf_clearance cookies
     if (!turnstileToken) {
-      throw new Error("FlareSolverr nie uzyskał tokenu Turnstile na APLMate.");
+      const verifyRaw = await aplmateFetchWithCookies("/action/userverify", {
+        method: "POST",
+        body: new URLSearchParams({ url: appleUrl }).toString(),
+        cookieHeader,
+        userAgent: ua,
+      });
+      let verify = {};
+      try { verify = JSON.parse(verifyRaw); } catch { /* ignore */ }
+      if (verify.success && verify.token) {
+        turnstileToken = verify.token;
+      }
     }
 
-    const step1Post = new URLSearchParams({
-      url: appleUrl,
-      "cf-turnstile-response": turnstileToken,
-    }).toString();
-    const step1Res = await flareSolverrCall({
-      cmd: "request.post",
-      url: `${APLMATE_BASE}/action`,
-      session: sessionId,
-      maxTimeout: 120000,
-      postData: step1Post,
+    if (!turnstileToken) {
+      throw new Error("FlareSolverr: nie udało się uzyskać tokenu Turnstile ani przez HTML ani userverify.");
+    }
+
+    // Step 1: submit Apple Music URL with Turnstile token
+    const step1Raw = await aplmateFetchWithCookies("/action", {
+      method: "POST",
+      body: new URLSearchParams({ url: appleUrl, "cf-turnstile-response": turnstileToken }).toString(),
+      cookieHeader,
+      userAgent: ua,
     });
-    const step1 = parseAplmateJsonResponse(step1Res.solution?.response || "");
-    if (step1.error) {
-      throw new Error(step1.message || "APLMate odrzucił żądanie po FlareSolverr.");
-    }
-    if (!step1.success || !step1.html) {
-      throw new Error("APLMate nie zwrócił formularza utworu.");
-    }
+    const step1 = parseAplmateJsonResponse(step1Raw);
+    if (step1.error) throw new Error(step1.message || "APLMate odrzucił żądanie.");
+    if (!step1.success || !step1.html) throw new Error("APLMate nie zwrócił formularza utworu.");
 
+    // Step 2: submit track form
     const form = extractTrackForm(step1.html);
-    const step2Post = new URLSearchParams(form).toString();
-    const step2Res = await flareSolverrCall({
-      cmd: "request.post",
-      url: `${APLMATE_BASE}/action/track`,
-      session: sessionId,
-      maxTimeout: 120000,
-      postData: step2Post,
+    const step2Raw = await aplmateFetchWithCookies("/action/track", {
+      method: "POST",
+      body: new URLSearchParams(form).toString(),
+      cookieHeader,
+      userAgent: ua,
     });
-    const step2 = parseAplmateJsonResponse(step2Res.solution?.response || "");
-    if (step2.error) {
-      throw new Error(step2.message || "APLMate nie wygenerował linku MP3.");
-    }
+    const step2 = parseAplmateJsonResponse(step2Raw);
+    if (step2.error) throw new Error(step2.message || "APLMate nie wygenerował linku MP3.");
     return extractDownloadUrl(step2.data || "");
   } catch (err) {
     if (err?.cause?.code === "ECONNREFUSED" || /fetch failed|ECONNREFUSED/i.test(String(err?.message))) {
