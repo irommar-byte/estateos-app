@@ -8,6 +8,8 @@ import { legalStatusOverridesForOffers } from '@/lib/offerLegalStatusOverlay';
 import { shapePublicListOffer, type PublicListOffer } from '@/lib/offers/publicListShape';
 import {
   MARKET_KIND_LOCAL,
+  QUALITY_MAX_PPSM,
+  QUALITY_MIN_PPSM,
   RCN_SOURCE_LABEL,
   WARSAW_CITY,
 } from '@/lib/market/constants';
@@ -213,10 +215,12 @@ export async function buildListingTape(opts?: { limit?: number; locale?: string 
     if (!isFlat(offer.propertyType)) continue;
     if (normalizeTransactionType(offer.transactionType) !== 'sale') continue;
     if (canonicalizeCity(offer.city) !== WARSAW_CITY) continue;
+    if (/udzia[łl]/i.test(String(offer.title || ''))) continue;
     const area = Number(offer.area);
     const price = Number(offer.pricePln ?? offer.price ?? 0);
     if (!Number.isFinite(area) || area < 15 || !Number.isFinite(price) || price < 80_000) continue;
     const listingPpsm = price / area;
+    if (listingPpsm < QUALITY_MIN_PPSM || listingPpsm > QUALITY_MAX_PPSM) continue;
     const district =
       resolveWarsawDistrict({
         street: offer.street,
