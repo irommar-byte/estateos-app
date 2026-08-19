@@ -566,6 +566,8 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
         "Radar продавця без очікування — відповідних покупців бачите одразу після публікації (Basic: список через 24 год).",
       proF4: "Значок Investor PRO у публічному профілі.",
       proF5: "Після використання пулу PRO — Pakiet + (1 кредит / 30 днів, 49 zł).",
+      proF6:
+        "EstateOS™ Market: на кожній пропозиції видно, наскільки ціна відхиляється від нотаріальних актів. Стрічки «При актах» у каталозі та звіти e-mail клієнтам.",
       proCta: "Обираю PRO",
       proCtaLoading: "Обробка...",
       pakietPlusFootnote: "Потрібна лише одна публікація? Pakiet + — 49 zł / 30 днів (також у мобільному додатку).",
@@ -594,7 +596,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
         "Partner Free активується автоматично при реєстрації офісу (роль агента + нова компанія).",
       partnerPaidIntro:
         "Публікуєте регулярно? Вищий пакет = дешевший кредит. Pro — зазвичай момент, коли офіс починає заробляти на різниці.",
-      partnerValueBadge: "Найкраща цінність",
+      partnerValueBadge: "Найчастіше обирають",
       partnerSavingsVsRetail: "−{savings}% vs Pakiet + ({retail} zł / кредит)",
       partnerBreakEvenCredits: "Окупається від {count} публікацій на місяць",
       partnerStartName: "Partner Start",
@@ -605,14 +607,21 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       partnerStartF4: "Доступ до Concierge — ліди від приватних продавців, які шукають офіс.",
       partnerStartF5:
         "Профіль компанії, імпорт одного оголошення (посилання з порталу). Після пулу — докупівля пакетів або Pakiet + (49 zł).",
+      partnerStartF6:
+        "Без Off Market, Market за актами, стрічок у каталозі та звітів e-mail — це переваги Partner Pro для всього офісу.",
       partnerProName: "Partner Pro",
-      partnerProDesc: "Офіс із командою агентів — більший пул публікацій і пріоритет у каталозі та Concierge.",
+      partnerProDesc:
+        "Найчастіше обираний пакет офісів. Уся команда отримує статус Pro (Off Market, Market, стрічки, 5 звітів) — без кредитів Investor Pro.",
       partnerProF1: "{credits} кредитів публікації на місяць у пулі компанії.",
       partnerProF2: "До {agents} активних агентів.",
       partnerProF3: "Усе з Start + пріоритет у каталозі агентств.",
       partnerProF4: "Пріоритетний Concierge — першість у лідах від приватних власників.",
       partnerProF5: "Статистика команди, передача оголошень між агентами, портал клієнта CRM.",
       partnerProF6: "Близько {unitPrice} zł за кредит в абонементі (детально: Pakiet + 49 zł).",
+      partnerProF7:
+        "Уся команда (активні агенти + керівник) отримує статус Pro: Off Market, Market на кожній пропозиції та титанову панель у застосунку.",
+      partnerProF8: "5 звітів оцінки на e-mail клієнтам — на особу, кожні 30 днів.",
+      partnerProF9: "Стрічки «При актах» у каталозі та показник, наскільки ціна відхиляється від нотаріальних угод.",
       partnerEnterpriseName: "Partner Enterprise",
       partnerEnterpriseDesc: "Великі офіси та мережі — обсяг публікацій, розширена команда та впровадження під ключ.",
       partnerEnterpriseF1: "{credits} кредитів публікації на місяць у пулі компанії.",
@@ -620,6 +629,9 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       partnerEnterpriseF3: "Пріоритетний Concierge та виділення в каталозі агентств.",
       partnerEnterpriseF4: "Незабаром: синхронізація XML / feed оголошень.",
       partnerEnterpriseF5: "Окреме впровадження та можливість річних пакетів кредитів.",
+      partnerEnterpriseF6:
+        "Статус Pro для всієї команди: Off Market, Market за актами, стрічки в каталозі та титанова панель.",
+      partnerEnterpriseF7: "5 звітів оцінки на e-mail клієнтам — на особу, кожні 30 днів. Без кредитів Investor Pro.",
       modalTitle: "Яка ваша мета?",
       modalSubtitle: "Оберіть шлях, щоб ми підібрали інструменти під ваші потреби.",
       modalBuy: "Хочу купити",

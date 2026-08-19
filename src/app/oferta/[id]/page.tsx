@@ -219,7 +219,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     offer.originalOwnerUserId === currentUser.id &&
     offer.userId !== currentUser.id;
   const canContactSeller = !isFormerOwnerViewer;
-  const isPro = offer._viewerIsPro || currentUser?.role === 'ADMIN';
+  const isPro = offer._viewerIsPro || currentUser?.role === 'ADMIN' || Boolean(currentUser?.hasMarketPro || currentUser?.officePro);
   
   const unlockTime = offerPremarketUnlockMs(offer.createdAt);
 
@@ -1139,6 +1139,21 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     district={districtSpecified ? districtRaw : null}
                     address={[streetRaw, cityRaw].filter(Boolean).join(", ")}
                     price={plnResolved?.displayAmount || listingPrice.plnAmount || listingPrice.amount || null}
+                    hasMarketPro={Boolean(isPro)}
+                    teaserHref={
+                      currentUser &&
+                      (String(currentUser.role || "").toUpperCase() === "AGENT" ||
+                        String(currentUser.planType || "").toUpperCase() === "AGENCY")
+                        ? "/moje-konto/firma?upgrade=pro#pakiet"
+                        : "/cennik"
+                    }
+                    teaserCta={
+                      currentUser &&
+                      (String(currentUser.role || "").toUpperCase() === "AGENT" ||
+                        String(currentUser.planType || "").toUpperCase() === "AGENCY")
+                        ? "Ulepsz do Partner Pro"
+                        : "Odblokuj Investor Pro"
+                    }
                   />
                 ) : null}
 

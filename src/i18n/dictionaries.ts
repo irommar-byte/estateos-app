@@ -625,6 +625,7 @@ export type Dictionary = {
     proF3: string;
     proF4: string;
     proF5: string;
+    proF6: string;
     proCta: string;
     proCtaLoading: string;
     pakietPlusFootnote: string;
@@ -658,6 +659,7 @@ export type Dictionary = {
     partnerStartF3: string;
     partnerStartF4: string;
     partnerStartF5: string;
+    partnerStartF6: string;
     partnerProName: string;
     partnerProDesc: string;
     partnerProF1: string;
@@ -666,6 +668,9 @@ export type Dictionary = {
     partnerProF4: string;
     partnerProF5: string;
     partnerProF6: string;
+    partnerProF7: string;
+    partnerProF8: string;
+    partnerProF9: string;
     partnerEnterpriseName: string;
     partnerEnterpriseDesc: string;
     partnerEnterpriseF1: string;
@@ -673,6 +678,8 @@ export type Dictionary = {
     partnerEnterpriseF3: string;
     partnerEnterpriseF4: string;
     partnerEnterpriseF5: string;
+    partnerEnterpriseF6: string;
+    partnerEnterpriseF7: string;
     modalTitle: string;
     modalSubtitle: string;
     modalBuy: string;
@@ -1408,6 +1415,8 @@ const pl: Dictionary = {
       "Radar sprzedawcy bez czekania — dopasowanych kupców widzisz od razu po publikacji (Basic: lista po 24 h).",
     proF4: "Odznaka Investor PRO w profilu publicznym.",
     proF5: "Po wykorzystaniu puli PRO — Pakiet + (1 kredyt / 30 dni, 49 zł).",
+    proF6:
+      "EstateOS™ Market: na każdej ofercie widać, jak daleko cena odbiega od aktów notarialnych. Taśmy „Przy aktach” w katalogu i raporty e-mail do klientów.",
     proCta: "Wybieram PRO",
     proCtaLoading: "Przetwarzam...",
     pakietPlusFootnote: "Potrzebujesz tylko jednej publikacji? Pakiet + — 49 zł / 30 dni (także w aplikacji mobilnej).",
@@ -1435,7 +1444,7 @@ const pl: Dictionary = {
       "Partner Free aktywuje się automatycznie przy rejestracji biura (rola agenta + nowa firma).",
     partnerPaidIntro:
       "Publikujesz więcej niż pojedyncze ogłoszenia? Im wyższy pakiet, tym tańszy kredyt — Pro to zwykle punkt, w którym biuro realnie zarabia na różnicy.",
-    partnerValueBadge: "Najlepsza wartość",
+    partnerValueBadge: "Najchętniej wybierany",
     partnerSavingsVsRetail: "−{savings}% vs Pakiet + ({retail} zł / kredyt)",
     partnerBreakEvenCredits: "Opłaca się od {count} publikacji miesięcznie",
     partnerStartName: "Partner Start",
@@ -1447,9 +1456,11 @@ const pl: Dictionary = {
     partnerStartF3: "CRM klientów, Deal Room, Concierge i mapa ofert — cały ekosystem w jednym panelu.",
     partnerStartF4: "Profil w Katalogu agencji — wyróżnienie względem ogłoszeń prywatnych.",
     partnerStartF5: "{breakEven}+ publikacji/mies.? Abonament wygrywa z kupowaniem pojedynczych kredytów.",
+    partnerStartF6:
+      "Bez Off Market, Market przy aktach, taśm w katalogu i raportów e-mail — to przywileje Partner Pro dla całego biura.",
     partnerProName: "Partner Pro",
     partnerProDesc:
-      "Najczęściej wybierany — 3× więcej kredytów niż Start przy 2× cenie. Dla biur, które żyją z obrotu ofert.",
+      "Najchętniej wybierany pakiet biur. Cały zespół dostaje status Pro (Off Market, Market, taśmy, 5 raportów) — bez kredytów Investor Pro.",
     partnerProF1: "{credits} kredytów miesięcznie — tylko {unitPrice} zł za publikację (−{savings}% vs detal).",
     partnerProF2: "Do {agents} aktywnych agentów — cały zespół w jednym CRM.",
     partnerProF3: "Wszystko ze Start + priorytet w Katalogu agencji i Concierge.",
@@ -1457,14 +1468,21 @@ const pl: Dictionary = {
     partnerProF5: "Statystyki zespołu, transfer ofert między agentami, portal klienta CRM.",
     partnerProF6:
       "Jedna transakcja miesięcznie zwraca się szybciej niż {breakEven}× Pakiet + — reszta to czysta marża biura.",
+    partnerProF7:
+      "Cały zespół (aktywni agenci + kierownik) dostaje status Pro: Off Market, Market na każdej ofercie i tytanowe okienko w aplikacji.",
+    partnerProF8: "5 raportów wyceny na e-mail do klientów — na osobę, co 30 dni.",
+    partnerProF9: "Taśmy „Przy aktach” w katalogu i stały wskaźnik, jak daleko cena odbiega od transakcji notarialnych.",
     partnerEnterpriseName: "Partner Enterprise",
     partnerEnterpriseDesc:
-      "Sieci i duże biura — 100 publikacji po 10 zł, bez limitu agentów. Najniższy koszt kredytu w ekosystemie.",
+      "Sieci i duże biura — 100 publikacji po 10 zł, bez limitu agentów. Te same przywileje Pro dla całego zespołu co w Partner Pro.",
     partnerEnterpriseF1: "{credits} kredytów miesięcznie — {unitPrice} zł za publikację (−{savings}% vs detal).",
     partnerEnterpriseF2: "Agenci: {agents} — skaluj zespół bez dopłat za każde miejsce.",
     partnerEnterpriseF3: "Priorytetowy Concierge i wyróżnienie w katalogu agencji.",
     partnerEnterpriseF4: "Docelowo: synchronizacja XML / feed ofert (w przygotowaniu).",
     partnerEnterpriseF5: "Dedykowany onboarding — roczne pakiety kredytów na życzenie.",
+    partnerEnterpriseF6:
+      "Status Pro dla całego zespołu: Off Market, Market przy aktach, taśmy w katalogu i tytanowe okienko.",
+    partnerEnterpriseF7: "5 raportów wyceny na e-mail do klientów — na osobę, co 30 dni. Bez kredytów Investor Pro.",
     modalTitle: "Jaki jest Twój Cel?",
     modalSubtitle: "Wybierz odpowiednią ścieżkę, abyśmy mogli dopasować narzędzia do Twoich potrzeb.",
     modalBuy: "Chcę Kupić",
@@ -2200,6 +2218,8 @@ const en: Dictionary = {
       "Seller Radar without the wait — matched buyers visible immediately after publication (Basic: list after 24 h).",
     proF4: "Investor PRO badge on your public profile.",
     proF5: "After using the PRO pool — Pakiet + (1 credit / 30 days, 49 PLN).",
+    proF6:
+      "EstateOS™ Market: every listing shows how far the ask is from notarized deeds. “At deed prices” catalog tapes and email reports for clients.",
     proCta: "Choose PRO",
     proCtaLoading: "Processing...",
     pakietPlusFootnote: "Need just one publication? Pakiet + — 49 PLN / 30 days (also in the mobile app).",
@@ -2227,7 +2247,7 @@ const en: Dictionary = {
       "Partner Free activates automatically when you register an office (agent role + new company).",
     partnerPaidIntro:
       "Publishing more than one-off listings? Higher tiers mean cheaper credits — Pro is usually where offices start making money on the spread.",
-    partnerValueBadge: "Best value",
+    partnerValueBadge: "Most chosen",
     partnerSavingsVsRetail: "−{savings}% vs Pakiet + ({retail} PLN / credit)",
     partnerBreakEvenCredits: "Pays off from {count} publications per month",
     partnerStartName: "Partner Start",
@@ -2239,9 +2259,11 @@ const en: Dictionary = {
     partnerStartF3: "Client CRM, Deal Room, Concierge, and listing map — one dashboard.",
     partnerStartF4: "Agency catalog profile — stand out from private listings.",
     partnerStartF5: "{breakEven}+ publications/month? The subscription beats buying single credits.",
+    partnerStartF6:
+      "No Off Market, deed-price Market, catalog tapes or email reports — those are Partner Pro perks for the whole office.",
     partnerProName: "Partner Pro",
     partnerProDesc:
-      "Most popular — 3× the credits of Start for 2× the price. Built for offices that live on listing volume.",
+      "The most chosen office plan. The whole team gets Pro status (Off Market, Market, tapes, 5 reports) — without Investor Pro listing credits.",
     partnerProF1: "{credits} credits per month — only {unitPrice} PLN per listing (−{savings}% vs retail).",
     partnerProF2: "Up to {agents} active agents — whole team in one CRM.",
     partnerProF3: "Everything in Start + priority in the agency catalog and Concierge.",
@@ -2249,14 +2271,21 @@ const en: Dictionary = {
     partnerProF5: "Team stats, offer transfers between agents, CRM client portal.",
     partnerProF6:
       "One deal a month pays back faster than {breakEven}× Pakiet + — the rest is margin for your office.",
+    partnerProF7:
+      "The whole team (active agents + manager) gets Pro status: Off Market, Market on every listing, and the titanium tools panel in the app.",
+    partnerProF8: "5 valuation reports emailed to clients — per person, every 30 days.",
+    partnerProF9: "“At deed prices” catalog tapes and a live indicator of how far the ask is from notarized deals.",
     partnerEnterpriseName: "Partner Enterprise",
     partnerEnterpriseDesc:
-      "Networks and large offices — 100 publications at 10 PLN each, unlimited agents. Lowest credit cost in the ecosystem.",
+      "Networks and large offices — 100 publications at 10 PLN each, unlimited agents. The same office-wide Pro perks as Partner Pro.",
     partnerEnterpriseF1: "{credits} credits per month — {unitPrice} PLN per listing (−{savings}% vs retail).",
     partnerEnterpriseF2: "Agents: {agents} — scale the team without per-seat fees.",
     partnerEnterpriseF3: "Priority Concierge and featured placement in the agency catalog.",
     partnerEnterpriseF4: "Coming soon: XML / listing feed sync.",
     partnerEnterpriseF5: "Dedicated onboarding — annual credit packages on request.",
+    partnerEnterpriseF6:
+      "Pro status for the whole team: Off Market, deed Market, catalog tapes and the titanium panel.",
+    partnerEnterpriseF7: "5 valuation reports emailed to clients — per person, every 30 days. No Investor Pro listing credits.",
     modalTitle: "What is your goal?",
     modalSubtitle: "Pick a path so we can tailor tools to your needs.",
     modalBuy: "I want to buy",

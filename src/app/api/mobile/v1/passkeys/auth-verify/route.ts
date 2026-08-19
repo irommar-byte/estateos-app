@@ -10,7 +10,8 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { getPasskeyRpId } from '@/lib/env.server';
 import { credentialPublicKeyToUint8Array } from '@/lib/passkeyDbEncoding';
-import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { MOBILE_USER_SELECT } from '@/lib/mobileUserShape';
+import { shapeMobileUserEntitled } from '@/lib/mobileUserShapeEntitled';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 export async function POST(req: Request) {
@@ -108,7 +109,7 @@ export async function POST(req: Request) {
       success: true,
       hasPasskey,
       user: profile
-        ? { ...shapeMobileUser(profile), hasPasskey }
+        ? { ...await shapeMobileUserEntitled(profile), hasPasskey }
         : { id: user.id, email: user.email, hasPasskey },
       token: signMobileToken({ id: user.id, email: user.email, role: user.role, credentialId: auth.credentialID }),
       credentialId: auth.credentialID,

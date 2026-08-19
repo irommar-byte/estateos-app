@@ -38,6 +38,23 @@ export function getPartnerPlanByStripePlan(raw: unknown): PartnerPlanConfig | nu
   return PARTNER_PAID_PLANS.find((p) => p.id === id) ?? null;
 }
 
+async function setAgencyPlanTypeKeepInvestorPro(userId: number) {
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isPro: true, proExpiresAt: true },
+  });
+  const proStillActive = Boolean(
+    existing?.isPro && (!existing.proExpiresAt || existing.proExpiresAt.getTime() > Date.now()),
+  );
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      planType: PlanType.AGENCY,
+      ...(proStillActive ? {} : { isPro: false, proExpiresAt: null }),
+    },
+  });
+}
+
 function partnerProductId(plan: PartnerPlanConfig): string {
   return `pl.estateos.partner.${plan.id}_monthly`;
 }
@@ -100,14 +117,7 @@ export async function grantPartnerPlanFromStripeCheckout(params: {
     };
   }
 
-  await prisma.user.update({
-    where: { id: params.userId },
-    data: {
-      isPro: false,
-      planType: PlanType.AGENCY,
-      proExpiresAt: null,
-    },
-  });
+  await setAgencyPlanTypeKeepInvestorPro(params.userId);
 
   const membership = await ensureAgencyCompanyForAgentUser(params.userId);
   if (!membership || membership.role !== 'ADMIN') {
@@ -167,14 +177,7 @@ async function grantPartnerPlanPeriod(params: {
   transactionId: string;
   pendingPurchaseId: string;
 }): Promise<{ companyId: number; creditsAdded: number }> {
-  await prisma.user.update({
-    where: { id: params.userId },
-    data: {
-      isPro: false,
-      planType: PlanType.AGENCY,
-      proExpiresAt: null,
-    },
-  });
+  await setAgencyPlanTypeKeepInvestorPro(params.userId);
 
   const membership = await ensureAgencyCompanyForAgentUser(params.userId);
   if (!membership || membership.role !== 'ADMIN') {
@@ -387,10 +390,7 @@ export async function grantPartnerProTrial(userId: number): Promise<{
   const plan = getPartnerPlanById('pro');
   if (!plan) throw new Error('PARTNER_PRO_PLAN_MISSING');
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { isPro: false, planType: PlanType.AGENCY, proExpiresAt: null },
-  });
+  await setAgencyPlanTypeKeepInvestorPro(userId);
 
   const membership = await ensureAgencyCompanyForAgentUser(userId);
   if (!membership || membership.role !== 'ADMIN') {
@@ -473,14 +473,7 @@ export async function grantPartnerFreeTierOnSignup(userId: number): Promise<{
   const periodEnd = new Date();
   periodEnd.setDate(periodEnd.getDate() + PARTNER_FREE_PERIOD_DAYS);
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      isPro: false,
-      planType: PlanType.AGENCY,
-      proExpiresAt: null,
-    },
-  });
+  await setAgencyPlanTypeKeepInvestorPro(userId);
 
   const company = await prisma.agencyCompany.findUnique({
     where: { id: membership.companyId },

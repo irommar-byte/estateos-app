@@ -4,7 +4,8 @@ import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
-import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { MOBILE_USER_SELECT } from '@/lib/mobileUserShape';
+import { shapeMobileUserEntitled } from '@/lib/mobileUserShapeEntitled';
 import { shapeRadarPreference, type RadarPreferenceDto } from '@/lib/radarPreferenceShape';
 import type { RadarPreference } from '@prisma/client';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
@@ -270,7 +271,7 @@ export async function GET() {
 
     const passkeyCount = await prisma.authenticator.count({ where: { userId: user.id } });
     const displayImage = await getUserDisplayAvatar(user.id);
-    const shaped = { ...shapeMobileUser(user, { displayImage }), hasPasskey: passkeyCount > 0 };
+    const shaped = { ...await shapeMobileUserEntitled(user, { displayImage }), hasPasskey: passkeyCount > 0 };
     const elite = resolveEliteBadges(user);
     const badges = { ...elite, isPartner: elite.isProgramPartner };
 
@@ -360,7 +361,7 @@ export async function PATCH(req: NextRequest) {
 
     if (Object.keys(updateData).length === 0) {
       const passkeyCount = await prisma.authenticator.count({ where: { userId: user.id } });
-      const shapedCurrent = { ...shapeMobileUser(user), hasPasskey: passkeyCount > 0 };
+      const shapedCurrent = { ...await shapeMobileUserEntitled(user), hasPasskey: passkeyCount > 0 };
       return NextResponse.json({ success: true, user: shapedCurrent, ...shapedCurrent });
     }
 
@@ -384,7 +385,7 @@ export async function PATCH(req: NextRequest) {
       });
 
     const passkeyCount = await prisma.authenticator.count({ where: { userId: updated.id } });
-    const shaped = { ...shapeMobileUser(updated), hasPasskey: passkeyCount > 0 };
+    const shaped = { ...await shapeMobileUserEntitled(updated), hasPasskey: passkeyCount > 0 };
     return NextResponse.json({ success: true, user: shaped, ...shaped });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Nie udało się zapisać profilu.';

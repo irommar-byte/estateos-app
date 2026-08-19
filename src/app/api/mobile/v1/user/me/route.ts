@@ -9,9 +9,17 @@ import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { extractPhoneFromBody, normalizePhoneE164 } from '@/lib/phoneE164';
 import { getUserDisplayAvatar } from '@/lib/agencyCompany';
 import { reconcileFreeAgencyPlanTypeIfNeeded } from '@/lib/partnerPlanReconcile';
+import { userHasOfficePartnerPro } from '@/lib/officePartnerPro';
 
 const PROFILE_SELECT = MOBILE_USER_SELECT;
-const shapeProfileResponse = shapeMobileUser;
+
+async function shapeProfileResponse(
+  user: Parameters<typeof shapeMobileUser>[0],
+  opts?: { displayImage?: string | null },
+) {
+  const officePro = await userHasOfficePartnerPro(user.id);
+  return shapeMobileUser(user, { ...opts, officePro });
+}
 
 async function authorize(req: Request) {
   const token = extractTokenFromRequest(req);
@@ -184,7 +192,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     success: true,
-    user: { ...shapeProfileResponse(user, { displayImage }), hasPasskey: passkeyCount > 0 },
+    user: { ...await shapeProfileResponse(user, { displayImage }), hasPasskey: passkeyCount > 0 },
   });
 }
 
@@ -291,7 +299,7 @@ export async function PATCH(req: Request) {
       const passkeyCount = await prisma.authenticator.count({ where: { userId: auth.userId } });
       return NextResponse.json({
         success: true,
-        user: { ...shapeProfileResponse(current), hasPasskey: passkeyCount > 0 },
+        user: { ...await shapeProfileResponse(current), hasPasskey: passkeyCount > 0 },
       });
     }
 
@@ -310,7 +318,7 @@ export async function PATCH(req: Request) {
 
       return NextResponse.json({
         success: true,
-        user: { ...shapeProfileResponse(updated), hasPasskey: passkeyCount > 0 },
+        user: { ...await shapeProfileResponse(updated), hasPasskey: passkeyCount > 0 },
       });
     } catch (e: unknown) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AddressSuggestInput from "@/components/crm/AddressSuggestInput";
 import MarketValuationPanel from "@/components/market/MarketValuationPanel";
+import MarketProTeaser from "@/components/market/MarketProTeaser";
 import {
   closestWarsawDistrict,
   WARSAW_DISTRICT_CENTROIDS,
@@ -19,6 +20,28 @@ export default function WycenaClient() {
   const [email, setEmail] = useState("");
   const [price, setPrice] = useState("");
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [hasMarketPro, setHasMarketPro] = useState(false);
+  const [teaserHref, setTeaserHref] = useState("/cennik");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const user = data?.user;
+        const pro = Boolean(user?.hasMarketPro || user?.officePro || user?.role === "ADMIN" || user?.isPro);
+        setHasMarketPro(pro);
+        const agency =
+          String(user?.role || "").toUpperCase() === "AGENT" ||
+          String(user?.planType || "").toUpperCase() === "AGENCY";
+        setTeaserHref(agency && !pro ? "/moje-konto/firma?upgrade=pro#pakiet" : "/cennik");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fallback = WARSAW_DISTRICT_CENTROIDS[district] || WARSAW_DISTRICT_CENTROIDS.Mokotów;
   const coords = pin || fallback;
@@ -33,7 +56,8 @@ export default function WycenaClient() {
         <p className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-500">EstateOS™ Market</p>
         <h1 className="text-3xl font-black tracking-tight text-[var(--eos-text)]">Wycena nieruchomości</h1>
         <p className="text-sm leading-relaxed text-[var(--eos-muted)]">
-          Podgląd z aktów RCN jest bezpłatny. Pełny raport z porównywalnymi transakcjami wychodzi na e-mail za 1 kredyt (49 zł).
+          Porównanie z aktami RCN i raport e-mail są w Investor Pro albo Partner Pro biura.
+          To nie jest operat szacunkowy rzeczoznawcy.
         </p>
       </header>
 
@@ -75,20 +99,24 @@ export default function WycenaClient() {
         <Field label="Twoja cena ofertowa (opcjonalnie)" value={price} onChange={setPrice} />
       </div>
 
-      <MarketValuationPanel
-        lat={coords.lat}
-        lng={coords.lng}
-        area={Number(area) || null}
-        rooms={Number(rooms) || null}
-        floor={Number(floor) || null}
-        city="Warszawa"
-        district={district}
-        address={address}
-        listingPrice={Number(price.replace(/\s/g, "")) || null}
-        purpose="consumer"
-        reportEmail={email}
-        showReport
-      />
+      {hasMarketPro ? (
+        <MarketValuationPanel
+          lat={coords.lat}
+          lng={coords.lng}
+          area={Number(area) || null}
+          rooms={Number(rooms) || null}
+          floor={Number(floor) || null}
+          city="Warszawa"
+          district={district}
+          address={address}
+          listingPrice={Number(price.replace(/\s/g, "")) || null}
+          purpose="consumer"
+          reportEmail={email}
+          showReport
+        />
+      ) : (
+        <MarketProTeaser href={teaserHref} />
+      )}
     </div>
   );
 }
