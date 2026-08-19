@@ -46,6 +46,29 @@ let tableReady: Promise<void> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatBusy = false;
 
+async function ensureSessionColumns() {
+  const cols = (await prisma.$queryRawUnsafe<Array<{ COLUMN_NAME: string }>>(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'KeiAutoImportSchedule'`,
+  )) as Array<{ COLUMN_NAME: string }>;
+  const names = new Set(cols.map((row) => row.COLUMN_NAME));
+  const add: Array<[string, string]> = [
+    ['sessionStartedAt', 'DATETIME(3) NULL'],
+    ['sessionImportedCount', 'INT NOT NULL DEFAULT 0'],
+    ['sessionSkippedCount', 'INT NOT NULL DEFAULT 0'],
+    ['sessionCycles', 'INT NOT NULL DEFAULT 0'],
+  ];
+  for (const [name, spec] of add) {
+    if (names.has(name)) continue;
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE KeiAutoImportSchedule ADD COLUMN ${name} ${spec}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Duplicate column/i.test(message)) throw error;
+    }
+  }
+}
+
 async function ensureTable() {
   if (!tableReady) {
     tableReady = prisma
@@ -64,37 +87,19 @@ async function ensureTable() {
         lastRunAt DATETIME(3) NULL,
         lastJobId VARCHAR(36) NULL,
         lastError TEXT NULL,
-        updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-        sessionStartedAt DATETIME(3) NULL,
-        sessionImportedCount INT NOT NULL DEFAULT 0,
-        sessionSkippedCount INT NOT NULL DEFAULT 0,
-        sessionCycles INT NOT NULL DEFAULT 0
+        updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `,
       )
       .then(async () => {
         await ensureSessionColumns();
+      })
+      .catch((error) => {
+        tableReady = null;
+        throw error;
       });
   }
   await tableReady;
-}
-
-async function ensureSessionColumns() {
-  const cols = (await prisma.$queryRawUnsafe<Array<{ COLUMN_NAME: string }>>(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'KeiAutoImportSchedule'`,
-  )) as Array<{ COLUMN_NAME: string }>;
-  const names = new Set(cols.map((row) => row.COLUMN_NAME));
-  const add: Array<[string, string]> = [
-    ['sessionStartedAt', 'DATETIME(3) NULL'],
-    ['sessionImportedCount', 'INT NOT NULL DEFAULT 0'],
-    ['sessionSkippedCount', 'INT NOT NULL DEFAULT 0'],
-    ['sessionCycles', 'INT NOT NULL DEFAULT 0'],
-  ];
-  for (const [name, spec] of add) {
-    if (names.has(name)) continue;
-    await prisma.$executeRawUnsafe(`ALTER TABLE KeiAutoImportSchedule ADD COLUMN ${name} ${spec}`);
-  }
 }
 
 function clampInterval(n: number) {
