@@ -92,7 +92,11 @@ export async function getKeiListingDispositions(
 }
 
 export async function assertKeiListingAvailableForImport(portalUrl: string): Promise<void> {
-  const disposition = (await getKeiListingDispositions([portalUrl])).get(normalizeKeiPortalUrl(portalUrl));
+  const normalized = normalizeKeiPortalUrl(portalUrl);
+  const disposition = (await getKeiListingDispositions([normalized])).get(normalized);
+  if (disposition?.importedOfferId) {
+    throw new Error(`Ogłoszenie jest już zaimportowane (oferta #${disposition.importedOfferId}).`);
+  }
   if (disposition?.outreachSent) {
     throw new Error('Do tego ogłoszenia wysłano już zaproszenie właściciela — import zablokowany.');
   }

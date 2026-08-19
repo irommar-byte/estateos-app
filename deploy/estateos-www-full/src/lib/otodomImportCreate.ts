@@ -1,5 +1,5 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
-import { normalizeImportPortalUrl, sanitizeImportHeating, sanitizeImportYearBuilt } from '@/lib/otodomImport';
+import { sanitizeImportHeating, sanitizeImportYearBuilt } from '@/lib/otodomImport';
 import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
@@ -27,6 +27,14 @@ import {
 import { upgradeListingImageUrl } from '@/lib/listingImageUrlUpgrade';
 import { resolveLastImageIsFloorPlan } from '@/lib/otodomImportFloorPlan';
 import { prisma } from '@/lib/prisma';
+import {
+  bindImportExternalKey,
+  claimImportExternalKey,
+  findOfferByImportExternalId,
+  findOfferByImportFingerprint,
+  importUrlLookupCandidates,
+  releaseImportExternalClaim,
+} from '@/lib/importDuplicateGuard';
 
 const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
   OTODOM: 'estateos-otodom:',
@@ -69,20 +77,8 @@ export async function findExistingOtodomImportOffer(source: OtodomImportDraft['s
   });
 }
 
-function portalUrlLookupCandidates(portalUrl: string): string[] {
-  let normalized = portalUrl.trim();
-  try {
-    normalized = normalizeImportPortalUrl(portalUrl);
-  } catch {
-    // keep raw trimmed URL
-  }
-  const withoutSlash = normalized.replace(/\/$/, '');
-  const withSlash = `${withoutSlash}/`;
-  return Array.from(new Set([normalized, withoutSlash, withSlash, portalUrl.trim()]));
-}
-
 export async function findExistingOfferByImportUrl(portalUrl: string) {
-  const candidates = portalUrlLookupCandidates(portalUrl);
+  const candidates = importUrlLookupCandidates(portalUrl);
   if (candidates.length === 0) return null;
 
   await ensureOfferPrivateNoteTable();
@@ -101,14 +97,24 @@ export async function findExistingOfferByImportUrl(portalUrl: string) {
 }
 
 export async function findExistingImportedOffer(
-  draft: Pick<OtodomImportDraft, 'source' | 'externalId' | 'externalUrl'>,
+  draft: Pick<OtodomImportDraft, 'source' | 'externalId' | 'externalUrl' | 'city' | 'district' | 'street' | 'price' | 'area' | 'transactionType'>,
 ) {
+  const byExternalId = await findOfferByImportExternalId(draft.source, draft.externalId);
+  if (byExternalId) return byExternalId;
   const byMarker = await findExistingOtodomImportOffer(draft.source, draft.externalId);
   if (byMarker) return byMarker;
   if (draft.externalUrl) {
-    return findExistingOfferByImportUrl(draft.externalUrl);
+    const byUrl = await findExistingOfferByImportUrl(draft.externalUrl);
+    if (byUrl) return byUrl;
   }
-  return null;
+  return findOfferByImportFingerprint({
+    city: draft.city,
+    district: draft.district,
+    street: draft.street,
+    price: draft.price,
+    area: draft.area,
+    transactionType: draft.transactionType,
+  });
 }
 
 export async function findExistingImportedOfferByPortalUrl(portalUrl: string) {
@@ -449,8 +455,29 @@ export async function createOfferFromOtodomDraft(
     }
   };
 
+  await throwIfCancelled();
+
+  const claim = await claimImportExternalKey(draft.source, draft.externalId);
+  if (!claim.claimed) {
+    const existingLocked = claim.offerId
+      ? await prisma.offer.findUnique({
+          where: { id: claim.offerId },
+          select: { id: true, title: true, status: true },
+        })
+      : await findExistingImportedOffer(draft);
+    return {
+      ok: false as const,
+      code: 'ALREADY_IMPORTED' as const,
+      existingOfferId: existingLocked?.id,
+      message: existingLocked
+        ? `Ta oferta jest już w bazie jako #${existingLocked.id} (${existingLocked.status}).`
+        : 'To ogłoszenie jest właśnie importowane — pominięto duplikat.',
+    };
+  }
+
   const existing = await findExistingImportedOffer(draft);
   if (existing) {
+    await bindImportExternalKey(draft.source, draft.externalId, existing.id);
     return {
       ok: false as const,
       code: 'ALREADY_IMPORTED' as const,
@@ -502,6 +529,7 @@ export async function createOfferFromOtodomDraft(
     if (!Number.isFinite(offerId)) {
       throw new Error('Nie udało się odczytać ID nowej oferty.');
     }
+    await bindImportExternalKey(draft.source, draft.externalId, offerId);
 
     await upsertImportedOfferPrivateSnapshot({
       offerId,
@@ -601,6 +629,10 @@ export async function createOfferFromOtodomDraft(
   } catch (error) {
     if (offerId && !publicationReserved) {
       await deleteOfferAfterImportPaymentFailure(offerId).catch(() => undefined);
+      offerId = null;
+    }
+    if (!offerId) {
+      await releaseImportExternalClaim(draft.source, draft.externalId);
     }
     throw error;
   }
