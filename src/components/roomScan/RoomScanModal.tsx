@@ -403,7 +403,11 @@ function RoomScanModalBody({
 
   const artboardW = Math.min(width - 32, 520);
   const artboardH = Math.min(Math.round(artboardW * 0.92), Math.round(windowH * 0.42));
-  const showLaunching = visible && phase === 'launching';
+  // RoomPlan is presented by the native view controller that backs this modal.
+  // Keep that presenter mounted for the entire scan; removing it while RoomPlan
+  // is on top leaves iOS with a broken presentation chain and a black screen
+  // when the native scanner closes.
+  const showLaunching = visible && (phase === 'launching' || phase === 'scanning');
   const showPreviewModal = visible && (phase === 'preview' || phase === 'processing');
   const detectedObjects = meta?.objects || [];
   const primarySection = meta?.sections?.[0];
