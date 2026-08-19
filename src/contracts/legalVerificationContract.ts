@@ -74,7 +74,7 @@ export type LegalVerificationRejectionReason =
 // --------------------------------------------------------------------
 export type SubmitLegalVerificationPayload = {
   landRegistryNumber: string;   // format WA4M/00012345/6
-  apartmentNumber: string;      // np. „14A" lub „—" dla domu jednorodzinnego
+  apartmentNumber?: string | null;      // opcjonalny nr lokalu
   // Krótka notatka właściciela do admina (np. „mieszkanie po teściach,
   // księga założona w 2009 r."). Nieobowiązkowe.
   ownerNote?: string | null;

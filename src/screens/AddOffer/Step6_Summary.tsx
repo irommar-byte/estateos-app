@@ -944,16 +944,20 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       if (createdOfferId && token && isPolandOffer) {
         const kwSubmit = String(draft.landRegistryNumber || '').trim();
         const aptSubmit = String(draft.apartmentNumber || '').trim();
-        if (kwSubmit && aptSubmit && isValidLandRegistryNumber(kwSubmit)) {
+        if (kwSubmit && isValidLandRegistryNumber(kwSubmit)) {
           try {
             await submitOwnerLegalVerification(
               createdOfferId,
-              { landRegistryNumber: kwSubmit, apartmentNumber: aptSubmit, ownerNote: null },
+              { landRegistryNumber: kwSubmit, apartmentNumber: aptSubmit || null, ownerNote: null },
               token,
             );
             legalQueueSubmitted = true;
-          } catch {
-            /* Endpoint może nie być wdrożony — oferta i tak jest w bazie; właściciel zgłosi KW z karty oferty. */
+          } catch (err: any) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            Alert.alert(
+              t('offer.edit.alerts.partialSaveTitle'),
+              String(err?.message || t('offer.edit.kw.submitFailed')),
+            );
           }
         }
       }

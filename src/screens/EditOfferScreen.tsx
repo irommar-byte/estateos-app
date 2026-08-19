@@ -92,6 +92,7 @@ import { normalizeOfferConditionForEdit } from '../utils/offerFieldLabels';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import EditOfferLocationEditor, { type EditOfferLocationState } from './EditOffer/EditOfferLocationEditor';
 import { generateListingDescriptionWithGpt } from '../services/offerDescriptionAiService';
+import { submitOwnerLegalVerification } from '../services/legalVerificationService';
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
@@ -353,7 +354,7 @@ const enqueueLayoutSpring = () => {
 };
 
 export default function EditOfferScreen({ route }: any) {
-  const { offerId } = route.params;
+  const { offerId, focusKw } = route.params;
   const navigation = useNavigation<any>();
   const mainScrollRef = useRef<ScrollView>(null);
   const { user, token } = useAuthStore() as any;
@@ -419,6 +420,9 @@ export default function EditOfferScreen({ route }: any) {
   const [verifyTokens, setVerifyTokens] = useState<string[]>([]);
   const [apartmentNumber, setApartmentNumber] = useState('');
   const [landRegistryNumber, setLandRegistryNumber] = useState('');
+  const [legalCheckStatus, setLegalCheckStatus] = useState<'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED'>('NONE');
+  const [isLegalSafeVerified, setIsLegalSafeVerified] = useState(false);
+  const kwSectionYRef = useRef(0);
   const [price, setPrice] = useState('');
   const [priceCurrency, setPriceCurrency] = useState<ListingCurrency>('PLN');
   const [editFxRate, setEditFxRate] = useState(4.32);
@@ -463,6 +467,10 @@ export default function EditOfferScreen({ route }: any) {
   const showLandRegistryVerification = isPolandLocationDraft(originalData);
   const landRegistryRaw = landRegistryNumber.trim();
   const isLandRegistryValid = isValidLandRegistryNumber(landRegistryRaw);
+  const isKwLocked =
+    showLandRegistryVerification &&
+    (legalCheckStatus === 'VERIFIED' || isLegalSafeVerified) &&
+    String(user?.role || '').toUpperCase() !== 'ADMIN';
   const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
   const selectedCourt = getCourtByLandRegistryPrefix(landRegistryRaw);
 
@@ -542,6 +550,24 @@ export default function EditOfferScreen({ route }: any) {
           setHeating(String(offer.heating || ''));
           setApartmentNumber(String(offer.apartmentNumber || ''));
           setLandRegistryNumber(String(offer.landRegistryNumber || ''));
+          {
+            const legalStatus = String(offer.legalCheckStatus || offer.legal_check_status || '')
+              .trim()
+              .toUpperCase();
+            if (legalStatus === 'VERIFIED' || offer.isLegalSafeVerified === true) {
+              setLegalCheckStatus('VERIFIED');
+              setIsLegalSafeVerified(true);
+            } else if (legalStatus === 'PENDING') {
+              setLegalCheckStatus('PENDING');
+              setIsLegalSafeVerified(false);
+            } else if (legalStatus === 'REJECTED') {
+              setLegalCheckStatus('REJECTED');
+              setIsLegalSafeVerified(false);
+            } else {
+              setLegalCheckStatus('NONE');
+              setIsLegalSafeVerified(false);
+            }
+          }
           setCondition(normalizeOfferConditionForEdit(offer.condition) || 'READY');
           // Odczyt „Dokładnej lokalizacji" zunifikowany z resztą ekosystemu:
           // używamy `resolveIsExactLocation`, który traktuje wartości typu
@@ -642,6 +668,15 @@ export default function EditOfferScreen({ route }: any) {
   useEffect(() => {
     fetchOffer();
   }, [fetchOffer]);
+
+  useEffect(() => {
+    if (!focusKw || loading) return;
+    const y = kwSectionYRef.current;
+    const timer = setTimeout(() => {
+      mainScrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+    }, 380);
+    return () => clearTimeout(timer);
+  }, [focusKw, loading]);
 
   useEffect(() => {
     void getEurPlnRate().then((s) => {
@@ -1666,6 +1701,38 @@ export default function EditOfferScreen({ route }: any) {
       } catch {
         // Weryfikacja jest best-effort — brak sieci nie powinien blokować
         // dalszego flow. Zapis już się powiódł od strony PUT-a.
+      }
+
+      if (showLandRegistryVerification && isLandRegistryValid && !isKwLocked && token?.trim()) {
+        try {
+          const legalView = await submitOwnerLegalVerification(
+            Number(offerId),
+            {
+              landRegistryNumber: landRegistryRaw,
+              apartmentNumber: apartmentNumber.trim() || null,
+              ownerNote: null,
+            },
+            token.trim(),
+          );
+          const nextStatus = String(legalView?.status || '').toUpperCase();
+          if (nextStatus === 'VERIFIED') {
+            setLegalCheckStatus('VERIFIED');
+            setIsLegalSafeVerified(true);
+          } else if (nextStatus === 'PENDING') {
+            setLegalCheckStatus('PENDING');
+          } else if (nextStatus === 'REJECTED') {
+            setLegalCheckStatus('REJECTED');
+          }
+        } catch (err: any) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          Alert.alert(
+            t('offer.edit.alerts.partialSaveTitle'),
+            String(err?.message || t('offer.edit.kw.submitFailed')),
+            [{ text: t('common.ok'), onPress: () => navigation.goBack() }],
+          );
+          setSaving(false);
+          return;
+        }
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2894,6 +2961,11 @@ export default function EditOfferScreen({ route }: any) {
           {showLandRegistryVerification ? (
           <>
           {/* ====== WERYFIKACJA NIERUCHOMOŚCI — TARCZA BEZPIECZEŃSTWA (tylko PL) ====== */}
+          <View
+            onLayout={(e) => {
+              kwSectionYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
           <Text style={styles.sectionTitle}>{t('offer.edit.kw.sectionTitle')}</Text>
 
           {/* Karta wyjaśniająca — co zyskujesz */}
@@ -2902,11 +2974,22 @@ export default function EditOfferScreen({ route }: any) {
               styles.shieldExplainCard,
               {
                 backgroundColor: isDark
-                  ? isLandRegistryValid ? 'rgba(52,199,89,0.08)' : 'rgba(255,255,255,0.03)'
-                  : isLandRegistryValid ? 'rgba(52,199,89,0.06)' : 'rgba(0,0,0,0.02)',
-                borderColor: isLandRegistryValid
-                  ? 'rgba(52,199,89,0.55)'
-                  : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                  ? (legalCheckStatus === 'VERIFIED' || isLegalSafeVerified)
+                    ? 'rgba(52,199,89,0.08)'
+                    : legalCheckStatus === 'PENDING'
+                      ? 'rgba(245,158,11,0.08)'
+                      : 'rgba(255,255,255,0.03)'
+                  : (legalCheckStatus === 'VERIFIED' || isLegalSafeVerified)
+                    ? 'rgba(52,199,89,0.06)'
+                    : legalCheckStatus === 'PENDING'
+                      ? 'rgba(245,158,11,0.08)'
+                      : 'rgba(0,0,0,0.02)',
+                borderColor:
+                  legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
+                    ? 'rgba(52,199,89,0.55)'
+                    : legalCheckStatus === 'PENDING'
+                      ? 'rgba(245,158,11,0.45)'
+                      : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
               },
             ]}
           >
@@ -2916,22 +2999,43 @@ export default function EditOfferScreen({ route }: any) {
                 style={[
                   styles.shieldIconCircle,
                   {
-                    backgroundColor: isLandRegistryValid
+                    backgroundColor:
+                      legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
                       ? 'rgba(52,199,89,0.15)'
+                      : legalCheckStatus === 'PENDING'
+                        ? 'rgba(245,158,11,0.16)'
                       : isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)',
-                    borderColor: isLandRegistryValid ? 'rgba(52,199,89,0.6)' : 'transparent',
-                    shadowColor: isLandRegistryValid ? '#34C759' : 'transparent',
-                    shadowOpacity: isLandRegistryValid ? 0.45 : 0,
+                    borderColor:
+                      legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
+                        ? 'rgba(52,199,89,0.6)'
+                        : legalCheckStatus === 'PENDING'
+                          ? 'rgba(245,158,11,0.55)'
+                          : 'transparent',
+                    shadowColor:
+                      legalCheckStatus === 'VERIFIED' || isLegalSafeVerified ? '#34C759' : 'transparent',
+                    shadowOpacity: legalCheckStatus === 'VERIFIED' || isLegalSafeVerified ? 0.45 : 0,
                     shadowRadius: 12,
                     shadowOffset: { width: 0, height: 0 },
-                    elevation: isLandRegistryValid ? 4 : 0,
+                    elevation: legalCheckStatus === 'VERIFIED' || isLegalSafeVerified ? 4 : 0,
                   },
                 ]}
               >
                 <Ionicons
-                  name={isLandRegistryValid ? 'shield-checkmark' : 'shield-outline'}
+                  name={
+                    legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
+                      ? 'shield-checkmark'
+                      : legalCheckStatus === 'PENDING'
+                        ? 'time-outline'
+                        : 'shield-outline'
+                  }
                   size={28}
-                  color={isLandRegistryValid ? '#34C759' : subColor}
+                  color={
+                    legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
+                      ? '#34C759'
+                      : legalCheckStatus === 'PENDING'
+                        ? '#F59E0B'
+                        : subColor
+                  }
                 />
             </View>
               <View style={{ flex: 1, marginLeft: 14 }}>
@@ -2940,8 +3044,11 @@ export default function EditOfferScreen({ route }: any) {
                     style={[
                       styles.shieldBadge,
                       {
-                        backgroundColor: isLandRegistryValid
+                        backgroundColor:
+                          legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
                           ? 'rgba(52,199,89,0.18)'
+                          : legalCheckStatus === 'PENDING'
+                            ? 'rgba(245,158,11,0.18)'
                           : isDark ? 'rgba(142,142,147,0.18)' : 'rgba(142,142,147,0.12)',
                       },
                     ]}
@@ -2949,22 +3056,41 @@ export default function EditOfferScreen({ route }: any) {
                     <Text
                       style={[
                         styles.shieldBadgeText,
-                        { color: isLandRegistryValid ? '#34C759' : subColor },
+                        {
+                          color:
+                            legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
+                              ? '#34C759'
+                              : legalCheckStatus === 'PENDING'
+                                ? '#D97706'
+                                : subColor,
+                        },
                       ]}
                     >
-                      {isLandRegistryValid ? t('offer.edit.kw.verifiedBadge') : t('offer.edit.kw.unverifiedBadge')}
+                      {legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
+                        ? t('offer.edit.kw.verifiedBadge')
+                        : legalCheckStatus === 'PENDING'
+                          ? t('offer.edit.kw.pendingBadge')
+                          : legalCheckStatus === 'REJECTED'
+                            ? t('offer.edit.kw.rejectedBadge')
+                            : t('offer.edit.kw.unverifiedBadge')}
                     </Text>
                   </View>
                 </View>
                 <Text style={[styles.shieldTitle, { color: txtColor }]}>
-                  {isLandRegistryValid
+                  {legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
                     ? t('offer.edit.kw.verifiedTitle')
-                    : t('offer.edit.kw.unverifiedTitle')}
+                    : legalCheckStatus === 'PENDING'
+                      ? t('offer.edit.kw.pendingTitle')
+                      : t('offer.edit.kw.unverifiedTitle')}
                 </Text>
                 <Text style={[styles.shieldSub, { color: subColor }]}>
-                  {isLandRegistryValid
+                  {legalCheckStatus === 'VERIFIED' || isLegalSafeVerified
                     ? t('offer.edit.kw.verifiedSub')
-                    : t('offer.edit.kw.unverifiedSub')}
+                    : legalCheckStatus === 'PENDING'
+                      ? t('offer.edit.kw.pendingSub')
+                      : isKwLocked
+                        ? t('offer.edit.kw.lockedSub')
+                      : t('offer.edit.kw.unverifiedSub')}
                 </Text>
               </View>
             </View>
@@ -3005,7 +3131,9 @@ export default function EditOfferScreen({ route }: any) {
                   {
                     color: txtColor,
                     borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-                    backgroundColor: isDark ? '#2C2C2E' : '#F6F6F8',
+                    backgroundColor: isKwLocked
+                      ? isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+                      : isDark ? '#2C2C2E' : '#F6F6F8',
                   },
                 ]}
                 value={apartmentNumber}
@@ -3014,6 +3142,7 @@ export default function EditOfferScreen({ route }: any) {
                 placeholderTextColor={subColor}
                 autoCapitalize="characters"
                 autoCorrect={false}
+                editable={!isKwLocked}
               />
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
@@ -3047,7 +3176,9 @@ export default function EditOfferScreen({ route }: any) {
                       : isDark
                         ? 'rgba(255,255,255,0.18)'
                         : 'rgba(0,0,0,0.12)',
-                    backgroundColor: isDark ? '#2C2C2E' : '#F6F6F8',
+                    backgroundColor: isKwLocked
+                      ? isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+                      : isDark ? '#2C2C2E' : '#F6F6F8',
                   },
                 ]}
                 value={landRegistryNumber}
@@ -3059,6 +3190,7 @@ export default function EditOfferScreen({ route }: any) {
                 placeholderTextColor={subColor}
                 autoCapitalize="characters"
                 autoCorrect={false}
+                editable={!isKwLocked}
               />
               {/* Sugestie prefiksu */}
               {landRegistrySuggestions.length > 0 && !isLandRegistryValid ? (
@@ -3100,6 +3232,7 @@ export default function EditOfferScreen({ route }: any) {
                 </View>
               ) : null}
             </View>
+          </View>
           </View>
           </>
           ) : null}

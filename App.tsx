@@ -1419,6 +1419,21 @@ const parsePushTargetFromResponse = (
     }
   }
 
+  if (pushTypeNorm.includes('OPEN_HOUSE') || pushTypeNorm.startsWith('OH_')) {
+    if (auctionEventId) {
+      return {
+        screen: 'OpenHouseEvent',
+        params: { eventId: auctionEventId },
+      };
+    }
+    if (offerId) {
+      return {
+        screen: 'OfferDetail',
+        params: { offer: { id: offerId }, id: offerId, offerId },
+      };
+    }
+  }
+
   const crmClientId = parseNumericOrStringId(
     firstDefined(data.clientId, data.agencyClientId, data.crmClientId)
   );

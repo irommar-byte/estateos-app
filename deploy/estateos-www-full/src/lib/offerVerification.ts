@@ -28,12 +28,12 @@ export function buildOfferVerificationMeta(input: {
 }): OfferVerificationMeta {
   const apartmentNumber = normalizeApartmentNumber(input.apartmentNumber);
   const landRegistryNumber = normalizeLandRegistryNumber(input.landRegistryNumber);
-  const hasBoth = Boolean(apartmentNumber && landRegistryNumber);
+  const hasKw = Boolean(landRegistryNumber);
 
   return {
     apartmentNumber,
     landRegistryNumber,
-    status: hasBoth ? "PENDING_REVIEW" : "UNVERIFIED",
+    status: hasKw ? "PENDING_REVIEW" : "UNVERIFIED",
   };
 }
 

@@ -1,4 +1,8 @@
 import { prisma } from '@/lib/prisma';
+import {
+  notifyOpenHouseCancelled,
+  notifyOpenHouseReservation,
+} from '@/lib/ownerLifecyclePush';
 
 export type OpenHouseSlotInput = {
   startsAt: string;
@@ -157,7 +161,8 @@ export function serializeOpenHouseEvent(
     .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
     .map((slot) => serializeOpenHouseSlot(slot, viewerUserId));
 
-  const nextSlot = slots.find((s) => new Date(s.startsAt).getTime() > Date.now() && !s.isFull) ?? null;
+  const nextOpen = slots.find((s) => new Date(s.startsAt).getTime() > Date.now() && !s.isFull) ?? null;
+  const nextAny = slots.find((s) => new Date(s.startsAt).getTime() > Date.now()) ?? null;
   const totalSpotsLeft = slots.reduce((sum, s) => sum + s.spotsLeft, 0);
 
   return {
@@ -172,7 +177,7 @@ export function serializeOpenHouseEvent(
     createdAt: event.createdAt.toISOString(),
     updatedAt: event.updatedAt.toISOString(),
     isHost: viewerUserId != null && viewerUserId === event.hostUserId,
-    nextSlotStartsAt: nextSlot?.startsAt ?? null,
+    nextSlotStartsAt: nextOpen?.startsAt ?? nextAny?.startsAt ?? null,
     totalSpotsLeft,
     host: event.host
       ? {
@@ -438,7 +443,7 @@ export async function reserveOpenHouseSlot(
 ) {
   const guestCount = Math.min(10, Math.max(1, Number(input.guestCount) || 1));
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const slot = await tx.openHouseSlot.findUnique({
       where: { id: slotId },
       include: {
@@ -492,20 +497,57 @@ export async function reserveOpenHouseSlot(
         createdAt: reservation.createdAt.toISOString(),
       },
       event: serializeOpenHouseEvent(event, userId),
+      notify: {
+        hostUserId: event.hostUserId,
+        offerId: event.offerId,
+        eventId: event.id,
+        startsAt: slot.startsAt,
+        offerTitle: event.offer?.title ?? event.title,
+      },
     };
   });
+
+  notifyOpenHouseReservation({
+    hostUserId: result.notify.hostUserId,
+    guestUserId: userId,
+    offerId: result.notify.offerId,
+    eventId: result.notify.eventId,
+    startsAt: result.notify.startsAt,
+    offerTitle: result.notify.offerTitle,
+  });
+
+  return { reservation: result.reservation, event: result.event };
 }
 
 export async function cancelOpenHouseReservation(userId: number, reservationId: number) {
   const reservation = await prisma.openHouseReservation.findFirst({
     where: { id: reservationId, userId, status: 'CONFIRMED' },
-    include: { slot: { select: { eventId: true } } },
+    include: {
+      slot: {
+        select: {
+          eventId: true,
+          startsAt: true,
+          event: {
+            select: { hostUserId: true, offerId: true, title: true, offer: { select: { title: true } } },
+          },
+        },
+      },
+    },
   });
   if (!reservation) throw new Error('NOT_FOUND');
 
   await prisma.openHouseReservation.update({
     where: { id: reservationId },
     data: { status: 'CANCELLED' },
+  });
+
+  notifyOpenHouseCancelled({
+    hostUserId: reservation.slot.event.hostUserId,
+    guestUserId: userId,
+    offerId: reservation.slot.event.offerId,
+    eventId: reservation.slot.eventId,
+    startsAt: reservation.slot.startsAt,
+    offerTitle: reservation.slot.event.offer?.title ?? reservation.slot.event.title,
   });
 
   const event = await getOpenHouseEventById(reservation.slot.eventId, userId);

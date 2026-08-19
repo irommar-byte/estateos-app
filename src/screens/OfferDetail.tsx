@@ -926,10 +926,22 @@ export default function OfferDetail({ route, navigation }: any) {
   const isLegalSafeVerified = isOfferLegallyVerified(offer, ownerLegalVerifiedOverride === true);
   const canTapLegalShield =
     !isLegalSafeVerified &&
-    !!isOwner &&
+    (!!isOwner || !!isPlatformAdmin) &&
     !isSamplePreview &&
     Number(offer?.id) > 0 &&
     isPolandOffer;
+  const openHouseDateLabel = useMemo(() => {
+    if (!openHouseEvent || openHouseEvent.status !== 'PUBLISHED' || !openHouseEvent.nextSlotStartsAt) {
+      return null;
+    }
+    const start = new Date(openHouseEvent.nextSlotStartsAt);
+    if (!Number.isFinite(start.getTime()) || start.getTime() < Date.now()) return null;
+    return start.toLocaleString(dateLocale, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+  }, [openHouseEvent, dateLocale]);
   const viewsCountLabel =
     viewsCount > 0
       ? t('offer.detail.views.countCompact', { count: viewsCount.toLocaleString(dateLocale) })
@@ -1894,11 +1906,31 @@ export default function OfferDetail({ route, navigation }: any) {
             newOfferBadgeAnimatedStyle={newOfferBadgeAnimatedStyle}
             shieldVerified={forceAllMetaBadges ? true : isLegalSafeVerified}
             showShieldTapHint={!forceAllMetaBadges && canTapLegalShield}
+            openHouseDateLabel={forceAllMetaBadges ? null : openHouseDateLabel}
+            onOpenHousePress={
+              openHouseEvent
+                ? () => {
+                    Haptics.selectionAsync();
+                    (navigation as any).navigate('OpenHouseEvent', { eventId: openHouseEvent.id });
+                  }
+                : undefined
+            }
             onShieldPress={
               !forceAllMetaBadges && canTapLegalShield
                 ? () => {
                     Haptics.selectionAsync();
-                    setLegalVerifyOpenTrigger((n) => n + 1);
+                    Alert.alert(
+                      t('offer.detail.legalVerified.tapAlertTitle'),
+                      t('offer.detail.legalVerified.tapAlertBody'),
+                      [
+                        { text: t('common.cancel'), style: 'cancel' },
+                        {
+                          text: t('offer.detail.legalVerified.tapAlertCta'),
+                          onPress: () =>
+                            navigation.navigate('EditOffer', { offerId: offer.id, focusKw: true }),
+                        },
+                      ],
+                    );
                   }
                 : undefined
             }

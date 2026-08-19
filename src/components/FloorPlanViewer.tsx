@@ -21,6 +21,7 @@ import { getSafeQuickLook } from '../utils/safeQuickLook';
 import FloorPlanScanArtboard from './roomScan/FloorPlanScanArtboard';
 import type { FloorPlanScanMeta } from '../types/roomScan';
 import { API_URL } from '../config/network';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function absolutePlanAssetUrl(uri?: string | null): string | undefined {
   const value = String(uri || '').trim();
@@ -41,7 +42,8 @@ export default function FloorPlanViewer({
   theme?: { glass?: string; dark?: boolean };
 }) {
   const { t } = useI18n();
-  const { width: screenW } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const [isOpen, setIsOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const animValue = React.useRef(new Animated.Value(0)).current;
@@ -127,8 +129,8 @@ export default function FloorPlanViewer({
     return null;
   }, [has3d, roomCount, t]);
 
-  const modalArtboardW = Math.min(screenW - 48, 520);
-  const modalArtboardH = Math.round(modalArtboardW * 1.1);
+  const modalArtboardW = Math.min(screenW - 32, 640);
+  const modalArtboardH = Math.round(Math.min(screenH * 0.52, modalArtboardW * 1.05));
 
   return (
     <View style={styles.container}>
@@ -229,7 +231,10 @@ export default function FloorPlanViewer({
               {roomScans.map((room, index) => (
                 <Pressable
                   key={room.id || `${room.name}-${index}`}
-                  onPress={() => setPlanKey(room.id)}
+                  onPress={() => {
+                    setPlanKey(room.id);
+                    openModal();
+                  }}
                   style={[
                     styles.roomScanRow,
                     planKey === room.id && styles.roomScanRowActive,
@@ -335,18 +340,18 @@ export default function FloorPlanViewer({
       {hasPlan && isOpen && (
         <Modal transparent visible animationType="none" onRequestClose={closeModal}>
           <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
-
             <Animated.View
               style={[
                 styles.modalContent,
                 {
-                  backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
-                  borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+                  backgroundColor: isDark ? '#0B0B0C' : '#F2F2F7',
+                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                  paddingTop: insets.top + 8,
+                  paddingBottom: insets.bottom + 10,
                   opacity: animValue,
                   transform: [
-                    { scale: animValue.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) },
-                    { translateY: animValue.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) },
+                    { scale: animValue.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                    { translateY: animValue.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
                   ],
                 },
               ]}
@@ -355,8 +360,8 @@ export default function FloorPlanViewer({
                 style={[
                   styles.macOsHeader,
                   {
-                    backgroundColor: isDark ? '#2C2C2E' : '#E5E5EA',
-                    borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                    backgroundColor: isDark ? '#161618' : '#E8E8ED',
+                    borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                   },
                 ]}
               >
@@ -369,10 +374,42 @@ export default function FloorPlanViewer({
                   <View style={[styles.macDot, { backgroundColor: '#FFBD2E' }]} />
                   <View style={[styles.macDot, { backgroundColor: '#27C93F' }]} />
                 </View>
-                <Text style={[styles.macOsTitle, { color: isDark ? '#8E8E93' : '#333' }]}>
-                  {has3d || hasVectorPlan ? t('offer.detail.floorPlan.scannedPlan') : 'Plan_Wnetrza.pdf'}
+                <Text style={[styles.macOsTitle, { color: isDark ? '#E5E7EB' : '#333' }]}>
+                  {selectedRoom?.name || t('offer.detail.floorPlan.studioTitle')}
                 </Text>
               </View>
+
+              {roomScans.length > 0 ? (
+                <View style={styles.modalChipRow}>
+                  <Pressable
+                    onPress={() => setPlanKey('whole')}
+                    style={[
+                      styles.planChip,
+                      planKey === 'whole' && styles.planChipActive,
+                      isDark && { borderColor: 'rgba(255,255,255,0.12)' },
+                    ]}
+                  >
+                    <Text style={[styles.planChipText, planKey === 'whole' && styles.planChipTextActive]}>
+                      {t('offer.detail.floorPlan.wholeHome')}
+                    </Text>
+                  </Pressable>
+                  {roomScans.map((room) => (
+                    <Pressable
+                      key={room.id || room.name}
+                      onPress={() => setPlanKey(room.id)}
+                      style={[
+                        styles.planChip,
+                        planKey === room.id && styles.planChipActive,
+                        isDark && { borderColor: 'rgba(255,255,255,0.12)' },
+                      ]}
+                    >
+                      <Text style={[styles.planChipText, planKey === room.id && styles.planChipTextActive]}>
+                        {room.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
 
               <View style={[styles.imageContainer, { backgroundColor: isDark ? '#000' : '#0b1220' }]}>
                 {hasVectorPlan && activeMeta ? (
@@ -386,6 +423,16 @@ export default function FloorPlanViewer({
                   <Image source={{ uri: displayImageUrl }} style={styles.fullImage} resizeMode="contain" />
                 ) : null}
               </View>
+
+              {furniture.length > 0 ? (
+                <View style={styles.modalFurniture}>
+                  {furniture.map((obj) => (
+                    <View key={obj.id} style={[styles.furnitureChip, isDark && { backgroundColor: '#1f2937' }]}>
+                      <Text style={[styles.furnitureChipText, isDark && { color: '#e2e8f0' }]}>{obj.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
 
               <View style={styles.modalActions}>
                 {hasVectorPlan && activeMeta ? (
@@ -592,17 +639,12 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
-    marginHorizontal: 16,
-    marginTop: 80,
-    marginBottom: 80,
-    borderRadius: 20,
+    marginHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    borderRadius: 0,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 25 },
-    shadowOpacity: 0.5,
-    shadowRadius: 35,
-    elevation: 20,
-    borderWidth: 1,
+    borderWidth: 0,
   },
   macOsHeader: {
     height: 44,
@@ -623,6 +665,20 @@ const styles = StyleSheet.create({
   },
   macOsTitle: { flex: 1, textAlign: 'center', fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
   imageContainer: { flex: 1, padding: 8, alignItems: 'center', justifyContent: 'center' },
+  modalChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  modalFurniture: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
   fullImage: { width: '100%', height: '100%', borderRadius: 12 },
   modalActions: { padding: 12, gap: 8 },
   modalWalkthroughBtn: {

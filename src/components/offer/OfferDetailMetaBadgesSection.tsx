@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Eye, Star } from 'lucide-react-native';
 import LegalVerifiedShieldBadge from '../LegalVerifiedShieldBadge';
+import OpenHouseMetaMark from './OpenHouseMetaMark';
 import { useI18n } from '../../i18n';
 
 type Props = {
@@ -17,6 +18,8 @@ type Props = {
   showShieldTapHint: boolean;
   onShieldPress?: () => void;
   onFeaturePress?: () => void;
+  openHouseDateLabel?: string | null;
+  onOpenHousePress?: () => void;
 };
 
 /**
@@ -35,6 +38,8 @@ export default function OfferDetailMetaBadgesSection({
   showShieldTapHint,
   onShieldPress,
   onFeaturePress,
+  openHouseDateLabel,
+  onOpenHousePress,
 }: Props) {
   const { t } = useI18n();
 
@@ -96,13 +101,22 @@ export default function OfferDetailMetaBadgesSection({
           )}
         </View>
 
-        <View style={styles.center} pointerEvents="box-none">
-          <LegalVerifiedShieldBadge
-            isDark={isDark}
-            verified={shieldVerified}
-            showTapHint={showShieldTapHint}
-            onPress={onShieldPress}
-          />
+        <View style={[styles.center, openHouseDateLabel ? styles.centerWide : null]} pointerEvents="box-none">
+          <View style={styles.centerCluster}>
+            <LegalVerifiedShieldBadge
+              isDark={isDark}
+              verified={shieldVerified}
+              showTapHint={showShieldTapHint}
+              onPress={onShieldPress}
+            />
+            {openHouseDateLabel ? (
+              <OpenHouseMetaMark
+                isDark={isDark}
+                dateLabel={openHouseDateLabel}
+                onPress={onOpenHousePress}
+              />
+            ) : null}
+          </View>
         </View>
 
         <View style={[styles.side, styles.sideEnd]}>
@@ -181,6 +195,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: 2,
+  },
+  centerWide: {
+    width: 198,
+  },
+  centerCluster: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 8,
+  },
     zIndex: 2,
   },
   viewsBadge: {

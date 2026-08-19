@@ -129,6 +129,8 @@ export type OfferPageCopy = {
     bannerTitle: string;
     bannerSubtitle: (date: string, spots: number) => string;
     bannerCta: string;
+    markLabel: string;
+    markDate: (date: string) => string;
     modalTitle: string;
     modalSubtitle: string;
     slotsSection: string;
@@ -327,6 +329,8 @@ const PL: OfferPageCopy = {
     bannerTitle: "Dzień otwartych drzwi",
     bannerSubtitle: (date, spots) => `Najbliższy termin: ${date} · ${spots} wolnych miejsc`,
     bannerCta: "Zarezerwuj wizytę",
+    markLabel: "Dzień otwarty",
+    markDate: (date) => date,
     modalTitle: "Dzień otwarty",
     modalSubtitle: "Wybierz termin wizyty",
     slotsSection: "Terminy wizyt",
@@ -524,6 +528,8 @@ const EN: OfferPageCopy = {
     bannerTitle: "Open house day",
     bannerSubtitle: (date, spots) => `Next slot: ${date} · ${spots} spots left`,
     bannerCta: "Book a visit",
+    markLabel: "Open house",
+    markDate: (date) => date,
     modalTitle: "Open house",
     modalSubtitle: "Pick your visit time",
     slotsSection: "Visit slots",

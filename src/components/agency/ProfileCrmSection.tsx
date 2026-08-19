@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, LayoutAnimation, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -203,10 +203,12 @@ function MetricTile({
 
 export default function ProfileCrmSection({ isDark, isAgency }: Props) {
   const navigation = useNavigation<any>();
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth >= 768;
   const token = useAuthStore((s) => s.token);
   const { events } = useCrmSchedule();
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const palette = useMemo(() => crmGoldPalette(isDark), [isDark]);
 
@@ -351,10 +353,120 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
             </View>
           </Pressable>
 
-          <AnalogAppleClock size={168} isDark={isDark} variant="gold" accent={palette.accent} />
+          {expanded || !isTablet ? (
+            <AnalogAppleClock size={168} isDark={isDark} variant="gold" accent={palette.accent} />
+          ) : null}
+
+          {!expanded && isTablet ? (
+            <View style={styles.collapsedTablet}>
+              <AnalogAppleClock size={148} isDark={isDark} variant="gold" accent={palette.accent} />
+              <View style={styles.collapsedRails}>
+                <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.railCard}>
+                  <Text style={[styles.railEyebrow, { color: palette.secondary }]}>DZISIAJ</Text>
+                  <Text style={[styles.railTitle, { color: palette.text }]} numberOfLines={1}>
+                    {new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </Text>
+                  <View style={styles.ledRow}>
+                    <View
+                      style={[
+                        styles.ledDot,
+                        { backgroundColor: attentionCount > 0 ? palette.attention : palette.onTrack },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.ledLabel,
+                        { color: attentionCount > 0 ? palette.attention : palette.onTrack },
+                      ]}
+                    >
+                      {attentionCount > 0 ? `PILNE ${attentionCount}` : 'PLAN OK'}
+                    </Text>
+                  </View>
+                </InsetMetalRecess>
+                <InsetMetalRecess
+                  isDark={isDark}
+                  variant="gold"
+                  contentStyle={styles.railCard}
+                  onPress={nextEvent ? () => handleEventPress(nextEvent) : undefined}
+                >
+                  <Text style={[styles.railEyebrow, { color: palette.secondary }]}>NAJBLIŻSZE SPOTKANIE</Text>
+                  <Text style={[styles.railTitle, { color: palette.text }]} numberOfLines={2}>
+                    {nextEvent
+                      ? `${new Date(nextEvent.startsAt).toLocaleTimeString('pl-PL', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })} · ${nextEvent.subtitle || nextEvent.title}`
+                      : 'Brak terminów w tym tygodniu'}
+                  </Text>
+                </InsetMetalRecess>
+                <View style={styles.actionsRow}>
+                  <View style={styles.actionFlex}>
+                    <InsetMetalRecess
+                      isDark={isDark}
+                      variant="gold"
+                      contentStyle={styles.actionContent}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        navigation.navigate('AgencyClientCreate');
+                      }}
+                    >
+                      <Ionicons name="person-add" size={16} color={palette.onTrack} />
+                      <Text style={[styles.actionText, { color: palette.text }]}>Dodaj klienta</Text>
+                    </InsetMetalRecess>
+                  </View>
+                  <View style={styles.actionFlex}>
+                    <InsetMetalRecess
+                      isDark={isDark}
+                      variant="gold"
+                      contentStyle={styles.actionContent}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        navigation.navigate('AgencyClients');
+                      }}
+                    >
+                      <Ionicons name="people" size={16} color={palette.accent} />
+                      <Text style={[styles.actionText, { color: palette.text }]}>Moi klienci</Text>
+                    </InsetMetalRecess>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ) : null}
 
           {expanded ? (
             <>
+              <View style={styles.actionsRow}>
+                <View style={styles.actionFlex}>
+                  <InsetMetalRecess
+                    isDark={isDark}
+                    variant="gold"
+                    contentStyle={styles.actionContent}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      navigation.navigate('AgencyClientCreate');
+                    }}
+                  >
+                    <Ionicons name="person-add" size={16} color={palette.onTrack} />
+                    <Text style={[styles.actionText, { color: palette.text }]}>Dodaj klienta</Text>
+                  </InsetMetalRecess>
+                </View>
+
+                <View style={styles.actionFlex}>
+                  <InsetMetalRecess
+                    isDark={isDark}
+                    variant="gold"
+                    contentStyle={styles.actionContent}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      navigation.navigate('AgencyClients');
+                    }}
+                  >
+                    <Ionicons name="people" size={16} color={palette.accent} />
+                    <Text style={[styles.actionText, { color: palette.text }]}>Moi klienci</Text>
+                  </InsetMetalRecess>
+                </View>
+              </View>
+
               <View style={styles.metricsRow}>
                 <MetricTile
                   value={String(clients.length)}
@@ -470,17 +582,10 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
               </View>
 
               <BlockHeading
-                label="Najbliższy termin"
+                label="Terminarz"
                 palette={palette}
                 icon={<TickingClockIcon color={palette.accent} size={14} />}
               />
-              <View style={styles.blockList}>
-                <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.wellContent}>
-                  <MobilePulseScheduleWidget isDark={isDark} embedded events={events} palette={palette} />
-                </InsetMetalRecess>
-              </View>
-
-              <BlockHeading label="Kalendarz miesiąca" palette={palette} />
               <View style={styles.blockList}>
                 <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.wellContent}>
                   <CrmMonthCalendar
@@ -492,6 +597,9 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                     onEventPress={handleEventPress}
                   />
                 </InsetMetalRecess>
+                <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.wellContent}>
+                  <MobilePulseScheduleWidget isDark={isDark} embedded events={events} palette={palette} />
+                </InsetMetalRecess>
               </View>
 
               <View style={styles.actionsRow}>
@@ -502,14 +610,13 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                     contentStyle={styles.actionContent}
                     onPress={() => {
                       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      navigation.navigate('AgencyClientCreate');
+                      navigation.navigate('OpenHouseHub');
                     }}
                   >
-                    <Ionicons name="person-add" size={16} color={palette.onTrack} />
-                    <Text style={[styles.actionText, { color: palette.text }]}>Dodaj klienta</Text>
+                    <Ionicons name="door-open-outline" size={16} color={palette.acquisition} />
+                    <Text style={[styles.actionText, { color: palette.text }]}>Dzień otwarty</Text>
                   </InsetMetalRecess>
                 </View>
-
                 <View style={styles.actionFlex}>
                   <InsetMetalRecess
                     isDark={isDark}
@@ -517,11 +624,11 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                     contentStyle={styles.actionContent}
                     onPress={() => {
                       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      navigation.navigate('AgencyClients');
+                      navigation.navigate('AuctionHub');
                     }}
                   >
-                    <Ionicons name="people" size={16} color={palette.accent} />
-                    <Text style={[styles.actionText, { color: palette.text }]}>Moi klienci</Text>
+                    <Ionicons name="hammer-outline" size={16} color={palette.accent} />
+                    <Text style={[styles.actionText, { color: palette.text }]}>Licytacje</Text>
                   </InsetMetalRecess>
                 </View>
               </View>
@@ -639,5 +746,49 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  collapsedTablet: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 14,
+    marginTop: 10,
+  },
+  collapsedRails: {
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+    justifyContent: 'center',
+  },
+  railCard: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 4,
+  },
+  railEyebrow: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  railTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  ledRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 6,
+  },
+  ledDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  ledLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.6,
   },
 });

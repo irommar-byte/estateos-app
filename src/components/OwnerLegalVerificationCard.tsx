@@ -143,15 +143,11 @@ export default function OwnerLegalVerificationCard({
       Alert.alert('Walidacja', 'Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6.');
       return;
     }
-    if (!apt) {
-      Alert.alert('Walidacja', 'Wpisz numer mieszkania (lub „—" dla domu jednorodzinnego).');
-      return;
-    }
     setSubmitting(true);
     try {
       const next = await submitOwnerLegalVerification(
         offerId,
-        { landRegistryNumber: kw, apartmentNumber: apt, ownerNote: formNote.trim() || null },
+        { landRegistryNumber: kw, apartmentNumber: apt || null, ownerNote: formNote.trim() || null },
         token,
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
