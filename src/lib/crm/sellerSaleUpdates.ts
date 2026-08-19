@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import type { PublicLinkPreview } from '@/lib/crm/publicLinkPreview';
@@ -24,7 +25,7 @@ export async function recordSellerSaleUpdate(params: {
   title: string;
   body: string;
   offerId?: number | null;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonObject;
   emailSubject?: string;
   emailHtml?: string;
 }) {
@@ -42,7 +43,7 @@ export async function recordSellerSaleUpdate(params: {
       title: params.title.slice(0, 255),
       body: params.body,
       offerId: params.offerId ?? null,
-      metadata: params.metadata || {},
+      metadata: (params.metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
 
