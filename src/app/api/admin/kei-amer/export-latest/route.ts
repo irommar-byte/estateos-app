@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin/requireAdmin';
 import { exportKeiListingsToEstateOS } from '@/lib/keiAmerExport';
+import { hasActiveKeiImportJob } from '@/lib/keiAmerImportJobs';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,6 +14,12 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
+  if (await hasActiveKeiImportJob()) {
+    return NextResponse.json(
+      { ok: false, error: 'Inny import KEI już trwa. Poczekaj, aż się skończy.' },
+      { status: 409 },
+    );
+  }
   try {
     const selections = Array.isArray(body?.selections)
       ? body.selections

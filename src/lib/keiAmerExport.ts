@@ -16,10 +16,8 @@ import {
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
-import {
-  assertKeiListingAvailableForImport,
-  markKeiListingImported,
-} from '@/lib/keiAmerListingState';
+import { assertKeiListingAvailableForImport, markKeiListingImported } from '@/lib/keiAmerListingState';
+import { importUrlLookupCandidates } from '@/lib/importDuplicateGuard';
 
 const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
@@ -246,6 +244,17 @@ export async function exportKeiListingsToEstateOS(options?: {
   if (exportTargets.length === 0) {
     throw new Error('Brak ogłoszeń do eksportu.');
   }
+
+  const seenUrls = new Set<string>();
+  exportTargets = exportTargets.filter((row) => {
+    const keys = importUrlLookupCandidates(row.portalUrl);
+    const fingerprint = keys[0] || String(row.portalUrl || '').trim();
+    if (!fingerprint || seenUrls.has(fingerprint)) return false;
+    if (keys.some((key) => seenUrls.has(key))) return false;
+    for (const key of keys) seenUrls.add(key);
+    seenUrls.add(fingerprint);
+    return true;
+  });
 
   const plannedTotal =
     fillUntilPublished

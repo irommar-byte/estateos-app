@@ -635,7 +635,11 @@ export async function resumeOrphanKeiImportJobs(): Promise<number> {
   await ensureKeiAmerImportJobTable();
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT id FROM KeiAmerImportJob
-     WHERE status IN ('queued', 'running') AND cancelRequested = 0
+     WHERE cancelRequested = 0
+       AND (
+         (status = 'queued' AND updatedAt < DATE_SUB(NOW(3), INTERVAL 90 SECOND))
+         OR (status = 'running' AND updatedAt < DATE_SUB(NOW(3), INTERVAL 90 SECOND))
+       )
      ORDER BY createdAt ASC
      LIMIT 1`,
   )) as Array<{ id: string }>;
