@@ -13,6 +13,25 @@ export function parseLooseNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Zgodność ceny oferty z medianą aktów.
+ * 0% → 98; ~8% → 85; 25% → 52; 32% → 39. Dawniej `max(15, 100-3.5×%)`
+ * spłaszczało wszystko powyżej ~24% do 15/100.
+ */
+export function marketPriceScore(vsMedianPct: number): number {
+  if (!Number.isFinite(vsMedianPct)) return 8;
+  const raw = 100 - Math.abs(vsMedianPct) * 1.9;
+  return Math.round(Math.min(98, Math.max(8, raw)));
+}
+
+export function formatSignedPct(value: number | null | undefined, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const n = Math.abs(value);
+  const shown = n < 10 ? n.toFixed(digits) : String(Math.round(n));
+  if (Math.abs(value) < 0.05) return `0%`;
+  return `${value > 0 ? '+' : '−'}${shown}%`;
+}
+
 /** Krótka etykieta na taśmie katalogu: jak daleko cena oferty jest od mediany aktów RCN. */
 export function formatTapeDelta(vsMedianPct: number, locale: string): string {
   if (!Number.isFinite(vsMedianPct)) return '';

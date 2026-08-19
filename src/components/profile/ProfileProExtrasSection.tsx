@@ -15,6 +15,8 @@ import TitaniumHomeKeyBackdrop from './TitaniumHomeKeyBackdrop';
 import { profilePremiumCardShellStyle } from './profileCardElevation';
 import InsetMetalRecess, { InsetMetalIconWell } from './InsetMetalRecess';
 import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
+import { useAuthStore } from '../../store/useAuthStore';
+import PricePulseCard from '../market/PricePulseCard';
 
 type FeatureId = 'auction' | 'openHouse' | 'insider';
 
@@ -239,7 +241,11 @@ function FeatureRow({
 
 export default function ProfileProExtrasSection({ user, isDark = true, onFeaturePress }: Props) {
   const { t } = useI18n();
+  const token = useAuthStore((s) => s.token);
   const isPro = hasActiveInvestorProMembership(user);
+  const isAgency =
+    String(user?.role || '').trim().toUpperCase() === 'AGENT' ||
+    String(user?.planType || '').trim().toUpperCase() === 'AGENCY';
   const [toolsExpanded, setToolsExpanded] = useState(true);
 
   if (!isPro) return null;
@@ -328,6 +334,11 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
 
       {toolsExpanded ? (
         <>
+        {!isAgency ? (
+          <View style={{ marginTop: 12, marginBottom: 4 }}>
+            <PricePulseCard isDark={isDark} token={token} variant="titanium" />
+          </View>
+        ) : null}
         <Text style={[styles.sectionLead, isDark && styles.sectionLeadDark]}>
           {t('profile.proExtras.lead')}
         </Text>

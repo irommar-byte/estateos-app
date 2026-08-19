@@ -2,6 +2,7 @@
 import { cs92ToWgs84, parseCs92Pos } from '../src/lib/market/rcnCrs';
 import { parseRcnAddress, parseShareRatio, parseRcnLocalesGml } from '../src/lib/market/rcnParse';
 import { assessRcnQuality } from '../src/lib/market/rcnQuality';
+import { marketPriceScore } from '../src/lib/market/format';
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -46,5 +47,9 @@ assert(feats[0].formattedAddress === 'Ciasna 15', feats[0].formattedAddress);
 const q = assessRcnQuality(feats[0]);
 assert(q.ok, `quality ${q.flags.join(',')}`);
 assert(q.ppsm && q.ppsm > 18000 && q.ppsm < 20000, String(q.ppsm));
+
+assert(marketPriceScore(0) === 98, 'score at deed');
+assert(marketPriceScore(32.2) === 39, `score 32.2% was ${marketPriceScore(32.2)} (must not clamp to 15)`);
+assert(marketPriceScore(8) === 85, 'score near market');
 
 console.log('market-engine tests ok');

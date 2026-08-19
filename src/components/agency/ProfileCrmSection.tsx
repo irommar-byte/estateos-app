@@ -10,6 +10,7 @@ import TitaniumHomeKeyBackdrop from '../profile/TitaniumHomeKeyBackdrop';
 import InsetMetalRecess, { InsetMetalIconWell } from '../profile/InsetMetalRecess';
 import { profilePremiumCardShellStyle } from '../profile/profileCardElevation';
 import AnalogAppleClock from './AnalogAppleClock';
+import PricePulseCard from '../market/PricePulseCard';
 import CrmMonthCalendar from './CrmMonthCalendar';
 import MobilePulseScheduleWidget from './MobilePulseScheduleWidget';
 import ProfileConciergeCard from './ProfileConciergeCard';
@@ -354,13 +355,32 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
           </Pressable>
 
           {expanded || !isTablet ? (
-            <AnalogAppleClock size={168} isDark={isDark} variant="gold" accent={palette.accent} />
+            <>
+              <AnalogAppleClock size={168} isDark={isDark} variant="gold" accent={palette.accent} />
+              <View style={styles.pulseWrap}>
+                <PricePulseCard
+                  isDark={isDark}
+                  token={token}
+                  variant="gold"
+                  textColor={palette.text}
+                  mutedColor={palette.secondary}
+                />
+              </View>
+            </>
           ) : null}
 
           {!expanded && isTablet ? (
             <View style={styles.collapsedTablet}>
               <AnalogAppleClock size={148} isDark={isDark} variant="gold" accent={palette.accent} />
               <View style={styles.collapsedRails}>
+                <PricePulseCard
+                  isDark={isDark}
+                  token={token}
+                  variant="gold"
+                  compact
+                  textColor={palette.text}
+                  mutedColor={palette.secondary}
+                />
                 <InsetMetalRecess isDark={isDark} variant="gold" contentStyle={styles.railCard}>
                   <Text style={[styles.railEyebrow, { color: palette.secondary }]}>DZISIAJ</Text>
                   <Text style={[styles.railTitle, { color: palette.text }]} numberOfLines={1}>
@@ -746,6 +766,10 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  pulseWrap: {
+    marginTop: 4,
+    marginBottom: 6,
   },
   collapsedTablet: {
     flexDirection: 'row',

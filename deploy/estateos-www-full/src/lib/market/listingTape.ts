@@ -14,7 +14,7 @@ import {
   WARSAW_CITY,
 } from '@/lib/market/constants';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
-import { formatTapeDelta } from '@/lib/market/format';
+import { formatTapeDelta, marketPriceScore } from '@/lib/market/format';
 import { resolveWarsawDistrict } from '@/lib/market/warsawDistricts';
 import { normalizeTransactionType } from '@/lib/transactionType';
 
@@ -65,7 +65,7 @@ function tapeTone(vsMedianPct: number): ListingTapeTone {
 }
 
 function tapeScore(vsMedianPct: number) {
-  return Math.round(Math.min(99, Math.max(15, 100 - Math.abs(vsMedianPct) * 3.5)));
+  return marketPriceScore(vsMedianPct);
 }
 
 async function loadMedianByDistrict(periodDays: number): Promise<{

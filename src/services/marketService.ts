@@ -79,6 +79,64 @@ export function formatPpsm(n: number) {
   return `${Math.round(n).toLocaleString('pl-PL')} zł/m²`;
 }
 
+export function formatSignedPct(value: number | null | undefined, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const n = Math.abs(value);
+  const shown = n < 10 ? n.toFixed(digits) : String(Math.round(n));
+  if (Math.abs(value) < 0.05) return '0%';
+  return `${value > 0 ? '+' : '−'}${shown}%`;
+}
+
+export type PricePulseTone = 'up' | 'down' | 'flat';
+export type PricePulseDirection = 'rising' | 'falling' | 'stable';
+
+export type PricePulseWindow = {
+  days: number;
+  listingPpsm: number | null;
+  deedPpsm: number | null;
+  vsDeedsPct: number | null;
+  listingChangePct: number | null;
+  deedChangePct: number | null;
+  listingCount: number;
+  deedCount: number;
+};
+
+export type PricePulsePayload = {
+  ok: true;
+  city: string;
+  source: string;
+  disclaimer: string;
+  updatedAt: string;
+  vsDeedsPct: number | null;
+  listingPpsm: number | null;
+  deedPpsm: number | null;
+  tone: PricePulseTone;
+  direction: PricePulseDirection;
+  windows: { d7: PricePulseWindow; d30: PricePulseWindow; d90: PricePulseWindow };
+  series: Array<{ date: string; listingPpsm: number | null; deedPpsm: number | null; vsDeedsPct: number | null }>;
+  sparkline: Array<number | null>;
+  districts: Array<{
+    district: string;
+    vsDeedsPct: number;
+    listingPpsm: number;
+    deedPpsm: number;
+    listingCount: number;
+  }>;
+};
+
+export async function fetchPricePulse(
+  token?: string | null,
+): Promise<PricePulsePayload | { ok: false; message: string }> {
+  const res = await fetch(`${API_URL}/api/market/price-pulse`, {
+    headers: authHeaders(token),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.ok) {
+    return { ok: false, message: String(json?.message || 'Brak pulsu cenowego.') };
+  }
+  return json as PricePulsePayload;
+}
+
 export function formatTapeDelta(vsMedianPct: number, locale: string): string {
   if (!Number.isFinite(vsMedianPct)) return '';
   if (Math.abs(vsMedianPct) < 3) {
