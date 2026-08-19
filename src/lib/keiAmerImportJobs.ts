@@ -569,6 +569,14 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         resultJson: JSON.stringify({ exported: result.exported, skipped: result.skipped }),
         finishedAt: new Date(),
       });
+      if (payload.source === 'auto') {
+        const { recordKeiAutoImportCycle } = await import('@/lib/keiAutoImport');
+        await recordKeiAutoImportCycle({
+          imported: cancelled ? 0 : result.exported.length,
+          skipped: result.skipped.length,
+          error: cancelled ? 'Przerwano ręcznie.' : null,
+        });
+      }
     } catch (error) {
       const cancelled = await isCancelRequested(jobId);
       const message =
@@ -591,6 +599,10 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
           items,
           finishedAt: new Date(),
         });
+        if (payload.source === 'auto') {
+          const { recordKeiAutoImportCycle } = await import('@/lib/keiAutoImport');
+          await recordKeiAutoImportCycle({ imported: 0, skipped: 0, error: 'Przerwano ręcznie.' });
+        }
       } else {
         await writeJobFields(jobId, {
           status: 'error',
@@ -598,6 +610,10 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
           items,
           finishedAt: new Date(),
         });
+        if (payload.source === 'auto') {
+          const { recordKeiAutoImportCycle } = await import('@/lib/keiAutoImport');
+          await recordKeiAutoImportCycle({ imported: 0, skipped: 0, error: message });
+        }
       }
     }
   } finally {
@@ -605,27 +621,73 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
   }
 }
 
+export async function resumeOrphanKeiImportJobs(): Promise<number> {
+  await ensureKeiAmerImportJobTable();
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT id FROM KeiAmerImportJob
+     WHERE status IN ('queued', 'running') AND cancelRequested = 0
+     ORDER BY createdAt ASC
+     LIMIT 1`,
+  )) as Array<{ id: string }>;
+  let resumed = 0;
+  for (const row of rows) {
+    if (runningJobs.has(row.id)) continue;
+    scheduleKeiImportJobRun(row.id);
+    resumed += 1;
+  }
+  return resumed;
+}
+  await ensureKeiAmerImportJobTable();
+  const queued = await prisma.$executeRawUnsafe(
+    `UPDATE KeiAmerImportJob
+     SET status = 'error',
+         message = 'Import nie wystartował — proces roboczy zakończył się za wcześnie.',
+         finishedAt = NOW(3)
+     WHERE status = 'queued'
+       AND cancelRequested = 0
+       AND updatedAt < DATE_SUB(NOW(3), INTERVAL 2 MINUTE)`,
+  );
+  const running = await prisma.$executeRawUnsafe(
+    `UPDATE KeiAmerImportJob
+     SET status = 'error',
+         message = 'Import utknął — brak postępu. Kolejny cykl spróbuje ponownie.',
+         finishedAt = NOW(3)
+     WHERE status = 'running'
+       AND cancelRequested = 0
+       AND updatedAt < DATE_SUB(NOW(3), INTERVAL 12 MINUTE)`,
+  );
+  return Number(queued || 0) + Number(running || 0);
+}
+
 export async function hasActiveKeiImportJob(): Promise<boolean> {
   await ensureKeiAmerImportJobTable();
   const rows = (await prisma.$queryRawUnsafe<Array<{ total: number | bigint }>>(
     `SELECT COUNT(*) AS total FROM KeiAmerImportJob
-     WHERE status = 'running'
-        OR (status = 'queued' AND updatedAt > DATE_SUB(NOW(3), INTERVAL 15 MINUTE))`,
+     WHERE (status = 'running' AND updatedAt > DATE_SUB(NOW(3), INTERVAL 12 MINUTE))
+        OR (status = 'queued' AND updatedAt > DATE_SUB(NOW(3), INTERVAL 2 MINUTE))`,
   )) as Array<{ total: number | bigint }>;
   return Number(rows[0]?.total || 0) > 0;
 }
 
+function scheduleKeiImportJobRun(jobId: string) {
+  // Job musi żyć w procesie `nieruchomosci` (PM2). Cron wcześniej robił process.exit
+  // i zabijał `void runKeiImportJob` — stąd pasek 0%.
+  void runKeiImportJob(jobId).catch((error) => {
+    console.error('[kei-import] job failed', jobId, error);
+  });
+}
+
 /**
- * Kolejkuje job i od razu odpala worker w tym procesie.
- * Nie używamy Next.js `after()` — cron PM2 / skrypt nie mają request scope
- * (`'after' was called outside a request scope`) i przerywały auto-import.
+ * Kolejkuje job i odpala worker w procesie Next.js (nie w cronie PM2).
+ * Cron `process.exit` zabijał `void runKeiImportJob` i pasek wisiał na 0%.
  */
 export async function enqueueKeiImportJob(input: KeiImportJobCreateInput): Promise<KeiImportJobSnapshot> {
+  await reapStaleKeiImportJobs();
   if (await hasActiveKeiImportJob()) {
     throw new Error('Inny import KEI już trwa. Poczekaj, aż się skończy — automatyczny i ręczny nie mogą iść naraz.');
   }
   const job = await createKeiImportJob(input);
-  void runKeiImportJob(job.id);
+  scheduleKeiImportJobRun(job.id);
   return job;
 }
 

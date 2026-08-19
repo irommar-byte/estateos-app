@@ -11,4 +11,10 @@ export async function register() {
     });
     throw error;
   }
+
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+  if (process.env.NEXT_PHASE === 'phase-production-build') return;
+
+  const { startKeiAutoImportHeartbeat } = await import('@/lib/keiAutoImport');
+  startKeiAutoImportHeartbeat();
 }
