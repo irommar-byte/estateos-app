@@ -204,72 +204,128 @@ function AiRewritePanel({
   );
 }
 
-/** Apple-style glass capsule — engraved labels blink occasionally while import runs. */
-function KeiBackgroundPill({
+function formatWaitLabel(nextRunAt: string | null): string {
+  if (!nextRunAt) return 'Startuję cykl…';
+  const ms = new Date(nextRunAt).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return 'Startuję cykl…';
+  const min = Math.max(1, Math.round(ms / 60_000));
+  if (min < 60) return `Następny cykl za ${min} min`;
+  const hours = Math.round(min / 60);
+  return `Następny cykl za ${hours} godz.`;
+}
+
+function HeartbeatPercent({
   percent,
-  stageLabel,
-  doneCount,
-  totalCount,
+  tone,
   isDark,
-  isAuto,
-  onPress,
-  onStop,
 }: {
   percent: number;
-  stageLabel: string;
-  doneCount: number;
-  totalCount: number;
+  tone: 'idle' | 'ok' | 'bad';
   isDark: boolean;
-  isAuto?: boolean;
-  onPress: () => void;
-  onStop: () => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const engravedFlash = useRef(new Animated.Value(0.48)).current;
-  const engravedColor = isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.48)';
+  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    pulse.setValue(0);
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.delay(4200),
-        Animated.timing(engravedFlash, {
+        Animated.timing(pulse, {
           toValue: 1,
-          duration: 280,
-          easing: Easing.out(Easing.quad),
+          duration: 240,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
           useNativeDriver: true,
         }),
-        Animated.timing(engravedFlash, {
-          toValue: 0.48,
+        Animated.timing(pulse, {
+          toValue: 0.12,
+          duration: 320,
+          easing: Easing.bezier(0.45, 0, 0.55, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.7,
+          duration: 180,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
           duration: 520,
-          easing: Easing.inOut(Easing.quad),
+          easing: Easing.bezier(0.33, 0, 0.2, 1),
           useNativeDriver: true,
         }),
-        Animated.delay(220),
-        Animated.timing(engravedFlash, {
-          toValue: 1,
-          duration: 220,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(engravedFlash, {
-          toValue: 0.48,
-          duration: 480,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
+        Animated.delay(8740),
       ]),
     );
     loop.start();
     return () => loop.stop();
-  }, [engravedFlash]);
+  }, [pulse]);
 
+  const color =
+    percent <= 0 || tone === 'idle'
+      ? isDark
+        ? 'rgba(235,235,245,0.42)'
+        : 'rgba(0,0,0,0.42)'
+      : tone === 'bad'
+        ? '#FF453A'
+        : '#34C759';
+
+  return (
+    <Animated.Text
+      style={{
+        color,
+        fontSize: 15,
+        fontWeight: '800',
+        letterSpacing: -0.3,
+        opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.38, 1] }),
+        transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.07] }) }],
+      }}
+    >
+      {percent}%
+    </Animated.Text>
+  );
+}
+
+/** Apple-style glass capsule — percent heartbeats once every 10s. */
+function KeiBackgroundPill({
+  percent,
+  stageLabel,
+  statsLabel,
+  doneCount,
+  totalCount,
+  isDark,
+  isAuto,
+  collapsed,
+  tone,
+  onPress,
+  onStop,
+  onToggleCollapse,
+}: {
+  percent: number;
+  stageLabel: string;
+  statsLabel: string;
+  doneCount: number;
+  totalCount: number;
+  isDark: boolean;
+  isAuto?: boolean;
+  collapsed: boolean;
+  tone: 'idle' | 'ok' | 'bad';
+  onPress: () => void;
+  onStop: () => void;
+  onToggleCollapse: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const engravedColor = isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.48)';
   const capsuleBg = isDark ? 'rgba(22,22,24,0.28)' : 'rgba(255,255,255,0.22)';
   const border = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.55)';
 
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.pillHost, { bottom: Math.max(insets.bottom, 10) + 58 }]}
+      style={[
+        styles.pillHost,
+        { bottom: Math.max(insets.bottom, 10) + 58 },
+        collapsed ? styles.pillHostCollapsed : null,
+      ]}
     >
       <View style={[styles.pillShadow, { shadowColor: isDark ? '#34C759' : '#000' }]}>
         <View style={styles.pillPress}>
@@ -278,33 +334,63 @@ function KeiBackgroundPill({
           ) : (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: capsuleBg }]} />
           )}
-          <View style={[styles.pillInner, { backgroundColor: capsuleBg, borderColor: border }]}>
+          <View
+            style={[
+              styles.pillInner,
+              { backgroundColor: capsuleBg, borderColor: border },
+              collapsed ? styles.pillInnerCollapsed : null,
+            ]}
+          >
             <Pressable
               onPress={onPress}
               style={({ pressed }) => [styles.pillMainHit, pressed && { opacity: 0.88 }]}
             >
-              <View style={[styles.pillDot, { backgroundColor: '#34C759' }]} />
-              <Animated.View style={[styles.pillCopy, { opacity: engravedFlash }]}>
+              <View
+                style={[
+                  styles.pillDot,
+                  { backgroundColor: tone === 'bad' ? '#FF453A' : tone === 'idle' ? engravedColor : '#34C759' },
+                ]}
+              />
+              <View style={styles.pillCopy}>
                 <View style={styles.pillTitleRow}>
                   <Text style={[styles.pillEngravedBrand, { color: engravedColor }]}>
                     {isAuto ? 'AUTO' : 'KEI'}
                   </Text>
                   <Text style={[styles.pillEngravedSep, { color: engravedColor }]}>·</Text>
-                  <Text style={[styles.pillEngravedPct, { color: engravedColor }]}>{percent}%</Text>
-                  <Text style={[styles.pillEngravedCount, { color: engravedColor }]}>
-                    {doneCount}/{totalCount}
-                  </Text>
+                  <HeartbeatPercent percent={percent} tone={tone} isDark={isDark} />
+                  {totalCount > 0 ? (
+                    <Text style={[styles.pillEngravedCount, { color: engravedColor }]}>
+                      {doneCount}/{totalCount}
+                    </Text>
+                  ) : null}
                 </View>
-                <Text style={[styles.pillEngravedStage, { color: engravedColor }]} numberOfLines={1}>
-                  {stageLabel}
-                </Text>
-              </Animated.View>
+                {collapsed ? null : (
+                  <>
+                    <Text style={[styles.pillEngravedStage, { color: engravedColor }]} numberOfLines={1}>
+                      {stageLabel}
+                    </Text>
+                    {statsLabel ? (
+                      <Text style={[styles.pillEngravedStage, { color: engravedColor }]} numberOfLines={1}>
+                        {statsLabel}
+                      </Text>
+                    ) : null}
+                  </>
+                )}
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={onToggleCollapse}
+              hitSlop={8}
+              style={styles.pillStop}
+              accessibilityLabel={collapsed ? 'Rozwiń pasek importu' : 'Zminimalizuj pasek importu'}
+            >
+              <Ionicons name={collapsed ? 'chevron-up' : 'remove'} size={18} color={engravedColor} />
             </Pressable>
             <Pressable
               onPress={onStop}
               hitSlop={10}
               style={styles.pillStop}
-              accessibilityLabel="Zatrzymaj import"
+              accessibilityLabel={isAuto && percent <= 0 ? 'Wyłącz automatyczny import' : 'Zatrzymaj import'}
             >
               <Ionicons name="stop-circle" size={26} color="#FF453A" />
             </Pressable>
@@ -325,12 +411,19 @@ export default function KeiImportProgressHost() {
   const token = useAuthStore((s) => s.token);
   const running = useKeiAmerExportStore((s) => s.running);
   const modalVisible = useKeiAmerExportStore((s) => s.modalVisible);
+  const pillCollapsed = useKeiAmerExportStore((s) => s.pillCollapsed);
   const message = useKeiAmerExportStore((s) => s.message);
   const source = useKeiAmerExportStore((s) => s.source);
   const items = useKeiAmerExportStore((s) => s.items);
   const results = useKeiAmerExportStore((s) => s.results);
   const skipped = useKeiAmerExportStore((s) => s.skipped);
+  const autoEnabled = useKeiAmerExportStore((s) => s.autoEnabled);
+  const sessionImportedCount = useKeiAmerExportStore((s) => s.sessionImportedCount);
+  const sessionSkippedCount = useKeiAmerExportStore((s) => s.sessionSkippedCount);
+  const nextRunAt = useKeiAmerExportStore((s) => s.nextRunAt);
+  const autoLastError = useKeiAmerExportStore((s) => s.autoLastError);
   const setModalVisible = useKeiAmerExportStore((s) => s.setModalVisible);
+  const setPillCollapsed = useKeiAmerExportStore((s) => s.setPillCollapsed);
   const cancelExport = useKeiAmerExportStore((s) => s.cancelExport);
   const hydrateFromServer = useKeiAmerExportStore((s) => s.hydrateFromServer);
 
@@ -345,20 +438,36 @@ export default function KeiImportProgressHost() {
   );
   const stageLabel = activeItem
     ? [activeItem.stepLabel, activeItem.stepDetail].filter(Boolean).join(' · ')
-    : source === 'auto'
-      ? 'Automatyczny import załączony — w trakcie importowania'
-      : message || 'Import na serwerze…';
+    : running
+      ? message || 'Import na serwerze…'
+      : autoEnabled
+        ? formatWaitLabel(nextRunAt)
+        : message || 'Import na serwerze…';
   const progressHeadline =
-    source === 'auto'
-      ? 'Automatyczny import załączony — w trakcie importowania'
+    source === 'auto' || autoEnabled
+      ? running
+        ? 'Automatyczny import — w toku na serwerze'
+        : 'Automatyczny import załączony — czeka na kolejny cykl'
       : message;
+  const statsLabel = autoEnabled
+    ? `Od startu: ${sessionImportedCount} ofert` +
+      (sessionSkippedCount ? ` · ${sessionSkippedCount} pominiętych` : '')
+    : results.length > 0
+      ? `Zaimportowano: ${results.length}`
+      : '';
+  const percentTone: 'idle' | 'ok' | 'bad' =
+    autoLastError && !running
+      ? 'bad'
+      : overallPercent <= 0
+        ? 'idle'
+        : 'ok';
   const activeExportIndex = useMemo(
     () => items.findIndex((item) => item.status === 'active'),
     [items],
   );
 
-  const showPill = running && !modalVisible && items.length > 0;
-  const showModal = modalVisible && (running || items.length > 0);
+  const showPill = !modalVisible && (running || autoEnabled);
+  const showModal = modalVisible && (running || items.length > 0 || autoEnabled);
 
   useEffect(() => {
     if (token) void hydrateFromServer(token);
@@ -398,6 +507,11 @@ export default function KeiImportProgressHost() {
     setModalVisible(true);
   }, [setModalVisible]);
 
+  const handleToggleCollapse = useCallback(() => {
+    void Haptics.selectionAsync();
+    setPillCollapsed(!pillCollapsed);
+  }, [pillCollapsed, setPillCollapsed]);
+
   if (!showPill && !showModal) return null;
 
   return (
@@ -405,17 +519,17 @@ export default function KeiImportProgressHost() {
       {showPill ? (
         <KeiBackgroundPill
           percent={overallPercent}
-          stageLabel={
-            source === 'auto'
-              ? `Automatyczny import załączony · ${stageLabel}`
-              : stageLabel
-          }
+          stageLabel={stageLabel}
+          statsLabel={statsLabel}
           doneCount={doneCount}
           totalCount={items.length}
           isDark={colors.isDark}
-          isAuto={source === 'auto'}
+          isAuto={source === 'auto' || autoEnabled}
+          collapsed={pillCollapsed}
+          tone={percentTone}
           onPress={handleOpen}
           onStop={handleStop}
+          onToggleCollapse={handleToggleCollapse}
         />
       ) : null}
 
@@ -428,7 +542,7 @@ export default function KeiImportProgressHost() {
         <View style={[styles.modalRoot, { backgroundColor: colors.bg }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.separator, paddingTop: insets.top + 8 }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {source === 'auto' ? 'Automatyczny import KEI' : 'Import KEI'}
+              {source === 'auto' || autoEnabled ? 'Automatyczny import KEI' : 'Import KEI'}
             </Text>
             <View style={styles.modalHeaderActions}>
               {running ? (
@@ -445,6 +559,9 @@ export default function KeiImportProgressHost() {
           </View>
           <ScrollView ref={exportScrollRef} contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24 }}>
             <Text style={[styles.exportSummary, { color: colors.secondary }]}>{progressHeadline}</Text>
+            {statsLabel ? (
+              <Text style={[styles.exportSummary, { color: colors.secondary, marginTop: -4 }]}>{statsLabel}</Text>
+            ) : null}
             <ProgressBar percent={overallPercent} color={colors.accent} />
             <Text style={[styles.percentLabel, { color: colors.text }]}>{overallPercent}%</Text>
 
@@ -550,6 +667,10 @@ const styles = StyleSheet.create({
     zIndex: 80,
     elevation: 80,
   },
+  pillHostCollapsed: {
+    left: 108,
+    right: 16,
+  },
   pillShadow: {
     borderRadius: 22,
     shadowOffset: { width: 0, height: 8 },
@@ -570,6 +691,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
+  },
+  pillInnerCollapsed: {
+    paddingVertical: 8,
+    paddingLeft: 12,
   },
   pillMainHit: {
     flex: 1,

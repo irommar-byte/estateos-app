@@ -413,8 +413,11 @@ export default function AdminKeiAmerScreen() {
           transactionKind: scheduleTransaction,
         });
         applyScheduleConfig(res.config);
+        if (token) void hydrateExport(token);
         setScheduleMessage(
-          res.config.enabled ? 'Harmonogram zapisany — import działa na serwerze.' : 'Harmonogram wyłączony.',
+          res.config.enabled
+            ? 'Załączony — serwer odświeża listę, wybiera najnowsze i importuje. Telefon może być wyłączony.'
+            : 'Harmonogram wyłączony.',
         );
       } catch (e) {
         setScheduleMessage(e instanceof Error ? e.message : 'Nie udało się zapisać harmonogramu.');
@@ -432,6 +435,7 @@ export default function AdminKeiAmerScreen() {
       scheduleProperty,
       scheduleTransaction,
       applyScheduleConfig,
+      hydrateExport,
     ],
   );
 
@@ -868,10 +872,10 @@ export default function AdminKeiAmerScreen() {
                   <Text style={[styles.sectionLabel, { color: colors.secondary, marginBottom: 4 }]}>
                     AUTOMATYCZNY IMPORT
                   </Text>
-                  <Text style={[styles.autoImportLead, { color: colors.text }]} numberOfLines={2}>
+                  <Text style={[styles.autoImportLead, { color: colors.text }]} numberOfLines={3}>
                     {scheduleEnabled
-                      ? 'Załączony — serwer importuje sam, niezależnie od przycisku Importuj.'
-                      : 'Wyłączony — tylko ręczny import z listy poniżej.'}
+                      ? 'Załączony — serwer sam odświeża listę, wybiera najnowsze i importuje. Telefon może być wyłączony.'
+                      : 'Wyłączony — tylko ręczny Importuj z listy poniżej.'}
                   </Text>
                 </View>
                 <Ionicons
@@ -896,7 +900,7 @@ export default function AdminKeiAmerScreen() {
             {scheduleExpanded ? (
               <View style={[styles.configCard, { backgroundColor: colors.card, marginTop: 10 }]}>
                 <Text style={[styles.hint, { color: colors.tertiary, paddingHorizontal: 14, marginTop: 10, marginBottom: 8 }]}>
-                  Osobny kanał od ręcznego „Importuj”. Jeśli jeden już trwa, drugi czeka. Aplikację możesz zamknąć.
+                  Ten sam cykl co „Wybierz najnowsze” + „Importuj”, tylko w tle na serwerze. Po każdym cyklu czeka ustawiony interwał i znów bierze najnowsze.
                 </Text>
                 <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
                   <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto' }]}>Interwał</Text>

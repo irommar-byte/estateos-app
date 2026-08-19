@@ -238,5 +238,39 @@ export async function previewKeiExportListings(options?: {
   };
 }
 
+/** To samo co „Wybierz najnowsze”: feed od najnowszych, bez już zaimportowanych / zablokowanych. */
+export async function pickNewestKeiListingsForImport(options: {
+  propertyKind: KeiPropertyKind;
+  transactionKind: KeiTransactionKind;
+  count: number;
+}): Promise<Array<{ keiId: string; portalUrl: string; address?: string }>> {
+  const count = Math.max(1, Math.min(25, Math.floor(options.count) || 1));
+  const picked: Array<{ keiId: string; portalUrl: string; address?: string }> = [];
+  const seen = new Set<string>();
+
+  for (let page = 1; page <= 8 && picked.length < count; page += 1) {
+    const preview = await previewKeiExportListings({
+      propertyKind: options.propertyKind,
+      transactionKind: options.transactionKind,
+      page,
+      pageSize: 25,
+      mode: 'feed',
+    });
+    for (const row of preview.listings) {
+      if (row.blockedReason || seen.has(row.portalUrl)) continue;
+      seen.add(row.portalUrl);
+      picked.push({
+        keiId: row.keiId,
+        portalUrl: row.portalUrl,
+        address: row.address,
+      });
+      if (picked.length >= count) break;
+    }
+    if (!preview.hasNextPage) break;
+  }
+
+  return picked;
+}
+
 // Keep filter helper available for callers that still use the strict pair.
 export { rowMatchesKeiFilters, keiPropertyKindFromRow };

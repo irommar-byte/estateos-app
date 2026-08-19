@@ -1276,7 +1276,7 @@ export default function KeiAmerWorkspace() {
               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Automatyczny import</p>
               <p className="mt-1 text-sm text-white/70 leading-relaxed">
                 {autoDraft.enabled
-                  ? "Załączony — serwer importuje sam, niezależnie od ręcznego Importuj."
+                  ? "Załączony — serwer sam odświeża listę, wybiera najnowsze i importuje (jak Wybierz najnowsze + Importuj). Telefon może być wyłączony."
                   : "Wyłączony — tylko ręczny import z listy."}{" "}
                 {autoExpanded ? "Zwiń ustawienia." : "Rozwiń, żeby zmienić interwał i ilość."}
               </p>
@@ -1377,6 +1377,13 @@ export default function KeiAmerWorkspace() {
               {autoSaving ? <Loader2 size={14} className="animate-spin" /> : null}
               Zapisz harmonogram
             </button>
+            {autoImport?.sessionImportedCount != null ? (
+              <p className="text-[11px] text-white/45">
+                Od załączenia: {autoImport.sessionImportedCount} zaimportowanych
+                {autoImport.sessionSkippedCount ? ` · ${autoImport.sessionSkippedCount} pominiętych` : ''}
+                {autoImport.sessionCycles ? ` · ${autoImport.sessionCycles} cykli` : ''}
+              </p>
+            ) : null}
             {autoImport?.lastRunAt ? (
               <p className="text-[11px] text-white/45">
                 Ostatni start: {new Date(autoImport.lastRunAt).toLocaleString("pl-PL")}

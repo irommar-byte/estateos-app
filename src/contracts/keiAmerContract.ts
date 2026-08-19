@@ -346,6 +346,11 @@ export type KeiAutoImportConfig = {
   lastJobId: string | null;
   lastError: string | null;
   updatedAt: string | null;
+  sessionStartedAt?: string | null;
+  sessionImportedCount?: number;
+  sessionSkippedCount?: number;
+  sessionCycles?: number;
+  nextRunAt?: string | null;
 };
 
 export function keiAutoIntervalLabel(minutes: number): string {
