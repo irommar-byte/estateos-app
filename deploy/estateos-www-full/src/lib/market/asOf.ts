@@ -8,7 +8,17 @@ const CACHE_MS = 5 * 60 * 1000;
 let cache: { at: number; city: string; asOf: Date } | null = null;
 
 function lastDayOfMonthUtc(year: number, month1to12: number) {
-  return new Date(Date.UTC(year, month1to12, 0, 23, 59, 59, 999));
+  // Noon UTC so Europe/Warsaw still shows that calendar day.
+  return new Date(Date.UTC(year, month1to12, 0, 12, 0, 0, 0));
+}
+
+export function formatPlDate(date: Date) {
+  return date.toLocaleDateString('pl-PL', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+    timeZone: 'Europe/Warsaw',
+  });
 }
 
 /**
@@ -47,10 +57,6 @@ export async function resolveRcnAsOfDate(city = WARSAW_CITY): Promise<Date> {
   const asOf = latest?.deedAt || new Date();
   cache = { at: now, city, asOf };
   return asOf;
-}
-
-export function formatPlDate(date: Date) {
-  return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'numeric', year: 'numeric' });
 }
 
 export function rcnLagNote(asOf: Date, periodDays: number) {
