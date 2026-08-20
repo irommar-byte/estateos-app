@@ -183,11 +183,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Błąd ładowania");
       setPortal(json.portal);
-      const drafts: Record<number, string> = {};
-      for (const m of json.portal.matches || []) {
-        if (m.clientFeedback) drafts[m.id] = m.clientFeedback;
-      }
-      setFeedbackDraft(drafts);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd");
     } finally {
