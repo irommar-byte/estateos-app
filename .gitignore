@@ -17,6 +17,9 @@ node_modules
 *.swp
 *~
 
+# Kopia www-full należy do mobilki — na VPS tylko puchnie dysk i git pull
+deploy/estateos-www-full/
+
 # archiwalia wyłączone przy deploy
 app__DISABLED_*/
 _archived_cleanup/
