@@ -1,0 +1,224 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { ExternalLink, MessageSquare, Send, ThumbsDown, ThumbsUp, HelpCircle } from "lucide-react";
+import {
+  DISLIKE_PHRASES,
+  LIKE_PHRASES,
+  parseClientOfferFeedback,
+  type ClientOfferSentiment,
+} from "@/lib/crm/clientPortalFeedback";
+
+type Match = {
+  id: number;
+  score: number;
+  notifiedAt: string | null;
+  clientFeedback: string | null;
+  clientFeedbackAt: string | null;
+  offer: {
+    id: number;
+    title: string;
+    price: number;
+    priceCurrency: string | null;
+    city: string;
+    district: string | null;
+    street?: string | null;
+    area: number;
+    rooms?: number | null;
+    excerpt?: string | null;
+    imageUrl: string;
+  };
+};
+
+function scoreTone(score: number) {
+  if (score >= 85) return { bar: "bg-emerald-500", text: "text-emerald-600", label: "Bardzo dobre dopasowanie" };
+  if (score >= 70) return { bar: "bg-lime-500", text: "text-lime-700", label: "Dobre dopasowanie" };
+  if (score >= 55) return { bar: "bg-amber-400", text: "text-amber-700", label: "Częściowe dopasowanie" };
+  return { bar: "bg-rose-500", text: "text-rose-600", label: "Słabe dopasowanie" };
+}
+
+export default function ClientPortalMatchCard({
+  match,
+  token,
+  saving,
+  onSubmit,
+}: {
+  match: Match;
+  token: string;
+  saving: boolean;
+  onSubmit: (payload: {
+    sentiment: ClientOfferSentiment | null;
+    liked: string;
+    disliked: string;
+    phrases: string[];
+    note: string;
+  }) => Promise<void>;
+}) {
+  const saved = useMemo(() => parseClientOfferFeedback(match.clientFeedback), [match.clientFeedback]);
+  const [sentiment, setSentiment] = useState<ClientOfferSentiment | null>(saved.sentiment);
+  const [liked, setLiked] = useState(saved.liked);
+  const [disliked, setDisliked] = useState(saved.disliked);
+  const [phrases, setPhrases] = useState<string[]>(saved.phrases);
+  const [note, setNote] = useState(saved.note);
+  const href = `/oferta/${match.offer.id}?portal=${encodeURIComponent(token)}`;
+  const tone = scoreTone(match.score);
+  const location = [match.offer.city, match.offer.district, match.offer.street].filter(Boolean).join(" · ");
+
+  const togglePhrase = (phrase: string) => {
+    setPhrases((current) =>
+      current.includes(phrase) ? current.filter((item) => item !== phrase) : [...current, phrase],
+    );
+  };
+
+  return (
+    <article className="eos-inset-frame overflow-hidden rounded-[1.6rem]">
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
+        <Link
+          href={href}
+          className="block h-40 w-full shrink-0 overflow-hidden rounded-2xl sm:h-32 sm:w-44"
+          aria-label={`Otwórz ofertę: ${match.offer.title}`}
+        >
+          <span
+            className="block h-full w-full bg-cover bg-center transition hover:scale-[1.03]"
+            style={{ backgroundImage: `url(${match.offer.imageUrl})` }}
+          />
+        </Link>
+        <div className="min-w-0 flex-1">
+          <Link href={href} className="block text-base font-black leading-snug text-[var(--eos-text)] hover:text-emerald-600">
+            {match.offer.title}
+          </Link>
+          <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
+            {Math.round(match.offer.price).toLocaleString("pl-PL")} {match.offer.priceCurrency || "PLN"}
+            {match.offer.area ? ` · ${match.offer.area} m²` : ""}
+            {match.offer.rooms ? ` · ${match.offer.rooms} pok.` : ""}
+          </p>
+          <p className="mt-1 text-sm leading-snug text-[var(--eos-muted)]">{location}</p>
+          {match.offer.excerpt ? (
+            <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{match.offer.excerpt}</p>
+          ) : null}
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-3 text-[11px] font-bold">
+              <span className={tone.text}>
+                {match.score}% · {tone.label}
+              </span>
+              {match.notifiedAt ? (
+                <span className="text-[var(--eos-muted)]">
+                  Wysłane {new Date(match.notifiedAt).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              ) : null}
+            </div>
+            <div className="eos-inset-well mt-1.5 h-2.5 overflow-hidden rounded-full">
+              <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${Math.max(8, Math.min(100, match.score))}%` }} />
+            </div>
+          </div>
+          <Link href={href} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+            Otwórz ogłoszenie <ExternalLink className="size-3" />
+          </Link>
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--eos-border)] bg-[var(--eos-input)]/35 p-4 sm:p-5">
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+          <MessageSquare className="size-3.5" />
+          Odnieś się do tej konkretnej oferty
+        </p>
+        <p className="mt-1 text-sm text-[var(--eos-muted)]">
+          Agent zobaczy Twoją reakcję przy tym ogłoszeniu. Napisz, co konkretnie się podoba, a co nie.
+        </p>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {(
+            [
+              { id: "like" as const, label: "Podoba się", icon: ThumbsUp },
+              { id: "maybe" as const, label: "Może być", icon: HelpCircle },
+              { id: "dislike" as const, label: "Nie pasuje", icon: ThumbsDown },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setSentiment(option.id)}
+              className={`flex min-h-12 flex-col items-center justify-center rounded-xl border px-2 py-2 text-[11px] font-bold ${
+                sentiment === option.id
+                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-700"
+                  : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
+              }`}
+            >
+              <option.icon className="mb-1 size-4" />
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-4 text-[10px] font-black uppercase tracking-wider text-emerald-600">Co się podobało</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {LIKE_PHRASES.map((phrase) => (
+            <button
+              key={phrase}
+              type="button"
+              onClick={() => togglePhrase(phrase)}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+                phrases.includes(phrase)
+                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-700"
+                  : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
+              }`}
+            >
+              {phrase}
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={liked}
+          onChange={(event) => setLiked(event.target.value)}
+          rows={2}
+          placeholder="Np. kuchnia od strony ogrodu, cisza, winda…"
+          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+        />
+        <p className="mt-4 text-[10px] font-black uppercase tracking-wider text-rose-600">Czego nie akceptuję</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {DISLIKE_PHRASES.map((phrase) => (
+            <button
+              key={phrase}
+              type="button"
+              onClick={() => togglePhrase(phrase)}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+                phrases.includes(phrase)
+                  ? "border-rose-400 bg-rose-500/10 text-rose-700"
+                  : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
+              }`}
+            >
+              {phrase}
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={disliked}
+          onChange={(event) => setDisliked(event.target.value)}
+          rows={2}
+          placeholder="Np. za mała kuchnia, brak balkonu, hałas…"
+          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+        />
+        <textarea
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          rows={2}
+          placeholder="Dodatkowa uwaga do agenta (opcjonalnie)"
+          className="mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+        />
+        <button
+          type="button"
+          disabled={saving || (!sentiment && !liked.trim() && !disliked.trim() && !phrases.length && !note.trim())}
+          onClick={() => void onSubmit({ sentiment, liked, disliked, phrases, note })}
+          className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+        >
+          <Send className="size-3" />
+          {saving ? "Wysyłanie…" : match.clientFeedback ? "Zaktualizuj reakcję" : "Wyślij reakcję do agenta"}
+        </button>
+        {match.clientFeedbackAt ? (
+          <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
+            Ostatnia reakcja: {new Date(match.clientFeedbackAt).toLocaleString("pl-PL")}
+          </p>
+        ) : null}
+      </div>
+    </article>
+  );
+}

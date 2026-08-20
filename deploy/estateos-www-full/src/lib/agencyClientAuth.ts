@@ -39,6 +39,8 @@ export async function getAgencyClientForUser(clientId: number, agencyUserId: num
               priceCurrency: true,
               city: true,
               district: true,
+              street: true,
+              description: true,
               area: true,
               rooms: true,
               transactionType: true,

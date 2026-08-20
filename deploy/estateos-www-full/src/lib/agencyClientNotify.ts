@@ -141,8 +141,9 @@ function buildEmailHtml(params: {
         <tr>
           <td style="padding:18px 20px;">
             <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;">Twój prywatny panel klienta</p>
-            <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b7280;">W panelu zobaczysz wszystkie propozycje w jednym miejscu i możesz zostawić uwagi do każdej z nich.</p>
-            <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;">Otwórz panel klienta</a>
+            <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b7280;">W panelu zobaczysz każdą propozycję osobno, zostawisz reakcję przy konkretnym ogłoszeniu i zobaczysz, na jakim etapie jesteśmy. Najwygodniej otworzysz to w aplikacji EstateOS na iPhonie — wtedy dostaniesz też powiadomienia od razu.</p>
+            <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;margin:0 8px 8px 0;">Otwórz panel klienta</a>
+            <a href="https://apps.apple.com/us/app/estateos/id6762899098" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px;">Pobierz aplikację iPhone</a>
           </td>
         </tr>
       </table>`
@@ -351,9 +352,22 @@ export async function notifyAgencyClientAboutOffer(params: {
       agencyUserId: params.agencyUserId,
       offerId: params.offerId,
       kind: emailSent ? 'CLIENT_NOTIFIED' : 'OFFER_SHARED',
-      title: emailSent ? 'Wysłano ofertę e-mailem' : 'Zapisano udostępnienie oferty',
-      body: preview.intro,
-      metadata: { channel: params.channel, emailSent },
+      title: emailSent ? `Wysłano ofertę: ${preview.offers[0]?.title || 'ogłoszenie'}` : 'Zapisano udostępnienie oferty',
+      body: [preview.intro, preview.offers[0] ? `${preview.offers[0].city}${preview.offers[0].district ? ` · ${preview.offers[0].district}` : ''}` : '']
+        .filter(Boolean)
+        .join('\n'),
+      metadata: {
+        channel: params.channel,
+        emailSent,
+        offerIds: [params.offerId],
+        offers: preview.offers.map((o) => ({
+          id: o.id,
+          title: o.title,
+          city: o.city,
+          district: o.district,
+          imageUrl: o.imageUrl || null,
+        })),
+      },
     },
   });
 
@@ -431,9 +445,32 @@ export async function notifyAgencyClientAboutOffers(params: {
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
       kind: emailSent ? 'CLIENT_NOTIFIED' : 'OFFER_SHARED',
-      title: emailSent ? `Wysłano ${toSend.length} ofert e-mailem` : `Udostępniono ${toSend.length} ofert`,
-      body: preview.intro,
-      metadata: { channel: params.channel, emailSent, offerIds: toSend },
+      title: emailSent
+        ? `Wysłano ${toSend.length} ${toSend.length === 1 ? 'ofertę' : 'ofert'} e-mailem`
+        : `Udostępniono ${toSend.length} ofert`,
+      body: [
+        preview.intro,
+        preview.offers
+          .filter((o) => toSend.includes(o.id))
+          .map((o) => `${o.title} · ${[o.city, o.district].filter(Boolean).join(', ')}`)
+          .join('\n'),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      metadata: {
+        channel: params.channel,
+        emailSent,
+        offerIds: toSend,
+        offers: preview.offers
+          .filter((o) => toSend.includes(o.id))
+          .map((o) => ({
+            id: o.id,
+            title: o.title,
+            city: o.city,
+            district: o.district,
+            imageUrl: o.imageUrl || null,
+          })),
+      },
     },
   });
 

@@ -351,9 +351,12 @@ export default function AgencyClientCriteriaEditor({
       </div>
 
       <div>
-        <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-          Wymagane udogodnienia
+        <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+          Obowiązkowe 100% — bez tego oferta nie wejdzie
         </label>
+        <p className="mb-3 text-xs leading-relaxed text-[var(--eos-muted)]">
+          Zaznacz tylko to, bez czego klient absolutnie nie kupi. Balkon na 100% odcina mieszkania bez balkonu, parking odcina oferty bez miejsca — i tak dalej.
+        </p>
         <div className="flex flex-wrap gap-2">
           {AMENITIES.map((a) => (
             <button

@@ -232,7 +232,8 @@ export default function AgencyClientRadarSurvey({
         )}
       </View>
 
-      <Text style={[styles.label, { color: colors.secondary }]}>MIASTO</Text>
+      <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
+      <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>MIASTO I DZIELNICE</Text>
       <View style={styles.rowWrap}>
         {METRO_STRICT_CITIES.map((city) =>
           chip(value.city === city, city, () => patch({ city, selectedDistricts: [] }), city),
@@ -260,8 +261,10 @@ export default function AgencyClientRadarSurvey({
           </View>
         </>
       ) : null}
+      </View>
 
-      <Text style={[styles.label, { color: colors.secondary }]}>MAKSYMALNY BUDŻET</Text>
+      <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
+      <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>BUDŻET, METRAŻ, ROK</Text>
       <View style={styles.rowWrap}>
         {pricePresets.map((price) =>
           chip(
@@ -295,12 +298,18 @@ export default function AgencyClientRadarSurvey({
           chip(value.minYear === year, String(year), () => patch({ minYear: year }), `y-${year}`),
         )}
       </View>
+      </View>
 
-      <Text style={[styles.label, { color: colors.secondary }]}>WYMAGANE UDOGODNIENIA</Text>
+      <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
+      <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>OBOWIĄZKOWE 100%</Text>
+      <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
+        Zaznacz tylko to, bez czego klient nie kupi. Balkon na 100% odcina mieszkania bez balkonu.
+      </Text>
       <View style={styles.rowWrap}>
         {AMENITIES.map((item) =>
           chip(Boolean(value[item.key]), item.label, () => patch({ [item.key]: !value[item.key] }), item.key),
         )}
+      </View>
       </View>
 
       {hint ? (
@@ -320,6 +329,12 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     marginTop: 12,
+  },
+  section: {
+    marginTop: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    padding: 12,
   },
   label: {
     fontSize: 10,

@@ -60,6 +60,7 @@ import {
   type AgencyClientMatch,
 } from '../services/agencyClientService';
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
+import { formatClientFeedbackForAgent } from '../utils/clientPortalFeedback';
 import type { WholePropertyScan } from '../types/roomScan';
 import MarketValuationCard from '../components/market/MarketValuationCard';
 import {
@@ -118,63 +119,91 @@ function MatchRow({
   sent,
   busy,
   onSend,
+  onOpen,
 }: {
   item: AgencyClientMatch;
   colors: { text: string; secondary: string; accent: string; border: string };
   sent: boolean;
   busy: boolean;
   onSend: () => void;
+  onOpen: () => void;
 }) {
-  const meta = [item.offer.city, item.offer.area ? `${item.offer.area} m²` : null].filter(Boolean).join(' · ');
+  const meta = [item.offer.city, item.offer.district, item.offer.area ? `${item.offer.area} m²` : null]
+    .filter(Boolean)
+    .join(' · ');
+  const feedback = formatClientFeedbackForAgent(item.clientFeedback);
+  const scoreColor = item.score >= 85 ? '#34C759' : item.score >= 70 ? '#A3E635' : item.score >= 55 ? '#FF9F0A' : '#FF453A';
   return (
     <View
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 10,
+        paddingVertical: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: colors.border,
       }}
     >
-      {item.offer.imageUrl ? (
-        <Image source={{ uri: item.offer.imageUrl }} style={{ width: 56, height: 56, borderRadius: 10 }} />
-      ) : (
-        <View
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 10,
-            backgroundColor: colors.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="home-outline" size={20} color={colors.secondary} />
+      <Pressable onPress={onOpen} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        {item.offer.imageUrl ? (
+          <Image source={{ uri: item.offer.imageUrl }} style={{ width: 88, height: 72, borderRadius: 12 }} />
+        ) : (
+          <View
+            style={{
+              width: 88,
+              height: 72,
+              borderRadius: 12,
+              backgroundColor: colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="home-outline" size={22} color={colors.secondary} />
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>{item.offer.title}</Text>
+          <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 13, marginTop: 2 }}>
+            {formatCurrencyPLN(item.offer.price)}
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>{meta}</Text>
+          {item.offer.excerpt ? (
+            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4 }} numberOfLines={2}>
+              {item.offer.excerpt}
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <View style={{ flex: 1, height: 6, borderRadius: 99, backgroundColor: colors.border, overflow: 'hidden' }}>
+              <View style={{ width: `${Math.max(8, Math.min(100, item.score || 0))}%`, height: 6, backgroundColor: scoreColor }} />
+            </View>
+            <Text style={{ color: scoreColor, fontWeight: '900', fontSize: 11 }}>{item.score || 0}%</Text>
+          </View>
         </View>
-      )}
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>
-          {item.offer.title}
-        </Text>
-        <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 12 }}>
-          {formatCurrencyPLN(item.offer.price)}
-          {item.score ? ` · ${item.score}%` : ''}
-        </Text>
-        <Text style={{ color: colors.secondary, fontSize: 11 }}>{meta}</Text>
+      </Pressable>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+        {sent ? (
+          <View style={{ backgroundColor: 'rgba(52,199,89,0.16)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+            <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 11 }}>Wysłano</Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={onSend}
+            style={{ backgroundColor: colors.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+          >
+            <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>{busy ? '…' : 'Wyślij'}</Text>
+          </Pressable>
+        )}
       </View>
-      {sent ? (
-        <View style={{ backgroundColor: 'rgba(52,199,89,0.16)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-          <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 11 }}>Wysłano</Text>
+      {feedback ? (
+        <View style={{ marginTop: 8, borderRadius: 12, backgroundColor: 'rgba(255,159,10,0.12)', padding: 10 }}>
+          <Text style={{ color: '#C93400', fontSize: 10, fontWeight: '900', letterSpacing: 0.4 }}>REAKCJA KLIENTA</Text>
+          <Text style={{ color: colors.text, fontSize: 12, marginTop: 4 }}>{feedback}</Text>
+          {item.clientFeedbackAt ? (
+            <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 4 }}>
+              {new Date(item.clientFeedbackAt).toLocaleString('pl-PL')}
+            </Text>
+          ) : null}
         </View>
-      ) : (
-        <Pressable
-          onPress={onSend}
-          style={{ backgroundColor: colors.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
-        >
-          <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>{busy ? '…' : 'Wyślij'}</Text>
-        </Pressable>
-      )}
+      ) : sent ? (
+        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>Klient jeszcze nie odniósł się do tej oferty.</Text>
+      ) : null}
     </View>
   );
 }
@@ -1833,6 +1862,7 @@ export default function AgencyClientDetailScreen() {
                           sent={false}
                           busy={busy === `prop_${item.offer.id}`}
                           onSend={() => void sendMatches([item.offer.id])}
+                          onOpen={() => navigation.navigate('OfferDetail', { offerId: item.offer.id })}
                         />
                       ))}
                       {sentMatches.length > 0 ? (
@@ -1857,6 +1887,7 @@ export default function AgencyClientDetailScreen() {
                           sent
                           busy={false}
                           onSend={() => undefined}
+                          onOpen={() => navigation.navigate('OfferDetail', { offerId: item.offer.id })}
                         />
                       ))}
                     </>

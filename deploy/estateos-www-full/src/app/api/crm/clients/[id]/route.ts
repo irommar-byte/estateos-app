@@ -67,6 +67,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     select: { status: true, currentStep: true, signedAt: true },
   });
   const journey = buildJourneyStages({
+    clientType: client.type,
     hasMeeting: Boolean(meeting),
     meetingConfirmed: meeting?.status === 'confirmed',
     acquisitionStarted: Boolean(acquisition && acquisition.currentStep > 1),
@@ -74,6 +75,19 @@ export async function GET(req: Request, ctx: RouteCtx) {
     hasOffer: Boolean(client.linkedOfferId),
     hasPresentation: Boolean(presentation),
     presentationConfirmed: presentation?.status === 'confirmed',
+    hasCriteria: Boolean(client.buyerPreference),
+    sentOfferCount: client.matches.filter((m) => m.notifiedAt).length,
+    reactedCount: client.matches.filter((m) => m.clientFeedback).length,
+    lastOfferSentAt: client.matches
+      .map((m) => m.notifiedAt)
+      .filter(Boolean)
+      .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0]
+      ?.toISOString?.() || null,
+    lastReactionAt: client.matches
+      .map((m) => m.clientFeedbackAt)
+      .filter(Boolean)
+      .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0]
+      ?.toISOString?.() || null,
   });
 
   return NextResponse.json({
@@ -116,9 +130,14 @@ export async function GET(req: Request, ctx: RouteCtx) {
           priceCurrency: m.offer.priceCurrency,
           city: m.offer.city,
           district: m.offer.district,
+          street: m.offer.street,
           area: m.offer.area,
           rooms: m.offer.rooms,
           transactionType: m.offer.transactionType,
+          excerpt: String(m.offer.description || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 180),
           imageUrl: resolveOfferPrimaryImage(m.offer),
         },
       })),

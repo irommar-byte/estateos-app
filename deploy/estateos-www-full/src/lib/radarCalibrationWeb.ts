@@ -203,7 +203,7 @@ export function formatRadarSummary(filters: WebRadarFilters): {
     filters.calibrationMode === 'MAP' && filters.lat != null && filters.lng != null
       ? `${filters.city || 'Obszar'} · ${filters.radiusKm ?? '?'} km`
       : filters.selectedDistricts.length
-        ? `${filters.selectedDistricts.length} dzielnic · ${filters.city}`
+        ? `${filters.selectedDistricts.join(', ')} · ${filters.city}`
         : `Całe ${filters.city}`;
 
   const txLabel =

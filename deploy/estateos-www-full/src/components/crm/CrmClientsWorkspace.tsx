@@ -39,6 +39,7 @@ import { eosBtn } from "@/components/ui/eosButtonStyles";
 import SellerAcquisitionWorkspace from "@/components/crm/SellerAcquisitionWorkspace";
 import AgencyClientCriteriaEditor from "@/components/crm/AgencyClientCriteriaEditor";
 import { defaultWebRadarFilters, type WebRadarFilters } from "@/lib/radarCalibrationWeb";
+import { formatClientFeedbackForAgent, parseClientOfferFeedback, sentimentLabel } from "@/lib/crm/clientPortalFeedback";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -81,6 +82,7 @@ type ClientDetail = AgencyClientListItem & {
       price: number;
       city: string;
       district: string;
+      excerpt?: string | null;
       area: number;
       imageUrl: string;
     };
@@ -978,13 +980,20 @@ export default function CrmClientsWorkspace() {
                               >
                                 {(sent || selected) ? <Check className={`size-4 ${sent ? "text-emerald-600" : "text-black"}`} /> : null}
                               </button>
-                              <div
-                                className="h-16 w-20 shrink-0 rounded-xl bg-cover bg-center"
+                              <Link
+                                href={offerHref(m.offer.id, detail.portalToken)}
+                                className="h-24 w-32 shrink-0 overflow-hidden rounded-xl bg-cover bg-center sm:h-20 sm:w-28"
                                 style={{ backgroundImage: `url(${m.offer.imageUrl})` }}
+                                aria-label={m.offer.title}
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <p className="break-words font-semibold text-[var(--eos-text)]">{m.offer.title}</p>
+                                  <Link
+                                    href={offerHref(m.offer.id, detail.portalToken)}
+                                    className="break-words font-semibold text-[var(--eos-text)] hover:text-emerald-600"
+                                  >
+                                    {m.offer.title}
+                                  </Link>
                                   {sent ? (
                                     <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
                                       {cl.sentBadge}
@@ -992,8 +1001,20 @@ export default function CrmClientsWorkspace() {
                                   ) : null}
                                 </div>
                                 <p className="text-xs text-[var(--eos-muted)]">
-                                  {m.offer.city} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}%
+                                  {[m.offer.city, m.offer.district].filter(Boolean).join(" · ")} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł
                                 </p>
+                                {m.offer.excerpt ? (
+                                  <p className="mt-1 text-[11px] leading-snug text-[var(--eos-muted)]">{m.offer.excerpt}</p>
+                                ) : null}
+                                <div className="mt-2 flex items-center gap-2">
+                                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--eos-input)]">
+                                    <div
+                                      className={`h-full rounded-full ${m.score >= 85 ? "bg-emerald-500" : m.score >= 70 ? "bg-lime-500" : m.score >= 55 ? "bg-amber-400" : "bg-rose-500"}`}
+                                      style={{ width: `${Math.max(8, Math.min(100, m.score))}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[11px] font-black text-[var(--eos-text)]">{m.score}%</span>
+                                </div>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {!sent ? (
@@ -1019,9 +1040,21 @@ export default function CrmClientsWorkspace() {
                                 <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-amber-700">
                                   <MessageSquare className="size-3" />
                                   {cl.clientFeedbackLabel}
+                                  {parseClientOfferFeedback(m.clientFeedback).sentiment
+                                    ? ` · ${sentimentLabel(parseClientOfferFeedback(m.clientFeedback).sentiment)}`
+                                    : ""}
                                 </p>
-                                <p className="mt-1 text-sm text-[var(--eos-text)]">{m.clientFeedback}</p>
+                                <p className="mt-1 text-sm text-[var(--eos-text)]">
+                                  {formatClientFeedbackForAgent(m.clientFeedback)}
+                                </p>
+                                {m.clientFeedbackAt ? (
+                                  <p className="mt-1 text-[11px] text-[var(--eos-muted)]">
+                                    {new Date(m.clientFeedbackAt).toLocaleString("pl-PL")}
+                                  </p>
+                                ) : null}
                               </div>
+                            ) : sent ? (
+                              <p className="text-[11px] text-[var(--eos-muted)]">Klient jeszcze nie odniósł się do tej oferty.</p>
                             ) : null}
                           </div>
                         );
@@ -1122,11 +1155,18 @@ export default function CrmClientsWorkspace() {
                                   >
                                     {(sent || selected) ? <Check className="size-4 text-black" /> : null}
                                   </button>
-                                  <div className="h-16 w-20 shrink-0 rounded-xl bg-cover bg-center" style={{ backgroundImage: `url(${m.offer.imageUrl})` }} />
+                                  <Link
+                                    href={offerHref(m.offer.id, detail.portalToken)}
+                                    className="h-16 w-20 shrink-0 rounded-xl bg-cover bg-center"
+                                    style={{ backgroundImage: `url(${m.offer.imageUrl})` }}
+                                    aria-label={m.offer.title}
+                                  />
                                   <div className="min-w-0 flex-1">
-                                    <p className="font-semibold text-[var(--eos-text)]">{m.offer.title}</p>
+                                    <Link href={offerHref(m.offer.id, detail.portalToken)} className="font-semibold text-[var(--eos-text)] hover:text-emerald-600">
+                                      {m.offer.title}
+                                    </Link>
                                     <p className="text-xs text-[var(--eos-muted)]">
-                                      {m.offer.city} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}%
+                                      {[m.offer.city, m.offer.district].filter(Boolean).join(" · ")} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}%
                                     </p>
                                   </div>
                                   {!sent ? (
@@ -1143,7 +1183,9 @@ export default function CrmClientsWorkspace() {
                                   )}
                                 </div>
                                 {m.clientFeedback ? (
-                                  <p className="rounded-xl bg-amber-500/8 px-3 py-2 text-sm text-[var(--eos-text)]">{m.clientFeedback}</p>
+                                  <p className="rounded-xl bg-amber-500/8 px-3 py-2 text-sm text-[var(--eos-text)]">
+                                    {formatClientFeedbackForAgent(m.clientFeedback)}
+                                  </p>
                                 ) : null}
                               </div>
                             );

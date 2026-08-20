@@ -1,4 +1,9 @@
-import { canonicalizeCity, normalizeText } from '@/lib/location/locationCatalog';
+import {
+  canonicalizeCity,
+  canonicalizeDistrict,
+  normalizeText,
+  resolveCanonicalOfferDistrict,
+} from '@/lib/location/locationCatalog';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 
 function clampScore(value: number): number {
@@ -16,15 +21,35 @@ function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): num
   return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function parseDistricts(pref: { districts?: unknown }): string[] {
+function parseDistricts(pref: { districts?: unknown; city?: unknown }): string[] {
   try {
     const raw =
       typeof pref.districts === 'string' ? JSON.parse(pref.districts) : pref.districts;
     if (!Array.isArray(raw)) return [];
-    return raw.map((d) => normalizeText(String(d))).filter(Boolean);
+    const city = String(pref.city || '');
+    return raw
+      .map((d) => canonicalizeDistrict(city, String(d)) || String(d))
+      .map((d) => normalizeText(d))
+      .filter(Boolean);
   } catch {
     return [];
   }
+}
+
+function offerDistrictNormalized(pref: Record<string, unknown>, offer: Record<string, unknown>): string | null {
+  const city = String(offer.city || pref.city || '');
+  const resolved = resolveCanonicalOfferDistrict(city, offer);
+  return resolved ? normalizeText(resolved) : null;
+}
+
+function passesAmenityGate(offer: Record<string, unknown>, pref: Record<string, unknown>): boolean {
+  if (pref.requireBalcony && !offer.hasBalcony) return false;
+  if (pref.requireGarden && !offer.hasGarden) return false;
+  if (pref.requireElevator && !offer.hasElevator) return false;
+  if (pref.requireParking && !offer.hasParking) return false;
+  if (pref.requireFurnished && !offer.isFurnished) return false;
+  if (pref.requireTwoLevel && !offer.isTwoLevel && !offer.isDuplex) return false;
+  return true;
 }
 
 function offerCoords(offer: Record<string, unknown>): { lat: number; lng: number } | null {
@@ -75,7 +100,7 @@ function amenityScore(offer: Record<string, unknown>, pref: Record<string, unkno
     pref.requireElevator ? !!offer.hasElevator : null,
     pref.requireParking ? !!offer.hasParking : null,
     pref.requireFurnished ? !!offer.isFurnished : null,
-    pref.requireTwoLevel ? !!offer.isTwoLevel : null,
+    pref.requireTwoLevel ? !!(offer.isTwoLevel || offer.isDuplex) : null,
   ].filter((v) => v !== null) as boolean[];
   if (required.length === 0) return 100;
   const present = required.filter(Boolean).length;
@@ -112,7 +137,7 @@ function locationScore(
   const districts = parseDistricts(pref);
   if (districts.length === 0) return 100;
 
-  const offerDistrict = offer.district ? normalizeText(String(offer.district)) : null;
+  const offerDistrict = offerDistrictNormalized(pref, offer);
   if (!offerDistrict) return 50;
   return districts.includes(offerDistrict) ? 100 : 50;
 }
@@ -136,7 +161,7 @@ function passesLocationGate(pref: Record<string, unknown>, offer: Record<string,
   const districts = parseDistricts(pref);
   if (districts.length === 0) return true;
 
-  const offerDistrict = offer.district ? normalizeText(String(offer.district)) : null;
+  const offerDistrict = offerDistrictNormalized(pref, offer);
   if (!offerDistrict) return false;
   return districts.some((d) => d === offerDistrict);
 }
@@ -144,6 +169,7 @@ function passesLocationGate(pref: Record<string, unknown>, offer: Record<string,
 /** Parity z aplikacją mobilną (`RadarHomeScreen.radarMatchScore`). Zwraca 0–100. */
 export function calculateRadarMatchScore(pref: Record<string, unknown>, offer: Record<string, unknown>): number {
   if (!passesLocationGate(pref, offer)) return 0;
+  if (!passesAmenityGate(offer, pref)) return 0;
 
   const txPref = String(pref.transactionType || '').toUpperCase();
   const txOffer = String(offer.transactionType || '').toUpperCase();

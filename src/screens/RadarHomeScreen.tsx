@@ -86,6 +86,7 @@ import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
 import { mobileFetchJson } from '../utils/mobileFetch';
 import { parseOfferList } from '../utils/offerCatalogPipeline';
+import { resolveWarsawDistrictFromText } from '../utils/warsawNeighborhoodDistrict';
 import { findWebOfferById } from '../utils/webOffersFallback';
 import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 import CurrencySegmentControl from '../components/CurrencySegmentControl';
@@ -741,7 +742,12 @@ function passesRadarLocationGate(
     const selCity = rf.city.trim();
     if (selCity && !radarCityMatches(raw, selCity)) return false;
     if (rf.selectedDistricts.length === 0) return true;
-    const rawDistrict = normalizeSearchText(String(raw.district || '').trim());
+    const resolved = resolveWarsawDistrictFromText(
+      String(raw.district || ''),
+      String(raw.title || offer.title || ''),
+      String(raw.street || ''),
+    );
+    const rawDistrict = normalizeSearchText(resolved);
     return rf.selectedDistricts.some((d) => normalizeSearchText(String(d).trim()) === rawDistrict);
   }
 
@@ -758,7 +764,12 @@ function locationScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBounds
     if (selCity && !radarCityMatches(raw, selCity)) return 0;
     if (rf.selectedDistricts.length === 0) return 100;
 
-    const rawDistrict = normalizeSearchText(String(raw.district || '').trim());
+    const resolved = resolveWarsawDistrictFromText(
+      String(raw.district || ''),
+      String(raw.title || offer.title || ''),
+      String(raw.street || ''),
+    );
+    const rawDistrict = normalizeSearchText(resolved);
     const districtMatch = rf.selectedDistricts.some((d) => normalizeSearchText(String(d).trim()) === rawDistrict);
     // To nadal jest to samo miasto, ale poza wybraną dzielnicą: wpada dopiero przy szerszym skanowaniu.
     return districtMatch ? 100 : 50;
@@ -776,6 +787,12 @@ function radarMatchScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBoun
   const raw = offer.raw;
   if (String(raw.transactionType || '').toUpperCase() !== rf.transactionType) return 0;
   if (rf.propertyType !== 'ALL' && !radarPropertyTypeMatchesFilter(String(raw.propertyType || ''), rf.propertyType)) return 0;
+  if (rf.requireBalcony && !raw.hasBalcony) return 0;
+  if (rf.requireGarden && !raw.hasGarden) return 0;
+  if (rf.requireElevator && !raw.hasElevator) return 0;
+  if (rf.requireParking && !raw.hasParking) return 0;
+  if (rf.requireFurnished && !raw.isFurnished) return 0;
+  if (rf.requireTwoLevel && !raw.isTwoLevel && !raw.isDuplex) return 0;
 
   const rawPrice = numericOfferValue(raw.price);
   const rawArea = numericOfferValue(raw.area);

@@ -32,12 +32,15 @@ export type AgencyClientMatch = {
   notifiedAt: string | null;
   sharedAt: string | null;
   clientFeedback: string | null;
+  clientFeedbackAt?: string | null;
   offer: {
     id: number;
     title: string;
     price: number;
     city: string;
+    district?: string | null;
     area?: number | null;
+    excerpt?: string | null;
     imageUrl: string;
   };
 };
