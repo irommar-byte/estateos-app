@@ -956,6 +956,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             <Radar className="size-5 text-emerald-500" />
             {portal.type === "SELLER" ? "Propozycje dla Ciebie" : "Propozycje od agenta"}
           </h2>
+          <p className="mt-1 text-sm text-[var(--eos-muted)]">
+            Każda karta to osobna nieruchomość. Reakcja schodzi do agenta przy tej ofercie — proces idzie dalej.
+          </p>
           {portal.matches.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center text-sm text-[var(--eos-muted)]">
               Agent właśnie szuka dopasowań — wróć za chwilę.

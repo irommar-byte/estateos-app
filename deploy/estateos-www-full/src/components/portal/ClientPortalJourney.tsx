@@ -32,11 +32,11 @@ export default function ClientPortalJourney({ stages }: { stages: PortalJourneyS
         {stages.map((stage, index) => (
           <div
             key={stage.id}
-            className={`rounded-2xl border px-3 py-3 ${
+            className={`rounded-2xl border px-3 py-3 transition ${
               stage.done
-                ? "border-emerald-500/35 bg-emerald-500/10"
+                ? "border-emerald-500/35 bg-emerald-500/10 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_8px_18px_rgba(5,150,105,0.12)]"
                 : stage.current
-                  ? "border-emerald-500/60 bg-[var(--eos-input)] shadow-[var(--eos-shadow-lift)]"
+                  ? "border-emerald-500/60 bg-[var(--eos-card)] shadow-[var(--eos-shadow-lift)]"
                   : "border-[var(--eos-border)] bg-[var(--eos-input)]/25 opacity-80"
             }`}
           >

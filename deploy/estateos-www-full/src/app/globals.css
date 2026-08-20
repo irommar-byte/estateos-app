@@ -181,6 +181,140 @@ html.light .eos-inset-well {
     inset 0 3px 8px rgba(15, 23, 42, 0.08),
     inset 0 -1px 0 rgba(255, 255, 255, 0.7);
 }
+
+/* Panel klienta — wypukłe pigułki i wybory (jasny + ciemny) */
+.eos-raised-chip,
+.eos-choice-btn {
+  position: relative;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #eef1f6 100%);
+  color: var(--eos-text);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 -2px 3px rgba(15, 23, 42, 0.06) inset,
+    0 6px 14px rgba(15, 23, 42, 0.1),
+    0 1px 2px rgba(15, 23, 42, 0.05);
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease,
+    filter 180ms ease,
+    background 180ms ease,
+    color 180ms ease;
+}
+.eos-raised-chip:hover,
+.eos-choice-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.03);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 10px 22px rgba(15, 23, 42, 0.14),
+    0 2px 6px rgba(15, 23, 42, 0.06);
+}
+.eos-raised-chip:active,
+.eos-choice-btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 3px 8px rgba(15, 23, 42, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.eos-raised-chip--on {
+  border-color: rgba(4, 120, 87, 0.45);
+  background: linear-gradient(180deg, #6ee7b7 0%, #059669 100%);
+  color: #042f1e;
+  -webkit-text-fill-color: #042f1e;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 8px 18px rgba(5, 150, 105, 0.32);
+}
+.eos-raised-chip--no {
+  border-color: rgba(190, 18, 60, 0.4);
+  background: linear-gradient(180deg, #fda4af 0%, #e11d48 100%);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 8px 18px rgba(225, 29, 72, 0.28);
+}
+.eos-choice-btn--on {
+  border-color: rgba(4, 120, 87, 0.5);
+  background: linear-gradient(180deg, #6ee7b7 0%, #059669 100%);
+  color: #042f1e;
+  -webkit-text-fill-color: #042f1e;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 10px 22px rgba(5, 150, 105, 0.3);
+}
+.eos-choice-btn--maybe {
+  border-color: rgba(180, 83, 9, 0.4);
+  background: linear-gradient(180deg, #fde68a 0%, #d97706 100%);
+  color: #451a03;
+  -webkit-text-fill-color: #451a03;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 10px 22px rgba(217, 119, 6, 0.28);
+}
+.eos-choice-btn--off {
+  border-color: rgba(190, 18, 60, 0.4);
+  background: linear-gradient(180deg, #fda4af 0%, #e11d48 100%);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 10px 22px rgba(225, 29, 72, 0.28);
+}
+.eos-field-inset {
+  border: 1px solid var(--eos-border-strong);
+  background: color-mix(in srgb, var(--eos-input) 88%, #fff);
+  box-shadow:
+    inset 0 3px 8px rgba(15, 23, 42, 0.08),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.65);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+.eos-field-inset:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--eos-accent) 55%, var(--eos-border));
+  box-shadow:
+    inset 0 3px 8px rgba(15, 23, 42, 0.08),
+    0 0 0 3px color-mix(in srgb, var(--eos-accent) 18%, transparent);
+}
+.eos-portal-react {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+html:not(.light) .eos-portal-react {
+  background: rgba(255, 255, 255, 0.04);
+}
+.eos-live-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+  animation: eos-live-pulse 1.8s ease-out infinite;
+}
+@keyframes eos-live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eos-live-dot { animation: none; }
+}
+
+html:not(.light) .eos-raised-chip,
+html:not(.light) .eos-choice-btn {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.04) 100%);
+  color: var(--eos-text);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 8px 18px rgba(0, 0, 0, 0.35);
+}
+html:not(.light) .eos-field-inset {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.45);
+}
+
 .eos-stack-card {
   position: relative;
 }
