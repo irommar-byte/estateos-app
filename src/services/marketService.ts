@@ -71,8 +71,8 @@ export async function sendMarketReport(token: string | null, body: Record<string
   return { ok: Boolean(json?.ok), status: res.status, json };
 }
 
-export async function previewMarketReport(token: string | null, body: Record<string, unknown>) {
-  return sendMarketReport(token, { ...body, preview: true });
+export async function generateMarketReport(token: string | null, body: Record<string, unknown>) {
+  return sendMarketReport(token, { ...body, generate: true });
 }
 
 export async function fetchMarketReportQuota(token: string | null): Promise<MarketReportQuota | null> {

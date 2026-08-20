@@ -405,7 +405,7 @@ export default function AgencyOfficeScreen() {
             ) : null}
             <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 10 }}>
               Partner Pro (najchętniej wybierany) daje całemu zespołowi status Pro: Off Market, Market przy aktach,
-              taśmy w katalogu, tytanowe okienko i 5 raportów e-mail — bez kredytów Investor Pro. Partner Start tego nie ma.
+              taśmy w katalogu, tytanowe okienko i 5 wygenerowań raportu — bez kredytów Investor Pro. Partner Start tego nie ma.
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 10 }}>
               Pełny wybór i zmiana pakietu — w panelu na estateos.pl → Moje biuro.

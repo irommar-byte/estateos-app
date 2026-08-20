@@ -148,10 +148,10 @@ export function describePartnerPlanChange(params: {
     lines.push(
       'Cały zespół (aktywni agenci i kierownik) dostaje status Pro: Off Market, Market na każdej ofercie, taśmy „Przy aktach” i tytanowe okienko w aplikacji.',
     );
-    lines.push('5 raportów wyceny na e-mail do klientów — na osobę, w okresie 30 dni. Bez kredytów publikacji Investor Pro.');
+    lines.push('5 wygenerowań raportu wyceny na osobę, w okresie 30 dni. Wysyłka e-mail nie zużywa limitu. Bez kredytów publikacji Investor Pro.');
   } else if (to.id === 'start') {
     lines.push(
-      'Partner Start nie odblokowuje Off Market, Market przy aktach, taśm w katalogu ani raportów e-mail — to zalety Partner Pro, najchętniej wybieranego pakietu.',
+      'Partner Start nie odblokowuje Off Market, Market przy aktach, taśm w katalogu ani raportów z aktów — to zalety Partner Pro, najchętniej wybieranego pakietu.',
     );
   }
 

@@ -5,7 +5,7 @@ import {
   fetchMarketValuation,
   formatPln,
   formatPpsm,
-  previewMarketReport,
+  generateMarketReport,
   sendMarketReport,
   type MarketReportQuota,
   type ValuationResult,
@@ -54,6 +54,7 @@ export default function MarketValuationCard({
   const [alternateEmail, setAlternateEmail] = useState('');
   const [quota, setQuota] = useState<MarketReportQuota | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reportId, setReportId] = useState<number | null>(null);
 
   useEffect(() => {
     setEmail(reportEmail || '');
@@ -103,45 +104,77 @@ export default function MarketValuationCard({
     clientId: clientId || undefined,
   };
 
-  const startReport = () => {
-    if (!email.trim() && !alternateEmail.trim()) {
-      setReportMsg('Wpisz e-mail klienta albo adres alternatywny.');
+  const destLabel = [email.trim(), alternateEmail.trim()].filter(Boolean).join(', ');
+  const propertyLabel = [address, district, city].filter(Boolean).join(', ') || 'tej nieruchomości';
+  const propertyMeta = [area ? `${area} m²` : null, rooms ? `${rooms} pok.` : null].filter(Boolean).join(' · ');
+
+  const sendExisting = (id: number) => {
+    if (!destLabel) {
+      setReportMsg('Wpisz e-mail, żeby wysłać. Wysyłka nie zużyje kolejnego punktu.');
       return;
     }
     setBusy(true);
-    void previewMarketReport(token, payload).then((r) => {
+    void sendMarketReport(token, { ...payload, reportId: id }).then((sent) => {
+      setBusy(false);
+      if (sent.json?.quota) setQuota(sent.json.quota);
+      setReportMsg(
+        sent.ok
+          ? `Raport wysłany na ${destLabel}.${sent.json?.clientRecorded ? ' Zapisano w panelu klienta.' : ''} Limit się nie zmienił.`
+          : String(sent.json?.message || 'Nie wysłano raportu.'),
+      );
+    });
+  };
+
+  const doGenerate = () => {
+    setBusy(true);
+    void generateMarketReport(token, payload).then((r) => {
       setBusy(false);
       if (!r.ok) {
-        setReportMsg(String(r.json?.message || 'Nie przygotowano podglądu.'));
+        setReportMsg(String(r.json?.message || 'Nie wygenerowano raportu.'));
         if (r.json?.quota) setQuota(r.json.quota);
         return;
       }
       if (r.json?.quota) setQuota(r.json.quota);
-      const dest = Array.isArray(r.json?.emails) ? r.json.emails.join(', ') : email;
-      const mid = result ? formatPln(result.estimated.mid) : '';
+      const id = Number(r.json?.reportId);
+      const storedId = Number.isFinite(id) && id > 0 ? id : null;
+      setReportId(storedId);
+      setReportMsg('Raport wygenerowany — 1 punkt z limitu już pobrany. Wysyłka e-mail nic więcej nie zdejmie.');
+      if (!storedId) return;
+      if (!destLabel) {
+        Alert.alert('Raport gotowy', 'Wpisz e-mail i wyślij — to nie zużyje kolejnego punktu z limitu.');
+        return;
+      }
       Alert.alert(
-        'Podgląd raportu',
-        `Wyślemy na: ${dest}\nWartość rynkowa: ${mid}\n${quota?.message || ''}\n\nZatwierdź, żeby wysłać do klienta i zapisać w jego panelu.`,
+        'Raport gotowy',
+        `Wysłać na ${destLabel}? To nie zużyje kolejnego punktu z limitu.`,
         [
-          { text: 'Cofnij', style: 'cancel' },
-          {
-            text: 'Zatwierdź i wyślij',
-            onPress: () => {
-              setBusy(true);
-              void sendMarketReport(token, payload).then((sent) => {
-                setBusy(false);
-                if (sent.json?.quota) setQuota(sent.json.quota);
-                setReportMsg(
-                  sent.ok
-                    ? `Raport wysłany na ${dest}.${sent.json?.clientRecorded ? ' Zapisano w panelu klienta.' : ''}`
-                    : String(sent.json?.message || 'Nie wysłano raportu.'),
-                );
-              });
-            },
-          },
+          { text: 'Nie teraz', style: 'cancel' },
+          { text: 'Wyślij', onPress: () => sendExisting(storedId) },
         ],
       );
     });
+  };
+
+  const startReport = () => {
+    if (!result) return;
+    if (quota && quota.remaining <= 0) {
+      setReportMsg(quota.message);
+      return;
+    }
+    const remainingHint =
+      quota && quota.cap != null
+        ? `\nZostanie ${Math.max(0, quota.remaining - 1)} z ${quota.cap}.`
+        : quota?.kind === 'credits'
+          ? `\nZostanie ${Math.max(0, quota.remaining - 1)} ${quota.remaining - 1 === 1 ? 'kredyt' : 'kredytów'}.`
+          : '';
+    Alert.alert(
+      'Wygenerować raport?',
+      `Czy chcesz wygenerować raport dla:\n${propertyLabel}${propertyMeta ? `\n${propertyMeta}` : ''}\nWartość rynkowa: ${formatPln(result.estimated.mid)}\n\nTo zużyje 1 punkt z limitu.${remainingHint}\nWysyłka e-mail później nic już nie zdejmie.`,
+      [
+        { text: 'Nie', style: 'cancel' },
+        { text: 'Tak, wygeneruj', onPress: doGenerate },
+      ],
+    );
   };
 
   return (
@@ -188,7 +221,7 @@ export default function MarketValuationCard({
             ) : null}
             {quota ? (
               <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
-                {quota.cap != null ? `Raporty: ${quota.remaining} / ${quota.cap} (${quota.windowLabel})` : quota.message}
+                {quota.cap != null ? `Wygenerowania: ${quota.remaining} / ${quota.cap} (${quota.windowLabel})` : quota.message}
               </Text>
             ) : null}
             <TextInput
@@ -227,9 +260,16 @@ export default function MarketValuationCard({
             />
             <Pressable onPress={startReport} disabled={busy}>
               <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>
-                {busy ? 'Przygotowuję…' : 'Generuj raport dla właściciela'}
+                {busy ? 'Generuję…' : reportId ? 'Wygeneruj kolejny raport' : 'Generuj raport dla właściciela'}
               </Text>
             </Pressable>
+            {reportId ? (
+              <Pressable onPress={() => sendExisting(reportId)} disabled={busy}>
+                <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 13 }}>
+                  Wyślij e-mail (bez limitu)
+                </Text>
+              </Pressable>
+            ) : null}
             {reportMsg ? <Text style={{ color: colors.secondary, fontSize: 12 }}>{reportMsg}</Text> : null}
             <Text style={{ color: colors.secondary, fontSize: 10, lineHeight: 14 }}>{result.coverage.disclaimer}</Text>
           </>

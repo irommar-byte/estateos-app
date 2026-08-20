@@ -98,13 +98,13 @@ export default function MarketValuationPanel({
   const [result, setResult] = useState<(ValuationResult & { access?: { quota?: ReportQuota | null } }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [reportState, setReportState] = useState<"idle" | "previewing" | "sending" | "sent" | "pay">("idle");
+  const [reportState, setReportState] = useState<"idle" | "confirming" | "generating" | "sending" | "sent" | "pay">("idle");
   const [reportMsg, setReportMsg] = useState("");
   const [email, setEmail] = useState(reportEmail || "");
   const [alternateEmail, setAlternateEmail] = useState("");
   const [quota, setQuota] = useState<ReportQuota | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-  const [previewEmails, setPreviewEmails] = useState<string[]>([]);
+  const [generatedReportId, setGeneratedReportId] = useState<number | null>(null);
 
   useEffect(() => {
     setEmail(reportEmail || "");
@@ -185,46 +185,30 @@ export default function MarketValuationPanel({
     clientId: clientId || undefined,
   });
 
-  const openPreview = async () => {
+  const propertyLabel = [address, district, city].filter(Boolean).join(", ") || "tej nieruchomości";
+  const propertyMeta = [area ? `${area} m²` : null, rooms ? `${rooms} pok.` : null].filter(Boolean).join(" · ");
+
+  const askGenerate = () => {
     if (!result) return;
-    if (!email.trim() && !alternateEmail.trim() && !reportEmail) {
-      setReportMsg("Wpisz e-mail klienta albo adres alternatywny.");
+    if (quota && quota.remaining <= 0) {
+      setReportMsg(quota.message);
+      if (quota.kind === "none" || quota.kind === "credits") setReportState("pay");
       return;
     }
-    setReportState("previewing");
+    setReportMsg("");
+    setReportState("confirming");
+  };
+
+  const confirmGenerate = async () => {
+    if (!result) return;
+    setReportState("generating");
     setReportMsg("");
     try {
       const res = await fetch("/api/market/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ...reportBody(), preview: true }),
-      });
-      const json = await res.json();
-      if (!json?.ok) {
-        setReportState("idle");
-        setReportMsg(String(json?.message || "Nie przygotowano podglądu."));
-        if (json?.quota) setQuota(json.quota);
-        return;
-      }
-      setPreviewHtml(String(json.html || ""));
-      setPreviewEmails(Array.isArray(json.emails) ? json.emails : []);
-      if (json.quota) setQuota(json.quota);
-      setReportState("idle");
-    } catch {
-      setReportState("idle");
-      setReportMsg("Nie udało się przygotować podglądu.");
-    }
-  };
-
-  const confirmSend = async () => {
-    setReportState("sending");
-    try {
-      const res = await fetch("/api/market/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(reportBody()),
+        body: JSON.stringify({ ...reportBody(), generate: true }),
       });
       const json = await res.json();
       if (json?.quota) setQuota(json.quota);
@@ -235,6 +219,42 @@ export default function MarketValuationPanel({
       }
       if (!json?.ok) {
         setReportState("idle");
+        setReportMsg(String(json?.message || "Nie wygenerowano raportu."));
+        return;
+      }
+      const id = Number(json.reportId);
+      setGeneratedReportId(Number.isFinite(id) && id > 0 ? id : null);
+      setPreviewHtml(String(json.html || ""));
+      setReportState("idle");
+      setReportMsg("Raport wygenerowany — 1 punkt z limitu już pobrany. Wysyłka e-mail nic więcej nie zdejmie.");
+      void loadQuota();
+    } catch {
+      setReportState("idle");
+      setReportMsg("Nie udało się wygenerować raportu.");
+    }
+  };
+
+  const confirmSend = async () => {
+    if (!generatedReportId) {
+      setReportMsg("Najpierw wygeneruj raport — dopiero to schodzi z limitu.");
+      return;
+    }
+    if (!email.trim() && !alternateEmail.trim() && !reportEmail) {
+      setReportMsg("Wpisz e-mail klienta albo adres alternatywny. Wysyłka nie zużyje kolejnego punktu.");
+      return;
+    }
+    setReportState("sending");
+    try {
+      const res = await fetch("/api/market/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...reportBody(), reportId: generatedReportId }),
+      });
+      const json = await res.json();
+      if (json?.quota) setQuota(json.quota);
+      if (!json?.ok) {
+        setReportState("idle");
         setReportMsg(String(json?.message || "Nie wysłano raportu."));
         return;
       }
@@ -243,8 +263,8 @@ export default function MarketValuationPanel({
       const dest = Array.isArray(json.emails) ? json.emails.join(", ") : email;
       setReportMsg(
         json.emailed
-          ? `Raport wyszedł na ${dest}.${json.clientRecorded ? " Zapisaliśmy to też w panelu klienta." : ""}`
-          : "Raport zapisany — sprawdź skrzynkę, jeśli mail nie doszedł.",
+          ? `Raport wyszedł na ${dest}.${json.clientRecorded ? " Zapisaliśmy to też w panelu klienta." : ""} Limit się nie zmienił.`
+          : "Raport zapisany — sprawdź skrzynkę, jeśli mail nie doszedł. Limit się nie zmienił.",
       );
       void loadQuota();
     } catch {
@@ -376,17 +396,27 @@ export default function MarketValuationPanel({
                   </label>
                 </div>
                 <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">
-                  Domyślnie bierzemy e-mail z karty klienta. Możesz go poprawić i dodać drugi adres — raport pójdzie na oba po Twoim zatwierdzeniu podglądu.
+                  Limit schodzi dopiero po potwierdzeniu wygenerowania raportu tej nieruchomości. Potem możesz wysłać go na e-mail albo do panelu klienta — bez kolejnego punktu.
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    disabled={reportState === "previewing" || reportState === "sending" || reportState === "sent"}
-                    onClick={() => void openPreview()}
+                    disabled={reportState === "generating" || reportState === "sending"}
+                    onClick={askGenerate}
                     className="rounded-full bg-emerald-500 px-4 py-2 text-[12px] font-black uppercase tracking-[0.12em] text-black disabled:opacity-50"
                   >
-                    {reportState === "previewing" ? "Przygotowuję podgląd…" : reportState === "sent" ? "Wysłano" : "Generuj raport dla właściciela"}
+                    {reportState === "generating" ? "Generuję raport…" : generatedReportId ? "Wygeneruj kolejny" : "Generuj raport dla właściciela"}
                   </button>
+                  {generatedReportId ? (
+                    <button
+                      type="button"
+                      disabled={reportState === "sending"}
+                      onClick={() => void confirmSend()}
+                      className="rounded-full border border-emerald-500/40 px-4 py-2 text-[12px] font-black uppercase tracking-[0.12em] text-emerald-700 disabled:opacity-50"
+                    >
+                      {reportState === "sending" ? "Wysyłam…" : "Wyślij e-mail"}
+                    </button>
+                  ) : null}
                   {reportState === "pay" ? (
                     <button type="button" onClick={() => void buyCredit()} className="text-[12px] font-bold text-emerald-500">
                       Kup 1 kredyt (49 zł)
@@ -404,15 +434,53 @@ export default function MarketValuationPanel({
         ) : null}
       </div>
 
+      {reportState === "confirming" && result ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+          <div className="w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl">
+            <div className="px-5 py-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Limit raportów</p>
+              <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Wygenerować raport tej nieruchomości?</h3>
+              <p className="mt-3 text-sm font-semibold text-[var(--eos-text)]">{propertyLabel}</p>
+              {propertyMeta ? <p className="mt-0.5 text-[12px] text-[var(--eos-muted)]">{propertyMeta}</p> : null}
+              <p className="mt-3 text-2xl font-black tabular-nums text-[var(--eos-text)]">{pln(result.estimated.mid)}</p>
+              <p className="mt-1 text-[12px] text-[var(--eos-muted)]">Najbardziej prawdopodobna wartość z aktów RCN</p>
+              <p className="mt-4 text-sm leading-relaxed text-[var(--eos-muted)]">
+                Potwierdzenie zużyje <span className="font-bold text-[var(--eos-text)]">1 punkt z limitu</span>
+                {quota && quota.cap != null ? ` — zostanie ${Math.max(0, quota.remaining - 1)} z ${quota.cap}` : ""}.
+                Wysyłka e-mail albo zapis w panelu klienta nie zdejmie kolejnego.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--eos-border)] px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setReportState("idle")}
+                className="rounded-full border border-[var(--eos-border)] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[var(--eos-text)]"
+              >
+                Nie
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmGenerate()}
+                className="rounded-full bg-emerald-500 px-5 py-2 text-[11px] font-black uppercase tracking-wider text-black"
+              >
+                Tak, wygeneruj
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {previewHtml ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
           <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl">
             <div className="border-b border-[var(--eos-border)] px-5 py-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Podgląd raportu</p>
-              <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Zatwierdź, zanim wyślemy do klienta</h3>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Raport wygenerowany</p>
+              <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Limit już pobrany — możesz wysłać e-mail</h3>
               <p className="mt-1 text-sm text-[var(--eos-muted)]">
-                Wyślemy na: {previewEmails.join(", ") || "—"}
-                {quota && quota.cap != null ? ` · po wysyłce zostanie ${Math.max(0, quota.remaining - 1)} z ${quota.cap}` : ""}
+                {email.trim() || alternateEmail.trim() || reportEmail
+                  ? `Wyślemy na: ${[email, alternateEmail, reportEmail].filter(Boolean).join(", ")}`
+                  : "Wpisz e-mail poniżej albo zamknij i wyślij później."}
+                {" · wysyłka nie zdejmie kolejnego punktu"}
               </p>
             </div>
             <iframe
@@ -426,7 +494,7 @@ export default function MarketValuationPanel({
                 onClick={() => setPreviewHtml(null)}
                 className="rounded-full border border-[var(--eos-border)] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[var(--eos-text)]"
               >
-                Cofnij
+                Zostaw bez wysyłki
               </button>
               <button
                 type="button"
@@ -434,7 +502,7 @@ export default function MarketValuationPanel({
                 onClick={() => void confirmSend()}
                 className="rounded-full bg-emerald-500 px-5 py-2 text-[11px] font-black uppercase tracking-wider text-black disabled:opacity-50"
               >
-                {reportState === "sending" ? "Wysyłam…" : "Zatwierdź i wyślij"}
+                {reportState === "sending" ? "Wysyłam…" : "Wyślij e-mail"}
               </button>
             </div>
           </div>
