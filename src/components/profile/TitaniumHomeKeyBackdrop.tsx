@@ -8,7 +8,7 @@ import Svg, {
   Rect,
 } from 'react-native-svg';
 
-export type MetalVariant = 'titanium' | 'gold';
+export type MetalVariant = 'titanium' | 'gold' | 'red';
 
 type Props = {
   isDark: boolean;
@@ -18,6 +18,7 @@ type Props = {
 
 const DARK_TITANIUM = '#1C2129';
 const DARK_GOLD = '#2A2214';
+const DARK_RED = '#2A1214';
 
 function lightPalette() {
   return {
@@ -73,11 +74,47 @@ function lightGoldPalette() {
   };
 }
 
+function lightRedPalette() {
+  return {
+    base: ['#7A2424', '#A33A36', '#C45A4E', '#8A2C2A', '#B0443C'] as const,
+    undertone: ['#6A1C1C', '#9A3430', '#B84C44', '#7E2624'] as const,
+    brushLight: 'rgba(255, 232, 224, 0.62)',
+    brushMid: 'rgba(220, 120, 110, 0.28)',
+    brushShadow: 'rgba(62, 10, 10, 0.3)',
+    glossHot: 'rgba(255, 236, 228, 0.48)',
+    glossWarm: 'rgba(255, 190, 170, 0.18)',
+    glossCool: 'rgba(220, 120, 110, 0.1)',
+    specularCore: 'rgba(255, 240, 234, 0.5)',
+    specularTail: 'rgba(220, 140, 130, 0.16)',
+    rimLight: 'rgba(255, 232, 224, 0.7)',
+    rimShadow: 'rgba(62, 10, 10, 0.32)',
+    aoDeep: 'rgba(48, 8, 8, 0.32)',
+    aoMid: 'rgba(88, 22, 20, 0.16)',
+    vignette: 'rgba(62, 10, 10, 0.28)',
+    edgeHighlight: 'rgba(255, 232, 224, 0.76)',
+    edgeShadow: 'rgba(62, 10, 10, 0.32)',
+    chromaticCool: 'rgba(255, 190, 180, 0.1)',
+    chromaticWarm: 'rgba(255, 150, 120, 0.08)',
+    svgHotSpot: ['rgba(255,236,228,0.48)', 'rgba(255,236,228,0)'] as const,
+    svgAoBr: ['rgba(0,0,0,0)', 'rgba(48,8,8,0.36)'] as const,
+    svgAoTl: ['rgba(255,232,224,0.22)', 'rgba(255,232,224,0)'] as const,
+  };
+}
+
 function DarkUniformMetal({ variant }: { variant: MetalVariant }) {
   const gold = variant === 'gold';
+  const red = variant === 'red';
+  const darkFill = red ? DARK_RED : gold ? DARK_GOLD : DARK_TITANIUM;
+  const hair = red ? 'rgba(255,170,160,0.07)' : gold ? 'rgba(255,225,160,0.06)' : 'rgba(255,255,255,0.04)';
+  const sheen = red
+    ? (['rgba(255,170,160,0.05)', 'transparent', 'rgba(255,170,160,0.03)'] as const)
+    : gold
+      ? (['rgba(255,224,160,0.045)', 'transparent', 'rgba(255,224,160,0.025)'] as const)
+      : (['rgba(255,255,255,0.025)', 'transparent', 'rgba(255,255,255,0.015)'] as const);
+  const bevel = red ? 'rgba(255,176,166,0.18)' : gold ? 'rgba(255,226,163,0.16)' : 'rgba(255,255,255,0.08)';
   return (
     <View style={styles.root} pointerEvents="none">
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: gold ? DARK_GOLD : DARK_TITANIUM }]} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: darkFill }]} />
 
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="none">
         <Defs>
@@ -94,7 +131,7 @@ function DarkUniformMetal({ variant }: { variant: MetalVariant }) {
               y1="0"
               x2="2.5"
               y2="5"
-              stroke={gold ? 'rgba(255,225,160,0.06)' : 'rgba(255,255,255,0.04)'}
+              stroke={hair}
               strokeWidth="0.35"
               opacity="0.7"
             />
@@ -104,11 +141,7 @@ function DarkUniformMetal({ variant }: { variant: MetalVariant }) {
       </Svg>
 
       <LinearGradient
-        colors={
-          gold
-            ? ['rgba(255,224,160,0.045)', 'transparent', 'rgba(255,224,160,0.025)']
-            : ['rgba(255,255,255,0.025)', 'transparent', 'rgba(255,255,255,0.015)']
-        }
+        colors={[...sheen]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={[StyleSheet.absoluteFill, styles.darkMicroSheen]}
@@ -117,7 +150,7 @@ function DarkUniformMetal({ variant }: { variant: MetalVariant }) {
       <View
         style={[
           styles.bevelHighlight,
-          { borderColor: gold ? 'rgba(255,226,163,0.16)' : 'rgba(255,255,255,0.08)' },
+          { borderColor: bevel },
         ]}
       />
       <View style={[styles.bevelShadow, styles.darkBevelShadow]} />
@@ -126,7 +159,10 @@ function DarkUniformMetal({ variant }: { variant: MetalVariant }) {
 }
 
 export default function TitaniumHomeKeyBackdrop({ isDark, variant = 'titanium' }: Props) {
-  const palette = useMemo(() => (variant === 'gold' ? lightGoldPalette() : lightPalette()), [variant]);
+  const palette = useMemo(
+    () => (variant === 'gold' ? lightGoldPalette() : variant === 'red' ? lightRedPalette() : lightPalette()),
+    [variant],
+  );
 
   if (isDark) {
     return <DarkUniformMetal variant={variant} />;

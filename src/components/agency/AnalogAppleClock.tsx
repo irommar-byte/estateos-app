@@ -7,8 +7,8 @@ type Props = {
   isDark?: boolean;
   /** Hands, brand line and center cap accent. */
   accent?: string;
-  /** `gold` dresses the case and dial in warm alloy tones. */
-  variant?: 'steel' | 'gold';
+  /** `gold` / `red` dress the case and dial in alloy tones. */
+  variant?: 'steel' | 'gold' | 'red';
 };
 
 export default function AnalogAppleClock({
@@ -18,6 +18,7 @@ export default function AnalogAppleClock({
   variant = 'steel',
 }: Props) {
   const gold = variant === 'gold';
+  const red = variant === 'red';
   const [time, setTime] = useState(() => new Date());
   const animFrame = useRef<number | null>(null);
 
@@ -61,14 +62,28 @@ export default function AnalogAppleClock({
             width: size,
             height: size,
             borderRadius: radius,
-            borderColor: gold
+            borderColor: red
               ? isDark
-                ? 'rgba(255,226,163,0.42)'
-                : 'rgba(120,86,18,0.35)'
-              : isDark
-                ? 'rgba(255,255,255,0.22)'
-                : 'rgba(0,0,0,0.15)',
-            backgroundColor: gold ? (isDark ? '#171208' : '#F2E4BE') : isDark ? '#141416' : '#E8E8ED',
+                ? 'rgba(255,176,166,0.42)'
+                : 'rgba(110,22,18,0.38)'
+              : gold
+                ? isDark
+                  ? 'rgba(255,226,163,0.42)'
+                  : 'rgba(120,86,18,0.35)'
+                : isDark
+                  ? 'rgba(255,255,255,0.22)'
+                  : 'rgba(0,0,0,0.15)',
+            backgroundColor: red
+              ? isDark
+                ? '#1A0C0D'
+                : '#F4D8D4'
+              : gold
+                ? isDark
+                  ? '#171208'
+                  : '#F2E4BE'
+                : isDark
+                  ? '#141416'
+                  : '#E8E8ED',
           },
         ]}
       >
@@ -78,15 +93,31 @@ export default function AnalogAppleClock({
             cx={center}
             cy={center}
             r={innerRadius}
-            fill={gold ? (isDark ? '#0E0B05' : '#FBF4DF') : isDark ? '#0F0F11' : '#F7F7FA'}
-            stroke={
-              gold
+            fill={
+              red
                 ? isDark
-                  ? 'rgba(255,226,163,0.16)'
-                  : 'rgba(120,86,18,0.14)'
-                : isDark
-                  ? 'rgba(255,255,255,0.1)'
-                  : 'rgba(0,0,0,0.08)'
+                  ? '#14090A'
+                  : '#FBEFEE'
+                : gold
+                  ? isDark
+                    ? '#0E0B05'
+                    : '#FBF4DF'
+                  : isDark
+                    ? '#0F0F11'
+                    : '#F7F7FA'
+            }
+            stroke={
+              red
+                ? isDark
+                  ? 'rgba(255,176,166,0.18)'
+                  : 'rgba(110,22,18,0.16)'
+                : gold
+                  ? isDark
+                    ? 'rgba(255,226,163,0.16)'
+                    : 'rgba(120,86,18,0.14)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.1)'
+                    : 'rgba(0,0,0,0.08)'
             }
             strokeWidth={1.5}
           />

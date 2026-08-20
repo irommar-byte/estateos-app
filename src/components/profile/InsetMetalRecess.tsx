@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-export type MetalVariant = 'titanium' | 'gold';
+export type MetalVariant = 'titanium' | 'gold' | 'red';
 
 type Props = {
   isDark: boolean;
@@ -64,8 +64,51 @@ function goldRecessPalette(isDark: boolean) {
   };
 }
 
+function redRecessPalette(isDark: boolean) {
+  if (isDark) {
+    return {
+      floor: ['#2A1214', '#34181A', '#241012'] as const,
+      floorSheen: ['rgba(255,180,170,0.14)', 'rgba(255,180,170,0.04)', 'transparent'] as const,
+      topLip: ['rgba(0,0,0,0.48)', 'rgba(0,0,0,0.16)', 'transparent'] as const,
+      leftLip: ['rgba(0,0,0,0.32)', 'transparent'] as const,
+      bottomLip: ['transparent', 'rgba(255,170,160,0.22)', 'rgba(255,170,160,0.09)'] as const,
+      rightLip: ['transparent', 'rgba(255,170,160,0.14)'] as const,
+      pitAo: ['transparent', 'rgba(0,0,0,0.22)'] as const,
+      specularBand: 'rgba(255, 196, 186, 0.2)',
+      specularTail: 'rgba(220, 140, 130, 0.06)',
+      glossCap: 'rgba(255, 190, 180, 0.12)',
+      bevelShadow: 'rgba(0, 0, 0, 0.48)',
+      bevelShadowSoft: 'rgba(0, 0, 0, 0.28)',
+      bevelHighlight: 'rgba(255, 186, 176, 0.26)',
+      bevelHighlightSoft: 'rgba(255, 186, 176, 0.14)',
+      pressOverlay: 'rgba(0, 0, 0, 0.14)',
+      ridgeShadow: 'rgba(0, 0, 0, 0.22)',
+    };
+  }
+
+  return {
+    floor: ['#8A2A2A', '#A33A38', '#922F2E'] as const,
+    floorSheen: ['rgba(255,236,230,0.38)', 'rgba(255,236,230,0.1)', 'transparent'] as const,
+    topLip: ['rgba(62,10,10,0.38)', 'rgba(62,10,10,0.12)', 'transparent'] as const,
+    leftLip: ['rgba(62,10,10,0.24)', 'transparent'] as const,
+    bottomLip: ['transparent', 'rgba(255,232,224,0.58)', 'rgba(255,232,224,0.22)'] as const,
+    rightLip: ['transparent', 'rgba(255,232,224,0.4)'] as const,
+    pitAo: ['transparent', 'rgba(62,10,10,0.16)'] as const,
+    specularBand: 'rgba(255, 244, 240, 0.5)',
+    specularTail: 'rgba(255, 210, 200, 0.16)',
+    glossCap: 'rgba(255, 240, 234, 0.26)',
+    bevelShadow: 'rgba(62, 12, 12, 0.4)',
+    bevelShadowSoft: 'rgba(62, 12, 12, 0.2)',
+    bevelHighlight: 'rgba(255, 244, 240, 0.78)',
+    bevelHighlightSoft: 'rgba(255, 244, 240, 0.42)',
+    pressOverlay: 'rgba(62, 12, 12, 0.14)',
+    ridgeShadow: 'rgba(62, 12, 12, 0.18)',
+  };
+}
+
 function recessPalette(isDark: boolean, variant: MetalVariant = 'titanium') {
   if (variant === 'gold') return goldRecessPalette(isDark);
+  if (variant === 'red') return redRecessPalette(isDark);
 
   if (isDark) {
     return {

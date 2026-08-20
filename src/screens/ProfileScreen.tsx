@@ -57,6 +57,7 @@ import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import ProfileCrmSection from '../components/agency/ProfileCrmSection';
+import ProfileAdminCoreSection from '../components/admin/ProfileAdminCoreSection';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
@@ -2931,7 +2932,7 @@ function ProfileScreenLoggedIn({
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isProfileTabFocused = useIsFocused();
-  const { user, logout, updateAvatar, token, deleteAccount, refreshUser, agencyMembership, refreshAgencyMembership } = useAuthStore();
+  const { user, logout, updateAvatar, token, deleteAccount, refreshUser, agencyMembership, refreshAgencyMembership, adminSession } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
   const displayCurrency = useDisplayCurrencyStore((s) => s.preference);
@@ -3040,7 +3041,9 @@ function ProfileScreenLoggedIn({
   const [publicModalViewLoading, setPublicModalViewLoading] = useState(false);
   const [publicModalStack, setPublicModalStack] = useState<number[]>([]);
   // Case-insensitive — backend mógł zwrócić 'admin' / 'Admin' / 'ADMIN'.
-  const isZarzad = String(user?.role || '').trim().toUpperCase() === 'ADMIN';
+  const isAdminOperator =
+    Boolean(adminSession) || String(user?.role || '').trim().toUpperCase() === 'ADMIN';
+  const isZarzad = isAdminOperator && !adminSession;
 
   const [isDeleteAccountVisible, setIsDeleteAccountVisible] = useState(false);
   const [isBlockedUsersVisible, setIsBlockedUsersVisible] = useState(false);
@@ -4399,6 +4402,8 @@ function ProfileScreenLoggedIn({
             </View>
           ) : null}
         </ProfileCardShell>
+
+        {isAdminOperator ? <ProfileAdminCoreSection isDark={isDark} /> : null}
 
         {isAgentProfile ? (
           <ProfileCrmSection isDark={isDark} isAgency={isAgentProfile} />

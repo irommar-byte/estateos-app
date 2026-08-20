@@ -59,6 +59,8 @@ export interface User {
 interface AuthState {
   user: User | null;
   token: string | null;
+  /** Oryginalna sesja administratora podczas symulatora (przejęcia konta). */
+  adminSession: { token: string; user: User } | null;
   agencyMembership: AgencyMembershipSnapshot | null;
   isLoading: boolean;
   error: string | null;
@@ -94,6 +96,9 @@ interface AuthState {
   ) => Promise<boolean>;
   refreshUser: () => Promise<void>;
   refreshAgencyMembership: () => Promise<void>;
+  getAdminToken: () => string | null;
+  impersonateUser: (userId: number) => Promise<{ ok: boolean; error?: string }>;
+  stopImpersonation: () => Promise<void>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
   updateAvatar: (imageOrUrl: string) => Promise<void>;
@@ -291,6 +296,7 @@ const normalizeToken = (rawToken: string | null | undefined) => {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
+  adminSession: null,
   agencyMembership: null,
   isLoading: false,
   error: null,
@@ -336,7 +342,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (loginEmail) {
         await AsyncStorage.setItem('@estateos_last_login_email', loginEmail);
       }
-      set({ user: normUser, token: normalizedToken, isLoading: false });
+      await AsyncStorage.multiRemove(['admin_session_token', 'admin_session_user']);
+      set({ user: normUser, token: normalizedToken, adminSession: null, isLoading: false });
       if (regPhone && !userHasDialablePhone(normUser?.phone)) {
         const e164 = normalizePhoneE164(regPhone);
         if (e164) {
@@ -511,7 +518,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (normUser?.id) {
           await markPasskeyEnabledForUser(normUser.id);
         }
-        set({ user: normUser, token: normalizedToken, isLoading: false });
+        await AsyncStorage.multiRemove(['admin_session_token', 'admin_session_user']);
+        set({ user: normUser, token: normalizedToken, adminSession: null, isLoading: false });
         const pairCode = String(options?.pairCode || '').trim().toUpperCase();
         if (pairCode) {
           try {
@@ -590,10 +598,88 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  getAdminToken: () => {
+    const { adminSession, token } = get();
+    return adminSession?.token || token;
+  },
+
+  impersonateUser: async (userId: number) => {
+    const state = get();
+    const adminToken = state.adminSession?.token || state.token;
+    const adminUser = state.adminSession?.user || state.user;
+    if (!adminToken || String(adminUser?.role || '').toUpperCase() !== 'ADMIN') {
+      return { ok: false, error: 'Symulator dostępny tylko dla administratora.' };
+    }
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return { ok: false, error: 'Nieprawidłowe ID.' };
+    }
+    if (Number(state.user?.id) === userId && !state.adminSession) {
+      return { ok: true };
+    }
+    if (Number(adminUser?.id) === userId && state.adminSession) {
+      await get().stopImpersonation();
+      return { ok: true };
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/mobile/v1/admin/simulator/impersonate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.token || !data?.user) {
+        return { ok: false, error: data?.message || 'Nie udało się przejąć konta.' };
+      }
+      const nextToken = normalizeToken(data.token);
+      const nextUser = await hydrateWithLocalFlags(normalizeUser(data.user));
+      if (!nextToken || !nextUser) {
+        return { ok: false, error: 'Serwer nie zwrócił sesji użytkownika.' };
+      }
+      const backup = state.adminSession || { token: adminToken, user: adminUser as User };
+      await AsyncStorage.multiSet([
+        ['mobile_token', nextToken],
+        ['user_data', JSON.stringify(nextUser)],
+        ['admin_session_token', backup.token],
+        ['admin_session_user', JSON.stringify(backup.user)],
+      ]);
+      set({
+        token: nextToken,
+        user: nextUser,
+        adminSession: backup,
+        agencyMembership: null,
+      });
+      await get().refreshAgencyMembership();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Brak połączenia z serwerem.' };
+    }
+  },
+
+  stopImpersonation: async () => {
+    const backup = get().adminSession;
+    if (!backup?.token || !backup.user) return;
+    await AsyncStorage.multiSet([
+      ['mobile_token', backup.token],
+      ['user_data', JSON.stringify(backup.user)],
+    ]);
+    await AsyncStorage.multiRemove(['admin_session_token', 'admin_session_user']);
+    set({
+      token: backup.token,
+      user: backup.user,
+      adminSession: null,
+      agencyMembership: null,
+    });
+    await get().refreshUser();
+    await get().refreshAgencyMembership();
+  },
+
   logout: async () => {
     const { user: prevUser } = get();
     // Najpierw UI/store — unikamy wiszenia na natywnym stop Live Activity przy wylogowaniu.
-    set({ user: null, token: null, agencyMembership: null, isRadarActive: false });
+    set({ user: null, token: null, adminSession: null, agencyMembership: null, isRadarActive: false });
     if (prevUser?.id != null) {
       void persistLocalPhoneVerified(prevUser.id, false);
       void persistLocalEmailVerified(prevUser.id, false);
@@ -610,6 +696,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         'mobile_token',
         'user_data',
         '@estateos_radar_active',
+        'admin_session_token',
+        'admin_session_user',
       ]);
     } catch {
       // noop
@@ -1032,13 +1120,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const token = normalizeToken(await AsyncStorage.getItem('mobile_token'));
       const userData = await AsyncStorage.getItem('user_data');
       const radarState = await AsyncStorage.getItem('@estateos_radar_active');
+      const adminToken = normalizeToken(await AsyncStorage.getItem('admin_session_token'));
+      const adminUserRaw = await AsyncStorage.getItem('admin_session_user');
       
       if (token && userData) {
         const baseUser = normalizeUser(JSON.parse(userData));
         const hydrated = await hydrateWithLocalFlags(baseUser);
+        let adminSession: { token: string; user: User } | null = null;
+        if (adminToken && adminUserRaw) {
+          const adminUser = normalizeUser(JSON.parse(adminUserRaw));
+          if (adminUser) adminSession = { token: adminToken, user: adminUser };
+        }
         set({ 
           token, 
           user: hydrated,
+          adminSession,
           isRadarActive: radarState === '1'
         });
         // Uwaga: nie wysyłamy tutaj enabled-only, żeby nie resetować miasta/filtrów.

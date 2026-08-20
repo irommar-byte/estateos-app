@@ -27,7 +27,7 @@ import {
 } from '../../services/marketService';
 
 type WindowKey = 'd7' | 'd30' | 'd90';
-type MetalVariant = 'gold' | 'titanium';
+type MetalVariant = 'gold' | 'titanium' | 'red';
 
 type Props = {
   isDark: boolean;

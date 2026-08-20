@@ -420,6 +420,7 @@ export default function KeiImportProgressHost() {
   const insets = useSafeAreaInsets();
   const colors = useKeiTheme();
   const token = useAuthStore((s) => s.token);
+  const getAdminToken = useAuthStore((s) => s.getAdminToken);
   const running = useKeiAmerExportStore((s) => s.running);
   const modalVisible = useKeiAmerExportStore((s) => s.modalVisible);
   const pillCollapsed = useKeiAmerExportStore((s) => s.pillCollapsed);
@@ -479,12 +480,13 @@ export default function KeiImportProgressHost() {
     [items],
   );
 
-  const showPill = !modalVisible && running;
+  const showPill = false;
   const showModal = modalVisible && (running || (source !== 'auto' && items.length > 0));
 
   useEffect(() => {
-    if (token) void hydrateFromServer(token);
-  }, [token, hydrateFromServer]);
+    const privileged = getAdminToken() || token;
+    if (privileged) void hydrateFromServer(privileged);
+  }, [token, getAdminToken, hydrateFromServer]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
