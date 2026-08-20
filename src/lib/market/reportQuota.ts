@@ -1,5 +1,7 @@
 import {
   canUseAgentMarket,
+  consumeMarketReportCredit,
+  grantMarketReportCredits,
   isActivePro,
   loadMarketUser,
   officeProReportsInWindow,
@@ -22,6 +24,10 @@ export type MarketReportQuota = {
   message: string;
 };
 
+export type ConsumeQuotaResult =
+  | { ok: true; creditUsed: boolean; purpose: string }
+  | { ok: false; status: number; code: string; message: string; quota: MarketReportQuota };
+
 export async function getMarketReportQuota(user: MarketUser): Promise<MarketReportQuota> {
   const admin = String(user.role || '').toUpperCase() === 'ADMIN';
   const investorPro = isActivePro(user);
@@ -37,8 +43,8 @@ export async function getMarketReportQuota(user: MarketUser): Promise<MarketRepo
       remaining,
       windowLabel: 'dzisiaj',
       message: remaining
-        ? `Zostało ${remaining} z ${PRO_REPORT_DAILY_CAP} raportów na dziś.`
-        : `Dzienny limit ${PRO_REPORT_DAILY_CAP} raportów został wykorzystany.`,
+        ? `Zostało ${remaining} z ${PRO_REPORT_DAILY_CAP} wygenerowań raportu na dziś. Limit schodzi przy potwierdzeniu — wysyłka e-mail nic nie zdejmuje.`
+        : `Dzienny limit ${PRO_REPORT_DAILY_CAP} wygenerowań raportu został wykorzystany.`,
     };
   }
 
@@ -52,8 +58,8 @@ export async function getMarketReportQuota(user: MarketUser): Promise<MarketRepo
       remaining,
       windowLabel: `${OFFICE_PRO_REPORT_WINDOW_DAYS} dni`,
       message: remaining
-        ? `Zostało ${remaining} z ${OFFICE_PRO_REPORT_CAP} raportów na ${OFFICE_PRO_REPORT_WINDOW_DAYS} dni (Partner Pro).`
-        : `Limit ${OFFICE_PRO_REPORT_CAP} raportów na ${OFFICE_PRO_REPORT_WINDOW_DAYS} dni został wykorzystany.`,
+        ? `Zostało ${remaining} z ${OFFICE_PRO_REPORT_CAP} wygenerowań raportu na ${OFFICE_PRO_REPORT_WINDOW_DAYS} dni (Partner Pro). Wysyłka e-mail nic nie zdejmuje.`
+        : `Limit ${OFFICE_PRO_REPORT_CAP} wygenerowań raportu na ${OFFICE_PRO_REPORT_WINDOW_DAYS} dni został wykorzystany.`,
     };
   }
 
@@ -64,7 +70,7 @@ export async function getMarketReportQuota(user: MarketUser): Promise<MarketRepo
       cap: user.marketReportCredits,
       remaining: user.marketReportCredits,
       windowLabel: 'kredyty',
-      message: `Masz ${user.marketReportCredits} ${user.marketReportCredits === 1 ? 'kredyt' : 'kredyty'} raportu.`,
+      message: `Masz ${user.marketReportCredits} ${user.marketReportCredits === 1 ? 'kredyt' : 'kredyty'} raportu. Kredyt schodzi przy wygenerowaniu, nie przy wysyłce.`,
     };
   }
 
@@ -75,9 +81,45 @@ export async function getMarketReportQuota(user: MarketUser): Promise<MarketRepo
     remaining: 0,
     windowLabel: '',
     message: canUseAgentMarket(user)
-      ? 'Raporty e-mail są w Partner Pro — 5 sztuk na 30 dni dla całego zespołu z przywilejami Pro.'
-      : 'Raport z aktów na e-mail jest w Investor Pro albo Partner Pro biura.',
+      ? 'Generowanie raportów jest w Partner Pro — 5 sztuk na 30 dni dla całego zespołu z przywilejami Pro.'
+      : 'Generowanie raportu z aktów jest w Investor Pro albo Partner Pro biura.',
   };
+}
+
+export async function consumeMarketReportQuota(user: MarketUser): Promise<ConsumeQuotaResult> {
+  const quota = await getMarketReportQuota(user);
+  const officePro = await userHasOfficePartnerPro(user.id);
+  const investorPro = isActivePro(user);
+  const admin = String(user.role || '').toUpperCase() === 'ADMIN';
+
+  if (investorPro || admin) {
+    if (quota.remaining <= 0) {
+      return { ok: false, status: 429, code: 'DAILY_CAP', message: quota.message, quota };
+    }
+    return { ok: true, creditUsed: false, purpose: canUseAgentMarket(user) ? 'crm' : 'consumer' };
+  }
+
+  if (officePro) {
+    if (quota.remaining <= 0) {
+      return { ok: false, status: 429, code: 'PERIOD_CAP', message: quota.message, quota };
+    }
+    return { ok: true, creditUsed: false, purpose: 'crm' };
+  }
+
+  if (canUseAgentMarket(user)) {
+    return { ok: false, status: 403, code: 'PRO_REQUIRED', message: quota.message, quota };
+  }
+
+  const consumed = await consumeMarketReportCredit(user.id);
+  if (!consumed) {
+    return { ok: false, status: 403, code: 'PRO_REQUIRED', message: quota.message, quota };
+  }
+  return { ok: true, creditUsed: true, purpose: 'consumer' };
+}
+
+export async function refundMarketReportCreditIfUsed(userId: number, creditUsed: boolean) {
+  if (!creditUsed) return;
+  await grantMarketReportCredits(userId, 1);
 }
 
 export async function getMarketReportQuotaForUserId(userId: number): Promise<MarketReportQuota | null> {

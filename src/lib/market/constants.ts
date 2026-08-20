@@ -32,7 +32,7 @@ export const MARKET_REPORT_STRIPE_AMOUNT = 4900;
 export const MARKET_REPORT_CREDIT_PRODUCT = 'estateos_market_report';
 
 export const PRO_REPORT_DAILY_CAP = 20;
-/** Partner Pro / Enterprise — 5 raportów e-mail na osobę w oknie 30 dni. */
+/** Partner Pro / Enterprise — 5 wygenerowań raportu na osobę w oknie 30 dni. Wysyłka nie liczy się osobno. */
 export const OFFICE_PRO_REPORT_CAP = 5;
 export const OFFICE_PRO_REPORT_WINDOW_DAYS = 30;
 export const VALUATION_RATE_LIMIT_PER_10MIN = 40;

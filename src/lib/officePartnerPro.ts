@@ -9,7 +9,7 @@ export function partnerPlanGrantsOfficePro(planId: PartnerPlanId | null | undefi
   return planId === 'pro' || planId === 'enterprise';
 }
 
-/** Partner Pro / Enterprise (w tym trial Pro) — Off Market, Market, widget, 5 raportów. Bez kredytów Investor Pro. */
+/** Partner Pro / Enterprise (w tym trial Pro) — Off Market, Market, widget, 5 wygenerowań raportu. Bez kredytów Investor Pro. */
 export async function userHasOfficePartnerPro(userId: number): Promise<boolean> {
   if (!Number.isFinite(userId) || userId <= 0) return false;
   const hit = cache.get(userId);

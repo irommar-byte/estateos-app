@@ -208,7 +208,7 @@ const pl: AgencyFirmDictionary = {
     recommended: 'Najchętniej wybierany',
     perkOfficePro:
       'Cały zespół dostaje status Pro: Off Market, Market na ofertach, taśmy w katalogu i tytanowe okienko',
-    perkReports: '5 raportów wyceny na e-mail do klientów — na osobę / 30 dni',
+    perkReports: '5 wygenerowań raportu wyceny na osobę / 30 dni. Wysyłka e-mail nie zużywa limitu.',
     perkMarket: 'Na każdej ofercie widać, jak daleko cena odbiega od transakcji notarialnych',
     perkStartGap: 'Bez Off Market, Market, taśm i raportów — to zalety Partner Pro',
     per30Days: 'zł / 30 dni',

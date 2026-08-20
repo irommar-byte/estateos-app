@@ -1457,7 +1457,7 @@ const pl: Dictionary = {
     partnerStartF4: "Profil w Katalogu agencji — wyróżnienie względem ogłoszeń prywatnych.",
     partnerStartF5: "{breakEven}+ publikacji/mies.? Abonament wygrywa z kupowaniem pojedynczych kredytów.",
     partnerStartF6:
-      "Bez Off Market, Market przy aktach, taśm w katalogu i raportów e-mail — to przywileje Partner Pro dla całego biura.",
+      "Bez Off Market, Market przy aktach, taśm w katalogu i raportów z aktów — to przywileje Partner Pro dla całego biura.",
     partnerProName: "Partner Pro",
     partnerProDesc:
       "Najchętniej wybierany pakiet biur. Cały zespół dostaje status Pro (Off Market, Market, taśmy, 5 raportów) — bez kredytów Investor Pro.",
@@ -1470,7 +1470,7 @@ const pl: Dictionary = {
       "Jedna transakcja miesięcznie zwraca się szybciej niż {breakEven}× Pakiet + — reszta to czysta marża biura.",
     partnerProF7:
       "Cały zespół (aktywni agenci + kierownik) dostaje status Pro: Off Market, Market na każdej ofercie i tytanowe okienko w aplikacji.",
-    partnerProF8: "5 raportów wyceny na e-mail do klientów — na osobę, co 30 dni.",
+    partnerProF8: "5 wygenerowań raportu wyceny na osobę, co 30 dni. Wysyłka e-mail nie zużywa limitu.",
     partnerProF9: "Taśmy „Przy aktach” w katalogu i stały wskaźnik, jak daleko cena odbiega od transakcji notarialnych.",
     partnerEnterpriseName: "Partner Enterprise",
     partnerEnterpriseDesc:
@@ -1482,7 +1482,7 @@ const pl: Dictionary = {
     partnerEnterpriseF5: "Dedykowany onboarding — roczne pakiety kredytów na życzenie.",
     partnerEnterpriseF6:
       "Status Pro dla całego zespołu: Off Market, Market przy aktach, taśmy w katalogu i tytanowe okienko.",
-    partnerEnterpriseF7: "5 raportów wyceny na e-mail do klientów — na osobę, co 30 dni. Bez kredytów Investor Pro.",
+    partnerEnterpriseF7: "5 wygenerowań raportu wyceny na osobę, co 30 dni. Wysyłka e-mail nie zużywa limitu. Bez kredytów Investor Pro.",
     modalTitle: "Jaki jest Twój Cel?",
     modalSubtitle: "Wybierz odpowiednią ścieżkę, abyśmy mogli dopasować narzędzia do Twoich potrzeb.",
     modalBuy: "Chcę Kupić",
