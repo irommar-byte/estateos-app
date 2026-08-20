@@ -60,6 +60,9 @@ export type JourneyStageId =
   | 'signed'
   | 'offer'
   | 'presentation'
+  | 'criteria'
+  | 'proposals'
+  | 'reaction'
   | 'done';
 
 export type JourneyStage = {
@@ -67,6 +70,8 @@ export type JourneyStage = {
   label: string;
   done: boolean;
   current: boolean;
+  hint?: string;
+  at?: string | null;
 };
 
 export type PortalAttachment = {
@@ -269,15 +274,82 @@ export function buildJourneyStages(params: {
   hasOffer: boolean;
   hasPresentation: boolean;
   presentationConfirmed: boolean;
+  clientType?: 'BUYER' | 'SELLER';
+  hasCriteria?: boolean;
+  sentOfferCount?: number;
+  reactedCount?: number;
+  criteriaUpdatedAt?: string | null;
+  lastOfferSentAt?: string | null;
+  lastReactionAt?: string | null;
 }): JourneyStage[] {
-  const stages: Array<{ id: JourneyStageId; label: string; done: boolean }> = [
-    { id: 'added', label: 'Klient w CRM', done: true },
-    { id: 'meeting', label: 'Termin spotkania', done: params.hasMeeting && params.meetingConfirmed },
-    { id: 'visit', label: 'Karta pozyskania', done: params.acquisitionStarted || params.signed },
-    { id: 'signed', label: 'Umowa podpisana', done: params.signed },
-    { id: 'offer', label: 'Oferta na rynku', done: params.hasOffer },
-    { id: 'presentation', label: 'Prezentacja', done: params.hasPresentation && params.presentationConfirmed },
-  ];
+  const stages: Array<{ id: JourneyStageId; label: string; done: boolean; hint?: string; at?: string | null }> =
+    params.clientType === 'BUYER'
+      ? [
+          {
+            id: 'added',
+            label: 'Jesteś z nami',
+            done: true,
+            hint: 'Agent prowadzi Twój proces poszukiwań krok po kroku.',
+          },
+          {
+            id: 'criteria',
+            label: 'Kryteria poszukiwań',
+            done: Boolean(params.hasCriteria),
+            hint: 'Tu widać dzielnice, budżet i to, co jest obowiązkowe. Jeśli coś zmienimy — pojawi się data.',
+            at: params.criteriaUpdatedAt || null,
+          },
+          {
+            id: 'proposals',
+            label: 'Oferty od agenta',
+            done: (params.sentOfferCount || 0) > 0,
+            hint: 'Otwórz zdjęcie albo tytuł, obejrzyj ogłoszenie i oceń każdą propozycję osobno.',
+            at: params.lastOfferSentAt || null,
+          },
+          {
+            id: 'reaction',
+            label: 'Twoja odpowiedź',
+            done: (params.reactedCount || 0) > 0 && (params.reactedCount || 0) >= (params.sentOfferCount || 0),
+            hint: 'Przy każdej ofercie napisz, co konkretnie się podoba, a co nie. Agent widzi to przy tym samym ogłoszeniu.',
+            at: params.lastReactionAt || null,
+          },
+          {
+            id: 'presentation',
+            label: 'Prezentacja na żywo',
+            done: params.hasPresentation && params.presentationConfirmed,
+            hint: params.hasPresentation
+              ? 'Potwierdź termin albo zaproponuj inny — idziemy oglądać mieszkanie.'
+              : 'Gdy któraś oferta naprawdę pasuje, agent umówi prezentację.',
+          },
+          {
+            id: 'done',
+            label: 'Blisko mety',
+            done: params.hasPresentation && params.presentationConfirmed,
+            hint: 'Jesteśmy w procesie sprzedaży: kryteria → oferty → Twoja opinia → prezentacja.',
+          },
+        ]
+      : [
+          { id: 'added', label: 'Klient w CRM', done: true, hint: 'Jesteś w systemie agencji EstateOS.' },
+          {
+            id: 'meeting',
+            label: 'Termin spotkania',
+            done: params.hasMeeting && params.meetingConfirmed,
+            hint: 'Potwierdź datę spotkania z agentem albo zaproponuj inną.',
+          },
+          {
+            id: 'visit',
+            label: 'Karta pozyskania',
+            done: params.acquisitionStarted || params.signed,
+            hint: 'Dokument współpracy pojawi się tutaj, zanim podpiszecie umowę.',
+          },
+          { id: 'signed', label: 'Umowa podpisana', done: params.signed, hint: 'Po podpisie agent publikuje ogłoszenie.' },
+          { id: 'offer', label: 'Oferta na rynku', done: params.hasOffer, hint: 'Twoje ogłoszenie jest widoczne dla kupujących.' },
+          {
+            id: 'presentation',
+            label: 'Prezentacja',
+            done: params.hasPresentation && params.presentationConfirmed,
+            hint: 'Pokazujemy nieruchomość zainteresowanym.',
+          },
+        ];
   const firstOpen = stages.findIndex((stage) => !stage.done);
   return stages.map((stage, index) => ({
     ...stage,

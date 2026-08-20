@@ -18,7 +18,12 @@ import {
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
-import { isPromotionActive } from '@/lib/listingPromotion';
+import {
+  parseClientOfferFeedback,
+  serializeClientOfferFeedback,
+  clientFeedbackHasContent,
+  formatClientFeedbackForAgent,
+} from '@/lib/crm/clientPortalFeedback';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -125,6 +130,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               priceCurrency: true,
               city: true,
               district: true,
+              street: true,
+              description: true,
               area: true,
               rooms: true,
               transactionType: true,
@@ -172,6 +179,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'LISTING_LINKED',
               'CLIENT_NOTIFIED',
               'OFFER_SHARED',
+              'CLIENT_FEEDBACK',
               'ACQUISITION_MEETING',
               'ACQUISITION_SIGNED',
               'MARKET_REPORT_SENT',
@@ -215,7 +223,18 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const scheduleActs = await loadJourneyActivities(client.id);
   const meeting = resolveMeeting(scheduleActs);
   const presentation = resolvePresentation(scheduleActs);
+  const notifiedMatches = client.matches.filter((m) => m.notifiedAt);
+  const reactedMatches = notifiedMatches.filter((m) => m.clientFeedback);
+  const lastOfferSentAt = notifiedMatches
+    .map((m) => m.notifiedAt)
+    .filter(Boolean)
+    .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0];
+  const lastReactionAt = reactedMatches
+    .map((m) => m.clientFeedbackAt)
+    .filter(Boolean)
+    .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0];
   const stages = buildJourneyStages({
+    clientType: client.type,
     hasMeeting: Boolean(meeting),
     meetingConfirmed: meeting?.status === 'confirmed',
     acquisitionStarted: Boolean(client.acquisition && client.acquisition.currentStep > 1),
@@ -223,6 +242,11 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     hasOffer: Boolean(client.linkedOffer),
     hasPresentation: Boolean(presentation),
     presentationConfirmed: presentation?.status === 'confirmed',
+    hasCriteria: Boolean(client.buyerPreference),
+    sentOfferCount: notifiedMatches.length,
+    reactedCount: reactedMatches.length,
+    lastOfferSentAt: lastOfferSentAt ? lastOfferSentAt.toISOString() : null,
+    lastReactionAt: lastReactionAt ? lastReactionAt.toISOString() : null,
   });
 
   return NextResponse.json({
@@ -267,8 +291,13 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               priceCurrency: m.offer.priceCurrency,
               city: m.offer.city,
               district: m.offer.district,
+              street: m.offer.street,
               area: m.offer.area,
               rooms: m.offer.rooms,
+              excerpt: String(m.offer.description || '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 180),
               imageUrl: resolveOfferPrimaryImage(m.offer),
             },
           }))
@@ -310,15 +339,31 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             updatedAt: client.acquisition.updatedAt.toISOString(),
           }
         : null,
-      activities: client.activities.map((a) => ({
-        id: a.id,
-        kind: a.kind,
-        title: a.title,
-        body: a.body,
-        offerId: a.offerId,
-        createdAt: a.createdAt.toISOString(),
-        metadata: a.metadata,
-      })),
+      activities: client.activities.map((a) => {
+        const meta =
+          a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
+        const offerIds = [
+          ...(Array.isArray(meta.offerIds) ? meta.offerIds.map((id) => Number(id)) : []),
+          ...(a.offerId ? [a.offerId] : []),
+        ].filter((id) => Number.isFinite(id));
+        const related = client.matches.filter((m) => offerIds.includes(m.offer.id));
+        return {
+          id: a.id,
+          kind: a.kind,
+          title: a.title,
+          body: a.body,
+          offerId: a.offerId,
+          createdAt: a.createdAt.toISOString(),
+          metadata: a.metadata,
+          offers: related.map((m) => ({
+            id: m.offer.id,
+            title: m.offer.title,
+            city: m.offer.city,
+            district: m.offer.district,
+            imageUrl: resolveOfferPrimaryImage(m.offer),
+          })),
+        };
+      }),
     },
   });
 }
@@ -419,23 +464,31 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
     }
     const matchId = Number(body.matchId);
-    const feedback = String(body.feedback || '').trim();
-    if (!Number.isFinite(matchId) || !feedback) {
-      return NextResponse.json({ error: 'Podaj komentarz do oferty.' }, { status: 400 });
+    const parsed = parseClientOfferFeedback({
+      sentiment: body.sentiment,
+      liked: body.liked,
+      disliked: body.disliked,
+      phrases: body.phrases,
+      note: body.note || body.feedback,
+    });
+    if (!Number.isFinite(matchId) || !clientFeedbackHasContent(parsed)) {
+      return NextResponse.json({ error: 'Oceń ofertę: co się podoba, a co nie.' }, { status: 400 });
     }
 
     const match = await prisma.agencyClientMatch.findFirst({
       where: { id: matchId, clientId: client.id },
-      include: { offer: { select: { id: true, title: true } } },
+      include: { offer: { select: { id: true, title: true, city: true, district: true } } },
     });
     if (!match) {
       return NextResponse.json({ error: 'Nie znaleziono dopasowania.' }, { status: 404 });
     }
 
+    const stored = serializeClientOfferFeedback(parsed);
+    const agentSummary = formatClientFeedbackForAgent(stored);
     await prisma.$transaction([
       prisma.agencyClientMatch.update({
         where: { id: matchId },
-        data: { clientFeedback: feedback, clientFeedbackAt: new Date() },
+        data: { clientFeedback: stored, clientFeedbackAt: new Date() },
       }),
       prisma.agencyClientActivity.create({
         data: {
@@ -443,17 +496,23 @@ export async function POST(req: Request, ctx: RouteCtx) {
           agencyUserId: client.agencyUserId,
           offerId: match.offerId,
           kind: 'CLIENT_FEEDBACK',
-          title: 'Uwagi klienta do oferty',
-          body: feedback,
-          metadata: { matchId, offerTitle: match.offer.title },
+          title: `Reakcja klienta: ${match.offer.title}`,
+          body: agentSummary,
+          metadata: {
+            matchId,
+            offerTitle: match.offer.title,
+            offerCity: match.offer.city,
+            offerDistrict: match.offer.district,
+            sentiment: parsed.sentiment,
+          },
         },
       }),
     ]);
     await notifyAgent({
       agencyUserId: client.agencyUserId,
       clientId: client.id,
-      title: 'Uwagi klienta do oferty',
-      body: `${clientName}: ${feedback.slice(0, 140)}`,
+      title: `Reakcja do oferty: ${match.offer.title}`,
+      body: `${clientName}: ${agentSummary.slice(0, 160)}`,
     });
     return NextResponse.json({ success: true });
   }

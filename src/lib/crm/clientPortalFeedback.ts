@@ -1,0 +1,107 @@
+export type ClientOfferSentiment = 'like' | 'maybe' | 'dislike';
+
+export type ClientOfferFeedback = {
+  sentiment: ClientOfferSentiment | null;
+  liked: string;
+  disliked: string;
+  phrases: string[];
+  note: string;
+};
+
+export const LIKE_PHRASES = [
+  'Świetna lokalizacja',
+  'Podoba mi się układ',
+  'Ładna okolica',
+  'Dobry metraż',
+  'Pasuje do budżetu',
+  'Jasne mieszkanie',
+] as const;
+
+export const DISLIKE_PHRASES = [
+  'Za mała kuchnia',
+  'Brak balkonu',
+  'Za drogo',
+  'Hałas / ruchliwa ulica',
+  'Nie ta dzielnica',
+  'Słabe doświetlenie',
+  'Za wysoko albo za nisko',
+] as const;
+
+const SENTIMENTS = new Set<ClientOfferSentiment>(['like', 'maybe', 'dislike']);
+
+export function emptyClientOfferFeedback(): ClientOfferFeedback {
+  return { sentiment: null, liked: '', disliked: '', phrases: [], note: '' };
+}
+
+export function parseClientOfferFeedback(raw: unknown): ClientOfferFeedback {
+  if (!raw) return emptyClientOfferFeedback();
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return emptyClientOfferFeedback();
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object' && (parsed.sentiment || parsed.note || parsed.phrases)) {
+        return normalizeFeedbackObject(parsed);
+      }
+    } catch {
+      /* plain note from older portal */
+    }
+    return { ...emptyClientOfferFeedback(), note: trimmed };
+  }
+  if (typeof raw === 'object') return normalizeFeedbackObject(raw as Record<string, unknown>);
+  return emptyClientOfferFeedback();
+}
+
+function normalizeFeedbackObject(raw: Record<string, unknown>): ClientOfferFeedback {
+  const sentimentRaw = String(raw.sentiment || '').toLowerCase();
+  const phrases = Array.isArray(raw.phrases)
+    ? raw.phrases.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  return {
+    sentiment: SENTIMENTS.has(sentimentRaw as ClientOfferSentiment)
+      ? (sentimentRaw as ClientOfferSentiment)
+      : null,
+    liked: String(raw.liked || '').trim(),
+    disliked: String(raw.disliked || '').trim(),
+    phrases,
+    note: String(raw.note || raw.feedback || '').trim(),
+  };
+}
+
+export function serializeClientOfferFeedback(input: Partial<ClientOfferFeedback> & { note?: string }): string {
+  const next: ClientOfferFeedback = {
+    ...emptyClientOfferFeedback(),
+    ...input,
+    liked: String(input.liked || '').trim(),
+    disliked: String(input.disliked || '').trim(),
+    phrases: Array.isArray(input.phrases) ? input.phrases.map((item) => String(item).trim()).filter(Boolean) : [],
+    note: String(input.note || '').trim(),
+    sentiment: input.sentiment && SENTIMENTS.has(input.sentiment) ? input.sentiment : null,
+  };
+  return JSON.stringify(next);
+}
+
+export function clientFeedbackHasContent(feedback: ClientOfferFeedback): boolean {
+  return Boolean(
+    feedback.sentiment || feedback.liked || feedback.disliked || feedback.phrases.length || feedback.note,
+  );
+}
+
+export function sentimentLabel(sentiment: ClientOfferSentiment | null): string {
+  if (sentiment === 'like') return 'Podoba się';
+  if (sentiment === 'maybe') return 'Może być';
+  if (sentiment === 'dislike') return 'Nie pasuje';
+  return 'Bez oceny';
+}
+
+export function formatClientFeedbackForAgent(raw: unknown): string {
+  const feedback = parseClientOfferFeedback(raw);
+  if (!clientFeedbackHasContent(feedback)) return '';
+  const parts: string[] = [];
+  if (feedback.sentiment) parts.push(sentimentLabel(feedback.sentiment));
+  if (feedback.liked) parts.push(`Plusy: ${feedback.liked}`);
+  if (feedback.disliked) parts.push(`Minusy: ${feedback.disliked}`);
+  if (feedback.phrases.length) parts.push(feedback.phrases.join(' · '));
+  if (feedback.note) parts.push(feedback.note);
+  return parts.join(' — ');
+}

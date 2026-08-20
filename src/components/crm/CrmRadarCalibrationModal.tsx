@@ -466,9 +466,12 @@ export default function CrmRadarCalibrationModal({
                   </div>
 
                   <div>
-                    <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                      Wymagane udogodnienia
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                      Obowiązkowe 100% — bez tego oferta nie wejdzie
                     </label>
+                    <p className="mb-3 text-xs leading-relaxed text-[var(--eos-muted)]">
+                      Zaznacz tylko to, bez czego nie kupisz. Balkon na 100% odcina mieszkania bez balkonu.
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {AMENITIES.map((a) => (
                         <button

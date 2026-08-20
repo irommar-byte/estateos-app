@@ -24,6 +24,9 @@ import {
 import { ACQUISITION_DOCUMENTS, type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
 import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAttachmentShared";
+import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
+import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
+import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
 
 type SearchCriteria = {
   location: string;
@@ -62,6 +65,8 @@ type JourneyStage = {
   label: string;
   done: boolean;
   current: boolean;
+  hint?: string;
+  at?: string | null;
 };
 
 type PortalData = {
@@ -97,7 +102,10 @@ type PortalData = {
       priceCurrency: string | null;
       city: string;
       district: string | null;
+      street?: string | null;
       area: number;
+      rooms?: number | null;
+      excerpt?: string | null;
       imageUrl: string;
     };
   }>;
@@ -136,6 +144,14 @@ type PortalData = {
     body: string | null;
     createdAt: string;
     metadata?: Record<string, unknown> | null;
+    offerId?: number | null;
+    offers?: Array<{
+      id: number;
+      title: string;
+      city: string;
+      district: string | null;
+      imageUrl: string;
+    }>;
   }>;
 };
 
@@ -144,7 +160,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [portal, setPortal] = useState<PortalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [feedbackDraft, setFeedbackDraft] = useState<Record<number, string>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
   const [messages, setMessages] = useState<PortalMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
@@ -205,15 +220,17 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     void loadMessages();
   }, [loadMessages]);
 
-  const submitFeedback = async (matchId: number) => {
-    const feedback = feedbackDraft[matchId]?.trim();
-    if (!token || !feedback) return;
+  const submitFeedback = async (
+    matchId: number,
+    payload: { sentiment: string | null; liked: string; disliked: string; phrases: string[]; note: string },
+  ) => {
+    if (!token) return;
     setSavingId(matchId);
     try {
       const res = await fetch(`/api/crm/client-portal/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "submit_feedback", matchId, feedback }),
+        body: JSON.stringify({ action: "submit_feedback", matchId, ...payload }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
@@ -362,27 +379,28 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   }
 
   const criteria = portal.searchCriteria;
+  const greetingName = formatClientGreeting(portal.clientName);
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] pt-28 pb-32 text-[var(--eos-text)]">
     <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
-      <header className="rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)] sm:p-8">
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
+      <header className="eos-inset-frame eos-stack-card relative rounded-[2rem] p-6 sm:p-8">
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 space-y-1">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
               <CheckCircle2 className="size-3.5" />
               Panel Klienta EstateOS
             </span>
-            <h1 className="mt-2 text-3xl font-black text-[var(--eos-text)]">Witaj, {portal.clientName}</h1>
-            <p className="text-sm text-[var(--eos-muted)]">
+            <h1 className="mt-2 break-words text-3xl font-black leading-tight text-[var(--eos-text)]">Witaj, {greetingName}</h1>
+            <p className="text-sm leading-relaxed text-[var(--eos-muted)]">
               {portal.type === "BUYER"
-                ? `Twój agent prowadzi dopasowanie ofert i poszukiwania nieruchomości.`
+                ? `Twój agent prowadzi dopasowanie ofert i poszukiwania nieruchomości. Każda propozycja ma osobną reakcję — nic nie ginie w czacie.`
                 : `Dedykowany agent i biuro reprezentują Twoją nieruchomość.`}
             </p>
           </div>
 
           {/* Agent Business Card */}
-          <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
+          <div className="eos-inset-well relative z-10 -mt-1 flex w-full shrink-0 items-center gap-4 rounded-2xl p-4 md:-mr-2 md:mt-6 md:w-auto md:max-w-sm">
             {portal.agentPhoto ? (
               <img
                 src={portal.agentPhoto}
@@ -394,11 +412,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 {portal.agentName.charAt(0)}
               </div>
             )}
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500">Twój agent</p>
-              <p className="text-base font-bold text-[var(--eos-text)]">{portal.agentName}</p>
-              <p className="text-xs text-[var(--eos-muted)]">{portal.agentTitle || "Doradca ds. Nieruchomości"}</p>
-              <p className="text-xs font-semibold text-emerald-600">{portal.agencyName}</p>
+              <p className="break-words text-base font-bold text-[var(--eos-text)]">{portal.agentName}</p>
+              <p className="break-words text-xs text-[var(--eos-muted)]">{portal.agentTitle || "Doradca ds. Nieruchomości"}</p>
+              <p className="break-words text-xs font-semibold text-emerald-600">{portal.agencyName}</p>
             </div>
           </div>
         </div>
@@ -408,28 +426,28 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           {portal.agentPhone && (
             <a
               href={`tel:${portal.agentPhone}`}
-              className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
+              className="eos-inset-well flex items-center gap-3 rounded-xl p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
             >
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
                 📞
               </div>
-              <div className="truncate">
+              <div className="min-w-0">
                 <p className="text-[10px] text-[var(--eos-muted)]">Zadzwoń do agenta</p>
-                <p className="truncate">{portal.agentPhone}</p>
+                <p className="break-all">{portal.agentPhone}</p>
               </div>
             </a>
           )}
           {portal.agentEmail && (
             <a
               href={`mailto:${portal.agentEmail}`}
-              className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
+              className="eos-inset-well flex items-center gap-3 rounded-xl p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
             >
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
                 ✉️
               </div>
-              <div className="truncate">
+              <div className="min-w-0">
                 <p className="text-[10px] text-[var(--eos-muted)]">Wyślij wiadomość</p>
-                <p className="truncate">{portal.agentEmail}</p>
+                <p className="break-all">{portal.agentEmail}</p>
               </div>
             </a>
           )}
@@ -438,44 +456,32 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               href={portal.agencySlug || portal.agencyWebsite!}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
+              className="eos-inset-well flex items-center gap-3 rounded-xl p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
             >
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
                 🏢
               </div>
-              <div className="truncate">
-                <p className="text-[10px] text-[var(--eos-muted)]">Profil biura</p>
-                <p className="truncate">{portal.agencyName}</p>
+              <div className="min-w-0">
+                <p className="text-[10px] text-[var(--eos-muted)]">Profil biura EstateOS™</p>
+                <p className="break-words">{portal.agencyName}</p>
               </div>
             </a>
           )}
         </div>
       </header>
 
-      {portal.journey?.length ? (
-        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)]">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Twoja ścieżka</p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            {portal.journey.map((stage) => (
-              <div
-                key={stage.id}
-                className={`rounded-2xl border px-3 py-3 ${
-                  stage.done
-                    ? "border-emerald-500/30 bg-emerald-500/10"
-                    : stage.current
-                      ? "border-emerald-500/50 bg-[var(--eos-input)]/40"
-                      : "border-[var(--eos-border)] bg-[var(--eos-input)]/20"
-                }`}
-              >
-                <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
-                  {stage.done ? "Gotowe" : stage.current ? "Teraz" : "Dalej"}
-                </p>
-                <p className="mt-1 text-xs font-bold text-[var(--eos-text)]">{stage.label}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <section className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Aplikacja iPhone</p>
+        <h2 className="mt-1 text-lg font-black text-[var(--eos-text)]">Otwórz panel w aplikacji i łap powiadomienia od razu</h2>
+        <p className="mt-1 text-sm leading-relaxed text-[var(--eos-muted)]">
+          Mail otwiera ten panel w przeglądarce. W aplikacji EstateOS masz te same oferty, czat z agentem i natychmiastowe powiadomienia, gdy pojawi się nowa propozycja albo zmiana etapu.
+        </p>
+        <div className="mt-4">
+          <AppStoreBadgeLink compact />
+        </div>
+      </section>
+
+      {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} /> : null}
 
       {portal.meeting ? (
         <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
@@ -861,39 +867,48 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {criteria ? (
-        <section className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+        <section className="eos-inset-frame rounded-[1.6rem] p-6">
           <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
             <SlidersHorizontal className="size-5 text-emerald-500" />
             Twoje kryteria poszukiwań
           </h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+            <div className="eos-inset-well rounded-xl px-4 py-3">
               <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Lokalizacja</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.location}</p>
+              <p className="mt-1 break-words text-sm font-semibold leading-snug text-[var(--eos-text)]">
+                {criteria.location}
+              </p>
             </div>
-            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+            <div className="eos-inset-well rounded-xl px-4 py-3">
               <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Budżet</p>
               <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.maxBudget}</p>
             </div>
-            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+            <div className="eos-inset-well rounded-xl px-4 py-3">
               <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Typ</p>
               <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
                 {criteria.transactionType} · {criteria.propertyType}
               </p>
             </div>
-            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+            <div className="eos-inset-well rounded-xl px-4 py-3">
               <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Metraż</p>
               <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.minArea}</p>
             </div>
           </div>
           {criteria.districts?.length ? (
-            <p className="mt-3 text-xs text-[var(--eos-muted)]">
-              Dzielnice: {criteria.districts.join(", ")}
-            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {criteria.districts.map((district) => (
+                <span
+                  key={district}
+                  className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700"
+                >
+                  {district}
+                </span>
+              ))}
+            </div>
           ) : null}
           {criteria.amenities?.length ? (
-            <p className="mt-1 text-xs text-[var(--eos-muted)]">
-              Udogodnienia: {criteria.amenities.join(", ")}
+            <p className="mt-3 text-sm text-[var(--eos-muted)]">
+              Obowiązkowe 100%: {criteria.amenities.join(", ")}
             </p>
           ) : null}
         </section>
@@ -952,56 +967,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             </p>
           ) : (
             portal.matches.map((m) => (
-              <article
+              <ClientPortalMatchCard
                 key={m.id}
-                className="overflow-hidden rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]"
-              >
-                <div className="flex flex-col gap-4 p-5 sm:flex-row">
-                  <div
-                    className="h-28 w-full shrink-0 rounded-xl bg-cover bg-center sm:w-36"
-                    style={{ backgroundImage: `url(${m.offer.imageUrl})` }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-[var(--eos-text)]">{m.offer.title}</p>
-                    <p className="text-sm text-[var(--eos-muted)]">
-                      {m.offer.city} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}% dopasowania
-                    </p>
-                    <Link
-                      href={`/oferta/${m.offer.id}?portal=${encodeURIComponent(token || "")}`}
-                      className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-emerald-600"
-                    >
-                      Zobacz szczegóły <ExternalLink className="size-3" />
-                    </Link>
-                  </div>
-                </div>
-                <div className="border-t border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-5">
-                  <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
-                    <MessageSquare className="size-3.5" />
-                    Twoje uwagi do tej nieruchomości
-                  </label>
-                  <textarea
-                    value={feedbackDraft[m.id] || ""}
-                    onChange={(e) => setFeedbackDraft((d) => ({ ...d, [m.id]: e.target.value }))}
-                    rows={2}
-                    placeholder="Np. za mała kuchnia, ale świetna lokalizacja…"
-                    className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
-                  />
-                  <button
-                    type="button"
-                    disabled={savingId === m.id || !feedbackDraft[m.id]?.trim()}
-                    onClick={() => void submitFeedback(m.id)}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
-                  >
-                    <Send className="size-3" />
-                    {m.clientFeedback ? "Zaktualizuj uwagi" : "Wyślij uwagi do agenta"}
-                  </button>
-                  {m.clientFeedbackAt ? (
-                    <p className="mt-2 text-[10px] text-[var(--eos-muted)]">
-                      Ostatnia aktualizacja: {new Date(m.clientFeedbackAt).toLocaleString("pl-PL")}
-                    </p>
-                  ) : null}
-                </div>
-              </article>
+                match={m}
+                token={token || ""}
+                saving={savingId === m.id}
+                onSubmit={(payload) => submitFeedback(m.id, payload)}
+              />
             ))
           )}
         </section>
@@ -1088,13 +1060,58 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           <h2 className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
             Ostatnie działania
           </h2>
-          <div className="space-y-2">
-            {portal.activities.map((a) => (
-              <div key={a.id} className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3 text-sm">
-                <p className="font-medium text-[var(--eos-text)]">{a.title}</p>
-                {a.body ? <p className="mt-1 text-xs text-[var(--eos-muted)]">{a.body}</p> : null}
-              </div>
-            ))}
+          <div className="space-y-3">
+            {portal.activities.map((a) => {
+              const metaOffers = Array.isArray(a.offers) ? a.offers : [];
+              const meta =
+                a.metadata && typeof a.metadata === "object" ? (a.metadata as Record<string, unknown>) : {};
+              const nestedOffers = Array.isArray(meta.offers) ? (meta.offers as Array<Record<string, unknown>>) : [];
+              const offers =
+                metaOffers.length > 0
+                  ? metaOffers
+                  : nestedOffers.map((item) => ({
+                      id: Number(item.id),
+                      title: String(item.title || ""),
+                      city: String(item.city || ""),
+                      district: item.district ? String(item.district) : null,
+                      imageUrl: String(item.imageUrl || ""),
+                    }));
+              return (
+                <div key={a.id} className="eos-inset-well rounded-2xl px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="font-medium text-[var(--eos-text)]">{a.title}</p>
+                    <p className="text-[11px] text-[var(--eos-muted)]">
+                      {new Date(a.createdAt).toLocaleString("pl-PL")}
+                    </p>
+                  </div>
+                  {a.body ? <p className="mt-1 whitespace-pre-wrap text-xs text-[var(--eos-muted)]">{a.body}</p> : null}
+                  {offers.length ? (
+                    <div className="mt-3 space-y-2">
+                      {offers.map((offer) => (
+                        <Link
+                          key={`${a.id}-${offer.id}`}
+                          href={`/oferta/${offer.id}?portal=${encodeURIComponent(token || "")}`}
+                          className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-2"
+                        >
+                          {offer.imageUrl ? (
+                            <span
+                              className="h-12 w-16 shrink-0 rounded-lg bg-cover bg-center"
+                              style={{ backgroundImage: `url(${offer.imageUrl})` }}
+                            />
+                          ) : null}
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-bold text-[var(--eos-text)]">{offer.title}</span>
+                            <span className="block text-[11px] text-[var(--eos-muted)]">
+                              {[offer.city, offer.district].filter(Boolean).join(" · ")}
+                            </span>
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -1105,6 +1122,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
 function asMeta(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+}
+
+function formatClientGreeting(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2 && /^(pan|pani|pana|panią)$/i.test(parts[parts.length - 1] || "")) {
+    return parts.slice(0, -1).join(" ");
+  }
+  return name;
 }
 
 function SellerWorkBoard({

@@ -86,7 +86,31 @@ const DISTRICT_ALIAS_RULES: Array<{ city: string; patterns: string[]; district: 
   {
     city: "Warszawa",
     patterns: [
-      "rozlogi", "rozłogi", "lucerny", "chomicza", "chomicz", "grotow", "grotów",
+      "nowodwory", "osiedle nowodwory", "tarchomin", "osiedle tarchomin",
+      "zeran", "żerań", "osiedle zerań", "choszczowka", "choszczówka",
+      "henrykow", "henryków", "brzeziny bialoleka", "bialoleka dworska", "białołęka dworska",
+      "annopol", "kepa tarchominska", "kępa tarchomińska", "nowodworow",
+    ],
+    district: "Białołęka",
+  },
+  {
+    city: "Warszawa",
+    patterns: [
+      "marymont", "mlociny", "młociny", "wawrzyszew", "chomiczowka", "chomiczówka",
+      "stare bielany", "nowe bielany", "slodowiec", "słodowiec", "placowka", "placówka",
+      "potok bielany", "las bielanski", "las bielański",
+    ],
+    district: "Bielany",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["zacisze", "brodno", "bródno", "elsnerow", "elsnerów", "targowek mieszkaniowy", "targówek mieszkaniowy"],
+    district: "Targówek",
+  },
+  {
+    city: "Warszawa",
+    patterns: [
+      "rozlogi", "rozłogi", "lucerny", "chomicza", "grotow", "grotów",
       "powstancow slaskich", "powstańców śląskich", "karńska", "karnska", "górczewska", "gorczewska",
       "boernera", "batalionow chlopskich", "batalionów chłopskich",
     ],
@@ -147,10 +171,19 @@ const STREET_DISTRICT_RULES: Array<{ city: string; streetPatterns: string[]; dis
   {
     city: "Warszawa",
     streetPatterns: [
-      "rozlogi", "rozłogi", "lucerny", "chomicza", "chomicz", "grotow", "grotów",
+      "rozlogi", "rozłogi", "lucerny", "chomicza", "grotow", "grotów",
       "powstancow slaskich", "powstańców śląskich", "karńska", "karnska",
     ],
     district: "Bemowo",
+  },
+  {
+    city: "Warszawa",
+    streetPatterns: [
+      "swiatowida", "światowida", "mehoffera", "poraj", "przytulna", "obrazkowa",
+      "figowa", "strumykowa", "mysliborska", "myśliborska", "tarchominska", "tarchomińska",
+      "ostrodzka", "ostródzka", "nowodwory",
+    ],
+    district: "Białołęka",
   },
 ];
 
@@ -161,6 +194,16 @@ export function normalizeText(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+/** Całe słowo / osiedle — „wola” nie wchodzi w „nowodwory”, „chomicz” nie kradnie Chomiczówki. */
+export function containsNormalizedToken(haystack: string, needle: string): boolean {
+  const h = normalizeText(haystack);
+  const n = normalizeText(needle);
+  if (!h || !n) return false;
+  if (h === n) return true;
+  const escaped = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`).test(h);
 }
 
 /** Puste placeholdery z OtoDom / formularzy — nie traktujemy jako nazwy dzielnicy. */
@@ -350,10 +393,11 @@ export function matchDistrictAlias(city: string, rawDistrict?: string | null): s
 
   for (const rule of DISTRICT_ALIAS_RULES) {
     if (canonicalizeCity(rule.city) !== canonicalCity) continue;
-    for (const pattern of rule.patterns) {
+    const patterns = [...rule.patterns].sort((a, b) => b.length - a.length);
+    for (const pattern of patterns) {
       const patternNorm = normalizeText(pattern);
       if (!patternNorm) continue;
-      if (rawNorm === patternNorm || rawNorm.includes(patternNorm) || patternNorm.includes(rawNorm)) {
+      if (containsNormalizedToken(rawNorm, patternNorm) || containsNormalizedToken(patternNorm, rawNorm)) {
         const allowed = getDistrictsForCity(canonicalCity);
         if (allowed.some((entry) => normalizeText(entry) === normalizeText(rule.district))) {
           return rule.district;
@@ -414,6 +458,33 @@ export function canonicalizeDistrict(city: string, district?: string | null): st
   const normalized = normalizeText(value);
   const strictHit = districts.find((entry) => normalizeText(entry) === normalized);
   return strictHit || value;
+}
+
+/**
+ * Dzielnica oferty do radaru i importu: osiedle z tytułu/ulicy wygrywa ze złą etykietą
+ * (np. Nowodwory w tytule + „Bielany” w polu dzielnicy → Białołęka).
+ */
+export function resolveCanonicalOfferDistrict(
+  city: string,
+  offer: {
+    district?: unknown;
+    title?: unknown;
+    street?: unknown;
+    address?: unknown;
+    neighborhood?: unknown;
+  },
+): string {
+  const canonicalCity = canonicalizeCity(city) || String(city || "").trim();
+  const stored = canonicalizeDistrict(canonicalCity, String(offer.district || ""));
+  const fromStreet = inferDistrictFromStreet(canonicalCity, String(offer.street || offer.address || ""));
+  const blob = [offer.title, offer.street, offer.address, offer.neighborhood, offer.district]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  const fromText = matchDistrictAlias(canonicalCity, blob) || pickDistrictFromPlaceName(canonicalCity, blob);
+  if (fromStreet && stored && fromStreet !== stored) return fromStreet;
+  if (fromText && stored && fromText !== stored) return fromText;
+  return fromStreet || fromText || stored || String(offer.district || "").trim();
 }
 
 export function validateCityDistrict(city?: string | null, district?: string | null): {

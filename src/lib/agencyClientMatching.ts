@@ -21,6 +21,7 @@ const OFFER_SELECT = {
   yearBuilt: true,
   city: true,
   district: true,
+  street: true,
   lat: true,
   lng: true,
   hasBalcony: true,
