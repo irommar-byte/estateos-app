@@ -18,6 +18,7 @@ import {
 import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
+import { isPromotionActive } from '@/lib/listingPromotion';
 import {
   parseClientOfferFeedback,
   serializeClientOfferFeedback,
