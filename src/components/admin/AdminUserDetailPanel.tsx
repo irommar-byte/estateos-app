@@ -129,7 +129,7 @@ function VerificationActionRow({
             type="button"
             disabled={busy || Boolean(disabledReason)}
             onClick={onVerify}
-            className="inline-flex min-w-[9.5rem] items-center justify-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-400"
+            className="eos-btn eos-btn--home eos-btn--sm min-w-[9.5rem]"
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : "Potwierdź ręcznie"}
           </button>
@@ -636,7 +636,7 @@ export default function AdminUserDetailPanel({
         <button
           type="button"
           onClick={onOpenMessages}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400"
+          className="eos-btn eos-btn--home eos-btn--block"
         >
           <Mail size={16} /> Napisz wiadomość (Contact)
         </button>

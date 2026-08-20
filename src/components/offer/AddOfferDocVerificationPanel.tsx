@@ -87,10 +87,10 @@ export default function AddOfferDocVerificationPanel({
             <span
               className={`inline-flex shrink-0 self-start rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${
                 legalStatus === "VERIFIED" || readyForReview
-                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                  ? "border-emerald-500/40 bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200"
                   : legalStatus === "PENDING"
-                    ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-                    : "border-white/10 bg-white/5 text-zinc-500"
+                    ? "border-amber-500/40 bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200"
+                    : "border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-muted)]"
               }`}
             >
               {statusLabel}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { FileSearch, ShieldCheck, X } from "lucide-react";
+import EosButton from "@/components/ui/EosButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import {
   carAlertErrorClass,
@@ -150,24 +151,28 @@ export default function CarVehicleChecksClient({
       {!hasHistoryData ? <p className="mt-3 text-xs text-[var(--eos-muted)]">{c.historyNeedsData}</p> : null}
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-        <button
+        <EosButton
           type="button"
+          variant="car"
+          size="sm"
           onClick={() => void handleHistory()}
           disabled={historyLoading || !loggedIn || !hasHistoryData}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-sky-700 disabled:opacity-45 dark:text-sky-200"
+          className="w-full !whitespace-normal sm:flex-1"
         >
-          <FileSearch className="size-4" />
+          <FileSearch className="size-4 shrink-0" />
           {historyLoading ? c.checkingHistory : c.checkHistory}
-        </button>
-        <button
+        </EosButton>
+        <EosButton
           type="button"
+          variant="home"
+          size="sm"
           onClick={() => void handleInsurance()}
           disabled={insuranceLoading || !loggedIn || !hasInsuranceData}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-emerald-800 disabled:opacity-45 dark:text-emerald-200"
+          className="w-full !whitespace-normal sm:flex-1"
         >
-          <ShieldCheck className="size-4" />
+          <ShieldCheck className="size-4 shrink-0" />
           {insuranceLoading ? c.checkingInsurance : c.checkInsurance}
-        </button>
+        </EosButton>
       </div>
 
       {insuranceMessage ? (

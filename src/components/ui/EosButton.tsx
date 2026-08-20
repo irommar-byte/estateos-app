@@ -34,7 +34,7 @@ export default function EosButton(props: EosButtonProps) {
     const { href, disabled } = props;
     if (disabled) {
       return (
-        <span className={`${classes} pointer-events-none opacity-45`} aria-disabled>
+        <span className={`${classes} pointer-events-none opacity-70`} aria-disabled>
           {children}
         </span>
       );

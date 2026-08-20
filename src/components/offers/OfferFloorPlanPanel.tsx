@@ -108,7 +108,7 @@ export default function OfferFloorPlanPanel({
       {furniture.map((obj) => (
         <span
           key={obj.id}
-          className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold text-sky-100"
+          className="rounded-full border border-sky-400/30 bg-sky-100 px-2.5 py-1 text-[10px] font-bold text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-100"
         >
           {obj.label}
         </span>
@@ -191,7 +191,7 @@ export default function OfferFloorPlanPanel({
             <FileImage size={16} className={themeColors.textActive} />
             <h3 className="eos-offer-metric-label">{copy.floorPlan}</h3>
             {scanMeta ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/25 bg-sky-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-sky-200">
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-sky-800 dark:border-sky-400/25 dark:bg-sky-500/10 dark:text-sky-100">
                 <ScanLine size={11} />
                 {copy.floorPlanScan.lidarBadge}
               </span>

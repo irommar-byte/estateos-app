@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "@/contexts/LocaleContext";
 import CarAddEntryScreen, { type CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
+import EosButton from "@/components/ui/EosButton";
 
 const CarListingForm = dynamic(() => import("@/components/cars/CarListingForm"), {
   ssr: false,
@@ -151,12 +152,9 @@ export default function AddCarPageClient() {
             >
               {c.common.carsCatalog}
             </Link>
-            <Link
-              href="/moje-konto/ogloszenia?vertical=car"
-              className="rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-sky-700 dark:text-sky-300"
-            >
+            <EosButton href="/moje-konto/ogloszenia?vertical=car" variant="car" size="sm">
               {c.common.myListings}
-            </Link>
+            </EosButton>
           </div>
         </div>
 

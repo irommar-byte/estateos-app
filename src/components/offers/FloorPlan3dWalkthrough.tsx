@@ -48,7 +48,7 @@ export default function FloorPlan3dWalkthrough({ modelUrl, copy, compact = false
           <a
             rel="ar"
             href={absoluteUrl}
-            className="flex items-center gap-2 rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:border-sky-300/40"
+            className="eos-btn eos-btn--car eos-btn--sm"
           >
             <Smartphone size={14} />
             {copy.openAr}
@@ -62,14 +62,14 @@ export default function FloorPlan3dWalkthrough({ modelUrl, copy, compact = false
     <div className="border-t border-[var(--eos-border)] px-6 py-5 md:px-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-black uppercase tracking-[0.14em] text-sky-200">{copy.title}</p>
+          <p className="text-sm font-black uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">{copy.title}</p>
           <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">{copy.subtitle}</p>
         </div>
         {showArLink ? (
           <a
             rel="ar"
             href={absoluteUrl}
-            className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-sky-200 transition hover:border-sky-300/45"
+            className="eos-btn eos-btn--car eos-btn--sm"
           >
             <Smartphone size={13} />
             {copy.openAr}

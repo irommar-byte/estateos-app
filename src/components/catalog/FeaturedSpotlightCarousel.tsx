@@ -72,7 +72,7 @@ export default function FeaturedSpotlightCarousel({
       <div className="relative mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
-            <Crown className={`size-4 ${isCar ? "text-sky-300" : "text-amber-400"}`} />
+            <Crown className={`size-4 ${isCar ? "text-sky-600 dark:text-sky-300" : "text-amber-500 dark:text-amber-400"}`} />
             {title}
           </p>
           <p className="mt-1 max-w-2xl text-sm text-[var(--eos-muted)]">{lead}</p>
@@ -156,7 +156,7 @@ export default function FeaturedSpotlightCarousel({
               <div className="space-y-1 p-4">
                 <p className="line-clamp-2 text-base font-semibold tracking-tight text-[var(--eos-text)]">{item.title}</p>
                 {item.subtitle ? <p className="text-xs text-[var(--eos-muted)]">{item.subtitle}</p> : null}
-                <p className={`text-lg font-black tabular-nums ${isCar ? "text-sky-300" : "text-amber-500"}`}>{item.priceLabel}</p>
+                <p className={`text-lg font-black tabular-nums ${isCar ? "text-sky-700 dark:text-sky-300" : "text-amber-600 dark:text-amber-400"}`}>{item.priceLabel}</p>
               </div>
               {index === 0 ? (
                 <span className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-white/10 blur-2xl" />

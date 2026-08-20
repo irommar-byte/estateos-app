@@ -39,8 +39,8 @@ export default function PhotoSessionCountdown({
   if (!Number.isFinite(targetMs) || msLeft <= 0) return null;
 
   return (
-    <div className="mt-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
-      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300/80">{label}</p>
+    <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-50 p-4 dark:border-emerald-400/25 dark:bg-emerald-500/10">
+      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">{label}</p>
       <div className="grid grid-cols-4 gap-2 text-center">
         {[
           { v: String(parts.days), l: 'DNI' },
@@ -48,9 +48,9 @@ export default function PhotoSessionCountdown({
           { v: pad2(parts.minutes), l: 'MIN' },
           { v: pad2(parts.seconds), l: 'SEK' },
         ].map((unit) => (
-          <div key={unit.l} className="rounded-xl border border-emerald-500/20 bg-black/20 px-2 py-3">
-            <p className="text-2xl font-black tabular-nums text-emerald-300">{unit.v}</p>
-            <p className="mt-1 text-[9px] font-black tracking-widest text-emerald-300/70">{unit.l}</p>
+          <div key={unit.l} className="rounded-xl border border-emerald-500/25 bg-white px-2 py-3 dark:border-emerald-500/20 dark:bg-black/20">
+            <p className="text-2xl font-black tabular-nums text-emerald-800 dark:text-emerald-300">{unit.v}</p>
+            <p className="mt-1 text-[9px] font-black tracking-widest text-emerald-700 dark:text-emerald-300/70">{unit.l}</p>
           </div>
         ))}
       </div>

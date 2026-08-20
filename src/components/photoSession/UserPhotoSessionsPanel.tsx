@@ -7,6 +7,7 @@ import {
   PHOTO_SESSION_CONTRACTOR_USER_ID,
 } from '@/constants/photoSession';
 import PhotoSessionCountdown from '@/components/photoSession/PhotoSessionCountdown';
+import EosButton from '@/components/ui/EosButton';
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
 import {
   fetchMyPhotoSessions,
@@ -91,10 +92,10 @@ function SessionCard({
         <span
           className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
             item.status === 'ACCEPTED'
-              ? 'bg-emerald-500/15 text-emerald-300'
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200'
               : item.status === 'PENDING'
-                ? 'bg-amber-500/15 text-amber-300'
-                : 'bg-zinc-500/15 text-zinc-400'
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
+                : 'bg-zinc-200 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-400'
           }`}
         >
           {item.status === 'ACCEPTED'
@@ -158,30 +159,33 @@ function SessionCard({
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button
+              <EosButton
                 type="button"
+                variant="danger"
+                size="sm"
                 disabled={busy}
                 onClick={() => void run('decline')}
-                className="rounded-full border border-red-400/35 px-4 py-2 text-xs font-black uppercase tracking-wider text-red-300"
               >
                 Odrzuć
-              </button>
-              <button
+              </EosButton>
+              <EosButton
                 type="button"
+                variant="car"
+                size="sm"
                 disabled={busy}
                 onClick={() => setShowCounter(true)}
-                className="rounded-full border border-sky-400/35 px-4 py-2 text-xs font-black uppercase tracking-wider text-sky-300"
               >
                 Inny termin
-              </button>
-              <button
+              </EosButton>
+              <EosButton
                 type="button"
+                variant="home"
+                size="sm"
                 disabled={busy}
                 onClick={() => void run('accept')}
-                className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-black"
               >
                 Akceptuj
-              </button>
+              </EosButton>
             </div>
           )}
         </div>
@@ -194,7 +198,7 @@ function SessionCard({
             peerName={PHOTO_SESSION_CONTRACTOR_NAME}
             label="Kontakt z wykonawcą (Wiadomości)"
             returnTo="/moje-konto/sesje-zdjeciowe"
-            className="inline-flex rounded-full border border-[var(--eos-border)] px-4 py-2 text-xs font-black uppercase tracking-wider text-sky-300 disabled:opacity-60"
+            className="eos-btn eos-btn--car eos-btn--sm !whitespace-normal"
           />
         </div>
       ) : null}
@@ -250,7 +254,7 @@ export default function UserPhotoSessionsPanel({ draft }: { draft?: DraftContext
           <span className="block text-lg font-black text-[var(--eos-text)]">Zamów sesję zdjęciową</span>
           <span className="mt-1 block text-sm text-[var(--eos-muted)]">EstateOS Studio — negocjacja terminu online</span>
         </span>
-        <span className="text-emerald-300">→</span>
+        <span className="text-emerald-700 dark:text-emerald-300">→</span>
       </button>
 
       <ProPhotoSessionDialog

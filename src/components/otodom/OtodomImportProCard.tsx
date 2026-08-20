@@ -480,7 +480,7 @@ export default function OtodomImportProCard() {
                 type="button"
                 onClick={() => void startPaidImport()}
                 disabled={creating || !canProceedToPayment}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/10 py-4 text-xs font-black uppercase tracking-wider text-emerald-600 shadow-[0_12px_32px_rgba(16,185,129,0.12)] transition-colors hover:bg-emerald-500/15 disabled:opacity-60 dark:text-emerald-400"
+                className="eos-btn eos-btn--home eos-btn--block"
               >
                 <PlusCircle size={16} />
                 {copy.importPayCreate}

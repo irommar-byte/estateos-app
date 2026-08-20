@@ -496,10 +496,10 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
             <div className="bg-[#111] border border-white/10 rounded-full p-1.5 flex shadow-inner relative w-full max-w-[400px]">
               <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(50%-6px)] bg-[#0a0a0a] border border-emerald-500/30 rounded-full transition-transform duration-500 ${data.transactionType === 'RENT' ? 'translate-x-[calc(100%+12px)]' : 'translate-x-0'}`} />
-              <button type="button" onClick={() => updateData({ transactionType: 'SELL' })} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest ${data.transactionType === 'RENT' ? 'text-white/40' : 'text-emerald-400'}`}>
+              <button type="button" onClick={() => updateData({ transactionType: 'SELL' })} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest ${data.transactionType === 'RENT' ? 'text-[var(--eos-muted)]' : 'text-emerald-700 dark:text-emerald-400'}`}>
                 {ao.sell}
               </button>
-              <button type="button" onClick={() => updateData({ transactionType: 'RENT' })} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest ${data.transactionType === 'RENT' ? 'text-emerald-400' : 'text-white/40'}`}>
+              <button type="button" onClick={() => updateData({ transactionType: 'RENT' })} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest ${data.transactionType === 'RENT' ? 'text-emerald-700 dark:text-emerald-400' : 'text-[var(--eos-muted)]'}`}>
                 {ao.rent}
               </button>
             </div>
@@ -711,8 +711,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <div>
                 <label className={labelPremium}>{ao.furnishedLabel}</label>
                 <div className="flex gap-4">
-                  <button type="button" onClick={() => updateData({ isFurnished: true })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20'}`}>{ao.yes}</button>
-                  <button type="button" onClick={() => updateData({ isFurnished: false })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'bg-red-500/10 border-red-500 text-red-400' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20'}`}>{ao.no}</button>
+                  <button type="button" onClick={() => updateData({ isFurnished: true })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'eos-chip-on' : 'eos-chip-off'}`}>{ao.yes}</button>
+                  <button type="button" onClick={() => updateData({ isFurnished: false })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'border-red-500 bg-red-500 text-white' : 'eos-chip-off'}`}>{ao.no}</button>
                 </div>
               </div>
             </div>

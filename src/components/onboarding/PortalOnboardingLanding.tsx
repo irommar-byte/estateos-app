@@ -455,7 +455,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                 type="button"
                 disabled={!canPreview || previewLoading}
                 onClick={() => void runPreview()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-3.5 text-[11px] font-black uppercase tracking-widest text-emerald-600 transition hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-400"
+                className="eos-btn eos-btn--home eos-btn--block"
               >
                 {previewLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
                 {dict.previewCta}
