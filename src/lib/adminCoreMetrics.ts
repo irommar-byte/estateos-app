@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { isAdminCoreOfflineFlagSet } from '@/lib/adminCoreControl';
+import { ensurePageVisitLogTable } from '@/lib/pageVisitLogTable';
 
 export type AdminCoreMetricsPayload = {
   collectedAt: string;
@@ -157,6 +158,65 @@ export async function collectAdminCoreMetrics(): Promise<AdminCoreMetricsPayload
       latencyMs: dbLatencyMs,
     },
     app,
+  };
+}
+
+function readPublicIpv4(): string | null {
+  const ifaces = os.networkInterfaces();
+  for (const list of Object.values(ifaces)) {
+    for (const row of list || []) {
+      const family = String(row.family);
+      if ((family === 'IPv4' || family === '4') && !row.internal && row.address) {
+        return row.address;
+      }
+    }
+  }
+  return null;
+}
+
+export async function collectAdminCoreMonitor() {
+  await ensurePageVisitLogTable();
+  const metrics = await collectAdminCoreMetrics();
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [users, activeOffers, visitsTotalRows, uniqueAllRows, visits24hRows, unique24hRows] = await Promise.all([
+    prisma.user.count().catch(() => 0),
+    prisma.offer.count({ where: { status: 'ACTIVE' } }).catch(() => 0),
+    prisma.$queryRawUnsafe<Array<{ c: number | bigint }>>(`SELECT COUNT(*) AS c FROM PageVisitLog`).catch(() => [{ c: 0 }]),
+    prisma
+      .$queryRawUnsafe<Array<{ c: number | bigint }>>(`SELECT COUNT(DISTINCT ip) AS c FROM PageVisitLog WHERE ip IS NOT NULL AND TRIM(ip) <> ''`)
+      .catch(() => [{ c: 0 }]),
+    prisma
+      .$queryRawUnsafe<Array<{ c: number | bigint }>>(`SELECT COUNT(*) AS c FROM PageVisitLog WHERE createdAt >= ?`, since24h)
+      .catch(() => [{ c: 0 }]),
+    prisma
+      .$queryRawUnsafe<Array<{ c: number | bigint }>>(
+        `SELECT COUNT(DISTINCT ip) AS c FROM PageVisitLog WHERE createdAt >= ? AND ip IS NOT NULL AND TRIM(ip) <> ''`,
+        since24h,
+      )
+      .catch(() => [{ c: 0 }]),
+  ]);
+
+  return {
+    collectedAt: metrics.collectedAt,
+    host: metrics.host,
+    publicIp: readPublicIpv4(),
+    osUptimeSec: metrics.uptimeSec,
+    processUptimeSec: Math.floor(process.uptime()),
+    cpuPercent: metrics.cpu.percent,
+    load1: metrics.cpu.load1,
+    memoryPercent: metrics.memory.percent,
+    memoryUsedBytes: metrics.memory.usedBytes,
+    memoryTotalBytes: metrics.memory.totalBytes,
+    diskPercent: metrics.disk.percent,
+    dbLatencyMs: metrics.database.latencyMs,
+    users,
+    activeOffers,
+    pendingOffers: metrics.app.offersPending,
+    activeUsers24h: metrics.app.activeUsers,
+    pageViews: Number(visitsTotalRows?.[0]?.c ?? 0),
+    uniqueIps: Number(uniqueAllRows?.[0]?.c ?? 0),
+    visits24h: Number(visits24hRows?.[0]?.c ?? 0),
+    uniqueIps24h: Number(unique24hRows?.[0]?.c ?? 0),
   };
 }
 
