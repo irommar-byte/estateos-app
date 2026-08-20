@@ -75,7 +75,14 @@ export default function EstateOsStructuredData() {
     url: ESTATEOS_PLAY_STORE_URL,
   };
 
-  const payload = [organization, website, freeListingService, iosApp, androidApp];
+  const payload = {
+    '@context': 'https://schema.org',
+    '@graph': [organization, website, freeListingService, iosApp, androidApp].map((node) => {
+      const { ['@context']: _context, ...rest } = node as Record<string, unknown> & { '@context'?: string };
+      void _context;
+      return rest;
+    }),
+  };
 
   return (
     <script
