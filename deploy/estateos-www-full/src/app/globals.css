@@ -3159,7 +3159,8 @@ html.light .eos-modal-panel {
 
 .eos-btn:disabled,
 .eos-btn[aria-disabled="true"] {
-  opacity: 0.45;
+  opacity: 0.72;
+  filter: saturate(0.85);
   cursor: not-allowed;
   transform: none;
   box-shadow: none;

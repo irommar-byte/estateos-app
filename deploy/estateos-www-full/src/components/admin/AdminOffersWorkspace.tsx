@@ -758,7 +758,7 @@ export default function AdminOffersWorkspace() {
                           <Link
                             href={`/oferta/${selectedOffer.id}`}
                             target="_blank"
-                            className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-2.5 text-[10px] font-black uppercase tracking-wide text-emerald-700 transition-colors hover:bg-emerald-500/15 dark:text-emerald-300"
+                            className="eos-btn eos-btn--home eos-btn--sm eos-btn--block"
                           >
                             Podgląd publiczny <ExternalLink size={14} />
                           </Link>

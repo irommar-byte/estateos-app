@@ -233,7 +233,7 @@ export default function AdminWalletSection({
             type="button"
             disabled={busy}
             onClick={() => void adjustCredits(1)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-emerald-700 hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-300"
+            className="eos-btn eos-btn--home eos-btn--sm"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
             Dodaj

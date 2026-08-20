@@ -81,7 +81,7 @@ export default function OfferListingSlots({ user, activeOffers, onAddOffer }: Of
           <button
             type="button"
             onClick={onAddOffer}
-            className="mb-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 py-4 text-[10px] font-black uppercase tracking-widest text-emerald-300 hover:bg-emerald-500/15 transition-colors"
+            className="eos-btn eos-btn--home eos-btn--block mb-5"
           >
             <Plus size={16} /> Dodaj ogłoszenie (zużyje 1 kredyt)
           </button>

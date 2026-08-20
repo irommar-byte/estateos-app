@@ -145,7 +145,7 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
                     Oferta źródłowa prawdopodobnie wygasła
                   </span>
                 ) : note?.sourceIsActive === true ? (
-                  <span className="rounded-full border border-emerald-500/30 px-3 py-1 bg-emerald-500/10 text-emerald-400">
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-100 px-3 py-1 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
                     Link źródłowy aktywny
                   </span>
                 ) : (

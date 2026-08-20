@@ -289,7 +289,7 @@ export default function PortalImportProfileGuide({
                 </ol>
                 <Link
                   href="/moje-konto/crm?tab=radar"
-                  className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-4 text-sm font-black uppercase tracking-widest text-emerald-700"
+                  className="eos-btn eos-btn--home eos-btn--block mt-6"
                 >
                   {dict.radarCta} <ArrowRight size={16} />
                 </Link>

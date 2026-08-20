@@ -1012,7 +1012,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         <button
                           type="button"
                           onClick={() => setDetailMember(m)}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 transition hover:bg-emerald-500/20"
+                          className="eos-btn eos-btn--home eos-btn--sm"
                         >
                           <Settings size={12} />
                           {t.manage}

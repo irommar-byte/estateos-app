@@ -28,6 +28,7 @@ import OfferMarketAnalysis from "@/components/market/OfferMarketAnalysis";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import DiscoveryOfferExplainer from "@/components/discovery/DiscoveryOfferExplainer";
+import EosButton from "@/components/ui/EosButton";
 import DiscoveryVisitHint from "@/components/discovery/DiscoveryVisitHint";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
@@ -700,7 +701,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               onClick={(e) => e.stopPropagation()}
             >
               {offer.isPresentedByAgent ? (
-                <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-[0.18em] text-emerald-300">
+                <p className="rounded-2xl border border-emerald-500/35 bg-emerald-50 px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-[0.18em] text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-500/20 dark:text-emerald-100">
                   {locale === "en" ? "Listing presented by your agent" : "Oferta prowadzona przez Twojego agenta"}
                   {offer.presentingAgent?.personName || offer.presentingAgent?.displayName
                     ? ` · ${offer.presentingAgent.personName || offer.presentingAgent.displayName}`
@@ -860,7 +861,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             {!isArchived ? (
               <div className="md:hidden">
                 {offer.isPresentedByAgent ? (
-                  <p className="mb-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-[0.18em] text-emerald-300">
+                  <p className="mb-3 rounded-2xl border border-emerald-500/35 bg-emerald-50 px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-[0.18em] text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-500/20 dark:text-emerald-100">
                     {locale === "en" ? "Listing presented by your agent" : "Oferta prowadzona przez Twojego agenta"}
                     {offer.presentingAgent?.personName || offer.presentingAgent?.displayName
                       ? ` · ${offer.presentingAgent.personName || offer.presentingAgent.displayName}`
@@ -1342,13 +1343,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                                 className="!min-h-0 flex-1 !px-3 !py-2.5"
                               />
                             ) : (
-                              <button
+                              <EosButton
                                 type="button"
+                                variant="home"
+                                size="sm"
                                 onClick={() => setIsGuestAskOpen(true)}
-                                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-300"
+                                className="flex-1 !whitespace-normal"
                               >
                                 {t.askSeller}
-                              </button>
+                              </EosButton>
                             )
                           ) : null}
                         </div>

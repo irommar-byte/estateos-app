@@ -148,7 +148,7 @@ export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) 
             <button
               type="button"
               onClick={() => onChoose("manual")}
-              className="mt-5 flex w-full items-center justify-center rounded-2xl border border-sky-400/35 bg-sky-500/10 px-4 py-3 text-[13px] font-semibold text-sky-700 transition hover:border-sky-400/55 hover:bg-sky-500/15 dark:text-sky-300"
+              className="eos-btn eos-btn--car eos-btn--block mt-5 !normal-case !tracking-wide !text-[13px] !font-semibold"
             >
               {c.manualLink}
             </button>

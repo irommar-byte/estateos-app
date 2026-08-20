@@ -1760,11 +1760,11 @@ export default function ClientForm({
           <div className="bg-[#111] border border-white/10 rounded-full p-1.5 flex shadow-inner relative w-full max-w-[400px]">
              <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(50%-6px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${data.transactionType === 'RENT' ? 'translate-x-[calc(100%+12px)]' : 'translate-x-0'}`}></div>
              
-             <button type="button" onClick={() => updateData({ transactionType: 'SELL' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'SELL' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
+             <button type="button" onClick={() => updateData({ transactionType: 'SELL' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'SELL' ? 'text-emerald-700 dark:text-emerald-400' : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'}`}>
                {ao.sell}
              </button>
              
-             <button type="button" onClick={() => updateData({ transactionType: 'RENT' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'RENT' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
+             <button type="button" onClick={() => updateData({ transactionType: 'RENT' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'RENT' ? 'text-emerald-700 dark:text-emerald-400' : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'}`}>
                {ao.rent}
              </button>
           </div>
@@ -1868,7 +1868,7 @@ export default function ClientForm({
                         disabled={locatingUser}
                         title={ao.myLocationLabel}
                         aria-label={ao.myLocationLabel}
-                        className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 transition-all hover:border-emerald-400/50 hover:bg-emerald-500/20 disabled:opacity-50"
+                        className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500 text-black transition-all hover:bg-emerald-400 disabled:opacity-60"
                       >
                         {locatingUser ? (
                           <Loader2 size={18} className="animate-spin" />
@@ -2090,8 +2090,8 @@ export default function ClientForm({
                       }}
                       className={`px-5 py-2.5 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${
                         data.priceCurrency === code
-                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
-                          : 'bg-[#111] border-white/10 text-white/40 hover:border-white/25'
+                          ? 'eos-chip-on'
+                          : 'eos-chip-off'
                       }`}
                     >
                       {code}
@@ -2173,8 +2173,8 @@ export default function ClientForm({
                     <div>
                       <label className={labelPremium}>{ao.furnishedLabel}</label>
                       <div className="flex gap-4">
-                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: true }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>{ao.yes}</button>
-                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: false }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>{ao.no}</button>
+                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: true }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'eos-chip-on' : 'eos-chip-off'}`}>{ao.yes}</button>
+                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: false }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'border-red-500 bg-red-500 text-white dark:bg-red-500 dark:text-white' : 'eos-chip-off'}`}>{ao.no}</button>
                       </div>
                     </div>
 
@@ -2447,7 +2447,7 @@ export default function ClientForm({
                               <button
                                 type="button"
                                 onClick={() => updateData({ petsAllowed: !data.petsAllowed })}
-                                className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl border transition-all duration-300 ${data.petsAllowed ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+                                className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl border transition-all duration-300 ${data.petsAllowed ? 'eos-chip-on' : 'eos-chip-off'}`}
                               >
                                 <span className="font-bold uppercase tracking-widest text-[10px]">{ao.petsAcceptLabel}</span>
                                 {data.petsAllowed ? <CheckCircle size={20} /> : <div className="w-5 h-5 rounded-full border-2 border-white/10" />}

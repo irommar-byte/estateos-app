@@ -74,7 +74,7 @@ export default function SellerCarsSection({ userId }: { userId: number }) {
               <Image src={carImageSrc(car.imageUrl)} alt={car.title} fill className="object-cover" unoptimized />
             </div>
             <div className="space-y-1 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-sky-300">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-sky-700 dark:text-sky-300">
                 {car.make} · {car.model} · {car.year}
               </p>
               <h3 className="line-clamp-2 font-semibold">{car.title}</h3>

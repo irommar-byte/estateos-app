@@ -40,6 +40,7 @@ import {
 import { fmtCars, getCarSortOptions } from "@/i18n/carsDictionary";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
+import EosButton from "@/components/ui/EosButton";
 
 type AddPath = "scan" | "upload" | "manual" | "otomoto";
 
@@ -454,12 +455,12 @@ export default function CarsCatalogClient() {
           ) : null}
         </div>
         <div className="space-y-2 p-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-300">
+          <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-700 dark:text-sky-300">
             {car.make} · {car.model} · {car.year}
           </p>
           <h3 className="line-clamp-2 text-base font-semibold">{car.title}</h3>
           <p className="text-sm text-[var(--eos-muted)]">{car.city} · {formatMileage(car.mileageKm, locale)}</p>
-          <p className="text-base font-bold text-sky-300">{formatOffer(car).primary}</p>
+          <p className="text-base font-bold text-sky-700 dark:text-sky-300">{formatOffer(car).primary}</p>
         </div>
       </Link>
     );
@@ -791,15 +792,17 @@ export default function CarsCatalogClient() {
                   {denied ? nearestCopy.denied : nearestCopy.needs}
                 </p>
                 {!denied ? (
-                  <button
+                  <EosButton
                     type="button"
+                    variant="car"
+                    size="sm"
                     onClick={() => void request()}
                     disabled={pending}
-                    className="mt-4 inline-flex items-center gap-2 rounded-full border border-sky-500/35 bg-sky-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-sky-600 transition hover:bg-sky-500/15 dark:text-sky-300"
+                    className="mt-4"
                   >
                     {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
                     {nearestCopy.enable}
-                  </button>
+                  </EosButton>
                 ) : null}
               </div>
             )}
@@ -828,12 +831,9 @@ export default function CarsCatalogClient() {
             {!loggedIn ? (
               <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6 text-center sm:text-left">
                 <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{cat.loginMineBanner}</p>
-                <Link
-                  href="/login?next=/cars"
-                  className="mt-4 inline-flex rounded-full border border-sky-500/35 bg-sky-500/10 px-6 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-sky-600 transition hover:bg-sky-500/15 dark:text-sky-300"
-                >
+                <EosButton href="/login?next=/cars" variant="car" size="sm" className="mt-4">
                   {cat.goLogin}
-                </Link>
+                </EosButton>
               </div>
             ) : loadingMine ? (
               <div className="flex items-center gap-3 py-8 text-[var(--eos-muted)]">
@@ -891,25 +891,23 @@ export default function CarsCatalogClient() {
                         ) : null}
                       </Link>
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Link
-                          href={`/cars/${car.id}/edytuj`}
-                          className="rounded-full border border-sky-400/35 bg-sky-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-sky-600 dark:text-sky-300"
-                        >
+                        <EosButton href={`/cars/${car.id}/edytuj`} variant="car" size="sm">
                           {dict.cars.owner.edit}
-                        </Link>
+                        </EosButton>
                         <PromoteListingButton
                           endpoint={`/api/cars/${car.id}/promote`}
                           onPromoted={() => void loadMine()}
                           disabled={Boolean(car.featured)}
                         />
-                        <button
+                        <EosButton
                           type="button"
+                          variant="danger"
+                          size="sm"
                           onClick={() => void deleteMineCar(car.id)}
                           disabled={deletingId === car.id}
-                          className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-400 disabled:opacity-60"
                         >
                           {deletingId === car.id ? dict.cars.owner.deleting : dict.cars.owner.delete}
-                        </button>
+                        </EosButton>
                       </div>
                     </div>
                   </article>
@@ -965,14 +963,14 @@ export default function CarsCatalogClient() {
                   </div>
                 </div>
                 <div className="space-y-2 p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-300">
+                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-700 dark:text-sky-300">
                     {car.make} · {car.model} · {car.year}
                   </p>
                   <h2 className="line-clamp-2 text-lg font-semibold">{car.title}</h2>
                   <p className="text-sm text-[var(--eos-muted)]">
                     {car.city} · {formatMileage(car.mileageKm, locale)} · {car.fuelType}
                   </p>
-                  <p className="text-lg font-bold text-sky-300">{formatOffer(car).primary}</p>
+                  <p className="text-lg font-bold text-sky-700 dark:text-sky-300">{formatOffer(car).primary}</p>
                 </div>
               </Link>
             ))}

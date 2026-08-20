@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FileSearch, Keyboard, Loader2, ScanLine, ShieldCheck, Wand2 } from "lucide-react";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
+import EosButton from "@/components/ui/EosButton";
 import {
   CarFormField,
   CarFormSection,
@@ -153,9 +154,9 @@ export default function CarVehicleDocsFields({
               <button
                 type="button"
                 onClick={onRequestScan}
-                className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] text-sky-800 transition hover:bg-sky-500/20 dark:text-sky-200"
+                className="eos-btn eos-btn--car eos-btn--sm !whitespace-normal"
               >
-                <ScanLine className="size-4" />
+                <ScanLine className="size-4 shrink-0" />
                 {d.scanCta}
               </button>
             ) : null}
@@ -234,25 +235,27 @@ export default function CarVehicleDocsFields({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <button
+        <EosButton
           type="button"
+          variant="car"
           onClick={() => void handleHistory()}
           disabled={historyLoading || !loggedIn || !canVerify}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-sky-700 transition hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-45 dark:text-sky-200"
+          className="w-full !whitespace-normal"
         >
-          <FileSearch className="size-4" />
+          <FileSearch className="size-4 shrink-0" />
           {historyLoading ? d.checkingHistory : d.checkHistory}
-        </button>
+        </EosButton>
 
-        <button
+        <EosButton
           type="button"
+          variant="home"
           onClick={() => void handleInsurance()}
           disabled={insuranceLoading || !loggedIn || !canVerify}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-emerald-800 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-45 dark:text-emerald-200"
+          className="w-full !whitespace-normal"
         >
-          <ShieldCheck className="size-4" />
+          <ShieldCheck className="size-4 shrink-0" />
           {insuranceLoading ? d.checkingInsurance : d.checkInsurance}
-        </button>
+        </EosButton>
       </div>
 
       {!loggedIn && canVerify ? (

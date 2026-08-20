@@ -57,6 +57,7 @@ import { useFavorites } from "@/hooks/useFavorites";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
+import EosButton from "@/components/ui/EosButton";
 import { computePriceDiscountPercent } from "@/lib/offerPriceHistoryShared";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 import { formatTapeDelta } from "@/lib/market/format";
@@ -694,13 +695,9 @@ export default function CatalogPage() {
             role="alert"
           >
             <p className="mb-8 text-sm leading-relaxed text-[var(--eos-muted)]">{error}</p>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-8 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 transition hover:bg-emerald-500/20"
-            >
+            <EosButton type="button" variant="home" onClick={() => void load()}>
               {labels.retry}
-            </button>
+            </EosButton>
           </div>
         ) : (
           <>
@@ -787,15 +784,17 @@ export default function CatalogPage() {
                     {denied ? nearestCopy.denied : labels.nearestRequiresLocation}
                   </p>
                   {!denied ? (
-                    <button
+                    <EosButton
                       type="button"
+                      variant="home"
+                      size="sm"
                       onClick={() => void request()}
                       disabled={pending}
-                      className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
+                      className="mt-4"
                     >
                       {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
                       {nearestCopy.enable}
-                    </button>
+                    </EosButton>
                   ) : null}
                 </div>
               )}
@@ -825,12 +824,14 @@ export default function CatalogPage() {
               {!loggedIn ? (
                 <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6 text-center sm:text-left">
                   <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{labels.mineRequiresLogin}</p>
-                  <Link
+                  <EosButton
                     href={`/login?redirect=${encodeURIComponent("/oferty")}`}
-                    className="mt-4 inline-flex rounded-full border border-emerald-500/35 bg-emerald-500/10 px-6 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
+                    variant="home"
+                    size="sm"
+                    className="mt-4"
                   >
                     {labels.mineLoginCta}
-                  </Link>
+                  </EosButton>
                 </div>
               ) : loadingMine ? (
                 <div className="flex items-center gap-3 py-8 text-[var(--eos-muted)]">
@@ -888,25 +889,23 @@ export default function CatalogPage() {
                           ) : null}
                         </Link>
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <Link
-                            href={`/edytuj-oferte/${offer.id}`}
-                            className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-500"
-                          >
+                          <EosButton href={`/edytuj-oferte/${offer.id}`} variant="home" size="sm">
                             Edytuj
-                          </Link>
+                          </EosButton>
                           <PromoteListingButton
                             endpoint={`/api/offers/${offer.id}/promote`}
                             onPromoted={() => void loadMine()}
                             disabled={Boolean(offer.featured)}
                           />
-                          <button
+                          <EosButton
                             type="button"
+                            variant="danger"
+                            size="sm"
                             onClick={() => void archiveOffer(offer.id)}
                             disabled={archivingId === offer.id}
-                            className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-400 disabled:opacity-60"
                           >
                             {archivingId === offer.id ? "Kończenie..." : "Zakończ"}
-                          </button>
+                          </EosButton>
                         </div>
                       </div>
                     </article>
