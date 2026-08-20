@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, MessageSquare, Send, ThumbsDown, ThumbsUp, HelpCircle } from "lucide-react";
+import { ExternalLink, Send, ThumbsDown, ThumbsUp, HelpCircle } from "lucide-react";
+import EosButton from "@/components/ui/EosButton";
 import {
   DISLIKE_PHRASES,
   LIKE_PHRASES,
@@ -64,6 +65,7 @@ export default function ClientPortalMatchCard({
   const href = `/oferta/${match.offer.id}?portal=${encodeURIComponent(token)}`;
   const tone = scoreTone(match.score);
   const location = [match.offer.city, match.offer.district, match.offer.street].filter(Boolean).join(" · ");
+  const canSend = Boolean(sentiment || liked.trim() || disliked.trim() || phrases.length || note.trim());
 
   const togglePhrase = (phrase: string) => {
     setPhrases((current) =>
@@ -76,11 +78,11 @@ export default function ClientPortalMatchCard({
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
         <Link
           href={href}
-          className="block h-40 w-full shrink-0 overflow-hidden rounded-2xl sm:h-32 sm:w-44"
+          className="eos-inset-well block h-40 w-full shrink-0 overflow-hidden rounded-2xl sm:h-36 sm:w-48"
           aria-label={`Otwórz ofertę: ${match.offer.title}`}
         >
           <span
-            className="block h-full w-full bg-cover bg-center transition hover:scale-[1.03]"
+            className="block h-full w-full bg-cover bg-center transition duration-300 hover:scale-[1.04]"
             style={{ backgroundImage: `url(${match.offer.imageUrl})` }}
           />
         </Link>
@@ -112,36 +114,41 @@ export default function ClientPortalMatchCard({
               <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${Math.max(8, Math.min(100, match.score))}%` }} />
             </div>
           </div>
-          <Link href={href} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+          <Link href={href} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:underline">
             Otwórz ogłoszenie <ExternalLink className="size-3" />
           </Link>
         </div>
       </div>
 
-      <div className="border-t border-[var(--eos-border)] bg-[var(--eos-input)]/35 p-4 sm:p-5">
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
-          <MessageSquare className="size-3.5" />
-          Odnieś się do tej konkretnej oferty
-        </p>
-        <p className="mt-1 text-sm text-[var(--eos-muted)]">
-          Agent zobaczy Twoją reakcję przy tym ogłoszeniu. Napisz, co konkretnie się podoba, a co nie.
-        </p>
-        <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="eos-portal-react border-t border-[var(--eos-border)] p-4 sm:p-5">
+        <div className="mb-3 flex items-start gap-2.5">
+          <span className="eos-live-dot mt-1.5 shrink-0" aria-hidden />
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+              {match.clientFeedback ? "Opinia u agenta" : "Proces przy tej ofercie"}
+            </p>
+            <p className="mt-0.5 text-sm leading-snug text-[var(--eos-text)]">
+              {match.clientFeedback
+                ? "Agent ma Twoją reakcję. Możesz ją doprecyzować — to nadal ta sama nieruchomość."
+                : "Powiedz, czy szukamy dalej w tym kierunku, czy odkładamy tę ofertę."}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
           {(
             [
-              { id: "like" as const, label: "Podoba się", icon: ThumbsUp },
-              { id: "maybe" as const, label: "Może być", icon: HelpCircle },
-              { id: "dislike" as const, label: "Nie pasuje", icon: ThumbsDown },
+              { id: "like" as const, label: "Chcę oglądać", icon: ThumbsUp, on: "eos-choice-btn--on" },
+              { id: "maybe" as const, label: "Do przemyślenia", icon: HelpCircle, on: "eos-choice-btn--maybe" },
+              { id: "dislike" as const, label: "Odłóż", icon: ThumbsDown, on: "eos-choice-btn--off" },
             ] as const
           ).map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => setSentiment(option.id)}
-              className={`flex min-h-12 flex-col items-center justify-center rounded-xl border px-2 py-2 text-[11px] font-bold ${
-                sentiment === option.id
-                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-700"
-                  : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
+              className={`eos-choice-btn flex min-h-[3.4rem] flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-bold ${
+                sentiment === option.id ? option.on : ""
               }`}
             >
               <option.icon className="mb-1 size-4" />
@@ -149,17 +156,16 @@ export default function ClientPortalMatchCard({
             </button>
           ))}
         </div>
-        <p className="mt-4 text-[10px] font-black uppercase tracking-wider text-emerald-600">Co się podobało</p>
+
+        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">Co zostaje</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {LIKE_PHRASES.map((phrase) => (
             <button
               key={phrase}
               type="button"
               onClick={() => togglePhrase(phrase)}
-              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
-                phrases.includes(phrase)
-                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-700"
-                  : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
+              className={`eos-raised-chip rounded-full px-3 py-1.5 text-[11px] font-semibold ${
+                phrases.includes(phrase) ? "eos-raised-chip--on" : ""
               }`}
             >
               {phrase}
@@ -170,20 +176,19 @@ export default function ClientPortalMatchCard({
           value={liked}
           onChange={(event) => setLiked(event.target.value)}
           rows={2}
-          placeholder="Np. kuchnia od strony ogrodu, cisza, winda…"
-          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+          placeholder="Np. kuchnia od ogrodu, cisza, winda…"
+          className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
         />
-        <p className="mt-4 text-[10px] font-black uppercase tracking-wider text-rose-600">Czego nie akceptuję</p>
+
+        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-rose-600">Czego nie akceptuję</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {DISLIKE_PHRASES.map((phrase) => (
             <button
               key={phrase}
               type="button"
               onClick={() => togglePhrase(phrase)}
-              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
-                phrases.includes(phrase)
-                  ? "border-rose-400 bg-rose-500/10 text-rose-700"
-                  : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
+              className={`eos-raised-chip rounded-full px-3 py-1.5 text-[11px] font-semibold ${
+                phrases.includes(phrase) ? "eos-raised-chip--no" : ""
               }`}
             >
               {phrase}
@@ -195,26 +200,33 @@ export default function ClientPortalMatchCard({
           onChange={(event) => setDisliked(event.target.value)}
           rows={2}
           placeholder="Np. za mała kuchnia, brak balkonu, hałas…"
-          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+          className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
         />
         <textarea
           value={note}
           onChange={(event) => setNote(event.target.value)}
           rows={2}
-          placeholder="Dodatkowa uwaga do agenta (opcjonalnie)"
-          className="mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+          placeholder="Krótka wiadomość do agenta (opcjonalnie)"
+          className="eos-field-inset mt-3 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
         />
-        <button
-          type="button"
-          disabled={saving || (!sentiment && !liked.trim() && !disliked.trim() && !phrases.length && !note.trim())}
+
+        <EosButton
+          variant="home"
+          block
+          className="mt-4"
+          disabled={saving || !canSend}
           onClick={() => void onSubmit({ sentiment, liked, disliked, phrases, note })}
-          className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
         >
-          <Send className="size-3" />
+          <Send className="size-3.5" />
           {saving ? "Wysyłanie…" : match.clientFeedback ? "Zaktualizuj reakcję" : "Wyślij reakcję do agenta"}
-        </button>
+        </EosButton>
+        {!canSend ? (
+          <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
+            Wybierz ocenę albo zaznacz, co zostaje / odpada — wtedy przycisk ożywa.
+          </p>
+        ) : null}
         {match.clientFeedbackAt ? (
-          <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
+          <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
             Ostatnia reakcja: {new Date(match.clientFeedbackAt).toLocaleString("pl-PL")}
           </p>
         ) : null}
