@@ -69,7 +69,7 @@ export default function MarketHubClient() {
   return (
     <div className="mx-auto max-w-6xl space-y-8 px-4 py-10">
       <header className="space-y-2">
-        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-500">EstateOS™ Market</p>
+        <p className="eos-portal-label eos-portal-label--ok">EstateOS™ Market</p>
         <h1 className="text-3xl font-black tracking-tight text-[var(--eos-text)] sm:text-4xl">
           Rzeczywiste ceny transakcyjne nieruchomości
         </h1>
@@ -84,10 +84,8 @@ export default function MarketHubClient() {
             key={p.days}
             type="button"
             onClick={() => setPeriodDays(p.days)}
-            className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] ${
-              periodDays === p.days
-                ? "bg-emerald-500 text-black"
-                : "border border-[var(--eos-border)] text-[var(--eos-muted)]"
+            className={`eos-raised-chip rounded-full px-3 py-1.5 text-[11px] ${
+              periodDays === p.days ? "eos-raised-chip--on" : ""
             }`}
           >
             {p.label}
@@ -111,16 +109,16 @@ export default function MarketHubClient() {
           },
           { label: "Transakcje", value: cityStat?.txnCount?.toLocaleString("pl-PL") || "—" },
         ].map((item) => (
-          <div key={item.label} className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">{item.label}</p>
+          <div key={item.label} className="eos-lux-panel rounded-3xl p-5">
+            <p className="eos-portal-label">{item.label}</p>
             <p className="mt-2 text-2xl font-black tabular-nums text-[var(--eos-text)]">{item.value}</p>
           </div>
         ))}
       </div>
 
       {intel ? (
-        <div className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-500">Market Intelligence</p>
+        <div className="eos-lux-panel rounded-3xl p-6">
+          <p className="eos-portal-label eos-portal-label--ok">Market Intelligence</p>
           <p className="mt-2 text-xl font-black text-[var(--eos-text)]">
             Warszawa · {intel.headline}
             {intel.yoyChangePct != null ? ` · ${intel.yoyChangePct > 0 ? "+" : ""}${intel.yoyChangePct}%` : ""}
@@ -134,8 +132,8 @@ export default function MarketHubClient() {
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
-          <p className="mb-4 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Dzielnice Warszawy</p>
+        <div className="eos-lux-panel rounded-3xl p-5">
+          <p className="eos-portal-label mb-4">Dzielnice Warszawy</p>
           <div className="space-y-2">
             {districts.map((d) => {
               const width = Math.max(8, Math.round(((d.medianPpsm || 0) / maxMedian) * 100));
@@ -169,8 +167,8 @@ export default function MarketHubClient() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Wycena konkretnej nieruchomości</p>
+          <div className="eos-lux-panel rounded-3xl p-5">
+            <p className="eos-portal-label">Wycena konkretnej nieruchomości</p>
             <p className="mt-1 text-sm text-[var(--eos-muted)]">
               {district || "Warszawa"} {activeDistrict ? `· ${plnM2(activeDistrict.medianPpsm)}` : ""}
             </p>
@@ -221,11 +219,11 @@ export default function MarketHubClient() {
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label>
-      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]">{label}</span>
+      <span className="eos-portal-label">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+        className="eos-field-inset eos-field-inset--pill mt-1 w-full py-2 text-sm text-[var(--eos-text)] outline-none"
       />
     </label>
   );
@@ -234,7 +232,7 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 function IntelCol({ title, rows }: { title: string; rows: string[] }) {
   return (
     <div>
-      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">{title}</p>
+      <p className="eos-portal-label">{title}</p>
       <ol className="mt-2 space-y-1 text-sm text-[var(--eos-text)]">
         {rows.map((row, i) => (
           <li key={row}>

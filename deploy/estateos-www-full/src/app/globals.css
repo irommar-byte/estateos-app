@@ -306,6 +306,30 @@ html:not(.light) .eos-portal-react {
 .eos-portal-label--no {
   color: #be123c;
 }
+.eos-lux-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(5, 150, 105, 0.4);
+  background: linear-gradient(165deg, #a7f3d0 0%, #34d399 45%, #10b981 100%);
+  color: #065f46;
+  -webkit-text-fill-color: #065f46;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  padding: 0.35rem 0.85rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 6px 14px rgba(16, 185, 129, 0.28);
+}
+.eos-field-inset--pill {
+  border-radius: 999px !important;
+  padding-left: 1.1rem;
+  padding-right: 1.1rem;
+}
 .eos-live-dot {
   width: 0.55rem;
   height: 0.55rem;
@@ -1710,6 +1734,7 @@ html:not(.light) .eos-lux-map-locate {
 .eos-lux-btn--primary {
   color: #022c22 !important;
   -webkit-text-fill-color: #022c22 !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
   background: linear-gradient(180deg, #a7f3d0 0%, #34d399 42%, #059669 100%);
   border: 1px solid rgba(5, 150, 105, 0.35);
   box-shadow:
@@ -1750,6 +1775,7 @@ html:not(.light) .eos-lux-map-locate {
 
 .eos-lux-btn--platinum {
   color: #1a1b1e;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
   background: linear-gradient(180deg, #ffffff 0%, #f3f1ec 55%, #e8e6e1 100%);
   border: 1px solid rgba(26, 27, 30, 0.1);
   box-shadow:
@@ -1768,6 +1794,7 @@ html:not(.light) .eos-lux-map-locate {
 
 .eos-lux-btn--gold {
   color: #6b5424;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
   background: linear-gradient(180deg, rgba(248, 236, 200, 0.95) 0%, rgba(212, 175, 55, 0.28) 100%);
   border: 1px solid rgba(196, 163, 90, 0.45);
   box-shadow:
@@ -4459,18 +4486,19 @@ html.light .eos-btn--ghost {
   --eos-btn-fg: var(--eos-text);
 }
 
-/* Home brand — solid emerald, white label */
+/* Home brand — metal mint, engraved label */
 .eos-btn--home {
-  --eos-btn-bg: #059669;
-  --eos-btn-bg-hover: #047857;
-  --eos-btn-fg: #ffffff;
-  --eos-btn-border: rgba(4, 120, 87, 0.35);
+  --eos-btn-bg: linear-gradient(180deg, #a7f3d0 0%, #34d399 42%, #059669 100%);
+  --eos-btn-bg-hover: linear-gradient(180deg, #bbf7d0 0%, #6ee7b7 42%, #10b981 100%);
+  --eos-btn-fg: #022c22;
+  --eos-btn-border: rgba(5, 150, 105, 0.35);
   --eos-btn-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.22) inset,
-    0 8px 22px rgba(5, 150, 105, 0.28);
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 10px 28px rgba(5, 150, 105, 0.28);
   --eos-btn-shadow-hover:
-    0 1px 0 rgba(255, 255, 255, 0.28) inset,
-    0 14px 32px rgba(5, 150, 105, 0.36);
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 14px 36px rgba(5, 150, 105, 0.38);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 html:not(.light) .eos-btn--home {

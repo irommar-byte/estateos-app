@@ -199,7 +199,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                   Zobacz pełną ofertę
                   <ArrowRight size={16} />
                 </Link>
-                <button type="button" onClick={() => void copyLink()} className={eosBtn('secondary', { block: true })}>
+                <button type="button" onClick={() => void copyLink()} className="eos-lux-btn eos-lux-btn--gold w-full px-5 py-3 text-[11px]">
                   <Copy size={14} />
                   {copied ? 'Skopiowano link' : 'Kopiuj link wizytówki'}
                 </button>

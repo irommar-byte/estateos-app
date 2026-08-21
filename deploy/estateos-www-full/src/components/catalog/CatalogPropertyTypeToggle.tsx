@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Building2, Home, LandPlot, Store } from "lucide-react";
 
 export type CatalogPropertyTypeFilter = "ALL" | "FLAT" | "HOUSE" | "PLOT" | "COMMERCIAL";
@@ -26,18 +25,9 @@ type Props = {
   accent?: "sale" | "rent";
 };
 
-export default function CatalogPropertyTypeToggle({ value, onChange, counts, accent = "sale" }: Props) {
-  const activeClass =
-    accent === "rent"
-      ? "border-sky-500/40 bg-sky-500/12 text-sky-600 dark:text-sky-300"
-      : "border-emerald-500/40 bg-emerald-500/12 text-emerald-600 dark:text-emerald-300";
-
+export default function CatalogPropertyTypeToggle({ value, onChange, counts, accent: _accent = "sale" }: Props) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mt-4 flex flex-wrap gap-2"
-    >
+    <div className="mt-4 flex flex-wrap gap-2">
       {OPTIONS.map((option) => {
         const Icon = option.icon;
         const active = value === option.key;
@@ -47,10 +37,8 @@ export default function CatalogPropertyTypeToggle({ value, onChange, counts, acc
             key={option.key}
             type="button"
             onClick={() => onChange(option.key)}
-            className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[11px] font-bold transition ${
-              active
-                ? activeClass
-                : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+            className={`eos-raised-chip inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[11px] ${
+              active ? "eos-raised-chip--on" : ""
             }`}
           >
             <Icon className="size-3.5" />
@@ -60,6 +48,6 @@ export default function CatalogPropertyTypeToggle({ value, onChange, counts, acc
           </button>
         );
       })}
-    </motion.div>
+    </div>
   );
 }
