@@ -25,18 +25,26 @@ const TAB_ACCENT: Record<CrmSectionTabId, LuxAccent> = {
   transakcje: "rent",
 };
 
-const spring = { type: "spring" as const, stiffness: 380, damping: 28, mass: 0.7 };
+/** Prefer short when full is too long for the metal track. */
+const FORCE_SHORT: Partial<Record<CrmSectionTabId, true>> = {
+  radar: true,
+};
+
+const spring = { type: "spring" as const, stiffness: 420, damping: 32, mass: 0.65 };
 
 export default function CrmSectionTabBar({
   tabs,
   activeTab,
   labels,
   onChange,
+  embedded = false,
 }: {
   tabs: CrmSectionTabId[];
   activeTab: CrmSectionTabId;
   labels: TabLabels;
   onChange: (tab: CrmSectionTabId) => void;
+  /** When true, bar is the top cap of a unified stage (no sticky/margin). */
+  embedded?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
   const shellRef = useRef<HTMLDivElement>(null);
@@ -64,7 +72,12 @@ export default function CrmSectionTabBar({
   useEffect(() => {
     const onResize = () => measurePill();
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => measurePill()) : null;
+    if (shellRef.current && ro) ro.observe(shellRef.current);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      ro?.disconnect();
+    };
   }, [measurePill]);
 
   useEffect(() => {
@@ -73,73 +86,83 @@ export default function CrmSectionTabBar({
     if (!scroller || !activeEl) return;
     const scrollerRect = scroller.getBoundingClientRect();
     const tabRect = activeEl.getBoundingClientRect();
-    const padding = 16;
+    const padding = 12;
     if (tabRect.left < scrollerRect.left + padding) {
       scroller.scrollBy({ left: tabRect.left - scrollerRect.left - padding, behavior: "smooth" });
     } else if (tabRect.right > scrollerRect.right - padding) {
       scroller.scrollBy({ left: tabRect.right - scrollerRect.right + padding, behavior: "smooth" });
     }
-    const t = window.setTimeout(measurePill, 320);
+    const t = window.setTimeout(measurePill, 280);
     return () => window.clearTimeout(t);
   }, [activeTab, measurePill]);
 
+  const shell = (
+    <div
+      ref={scrollerRef}
+      className="eos-crm-tab-scroller w-full overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <motion.div
+        ref={shellRef}
+        role="tablist"
+        aria-label="Sekcje konta"
+        className="eos-lux-switch eos-crm-lux-tabs relative mx-auto flex w-full min-w-0 items-stretch gap-0.5 p-1"
+        whileTap={reduceMotion ? undefined : { scale: 0.995 }}
+        transition={spring}
+      >
+        {!reduceMotion ? <span className="eos-lux-switch__shimmer" aria-hidden /> : null}
+        <span className="eos-lux-switch__rim" aria-hidden />
+        <span className="eos-lux-switch__well" aria-hidden />
+
+        {pill ? (
+          <motion.span
+            className={`eos-lux-switch__pill eos-lux-switch__pill--${activeAccent}`}
+            initial={false}
+            animate={{ left: pill.left, width: pill.width, opacity: 1 }}
+            transition={reduceMotion ? { duration: 0.1 } : spring}
+            style={{ top: "0.2rem", bottom: "0.2rem" }}
+          >
+            <span className="eos-lux-switch__pill-glow" />
+          </motion.span>
+        ) : null}
+
+        {tabs.map((tab) => {
+          const pressed = activeTab === tab;
+          const copy = labels[tab];
+          const accent = TAB_ACCENT[tab];
+          const label = FORCE_SHORT[tab] ? copy.short : copy.full;
+          const labelShort = copy.short;
+          return (
+            <motion.button
+              key={tab}
+              ref={(el) => {
+                if (el) btnRefs.current[tab] = el;
+              }}
+              type="button"
+              role="tab"
+              aria-selected={pressed}
+              aria-pressed={pressed}
+              onClick={() => onChange(tab)}
+              className={`eos-lux-switch__seg eos-lux-switch__seg--${accent} relative z-[3] flex min-h-[2.75rem] flex-1 items-center justify-center px-2.5 py-2 text-[9px] sm:min-h-[3rem] sm:px-3.5 sm:text-[10px] md:px-4 md:text-[11px]`}
+              whileHover={reduceMotion ? undefined : { y: -0.5 }}
+              whileTap={reduceMotion ? undefined : { scale: 0.97 }}
+              transition={spring}
+            >
+              <span className="whitespace-nowrap lg:hidden">{labelShort}</span>
+              <span className="hidden whitespace-nowrap lg:inline">{label}</span>
+            </motion.button>
+          );
+        })}
+      </motion.div>
+    </div>
+  );
+
+  if (embedded) {
+    return <div className="eos-crm-stage__tabs">{shell}</div>;
+  }
+
   return (
     <div className="sticky top-[var(--eos-nav-height)] z-30 mb-5 sm:mb-7">
-      <div
-        ref={scrollerRef}
-        className="eos-crm-tab-scroller w-full overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        <motion.div
-          ref={shellRef}
-          role="tablist"
-          aria-label="Sekcje konta"
-          className="eos-lux-switch eos-crm-lux-tabs relative mx-auto flex w-max min-w-full items-stretch gap-0.5 p-1 sm:min-w-0 sm:w-full md:inline-flex md:w-auto md:max-w-full"
-          whileTap={reduceMotion ? undefined : { scale: 0.992 }}
-          transition={spring}
-        >
-          {!reduceMotion ? <span className="eos-lux-switch__shimmer" aria-hidden /> : null}
-          <span className="eos-lux-switch__rim" aria-hidden />
-          <span className="eos-lux-switch__well" aria-hidden />
-
-          {pill ? (
-            <motion.span
-              className={`eos-lux-switch__pill eos-lux-switch__pill--${activeAccent}`}
-              initial={false}
-              animate={{ left: pill.left, width: pill.width, opacity: 1 }}
-              transition={reduceMotion ? { duration: 0.12 } : spring}
-              style={{ top: "0.22rem", bottom: "0.22rem" }}
-            >
-              <span className="eos-lux-switch__pill-glow" />
-            </motion.span>
-          ) : null}
-
-          {tabs.map((tab) => {
-            const pressed = activeTab === tab;
-            const copy = labels[tab];
-            const accent = TAB_ACCENT[tab];
-            return (
-              <motion.button
-                key={tab}
-                ref={(el) => {
-                  if (el) btnRefs.current[tab] = el;
-                }}
-                type="button"
-                role="tab"
-                aria-selected={pressed}
-                aria-pressed={pressed}
-                onClick={() => onChange(tab)}
-                className={`eos-lux-switch__seg eos-lux-switch__seg--${accent} relative z-[3] flex min-h-[2.85rem] flex-1 items-center justify-center px-3.5 py-2.5 text-[9px] sm:min-h-[3.1rem] sm:px-5 sm:text-[10px] md:px-6 md:text-[11px]`}
-                whileHover={reduceMotion ? undefined : { y: -0.5 }}
-                whileTap={reduceMotion ? undefined : { scale: 0.97 }}
-                transition={spring}
-              >
-                <span className="whitespace-nowrap md:hidden">{copy.short}</span>
-                <span className="hidden whitespace-nowrap md:inline">{copy.full}</span>
-              </motion.button>
-            );
-          })}
-        </motion.div>
-      </div>
+      {shell}
     </div>
   );
 }
