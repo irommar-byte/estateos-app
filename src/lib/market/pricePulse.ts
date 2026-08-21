@@ -275,6 +275,13 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
   }
   districts.sort((a, b) => a.vsDeedsPct - b.vsDeedsPct);
 
+  const sparkRaw = series.slice(-30).map((point) => point.listingPpsm);
+  let lastSpark: number | null = sparkRaw.find((v) => v != null) ?? listingPpsm;
+  const sparkline = sparkRaw.map((value) => {
+    if (value != null) lastSpark = value;
+    return lastSpark;
+  });
+
   const payload: PricePulsePayload = {
     ok: true,
     city: WARSAW_CITY,
@@ -288,7 +295,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     direction,
     windows: { d7, d30, d90 },
     series,
-    sparkline: series.slice(-30).map((point) => point.listingPpsm),
+    sparkline,
     districts: districts.slice(0, 12),
   };
 

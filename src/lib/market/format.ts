@@ -25,7 +25,7 @@ export function marketPriceScore(vsMedianPct: number): number {
 }
 
 export function formatSignedPct(value: number | null | undefined, digits = 1): string {
-  if (value == null || !Number.isFinite(value)) return 'n/d';
+  if (value == null || !Number.isFinite(value)) return '—';
   if (Math.abs(value) < 0.05) return '0,0%';
   const shown = Math.abs(value).toFixed(digits).replace('.', ',');
   return `${value > 0 ? '+' : '-'}${shown}%`;

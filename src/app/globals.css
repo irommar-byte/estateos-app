@@ -3577,23 +3577,103 @@ html.light .eos-price-pulse-well {
     inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
-@keyframes eos-price-pulse {
+.eos-price-pulse-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+.eos-price-pulse-digit {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: bottom;
+  line-height: 1;
+}
+
+.eos-price-pulse-digit__stack {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+
+.eos-ecg-icon {
+  animation: eos-ecg-beat 1.05s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  transform-origin: center;
+  color: #10b981;
+  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.45));
+}
+
+@keyframes eos-ecg-beat {
   0%,
+  62%,
   100% {
-    opacity: 1;
     transform: scale(1);
-    filter: drop-shadow(0 0 0 var(--eos-pulse-glow, rgba(52, 211, 153, 0.45)));
+    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.35));
   }
-  50% {
-    opacity: 0.72;
-    transform: scale(1.05);
-    filter: drop-shadow(0 0 12px var(--eos-pulse-glow, rgba(52, 211, 153, 0.45)));
+  8% {
+    transform: scale(1.22);
+    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.85));
+  }
+  16% {
+    transform: scale(0.94);
+  }
+  24% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.7));
+  }
+  34% {
+    transform: scale(1);
   }
 }
 
-.eos-price-pulse-num {
-  animation: eos-price-pulse 1.8s ease-in-out infinite;
-  transform-origin: right center;
+.eos-ecg-track {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.eos-ecg-wave {
+  display: block;
+  width: 200%;
+  height: 100%;
+  animation: eos-ecg-scroll 2.6s linear infinite;
+  will-change: transform;
+}
+
+.eos-ecg-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.18), transparent);
+  animation: eos-ecg-scan 2.6s linear infinite;
+}
+
+@keyframes eos-ecg-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes eos-ecg-scan {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eos-ecg-icon,
+  .eos-ecg-wave,
+  .eos-ecg-scan {
+    animation: none;
+  }
 }
 
 .eos-pro-schedule-box {
