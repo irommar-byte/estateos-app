@@ -2393,8 +2393,9 @@ html.light .interactive-map-controls {
 
 html.light .crm-dashboard-shell {
   background:
+    radial-gradient(ellipse at 14% -6%, rgba(196, 163, 90, 0.08), transparent 40%),
     radial-gradient(circle at 18% 0%, rgba(16, 185, 129, 0.08), transparent 34%),
-    linear-gradient(180deg, #f5f7fb 0%, #ffffff 46%, #eef2f7 100%) !important;
+    linear-gradient(180deg, #f3f1ec 0%, #faf9f6 46%, #eeece7 100%) !important;
 }
 
 html.dark .crm-dashboard-shell {
@@ -4128,6 +4129,66 @@ html.light .eos-modal-panel {
 
 .eos-crm-tab-scroller [role='tablist'] > button {
   scroll-snap-align: center;
+}
+
+.eos-crm-lux-tabs {
+  width: 100%;
+}
+
+.eos-crm-lux-tabs .eos-lux-switch__seg {
+  flex: 1 1 0;
+  min-width: 4.75rem;
+}
+
+.eos-crm-section-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.75rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .eos-crm-section-hero {
+    border-radius: 2rem;
+    margin-bottom: 2rem;
+  }
+}
+
+.eos-crm-section-hero__icon {
+  position: relative;
+  display: flex;
+  height: 5rem;
+  width: 5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 163, 90, 0.28);
+  background:
+    linear-gradient(180deg, #fbfaf7 0%, #ebe8e1 48%, #e0dcd4 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 -2px 4px rgba(26, 27, 30, 0.06) inset,
+    0 10px 24px rgba(26, 27, 30, 0.1);
+}
+
+@media (min-width: 640px) {
+  .eos-crm-section-hero__icon {
+    height: 5.5rem;
+    width: 5.5rem;
+  }
+}
+
+.eos-crm-section-panel {
+  border-radius: 1.6rem;
+}
+
+html:not(.light) .eos-crm-section-hero__icon {
+  border-color: rgba(196, 163, 90, 0.28);
+  background: linear-gradient(180deg, rgba(42, 42, 44, 0.98) 0%, rgba(18, 18, 20, 0.96) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {
