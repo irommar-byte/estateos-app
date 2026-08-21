@@ -21,6 +21,13 @@ import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavBut
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
 import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
 import DiscoveryNavWhisper from "@/components/discovery/DiscoveryNavWhisper";
+import EcosystemLuxurySwitch, {
+  type LuxSwitchDensity,
+} from "@/components/layout/EcosystemLuxurySwitch";
+import {
+  clientPortalHref,
+  readClientPortalToken,
+} from "@/lib/crm/portalSession";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
 import { useEcosystem, type EcosystemVertical } from "@/contexts/EcosystemContext";
@@ -41,7 +48,7 @@ type CurrentUser = {
   };
 };
 
-type SwitchDensity = "full" | "compact" | "mini";
+type SwitchDensity = LuxSwitchDensity;
 
 type MobileChrome = {
   messages: boolean;
@@ -64,6 +71,7 @@ export default function Navbar() {
   const { dict, locale } = useLocale();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [portalToken, setPortalToken] = useState<string | null>(null);
   const [switchDensity, setSwitchDensity] = useState<SwitchDensity>("full");
   const [mobileChrome, setMobileChrome] = useState<MobileChrome>({
     messages: true,
@@ -95,7 +103,12 @@ export default function Navbar() {
 
   useEffect(() => {
     setIsOpen(false);
+    setPortalToken(readClientPortalToken());
   }, [pathname]);
+
+  useEffect(() => {
+    setPortalToken(readClientPortalToken());
+  }, []);
 
   useEffect(() => {
     if (!loggedIn) return;
@@ -245,19 +258,6 @@ export default function Navbar() {
 
   const manageLabel = dict.nav.manageCentral;
   const manageLabelShort = dict.nav.manageCentralShort;
-  const switchPad =
-    switchDensity === "mini"
-      ? "px-1.5 py-1"
-      : switchDensity === "compact"
-        ? "px-2 py-1.5"
-        : "px-2.5 py-1.5 sm:px-3";
-  const switchText =
-    switchDensity === "mini"
-      ? "text-[8px]"
-      : switchDensity === "compact"
-        ? "text-[9px]"
-        : "text-[9px] sm:text-[10px]";
-  const switchIcon = switchDensity === "mini" ? "size-3" : "size-3.5";
   const showCollapsedShortcuts =
     loggedIn && (!mobileChrome.messages || !mobileChrome.wallet || !mobileChrome.bell);
 
@@ -301,54 +301,13 @@ export default function Navbar() {
         </div>
 
         <div className="relative z-10 flex min-w-0 items-center justify-center overflow-hidden px-0.5">
-          <div
-            className={`flex shrink-0 items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-[var(--eos-shadow-soft)] ${
-              switchDensity === "mini" ? "p-0.5" : "p-0.5 sm:p-1"
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => switchVertical("home")}
-              aria-pressed={highlightHome}
-              className={`group/home inline-flex items-center gap-1 rounded-full font-black uppercase tracking-[0.1em] transition ${switchPad} ${switchText} ${
-                highlightHome
-                  ? "bg-emerald-500/20 text-emerald-400"
-                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-              }`}
-            >
-              <Home
-                className={`${switchIcon} transition duration-300 ${
-                  highlightHome
-                    ? "scale-110 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.55)]"
-                    : "opacity-70 group-hover/home:scale-105 group-hover/home:opacity-100"
-                }`}
-                strokeWidth={2.25}
-                aria-hidden
-              />
-              Home
-            </button>
-            <button
-              type="button"
-              onClick={() => switchVertical("car")}
-              aria-pressed={highlightCar}
-              className={`group/car inline-flex items-center gap-1 rounded-full font-black uppercase tracking-[0.1em] transition ${switchPad} ${switchText} ${
-                highlightCar
-                  ? "bg-sky-500/20 text-sky-300"
-                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-              }`}
-            >
-              <Car
-                className={`${switchIcon} transition duration-300 ${
-                  highlightCar
-                    ? "scale-110 text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.55)]"
-                    : "opacity-70 group-hover/car:scale-105 group-hover/car:opacity-100"
-                }`}
-                strokeWidth={2.25}
-                aria-hidden
-              />
-              Car
-            </button>
-          </div>
+          <EcosystemLuxurySwitch
+            density={switchDensity}
+            highlightHome={highlightHome}
+            highlightCar={highlightCar}
+            onHome={() => switchVertical("home")}
+            onCar={() => switchVertical("car")}
+          />
         </div>
 
         <div className="relative z-40 flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
@@ -384,14 +343,25 @@ export default function Navbar() {
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => router.push("/login")}
-                className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)] 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
-              >
-                {dict.nav.login}
-                <LogIn className="size-4" />
-              </button>
+              <div className="ml-0.5 flex shrink-0 items-center gap-1.5">
+                {portalToken ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push(clientPortalHref(portalToken))}
+                    className="eos-lux-btn eos-lux-btn--primary shrink-0 !gap-2 px-3 py-2 text-[9px] tracking-[0.12em] 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
+                  >
+                    {dict.nav.clientPanel}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => router.push("/login")}
+                  className="eos-lux-btn eos-lux-btn--platinum shrink-0 !gap-2 px-3 py-2 text-[9px] tracking-[0.12em] 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
+                >
+                  {dict.nav.login}
+                  <LogIn className="size-4" />
+                </button>
+              </div>
             )}
           </div>
 
@@ -402,7 +372,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => setIsOpen((open) => !open)}
-              className="relative rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:text-[var(--eos-accent)]"
+              className="eos-lux-btn eos-lux-btn--platinum relative !min-h-0 rounded-2xl !px-2.5 !py-2.5 text-[var(--eos-text)]"
               aria-label={isOpen ? "Close menu" : "Open menu"}
               aria-expanded={isOpen}
             >
@@ -427,27 +397,33 @@ export default function Navbar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[55] bg-black/50 backdrop-blur-sm lg:hidden"
+              transition={{ duration: 0.28 }}
+              className="fixed inset-0 z-[55] bg-[rgba(20,18,14,0.45)] backdrop-blur-md lg:hidden"
               style={{ top: "var(--eos-nav-height)" }}
               onClick={() => setIsOpen(false)}
             />
             <motion.div
               key="mobile-nav-panel"
-              initial={{ opacity: 0, y: -16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed inset-x-0 z-[60] overflow-y-auto border-b border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-[var(--eos-shadow-strong)] lg:hidden"
+              initial={{ opacity: 0, y: -28, clipPath: "inset(0 0 100% 0)" }}
+              animate={{ opacity: 1, y: 0, clipPath: "inset(0 0 0% 0)" }}
+              exit={{ opacity: 0, y: -18, clipPath: "inset(0 0 100% 0)" }}
+              transition={{ duration: 0.48, ease: [0.16, 1, 0.3, 1] }}
+              className="eos-lux-drawer fixed inset-x-0 z-[60] overflow-y-auto lg:hidden"
               style={{
                 top: "var(--eos-nav-height)",
                 maxHeight: "calc(100dvh - var(--eos-nav-height))",
               }}
             >
+              <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#c4a35a]/70 to-transparent" />
               <div className="space-y-4 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:space-y-5 sm:p-5 sm:pb-8">
-                <div className="grid gap-2">
+                <p className="px-1 text-[9px] font-black uppercase tracking-[0.28em] text-[#7a6230]/90">
+                  EstateOS™ Ecosystem
+                </p>
+                <div className="grid gap-2.5">
                   <MobileNavButton
                     icon={Home}
                     label="EstateOS™ Home"
+                    delay={0.06}
                     onClick={() => {
                       requestVerticalSwitch("home", "/oferty");
                       setIsOpen(false);
@@ -457,6 +433,7 @@ export default function Navbar() {
                   <MobileNavButton
                     icon={Car}
                     label="EstateOS™ Car"
+                    delay={0.12}
                     onClick={() => {
                       requestVerticalSwitch("car", "/cars");
                       setIsOpen(false);
@@ -477,6 +454,7 @@ export default function Navbar() {
                           }`}
                           onClick={() => handleNavClick("/moje-konto/wiadomosci")}
                           variant="primary"
+                          delay={0.14}
                         />
                       ) : null}
                       {!mobileChrome.wallet ? (
@@ -511,25 +489,34 @@ export default function Navbar() {
                 {user ? (
                   <div className="grid gap-2">
                     <DiscoveryNavWhisper variant="drawer" />
-                    <MobileNavButton icon={User} label={dict.nav.profile} onClick={() => handleNavClick("/moje-konto")} />
+                    <MobileNavButton delay={0.16} icon={User} label={dict.nav.profile} onClick={() => handleNavClick("/moje-konto")} />
                     {isAdmin && (
-                      <MobileNavButton icon={Shield} label={dict.nav.manageCentral} onClick={() => handleNavClick("/centrala")} />
+                      <MobileNavButton delay={0.2} icon={Shield} label={dict.nav.manageCentral} onClick={() => handleNavClick("/centrala")} />
                     )}
-                    <MobileNavButton icon={LogOut} label={dict.nav.logout} accent="red" onClick={handleLogout} />
+                    <MobileNavButton delay={0.24} icon={LogOut} label={dict.nav.logout} accent="red" onClick={handleLogout} />
                   </div>
                 ) : (
                   <div className="grid gap-2">
+                    {portalToken ? (
+                      <button
+                        type="button"
+                        onClick={() => handleNavClick(clientPortalHref(portalToken))}
+                        className="eos-lux-btn eos-lux-btn--gold w-full px-5 py-4 text-xs tracking-[0.2em]"
+                      >
+                        {dict.nav.clientPanel}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => handleNavClick("/rejestracja")}
-                      className="flex w-full items-center justify-center gap-3 rounded-3xl border border-[var(--eos-accent)]/25 bg-[var(--eos-accent-soft)] px-5 py-4 text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-accent)]"
+                      className="eos-lux-btn eos-lux-btn--primary w-full px-5 py-4 text-xs tracking-[0.2em]"
                     >
                       Załóż konto
                     </button>
                     <button
                       type="button"
                       onClick={() => handleNavClick("/login")}
-                      className="flex w-full items-center justify-center gap-3 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-4 text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-text)]"
+                      className="eos-lux-btn eos-lux-btn--platinum w-full px-5 py-4 text-xs tracking-[0.2em]"
                     >
                       <LogIn className="size-5" />
                       {dict.nav.login}
@@ -625,33 +612,41 @@ function MobileNavButton({
   onClick,
   accent = "emerald",
   variant = "default",
+  delay = 0,
 }: {
   icon: typeof Home;
   label: string;
   onClick: () => void;
   accent?: "emerald" | "amber" | "red";
   variant?: "default" | "primary";
+  delay?: number;
 }) {
   const accentClass =
     accent === "amber"
-      ? "text-amber-500"
+      ? "text-[#9a7b3c]"
       : accent === "red"
         ? "text-red-500"
-        : "text-[var(--eos-accent)]";
+        : "text-emerald-600";
 
-  const primaryClass =
+  const sizeClass =
     variant === "primary"
-      ? "rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-4 text-sm font-black tracking-[0.14em] shadow-[var(--eos-shadow-soft)]"
-      : "rounded-2xl px-4 py-3.5 text-xs font-bold tracking-[0.13em]";
+      ? "px-5 py-4 text-sm font-black tracking-[0.14em]"
+      : "px-4 py-3.5 text-xs font-bold tracking-[0.13em]";
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-4 text-left uppercase text-[var(--eos-text)] transition-colors hover:bg-[var(--eos-input)] ${primaryClass}`}
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay, ease: [0.16, 1, 0.3, 1] }}
+      whileTap={{ scale: 0.985 }}
+      className={`eos-lux-drawer-item flex w-full items-center gap-4 text-left uppercase text-[var(--eos-text)] ${sizeClass}`}
     >
-      <Icon className={`size-5 shrink-0 ${accentClass}`} aria-hidden />
-      {label}
-    </button>
+      <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-2xl border border-[rgba(196,163,90,0.28)] bg-[rgba(196,163,90,0.1)] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+        <Icon className={`size-5 ${accentClass}`} aria-hidden />
+      </span>
+      <span className="relative z-10 flex-1">{label}</span>
+    </motion.button>
   );
 }

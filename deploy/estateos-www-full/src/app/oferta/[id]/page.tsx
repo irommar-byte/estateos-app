@@ -31,6 +31,7 @@ import DiscoveryOfferExplainer from "@/components/discovery/DiscoveryOfferExplai
 import EosButton from "@/components/ui/EosButton";
 import DiscoveryVisitHint from "@/components/discovery/DiscoveryVisitHint";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
+import ClientPortalReturnBar from "@/components/portal/ClientPortalReturnBar";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
@@ -76,7 +77,15 @@ const NeighborhoodMapPreview = dynamic(
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
-function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
+function OfferDetails({
+  offer,
+  currentUser,
+  portalToken,
+}: {
+  offer: any;
+  currentUser: any;
+  portalToken?: string | null;
+}) {
   const { locale, dict } = useLocale();
   const router = useRouter();
   const { formatOffer, pricePerSqmLabel, rate, preference } = useFormatOfferPrice();
@@ -633,6 +642,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] font-sans text-[var(--eos-text)] selection:bg-emerald-500/20 sm:pb-32">
+      {portalToken ? <ClientPortalReturnBar token={portalToken} /> : null}
       
       <div className="eos-cinematic-dark relative h-[58svh] min-h-[52svh] w-full overflow-hidden bg-black sm:h-[100dvh] sm:min-h-[100vh]">
         <motion.div style={{ y: bgY }} className="absolute inset-0 z-0 overflow-hidden">
@@ -1692,5 +1702,5 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
     );
   }
   
-  return <OfferDetails offer={offer} currentUser={currentUser} />;
+  return <OfferDetails offer={offer} currentUser={currentUser} portalToken={portal} />;
 }

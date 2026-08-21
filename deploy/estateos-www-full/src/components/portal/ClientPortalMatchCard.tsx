@@ -120,14 +120,14 @@ export default function ClientPortalMatchCard({
         </div>
       </div>
 
-      <div className="eos-portal-react border-t border-[var(--eos-border)] p-4 sm:p-5">
-        <div className="mb-3 flex items-start gap-2.5">
+      <div className="eos-portal-react border-t border-[rgba(196,163,90,0.2)] p-4 sm:p-5">
+        <div className="mb-4 flex items-start gap-2.5">
           <span className="eos-live-dot mt-1.5 shrink-0" aria-hidden />
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+            <p className="eos-portal-label eos-portal-label--ok">
               {match.clientFeedback ? "Opinia u agenta" : "Proces przy tej ofercie"}
             </p>
-            <p className="mt-0.5 text-sm leading-snug text-[var(--eos-text)]">
+            <p className="mt-1 text-sm leading-snug text-[var(--eos-text)]">
               {match.clientFeedback
                 ? "Agent ma Twoją reakcję. Możesz ją doprecyzować — to nadal ta sama nieruchomość."
                 : "Powiedz, czy szukamy dalej w tym kierunku, czy odkładamy tę ofertę."}
@@ -135,6 +135,7 @@ export default function ClientPortalMatchCard({
           </div>
         </div>
 
+        <p className="eos-portal-label mb-2">Twoja decyzja</p>
         <div className="grid grid-cols-3 gap-2">
           {(
             [
@@ -147,7 +148,7 @@ export default function ClientPortalMatchCard({
               key={option.id}
               type="button"
               onClick={() => setSentiment(option.id)}
-              className={`eos-choice-btn flex min-h-[3.4rem] flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-bold ${
+              className={`eos-choice-btn flex min-h-[3.5rem] flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] ${
                 sentiment === option.id ? option.on : ""
               }`}
             >
@@ -157,14 +158,14 @@ export default function ClientPortalMatchCard({
           ))}
         </div>
 
-        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">Co zostaje</p>
+        <p className="eos-portal-label eos-portal-label--ok mt-5">Co zostaje</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {LIKE_PHRASES.map((phrase) => (
             <button
               key={phrase}
               type="button"
               onClick={() => togglePhrase(phrase)}
-              className={`eos-raised-chip rounded-full px-3 py-1.5 text-[11px] font-semibold ${
+              className={`eos-raised-chip rounded-full px-3.5 py-2 text-[11px] ${
                 phrases.includes(phrase) ? "eos-raised-chip--on" : ""
               }`}
             >
@@ -180,14 +181,14 @@ export default function ClientPortalMatchCard({
           className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
         />
 
-        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-rose-600">Czego nie akceptuję</p>
+        <p className="eos-portal-label eos-portal-label--no mt-5">Czego nie akceptuję</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {DISLIKE_PHRASES.map((phrase) => (
             <button
               key={phrase}
               type="button"
               onClick={() => togglePhrase(phrase)}
-              className={`eos-raised-chip rounded-full px-3 py-1.5 text-[11px] font-semibold ${
+              className={`eos-raised-chip rounded-full px-3.5 py-2 text-[11px] ${
                 phrases.includes(phrase) ? "eos-raised-chip--no" : ""
               }`}
             >

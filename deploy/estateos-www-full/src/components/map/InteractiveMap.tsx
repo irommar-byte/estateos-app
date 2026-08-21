@@ -6,6 +6,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Hand, Lock, LocateFixed, Maximize2, MousePointer2, Move, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import LuxurySegmentSwitch from "@/components/ui/LuxurySegmentSwitch";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useEcosystem } from "@/contexts/EcosystemContext";
 import { numberFormatLocale } from "@/i18n/config";
@@ -272,8 +273,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [showMapGuide, setShowMapGuide] = useState(false);
   const [forYouIds, setForYouIds] = useState<Set<number>>(() => new Set());
   const sliderChangingRef = useRef(false);
-  const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
-    useIntelligencePreference();
+  const { enabled: intelligenceEnabled } = useIntelligencePreference();
 
   const priceLocale = numberFormatLocale(locale);
   const maxPriceLabel =
@@ -948,115 +948,41 @@ export default function InteractiveMap({ immersive = false }: Props) {
       )}
 
       <div className="absolute left-1/2 top-4 z-30 flex w-[92%] max-w-lg -translate-x-1/2 flex-col items-center gap-3 sm:top-6 sm:gap-4">
-        <div className="interactive-map-controls flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-1.5 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl">
-          <button
-            type="button"
-            onClick={() => setMapMarket("home")}
-            className={`relative flex min-w-[110px] items-center justify-center rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
-              mapMarket === "home" ? "text-black" : "text-emerald-500/50 hover:text-emerald-400"
-            }`}
-          >
-            {mapMarket === "home" && (
-              <motion.div
-                layoutId="marketTab"
-                className="absolute inset-0 z-0 rounded-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-              />
-            )}
-            <span className="relative z-10">{dict.map.marketHome}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMapMarket("car")}
-            className={`relative flex min-w-[110px] items-center justify-center rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
-              mapMarket === "car" ? "text-black" : "text-sky-500/50 hover:text-sky-400"
-            }`}
-          >
-            {mapMarket === "car" && (
-              <motion.div
-                layoutId="marketTab"
-                className="absolute inset-0 z-0 rounded-full bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.4)]"
-              />
-            )}
-            <span className="relative z-10">{dict.map.marketCar}</span>
-          </button>
-        </div>
+        <LuxurySegmentSwitch
+          ariaLabel={dict.map.market}
+          value={mapMarket}
+          onChange={setMapMarket}
+          options={[
+            { value: "home", label: dict.map.marketHome, accent: "home" },
+            { value: "car", label: dict.map.marketCar, accent: "car" },
+          ]}
+        />
 
-        <div className="interactive-map-controls flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-1.5 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl">
-          {mapMarket === "car" ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setVehicleKind("car")}
-                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
-                  vehicleKind === "car" ? "text-black" : "text-sky-500/50 hover:text-sky-400"
-                }`}
-              >
-                {vehicleKind === "car" && (
-                  <motion.div
-                    layoutId="txTab"
-                    className="absolute inset-0 z-0 rounded-full bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.4)]"
-                  />
-                )}
-                <span className="relative z-10">{dict.map.carsCars}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setVehicleKind("motorcycle")}
-                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
-                  vehicleKind === "motorcycle" ? "text-black" : "text-sky-500/50 hover:text-sky-400"
-                }`}
-              >
-                {vehicleKind === "motorcycle" && (
-                  <motion.div
-                    layoutId="txTab"
-                    className="absolute inset-0 z-0 rounded-full bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.4)]"
-                  />
-                )}
-                <span className="relative z-10">{dict.map.carsMotorcycles}</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setTransactionMode("sale")}
-                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
-                  transactionMode === "sale"
-                    ? "text-black"
-                    : "text-emerald-500/50 hover:text-emerald-400"
-                }`}
-              >
-                {transactionMode === "sale" && (
-                  <motion.div
-                    layoutId="txTab"
-                    className="absolute inset-0 z-0 rounded-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-                  />
-                )}
-                <span className="relative z-10">{dict.map.forSale}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTransactionMode("rent")}
-                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
-                  transactionMode === "rent"
-                    ? "text-white"
-                    : "text-blue-500/50 hover:text-blue-400"
-                }`}
-              >
-                {transactionMode === "rent" && (
-                  <motion.div
-                    layoutId="txTab"
-                    className="absolute inset-0 z-0 rounded-full bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.4)]"
-                  />
-                )}
-                <span className="relative z-10">{dict.map.forRent}</span>
-              </button>
-            </>
-          )}
-        </div>
+        {mapMarket === "car" ? (
+          <LuxurySegmentSwitch
+            ariaLabel={dict.map.type}
+            value={vehicleKind}
+            onChange={setVehicleKind}
+            accent="car"
+            options={[
+              { value: "car", label: dict.map.carsCars, accent: "car" },
+              { value: "motorcycle", label: dict.map.carsMotorcycles, accent: "car" },
+            ]}
+          />
+        ) : (
+          <LuxurySegmentSwitch
+            ariaLabel={dict.map.type}
+            value={transactionMode}
+            onChange={setTransactionMode}
+            options={[
+              { value: "sale", label: dict.map.forSale, accent: "home" },
+              { value: "rent", label: dict.map.forRent, accent: "rent" },
+            ]}
+          />
+        )}
 
-        <div className="interactive-map-controls flex w-full items-center gap-4 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl sm:p-5">
-          <div className="flex flex-1 flex-col gap-3">
+        <div className="eos-lux-map-lamp interactive-map-controls flex w-full items-center gap-3 p-3.5 sm:gap-4 sm:p-4">
+          <div className="flex flex-1 flex-col gap-2.5">
             <div className="flex items-center justify-between px-1">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
                 {activeMaxLabel}
@@ -1076,10 +1002,10 @@ export default function InteractiveMap({ immersive = false }: Props) {
               step={mapMarket === "car" ? carUiStep : transactionMode === "rent" ? rentUiStep : saleUiStep}
               value={activeMaxUi}
               onChange={(e) => {
-                const value = Number(e.target.value);
-                if (mapMarket === "car") setPriceMaxCarUi(value);
-                else if (transactionMode === "rent") setPriceMaxRentUi(value);
-                else setPriceMaxUi(value);
+                const next = Number(e.target.value);
+                if (mapMarket === "car") setPriceMaxCarUi(next);
+                else if (transactionMode === "rent") setPriceMaxRentUi(next);
+                else setPriceMaxUi(next);
               }}
               onMouseDown={() => {
                 sliderChangingRef.current = true;
@@ -1098,53 +1024,36 @@ export default function InteractiveMap({ immersive = false }: Props) {
                 lastInteractionAtRef.current = Date.now();
               }}
               aria-label={activeMaxLabel}
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+              className="eos-lux-range"
               style={{
-                background: `linear-gradient(to right, ${sliderAccent} 0%, ${sliderAccent} ${sliderPct}%, rgba(255,255,255,0.1) ${sliderPct}%, rgba(255,255,255,0.1) 100%)`,
+                background: `linear-gradient(to right, ${sliderAccent} 0%, ${sliderAccent} ${sliderPct}%, rgba(26,27,30,0.1) ${sliderPct}%, rgba(26,27,30,0.1) 100%)`,
               }}
             />
           </div>
 
-          <div className="mx-1 h-10 w-px bg-[var(--eos-border)]" />
+          <div className="mx-0.5 h-9 w-px shrink-0 bg-[rgba(196,163,90,0.28)]" />
 
-          <div
-            className="flex shrink-0 items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] p-1"
-            role="group"
-            aria-label="Waluta"
-          >
-            <button
-              type="button"
-              onClick={() => setPreference("PLN")}
-              className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
-                !isEurDisplay
-                  ? "bg-white text-black shadow-sm"
-                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-              }`}
-            >
-              PLN
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreference("EUR")}
-              className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
-                isEurDisplay
-                  ? "bg-white text-black shadow-sm"
-                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-              }`}
-            >
-              EUR
-            </button>
-          </div>
+          <LuxurySegmentSwitch
+            size="sm"
+            ariaLabel="Waluta"
+            accent="platinum"
+            value={isEurDisplay ? "EUR" : "PLN"}
+            onChange={(code) => setPreference(code)}
+            options={[
+              { value: "PLN", label: "PLN", accent: "platinum" },
+              { value: "EUR", label: "EUR", accent: "platinum" },
+            ]}
+          />
 
-            <button
-              type="button"
+          <button
+            type="button"
             onClick={locateUser}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] transition-all hover:border-emerald-500/40 hover:bg-[var(--eos-surface-strong)] active:scale-95"
+            className="eos-lux-map-locate"
             title={dict.map.locateMe}
             aria-label={dict.map.locateMe}
           >
-            <LocateFixed className="h-5 w-5 text-[var(--eos-text)]" />
-            </button>
+            <LocateFixed className="h-5 w-5" />
+          </button>
         </div>
       </div>
     

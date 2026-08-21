@@ -33,10 +33,9 @@ export default function FeaturedCarsGallery() {
       .then((res) => res.json())
       .then((json) => {
         if (cancelled || !Array.isArray(json)) return;
-        const featured = json
-          .filter((car: CarListing) => car?.featured === true)
-          .slice(0, MAX_FEATURED);
-        setCars(featured);
+        const featured = json.filter((car: CarListing) => car?.featured === true);
+        const pool = featured.length ? featured : json;
+        setCars(pool.slice(0, MAX_FEATURED));
       })
       .catch(() => {
         if (!cancelled) setCars([]);
@@ -57,7 +56,7 @@ export default function FeaturedCarsGallery() {
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-12 flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-600 dark:text-sky-400/90">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-600 dark:text-sky-700/90 dark:text-sky-400/90">
               {dict.homePremium.carsGalleryEyebrow}
             </p>
             <h2 className="mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
@@ -70,7 +69,7 @@ export default function FeaturedCarsGallery() {
           </div>
           <Link
             href="/cars"
-            className="group inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-sky-600 transition-colors hover:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300"
+            className="group inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-sky-600 transition-colors hover:text-sky-600 dark:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300"
           >
             {dict.homePremium.carsGalleryViewAll}
             <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -94,7 +93,7 @@ export default function FeaturedCarsGallery() {
               >
                 <Link
                   href={`/cars/${car.id}`}
-                  className="eos-media-chrome group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
+                  className="eos-media-chrome eos-lux-media-card group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
                 >
                   <div
                     className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"

@@ -7,6 +7,7 @@ import LanguageSwitcher from "@/components/layout/LanguageSwitcher";
 import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import { Settings2, ChevronLeft, ChevronRight } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -15,9 +16,12 @@ const AUTO_HIDE_MS = 3000;
 
 export default function FloatingPreferencesDock() {
   const { dict } = useLocale();
+  const pathname = usePathname() || "";
+  const isHome = pathname === "/" || pathname === "";
   const [open, setOpen] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [pastHero, setPastHero] = useState(!isHome);
   const hideTimerRef = useRef<number | null>(null);
 
   const clearHideTimer = useCallback(() => {
@@ -53,6 +57,20 @@ export default function FloatingPreferencesDock() {
     };
   }, [clearHideTimer]);
 
+  useEffect(() => {
+    if (!isHome) {
+      setPastHero(true);
+      return;
+    }
+    setPastHero(false);
+    const onScroll = () => {
+      setPastHero(window.scrollY > Math.min(window.innerHeight * 0.55, 520));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isHome]);
+
   const handleMouseEnter = () => {
     clearHideTimer();
   };
@@ -81,6 +99,8 @@ export default function FloatingPreferencesDock() {
     }
     setOpen(true);
   };
+
+  if (isHome && !pastHero) return null;
 
   return (
     <div
