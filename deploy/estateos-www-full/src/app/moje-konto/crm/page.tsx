@@ -849,13 +849,13 @@ export default function CRMDashboard() {
   const crmTabLabels = useMemo(
     () => ({
       klienci: { full: c.tabClients, short: isAgencyWorkspace ? "Agenci" : "Klienci" },
-      radar: { full: c.tabRadar, short: "Radar" },
+      radar: { full: "Radar", short: "Radar" },
       my_offers: { full: c.tabMyOffers, short: "Ogłoszenia" },
       offers: { full: c.tabFavorites, short: "Ulubione" },
       planowanie: { full: c.tabPlanning, short: "Plan" },
       transakcje: { full: c.tabDeals, short: "Deale" },
     }),
-    [c.tabClients, c.tabRadar, c.tabMyOffers, c.tabFavorites, c.tabPlanning, c.tabDeals, isAgencyWorkspace],
+    [c.tabClients, c.tabMyOffers, c.tabFavorites, c.tabPlanning, c.tabDeals, isAgencyWorkspace],
   );
 
   if (loading) return <div className="min-h-screen bg-[var(--eos-bg)] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
@@ -1200,28 +1200,26 @@ export default function CRMDashboard() {
           </div>
         )}
 
+        <div className="eos-crm-stage">
         <CrmSectionTabBar
+          embedded
           tabs={profileTabs as CrmSectionTabId[]}
           activeTab={activeTab as CrmSectionTabId}
           labels={crmTabLabels}
           onChange={(tab) => handleTabSwitch(tab as CrmTab)}
         />
 
+        <div className="eos-crm-stage__body">
+        <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, y: 14 }}
+          initial={{ opacity: 0, y: 18, height: "auto" }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-          className="space-y-6 sm:space-y-8"
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+          className="space-y-5 sm:space-y-6"
         >
-        <motion.div
-          className={`eos-lux-panel eos-crm-section-hero flex flex-col items-center gap-5 p-5 sm:flex-row sm:gap-8 sm:p-8 md:p-10
-            ${isEmeraldTab ? "shadow-[0_18px_40px_rgba(16,185,129,0.1)]" :
-              (activeTab === "offers" || activeTab === "my_offers") ? "shadow-[0_18px_40px_rgba(14,165,233,0.1)]" :
-              activeTab === "planowanie" ? "shadow-[0_18px_40px_rgba(196,163,90,0.12)]" :
-              "shadow-[0_18px_40px_rgba(245,158,11,0.1)]"
-            }`}
-        >
+        <div className="eos-crm-section-hero flex flex-col items-center gap-5 sm:flex-row sm:gap-7">
           <div
             className={`eos-crm-section-hero__icon
             ${isEmeraldTab ? "ring-1 ring-emerald-500/25" :
@@ -1230,32 +1228,103 @@ export default function CRMDashboard() {
               "ring-1 ring-amber-500/30"
             }`}
           >
-            {activeTab === "klienci" ? <Users size={34} className="text-emerald-600" strokeWidth={1.6} /> : null}
+            {activeTab === "klienci" ? (
+              <div className="relative flex h-full w-full items-center justify-center">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/15 to-transparent shadow-[inset_0_0_18px_rgba(16,185,129,0.2)]" />
+                <Users size={34} className="relative z-10 text-emerald-600 drop-shadow-[0_0_12px_rgba(16,185,129,0.35)]" strokeWidth={1.55} />
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 18, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-emerald-500/45 border-b-emerald-500/10" />
+              </div>
+            ) : null}
+
             {activeTab === "radar" ? (
               showDualRadarPro ? (
-                <span className="flex items-center -space-x-2">
-                  <Radar size={26} className="shrink-0 text-emerald-600" strokeWidth={1.6} />
-                  <Radar size={26} className="shrink-0 text-amber-600" strokeWidth={1.6} />
-                </span>
+                <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/20 via-transparent to-amber-500/15 shadow-[inset_0_0_18px_rgba(16,185,129,0.18)]" />
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.6, repeat: Infinity, ease: "linear" }} className="absolute inset-0 rounded-full">
+                    <div className="h-full w-full bg-[conic-gradient(from_0deg,transparent_72%,rgba(16,185,129,0.55)_100%)]" />
+                    <div className="absolute right-1/2 top-0 h-1/2 w-[2px] origin-bottom bg-emerald-400 shadow-[0_0_10px_2px_rgba(16,185,129,0.9)]" />
+                  </motion.div>
+                  <motion.div animate={{ rotate: -360 }} transition={{ duration: 3.4, repeat: Infinity, ease: "linear" }} className="absolute inset-3 rounded-full">
+                    <div className="h-full w-full bg-[conic-gradient(from_180deg,transparent_72%,rgba(251,146,60,0.5)_100%)]" />
+                    <div className="absolute bottom-0 right-1/2 h-1/2 w-[2px] origin-top bg-amber-400 shadow-[0_0_10px_2px_rgba(251,146,60,0.85)]" />
+                  </motion.div>
+                  <div className="relative z-10 flex items-center" style={{ marginLeft: -2 }}>
+                    <Radar size={24} className="-mr-1.5 text-emerald-600 drop-shadow-[0_0_8px_rgba(16,185,129,0.55)]" strokeWidth={1.55} />
+                    <Radar size={24} className="text-amber-600 drop-shadow-[0_0_8px_rgba(251,146,60,0.55)]" strokeWidth={1.55} />
+                  </div>
+                  <motion.div animate={{ rotate: -360 }} transition={{ duration: 14, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-emerald-500/30" />
+                </div>
               ) : (
-                <Radar size={32} className="text-emerald-600" strokeWidth={1.6} />
+                <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/20 to-transparent shadow-[inset_0_0_18px_rgba(16,185,129,0.22)]" />
+                  <Radar size={30} className="relative z-10 text-emerald-600 drop-shadow-[0_0_10px_rgba(16,185,129,0.55)]" strokeWidth={1.55} />
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }} className="absolute inset-0 rounded-full">
+                    <div className="h-full w-full bg-[conic-gradient(from_0deg,transparent_70%,rgba(16,185,129,0.62)_100%)]" />
+                    <div className="absolute right-1/2 top-0 h-1/2 w-[2px] origin-bottom bg-emerald-400 shadow-[0_0_12px_2px_rgba(16,185,129,1)]" />
+                  </motion.div>
+                  <motion.div animate={{ rotate: -360 }} transition={{ duration: 15, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-emerald-500/35" />
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 10, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-emerald-500/55 border-b-emerald-500/10" />
+                </div>
               )
             ) : null}
+
             {(activeTab === "offers" || activeTab === "my_offers") ? (
-              isFavoritesTab ? (
-                <Wallet size={34} className="text-sky-600" strokeWidth={1.6} />
-              ) : (
-                <LayoutGrid size={34} className="text-sky-600" strokeWidth={1.6} />
-              )
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full" style={{ perspective: 800 }}>
+                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-sky-500/18 to-transparent shadow-[inset_0_0_18px_rgba(14,165,233,0.2)]" />
+                <motion.div animate={{ y: [-3, 3, -3], rotateX: [0, 12, 0], rotateY: [-8, 8, -8] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="relative z-10">
+                  {isFavoritesTab ? (
+                    <Wallet size={34} className="text-sky-600 drop-shadow-[0_8px_12px_rgba(14,165,233,0.35)]" strokeWidth={1.55} />
+                  ) : (
+                    <LayoutGrid size={34} className="text-sky-600 drop-shadow-[0_8px_12px_rgba(14,165,233,0.35)]" strokeWidth={1.55} />
+                  )}
+                </motion.div>
+                <motion.div animate={{ scale: [1, 1.12, 1], opacity: [0.25, 0.75, 0.25] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="pointer-events-none absolute -inset-0.5 rounded-full border border-sky-500/40" />
+                <motion.div animate={{ rotate: 180 }} transition={{ duration: 8, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1.5 rounded-full border-2 border-transparent border-l-sky-500/45 border-r-sky-500/45" />
+              </div>
             ) : null}
-            {activeTab === "planowanie" ? <CalendarDays size={34} className="text-[#7a6230]" strokeWidth={1.6} /> : null}
-            {activeTab === "transakcje" ? <Briefcase size={34} className="text-amber-600" strokeWidth={1.6} /> : null}
+
+            {activeTab === "planowanie" ? (
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[rgba(196,163,90,0.22)] to-transparent shadow-[inset_0_0_18px_rgba(196,163,90,0.18)]" />
+                <motion.div animate={{ rotateY: [-5, 5, -5] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 flex h-11 w-11 flex-col items-center rounded-md border border-[rgba(196,163,90,0.45)] bg-gradient-to-b from-[#fbfaf7] to-[#e8e0d0] pt-1 shadow-[0_6px_14px_rgba(26,27,30,0.12)]">
+                  <div className="mb-1 flex gap-1.5">
+                    <div className="h-1.5 w-1.5 rounded-full bg-[#c4a35a] shadow-[0_0_5px_rgba(196,163,90,0.7)]" />
+                    <div className="h-1.5 w-1.5 rounded-full bg-[#c4a35a] shadow-[0_0_5px_rgba(196,163,90,0.7)]" />
+                  </div>
+                  <motion.div animate={{ rotateX: [0, 0, -110, -110], opacity: [1, 1, 0, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute bottom-0 z-20 flex h-[70%] w-full origin-top items-center justify-center overflow-hidden rounded-b border-t border-[rgba(196,163,90,0.28)] bg-gradient-to-b from-[#f5efe3] to-[#e8dfc8]">
+                    <motion.svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-emerald-600">
+                      <motion.path initial={{ pathLength: 0 }} animate={{ pathLength: [0, 1, 1, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} d="M20 6L9 17l-5-5" />
+                    </motion.svg>
+                  </motion.div>
+                  <div className="absolute bottom-0 z-10 flex h-[70%] w-full items-center justify-center rounded-b border-t border-[rgba(196,163,90,0.2)] bg-[#f3f1ec]">
+                    <span className="text-[11px] font-black text-[#7a6230]">24</span>
+                  </div>
+                </motion.div>
+                <motion.div animate={{ x: [10, -2, 6, 12, 10], y: [-10, -2, 3, -6, -10], rotateZ: [-10, -28, -10, 8, -10] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute z-30 text-amber-500 drop-shadow-[0_4px_6px_rgba(0,0,0,0.15)]">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="rotate-[-45deg] fill-amber-500/30">
+                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    <path d="m15 5 4 4" />
+                  </svg>
+                </motion.div>
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-[rgba(196,163,90,0.45)] border-b-[rgba(196,163,90,0.12)]" />
+              </div>
+            ) : null}
+
+            {activeTab === "transakcje" ? (
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full" style={{ perspective: 800 }}>
+                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-amber-500/18 to-transparent shadow-[inset_0_0_18px_rgba(245,158,11,0.18)]" />
+                <motion.div animate={{ rotateY: [-10, 10, -10], y: [-2, 2, -2] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="relative z-10">
+                  <Briefcase size={34} className="text-amber-600 drop-shadow-[0_0_12px_rgba(245,158,11,0.4)]" strokeWidth={1.55} />
+                </motion.div>
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 15, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-amber-500/45 border-b-amber-500/10" />
+              </div>
+            ) : null}
           </div>
 
           <div className="relative z-10 min-w-0 flex-1 text-center sm:text-left">
             <p className="eos-portal-label eos-portal-label--ok mb-2">
               {activeTab === "klienci" && c.tabClients}
-              {activeTab === "radar" && c.tabRadar}
+              {activeTab === "radar" && "Radar"}
               {activeTab === "my_offers" && c.tabMyOffers}
               {activeTab === "offers" && c.tabFavorites}
               {activeTab === "planowanie" && c.tabPlanning}
@@ -1312,7 +1381,7 @@ export default function CRMDashboard() {
               {activeTab === "transakcje" && c.dealsDesc}
             </p>
           </div>
-        </motion.div>
+        </div>
 
         {activeTab === 'klienci' && <CrmClientsWorkspace />}
 
@@ -1930,6 +1999,9 @@ export default function CRMDashboard() {
           </motion.div>
         )}
         </motion.div>
+        </AnimatePresence>
+        </div>
+        </div>
 </div>
     
           <AnimatePresence>
