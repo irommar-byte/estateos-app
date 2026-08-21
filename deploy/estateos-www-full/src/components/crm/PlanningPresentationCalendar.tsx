@@ -72,13 +72,13 @@ export default function PlanningPresentationCalendar({
 
   return (
     <>
-      <div className="bg-[var(--eos-card)] border border-[var(--eos-border)] rounded-[2rem] p-5 md:p-7 shadow-2xl relative overflow-hidden">
+      <div className="eos-lux-panel eos-crm-section-panel rounded-[1.75rem] p-5 md:p-7 relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6 border-b border-[var(--eos-border)] pb-5">
           <div>
             <h2 className="text-xl md:text-2xl font-black text-[var(--eos-text)] tracking-tighter flex items-center gap-2.5">
               <Calendar className="text-emerald-500 w-6 h-6" /> Kalendarz Prezentacji
             </h2>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)] mt-1">
+            <p className="eos-portal-label mt-1">
               Podgląd rezerwacji i negocjacji
             </p>
           </div>
@@ -86,25 +86,25 @@ export default function PlanningPresentationCalendar({
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_10px_rgba(250,204,21,0.7)]" />
-              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-muted)]">
+              <span className="eos-portal-label">
                 Do akceptacji
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-amber-500/80 shadow-[0_0_8px_rgba(245,158,11,0.4)]" />
-              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-subtle)]">
+              <span className="eos-portal-label">
                 Twoja propozycja
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
-              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-muted)]">
+              <span className="eos-portal-label">
                 Zatwierdzone
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.6)]" />
-              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-muted)]">
+              <span className="eos-portal-label">
                 Pozyskanie
               </span>
             </div>
@@ -116,7 +116,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftYear(-1)}
-              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors text-[10px] font-black uppercase tracking-widest"
+              className="eos-lux-btn eos-lux-btn--platinum !min-h-0 px-2.5 py-2 text-[10px] font-black uppercase tracking-widest"
               aria-label="Poprzedni rok"
             >
               «
@@ -124,7 +124,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftMonth(-1)}
-              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors"
+              className="eos-lux-btn eos-lux-btn--platinum !min-h-0 p-2"
               aria-label="Poprzedni miesiąc"
             >
               <ChevronLeft size={18} />
@@ -139,7 +139,7 @@ export default function PlanningPresentationCalendar({
                 setViewYear(today.getFullYear());
                 setViewMonth(today.getMonth());
               }}
-              className="mt-1 text-[9px] font-black uppercase tracking-widest text-emerald-500/90 hover:text-emerald-400"
+              className="eos-lux-btn eos-lux-btn--platinum !min-h-0 mt-1 px-3 py-1 text-[9px] font-black uppercase tracking-widest"
             >
               Dziś
             </button>
@@ -149,7 +149,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftMonth(1)}
-              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors"
+              className="eos-lux-btn eos-lux-btn--platinum !min-h-0 p-2"
               aria-label="Następny miesiąc"
             >
               <ChevronRight size={18} />
@@ -157,7 +157,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftYear(1)}
-              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors text-[10px] font-black uppercase tracking-widest"
+              className="eos-lux-btn eos-lux-btn--platinum !min-h-0 px-2.5 py-2 text-[10px] font-black uppercase tracking-widest"
               aria-label="Następny rok"
             >
               »
@@ -169,7 +169,7 @@ export default function PlanningPresentationCalendar({
           {WEEKDAYS.map((wd) => (
             <div
               key={wd}
-              className="text-center text-[9px] font-black uppercase tracking-widest text-[var(--eos-subtle)] py-1"
+              className="eos-portal-label text-center py-1"
             >
               {wd}
             </div>
@@ -191,17 +191,17 @@ export default function PlanningPresentationCalendar({
                 key={d.toISOString()}
                 type="button"
                 onClick={() => setSelectedDate(d)}
-                className={`relative min-h-[52px] sm:min-h-[58px] rounded-xl p-1.5 flex flex-col items-center justify-between border transition-all duration-200 hover:scale-[1.04] active:scale-[0.98] ${
+                className={`relative min-h-[52px] sm:min-h-[58px] rounded-xl p-1.5 flex flex-col items-center justify-between transition-all duration-200 hover:scale-[1.04] active:scale-[0.98] ${
                   isToday
-                    ? 'border-emerald-500/50 bg-emerald-500/[0.08] shadow-[0_0_20px_rgba(16,185,129,0.12)]'
+                    ? 'eos-raised-chip eos-raised-chip--on'
                     : inMonth
-                      ? 'border-white/8 bg-[var(--eos-input)] hover:border-[var(--eos-border)]'
-                      : 'border-[var(--eos-border)] bg-[var(--eos-input)] opacity-45'
+                      ? 'eos-inset-well'
+                      : 'eos-inset-well opacity-45'
                 }`}
               >
                 <span
                   className={`text-[11px] sm:text-sm font-black leading-none ${
-                    isToday ? 'text-emerald-400' : inMonth ? 'text-[var(--eos-text)]' : 'text-[var(--eos-subtle)]'
+                    isToday ? '' : inMonth ? 'text-[var(--eos-text)]' : 'text-[var(--eos-subtle)]'
                   }`}
                 >
                   {d.getDate()}
@@ -261,12 +261,12 @@ export default function PlanningPresentationCalendar({
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.96, y: 16 }}
               onClick={(e) => e.stopPropagation()}
-              className="eos-themed-modal relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)]"
+              className="eos-lux-panel relative w-full max-w-2xl overflow-hidden rounded-[2rem]"
             >
               <div className="p-5 md:p-7 border-b border-[var(--eos-border)] flex justify-between items-start gap-4 bg-gradient-to-r from-emerald-500/10 to-transparent">
                 <div>
                   <h3 className="text-xl md:text-2xl font-black text-[var(--eos-text)] tracking-tighter">Plan Dnia</h3>
-                  <p className="text-emerald-500 font-bold uppercase tracking-widest text-[10px] mt-1">
+                  <p className="eos-portal-label eos-portal-label--ok mt-1">
                     {selectedDate.toLocaleDateString('pl-PL', {
                       weekday: 'long',
                       year: 'numeric',
@@ -278,7 +278,7 @@ export default function PlanningPresentationCalendar({
                 <button
                   type="button"
                   onClick={() => setSelectedDate(null)}
-                  className="p-2.5 bg-[var(--eos-input)] hover:bg-red-500/90 hover:text-[var(--eos-text)] rounded-full transition-colors text-[var(--eos-muted)] shrink-0"
+                  className="eos-lux-btn eos-lux-btn--platinum !min-h-0 shrink-0 rounded-full p-2.5"
                 >
                   <X size={18} />
                 </button>
@@ -304,7 +304,7 @@ export default function PlanningPresentationCalendar({
                     return (
                       <div
                         key={app.id}
-                        className="bg-[var(--eos-input)] border border-[var(--eos-border)] rounded-2xl p-4 flex flex-col gap-3"
+                        className="eos-inset-well rounded-2xl p-4 flex flex-col gap-3"
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <Clock size={14} className="text-emerald-500 shrink-0" />
@@ -390,7 +390,7 @@ export default function PlanningPresentationCalendar({
                                     email: cp.email || undefined,
                                   });
                                 }}
-                                className="text-[9px] font-black uppercase tracking-widest text-yellow-500 hover:text-yellow-400"
+                                className="eos-lux-btn eos-lux-btn--platinum !min-h-0 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest"
                               >
                                 Profil
                               </button>
@@ -402,7 +402,7 @@ export default function PlanningPresentationCalendar({
                                 onManage(app);
                                 setSelectedDate(null);
                               }}
-                              className="px-4 py-2.5 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest shadow-[0_8px_20px_rgba(16,185,129,0.35)] hover:brightness-110 transition-all"
+                              className="eos-lux-btn eos-lux-btn--primary px-4 py-2.5 text-[10px] font-black uppercase tracking-widest"
                             >
                               {app.type === 'ACQUISITION' ? 'Klient' : 'Zarządzaj'}
                             </button>
