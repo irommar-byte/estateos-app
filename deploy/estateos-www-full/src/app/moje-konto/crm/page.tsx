@@ -26,6 +26,7 @@ import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
 import CrmSectionTabBar, { type CrmSectionTabId } from "@/components/crm/CrmSectionTabBar";
+import CrmMyOffersBoard from "@/components/crm/CrmMyOffersBoard";
 import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
 import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
@@ -1587,300 +1588,46 @@ export default function CRMDashboard() {
         )}
 
         {(activeTab === 'offers' || activeTab === 'my_offers') && (
-          <>
-          {isListingsTab && (
-            <div className="mb-6">
-              <div className="flex bg-[#111] border border-[var(--eos-border)] rounded-full p-1.5 shadow-inner relative w-full max-w-[560px]">
-                <div
-                  className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(33.33%-4px)] bg-[var(--eos-bg-elevated)] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                    offerSectionFilter === 'ACTIVE'
-                      ? 'translate-x-0'
-                      : offerSectionFilter === 'PENDING'
-                        ? 'translate-x-[calc(100%+4px)]'
-                        : 'translate-x-[calc(200%+8px)]'
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setOfferSectionFilter('ACTIVE')}
-                  className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
-                    offerSectionFilter === 'ACTIVE' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
-                  }`}
-                >
-                  {fmtDict(c.offerFilter.active, { n: offersBySection.ACTIVE.length })}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOfferSectionFilter('PENDING')}
-                  className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
-                    offerSectionFilter === 'PENDING' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
-                  }`}
-                >
-                  {fmtDict(c.offerFilter.pending, { n: offersBySection.PENDING.length })}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOfferSectionFilter('COMPLETED')}
-                  className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
-                    offerSectionFilter === 'COMPLETED' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
-                  }`}
-                >
-                  {fmtDict(c.offerFilter.completed, { n: offersBySection.COMPLETED.length })}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(offersVisibleInSection.length === 0) ? (
-              <div className="eos-surface-card col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-[var(--eos-border)] rounded-[2.5rem] bg-[var(--eos-bg-elevated)] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-blue-900/5 pointer-events-none" />
-                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm mb-8 relative z-10">
-                  {isFavoritesTab
-                    ? c.favoritesEmpty
-                    : offerSectionFilter === 'ACTIVE'
-                      ? c.offers.emptyActive
-                      : offerSectionFilter === 'PENDING'
-                        ? c.offers.emptyPending
-                        : c.offers.emptyCompleted}
-                </p>
-                {isListingsTab && (
-                  <motion.button
-                    animate={{ scale: [1, 1.05, 1], boxShadow: ['0px 0px 0px rgba(59,130,246,0)', '0px 0px 30px rgba(59,130,246,0.3)', '0px 0px 0px rgba(59,130,246,0)'] }}
-                    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-                    onClick={goToAddOffer} className="relative z-10 flex items-center gap-3 px-8 py-4 bg-blue-600/20 border border-blue-500/50 hover:bg-blue-600 hover:border-blue-500 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 shadow-[0_0_20px_rgba(37,99,235,0.4)] cursor-pointer group hover:shadow-[0_0_30px_rgba(37,99,235,0.6)]">
-                    <span className="text-xl leading-none text-blue-400 group-hover:text-white">+</span> {c.offers.addProperty}
-                  </motion.button>
-                )}
-                {isFavoritesTab && (
-                  <button
-                    type="button"
-                    onClick={() => { window.location.href = '/oferty'; }}
-                    className="relative z-10 px-8 py-4 bg-white/5 border border-[var(--eos-border)] hover:bg-white/10 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 cursor-pointer"
-                  >
-                    {c.favoritesDiscoverMarket}
-                  </button>
-                )}
-              </div>
-            ) : (
-              [...(showAddOfferTile ? [{ id: 'ADD_NEW_BTN', isDummy: true }] : []), ...offersVisibleInSection].map((offer: any) => {
-                if (offer.isDummy) return (
-                  <motion.button
-                    type="button"
-                    key="add-new-btn"
-                    whileHover={{ scale: 0.98 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={goToAddOffer}
-                    className="eos-surface-card bg-[var(--eos-bg-elevated)] border border-dashed border-white/25 hover:border-blue-400/80 rounded-[2.5rem] p-6 flex flex-col items-center justify-center min-h-[300px] cursor-pointer transition-colors group relative overflow-hidden shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
-                  >
-                    <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/10 transition-colors duration-500" />
-                    <div className="w-16 h-16 rounded-full border border-blue-400/40 group-hover:border-blue-300 flex items-center justify-center mb-4 transition-colors shadow-[0_0_18px_rgba(59,130,246,0.25)]">
-                      <Plus size={28} className="text-blue-300 group-hover:text-blue-200 transition-colors" />
-                    </div>
-                    <p className="text-white/75 font-bold uppercase tracking-widest text-xs group-hover:text-white transition-colors">{c.offers.addAnother}</p>
-                  </motion.button>
-                );
-                
-                const now = new Date();
-                const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : Number.NaN;
-                const hasValidExpiry = Number.isFinite(expiresAtMs);
-                const createdAt = new Date(offer.createdAt || now);
-                const status = String(offer?.status || '').toUpperCase();
-                const isPending = isOfferAwaitingReview(offer);
-                const isArchived = classifyOfferSection(offer) === 'COMPLETED';
-                const daysLeft = hasValidExpiry
-                  ? Math.max(0, Math.ceil((expiresAtMs - now.getTime()) / (1000 * 60 * 60 * 24)))
-                  : null;
-                const isNew = (now.getTime() - createdAt.getTime()) < (1000 * 60 * 60 * 24);
-                const offerBids = (crmData?.bids || []).filter((b: any) => b.offerId === offer.id && b.status === 'PENDING');
-                const offerPrimaryImage = resolveOfferPrimaryImage(offer);
-
-                return (
-                  <div key={offer.id} className={`eos-surface-card bg-[var(--eos-bg-elevated)] border rounded-[2.5rem] p-6 relative overflow-hidden transition-all duration-300 shadow-xl group ${isArchived ? 'border-red-500/20 opacity-90' : 'border-[var(--eos-border)] hover:border-emerald-500/30 hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] hover:-translate-y-1'}`}>
-                    
-                    {!isArchived && <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>}
-
-                    
-                    {isFavoritesTab && !offer.isDummy && (
-                      <OfferFavoriteButton
-                        offerId={offer.id}
-                        variant="icon"
-                        size={20}
-                        className="absolute top-6 right-6 z-30 shadow-[0_4px_15px_rgba(0,0,0,0.5)]"
-                        onRequireAuth={() => {
-                          window.location.href = `/login?redirect=${encodeURIComponent('/moje-konto/crm')}`;
-                        }}
-                      />
-                    )}
-                    
-                    <div className="flex gap-4 mb-6 relative z-10">
-                      <div className={`w-16 h-16 rounded-2xl overflow-hidden shrink-0 border ${isArchived ? 'border-red-500/30 grayscale' : 'border-[var(--eos-border)]'}`}>
-                         {offerPrimaryImage ? (
-                           <img
-                             src={offerPrimaryImage}
-                             alt={offer.title || c.offers.thumbAlt}
-                             className="w-full h-full object-cover"
-                             onError={(e) => {
-                               e.currentTarget.style.display = 'none';
-                               const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-                               if (fallback) fallback.style.display = 'flex';
-                             }}
-                           />
-                         ) : null}
-                         <div className={`w-full h-full ${offerPrimaryImage ? 'hidden' : 'flex'} items-center justify-center bg-gradient-to-br from-[#141414] to-[#0b0b0b]`}>
-                           <Building2 size={18} className={isArchived ? 'text-white/35' : 'text-emerald-300/80'} />
-                         </div>
-                      </div>
-                      
-                      <div className="flex-1 min-w-0 flex flex-col justify-center">
-                        <div className="flex justify-between items-start gap-2 mb-1">
-                          <Link href={`/oferta/${offer.id}`} className="font-bold text-white text-sm truncate hover:text-emerald-400 transition-colors flex items-center gap-1 group/link">
-                             {offer.title} <ExternalLink size={12} className="opacity-0 group-hover/link:opacity-100 transition-opacity text-emerald-400" />
-                          </Link>
-                          
-                          <div className="shrink-0">
-                            {isArchived ? (
-                              <span className="bg-red-500/10 text-red-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-red-500/20">{c.offers.badgeExpired}</span>
-                            ) : isPending ? (
-                              <span className="bg-yellow-500/10 text-yellow-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.4)] animate-pulse">{c.offers.badgeInReview}</span>
-                            ) : isNew ? (
-                              <span className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.3)] animate-pulse">{c.offers.badgeNew}</span>
-                            ) : (
-                              <span className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">{c.offers.badgeActive}</span>
-                            )}
-                          </div>
-                        </div>
-                        
-                          
-                          <span className={`self-start px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border mb-2 ${offer.transactionType === 'rent' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>{offer.transactionType === 'rent' ? c.rent : c.sale}</span>
-                          <div className="flex flex-col mt-0.5">
-                            {offer.transactionType === 'rent' ? (
-                              <>
-                                <p className={`font-black text-xs ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-blue-400'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-[var(--eos-subtle)]">/ miesiąc</span></p>
-                                {!isArchived && (
-                                  <div className="flex flex-col gap-0.5 mt-1 text-[8px] font-bold text-[var(--eos-subtle)] uppercase tracking-widest">
-                                    {offer.deposit && <span>{c.radar.deposit} <span className="text-white/70">{offer.deposit} PLN</span></span>}
-                                    {offer.rentAdminFee && <span>Czynsz adm: <span className="text-white/70">{offer.rentAdminFee} PLN</span></span>}
-                                    {offer.petsAllowed && <span className="text-emerald-500/80">Zwierzęta akceptowane</span>}
-                                  </div>
-                                )}
-                              </>
-                            ) : (
-                              <p className={`font-black text-xs ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-emerald-500'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN</p>
-                            )}
-                          </div>
-                      </div>
-                    </div>
-
-                    <div className={`rounded-2xl p-4 text-center border mb-6 relative overflow-hidden transition-colors duration-300 ${isArchived ? 'bg-black border-red-500/10' : 'bg-[#111] border-[var(--eos-border)] group-hover:border-emerald-500/20 group-hover:bg-[#111]/80'}`}>
-                      <p className="text-[10px] text-[var(--eos-subtle)] font-bold uppercase tracking-widest mb-1">{c.offers.reach}</p>
-                      <p className={`text-3xl font-black ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-white'}`}>{offer.views || 0}</p>
-                    </div>
-
-                    
-                    {/* MODUŁ NEGOCJACJI (BIDS) */}
-                    {offerBids.length > 0 && isListingsTab && !isArchived && (
-                        <div className="mb-6 bg-gradient-to-br from-amber-500/10 to-amber-700/5 border border-amber-500/30 rounded-[1.5rem] p-4 shadow-[0_0_30px_rgba(245,158,11,0.15)] relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-[40px] pointer-events-none"></div>
-                            <h4 className="text-[10px] uppercase tracking-widest font-black text-amber-500 mb-3 flex items-center gap-2"><DollarSign size={14} /> {c.offers.bidsPendingTitle}</h4>
-                            <div className="flex flex-col gap-3 relative z-10">
-                                {offerBids.map((bid: any) => (
-                                    <div key={bid.id} className="bg-[var(--eos-bg)]/60 border border-[var(--eos-border)] rounded-xl p-4 flex flex-col gap-3 backdrop-blur-md hover:border-amber-500/30 transition-colors">
-                                        <div className="flex justify-between items-center">
-                                            <div>
-                                                <p className="text-lg font-black text-amber-400">{Number(bid.amount).toLocaleString('pl-PL')} PLN</p>
-                                                <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-bold">{bid.financing === 'CASH' ? `💰 ${c.offers.bidCash}` : `🏦 ${c.offers.bidMortgage}`}</p>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2 mt-1">
-                                            <button onClick={(e) => handleBidResponse(e, bid, 'ACCEPT')} className="py-2.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black border border-emerald-500/30 text-emerald-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">{c.offers.bidAccept}</button>
-                                            <button onClick={(e) => handleBidResponse(e, bid, 'REJECT')} className="py-2.5 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 text-red-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">{c.offers.bidReject}</button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-        
-                    <div className="relative z-10 flex flex-col gap-2">
-                      {isArchived ? (
-                        <button 
-                          onClick={() => handleRefreshOffer(offer)}
-                          className="group relative w-full py-4 rounded-[1.5rem] overflow-visible transition-all duration-500 flex items-center justify-center gap-3 border border-blue-500/50 cursor-pointer shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:scale-[1.04] z-10"
-                        >
-                          <div className="absolute inset-0 w-full h-full rounded-[1.5rem] overflow-hidden pointer-events-none" style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e40af 100%)" }}>
-                            <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/80 to-transparent skew-x-[-30deg] pointer-events-none group-hover:animate-[luxurySweep_1.5s_ease-in-out_infinite]" style={{ left: '-100%' }} />
-                          </div>
-                          <RefreshCcw className="text-white relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] group-hover:rotate-180" size={18} />
-                          <span className="text-[12px] font-black uppercase tracking-[0.2em] text-white whitespace-nowrap relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                            {c.offers.renewCta}
-                          </span>
-                        </button>
-                      ) : (
-                        <div className="w-full py-4 rounded-[1.5rem] bg-white/5 border border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)] flex items-center justify-between px-4">
-                          <div className="flex items-center gap-3">
-                            <Clock size={16} className={isPending ? 'text-yellow-500' : (daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500')} /> 
-                            <div className="flex flex-col text-left">
-                              {isPending ? (
-                                <>
-                                  <span className="block text-[var(--eos-muted)] text-[8px]">{c.offers.pubStatus}</span>
-                                  <span className="block font-black text-xs text-yellow-500">{c.offers.pubAwaiting}</span>
-                                </>
-                              ) : hasValidExpiry ? (
-                                <>
-                                  <span className="block text-[var(--eos-muted)] text-[8px]">{c.offers.pubValidUntil} {new Date(expiresAtMs).toLocaleDateString('pl-PL')}</span>
-                                  <span className={`block font-black text-xs ${daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500'}`}>{c.offers.pubDaysLeft.replace('{n}', String(daysLeft ?? 0))}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="block text-[var(--eos-muted)] text-[8px]">{c.offers.pubLabel}</span>
-                                  <span className="block font-black text-xs text-emerald-500">{c.offers.pubLive}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="grid grid-cols-2 gap-2 mt-2 relative z-20">
-                        <div className="relative group/edit">
-                          <Link href={`/edytuj-oferte/${offer.id}`} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-white/15 text-[10px] font-black uppercase tracking-widest text-white/80 flex items-center justify-center gap-2 hover:bg-white/10 hover:text-white transition-all">
-                             <Edit2 size={14} className="text-emerald-300" /> {c.offers.edit}
-                          </Link>
-                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black/90 border border-yellow-500/30 text-[9px] text-yellow-500 px-3 py-1.5 rounded-lg opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-[0_0_15px_rgba(234,179,8,0.2)] z-50">
-                             {c.offers.editHint}
-                          </div>
-                        </div>
-                        <button onClick={() => setOfferToArchive(offer)} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-red-500/30 text-[10px] font-black uppercase tracking-widest text-red-300 flex items-center justify-center gap-2 hover:bg-red-500/12 hover:text-red-200 transition-all cursor-pointer">
-                           <ArchiveX size={14} className="text-red-300" /> {c.offers.pause}
-                        </button>
-                      </div>
-                      {isListingsTab && !isAgencyWorkspace && offerSectionFilter === 'ACTIVE' && !isArchived ? (
-                        <button
-                          type="button"
-                          onClick={() => setTransferModalOffer({ id: Number(offer.id), title: String(offer.title || '') })}
-                          className="mt-2 w-full py-3 rounded-[1.5rem] bg-transparent border border-amber-500/35 text-[10px] font-black uppercase tracking-widest text-amber-300 flex items-center justify-center gap-2 hover:bg-amber-500/12 hover:text-amber-200 transition-all cursor-pointer"
-                        >
-                          <Building2 size={14} className="text-amber-300" /> Oddaj do agencji
-                        </button>
-                      ) : null}
-                      {isListingsTab ? (
-                        <button
-                          type="button"
-                          onClick={() => setCommentModalOffer({ id: Number(offer.id), title: String(offer.title || '') })}
-                          className="mt-2 w-full py-3 rounded-[1.5rem] bg-transparent border border-blue-500/30 text-[10px] font-black uppercase tracking-widest text-blue-300 flex items-center justify-center gap-2 hover:bg-blue-500/12 hover:text-blue-200 transition-all cursor-pointer"
-                        >
-                          <MessageSquare size={14} className="text-blue-300" /> Komentarz
-                        </button>
-                      ) : null}
-
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-          </>
+          <CrmMyOffersBoard
+            offers={offersVisibleInSection}
+            bids={crmData?.bids || []}
+            sectionFilter={offerSectionFilter}
+            onSectionFilter={setOfferSectionFilter}
+            sectionCounts={{
+              ACTIVE: offersBySection.ACTIVE.length,
+              PENDING: offersBySection.PENDING.length,
+              COMPLETED: offersBySection.COMPLETED.length,
+            }}
+            isListingsTab={isListingsTab}
+            isFavoritesTab={isFavoritesTab}
+            isAgencyWorkspace={isAgencyWorkspace}
+            showAddTile={showAddOfferTile}
+            copy={{
+              ...c.offers,
+              sale: c.sale,
+              rent: c.rent,
+              deposit: c.radar?.deposit,
+              favoritesEmpty: c.favoritesEmpty,
+              favoritesDiscoverMarket: c.favoritesDiscoverMarket,
+            }}
+            filterLabels={c.offerFilter}
+            onAdd={goToAddOffer}
+            onRefresh={handleRefreshOffer}
+            onArchive={setOfferToArchive}
+            onComment={setCommentModalOffer}
+            onTransfer={setTransferModalOffer}
+            onBidResponse={handleBidResponse}
+            onPriceSaved={(offerId, price) => {
+              setCrmData((prev: any) => ({
+                ...prev,
+                offers: (prev.offers || []).map((o: any) =>
+                  Number(o.id) === offerId ? { ...o, price } : o,
+                ),
+              }));
+            }}
+            isOfferAwaitingReview={isOfferAwaitingReview}
+            classifyOfferSection={classifyOfferSection}
+          />
         )}
         {/* --- TRANSAKCJE / DEAL ROOMY --- */}
         {activeTab === 'transakcje' && (
