@@ -4,10 +4,9 @@ import HeroDepthEffect from "@/components/hero3d/HeroDepthEffect";
 import InteractiveMap from "@/components/map/InteractiveMap";
 import CinematicLoader from "@/components/ui/CinematicLoader";
 import SmoothScroll from "@/components/layout/SmoothScroll";
-import GlobalStats from "@/components/home/GlobalStats";
+import HomeLiveStrip from "@/components/home/HomeLiveStrip";
 import FeaturedGallery from "@/components/home/FeaturedGallery";
 import FeaturedCarsGallery from "@/components/home/FeaturedCarsGallery";
-import MarketPulseBar from "@/components/home/MarketPulseBar";
 import EstateOsGuidePanel from "@/components/home/EstateOsGuidePanel";
 import Footer from "@/components/layout/Footer";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -27,29 +26,27 @@ export default function Home() {
     <>
       <CinematicLoader />
       <SmoothScroll>
-        <main className="premium-home-shell theme-aware-dashboard relative min-h-screen overflow-hidden bg-[var(--eos-bg)] text-[var(--eos-text)] selection:bg-emerald-500/30">
+        <main className="premium-home-shell eos-lux-home theme-aware-dashboard relative min-h-screen overflow-hidden bg-[var(--eos-bg)] text-[var(--eos-text)] selection:bg-emerald-500/30">
           <HeroDepthEffect />
-          <MarketPulseBar />
-          <EstateOsGuidePanel />
 
-          <div className="relative z-10 mt-10 sm:mt-14 md:mt-16">
-            <GlobalStats />
-          </div>
-
+          {/* Real inventory first — no duplicate “start here” menu */}
           <FeaturedGallery />
           <FeaturedCarsGallery />
 
+          <HomeLiveStrip />
+          <EstateOsGuidePanel />
+
           <div
             id="map-section"
-            className="premium-home-surface relative z-20 w-full scroll-mt-[6.75rem] border-t border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] pt-16 shadow-[0_-40px_100px_rgba(0,0,0,0.12)] sm:scroll-mt-24 sm:pt-24"
+            className="premium-home-surface relative z-20 w-full scroll-mt-[6.75rem] border-t border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] pt-16 shadow-[0_-40px_100px_rgba(0,0,0,0.06)] sm:scroll-mt-24 sm:pt-24"
           >
             <div className="mx-auto mb-12 max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/90">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-700/90">
                 {dict.homePremium.mapEyebrow}
               </p>
               <h2 className="premium-home-section-title mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
                 {dict.homePremium.mapTitle}{" "}
-                <span className="font-semibold text-emerald-500">{dict.homePremium.mapTitleHighlight}</span>
+                <span className="font-semibold text-emerald-600">{dict.homePremium.mapTitleHighlight}</span>
               </h2>
               <p className="mx-auto mt-5 max-w-2xl text-sm font-light leading-relaxed text-[var(--eos-muted)] sm:text-base">
                 {dict.homePremium.mapSubtitle}

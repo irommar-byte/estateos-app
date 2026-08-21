@@ -17,6 +17,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
     },
     nav: {
       login: "Увійти",
+      clientPanel: "Ваш кабінет",
       profile: "Профіль",
       manage: "Керувати",
       manageCentral: "Керувати (Central)",
@@ -281,7 +282,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       ctaAgency: "Для агентств і посередників",
       exploreMap: "Карта оголошень",
       scroll: "Гортати",
-      tagline: "Продаєте квартиру, будинок чи авто? Опублікуйте одразу — без комісії порталу.",
+      tagline: "Нерухомість або авто — опублікуйте одразу, без комісії порталу. Одна платформа, повний контроль.",
       homeCard: {
         brand: "EstateOS™Home",
         title: "Нерухомість",

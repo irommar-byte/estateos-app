@@ -19,6 +19,7 @@ export type Dictionary = {
   };
   nav: {
     login: string;
+    clientPanel: string;
     profile: string;
     manage: string;
     manageCentral: string;
@@ -700,6 +701,7 @@ const pl: Dictionary = {
   },
   nav: {
     login: "Zaloguj",
+    clientPanel: "Twój panel",
     profile: "Profil",
     manage: "Zarządzaj",
     manageCentral: "Zarządzaj (Centrala)",
@@ -833,7 +835,7 @@ const pl: Dictionary = {
     ctaAgency: "Dla agencji i pośredników",
     exploreMap: "Mapa ofert",
     scroll: "Przewiń",
-    tagline: "Sprzedajesz mieszkanie, dom lub auto? Opublikuj od razu — bez prowizji portalowej.",
+    tagline: "Nieruchomość lub auto — opublikuj od razu, bez prowizji portalowej. Jedna platforma, pełna kontrola.",
     homeCard: {
       brand: "EstateOS™Home",
       title: "Nieruchomości",
@@ -1503,6 +1505,7 @@ const en: Dictionary = {
   },
   nav: {
     login: "Sign in",
+    clientPanel: "Your panel",
     profile: "Profile",
     manage: "Manage",
     manageCentral: "Manage (Central)",
@@ -1636,7 +1639,7 @@ const en: Dictionary = {
     ctaAgency: "For agencies & brokers",
     exploreMap: "Listing map",
     scroll: "Scroll",
-    tagline: "Selling a home or a car? Publish right away — no portal commission.",
+    tagline: "Property or car — publish instantly, with no portal commission. One platform, full control.",
     homeCard: {
       brand: "EstateOS™Home",
       title: "Real estate",

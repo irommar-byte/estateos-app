@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Brain, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import {
   dispatchIntelligenceSheetOpen,
   subscribeDiscoveryUpdated,
@@ -619,7 +620,7 @@ export default function DiscoveryPulse() {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] left-3 z-[56] flex flex-col items-start gap-2.5 sm:bottom-8 sm:left-6"
+      className="pointer-events-none fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))] left-3 z-[56] flex flex-col items-start gap-2.5 sm:bottom-10 sm:left-6"
       aria-live="polite"
     >
       <AnimatePresence>

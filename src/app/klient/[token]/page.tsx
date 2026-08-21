@@ -27,6 +27,7 @@ import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAtt
 import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
+import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 
 type SearchCriteria = {
   location: string;
@@ -174,6 +175,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   useEffect(() => {
     void params.then((p) => setToken(p.token));
   }, [params]);
+
+  useEffect(() => {
+    if (token) rememberClientPortalToken(token);
+  }, [token]);
 
   const load = useCallback(async () => {
     if (!token) return;

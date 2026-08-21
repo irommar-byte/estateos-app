@@ -77,10 +77,9 @@ export default function FeaturedGallery() {
       .then((res) => res.json())
       .then((json) => {
         if (!cancelled && Array.isArray(json)) {
-          const featuredOnly = json
-            .filter((offer: Offer) => offer?.featured === true)
-            .slice(0, MAX_FEATURED);
-          setOffers(featuredOnly);
+          const featuredOnly = json.filter((offer: Offer) => offer?.featured === true);
+          const pool = featuredOnly.length ? featuredOnly : json;
+          setOffers(pool.slice(0, MAX_FEATURED));
         }
       })
       .catch(() => {
@@ -129,7 +128,7 @@ export default function FeaturedGallery() {
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-12 flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-400/90">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-700/90 dark:text-emerald-400/90">
               {dict.homePremium.galleryEyebrow}
             </p>
             <h2 className="mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
@@ -142,7 +141,7 @@ export default function FeaturedGallery() {
           </div>
           <Link
             href="/oferty"
-            className="group inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-emerald-600 transition-colors hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300"
+            className="group inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-emerald-600 transition-colors hover:text-emerald-600 dark:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300"
           >
             {dict.homePremium.galleryViewAll}
             <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -170,7 +169,7 @@ export default function FeaturedGallery() {
               >
                 <Link
                   href={`/oferta/${offer.id}`}
-                  className="eos-media-chrome group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
+                  className="eos-media-chrome eos-lux-media-card group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
                 >
                   <div
                     className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"

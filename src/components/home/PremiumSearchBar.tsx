@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Building2, Crosshair, MapPin, Search, SlidersHorizontal } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import LuxurySegmentSwitch from "@/components/ui/LuxurySegmentSwitch";
 
 export type HomeMapSearchDetail = {
   query?: string;
@@ -116,20 +117,18 @@ export default function PremiumSearchBar() {
           </label>
 
           <div className="flex items-center gap-2">
-            <div className="flex min-h-14 flex-1 rounded-full bg-[var(--eos-input)] p-1 lg:w-36 lg:flex-none">
-              {(["sale", "rent"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setTransactionMode(mode)}
-                  className={`flex-1 rounded-full px-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                    transactionMode === mode ? "eos-segment-active" : "eos-segment-inactive"
-                  }`}
-                >
-                  {mode === "sale" ? dict.homePremium.searchSale : dict.homePremium.searchRent}
-                </button>
-              ))}
-            </div>
+            <LuxurySegmentSwitch
+              ariaLabel={dict.homePremium.searchSale}
+              className="min-h-14 flex-1 lg:w-auto lg:flex-none"
+              size="md"
+              accent="home"
+              value={transactionMode}
+              onChange={setTransactionMode}
+              options={[
+                { value: "sale", label: dict.homePremium.searchSale, accent: "home" },
+                { value: "rent", label: dict.homePremium.searchRent, accent: "rent" },
+              ]}
+            />
             <button
               type="button"
               className="hidden size-14 items-center justify-center rounded-full bg-[var(--eos-input)] text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)] sm:flex"

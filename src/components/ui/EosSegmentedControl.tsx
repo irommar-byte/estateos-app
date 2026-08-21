@@ -51,14 +51,14 @@ export default function EosSegmentedControl<T extends string>({
             {selected ? (
               <motion.span
                 layoutId={layoutId}
-                className="absolute inset-0 -z-10 rounded-full border border-[var(--eos-border-strong)] bg-[var(--eos-text)] shadow-[var(--eos-shadow-soft)]"
+                className="eos-lux-segment-pill absolute inset-0 -z-10 rounded-full"
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
             ) : null}
             {opt.icon ? (
               <span
                 className={`flex shrink-0 items-center justify-center ${
-                  selected ? "text-[var(--eos-contrast)]" : ""
+                  selected ? "text-[#065f46]" : ""
                 }`}
               >
                 {opt.icon}
@@ -66,7 +66,7 @@ export default function EosSegmentedControl<T extends string>({
             ) : null}
             <span
               className={`truncate text-[10px] font-black uppercase tracking-[0.12em] ${
-                selected ? "text-[var(--eos-contrast)]" : ""
+                selected ? "text-[#065f46]" : ""
               }`}
             >
               {opt.label}

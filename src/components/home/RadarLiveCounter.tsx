@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronLeft, Radar, Sparkles, Users } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useLocale } from "@/contexts/LocaleContext";
 import { numberFormatLocale } from "@/i18n/config";
 import {
@@ -37,6 +38,8 @@ export default function RadarLiveCounter() {
   const { dict, locale } = useLocale();
   const copy = dict.radarLive;
   const reduceMotion = useReducedMotion();
+  const pathname = usePathname() || "";
+  const isHome = pathname === "/" || pathname === "";
 
   const [displayCount, setDisplayCount] = useState(RADAR_COUNTER_BASE);
   const [expanded, setExpanded] = useState(false);
@@ -44,11 +47,26 @@ export default function RadarLiveCounter() {
   const [delta, setDelta] = useState(0);
   const [confetti, setConfetti] = useState<ConfettiPiece[]>([]);
   const [pinned, setPinned] = useState(false);
+  const [pastHero, setPastHero] = useState(!isHome);
 
   const cardRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevCountRef = useRef<number | null>(null);
   const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isHome) {
+      setPastHero(true);
+      return;
+    }
+    setPastHero(false);
+    const onScroll = () => {
+      setPastHero(window.scrollY > Math.min(window.innerHeight * 0.72, 640));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isHome]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
@@ -151,6 +169,8 @@ export default function RadarLiveCounter() {
       setPinned(false);
     }
   };
+
+  if (!pastHero) return null;
 
   return (
     <>
