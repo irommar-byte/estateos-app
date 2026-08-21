@@ -387,7 +387,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       <header className="eos-inset-frame eos-stack-card relative rounded-[2rem] p-6 sm:p-8">
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 space-y-1">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+            <span className="eos-portal-label eos-portal-label--ok inline-flex items-center gap-1.5 eos-raised-chip rounded-full px-3 py-1">
               <CheckCircle2 className="size-3.5" />
               Panel Klienta EstateOS
             </span>
@@ -408,12 +408,12 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 className="size-16 rounded-full object-cover ring-2 ring-emerald-500/30"
               />
             ) : (
-              <div className="flex size-16 items-center justify-center rounded-full bg-emerald-500/20 text-xl font-black text-emerald-600">
+              <div className="eos-inset-well flex size-16 items-center justify-center rounded-full text-xl font-black text-emerald-600">
                 {portal.agentName.charAt(0)}
               </div>
             )}
             <div className="min-w-0 space-y-1">
-              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500">Twój agent</p>
+              <p className="eos-portal-label eos-portal-label--ok">Twój agent</p>
               <p className="break-words text-base font-bold text-[var(--eos-text)]">{portal.agentName}</p>
               <p className="break-words text-xs text-[var(--eos-muted)]">{portal.agentTitle || "Doradca ds. Nieruchomości"}</p>
               <p className="break-words text-xs font-semibold text-emerald-600">{portal.agencyName}</p>
@@ -432,7 +432,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 📞
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] text-[var(--eos-muted)]">Zadzwoń do agenta</p>
+                <p className="eos-portal-label">Zadzwoń do agenta</p>
                 <p className="break-all">{portal.agentPhone}</p>
               </div>
             </a>
@@ -446,7 +446,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 ✉️
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] text-[var(--eos-muted)]">Wyślij wiadomość</p>
+                <p className="eos-portal-label">Wyślij wiadomość</p>
                 <p className="break-all">{portal.agentEmail}</p>
               </div>
             </a>
@@ -462,7 +462,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 🏢
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] text-[var(--eos-muted)]">Profil biura EstateOS™</p>
+                <p className="eos-portal-label">Profil biura EstateOS™</p>
                 <p className="break-words">{portal.agencyName}</p>
               </div>
             </a>
@@ -471,7 +471,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       </header>
 
       <section className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Aplikacja iPhone</p>
+        <p className="eos-portal-label eos-portal-label--ok">Aplikacja iPhone</p>
         <h2 className="mt-1 text-lg font-black text-[var(--eos-text)]">Otwórz panel w aplikacji i łap powiadomienia od razu</h2>
         <p className="mt-1 text-sm leading-relaxed text-[var(--eos-muted)]">
           Mail otwiera ten panel w przeglądarce. W aplikacji EstateOS masz te same oferty, czat z agentem i natychmiastowe powiadomienia, gdy pojawi się nowa propozycja albo zmiana etapu.
@@ -484,10 +484,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} /> : null}
 
       {portal.meeting ? (
-        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
+        <section className="eos-lux-panel rounded-[1.75rem] p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Umówione spotkanie</p>
+              <p className="eos-portal-label eos-portal-label--ok">Umówione spotkanie</p>
               <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">
                 {new Date(portal.meeting.startsAt).toLocaleString("pl-PL", {
                   weekday: "long",
@@ -502,10 +502,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               ) : null}
             </div>
             <span
-              className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${
+              className={`eos-raised-chip rounded-full px-3 py-1 text-[10px] ${
                 portal.meeting.status === "confirmed"
-                  ? "bg-emerald-500/15 text-emerald-600"
-                  : "bg-amber-500/15 text-amber-700"
+                  ? "eos-raised-chip--on"
+                  : ""
               }`}
             >
               {portal.meeting.status === "confirmed" ? "Potwierdzone" : "Oczekuje na agenta"}
@@ -527,7 +527,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 type="button"
                 disabled={scheduleBusy === "confirm_meeting"}
                 onClick={() => void postSchedule("confirm_meeting", {})}
-                className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                className="eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[10px] disabled:opacity-50"
               >
                 Potwierdzam termin
               </button>
@@ -535,14 +535,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           ) : null}
           <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="block">
-              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+              <span className="eos-portal-label">
                 Zaproponuj inny termin
               </span>
               <input
                 type="datetime-local"
                 value={changeDraft.startsAt}
                 onChange={(e) => setChangeDraft((d) => ({ ...d, startsAt: e.target.value }))}
-                className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+                className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm"
               />
             </label>
             <button
@@ -554,7 +554,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                   reason: changeDraft.reason,
                 })
               }
-              className="rounded-full border border-emerald-500/40 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-emerald-600 disabled:opacity-50"
+              className="eos-lux-btn eos-lux-btn--platinum px-4 py-3 text-[10px] disabled:opacity-50"
             >
               Wyślij propozycję
             </button>
@@ -564,14 +564,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             onChange={(e) => setChangeDraft((d) => ({ ...d, reason: e.target.value }))}
             rows={2}
             placeholder="Powód zmiany terminu lub godziny"
-            className="mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+            className="eos-field-inset mt-3 w-full rounded-xl px-4 py-3 text-sm"
           />
         </section>
       ) : null}
 
       {portal.presentation ? (
-        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Prezentacja nieruchomości</p>
+        <section className="eos-lux-panel rounded-[1.75rem] p-6">
+          <p className="eos-portal-label eos-portal-label--ok">Prezentacja nieruchomości</p>
           <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">
             {new Date(portal.presentation.startsAt).toLocaleString("pl-PL", {
               weekday: "long",
@@ -584,7 +584,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           {portal.presentation.location ? (
             <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.presentation.location}</p>
           ) : null}
-          <p className="mt-2 text-xs font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+          <p className="mt-2 eos-portal-label">
             {portal.presentation.status === "confirmed" ? "Potwierdzona" : "Czeka na Twoją decyzję"}
           </p>
           {portal.presentation.status === "pending" ? (
@@ -593,7 +593,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 type="button"
                 disabled={scheduleBusy === "confirm_presentation"}
                 onClick={() => void postSchedule("confirm_presentation", {})}
-                className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                className="eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[10px] disabled:opacity-50"
               >
                 Potwierdzam prezentację
               </button>
@@ -604,13 +604,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               type="datetime-local"
               value={presentationChange.startsAt}
               onChange={(e) => setPresentationChange((d) => ({ ...d, startsAt: e.target.value }))}
-              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+              className="eos-field-inset rounded-xl px-4 py-3 text-sm"
             />
             <input
               value={presentationChange.reason}
               onChange={(e) => setPresentationChange((d) => ({ ...d, reason: e.target.value }))}
               placeholder="Powód zmiany"
-              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm"
+              className="eos-field-inset rounded-xl px-4 py-3 text-sm"
             />
           </div>
           <button
@@ -622,7 +622,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 reason: presentationChange.reason,
               })
             }
-            className="mt-3 rounded-full border border-emerald-500/40 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-600 disabled:opacity-50"
+            className="eos-lux-btn eos-lux-btn--platinum mt-3 px-4 py-2 text-[10px] disabled:opacity-50"
           >
             Zaproponuj inny termin prezentacji
           </button>
@@ -630,17 +630,17 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "SELLER" && (portal.listing || portal.listingProgress?.length) ? (
-        <section className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
+        <section className="eos-lux-panel rounded-[1.75rem] p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
+              <p className="eos-portal-label eos-portal-label--ok">
                 Twoja oferta
               </p>
               <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)]">
                 {portal.listing?.title || "Przygotowanie ogłoszenia"}
               </h2>
             </div>
-            <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-black uppercase text-emerald-600">
+            <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-xs">
               {portal.listing?.statusLabel || "W przygotowaniu"}
             </span>
           </div>
@@ -650,15 +650,15 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               {portal.listingProgress.map((step) => (
                 <div
                   key={step.id}
-                  className={`rounded-xl border px-3 py-3 ${
+                  className={`rounded-xl px-3 py-3 ${
                     step.done
-                      ? "border-emerald-500/30 bg-emerald-500/10"
+                      ? "eos-inset-well border-emerald-500/35 bg-emerald-500/10"
                       : step.current
-                        ? "border-emerald-500/50 bg-[var(--eos-input)]/40"
-                        : "border-[var(--eos-border)] bg-[var(--eos-input)]/20"
+                        ? "eos-lux-panel border-emerald-500/50"
+                        : "eos-inset-well opacity-80"
                   }`}
                 >
-                  <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+                  <p className="eos-portal-label">
                     {step.done ? "Gotowe" : step.current ? "Teraz" : "Dalej"}
                   </p>
                   <p className="mt-1 text-xs font-bold text-[var(--eos-text)]">{step.label}</p>
@@ -720,10 +720,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "SELLER" && portal.acquisition ? (
-        <section className="space-y-5 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)] sm:p-7">
+        <section className="eos-lux-panel space-y-5 rounded-[1.75rem] p-5 sm:p-7">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+              <p className="eos-portal-label eos-portal-label--ok flex items-center gap-2">
                 <BriefcaseBusiness className="size-4" />
                 Twoja współpraca z agentem
               </p>
@@ -732,10 +732,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 Widzisz przygotowanie nieruchomości, uzgodnione warunki, dokumenty i kolejne działania agenta w jednym miejscu.
               </p>
             </div>
-            <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[9px] font-black uppercase tracking-wider ${
+            <span className={`eos-raised-chip inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[9px] ${
               portal.acquisition.status === "SIGNED"
-                ? "bg-emerald-500/15 text-emerald-700"
-                : "bg-amber-500/15 text-amber-700"
+                ? "eos-raised-chip--on"
+                : ""
             }`}>
               {portal.acquisition.status === "SIGNED" ? <ShieldCheck className="size-3.5" /> : <CalendarCheck2 className="size-3.5" />}
               {portal.acquisition.status === "SIGNED" ? "Współpraca zawarta" : "Przygotowanie"}
@@ -750,15 +750,15 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               ["4", "Promujemy", "Portale, baza klientów i kontakt"],
               ["5", "Prowadzimy transakcję", "Prezentacje, negocjacje i umowa"],
             ].map(([number, title, body]) => (
-              <div key={number} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/35 p-3">
-                <p className="text-[9px] font-black text-emerald-600">0{number}</p>
+              <div key={number} className="eos-inset-well rounded-xl p-3">
+                <p className="eos-portal-label eos-portal-label--ok">0{number}</p>
                 <p className="mt-1 text-xs font-black text-[var(--eos-text)]">{title}</p>
                 <p className="mt-1 text-[10px] leading-snug text-[var(--eos-muted)]">{body}</p>
               </div>
             ))}
           </div>
 
-          <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-4 sm:p-5">
+          <div className="eos-inset-well rounded-2xl p-4 sm:p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="flex items-center gap-2 text-sm font-black text-[var(--eos-text)]">
@@ -773,7 +773,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {ACQUISITION_DOCUMENTS.map((item) => (
-                <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-3">
+                <label key={item.id} className="eos-inset-well flex cursor-pointer items-start gap-3 rounded-xl p-3">
                   <input
                     type="checkbox"
                     disabled={portal.acquisition?.status === "SIGNED"}
@@ -790,7 +790,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 type="button"
                 disabled={Boolean(acquisitionBusy)}
                 onClick={() => void saveDocumentChecklist()}
-                className="mt-4 inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)] disabled:opacity-50"
+                className="eos-lux-btn eos-lux-btn--platinum mt-4 inline-flex items-center gap-2 px-4 py-2 text-[10px] disabled:opacity-50"
               >
                 <CheckCircle2 className="size-3.5" />
                 {acquisitionBusy === "documents" ? "Zapisywanie…" : "Zapisz listę dokumentów"}
@@ -801,7 +801,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           {portal.acquisition.agreementSnapshot ? (
             <div>
               <p className="mb-3 text-sm font-black text-[var(--eos-text)]">Uzgodnione dane i warunki współpracy</p>
-              <pre className="max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded-2xl border border-[var(--eos-border)] bg-white p-5 text-xs leading-relaxed text-slate-800 shadow-inner">
+              <pre className="eos-inset-well max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded-2xl p-5 text-xs leading-relaxed text-slate-800">
                 {portal.acquisition.agreementSnapshot}
               </pre>
               {(portal.acquisition.formData.paperContracts || []).length > 0 ? (
@@ -813,7 +813,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                       href={file.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm font-semibold text-emerald-700"
+                      className="eos-inset-well flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold text-emerald-700"
                     >
                       {file.name}
                       <ExternalLink className="size-3.5" />
@@ -822,7 +822,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 </div>
               ) : null}
               {portal.acquisition.status === "SIGNED" ? (
-                <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <div className="eos-inset-well mt-3 rounded-xl border-emerald-500/30 bg-emerald-500/10 p-4">
                   <p className="flex items-center gap-2 font-black text-emerald-700"><ShieldCheck className="size-4" /> Dokument podpisany</p>
                   <p className="mt-1 text-xs text-[var(--eos-muted)]">
                     {portal.acquisition.signerName} · {portal.acquisition.signedAt ? new Date(portal.acquisition.signedAt).toLocaleString("pl-PL") : ""}
@@ -830,11 +830,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                   <p className="mt-1 break-all text-[9px] text-[var(--eos-muted)]">SHA-256: {portal.acquisition.documentHash}</p>
                 </div>
               ) : portal.acquisition.clientAcknowledgedAt ? (
-                <p className="mt-3 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700">
+                <p className="eos-inset-well mt-3 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700">
                   Potwierdzono zapoznanie: {portal.acquisition.clientAcknowledgementName} · {new Date(portal.acquisition.clientAcknowledgedAt).toLocaleString("pl-PL")}
                 </p>
               ) : (
-                <div className="mt-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/35 p-4">
+                <div className="eos-inset-well mt-3 rounded-xl p-4">
                   <p className="text-xs leading-relaxed text-[var(--eos-muted)]">
                     To potwierdzenie oznacza zapoznanie się z dokumentem przed spotkaniem. Nie zastępuje podpisu umowy.
                   </p>
@@ -843,13 +843,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                       value={acknowledgementName}
                       onChange={(event) => setAcknowledgementName(event.target.value)}
                       placeholder="Imię i nazwisko"
-                      className="flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-text)]"
+                      className="eos-field-inset flex-1 rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
                     />
                     <button
                       type="button"
                       disabled={acknowledgementName.trim().length < 3 || Boolean(acquisitionBusy)}
                       onClick={() => void acknowledgeAcquisition()}
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                      className="eos-lux-btn eos-lux-btn--primary inline-flex items-center justify-center gap-2 px-5 py-3 text-[10px] disabled:opacity-50"
                     >
                       <CheckCircle2 className="size-3.5" />
                       {acquisitionBusy === "acknowledge" ? "Zapisywanie…" : "Zapoznałem/am się"}
@@ -859,7 +859,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               )}
             </div>
           ) : (
-            <p className="rounded-2xl border border-dashed border-[var(--eos-border)] p-5 text-sm text-[var(--eos-muted)]">
+            <p className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-5 text-sm text-[var(--eos-muted)]">
               Agent uzupełnia kartę nieruchomości i warunki współpracy. Dokument pojawi się tutaj przed podpisem.
             </p>
           )}
@@ -874,23 +874,23 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="eos-inset-well rounded-xl px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Lokalizacja</p>
+              <p className="eos-portal-label">Lokalizacja</p>
               <p className="mt-1 break-words text-sm font-semibold leading-snug text-[var(--eos-text)]">
                 {criteria.location}
               </p>
             </div>
             <div className="eos-inset-well rounded-xl px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Budżet</p>
+              <p className="eos-portal-label">Budżet</p>
               <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.maxBudget}</p>
             </div>
             <div className="eos-inset-well rounded-xl px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Typ</p>
+              <p className="eos-portal-label">Typ</p>
               <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
                 {criteria.transactionType} · {criteria.propertyType}
               </p>
             </div>
             <div className="eos-inset-well rounded-xl px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Metraż</p>
+              <p className="eos-portal-label">Metraż</p>
               <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.minArea}</p>
             </div>
           </div>
@@ -899,7 +899,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               {criteria.districts.map((district) => (
                 <span
                   key={district}
-                  className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700"
+                  className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-xs"
                 >
                   {district}
                 </span>
@@ -921,7 +921,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             Twoje ogłoszenie u agencji
           </h2>
           {portal.listing ? (
-            <div className="flex flex-col gap-4 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 sm:flex-row sm:items-center">
+            <div className="eos-lux-panel flex flex-col gap-4 rounded-[1.5rem] p-5 sm:flex-row sm:items-center">
               <div
                 className="h-24 w-full shrink-0 rounded-xl bg-cover bg-center sm:w-32"
                 style={{ backgroundImage: `url(${portal.listing.imageUrl})` }}
@@ -932,20 +932,20 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                   {[portal.listing.city, portal.listing.district].filter(Boolean).join(", ")} ·{" "}
                   {Math.round(portal.listing.price).toLocaleString("pl-PL")} {portal.listing.priceCurrency || "PLN"}
                 </p>
-                <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-600">
+                <p className="eos-raised-chip eos-raised-chip--on mt-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px]">
                   <CheckCircle2 className="size-3" />
                   {portal.listing.managementStatus === "AGENCY_MANAGED" ? "Prowadzone przez agencję" : "Aktywne"}
                 </p>
               </div>
               <Link
                 href={`/oferta/${portal.listing.id}?portal=${encodeURIComponent(token || "")}`}
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)]"
+                className="eos-lux-btn eos-lux-btn--platinum inline-flex items-center gap-2 px-4 py-2 text-[10px]"
               >
                 Zobacz <ExternalLink className="size-3" />
               </Link>
             </div>
           ) : (
-            <div className="rounded-[1.5rem] border border-dashed border-[var(--eos-border)] p-10 text-center">
+            <div className="eos-inset-well rounded-[1.5rem] border border-dashed border-[var(--eos-border)] p-10 text-center">
               <Home className="mx-auto mb-3 size-8 text-[var(--eos-muted)]" />
               <p className="text-sm text-[var(--eos-muted)]">
                 Agent przygotowuje ogłoszenie Twojej nieruchomości. Wkrótce zobaczysz je tutaj.
@@ -965,7 +965,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             Każda karta to osobna nieruchomość. Reakcja schodzi do agenta przy tej ofercie — proces idzie dalej.
           </p>
           {portal.matches.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center text-sm text-[var(--eos-muted)]">
+            <p className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center text-sm text-[var(--eos-muted)]">
               Agent właśnie szuka dopasowań — wróć za chwilę.
             </p>
           ) : (
@@ -982,12 +982,12 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </section>
       ) : null}
 
-      <section className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+      <section className="eos-lux-panel rounded-[1.5rem] p-6">
         <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
           <MessageSquare className="size-5 text-emerald-500" />
           Wiadomości z agentem
         </h2>
-        <div className="mt-4 max-h-80 space-y-2 overflow-y-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-3">
+        <div className="eos-inset-well mt-4 max-h-80 space-y-2 overflow-y-auto rounded-xl p-3">
           {messages.length === 0 ? (
             <p className="py-6 text-center text-sm text-[var(--eos-muted)]">
               Napisz do agenta albo wyślij dokument — rozmowa i załączniki trafią do CRM.
@@ -1002,7 +1002,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                     : "mr-8 bg-[var(--eos-card)] text-[var(--eos-text)]"
                 }`}
               >
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                <p className="eos-portal-label">
                   {m.fromMe ? "Ty" : portal.agentName}
                 </p>
                 {m.content ? <p className="mt-1 whitespace-pre-wrap">{m.content}</p> : null}
@@ -1014,7 +1014,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           )}
         </div>
         {pendingFile ? (
-          <div className="mt-3 flex items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5">
+          <div className="eos-inset-well mt-3 flex items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5">
             <Paperclip className="size-4 shrink-0 text-emerald-500" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-semibold">{pendingFile.name}</p>
@@ -1026,7 +1026,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </div>
         ) : null}
         <div className="mt-3 flex gap-2">
-          <label className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-emerald-600">
+          <label className="eos-inset-well flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--eos-muted)] hover:text-emerald-600">
             <Plus className="size-5" />
             <input
               type="file"
@@ -1044,13 +1044,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               }
             }}
             placeholder="Napisz wiadomość do agenta…"
-            className="flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
+            className="eos-field-inset flex-1 rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
           />
           <button
             type="button"
             disabled={chatBusy || (!chatDraft.trim() && !pendingFile)}
             onClick={() => void sendChat()}
-            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+            className="eos-lux-btn eos-lux-btn--primary inline-flex items-center gap-2 px-4 py-2 text-[10px] disabled:opacity-50"
           >
             <Send className="size-3" />
             Wyślij
@@ -1060,7 +1060,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
       {portal.activities.length > 0 ? (
         <section>
-          <h2 className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+          <h2 className="eos-portal-label mb-3">
             Ostatnie działania
           </h2>
           <div className="space-y-3">
@@ -1094,7 +1094,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                         <Link
                           key={`${a.id}-${offer.id}`}
                           href={`/oferta/${offer.id}?portal=${encodeURIComponent(token || "")}`}
-                          className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-2"
+                          className="eos-inset-well flex items-center gap-3 rounded-xl p-2"
                         >
                           {offer.imageUrl ? (
                             <span
@@ -1152,9 +1152,9 @@ function SellerWorkBoard({
     : null;
 
   return (
-    <section className="space-y-4 rounded-[1.75rem] border border-emerald-500/25 bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)]">
+    <section className="eos-lux-panel space-y-4 rounded-[1.75rem] p-6">
       <div>
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+        <p className="eos-portal-label eos-portal-label--ok flex items-center gap-2">
           <Zap className="size-4" /> Sprzedaż — co już zrobiliśmy
         </p>
         <h2 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Nie czekasz w ciemno</h2>
@@ -1164,8 +1164,8 @@ function SellerWorkBoard({
       </div>
 
       {featured || featuredActs.length ? (
-        <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4">
-          <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">Wyróżnienie na stronie głównej</p>
+        <div className="eos-inset-well rounded-2xl p-4">
+          <p className="eos-portal-label">Wyróżnienie na stronie głównej</p>
           <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">
             Twoje ogłoszenie jest na górze katalogu EstateOS™{untilLabel ? ` do ${untilLabel}` : ""}.
           </p>
@@ -1176,8 +1176,8 @@ function SellerWorkBoard({
       ) : null}
 
       {reports.map((a) => (
-        <div key={a.id} className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 p-4">
-          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Raport z aktów</p>
+        <div key={a.id} className="eos-inset-well rounded-2xl p-4">
+          <p className="eos-portal-label eos-portal-label--ok">Raport z aktów</p>
           <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">{a.title}</p>
           {a.body ? <p className="mt-1 text-[12px] leading-relaxed text-[var(--eos-muted)]">{a.body}</p> : null}
           <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
@@ -1199,7 +1199,7 @@ function SellerWorkBoard({
             href={url || undefined}
             target="_blank"
             rel="noreferrer"
-            className="block overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 transition hover:border-emerald-500/40"
+            className="eos-inset-well block overflow-hidden rounded-2xl transition hover:border-emerald-500/40"
           >
             <div className="flex flex-col sm:flex-row">
               {image ? (
@@ -1210,7 +1210,7 @@ function SellerWorkBoard({
                 </div>
               )}
               <div className="min-w-0 flex-1 p-4">
-                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">{siteName}</p>
+                <p className="eos-portal-label eos-portal-label--ok">{siteName}</p>
                 <p className="mt-1 text-sm font-black text-[var(--eos-text)]">{title}</p>
                 {description ? (
                   <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-[var(--eos-muted)]">{description}</p>

@@ -64,7 +64,7 @@ type AcquisitionResponse = {
 };
 
 const fieldClass =
-  "mt-1.5 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3.5 py-3 text-sm text-[var(--eos-text)] outline-none transition focus:border-emerald-500/50";
+  "eos-field-inset mt-1.5 w-full rounded-xl px-3.5 py-3 text-sm text-[var(--eos-text)] outline-none";
 
 function Field({
   label,
@@ -81,7 +81,7 @@ function Field({
 }) {
   return (
     <label className="block min-w-0">
-      <span className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">{label}</span>
+      <span className="eos-portal-label">{label}</span>
       <input
         type={type}
         value={value}
@@ -108,7 +108,7 @@ function TextArea({
 }) {
   return (
     <label className="block min-w-0">
-      <span className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">{label}</span>
+      <span className="eos-portal-label">{label}</span>
       <textarea
         rows={rows}
         value={value}
@@ -133,17 +133,15 @@ function ChipRow({
 }) {
   return (
     <div className="sm:col-span-2">
-      <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">{label}</p>
+      <p className="eos-portal-label">{label}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {options.map((option) => (
           <button
             key={option}
             type="button"
             onClick={() => onChange(option)}
-            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${
-              value === option
-                ? "bg-emerald-500 text-black"
-                : "border border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40"
+            className={`eos-raised-chip rounded-full px-3.5 py-2 text-[11px] ${
+              value === option ? "eos-raised-chip--on" : ""
             }`}
           >
             {option}
@@ -381,7 +379,7 @@ export default function SellerAcquisitionWorkspace({
       <div className="border-b border-[var(--eos-border)] bg-gradient-to-br from-emerald-500/12 to-transparent p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+            <p className="flex items-center gap-2 eos-portal-label eos-portal-label--ok">
               <ClipboardList className="size-4" />
               Spotkanie pozyskania
             </p>
@@ -419,7 +417,7 @@ export default function SellerAcquisitionWorkspace({
                     : "border-[var(--eos-border)] bg-[var(--eos-card)]/50"
               }`}
             >
-              <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">0{item.id}</p>
+              <p className="eos-portal-label eos-portal-label--ok">0{item.id}</p>
               <p className="mt-0.5 text-[10px] font-bold leading-tight text-[var(--eos-text)]">{item.title}</p>
             </button>
           ))}
@@ -428,7 +426,7 @@ export default function SellerAcquisitionWorkspace({
 
       <div className="p-5 sm:p-6">
         <div className="mb-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+          <p className="eos-portal-label eos-portal-label--ok">
             Krok {step} z 6
           </p>
           <h4 className="mt-1 text-lg font-black text-[var(--eos-text)]">{ACQUISITION_STEPS[step - 1].title}</h4>
@@ -475,7 +473,7 @@ export default function SellerAcquisitionWorkspace({
               <TextArea label="Obciążenia, służebności, roszczenia" value={form.ownership.encumbrances} onChange={(value) => updateSection("ownership", { encumbrances: value })} />
               <TextArea label="Pozostałe uwagi prawne" value={form.ownership.legalNotes} onChange={(value) => updateSection("ownership", { legalNotes: value })} />
             </div>
-            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/35 p-4">
+            <div className="eos-inset-well rounded-2xl p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="flex items-center gap-2 text-sm font-black text-[var(--eos-text)]">
                   <FileCheck2 className="size-4 text-emerald-500" />
@@ -536,7 +534,7 @@ export default function SellerAcquisitionWorkspace({
               />
             )}
             <div className="sm:col-span-2 lg:col-span-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">Przyległości i dodatki</p>
+              <p className="eos-portal-label">Przyległości i dodatki</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {PROPERTY_AMENITIES.map((item) => {
                   const selected = String(form.property.amenities || "")
@@ -632,7 +630,7 @@ export default function SellerAcquisitionWorkspace({
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block">
-                <span className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">Rodzaj umowy</span>
+                <span className="eos-portal-label">Rodzaj umowy</span>
                 <select value={form.cooperation.agreementType} onChange={(event) => updateSection("cooperation", { agreementType: event.target.value as "EXCLUSIVE" | "OPEN" })} className={fieldClass}>
                   <option value="EXCLUSIVE">Na wyłączność</option>
                   <option value="OPEN">Otwarta</option>
@@ -641,7 +639,7 @@ export default function SellerAcquisitionWorkspace({
               <NumberStepper label="Okres współpracy" value={form.cooperation.durationMonths} onChange={(value) => updateSection("cooperation", { durationMonths: value })} step={1} min={1} suffix="mies." disabled={signed} />
               <NumberStepper label="Okres wypowiedzenia" value={form.cooperation.noticeDays} onChange={(value) => updateSection("cooperation", { noticeDays: value })} step={5} min={0} suffix="dni" disabled={signed} />
               <label className="block">
-                <span className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">Sposób naliczenia prowizji</span>
+                <span className="eos-portal-label">Sposób naliczenia prowizji</span>
                 <select value={form.cooperation.commissionType} onChange={(event) => updateSection("cooperation", { commissionType: event.target.value as "PERCENT" | "FIXED" })} className={fieldClass}>
                   <option value="PERCENT">Procent ceny sprzedaży</option>
                   <option value="FIXED">Kwota stała</option>
@@ -677,16 +675,16 @@ export default function SellerAcquisitionWorkspace({
         {step === 6 ? (
           <div className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
-                <p className="text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Dokumenty</p>
+              <div className="eos-inset-well rounded-xl p-4">
+                <p className="eos-portal-label">Dokumenty</p>
                 <p className="mt-1 text-xl font-black text-[var(--eos-text)]">{checkedDocuments}/{ACQUISITION_DOCUMENTS.length}</p>
               </div>
-              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
-                <p className="text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Podgląd klienta</p>
+              <div className="eos-inset-well rounded-xl p-4">
+                <p className="eos-portal-label">Podgląd klienta</p>
                 <p className="mt-1 text-sm font-black text-[var(--eos-text)]">{record?.clientAcknowledgedAt ? "Zapoznano" : "Oczekuje"}</p>
               </div>
-              <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
-                <p className="text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Umowa</p>
+              <div className="eos-inset-well rounded-xl p-4">
+                <p className="eos-portal-label">Umowa</p>
                 <p className="mt-1 text-sm font-black text-[var(--eos-text)]">{signed ? "Podpisana" : record?.agreementSnapshot ? "Gotowa" : "Do przygotowania"}</p>
               </div>
             </div>
@@ -722,7 +720,7 @@ export default function SellerAcquisitionWorkspace({
                       href={file.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2 text-sm font-semibold text-emerald-700"
+                      className="flex items-center justify-between eos-inset-well rounded-xl px-3 py-2 text-sm font-semibold text-emerald-700"
                     >
                       {file.name}
                       <ExternalLink className="size-3.5" />

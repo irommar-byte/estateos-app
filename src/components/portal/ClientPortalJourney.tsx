@@ -20,7 +20,7 @@ export default function ClientPortalJourney({ stages }: { stages: PortalJourneyS
     <section className="eos-inset-frame eos-stack-card rounded-[1.75rem] p-5 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Twoja ścieżka</p>
+          <p className="eos-portal-label eos-portal-label--ok">Twoja ścieżka</p>
           <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">Prowadzimy Cię krok po kroku</h2>
         </div>
         <p className="text-xs font-semibold text-[var(--eos-muted)]">
@@ -32,15 +32,15 @@ export default function ClientPortalJourney({ stages }: { stages: PortalJourneyS
         {stages.map((stage, index) => (
           <div
             key={stage.id}
-            className={`rounded-2xl border px-3 py-3 transition ${
+            className={`rounded-2xl px-3 py-3 transition ${
               stage.done
-                ? "border-emerald-500/35 bg-emerald-500/10 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_8px_18px_rgba(5,150,105,0.12)]"
+                ? "eos-inset-well border-emerald-500/35 bg-emerald-500/10"
                 : stage.current
-                  ? "border-emerald-500/60 bg-[var(--eos-card)] shadow-[var(--eos-shadow-lift)]"
-                  : "border-[var(--eos-border)] bg-[var(--eos-input)]/25 opacity-80"
+                  ? "eos-lux-panel border-emerald-500/60"
+                  : "eos-inset-well opacity-80"
             }`}
           >
-            <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+            <p className="eos-portal-label">
               {stage.done ? "Gotowe" : stage.current ? `Teraz · ${index + 1}` : `Dalej · ${index + 1}`}
             </p>
             <p className="mt-1 text-sm font-bold leading-snug text-[var(--eos-text)]">{stage.label}</p>
@@ -55,7 +55,7 @@ export default function ClientPortalJourney({ stages }: { stages: PortalJourneyS
 
       {current?.hint ? (
         <div className="eos-inset-well mt-5 rounded-2xl px-4 py-4">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-emerald-600">
+          <p className="eos-portal-label eos-portal-label--ok flex items-center gap-2">
             <CheckCircle2 className="size-3.5" />
             Co teraz
           </p>

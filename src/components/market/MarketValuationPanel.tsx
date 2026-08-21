@@ -42,15 +42,15 @@ function ppsm(n: number) {
 function ScoreBadge({ score }: { score: PriceScore }) {
   const color =
     score.tone === "good"
-      ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+      ? "border-emerald-500/35 text-emerald-700"
       : score.tone === "high"
-        ? "text-red-400 border-red-500/30 bg-red-500/10"
+        ? "border-rose-500/35 text-rose-700"
         : score.tone === "low"
-          ? "text-sky-400 border-sky-500/30 bg-sky-500/10"
-          : "text-amber-400 border-amber-500/30 bg-amber-500/10";
+          ? "border-sky-500/35 text-sky-700"
+          : "border-amber-500/35 text-amber-800";
   return (
-    <div className={`rounded-2xl border px-4 py-3 ${color}`}>
-      <p className="text-[10px] font-black uppercase tracking-[0.16em]">EstateOS™ Price Score</p>
+    <div className={`eos-lux-panel rounded-2xl px-4 py-3 ${color}`}>
+      <p className="eos-portal-label">EstateOS™ Price Score</p>
       <p className="mt-1 text-3xl font-black tabular-nums">{score.score}<span className="text-base font-bold opacity-70"> / 100</span></p>
       <p className="mt-1 text-sm font-semibold">{score.label}</p>
       <p className="mt-1 text-[12px] leading-relaxed opacity-80">{score.detail}</p>
@@ -307,9 +307,9 @@ export default function MarketValuationPanel({
         : null;
 
   return (
-    <div className="overflow-hidden rounded-[1.75rem] border border-emerald-500/20 bg-[var(--eos-card)]">
-      <div className="border-b border-emerald-500/15 px-5 py-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">EstateOS™ Market</p>
+    <div className="eos-lux-panel overflow-hidden rounded-[1.75rem]">
+      <div className="border-b border-[rgba(196,163,90,0.22)] px-5 py-4">
+        <p className="eos-portal-label eos-portal-label--ok">EstateOS™ Market</p>
         <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">Rzeczywiste ceny transakcyjne — Rejestr Cen Nieruchomości</p>
       </div>
       <div className="space-y-4 p-5">
@@ -318,28 +318,28 @@ export default function MarketValuationPanel({
             <Loader2 className="h-4 w-4 animate-spin" /> Liczę porównywalne akty…
           </div>
         ) : null}
-        {error ? <p className="text-sm leading-relaxed text-amber-500/90">{error}</p> : null}
+        {error ? <p className="text-sm leading-relaxed text-amber-600">{error}</p> : null}
         {result ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Najbardziej prawdopodobna</p>
-                <p className="text-2xl font-black tabular-nums tracking-tight text-[var(--eos-text)]">{pln(result.estimated.mid)}</p>
+              <div className="eos-inset-well rounded-2xl px-3 py-3">
+                <p className="eos-portal-label">Najbardziej prawdopodobna</p>
+                <p className="mt-1 text-2xl font-black tabular-nums tracking-tight text-[var(--eos-text)]">{pln(result.estimated.mid)}</p>
                 <p className="text-xs text-[var(--eos-muted)]">{ppsm(result.estimated.ppsm)}</p>
               </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Zakres</p>
-                <p className="text-lg font-black tabular-nums text-[var(--eos-text)]">{pln(result.estimated.low)} – {pln(result.estimated.high)}</p>
+              <div className="eos-inset-well rounded-2xl px-3 py-3">
+                <p className="eos-portal-label">Zakres</p>
+                <p className="mt-1 text-lg font-black tabular-nums text-[var(--eos-text)]">{pln(result.estimated.low)} – {pln(result.estimated.high)}</p>
                 <p className="text-xs text-[var(--eos-muted)]">
                   {result.stats.count} aktów · {result.stats.windowMonths} mies.
                   {result.stats.basis === "comps" ? ` · ${result.stats.radiusM} m` : result.stats.basis === "district" ? " · mediana dzielnicy" : " · mediana miasta"}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Cena ofertowa</p>
-                <p className="text-lg font-black tabular-nums text-emerald-500">{pln(result.estimated.recommendedAsk)}</p>
+              <div className="eos-inset-well rounded-2xl px-3 py-3">
+                <p className="eos-portal-label">Cena ofertowa</p>
+                <p className="mt-1 text-lg font-black tabular-nums text-emerald-600">{pln(result.estimated.recommendedAsk)}</p>
                 {onApply ? (
-                  <button type="button" onClick={() => onApply(result.estimated.recommendedAsk)} className="mt-2 text-[12px] font-bold text-emerald-500 hover:underline">
+                  <button type="button" onClick={() => onApply(result.estimated.recommendedAsk)} className="eos-lux-btn eos-lux-btn--link !min-h-0 !px-0 !py-1 !text-[11px] !tracking-[0.08em] !text-emerald-700">
                     {applyLabel}
                   </button>
                 ) : null}
@@ -347,19 +347,19 @@ export default function MarketValuationPanel({
             </div>
             {result.vsListing ? <ScoreBadge score={result.vsListing} /> : null}
             {result.comps.length ? (
-              <div>
-                <p className="mb-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Porównywalne transakcje</p>
+              <div className="eos-inset-well rounded-2xl px-3 py-2">
+                <p className="eos-portal-label mb-1 px-1 pt-1">Porównywalne transakcje</p>
                 {result.comps.slice(0, 8).map((c) => (
                   <CompRow key={c.id} c={c} />
                 ))}
               </div>
             ) : null}
             {showReport ? (
-              <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+              <div className="eos-lux-panel space-y-3 rounded-2xl p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">Raport dla właściciela</p>
+                  <p className="eos-portal-label eos-portal-label--ok">Raport dla właściciela</p>
                   {quota ? (
-                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                    <span className="eos-lux-badge">
                       {remainingLabel ? `Zostało ${remainingLabel}` : quota.message}
                     </span>
                   ) : null}
@@ -369,29 +369,25 @@ export default function MarketValuationPanel({
                 ) : null}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label>
-                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]">
-                      E-mail klienta
-                    </span>
+                    <span className="eos-portal-label">E-mail klienta</span>
                     <input
                       type="email"
                       autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="z karty klienta, jeśli jest"
-                      className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+                      className="eos-field-inset eos-field-inset--pill mt-1.5 w-full py-2.5 text-sm text-[var(--eos-text)] outline-none"
                     />
                   </label>
                   <label>
-                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]">
-                      E-mail alternatywny
-                    </span>
+                    <span className="eos-portal-label">E-mail alternatywny</span>
                     <input
                       type="email"
                       autoComplete="off"
                       value={alternateEmail}
                       onChange={(e) => setAlternateEmail(e.target.value)}
                       placeholder="np. współwłaściciel"
-                      className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+                      className="eos-field-inset eos-field-inset--pill mt-1.5 w-full py-2.5 text-sm text-[var(--eos-text)] outline-none"
                     />
                   </label>
                 </div>
@@ -403,7 +399,7 @@ export default function MarketValuationPanel({
                     type="button"
                     disabled={reportState === "generating" || reportState === "sending"}
                     onClick={askGenerate}
-                    className="rounded-full bg-emerald-500 px-4 py-2 text-[12px] font-black uppercase tracking-[0.12em] text-black disabled:opacity-50"
+                    className="eos-lux-btn eos-lux-btn--primary px-5 py-2.5 text-[11px] disabled:opacity-50"
                   >
                     {reportState === "generating" ? "Generuję raport…" : generatedReportId ? "Wygeneruj kolejny" : "Generuj raport dla właściciela"}
                   </button>
@@ -412,17 +408,17 @@ export default function MarketValuationPanel({
                       type="button"
                       disabled={reportState === "sending"}
                       onClick={() => void confirmSend()}
-                      className="rounded-full border border-emerald-500/40 px-4 py-2 text-[12px] font-black uppercase tracking-[0.12em] text-emerald-700 disabled:opacity-50"
+                      className="eos-lux-btn eos-lux-btn--platinum px-5 py-2.5 text-[11px] disabled:opacity-50"
                     >
                       {reportState === "sending" ? "Wysyłam…" : "Wyślij e-mail"}
                     </button>
                   ) : null}
                   {reportState === "pay" ? (
-                    <button type="button" onClick={() => void buyCredit()} className="text-[12px] font-bold text-emerald-500">
+                    <button type="button" onClick={() => void buyCredit()} className="eos-lux-btn eos-lux-btn--gold px-4 py-2 text-[11px]">
                       Kup 1 kredyt (49 zł)
                     </button>
                   ) : null}
-                  <Link href="/market" className="text-[12px] font-bold text-[var(--eos-muted)] hover:text-[var(--eos-text)]">
+                  <Link href="/market" className="eos-lux-btn eos-lux-btn--link !min-h-0 !px-2 !py-1 !text-[11px] !text-[var(--eos-muted)]">
                     Otwórz Market
                   </Link>
                 </div>
@@ -436,9 +432,9 @@ export default function MarketValuationPanel({
 
       {reportState === "confirming" && result ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
-          <div className="w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl">
+          <div className="eos-lux-panel w-full max-w-lg overflow-hidden rounded-[1.75rem] shadow-2xl">
             <div className="px-5 py-5">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Limit raportów</p>
+              <p className="eos-portal-label eos-portal-label--ok">Limit raportów</p>
               <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Wygenerować raport tej nieruchomości?</h3>
               <p className="mt-3 text-sm font-semibold text-[var(--eos-text)]">{propertyLabel}</p>
               {propertyMeta ? <p className="mt-0.5 text-[12px] text-[var(--eos-muted)]">{propertyMeta}</p> : null}
@@ -450,18 +446,18 @@ export default function MarketValuationPanel({
                 Wysyłka e-mail albo zapis w panelu klienta nie zdejmie kolejnego.
               </p>
             </div>
-            <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--eos-border)] px-5 py-4">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-[rgba(196,163,90,0.2)] px-5 py-4">
               <button
                 type="button"
                 onClick={() => setReportState("idle")}
-                className="rounded-full border border-[var(--eos-border)] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[var(--eos-text)]"
+                className="eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"
               >
                 Nie
               </button>
               <button
                 type="button"
                 onClick={() => void confirmGenerate()}
-                className="rounded-full bg-emerald-500 px-5 py-2 text-[11px] font-black uppercase tracking-wider text-black"
+                className="eos-lux-btn eos-lux-btn--primary px-5 py-2 text-[11px]"
               >
                 Tak, wygeneruj
               </button>
@@ -472,9 +468,9 @@ export default function MarketValuationPanel({
 
       {previewHtml ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
-          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl">
-            <div className="border-b border-[var(--eos-border)] px-5 py-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Raport wygenerowany</p>
+          <div className="eos-lux-panel flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] shadow-2xl">
+            <div className="border-b border-[rgba(196,163,90,0.2)] px-5 py-4">
+              <p className="eos-portal-label eos-portal-label--ok">Raport wygenerowany</p>
               <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Limit już pobrany — możesz wysłać e-mail</h3>
               <p className="mt-1 text-sm text-[var(--eos-muted)]">
                 {email.trim() || alternateEmail.trim() || reportEmail
@@ -488,11 +484,11 @@ export default function MarketValuationPanel({
               srcDoc={previewHtml}
               className="min-h-[52vh] w-full flex-1 bg-white"
             />
-            <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--eos-border)] px-5 py-4">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-[rgba(196,163,90,0.2)] px-5 py-4">
               <button
                 type="button"
                 onClick={() => setPreviewHtml(null)}
-                className="rounded-full border border-[var(--eos-border)] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[var(--eos-text)]"
+                className="eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"
               >
                 Zostaw bez wysyłki
               </button>
@@ -500,7 +496,7 @@ export default function MarketValuationPanel({
                 type="button"
                 disabled={reportState === "sending"}
                 onClick={() => void confirmSend()}
-                className="rounded-full bg-emerald-500 px-5 py-2 text-[11px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                className="eos-lux-btn eos-lux-btn--primary px-5 py-2 text-[11px] disabled:opacity-50"
               >
                 {reportState === "sending" ? "Wysyłam…" : "Wyślij e-mail"}
               </button>

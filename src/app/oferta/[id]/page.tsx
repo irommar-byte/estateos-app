@@ -1426,13 +1426,10 @@ function OfferDetails({
 
                   <button
                     onClick={openAppointmentFlow}
-                    className={`relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer bg-zinc-950/80 ${themeColors.borderActive} ${themeColors.hoverBorderActive} ${themeColors.glowActive}`}
+                    className="eos-lux-btn eos-lux-btn--platinum w-full px-4 py-5 text-[10px] sm:text-[11px]"
                   >
-                    <div className={`absolute inset-0 bg-gradient-to-r from-transparent ${themeColors.bgActiveSoft} to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out`}></div>
-                    <CalendarPlus size={18} className={`relative z-10 transition-all duration-300 ${themeColors.textActive} group-hover:text-white group-hover:scale-125 group-hover:-translate-y-0.5 group-hover:rotate-[-5deg]`} />
-                    <span className={`relative z-10 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${themeColors.textActive} group-hover:text-white`}>
-                      {t.proposeViewing}
-                    </span>
+                    <CalendarPlus size={18} />
+                    {t.proposeViewing}
                   </button>
 
                   <div className="mt-2 mb-3 flex items-center justify-center gap-1.5 opacity-40 select-none">
@@ -1687,13 +1684,13 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
         <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row">
           <Link
             href={`/o/${resolvedParams.id}${offerQuery}`}
-            className="inline-flex min-h-[48px] min-w-[200px] items-center justify-center rounded-full bg-emerald-500 px-8 text-[15px] font-semibold text-black"
+            className="eos-lux-btn eos-lux-btn--primary min-h-[48px] min-w-[200px] px-8 text-[13px]"
           >
             Wizytówka oferty
           </Link>
           <Link
             href="/oferty"
-            className="inline-flex min-h-[48px] min-w-[200px] items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-8 text-[15px] font-semibold text-[var(--eos-text)]"
+            className="eos-lux-btn eos-lux-btn--platinum min-h-[48px] min-w-[200px] px-8 text-[13px]"
           >
             Przeglądaj oferty
           </Link>

@@ -85,10 +85,8 @@ export default function CatalogLocationFilter({
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const accentIcon = accent === "rent" ? "text-sky-500" : "text-emerald-500";
-  const accentActive =
-    accent === "rent"
-      ? "border-sky-500/40 bg-sky-500/12 text-sky-600 dark:text-sky-400"
-      : "border-emerald-500/40 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400";
+  const accentActive = "eos-raised-chip eos-raised-chip--on";
+  const accentIdle = "eos-raised-chip";
   const accentGlow =
     accent === "rent"
       ? "bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_50%)]"
@@ -225,7 +223,7 @@ export default function CatalogLocationFilter({
             <Globe2 className="size-5" strokeWidth={2.25} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-subtle)]">
+            <span className="block eos-portal-label">
               {labels.title}
             </span>
             <span className="mt-0.5 block truncate text-sm font-medium text-[var(--eos-text)]">
@@ -250,8 +248,8 @@ export default function CatalogLocationFilter({
                 <button
                   type="button"
                   onClick={() => onChange({ countryCode: null, city: null, district: null })}
-                  className={`shrink-0 rounded-full border px-3.5 py-2 text-[11px] font-bold transition-all ${
-                    !value.countryCode ? accentActive : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                  className={`shrink-0 px-3.5 py-2 text-[11px] font-bold transition-all ${
+                    !value.countryCode ? accentActive : accentIdle
                   }`}
                 >
                   {labels.allCountries} ({offers.length})
@@ -270,8 +268,8 @@ export default function CatalogLocationFilter({
                           district: null,
                         })
                       }
-                      className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-[11px] font-bold transition-all ${
-                        active ? accentActive : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                      className={`inline-flex shrink-0 items-center gap-2 px-3.5 py-2 text-[11px] font-bold transition-all ${
+                        active ? accentActive : accentIdle
                       }`}
                     >
                       <span className="text-base leading-none">{flagEmojiFromCountryCode(code)}</span>
@@ -285,7 +283,7 @@ export default function CatalogLocationFilter({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex min-h-[3.25rem] items-center rounded-2xl bg-[var(--eos-input)] px-4">
+              <label className="eos-field-inset flex min-h-[3.25rem] items-center rounded-2xl px-4">
                 <MapPin className={`size-4 shrink-0 ${accentIcon}`} aria-hidden />
                 <select
                   value={value.city || ""}
@@ -310,7 +308,7 @@ export default function CatalogLocationFilter({
               </label>
 
               <label
-                className={`flex min-h-[3.25rem] items-center rounded-2xl bg-[var(--eos-input)] px-4 ${
+                className={`eos-field-inset flex min-h-[3.25rem] items-center rounded-2xl px-4 ${
                   !value.city || !districts.length ? "opacity-45" : ""
                 }`}
               >
