@@ -32,6 +32,8 @@ const COPY = {
     close: "Zamknij",
     city: "Warszawa · mieszkania na sprzedaż",
     tap: "Dotknij, aby zobaczyć trend",
+    heroListing: "Zmiana ofert · 30 dni",
+    heroVsDeeds: "Oferty vs akty",
   },
   en: {
     title: "Price pulse",
@@ -50,6 +52,8 @@ const COPY = {
     close: "Close",
     city: "Warsaw · flats for sale",
     tap: "Tap to see the trend",
+    heroListing: "Listing change · 30 days",
+    heroVsDeeds: "Listings vs deeds",
   },
   uk: {
     title: "Пульс цін",
@@ -68,6 +72,8 @@ const COPY = {
     close: "Закрити",
     city: "Варшава · квартири на продаж",
     tap: "Натисніть, щоб побачити тренд",
+    heroListing: "Зміна оголошень · 30 днів",
+    heroVsDeeds: "Оголошення vs акти",
   },
 } as const;
 
@@ -77,16 +83,58 @@ function dictFor(locale: Locale) {
   return COPY.pl;
 }
 
+function RollingPct({ value, className }: { value: string; className?: string }) {
+  return (
+    <span className={`eos-price-pulse-num inline-flex items-end ${className || ""}`}>
+      {value.split("").map((char, index) => {
+        if (!/[0-9]/.test(char)) {
+          return (
+            <span key={`${index}-${char}`} className="inline-block">
+              {char}
+            </span>
+          );
+        }
+        const digit = Number(char);
+        return (
+          <span key={`d-${index}`} className="eos-price-pulse-digit">
+            <motion.span
+              className="eos-price-pulse-digit__stack"
+              initial={false}
+              animate={{ y: `${-digit}em` }}
+              transition={{ type: "spring", stiffness: 320, damping: 30, mass: 0.7 }}
+            >
+              {Array.from({ length: 10 }, (_, n) => (
+                <span key={n} className="block h-[1em] leading-none">
+                  {n}
+                </span>
+              ))}
+            </motion.span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+const ECG_BEAT =
+  "M0 22 H16 L20 18 22 22 H30 L34 7 38 36 42 4 46 26 50 22 H66 C74 22 76 13 84 13 C92 13 94 22 102 22 H120";
+
+function EcgTrace({ color }: { color: string }) {
+  const cycle = [0, 120, 240, 360].map((offset) => ECG_BEAT.replace("M0", `M${offset}`)).join(" ");
+  return (
+    <div className="eos-ecg-track relative mt-3 h-[72px] rounded-2xl">
+      <svg viewBox="0 0 480 44" preserveAspectRatio="none" className="eos-ecg-wave absolute inset-y-0 left-0 h-full">
+        <path d={cycle} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div className="eos-ecg-scan" />
+    </div>
+  );
+}
+
 function toneClass(tone: PricePulseTone) {
   if (tone === "up") return "text-rose-400";
   if (tone === "down") return "text-emerald-400";
   return "text-[var(--eos-text)]";
-}
-
-function toneGlow(tone: PricePulseTone) {
-  if (tone === "up") return "rgba(251, 113, 133, 0.55)";
-  if (tone === "down") return "rgba(52, 211, 153, 0.55)";
-  return "rgba(148, 163, 184, 0.35)";
 }
 
 function narrative(locale: Locale, data: PricePulsePayload, win: PricePulseWindow) {
@@ -232,8 +280,12 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
     );
   }, [data, windowKey]);
 
-  const pct = formatSignedPct(data?.vsDeedsPct ?? null);
+  const listingMove = data?.windows.d30.listingChangePct ?? data?.windows.d7.listingChangePct ?? null;
+  const heroPct = listingMove ?? data?.vsDeedsPct ?? 0;
+  const pct = formatSignedPct(heroPct);
+  const heroCaption = listingMove != null ? copy.heroListing : copy.heroVsDeeds;
   const tone = data?.tone ?? "flat";
+  const waveColor = tone === "up" ? "#fb7185" : "#34d399";
 
   return (
     <>
@@ -246,53 +298,32 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
         <div className="relative z-10 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
-              <Activity size={12} className="text-emerald-500" />
+              <Activity size={15} className="eos-ecg-icon shrink-0" strokeWidth={2.2} />
               <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
                 {copy.title}
               </p>
               <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                <span className="eos-ecg-icon h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span className="text-[7px] font-black uppercase tracking-widest text-emerald-500">{copy.live}</span>
               </span>
             </div>
-            <p className="truncate text-[10px] font-semibold text-[var(--eos-subtle)]">{copy.hint}</p>
+            <p className="truncate text-[10px] font-semibold text-[var(--eos-subtle)]">{heroCaption}</p>
           </div>
-          <p
-            className={`eos-price-pulse-num text-2xl font-black tabular-nums tracking-tight md:text-3xl ${toneClass(tone)}`}
-            style={{ ["--eos-pulse-glow" as string]: toneGlow(tone) }}
-          >
-            {data ? pct : "…"}
-          </p>
+          <RollingPct className={`text-2xl font-black tracking-tight md:text-3xl ${toneClass(tone)}`} value={data ? pct : "0,0%"} />
         </div>
 
-        <div className="relative mt-3 h-[72px]">
+        <div className="relative mt-1">
           {spark.line ? (
-            <svg viewBox="0 0 320 72" preserveAspectRatio="none" className="h-full w-full">
-              <defs>
-                <linearGradient id="eosPricePulseFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={tone === "up" ? "#fb7185" : "#34d399"} stopOpacity="0.35" />
-                  <stop offset="100%" stopColor={tone === "up" ? "#fb7185" : "#34d399"} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d={spark.area} fill="url(#eosPricePulseFill)" />
-              <path d={spark.line} fill="none" stroke={tone === "up" ? "#fb7185" : "#34d399"} strokeWidth="1.8" />
-              {spark.last ? (
-                <circle cx={spark.last.x} cy={spark.last.y} r="3.2" fill={tone === "up" ? "#fb7185" : "#34d399"}>
-                  <animate attributeName="r" values="2.4;4.2;2.4" dur="1.8s" repeatCount="indefinite" />
-                </circle>
-              ) : null}
+            <svg viewBox="0 0 320 72" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 mt-3 h-[72px] w-full opacity-25">
+              <path d={spark.line} fill="none" stroke={waveColor} strokeWidth="1.4" />
             </svg>
-          ) : (
-            <div className="flex h-full items-center text-[11px] text-[var(--eos-subtle)]">{copy.empty}</div>
-          )}
+          ) : null}
+          <EcgTrace color={waveColor} />
         </div>
 
         <div className="relative z-10 mt-2 flex items-center justify-between gap-2">
           <p className="text-[10px] font-bold text-[var(--eos-muted)]">
             {data ? directionLabel(locale, data.direction) : copy.tap}
-            {data?.windows.d30.listingChangePct != null
-              ? ` · 30 dni ${formatSignedPct(data.windows.d30.listingChangePct)}`
-              : ""}
           </p>
           <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-subtle)]">{copy.tap}</p>
         </div>
@@ -333,14 +364,9 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
-                      {copy.vsDeeds}
+                      {heroCaption}
                     </p>
-                    <p
-                      className={`eos-price-pulse-num mt-1 text-4xl font-black tabular-nums ${toneClass(tone)}`}
-                      style={{ ["--eos-pulse-glow" as string]: toneGlow(tone) }}
-                    >
-                      {pct}
-                    </p>
+                    <RollingPct className={`mt-1 text-4xl font-black ${toneClass(tone)}`} value={pct} />
                   </div>
                   <p className="max-w-[58%] text-right text-[11px] font-semibold leading-snug text-[var(--eos-muted)]">
                     {data && win ? narrative(locale, data, win) : copy.empty}
