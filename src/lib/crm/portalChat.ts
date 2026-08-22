@@ -156,3 +156,14 @@ export async function sendPortalChat(params: {
   const [message] = parsePortalMessages([activity], params.from === 'agent' ? 'agent' : 'client');
   return { ok: true as const, message };
 }
+
+const typingUntil = new Map<string, number>();
+
+export function markPortalTyping(clientId: number, who: 'agent' | 'client') {
+  typingUntil.set(`${clientId}:${who}`, Date.now() + 4000);
+}
+
+export function isPortalPeerTyping(clientId: number, viewer: 'agent' | 'client') {
+  const peer = viewer === 'agent' ? 'client' : 'agent';
+  return (typingUntil.get(`${clientId}:${peer}`) || 0) > Date.now();
+}

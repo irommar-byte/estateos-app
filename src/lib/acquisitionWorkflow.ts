@@ -113,13 +113,26 @@ export const ACQUISITION_DOCUMENTS = [
 ] as const;
 
 export const ACQUISITION_STEPS = [
-  { id: 1, title: "Przygotowanie", subtitle: "Cel i horyzont sprzedaży — kartę wypełniasz na miejscu" },
+  { id: 1, title: "Spotkanie", subtitle: "Cel i horyzont sprzedaży — kartę wypełniasz na miejscu" },
   { id: 2, title: "Stan prawny", subtitle: "Własność, obciążenia i dokumenty" },
   { id: 3, title: "Nieruchomość", subtitle: "Parametry, stan i wyposażenie" },
   { id: 4, title: "Strategia", subtitle: "Cena, marketing i prezentacje" },
   { id: 5, title: "Współpraca", subtitle: "Zakres, prowizja i obowiązki" },
-  { id: 6, title: "Podsumowanie", subtitle: "Weryfikacja i podpis" },
+  { id: 6, title: "Podpis", subtitle: "Potwierdź wzór, zbierz podpis i wyślij kopię" },
+  { id: 7, title: "Oferta pozyskana", subtitle: "Umowa zamknięta — od tej pory tylko podgląd" },
 ] as const;
+
+export function isAcquisitionLocked(
+  record?: { status?: string | null; signedAt?: string | Date | null } | null,
+): boolean {
+  return record?.status === "SIGNED" || Boolean(record?.signedAt);
+}
+
+export function clampAcquisitionStep(raw: unknown, locked = false): number {
+  const n = Math.round(Number(raw) || 1);
+  if (locked) return 7;
+  return Math.min(6, Math.max(1, n));
+}
 
 export function createDefaultAcquisitionForm(
   client?: {

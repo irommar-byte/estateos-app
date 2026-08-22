@@ -1259,7 +1259,7 @@ export default function CrmClientsWorkspace() {
                         onClick={() => void clientAction("create_offer_from_acquisition")}
                         className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-black hover:bg-emerald-400"
                       >
-                        ⚡ Utwórz ofertę z karty pozyskania
+                        ⚡ Utwórz szkic oferty (niepubliczny)
                       </button>
                       <Link
                         href={`/dodaj-oferte?agencyClientId=${detail.id}`}

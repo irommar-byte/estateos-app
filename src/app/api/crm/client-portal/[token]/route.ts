@@ -15,7 +15,7 @@ import {
   resolveMeeting,
   resolvePresentation,
 } from '@/lib/crm/clientJourney';
-import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
+import { listPortalChat, sendPortalChat, markPortalTyping, isPortalPeerTyping } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
 import { isPromotionActive } from '@/lib/listingPromotion';
@@ -234,13 +234,16 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     .map((m) => m.clientFeedbackAt)
     .filter(Boolean)
     .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0];
+  const acquired =
+    client.acquisition?.status === 'SIGNED' || Boolean(client.acquisition?.signedAt);
+  const listingVisible = acquired && Boolean(client.linkedOffer);
   const stages = buildJourneyStages({
     clientType: client.type,
     hasMeeting: Boolean(meeting),
     meetingConfirmed: meeting?.status === 'confirmed',
     acquisitionStarted: Boolean(client.acquisition && client.acquisition.currentStep > 1),
-    signed: client.acquisition?.status === 'SIGNED' || Boolean(client.acquisition?.signedAt),
-    hasOffer: Boolean(client.linkedOffer),
+    signed: acquired,
+    hasOffer: listingVisible,
     hasPresentation: Boolean(presentation),
     presentationConfirmed: presentation?.status === 'confirmed',
     hasCriteria: Boolean(client.buyerPreference),
@@ -304,7 +307,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             },
           }))
         : [],
-      listing: client.linkedOffer
+      listing: listingVisible && client.linkedOffer
         ? {
             id: client.linkedOffer.id,
             title: client.linkedOffer.title,
@@ -322,10 +325,47 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             featured: isPromotionActive(client.linkedOffer.promotedUntil),
           }
         : null,
-      listingProgress: buildListingProgress({
-        signed: client.acquisition?.status === 'SIGNED' || Boolean(client.acquisition?.signedAt),
-        offer: client.linkedOffer,
-      }),
+      listingProgress: listingVisible
+        ? buildListingProgress({
+            signed: acquired,
+            offer: client.linkedOffer,
+          })
+        : [],
+      listingPath: listingVisible
+        ? client.activities
+            .filter((a) =>
+              [
+                JOURNEY_ACTIVITY.PRESENTATION,
+                JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
+                JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+                'LISTING_FEATURED',
+                'EXTERNAL_PORTAL',
+                'MARKET_REPORT_SENT',
+                'LISTING_LINKED',
+              ].includes(a.kind),
+            )
+            .filter((a) => {
+              const meta =
+                a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
+              const oid = Number(a.offerId || meta.offerId || 0);
+              return !oid || oid === client.linkedOffer?.id;
+            })
+            .map((a) => {
+              const meta =
+                a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
+              return {
+                id: a.id,
+                kind: a.kind,
+                title: a.title,
+                body: a.body,
+                createdAt: a.createdAt.toISOString(),
+                startsAt: typeof meta.startsAt === 'string' ? meta.startsAt : null,
+                url: typeof meta.url === 'string' ? meta.url : null,
+                image: typeof meta.image === 'string' ? meta.image : null,
+                siteName: typeof meta.siteName === 'string' ? meta.siteName : null,
+              };
+            })
+        : [],
       acquisition: client.acquisition
         ? {
             status: client.acquisition.status,
@@ -595,7 +635,16 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'list_messages') {
     const messages = await listPortalChat(client.id, 'client');
-    return NextResponse.json({ success: true, messages });
+    return NextResponse.json({
+      success: true,
+      messages,
+      peerTyping: isPortalPeerTyping(client.id, 'client'),
+    });
+  }
+
+  if (action === 'typing') {
+    markPortalTyping(client.id, 'client');
+    return NextResponse.json({ success: true });
   }
 
   if (action === 'send_message') {

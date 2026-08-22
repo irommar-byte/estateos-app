@@ -30,7 +30,7 @@ import {
   resolvePresentation,
 } from '@/lib/crm/clientJourney';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
-import { listPortalChat, sendPortalChat } from '@/lib/crm/portalChat';
+import { listPortalChat, sendPortalChat, markPortalTyping, isPortalPeerTyping } from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
@@ -509,7 +509,16 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'list_portal_messages') {
     const messages = await listPortalChat(clientId, 'agent');
-    return NextResponse.json({ success: true, messages });
+    return NextResponse.json({
+      success: true,
+      messages,
+      peerTyping: isPortalPeerTyping(clientId, 'agent'),
+    });
+  }
+
+  if (action === 'portal_typing') {
+    markPortalTyping(clientId, 'agent');
+    return NextResponse.json({ success: true });
   }
 
   if (action === 'send_portal_message') {
@@ -543,46 +552,82 @@ export async function POST(req: Request, ctx: RouteCtx) {
     const isMeeting = action === 'propose_meeting';
     const client = await prisma.agencyClient.findFirst({
       where: { id: clientId, agencyUserId, status: 'ACTIVE' },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, type: true, firstName: true, lastName: true, linkedOfferId: true },
     });
     if (!client) {
       return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
     }
     const location = body.location ? String(body.location).trim() : '';
     const notes = body.notes ? String(body.notes).trim() : '';
-    await prisma.agencyClientActivity.create({
-      data: {
-        clientId,
-        agencyUserId,
-        kind: isMeeting ? JOURNEY_ACTIVITY.MEETING : JOURNEY_ACTIVITY.PRESENTATION,
-        title: isMeeting
-          ? `Spotkanie · ${client.firstName} ${client.lastName}`
-          : `Prezentacja · ${client.firstName} ${client.lastName}`,
-        body: [startsAt.toLocaleString('pl-PL'), location, notes].filter(Boolean).join(' · '),
-        metadata: {
-          startsAt: startsAt.toISOString(),
-          location: location || null,
-          notes: notes || null,
-          proposedBy: 'agent',
-          status: isMeeting ? 'confirmed' : 'pending',
+    const offerIdRaw = Number(body.offerId || 0);
+    const offerId = Number.isFinite(offerIdRaw) && offerIdRaw > 0 ? offerIdRaw : client.linkedOfferId || null;
+    if (!isMeeting && client.type === 'BUYER' && !offerId) {
+      return NextResponse.json({ error: 'Podaj ID oferty, którą chcesz prezentować kupującemu.' }, { status: 400 });
+    }
+
+    let counterpartId: number | null = null;
+    if (!isMeeting && offerId) {
+      if (client.type === 'BUYER') {
+        const seller = await prisma.agencyClient.findFirst({
+          where: { agencyUserId, type: 'SELLER', linkedOfferId: offerId, status: 'ACTIVE' },
+          select: { id: true },
+        });
+        counterpartId = seller?.id || null;
+      } else if (client.type === 'SELLER') {
+        const buyerId = Number(body.buyerClientId || 0);
+        if (Number.isFinite(buyerId) && buyerId > 0) counterpartId = buyerId;
+      }
+    }
+
+    const metadata = {
+      startsAt: startsAt.toISOString(),
+      location: location || null,
+      notes: notes || null,
+      proposedBy: 'agent',
+      status: isMeeting ? 'confirmed' : 'pending',
+      offerId,
+      buyerClientId: client.type === 'BUYER' ? client.id : counterpartId,
+      sellerClientId: client.type === 'SELLER' ? client.id : counterpartId,
+    };
+
+    const targets = [clientId, ...(counterpartId && counterpartId !== clientId ? [counterpartId] : [])];
+    for (const targetId of targets) {
+      const target = targetId === clientId
+        ? client
+        : await prisma.agencyClient.findFirst({
+            where: { id: targetId, agencyUserId, status: 'ACTIVE' },
+            select: { id: true, firstName: true, lastName: true },
+          });
+      if (!target) continue;
+      await prisma.agencyClientActivity.create({
+        data: {
+          clientId: targetId,
+          agencyUserId,
+          offerId,
+          kind: isMeeting ? JOURNEY_ACTIVITY.MEETING : JOURNEY_ACTIVITY.PRESENTATION,
+          title: isMeeting
+            ? `Spotkanie · ${target.firstName} ${target.lastName}`
+            : `Prezentacja oferty${offerId ? ` #${offerId}` : ''} · ${target.firstName} ${target.lastName}`,
+          body: [startsAt.toLocaleString('pl-PL'), location, notes].filter(Boolean).join(' · '),
+          metadata,
         },
-      },
-    });
+      });
+      await emailClientSchedule({
+        clientId: targetId,
+        kind: isMeeting ? 'meeting' : 'presentation',
+        mode: isMeeting ? 'confirmed' : 'proposed',
+        startsAt,
+        location: location || null,
+        notes: notes || null,
+      });
+    }
     await sendNotification({
       userId: agencyUserId,
       type: 'CRM_EVENT',
       title: isMeeting ? 'Termin spotkania' : 'Propozycja prezentacji',
-      body: `${client.firstName} ${client.lastName} · ${startsAt.toLocaleString('pl-PL')}`,
+      body: `${client.firstName} ${client.lastName} · ${startsAt.toLocaleString('pl-PL')}${offerId ? ` · oferta #${offerId}` : ''}`,
       data: crmAgentPushData(clientId, { notificationType: 'crm_client_schedule' }),
     }).catch(() => {});
-    await emailClientSchedule({
-      clientId,
-      kind: isMeeting ? 'meeting' : 'presentation',
-      mode: isMeeting ? 'confirmed' : 'proposed',
-      startsAt,
-      location: location || null,
-      notes: notes || null,
-    });
     return NextResponse.json({ success: true });
   }
 

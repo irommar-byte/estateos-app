@@ -118,7 +118,7 @@ export function listingStatusLabel(status?: string | null): string {
     case 'PUBLISHED':
       return 'Opublikowana';
     case 'PENDING':
-      return 'Szkic — czeka na publikację';
+      return 'Szkic — niepubliczna';
     case 'SOLD':
       return 'Sprzedana';
     case 'ARCHIVED':
@@ -351,7 +351,7 @@ export async function createOfferFromAcquisitionRecord(params: {
       description:
         [property.advantages || client.sellerDescription || client.notes, extraBits.join('. ')].filter(Boolean).join('\n\n') ||
         'Oferta utworzona z karty pozyskania CRM EstateOS.',
-      status: 'ACTIVE',
+      status: 'PENDING',
       floorPlanUrl:
         (wholePlan2d.startsWith('http') || wholePlan2d.startsWith('/') ? wholePlan2d : '') ||
         planImages[0] ||

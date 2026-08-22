@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAgencyUserId } from "@/lib/agencyClientAuth";
 import {
   buildAcquisitionAgreementText,
+  clampAcquisitionStep,
   createDefaultAcquisitionForm,
+  isAcquisitionLocked,
   normalizeAcquisitionForm,
   type AcquisitionFormData,
 } from "@/lib/acquisitionWorkflow";
@@ -30,7 +32,7 @@ function shapeAcquisition(record: any, fallbackForm: AcquisitionFormData) {
     id: record.id,
     clientId: record.clientId,
     status: record.status,
-    currentStep: record.currentStep,
+    currentStep: isAcquisitionLocked(record) ? 7 : record.currentStep,
     formData: normalizeAcquisitionForm(record.formData, fallbackForm),
     agreementSnapshot: record.agreementSnapshot,
     approvedTemplateConfirmed: Boolean(record.approvedTemplateConfirmed),
@@ -181,7 +183,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   const clientId = Number((await ctx.params).id);
   const client = await loadContext(clientId, agencyUserId);
   if (!client) return NextResponse.json({ error: "Nie znaleziono klienta sprzedającego." }, { status: 404 });
-  if (client.acquisition?.status === "SIGNED") {
+  if (isAcquisitionLocked(client.acquisition)) {
     return NextResponse.json({ error: "Podpisany dokument jest zablokowany przed zmianami." }, { status: 409 });
   }
 
@@ -190,7 +192,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     body.formData || client.acquisition?.formData,
     createDefaultAcquisitionForm(client),
   );
-  const currentStep = Math.min(6, Math.max(1, Number(body.currentStep || client.acquisition?.currentStep || 1)));
+  const currentStep = clampAcquisitionStep(body.currentStep || client.acquisition?.currentStep || 1);
   const status = ["PREPARATION", "IN_MEETING", "TERMS_READY", "CANCELLED"].includes(String(body.status))
     ? String(body.status)
     : client.acquisition?.status || "PREPARATION";
@@ -249,6 +251,9 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (!client) return NextResponse.json({ error: "Nie znaleziono klienta sprzedającego." }, { status: 404 });
   const body = await req.json();
   const action = String(body.action || "");
+  if (isAcquisitionLocked(client.acquisition)) {
+    return NextResponse.json({ error: "Pozysk jest zamknięty. Umowa jest tylko do podglądu." }, { status: 409 });
+  }
   const form = normalizeAcquisitionForm(
     body.formData || client.acquisition?.formData,
     createDefaultAcquisitionForm(client),
@@ -341,7 +346,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         signerIpHash,
         signerUserAgent: String(req.headers.get("user-agent") || "").slice(0, 512) || null,
         status: "SIGNED",
-        currentStep: 6,
+        currentStep: 7,
       },
     });
 
@@ -391,10 +396,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
     await sendNotification({
       userId: agencyUserId,
       type: "CRM_EVENT",
-      title: offerId ? "Umowa podpisana — oferta utworzona" : "Umowa podpisana",
+      title: offerId ? "Umowa podpisana — szkic oferty" : "Umowa podpisana",
       body: offerId
-        ? `${client.firstName} ${client.lastName} · oferta #${offerId}`
-        : `${client.firstName} ${client.lastName}. ${offerError || "Utwórz ofertę ręcznie z karty."}`,
+        ? `${client.firstName} ${client.lastName} · szkic #${offerId} (niepubliczny)`
+        : `${client.firstName} ${client.lastName}. ${offerError || "Utwórz szkic oferty ręcznie z karty."}`,
       data: crmAgentPushData(clientId, { notificationType: "crm_client_signed" }),
     }).catch(() => {});
 
