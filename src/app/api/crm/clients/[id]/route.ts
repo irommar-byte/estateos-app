@@ -305,7 +305,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (action === 'intelligence_preview') {
     const owned = await prisma.agencyClient.findFirst({ where: { id: clientId, agencyUserId }, select: { id: true } });
     if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
-    const { pick } = await pickIntelligenceOffer(clientId, { force: true });
+    const { pick } = await pickIntelligenceOffer(clientId, { preview: true });
     return NextResponse.json({ success: true, pick });
   }
 
