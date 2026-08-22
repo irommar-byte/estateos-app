@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -69,7 +70,7 @@ export default function AgencyClientsScreen() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'ALL' | 'BUYER' | 'SELLER'>('ALL');
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
-  const { pipelines } = useSellerClientPipelines(token, clients);
+  const { pipelines, portalUrls } = useSellerClientPipelines(token, clients);
 
   const colors = {
     bg: isDark ? '#000' : '#F2F2F7',
@@ -151,6 +152,7 @@ export default function AgencyClientsScreen() {
           const showMeeting =
             client.upcomingMeetingStartsAt && hasLiveMeetingCountdown(client.upcomingMeetingStartsAt);
           const pipeline = client.type === 'SELLER' ? pipelines[client.id] : undefined;
+          const portalUrl = client.portalUrl || portalUrls[client.id];
 
           return (
             <Pressable
@@ -182,12 +184,30 @@ export default function AgencyClientsScreen() {
                     location={client.upcomingMeetingLocation}
                     isDark={isDark}
                   />
-                ) : pipeline ? (
+                ) : null}
+                {pipeline ? (
                   <SellerClientPipelineBar stages={pipeline} isDark={isDark} compact />
                 ) : client.type === 'BUYER' && client.matchCount > 0 ? (
                   <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 12, fontWeight: '700' }}>
                     {client.matchCount} dopasowań{client.topMatchScore ? ` · top ${client.topMatchScore}%` : ''}
                   </Text>
+                ) : null}
+
+                {portalUrl ? (
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      const url = portalUrl.startsWith('http')
+                        ? portalUrl
+                        : `https://estateos.pl${portalUrl}`;
+                      void Linking.openURL(url);
+                    }}
+                    style={[styles.portalBtn, { borderColor: colors.border, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F6F4EE' }]}
+                  >
+                    <Ionicons name="eye-outline" size={15} color="#007AFF" />
+                    <Text style={styles.portalBtnText}>Zobacz panel klienta</Text>
+                    <Ionicons name="open-outline" size={13} color="#007AFF" />
+                  </Pressable>
                 ) : null}
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
@@ -226,13 +246,24 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
     shadowOpacity: 0.14,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 5,
   },
+  portalBtn: {
+    marginTop: 10,
+    minHeight: 36,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  portalBtnText: { flex: 1, color: '#007AFF', fontSize: 12, fontWeight: '800' },
   meetingBadge: {
     marginTop: 10,
     paddingVertical: 8,

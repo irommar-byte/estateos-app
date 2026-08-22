@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { SellerPipelineStage, SellerPipelineStageId } from '../../lib/sellerClientPipeline';
@@ -10,6 +10,17 @@ const STAGE_ICONS: Record<SellerPipelineStageId, keyof typeof Ionicons.glyphMap>
   transaction: 'briefcase',
   finalization: 'key',
 };
+
+const SHORT_LABELS: Record<SellerPipelineStageId, string> = {
+  meeting: 'Spotkanie',
+  acquisition: 'Pozysk',
+  sale: 'Sprzedaż',
+  transaction: 'Transakcja',
+  finalization: 'Finalizacja',
+};
+
+const DOT = 22;
+const RAIL = 4;
 
 function AnimatedPhoneIcon({ active }: { active: boolean }) {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -57,89 +68,103 @@ type Props = {
 };
 
 export default function SellerClientPipelineBar({ stages, isDark, compact }: Props) {
+  const [trackW, setTrackW] = useState(0);
   const doneCount = stages.filter((s) => s.done).length;
-  const progressPct = stages.length ? (doneCount / stages.length) * 100 : 0;
-  const current = stages.find((s) => s.current);
+  const n = Math.max(stages.length, 1);
+  const segments = Math.max(1, n - 1);
+  const reached = stages.every((s) => s.done) ? n - 1 : Math.max(0, doneCount);
+  const progressPct = reached / segments;
+  const colW = trackW / n;
+  const railLeft = colW / 2;
+  const railWidth = Math.max(0, trackW - colW);
+  const fillWidth = railWidth * progressPct;
+  const rail = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.1)';
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.titleRow}>
-        <Text style={[styles.kicker, { color: isDark ? '#8E8E93' : '#6C6C70' }]}>Proces sprzedaży</Text>
-        {current ? (
-          <Text style={[styles.currentLabel, { color: isDark ? '#fff' : '#111' }]} numberOfLines={1}>
-            {current.label}
-          </Text>
-        ) : null}
-      </View>
-
+    <View
+      style={[
+        styles.wrap,
+        compact && styles.wrapCompact,
+        {
+          backgroundColor: isDark ? 'rgba(52,199,89,0.1)' : 'rgba(52,199,89,0.07)',
+          shadowColor: isDark ? '#000' : '#14532d',
+        },
+      ]}
+    >
       <View
-        style={[
-          styles.track,
-          { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' },
-        ]}
+        style={styles.trackRow}
+        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
       >
-        <View style={[styles.fill, { width: `${Math.max(8, progressPct)}%` }]} />
-      </View>
-
-      <View style={styles.row}>
-        {stages.map((stage, index) => {
+        {trackW > 0 ? (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.railWrap,
+              {
+                left: railLeft,
+                width: railWidth,
+                top: DOT / 2 - RAIL / 2,
+              },
+            ]}
+          >
+            <View style={[styles.rail, { backgroundColor: rail }]} />
+            <View style={[styles.railFill, { width: fillWidth }]} />
+          </View>
+        ) : null}
+        {stages.map((stage) => {
           const iconName = STAGE_ICONS[stage.id];
           const isPhoneActive = stage.id === 'meeting' && stage.current && !stage.done;
           return (
-            <React.Fragment key={stage.id}>
-              <View style={styles.stepCol}>
-                <View
-                  style={[
-                    styles.dot,
-                    stage.done
-                      ? styles.dotDone
-                      : stage.current
-                        ? styles.dotCurrent
-                        : [styles.dotIdle, { borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)' }],
-                  ]}
-                >
-                  {stage.done ? (
-                    <Ionicons name="checkmark" size={12} color="#fff" />
-                  ) : isPhoneActive ? (
-                    <AnimatedPhoneIcon active />
-                  ) : (
-                    <Ionicons
-                      name={iconName}
-                      size={11}
-                      color={stage.current ? '#fff' : isDark ? '#8E8E93' : '#9CA3AF'}
-                    />
-                  )}
-                </View>
-                {!compact ? (
-                  <Text
-                    style={[
-                      styles.stepLabel,
-                      {
-                        color: stage.done ? '#34C759' : stage.current ? (isDark ? '#fff' : '#111') : isDark ? '#8E8E93' : '#6C6C70',
-                        fontWeight: stage.current ? '800' : '600',
-                      },
-                    ]}
-                    numberOfLines={2}
-                  >
-                    {stage.label}
-                  </Text>
-                ) : null}
+            <View key={stage.id} style={styles.stepCol}>
+              <View
+                style={[
+                  styles.dot,
+                  stage.done
+                    ? styles.dotDone
+                    : stage.current
+                      ? styles.dotCurrent
+                      : [
+                          styles.dotIdle,
+                          {
+                            borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.14)',
+                            backgroundColor: isDark ? '#1C1C1E' : '#fff',
+                          },
+                        ],
+                ]}
+              >
+                {stage.done ? (
+                  <Ionicons name="checkmark" size={11} color="#fff" />
+                ) : isPhoneActive ? (
+                  <AnimatedPhoneIcon active />
+                ) : (
+                  <Ionicons
+                    name={iconName}
+                    size={11}
+                    color={stage.current ? '#fff' : isDark ? '#8E8E93' : '#9CA3AF'}
+                  />
+                )}
               </View>
-              {index < stages.length - 1 ? (
-                <View
-                  style={[
-                    styles.connector,
-                    {
-                      backgroundColor: stage.done
-                        ? '#34C759'
+              <Text
+                style={[
+                  styles.stepLabel,
+                  {
+                    color: stage.done
+                      ? '#34C759'
+                      : stage.current
+                        ? isDark
+                          ? '#fff'
+                          : '#111'
                         : isDark
-                          ? 'rgba(255,255,255,0.12)'
-                          : 'rgba(0,0,0,0.1)',
-                    },
-                  ]}
-                />
-              ) : null}
-            </React.Fragment>
+                          ? '#8E8E93'
+                          : '#6C6C70',
+                    fontWeight: stage.current || stage.done ? '800' : '600',
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {SHORT_LABELS[stage.id]}
+              </Text>
+            </View>
           );
         })}
       </View>
@@ -148,25 +173,55 @@ export default function SellerClientPipelineBar({ stages, isDark, compact }: Pro
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 10 },
-  titleRow: { marginBottom: 8, gap: 2 },
-  kicker: { fontSize: 10, fontWeight: '800', letterSpacing: 1.1, textTransform: 'uppercase' },
-  currentLabel: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
-  track: { height: 4, borderRadius: 999, overflow: 'hidden', marginBottom: 12 },
-  fill: { height: '100%', borderRadius: 999, backgroundColor: '#34C759' },
-  row: { flexDirection: 'row', alignItems: 'flex-start' },
-  stepCol: { flex: 1, alignItems: 'center', minWidth: 0, paddingHorizontal: 1 },
+  wrap: {
+    marginTop: 10,
+    paddingTop: 10,
+    paddingBottom: 8,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  wrapCompact: { marginTop: 8, paddingTop: 8, paddingBottom: 6 },
+  trackRow: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  railWrap: {
+    position: 'absolute',
+    height: RAIL,
+    overflow: 'hidden',
+    borderRadius: 99,
+  },
+  rail: { ...StyleSheet.absoluteFillObject, borderRadius: 99 },
+  railFill: {
+    height: RAIL,
+    borderRadius: 99,
+    backgroundColor: '#34C759',
+    shadowColor: '#34C759',
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  stepCol: { flex: 1, alignItems: 'center', zIndex: 1 },
   dot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: DOT,
+    height: DOT,
+    borderRadius: DOT / 2,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
+    shadowColor: '#14532d',
+    shadowOpacity: 0.22,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   dotDone: { backgroundColor: '#34C759', borderColor: '#34C759' },
-  dotCurrent: { backgroundColor: '#059669', borderColor: '#6EE7B7' },
-  dotIdle: { backgroundColor: 'transparent' },
-  stepLabel: { marginTop: 5, fontSize: 8.5, textAlign: 'center', lineHeight: 11 },
-  connector: { height: 3, flex: 0.35, borderRadius: 2, marginTop: 11.5, marginHorizontal: -2 },
+  dotCurrent: { backgroundColor: '#059669', borderColor: '#A7F3D0' },
+  dotIdle: {},
+  stepLabel: { marginTop: 5, fontSize: 8, textAlign: 'center', letterSpacing: -0.1 },
 });

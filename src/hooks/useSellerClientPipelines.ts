@@ -37,11 +37,15 @@ async function enrichSellerClient(token: string, client: AgencyClientListItem) {
   const detailWithActivities = detailRes.client as typeof detailRes.client & {
     activities?: Array<{ kind: string; title: string | null; body: string | null }>;
   };
-  return sellerPipelineFromClientDetail(detailWithActivities, acquisition, offerStatus);
+  return {
+    stages: sellerPipelineFromClientDetail(detailWithActivities, acquisition, offerStatus),
+    portalUrl: detailRes.client.portalUrl || null,
+  };
 }
 
 export function useSellerClientPipelines(token: string | null, clients: AgencyClientListItem[]) {
   const [pipelines, setPipelines] = useState<ClientPipelineMap>({});
+  const [portalUrls, setPortalUrls] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const seq = useRef(0);
 
@@ -56,20 +60,23 @@ export function useSellerClientPipelines(token: string | null, clients: AgencyCl
     setLoading(true);
     try {
       const next: ClientPipelineMap = {};
+      const urls: Record<number, string> = {};
       const batchSize = 3;
       for (let i = 0; i < sellers.length; i += batchSize) {
         const batch = sellers.slice(i, i + batchSize);
         const results = await Promise.all(
           batch.map(async (client) => {
-            const stages = await enrichSellerClient(token, client);
-            return { id: client.id, stages };
+            const enriched = await enrichSellerClient(token, client);
+            return { id: client.id, enriched };
           }),
         );
         if (request !== seq.current) return;
         for (const row of results) {
-          if (row.stages) next[row.id] = row.stages;
+          if (row.enriched?.stages) next[row.id] = row.enriched.stages;
+          if (row.enriched?.portalUrl) urls[row.id] = row.enriched.portalUrl;
         }
         setPipelines((prev) => ({ ...prev, ...next }));
+        setPortalUrls((prev) => ({ ...prev, ...urls }));
       }
     } finally {
       if (request === seq.current) setLoading(false);
@@ -80,5 +87,5 @@ export function useSellerClientPipelines(token: string | null, clients: AgencyCl
     void load();
   }, [load]);
 
-  return { pipelines, loadingPipelines: loading, reloadPipelines: load };
+  return { pipelines, portalUrls, loadingPipelines: loading, reloadPipelines: load };
 }

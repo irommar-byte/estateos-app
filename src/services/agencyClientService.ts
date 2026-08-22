@@ -24,6 +24,7 @@ export type AgencyClientListItem = {
   updatedAt: string;
   upcomingMeetingStartsAt?: string | null;
   upcomingMeetingLocation?: string | null;
+  portalUrl?: string | null;
 };
 
 export type AgencyClientMatch = {

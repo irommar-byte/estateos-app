@@ -248,6 +248,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     reactedCount: reactedMatches.length,
     lastOfferSentAt: lastOfferSentAt ? lastOfferSentAt.toISOString() : null,
     lastReactionAt: lastReactionAt ? lastReactionAt.toISOString() : null,
+    listingSold: ['SOLD', 'ARCHIVED'].includes(String(client.linkedOffer?.status || '').toUpperCase()),
   });
 
   return NextResponse.json({
