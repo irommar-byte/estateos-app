@@ -5070,6 +5070,22 @@ html:not(.light) .eos-crm-offer-card__title {
   animation: eos-plane-arrive 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.eos-intel-frame {
+  position: relative;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--eos-card), var(--eos-card)) padding-box,
+    linear-gradient(120deg, #ff4d6d, #ffd166, #06d6a0, #4cc9f0, #c77dff, #ff4d6d) border-box;
+  box-shadow: 0 0 0 1px rgba(199, 125, 255, 0.18), 0 18px 40px rgba(76, 201, 240, 0.12);
+}
+
+.eos-intel-kicker {
+  background: linear-gradient(90deg, #ff4d6d, #ffd166, #06d6a0, #4cc9f0, #c77dff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .eos-btn--plane:hover:not(:disabled) .eos-send-plane__fly,
   .eos-btn--plane.is-sending .eos-send-plane__fly,

@@ -18,6 +18,8 @@ type Match = {
   notifiedAt: string | null;
   clientFeedback: string | null;
   clientFeedbackAt: string | null;
+  intelligenceSent?: boolean;
+  intelligenceReason?: string | null;
   offer: {
     id: number;
     title: string;
@@ -77,7 +79,7 @@ export default function ClientPortalMatchCard({
   };
 
   return (
-    <article className="eos-inset-frame overflow-hidden rounded-[1.6rem]">
+    <article className={`eos-inset-frame rounded-[1.6rem] ${match.intelligenceSent ? "eos-intel-frame" : "overflow-hidden"}`}>
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:flex-wrap sm:p-5">
         <OfferPhotoCascade
           offer={match.offer}
@@ -87,6 +89,11 @@ export default function ClientPortalMatchCard({
           <Link href={href} className="block text-base font-black leading-snug text-[var(--eos-text)] hover:text-emerald-600">
             {match.offer.title}
           </Link>
+          {match.intelligenceSent ? (
+            <p className="eos-intel-kicker mt-1 text-[10px] font-black uppercase tracking-[0.14em]">
+              Domysł EstateOS™ Intelligence · w imieniu agenta
+            </p>
+          ) : null}
           <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
             {Math.round(match.offer.price).toLocaleString("pl-PL")} {match.offer.priceCurrency || "PLN"}
             {match.offer.area ? ` · ${match.offer.area} m²` : ""}

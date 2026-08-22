@@ -92,6 +92,8 @@ model User {
   auctionBids               AuctionBidEntry[]             @relation("AuctionBidder")
   agencyClients             AgencyClient[]                @relation("AgencyClientsOwned")
   crmProfiles               AgencyClient[]                @relation("AgencyClientLinkedUser")
+  deskCases                 DeskCase[]                    @relation("DeskCasesOwned")
+  deskTasks                 DeskTask[]                    @relation("DeskTasksOwned")
   offersAsOriginalOwner     Offer[]                       @relation("OfferOriginalOwner")
   ownedAgencyCompany        AgencyCompany?                @relation("AgencyCompanyOwner")
   agencyMembership          AgencyCompanyMember?          @relation("AgencyCompanyMembership")
@@ -1153,6 +1155,12 @@ model AgencyClient {
   linkedOfferId         Int?
   linkedUserId          Int?
   portalToken           String?            @unique @db.VarChar(64)
+  intelligenceEnabled          Boolean   @default(false)
+  intelligenceIntervalHours    Int       @default(24)
+  intelligenceDailyLimit       Int       @default(1)
+  intelligenceMinLearns        Int       @default(3)
+  intelligenceMinScore         Int       @default(92)
+  intelligenceLastSentAt       DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
@@ -1163,6 +1171,8 @@ model AgencyClient {
   matches         AgencyClientMatch[]
   activities      AgencyClientActivity[]
   acquisition     AgencyClientAcquisition?
+  deskCases       DeskCase[]
+  deskTasks       DeskTask[]
 
   @@index([agencyUserId, type, status])
   @@index([agencyUserId, updatedAt])
@@ -1201,6 +1211,8 @@ model AgencyClientMatch {
   sharedAt         DateTime?
   clientFeedback   String?   @db.Text
   clientFeedbackAt DateTime?
+  intelligenceSent    Boolean  @default(false)
+  intelligenceReason  String?  @db.Text
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -1390,4 +1402,64 @@ model MarketValuationDraft {
   consumedAt  DateTime?
 
   @@index([email])
+}
+
+/// EstateOS™ Desk — sprawa agenta (SELL/BUY), osobno od starego CRM UI.
+model DeskCase {
+  id                   Int       @id @default(autoincrement())
+  agencyUserId         Int
+  clientId             Int
+  kind                 String    @db.VarChar(8)
+  pipelineStage        String    @db.VarChar(32)
+  source               String?   @db.VarChar(64)
+  sourceUrl            String?   @db.VarChar(1024)
+  propertySnapshot     Json?
+  linkedOfferId        Int?
+  linkedDealId         Int?
+  linkedAcquisitionId  Int?
+  nextAction           String?   @db.VarChar(255)
+  nextActionAt         DateTime?
+  temperature          String    @default("WARM") @db.VarChar(8)
+  health               String    @default("HEALTHY") @db.VarChar(16)
+  lastContactedAt      DateTime?
+  contractEndsAt       DateTime?
+  lostReason           String?   @db.VarChar(255)
+  title                String?   @db.VarChar(255)
+  metadata             Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  agencyUser User         @relation("DeskCasesOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
+  client     AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks      DeskTask[]
+
+  @@index([agencyUserId, kind, pipelineStage])
+  @@index([agencyUserId, nextActionAt])
+  @@index([agencyUserId, health, temperature])
+  @@index([clientId])
+  @@index([linkedOfferId])
+}
+
+model DeskTask {
+  id           Int       @id @default(autoincrement())
+  agencyUserId Int
+  caseId       Int?
+  clientId     Int?
+  title        String    @db.VarChar(255)
+  status       String    @default("OPEN") @db.VarChar(16)
+  priority     String    @default("NORMAL") @db.VarChar(16)
+  dueAt        DateTime?
+  trigger      String?   @db.VarChar(64)
+  completedAt  DateTime?
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  agencyUser User         @relation("DeskTasksOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
+  case       DeskCase?    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  client     AgencyClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([agencyUserId, status, dueAt])
+  @@index([caseId, status])
+  @@index([clientId])
 }

@@ -302,6 +302,7 @@ export async function notifyAgencyClientAboutOffer(params: {
   channel: 'email' | 'manual';
   customMessage?: string;
   skipIfNotified?: boolean;
+  intelligence?: { reason: string };
 }) {
   if (params.skipIfNotified !== false) {
     const existing = await prisma.agencyClientMatch.findUnique({
@@ -342,8 +343,16 @@ export async function notifyAgencyClientAboutOffer(params: {
       score: 0,
       notifiedAt: now,
       sharedAt: now,
+      intelligenceSent: Boolean(params.intelligence),
+      intelligenceReason: params.intelligence?.reason ?? null,
     },
-    update: { notifiedAt: now, sharedAt: now },
+    update: {
+      notifiedAt: now,
+      sharedAt: now,
+      ...(params.intelligence
+        ? { intelligenceSent: true, intelligenceReason: params.intelligence.reason }
+        : {}),
+    },
   });
 
   await prisma.agencyClientActivity.create({
@@ -351,14 +360,20 @@ export async function notifyAgencyClientAboutOffer(params: {
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
       offerId: params.offerId,
-      kind: emailSent ? 'CLIENT_NOTIFIED' : 'OFFER_SHARED',
-      title: emailSent ? `Wysłano ofertę: ${preview.offers[0]?.title || 'ogłoszenie'}` : 'Zapisano udostępnienie oferty',
+      kind: params.intelligence ? 'INTELLIGENCE_OFFER' : emailSent ? 'CLIENT_NOTIFIED' : 'OFFER_SHARED',
+      title: params.intelligence
+        ? `EstateOS™ Intelligence: ${preview.offers[0]?.title || 'ogłoszenie'}`
+        : emailSent
+          ? `Wysłano ofertę: ${preview.offers[0]?.title || 'ogłoszenie'}`
+          : 'Zapisano udostępnienie oferty',
       body: [preview.intro, preview.offers[0] ? `${preview.offers[0].city}${preview.offers[0].district ? ` · ${preview.offers[0].district}` : ''}` : '']
         .filter(Boolean)
         .join('\n'),
       metadata: {
         channel: params.channel,
         emailSent,
+        intelligence: Boolean(params.intelligence),
+        intelligenceReason: params.intelligence?.reason || null,
         offerIds: [params.offerId],
         offers: preview.offers.map((o) => ({
           id: o.id,

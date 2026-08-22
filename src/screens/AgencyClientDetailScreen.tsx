@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -38,7 +39,10 @@ import AgencyClientRadarSurvey, {
   defaultClientRadarFilters,
   type ClientRadarFilters,
 } from '../components/agency/AgencyClientRadarSurvey';
-import MatchPhotoCascade from '../components/agency/MatchPhotoCascade';
+import MatchPhotoCascade, { type CascadeOrigin } from '../components/agency/MatchPhotoCascade';
+import IntelligenceAssistantCard, {
+  DEFAULT_INTELLIGENCE_SETTINGS,
+} from '../components/agency/IntelligenceAssistantCard';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import { buildYearBuiltPickerValues } from '../lib/offerYearBuilt';
 import {
@@ -154,6 +158,8 @@ function MatchRow({
 }) {
   const [descOpen, setDescOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [origin, setOrigin] = useState<CascadeOrigin | null>(null);
+  const thumbRef = useRef<View>(null);
   const meta = [item.offer.city, item.offer.district, item.offer.area ? `${item.offer.area} m²` : null]
     .filter(Boolean)
     .join(' · ');
@@ -167,23 +173,29 @@ function MatchRow({
     next();
   };
 
-  return (
-    <View
-      style={{
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: colors.border,
-      }}
-    >
-      <MatchPhotoCascade visible={galleryOpen} images={images} onClose={() => setGalleryOpen(false)} />
+  const openGallery = () => {
+    if (!images.length) {
+      onOpen();
+      return;
+    }
+    thumbRef.current?.measureInWindow((x, y, width, height) => {
+      setOrigin({ x, y, width, height });
+      setGalleryOpen(true);
+    });
+  };
+
+  const inner = (
+    <>
+      <MatchPhotoCascade visible={galleryOpen} images={images} origin={origin} onClose={() => setGalleryOpen(false)} />
 
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-        <Pressable onPress={() => (images.length ? setGalleryOpen(true) : onOpen())}>
+        <View ref={thumbRef} collapsable={false}>
+          <Pressable onPress={openGallery}>
           {images[0] ? (
             <Image
               source={{ uri: images[0] }}
-              contentFit="cover"
-              style={{ width: 88, height: 72, borderRadius: 12 }}
+              contentFit="contain"
+              style={{ width: 88, height: 72, borderRadius: 12, backgroundColor: colors.border }}
             />
           ) : (
             <View
@@ -199,10 +211,16 @@ function MatchRow({
               <Ionicons name="home-outline" size={22} color={colors.secondary} />
             </View>
           )}
-        </Pressable>
+          </Pressable>
+        </View>
         <View style={{ flex: 1 }}>
           <Pressable onPress={onOpen}>
             <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>{item.offer.title}</Text>
+            {item.intelligenceSent ? (
+              <Text style={{ color: '#7B4DFF', fontWeight: '900', fontSize: 10, letterSpacing: 0.4, marginTop: 3 }}>
+                DOMYSŁ ESTATEOS™ INTELLIGENCE
+              </Text>
+            ) : null}
             <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 13, marginTop: 2 }}>
               {formatCurrencyPLN(item.offer.price)}
             </Text>
@@ -253,6 +271,29 @@ function MatchRow({
       ) : sent ? (
         <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>Klient jeszcze nie odniósł się do tej oferty.</Text>
       ) : null}
+    </>
+  );
+
+  return (
+    <View
+      style={{
+        paddingVertical: 12,
+        borderBottomWidth: item.intelligenceSent ? 0 : StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border,
+      }}
+    >
+      {item.intelligenceSent ? (
+        <LinearGradient
+          colors={['#ff4d6d', '#ffd166', '#06d6a0', '#4cc9f0', '#c77dff']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ borderRadius: 16, padding: 2 }}
+        >
+          <View style={{ backgroundColor: colors.card, borderRadius: 14, padding: 10 }}>{inner}</View>
+        </LinearGradient>
+      ) : (
+        inner
+      )}
     </View>
   );
 }
@@ -891,6 +932,15 @@ export default function AgencyClientDetailScreen() {
     }
     void load();
     return true;
+  };
+
+  const saveIntelligence = async (next: typeof DEFAULT_INTELLIGENCE_SETTINGS) => {
+    if (!token) return;
+    setBusy('intel');
+    const res = await patchAgencyClient(token, clientId, { intelligence: next });
+    setBusy('');
+    if (!res.ok) Alert.alert('Asystent', res.message);
+    else void load();
   };
 
   const sendMatches = async (offerIds: number[]) => {
@@ -1875,6 +1925,17 @@ export default function AgencyClientDetailScreen() {
                         {busy === 'save_radar' ? 'Dopasowuję…' : 'Zapisz ankietę i dopasuj oferty'}
                       </Text>
                     </Pressable>
+                  </View>
+                ) : null}
+
+                {showRadarSurvey ? (
+                  <View style={{ marginTop: 14 }}>
+                    <IntelligenceAssistantCard
+                      value={client.intelligence || DEFAULT_INTELLIGENCE_SETTINGS}
+                      colors={colors}
+                      busy={busy === 'intel'}
+                      onSave={(next) => void saveIntelligence(next)}
+                    />
                   </View>
                 ) : null}
 

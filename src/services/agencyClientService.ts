@@ -34,6 +34,8 @@ export type AgencyClientMatch = {
   sharedAt: string | null;
   clientFeedback: string | null;
   clientFeedbackAt?: string | null;
+  intelligenceSent?: boolean;
+  intelligenceReason?: string | null;
   offer: {
     id: number;
     title: string;
@@ -58,6 +60,14 @@ export type AgencyClientDetail = AgencyClientListItem & {
   sellerDistrict: string | null;
   buyerFilters: Record<string, unknown> | null;
   matches: AgencyClientMatch[];
+  intelligence?: {
+    enabled: boolean;
+    intervalHours: number;
+    dailyLimit: number;
+    minLearns: number;
+    minScore: number;
+    lastSentAt: string | null;
+  } | null;
   meeting?: {
     startsAt: string;
     location: string | null;
