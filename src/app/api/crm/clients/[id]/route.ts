@@ -16,7 +16,7 @@ import {
 import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
-import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
@@ -122,24 +122,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         sharedAt: m.sharedAt?.toISOString() ?? null,
         clientFeedback: m.clientFeedback,
         clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
-        offer: {
-          id: m.offer.id,
-          title: m.offer.title,
-          price: m.offer.price,
-          pricePln: m.offer.pricePln,
-          priceCurrency: m.offer.priceCurrency,
-          city: m.offer.city,
-          district: m.offer.district,
-          street: m.offer.street,
-          area: m.offer.area,
-          rooms: m.offer.rooms,
-          transactionType: m.offer.transactionType,
-          excerpt: String(m.offer.description || '')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 180),
-          imageUrl: resolveOfferPrimaryImage(m.offer),
-        },
+        offer: shapeAgencyClientMatchOffer(m.offer),
       })),
       meeting,
       presentation,

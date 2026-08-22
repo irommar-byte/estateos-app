@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Send, ThumbsDown, ThumbsUp, HelpCircle } from "lucide-react";
 import EosButton from "@/components/ui/EosButton";
+import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import {
   DISLIKE_PHRASES,
   LIKE_PHRASES,
@@ -28,7 +29,9 @@ type Match = {
     area: number;
     rooms?: number | null;
     excerpt?: string | null;
+    description?: string | null;
     imageUrl: string;
+    imageUrls?: string[] | null;
   };
 };
 
@@ -75,17 +78,11 @@ export default function ClientPortalMatchCard({
 
   return (
     <article className="eos-inset-frame overflow-hidden rounded-[1.6rem]">
-      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
-        <Link
-          href={href}
-          className="eos-inset-well block h-40 w-full shrink-0 overflow-hidden rounded-2xl sm:h-36 sm:w-48"
-          aria-label={`Otwórz ofertę: ${match.offer.title}`}
-        >
-          <span
-            className="block h-full w-full bg-cover bg-center transition duration-300 hover:scale-[1.04]"
-            style={{ backgroundImage: `url(${match.offer.imageUrl})` }}
-          />
-        </Link>
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:flex-wrap sm:p-5">
+        <OfferPhotoCascade
+          offer={match.offer}
+          thumbClassName="eos-inset-well block h-40 w-full shrink-0 overflow-hidden rounded-2xl sm:h-36 sm:w-48"
+        />
         <div className="min-w-0 flex-1">
           <Link href={href} className="block text-base font-black leading-snug text-[var(--eos-text)] hover:text-emerald-600">
             {match.offer.title}
@@ -96,9 +93,10 @@ export default function ClientPortalMatchCard({
             {match.offer.rooms ? ` · ${match.offer.rooms} pok.` : ""}
           </p>
           <p className="mt-1 text-sm leading-snug text-[var(--eos-muted)]">{location}</p>
-          {match.offer.excerpt ? (
-            <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{match.offer.excerpt}</p>
-          ) : null}
+          <OfferDescriptionToggle
+            offer={match.offer}
+            className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]"
+          />
           <div className="mt-3">
             <div className="flex items-center justify-between gap-3 text-[11px] font-bold">
               <span className={tone.text}>
