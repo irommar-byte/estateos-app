@@ -1418,16 +1418,20 @@ export default function DealroomChatScreen() {
     const key = `${dealId}:${partnerFinalReviewEntry.senderId || 'partner'}:${partnerFinalReviewEntry.createdAt || ''}`;
     if (lastReviewNotificationKeyRef.current === key) return;
     lastReviewNotificationKeyRef.current = key;
+    const threadIdentifier = `estateos-deal-${String(dealId ?? '')}`;
     void Notifications.scheduleNotificationAsync({
       content: {
         title: t('dealroom.chat.review.ratingReceivedTitle'),
         body: t('dealroom.chat.review.ratingReceivedBody'),
+        sound: 'estateos_notify.wav',
+        threadIdentifier,
         data: {
           target: 'dealroom',
           targetType: 'DEAL',
           notificationType: 'dealroom_review',
           dealId,
           offerId: resolvedOfferId || undefined,
+          threadIdentifier,
           deeplink: `estateos://dealroom/${dealId}`,
         },
       } as Notifications.NotificationContentInput,
@@ -1724,12 +1728,8 @@ export default function DealroomChatScreen() {
         ? t('dealroom.chat.eventProposedPriceBy', { who, amount: Number(entry.event?.amount || 0).toLocaleString('pl-PL') })
         : t('dealroom.chat.eventProposedAppointmentBy', { who });
 
-      /** Jeden stos na iOS per klient (nadawca); fallback: jeden stos per dealroom. */
-      const peerId = entry.msg?.senderId;
-      const threadIdentifier =
-        peerId != null && String(peerId).trim() !== ''
-          ? `estateos-peer-${String(peerId)}`
-          : `estateos-deal-${String(dealId ?? '')}`;
+      /** Jeden stos na iOS per dealroom — ten sam klucz co push z serwera. */
+      const threadIdentifier = `estateos-deal-${String(dealId ?? '')}`;
 
       void Notifications.scheduleNotificationAsync({
         content: {
