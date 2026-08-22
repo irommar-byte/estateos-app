@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_INTELLIGENCE_SETTINGS,
+  descriptionImpliesBalcony,
   intelligenceAdjustScore,
   learnFromFeedback,
   parseIntelligencePatch,
+  shouldPersistBalcony,
   summarizeTaste,
 } from '../src/lib/crm/clientIntelligence';
 import { serializeClientOfferFeedback } from '../src/lib/crm/clientPortalFeedback';
@@ -110,6 +112,33 @@ test('penalizes listings near budget after za drogo and kitchen objections in th
   });
   assert.ok(expensiveAneks.score < 90);
   assert.ok(expensiveAneks.reasons.length >= 1);
+});
+
+test('treats loggia in the description as a balcony and ignores bez balkonu', () => {
+  assert.equal(descriptionImpliesBalcony('Duża loggia od salonu i dodatkowy balkon.'), true);
+  assert.equal(descriptionImpliesBalcony('Mieszkanie bez balkonu, z ogródkiem.'), false);
+  assert.equal(shouldPersistBalcony({ id: 1, hasBalcony: false, description: 'Loggia 8 m.' }), true);
+  assert.equal(shouldPersistBalcony({ id: 1, hasBalcony: true, description: 'Loggia 8 m.' }), false);
+});
+
+test('does not treat generic words from notes as description hits', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        note: 'Daleka lokalizacja do metra. Nie chcę mieszkania z ogródkiem.',
+      }),
+      offer: { id: 1, description: 'Mieszkanie przy metrze, bez ogródka.' },
+    },
+  ]);
+  const adjusted = intelligenceAdjustScore({
+    radarScore: 90,
+    taste,
+    maxPrice: 1000000,
+    offer: { id: 40, title: 'Mieszkanie', description: 'Mieszkanie przy parku, 3 pokoje.' },
+  });
+  assert.equal(adjusted.reasons.some((item) => /metra|mieszkania/.test(item)), false);
 });
 
 test('parseIntelligencePatch clamps assistant settings', () => {

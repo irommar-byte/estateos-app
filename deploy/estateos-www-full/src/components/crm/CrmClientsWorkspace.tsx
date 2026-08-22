@@ -972,6 +972,7 @@ export default function CrmClientsWorkspace() {
               {detail.type === "BUYER" ? (
                 <>
                   <CrmIntelligenceAssistant
+                    clientId={detail.id}
                     value={detail.intelligence}
                     busy={busy}
                     onSave={(next) => void saveIntelligence(next)}
@@ -981,7 +982,7 @@ export default function CrmClientsWorkspace() {
                       type="button"
                       disabled={busy}
                       onClick={() => void refreshMatches()}
-                      className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+                      className={eosBtn("secondary", { size: "sm" })}
                     >
                       <RefreshCcw className="size-3.5" />
                       {cl.refreshMatches}
@@ -991,7 +992,7 @@ export default function CrmClientsWorkspace() {
                         type="button"
                         disabled={busy}
                         onClick={() => void openPreview([...selectedOffers])}
-                        className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black"
+                        className={eosBtn("home", { size: "sm" })}
                       >
                         <Send className="size-3.5" />
                         {cl.sendSelected} ({selectedOffers.size})
@@ -1073,14 +1074,14 @@ export default function CrmClientsWorkspace() {
                                     type="button"
                                     disabled={busy}
                                     onClick={() => void openPreview([m.offer.id])}
-                                    className="rounded-full bg-emerald-500 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-black"
+                                    className={eosBtn("home", { size: "sm" })}
                                   >
                                     {cl.sendEmail}
                                   </button>
                                 ) : null}
                             <Link
                               href={offerHref(m.offer.id, detail.portalToken)}
-                              className="rounded-full border border-[var(--eos-border)] px-3 py-2 text-[9px] font-black uppercase tracking-wider text-[var(--eos-text)]"
+                              className={eosBtn("secondary", { size: "sm" })}
                             >
                                   {cl.viewOffer}
                                 </Link>
@@ -1152,6 +1153,7 @@ export default function CrmClientsWorkspace() {
                     {sellerSearching ? (
                       <>
                         <CrmIntelligenceAssistant
+                          clientId={detail.id}
                           value={detail.intelligence}
                           busy={busy}
                           onSave={(next) => void saveIntelligence(next)}
@@ -1167,7 +1169,7 @@ export default function CrmClientsWorkspace() {
                             type="button"
                             disabled={busy}
                             onClick={() => void saveSellerRadar(true)}
-                            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black"
+                            className={eosBtn("home", { size: "sm" })}
                           >
                             Zapisz kryteria
                           </button>
@@ -1175,7 +1177,7 @@ export default function CrmClientsWorkspace() {
                             type="button"
                             disabled={busy}
                             onClick={() => void refreshMatches()}
-                            className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+                            className={eosBtn("secondary", { size: "sm" })}
                           >
                             <RefreshCcw className="size-3.5" />
                             Odśwież dopasowania
@@ -1185,7 +1187,7 @@ export default function CrmClientsWorkspace() {
                               type="button"
                               disabled={busy}
                               onClick={() => void openPreview([...selectedOffers])}
-                              className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-text)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-bg)]"
+                              className={eosBtn("primary", { size: "sm" })}
                             >
                               <Send className="size-3.5" />
                               Zaproponuj ({selectedOffers.size})
@@ -1240,7 +1242,7 @@ export default function CrmClientsWorkspace() {
                                       type="button"
                                       disabled={busy}
                                       onClick={() => void openPreview([m.offer.id])}
-                                      className="rounded-full bg-emerald-500 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-black"
+                                      className={eosBtn("home", { size: "sm" })}
                                     >
                                       Zaproponuj
                                     </button>

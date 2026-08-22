@@ -1928,9 +1928,11 @@ export default function AgencyClientDetailScreen() {
                   </View>
                 ) : null}
 
-                {showRadarSurvey ? (
+                {showRadarSurvey && token ? (
                   <View style={{ marginTop: 14 }}>
                     <IntelligenceAssistantCard
+                      clientId={clientId}
+                      token={token}
                       value={client.intelligence || DEFAULT_INTELLIGENCE_SETTINGS}
                       colors={colors}
                       busy={busy === 'intel'}

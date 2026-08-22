@@ -84,6 +84,40 @@ function includesAny(text: string, needles: string[]): boolean {
   return needles.some((needle) => needle && text.includes(needle.toLowerCase()));
 }
 
+const NO_BALCONY = /bez balkonu|brak balkonu|bez loggii|brak loggii/;
+const HAS_BALCONY = /balkon|loggi/;
+
+export function descriptionImpliesBalcony(text: string): boolean {
+  const hay = String(text || '').toLowerCase();
+  if (!hay.trim()) return false;
+  if (NO_BALCONY.test(hay)) return false;
+  return HAS_BALCONY.test(hay);
+}
+
+export function shouldPersistBalcony(offer: OfferLike): boolean {
+  return offer.hasBalcony !== true && descriptionImpliesBalcony(haystack(offer));
+}
+
+const FEEDBACK_STOPWORDS = new Set([
+  'mieszkania',
+  'mieszkanie',
+  'mieszkaniu',
+  'oferty',
+  'oferta',
+  'lokalizacja',
+  'lokalizacji',
+  'które',
+  'który',
+  'która',
+  'bardzo',
+  'klient',
+  'klientka',
+  'metra',
+  'metro',
+  'ulicy',
+  'budowy',
+]);
+
 export function learnFromFeedback(
   rows: Array<{ offerId: number; clientFeedback: string | null; offer?: OfferLike | null }>,
 ): LearnedTaste {
@@ -141,14 +175,17 @@ export function intelligenceAdjustScore(params: {
     phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
   }
 
-  const balconyInText = /balkon/.test(text) && !/bez balkonu|brak balkonu/.test(text);
-  const hasBalcony = offer.hasBalcony === true || balconyInText;
+  const balconyFromDescription = descriptionImpliesBalcony(text);
+  const hasBalcony = offer.hasBalcony === true || balconyFromDescription;
+  if (offer.hasBalcony !== true && balconyFromDescription) {
+    reasons.push('W opisie jest balkon albo loggia, choć parametr był odznaczony — zaznaczam balkon w ofercie.');
+  }
   if (phraseCounts.get('Brak balkonu') && !hasBalcony) {
     score -= 18;
     reasons.push('Klientka odrzucała mieszkania bez balkonu.');
   } else if (phraseCounts.get('Brak balkonu') && hasBalcony) {
     score += 6;
-    reasons.push('Ma balkon — tego wcześniej brakowało.');
+    reasons.push('Ma balkon / loggię — tego wcześniej brakowało.');
   }
 
   if (phraseCounts.get('Za drogo') && maxPrice && Number(offer.price) > maxPrice * 0.92) {
@@ -171,7 +208,10 @@ export function intelligenceAdjustScore(params: {
 
   const dislikedBlob = [...taste.dislikedText, ...taste.notes].join(' ').toLowerCase();
   if (dislikedBlob) {
-    for (const token of dislikedBlob.split(/[\s,.;:!?/]+/).filter((item) => item.length >= 5).slice(0, 12)) {
+    for (const token of dislikedBlob
+      .split(/[\s,.;:!?/]+/)
+      .filter((item) => item.length >= 6 && !FEEDBACK_STOPWORDS.has(item))
+      .slice(0, 12)) {
       if (text.includes(token)) {
         score -= 5;
         reasons.push(`W opisie wraca słowo z zastrzeżeń: „${token}”.`);
@@ -181,7 +221,10 @@ export function intelligenceAdjustScore(params: {
 
   const likedBlob = taste.likedText.join(' ').toLowerCase();
   if (likedBlob) {
-    for (const token of likedBlob.split(/[\s,.;:!?/]+/).filter((item) => item.length >= 5).slice(0, 8)) {
+    for (const token of likedBlob
+      .split(/[\s,.;:!?/]+/)
+      .filter((item) => item.length >= 6 && !FEEDBACK_STOPWORDS.has(item))
+      .slice(0, 8)) {
       if (text.includes(token)) {
         score += 4;
         reasons.push(`Opis pokrywa się z tym, co zostawało: „${token}”.`);

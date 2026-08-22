@@ -4,6 +4,7 @@ import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 import {
   intelligenceAdjustScore,
   learnFromFeedback,
+  shouldPersistBalcony,
   summarizeTaste,
   type LearnedTaste,
 } from '@/lib/crm/clientIntelligence';
@@ -26,6 +27,24 @@ const OFFER_SELECT = {
   floor: true,
 } as const;
 
+type OfferRow = {
+  id: number;
+  title: string | null;
+  description: string | null;
+  city: string | null;
+  district: string | null;
+  street: string | null;
+  price: number | null;
+  area: number | null;
+  rooms: number | null;
+  hasBalcony: boolean | null;
+  hasGarden: boolean | null;
+  hasElevator: boolean | null;
+  hasParking: boolean | null;
+  isFurnished: boolean | null;
+  floor: number | string | null;
+};
+
 export type IntelligencePick = {
   ready: boolean;
   skipReason: string | null;
@@ -33,10 +52,17 @@ export type IntelligencePick = {
   learnCount: number;
   offerId: number | null;
   title: string | null;
+  city: string | null;
+  district: string | null;
+  price: number | null;
+  area: number | null;
   score: number | null;
   radarScore: number | null;
   reasons: string[];
+  analysis: string[];
   considered: number;
+  nextSendAt: string | null;
+  correctedBalconyIds: number[];
 };
 
 function due(lastSentAt: Date | null, intervalHours: number): boolean {
@@ -44,9 +70,48 @@ function due(lastSentAt: Date | null, intervalHours: number): boolean {
   return Date.now() - lastSentAt.getTime() >= intervalHours * 60 * 60 * 1000;
 }
 
+function nextSendAtIso(lastSentAt: Date | null, intervalHours: number, canSend: boolean): string | null {
+  if (!canSend) return null;
+  if (!lastSentAt) return new Date().toISOString();
+  const dueAt = new Date(lastSentAt.getTime() + intervalHours * 60 * 60 * 1000);
+  return (dueAt.getTime() > Date.now() ? dueAt : new Date()).toISOString();
+}
+
+async function persistBalconiesFromDescription(offers: OfferRow[]): Promise<number[]> {
+  const ids = [...new Set(offers.filter((offer) => shouldPersistBalcony(offer)).map((offer) => offer.id))];
+  if (!ids.length) return [];
+  await prisma.offer.updateMany({ where: { id: { in: ids } }, data: { hasBalcony: true } });
+  for (const offer of offers) {
+    if (ids.includes(offer.id)) offer.hasBalcony = true;
+  }
+  return ids;
+}
+
+function buildAnalysis(params: {
+  tasteSummary: string;
+  radarScore: number;
+  score: number;
+  reasons: string[];
+  considered: number;
+  minScore: number;
+  correctedBalcony: boolean;
+}): string[] {
+  const lines = [
+    `Radar dał ${params.radarScore}% względem ankiety klienta.`,
+    `Po nauce z reakcji pewność tej oferty to ${params.score}% (próg ${params.minScore}%).`,
+    params.tasteSummary ? `Dotychczasowa nauka: ${params.tasteSummary}.` : null,
+    params.correctedBalcony
+      ? 'Opis wymienia balkon albo loggię, a w parametrach było pusto — parametr balkonu zostaje zaznaczony, żeby kolejne scoringi tego nie gubiły.'
+      : null,
+    ...params.reasons,
+    `Spośród ${params.considered} niewysłanych trafień radaru to najwyższy wynik.`,
+  ].filter(Boolean) as string[];
+  return [...new Set(lines)];
+}
+
 export async function pickIntelligenceOffer(
   clientId: number,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; preview?: boolean } = {},
 ): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null }> {
   const client = await prisma.agencyClient.findUnique({
     where: { id: clientId },
@@ -58,23 +123,37 @@ export async function pickIntelligenceOffer(
       },
     },
   });
+
+  const empty = (
+    skipReason: string,
+    extras: Partial<IntelligencePick> = {},
+    taste = learnFromFeedback([]),
+  ): IntelligencePick => ({
+    ready: false,
+    skipReason,
+    tasteSummary: extras.tasteSummary ?? summarizeTaste(taste),
+    learnCount: extras.learnCount ?? taste.learnCount,
+    offerId: extras.offerId ?? null,
+    title: extras.title ?? null,
+    city: extras.city ?? null,
+    district: extras.district ?? null,
+    price: extras.price ?? null,
+    area: extras.area ?? null,
+    score: extras.score ?? null,
+    radarScore: extras.radarScore ?? null,
+    reasons: extras.reasons ?? [],
+    analysis: extras.analysis || [],
+    considered: extras.considered || 0,
+    nextSendAt: extras.nextSendAt || null,
+    correctedBalconyIds: extras.correctedBalconyIds || [],
+  });
+
   if (!client || !client.buyerPreference) {
     return {
       agencyUserId: client?.agencyUserId || 0,
       maxPrice: null,
       taste: learnFromFeedback([]),
-      pick: {
-        ready: false,
-        skipReason: 'Brak kryteriów radaru.',
-        tasteSummary: '',
-        learnCount: 0,
-        offerId: null,
-        title: null,
-        score: null,
-        radarScore: null,
-        reasons: [],
-        considered: 0,
-      },
+      pick: empty('Brak kryteriów radaru.'),
     };
   }
 
@@ -88,43 +167,37 @@ export async function pickIntelligenceOffer(
 
   const minLearns = client.intelligenceMinLearns || 3;
   const minScore = client.intelligenceMinScore || 92;
-  const empty = (skipReason: string): IntelligencePick => ({
-    ready: false,
-    skipReason,
-    tasteSummary: summarizeTaste(taste),
-    learnCount: taste.learnCount,
-    offerId: null,
-    title: null,
-    score: null,
-    radarScore: null,
-    reasons: [],
-    considered: 0,
-  });
+  const intervalHours = client.intelligenceIntervalHours || 24;
+  const enabled = Boolean(client.intelligenceEnabled);
 
-  if (!options.force && !client.intelligenceEnabled) {
-    return { agencyUserId: client.agencyUserId, maxPrice: client.buyerPreference.maxPrice, taste, pick: empty('Asystent wyłączony.') };
-  }
-  if (!options.force && taste.learnCount < minLearns) {
-    return {
-      agencyUserId: client.agencyUserId,
-      maxPrice: client.buyerPreference.maxPrice,
-      taste,
-      pick: empty(`Za mało nauki (${taste.learnCount}/${minLearns}).`),
-    };
-  }
-  if (!options.force && !due(client.intelligenceLastSentAt, client.intelligenceIntervalHours || 24)) {
-    return { agencyUserId: client.agencyUserId, maxPrice: client.buyerPreference.maxPrice, taste, pick: empty('Interwał jeszcze nie minął.') };
+  if (!options.preview) {
+    await refreshAgencyClientMatches(clientId);
   }
 
-  await refreshAgencyClientMatches(clientId);
-  const matches = await prisma.agencyClientMatch.findMany({
-    where: { clientId },
-    include: { offer: { select: OFFER_SELECT } },
-    orderBy: { score: 'desc' },
-    take: 80,
-  });
+  const matches = options.preview
+    ? client.matches
+    : await prisma.agencyClientMatch.findMany({
+        where: { clientId },
+        include: { offer: { select: OFFER_SELECT } },
+        orderBy: { score: 'desc' },
+        take: 80,
+      });
 
-  let best: { offerId: number; title: string; score: number; radarScore: number; reasons: string[] } | null = null;
+  const offers = matches.map((row) => row.offer);
+  const correctedBalconyIds = await persistBalconiesFromDescription(offers);
+
+  type Cand = {
+    offerId: number;
+    title: string;
+    city: string | null;
+    district: string | null;
+    price: number | null;
+    area: number | null;
+    score: number;
+    radarScore: number;
+    reasons: string[];
+  };
+  let best: Cand | null = null;
   let considered = 0;
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
@@ -137,11 +210,15 @@ export async function pickIntelligenceOffer(
       taste,
       maxPrice: client.buyerPreference.maxPrice,
     });
-    if (adjusted.score < minScore && !options.force) continue;
+    if (adjusted.score < minScore && !options.force && !options.preview) continue;
     if (!best || adjusted.score > best.score) {
       best = {
         offerId: row.offerId,
         title: String(row.offer.title || ''),
+        city: row.offer.city,
+        district: row.offer.district,
+        price: row.offer.price,
+        area: row.offer.area,
         score: adjusted.score,
         radarScore,
         reasons: adjusted.reasons,
@@ -149,30 +226,70 @@ export async function pickIntelligenceOffer(
     }
   }
 
+  let skipReason: string | null = null;
+  if (!enabled && !options.force) skipReason = 'Asystent wyłączony — włącz, żeby wysyłał sam.';
+  else if (taste.learnCount < minLearns && !options.force) {
+    skipReason = `Za mało nauki (${taste.learnCount}/${minLearns} reakcji).`;
+  } else if (!due(client.intelligenceLastSentAt, intervalHours) && !options.force) {
+    skipReason = 'Interwał jeszcze nie minął.';
+  } else if (!best) {
+    skipReason = 'Brak oferty z wystarczającą pewnością.';
+  } else if (best.score < minScore && !options.force) {
+    skipReason = `Najlepsza oferta ma ${best.score}%, a próg to ${minScore}%.`;
+  }
+
+  const canSchedule = enabled && taste.learnCount >= minLearns;
+  const qualifies = Boolean(best && (best.score >= minScore || options.force));
+  const nextSendAt = nextSendAtIso(client.intelligenceLastSentAt, intervalHours, canSchedule && qualifies);
+  const ready = !skipReason && qualifies;
+
   if (!best) {
     return {
       agencyUserId: client.agencyUserId,
       maxPrice: client.buyerPreference.maxPrice,
       taste,
-      pick: { ...empty('Brak oferty z wystarczającą pewnością.'), considered },
+      pick: empty(skipReason || 'Brak oferty z wystarczającą pewnością.', {
+        tasteSummary: summarizeTaste(taste),
+        learnCount: taste.learnCount,
+        considered,
+        nextSendAt,
+        correctedBalconyIds,
+      }, taste),
     };
   }
+
+  const analysis = buildAnalysis({
+    tasteSummary: summarizeTaste(taste),
+    radarScore: best.radarScore,
+    score: best.score,
+    reasons: best.reasons,
+    considered,
+    minScore,
+    correctedBalcony: correctedBalconyIds.includes(best.offerId),
+  });
 
   return {
     agencyUserId: client.agencyUserId,
     maxPrice: client.buyerPreference.maxPrice,
     taste,
     pick: {
-      ready: true,
-      skipReason: null,
+      ready,
+      skipReason: ready ? null : skipReason,
       tasteSummary: summarizeTaste(taste),
       learnCount: taste.learnCount,
       offerId: best.offerId,
       title: best.title,
+      city: best.city,
+      district: best.district,
+      price: best.price,
+      area: best.area,
       score: best.score,
       radarScore: best.radarScore,
       reasons: best.reasons,
+      analysis,
       considered,
+      nextSendAt,
+      correctedBalconyIds,
     },
   };
 }
@@ -186,11 +303,7 @@ export async function sendIntelligenceOffer(params: {
     return { sent: false, pick };
   }
 
-  const reason = [
-    `EstateOS™ Intelligence · pewność ${pick.score}%`,
-    pick.tasteSummary,
-    ...pick.reasons,
-  ]
+  const reason = [`EstateOS™ Intelligence · pewność ${pick.score}%`, pick.tasteSummary, ...pick.analysis]
     .filter(Boolean)
     .join('\n');
 

@@ -5079,6 +5079,169 @@ html:not(.light) .eos-crm-offer-card__title {
   box-shadow: 0 0 0 1px rgba(199, 125, 255, 0.18), 0 18px 40px rgba(76, 201, 240, 0.12);
 }
 
+.eos-intel-shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  padding: 1rem;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.86)) padding-box,
+    linear-gradient(120deg, #ff4d6d, #ffd166, #06d6a0, #4cc9f0, #c77dff, #ff4d6d) border-box;
+  box-shadow: 0 0 0 1px rgba(199, 125, 255, 0.18), 0 18px 40px rgba(76, 201, 240, 0.16);
+}
+
+html:not(.light) .eos-intel-shell {
+  background:
+    linear-gradient(rgba(18, 18, 22, 0.78), rgba(18, 18, 22, 0.88)) padding-box,
+    linear-gradient(120deg, #ff4d6d, #ffd166, #06d6a0, #4cc9f0, #c77dff, #ff4d6d) border-box;
+}
+
+.eos-intel-bubbles {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.18;
+  transition: opacity 400ms ease;
+}
+
+.eos-intel-shell.is-on .eos-intel-bubbles {
+  opacity: 0.72;
+}
+
+.eos-intel-bubble {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(1px);
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  transform: translate(-50%, -50%) scale(0.85);
+  animation-name: eos-intel-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+html:not(.light) .eos-intel-bubble {
+  mix-blend-mode: screen;
+  opacity: 0.45;
+}
+
+.eos-intel-shell.is-on .eos-intel-bubble {
+  animation-play-state: running;
+}
+
+.eos-intel-shell:not(.is-on) .eos-intel-bubble {
+  animation-play-state: paused;
+}
+
+@keyframes eos-intel-float {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(0.82);
+  }
+  40% {
+    transform: translate(calc(-50% + 18px), calc(-50% - 22px)) scale(1.08);
+  }
+  70% {
+    transform: translate(calc(-50% - 14px), calc(-50% + 12px)) scale(0.94);
+  }
+}
+
+.eos-intel-queue {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(199, 125, 255, 0.22);
+}
+
+html:not(.light) .eos-intel-queue {
+  background: rgba(8, 8, 12, 0.45);
+}
+
+.eos-intel-switch {
+  position: relative;
+  width: 52px;
+  height: 32px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #d1d1d6;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: background 200ms ease;
+}
+
+.eos-intel-switch.is-on {
+  background: linear-gradient(90deg, #ff4d6d, #ffd166, #06d6a0, #4cc9f0, #c77dff);
+}
+
+.eos-intel-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 2;
+}
+
+.eos-intel-switch.is-on .eos-intel-switch__knob {
+  transform: translateX(20px);
+}
+
+.eos-intel-switch__orbs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.eos-intel-switch__orbs span {
+  position: absolute;
+  border-radius: 999px;
+  opacity: 0.85;
+  animation: eos-intel-switch-orb 2.4s ease-in-out infinite;
+}
+
+.eos-intel-switch__orbs span:nth-child(1) {
+  width: 10px;
+  height: 10px;
+  left: 8px;
+  top: 6px;
+  background: #fff4;
+  animation-delay: 0s;
+}
+
+.eos-intel-switch__orbs span:nth-child(2) {
+  width: 8px;
+  height: 8px;
+  left: 22px;
+  top: 16px;
+  background: #fff8;
+  animation-delay: 0.4s;
+}
+
+.eos-intel-switch__orbs span:nth-child(3) {
+  width: 7px;
+  height: 7px;
+  left: 34px;
+  top: 8px;
+  background: #fff6;
+  animation-delay: 0.8s;
+}
+
+@keyframes eos-intel-switch-orb {
+  0%,
+  100% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-5px) scale(1.15);
+    opacity: 1;
+  }
+}
+
 .eos-intel-kicker {
   background: linear-gradient(90deg, #ff4d6d, #ffd166, #06d6a0, #4cc9f0, #c77dff);
   -webkit-background-clip: text;
@@ -5087,6 +5250,10 @@ html:not(.light) .eos-crm-offer-card__title {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .eos-intel-bubble,
+  .eos-intel-switch__orbs span {
+    animation: none !important;
+  }
   .eos-btn--plane:hover:not(:disabled) .eos-send-plane__fly,
   .eos-btn--plane.is-sending .eos-send-plane__fly,
   .eos-btn--plane:hover:not(:disabled) .eos-send-plane__park,
