@@ -8,6 +8,7 @@ import { Crown, Sparkles } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
+import GoldFeaturedFrame from "@/components/ui/GoldFeaturedFrame";
 
 export type SpotlightItem = {
   id: number | string;
@@ -61,8 +62,6 @@ export default function FeaturedSpotlightCarousel({
 
   const isCar = accent === "car";
   const glow = isCar ? "from-sky-500/25 via-cyan-400/10" : "from-amber-400/25 via-emerald-500/10";
-  const ring = isCar ? "ring-sky-400/35" : "ring-amber-400/40";
-  const badgeBg = isCar ? "bg-sky-500 text-white" : "bg-gradient-to-r from-amber-400 to-amber-500 text-black";
 
   const current = pages[page] ?? [];
 
@@ -104,10 +103,10 @@ export default function FeaturedSpotlightCarousel({
           className="relative grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
         >
           {current.map((item, index) => (
+            <GoldFeaturedFrame key={String(item.id)}>
             <Link
-              key={String(item.id)}
               href={item.href}
-              className={`group relative overflow-hidden rounded-[1.35rem] border bg-[var(--eos-surface)] shadow-[0_24px_60px_rgba(0,0,0,0.18)] ring-1 ${ring} transition duration-500 hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(0,0,0,0.24)]`}
+              className="group relative block overflow-hidden bg-[var(--eos-surface)] transition duration-500 hover:-translate-y-0.5"
             >
               <div className="relative aspect-[16/10] overflow-hidden">
                 <Image
@@ -119,7 +118,7 @@ export default function FeaturedSpotlightCarousel({
                   unoptimized
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
-                <span className={`absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] shadow-lg ${badgeBg}`}>
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-black shadow-lg">
                   <Sparkles className="size-3" />
                   {item.badge || "Wyróżnione"}
                 </span>
@@ -162,6 +161,7 @@ export default function FeaturedSpotlightCarousel({
                 <span className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-white/10 blur-2xl" />
               ) : null}
             </Link>
+            </GoldFeaturedFrame>
           ))}
         </motion.div>
       </AnimatePresence>

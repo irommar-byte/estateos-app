@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, Car, Crown, Home, ImageOff, Loader2, Pencil, Sparkles, LayoutDashboard } from "lucide-react";
+import { Car, Crown, Home, ImageOff, Loader2, Pencil, Sparkles, LayoutDashboard } from "lucide-react";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import EosButton from "@/components/ui/EosButton";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import { isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 
 type HomeListing = {
   id: number;
@@ -117,6 +118,7 @@ export default function AccountListingsPage() {
   const [loadingCars, setLoadingCars] = useState(true);
   const [deletingCarId, setDeletingCarId] = useState<number | null>(null);
   const [archivingHomeId, setArchivingHomeId] = useState<number | null>(null);
+  const [isAgent, setIsAgent] = useState(false);
 
   const loadHomeListings = useCallback(async () => {
     setLoadingHome(true);
@@ -157,6 +159,12 @@ export default function AccountListingsPage() {
   useEffect(() => {
     void loadHomeListings();
     void loadCarListings();
+    void fetch("/api/user/profile", { cache: "no-store", credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        setIsAgent(isAgentOrAgencySeller(json?.user || json));
+      })
+      .catch(() => setIsAgent(false));
   }, [loadHomeListings, loadCarListings]);
 
   const activeItems = useMemo(() => (vertical === "home" ? homeListings : carListings), [vertical, homeListings, carListings]);
@@ -223,13 +231,14 @@ export default function AccountListingsPage() {
               <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
               <span className="relative z-10">Panel zarządzania</span>
             </a>
-            <a
-              href="/moje-konto/sesje-zdjeciowe"
-              className="group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-6 py-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)] shadow-[0_10px_28px_rgba(15,23,42,0.08),0_1px_0_rgba(255,255,255,0.65)_inset] transition duration-300 hover:-translate-y-0.5 hover:border-emerald-400/40 hover:shadow-[0_16px_36px_rgba(16,185,129,0.14)]"
-            >
-              <Camera className="size-4 text-emerald-600 transition duration-300 group-hover:scale-110 dark:text-emerald-400" aria-hidden />
-              Sesje zdjęciowe EstateOS Studio
-            </a>
+            {isAgent ? (
+              <a href="/moje-konto/crm" className="eos-agent-crm-cta min-w-[16.5rem]">
+                <span className="eos-agent-crm-cta__plate">
+                  <span className="eos-agent-crm-cta__glow" aria-hidden />
+                  <span className="eos-agent-crm-cta__engraved">EstateOS™ CRM</span>
+                </span>
+              </a>
+            ) : null}
           </div>
         </header>
 

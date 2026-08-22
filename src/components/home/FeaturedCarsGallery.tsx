@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, Gauge, MapPin } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
+import GoldFeaturedFrame from "@/components/ui/GoldFeaturedFrame";
 
 type CarListing = {
   id: number;
@@ -91,9 +92,10 @@ export default function FeaturedCarsGallery() {
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 0.65, delay: index * 0.12, ease: [0.16, 1, 0.3, 1] }}
               >
+                <GoldFeaturedFrame>
                 <Link
                   href={`/cars/${car.id}`}
-                  className="eos-media-chrome eos-lux-media-card group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
+                  className="eos-media-chrome eos-lux-media-card group relative block aspect-[4/5] overflow-hidden bg-[var(--eos-card)]"
                 >
                   <div
                     className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
@@ -102,7 +104,7 @@ export default function FeaturedCarsGallery() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/55 to-black/15" />
                   <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
 
-                  <div className="absolute left-5 top-5 rounded-full border border-sky-300/40 bg-sky-500/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.35)] eos-luxury-media-text">
+                  <div className="absolute left-5 top-5 rounded-full border border-amber-200/70 bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black backdrop-blur-xl shadow-[0_0_18px_rgba(212,175,55,0.45)] eos-luxury-media-text">
                     {dict.homePremium.carsFeaturedBadge}
                   </div>
 
@@ -134,6 +136,7 @@ export default function FeaturedCarsGallery() {
                     </div>
                   </div>
                 </Link>
+                </GoldFeaturedFrame>
               </motion.article>
             );
           })}

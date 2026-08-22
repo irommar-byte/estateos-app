@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileSearch, Keyboard, Loader2, ScanLine, ShieldCheck, Wand2 } from "lucide-react";
+import { Keyboard, Loader2, ScanLine, Wand2 } from "lucide-react";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
-import EosButton from "@/components/ui/EosButton";
+import CarLiveRegistryButton from "@/components/cars/CarLiveRegistryButton";
 import {
   CarFormField,
   CarFormSection,
@@ -235,27 +235,20 @@ export default function CarVehicleDocsFields({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <EosButton
-          type="button"
-          variant="car"
+        <CarLiveRegistryButton
+          kind="history"
+          label={historyLoading ? d.checkingHistory : d.checkHistory}
+          active={loggedIn && canVerify}
+          loading={historyLoading}
           onClick={() => void handleHistory()}
-          disabled={historyLoading || !loggedIn || !canVerify}
-          className="w-full !whitespace-normal"
-        >
-          <FileSearch className="size-4 shrink-0" />
-          {historyLoading ? d.checkingHistory : d.checkHistory}
-        </EosButton>
-
-        <EosButton
-          type="button"
-          variant="home"
+        />
+        <CarLiveRegistryButton
+          kind="insurance"
+          label={insuranceLoading ? d.checkingInsurance : d.checkInsurance}
+          active={loggedIn && canVerify}
+          loading={insuranceLoading}
           onClick={() => void handleInsurance()}
-          disabled={insuranceLoading || !loggedIn || !canVerify}
-          className="w-full !whitespace-normal"
-        >
-          <ShieldCheck className="size-4 shrink-0" />
-          {insuranceLoading ? d.checkingInsurance : d.checkInsurance}
-        </EosButton>
+        />
       </div>
 
       {!loggedIn && canVerify ? (
