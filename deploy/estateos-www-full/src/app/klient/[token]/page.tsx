@@ -4,25 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  MessageSquare,
   Radar,
-  Send,
   CheckCircle2,
   ExternalLink,
   SlidersHorizontal,
   CalendarCheck2,
   BriefcaseBusiness,
   ShieldCheck,
-  Zap,
-  Paperclip,
-  Plus,
-  X,
 } from "lucide-react";
 import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
-import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
-import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAttachmentShared";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
+import ClientPortalChatDock from "@/components/portal/ClientPortalChatDock";
+import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
 
@@ -37,15 +31,6 @@ type SearchCriteria = {
   amenities: string[];
   calibrationMode: "MAP" | "CITY";
 } | null;
-
-type PortalMessage = {
-  id: number;
-  content: string;
-  createdAt: string;
-  fromAgent: boolean;
-  fromMe: boolean;
-  attachments?: ContactAttachmentMeta[];
-};
 
 type ScheduleSlot = {
   startsAt: string;
@@ -122,6 +107,17 @@ type PortalData = {
     featured?: boolean;
   } | null;
   listingProgress?: Array<{ id: string; label: string; done: boolean; current: boolean }>;
+  listingPath?: Array<{
+    id: number;
+    kind: string;
+    title: string | null;
+    body: string | null;
+    createdAt: string;
+    startsAt?: string | null;
+    url?: string | null;
+    image?: string | null;
+    siteName?: string | null;
+  }>;
   acquisition: {
     status: string;
     currentStep: number;
@@ -159,10 +155,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
-  const [messages, setMessages] = useState<PortalMessage[]>([]);
-  const [chatDraft, setChatDraft] = useState("");
-  const [chatBusy, setChatBusy] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   useEffect(() => {
     void params.then((p) => setToken(p.token));
@@ -187,30 +179,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     }
   }, [token]);
 
-  const loadMessages = useCallback(async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`/api/crm/client-portal/${token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list_messages" }),
-      });
-      const json = await res.json();
-      if (res.ok && Array.isArray(json.messages)) {
-        setMessages(json.messages);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [token]);
-
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    void loadMessages();
-  }, [loadMessages]);
 
   const submitFeedback = async (
     matchId: number,
@@ -231,37 +202,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       alert(e instanceof Error ? e.message : "Błąd");
     } finally {
       setSavingId(null);
-    }
-  };
-
-  const sendChat = async () => {
-    const content = chatDraft.trim();
-    if (!token || chatBusy || (!content && !pendingFile)) return;
-    setChatBusy(true);
-    try {
-      let attachments: ContactAttachmentMeta[] = [];
-      if (pendingFile) {
-        const payload = new FormData();
-        payload.append("file", pendingFile);
-        const up = await fetch(`/api/crm/client-portal/${token}/attachments`, { method: "POST", body: payload });
-        const upJson = await up.json();
-        if (!up.ok) throw new Error(upJson.error || "Nie udało się wgrać załącznika.");
-        attachments = [upJson.attachment];
-      }
-      const res = await fetch(`/api/crm/client-portal/${token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_message", content, attachments }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
-      setChatDraft("");
-      setPendingFile(null);
-      await loadMessages();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Błąd");
-    } finally {
-      setChatBusy(false);
     }
   };
 
@@ -336,6 +276,15 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
         {/* Agency Office Details & Direct Actions */}
         <div className="mt-6 grid gap-3 border-t border-[var(--eos-border)]/60 pt-6 sm:grid-cols-2 lg:grid-cols-3">
+          {token ? (
+            <div className="eos-inset-well flex items-center justify-between gap-3 rounded-xl p-3">
+              <div className="min-w-0">
+                <p className="eos-portal-label">Kontakt z agentem</p>
+                <p className="text-xs font-bold text-[var(--eos-text)]">Czat jak w dealroomie</p>
+              </div>
+              <ClientPortalChatDock token={token} agentName={portal.agentName} />
+            </div>
+          ) : null}
           {portal.agentPhone && (
             <a
               href={`tel:${portal.agentPhone}`}
@@ -491,6 +440,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               {portal.listing?.statusLabel || "W przygotowaniu"}
             </span>
           </div>
+          {portal.listingProgress?.length ? <ListingProgressRail stages={portal.listingProgress} /> : null}
           {portal.listing ? (
           <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
             {portal.listing.imageUrl && (
@@ -522,7 +472,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 </>
               ) : (
                 <p className="text-xs text-[var(--eos-muted)]">
-                  Agent dokończy zdjęcia i publikację. Status ogłoszenia zobaczysz tutaj na bieżąco.
+                  Szkic jest u agenta. Nie jest jeszcze publiczny — zobaczysz publikację i wystawienia w ścieżce poniżej.
                 </p>
               )}
             </div>
@@ -532,24 +482,38 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               Po podpisaniu umowy agent przygotuje ogłoszenie. Szkic, zdjęcia i publikacja pojawią się tutaj.
             </p>
           )}
+          {(portal.listingPath || []).length ? (
+            <div className="mt-6 space-y-3">
+              <p className="eos-portal-label eos-portal-label--ok">Ścieżka oferty</p>
+              {portal.listingPath!.map((item) => (
+                <div key={item.id} className="eos-inset-well rounded-2xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-black text-[var(--eos-text)]">{item.title || item.kind}</p>
+                    <p className="text-[11px] text-[var(--eos-muted)]">
+                      {item.startsAt
+                        ? formatMeetingWhenPl(item.startsAt)
+                        : new Date(item.createdAt).toLocaleString("pl-PL")}
+                    </p>
+                  </div>
+                  {item.body ? <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">{item.body}</p> : null}
+                  {item.siteName ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{item.siteName}</p> : null}
+                  {item.url ? (
+                    <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
+                      Zobacz publikację <ExternalLink className="size-3.5" />
+                    </a>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
-      {portal.type === "SELLER" ? (
-        <SellerWorkBoard
-          featured={Boolean(portal.listing?.featured)}
-          featuredUntil={portal.listing?.promotedUntil || null}
-          activities={portal.activities}
-        />
-      ) : null}
-
-      {portal.presentation ? (
+      {portal.presentation && portal.type === "BUYER" ? (
         <section className="eos-lux-panel rounded-[1.75rem] p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="eos-portal-label eos-portal-label--ok">
-                {portal.type === "SELLER" ? "Transakcja" : "Prezentacja nieruchomości"}
-              </p>
+              <p className="eos-portal-label eos-portal-label--ok">Prezentacja nieruchomości</p>
               <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">
                 {formatMeetingWhenPl(portal.presentation.startsAt)}
               </h2>
@@ -638,89 +602,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           )}
         </section>
       ) : null}
-
-      <section className="eos-lux-panel rounded-[1.5rem] p-6">
-        <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
-          <MessageSquare className="size-5 text-emerald-500" />
-          Wiadomości z agentem
-        </h2>
-        <div className="eos-inset-well mt-4 max-h-80 space-y-2 overflow-y-auto rounded-xl p-3">
-          {messages.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--eos-muted)]">
-              Napisz do agenta albo wyślij dokument — rozmowa i załączniki trafią do CRM.
-            </p>
-          ) : (
-            messages.map((m) => (
-              <div
-                key={m.id}
-                className={`rounded-xl px-3 py-2 text-sm ${
-                  m.fromMe
-                    ? "ml-8 bg-emerald-500/15 text-[var(--eos-text)]"
-                    : "mr-8 bg-[var(--eos-card)] text-[var(--eos-text)]"
-                }`}
-              >
-                <p className="eos-portal-label">
-                  {m.fromMe ? "Ty" : portal.agentName}
-                </p>
-                {m.content ? <p className="mt-1 whitespace-pre-wrap">{m.content}</p> : null}
-                {(m.attachments || []).map((att) => (
-                  <ContactAttachmentBubble key={att.url} attachment={att} isMe={m.fromMe} />
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-        {pendingFile ? (
-          <div className="eos-inset-well mt-3 flex items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5">
-            <Paperclip className="size-4 shrink-0 text-emerald-500" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold">{pendingFile.name}</p>
-              <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
-            </div>
-            <button type="button" onClick={() => setPendingFile(null)} className="rounded-full p-1.5 text-[var(--eos-muted)]">
-              <X className="size-4" />
-            </button>
-          </div>
-        ) : null}
-        <div className="mt-3 flex gap-2">
-          <label className="eos-inset-well flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--eos-muted)] hover:text-emerald-600">
-            <Plus className="size-5" />
-            <input
-              type="file"
-              className="hidden"
-              onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-          <input
-            value={chatDraft}
-            onChange={(e) => setChatDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void sendChat();
-              }
-            }}
-            placeholder="Napisz wiadomość do agenta…"
-            className="eos-field-inset flex-1 rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
-          />
-          <button
-            type="button"
-            disabled={chatBusy || (!chatDraft.trim() && !pendingFile)}
-            onClick={() => void sendChat()}
-            className="eos-lux-btn eos-lux-btn--primary inline-flex items-center gap-2 px-4 py-2 text-[10px] disabled:opacity-50"
-          >
-            <Send className="size-3" />
-            Wyślij
-          </button>
-        </div>
-      </section>
     </div>
     </main>
   );
-}
-
-function asMeta(raw: unknown): Record<string, unknown> {
-  return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 }
 
 function formatClientGreeting(name: string): string {
@@ -730,100 +614,3 @@ function formatClientGreeting(name: string): string {
   }
   return name;
 }
-
-function SellerWorkBoard({
-  featured,
-  featuredUntil,
-  activities,
-}: {
-  featured: boolean;
-  featuredUntil: string | null;
-  activities: PortalData["activities"];
-}) {
-  const reports = activities.filter((a) => a.kind === "MARKET_REPORT_SENT");
-  const portals = activities.filter((a) => a.kind === "EXTERNAL_PORTAL");
-  const featuredActs = activities.filter((a) => a.kind === "LISTING_FEATURED");
-  const untilLabel = featuredUntil
-    ? new Date(featuredUntil).toLocaleDateString("pl-PL")
-    : null;
-
-  if (!featured && !featuredActs.length && !reports.length && !portals.length) {
-    return null;
-  }
-
-  return (
-    <section className="eos-lux-panel space-y-4 rounded-[1.75rem] p-6">
-      <div>
-        <p className="eos-portal-label eos-portal-label--ok flex items-center gap-2">
-          <Zap className="size-4" /> Sprzedaż — publikacje
-        </p>
-        <h2 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Gdzie jest Twoje ogłoszenie</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
-          Raport z aktów, wyróżnienie na EstateOS™ i publikacje na innych portalach.
-        </p>
-      </div>
-
-      {featured || featuredActs.length ? (
-        <div className="eos-inset-well rounded-2xl p-4">
-          <p className="eos-portal-label">Wyróżnienie na stronie głównej</p>
-          <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">
-            Twoje ogłoszenie jest na górze katalogu EstateOS™{untilLabel ? ` do ${untilLabel}` : ""}.
-          </p>
-          <p className="mt-1 text-[12px] leading-relaxed text-[var(--eos-muted)]">
-            Kupujący i agenci widzą je od razu, bez przewijania. To realne miejsce na stronie głównej i w aplikacji — nie pusty znaczek.
-          </p>
-        </div>
-      ) : null}
-
-      {reports.map((a) => (
-        <div key={a.id} className="eos-inset-well rounded-2xl p-4">
-          <p className="eos-portal-label eos-portal-label--ok">Raport z aktów</p>
-          <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">{a.title}</p>
-          {a.body ? <p className="mt-1 text-[12px] leading-relaxed text-[var(--eos-muted)]">{a.body}</p> : null}
-          <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
-            {new Date(a.createdAt).toLocaleString("pl-PL")}
-          </p>
-        </div>
-      ))}
-
-      {portals.map((a) => {
-        const meta = asMeta(a.metadata);
-        const url = String(meta.url || "");
-        const image = String(meta.image || "");
-        const siteName = String(meta.siteName || meta.host || "Portal");
-        const title = String(meta.title || a.title || siteName);
-        const description = String(meta.description || a.body || "");
-        return (
-          <a
-            key={a.id}
-            href={url || undefined}
-            target="_blank"
-            rel="noreferrer"
-            className="eos-inset-well block overflow-hidden rounded-2xl transition hover:border-emerald-500/40"
-          >
-            <div className="flex flex-col sm:flex-row">
-              {image ? (
-                <img src={image} alt="" className="h-40 w-full object-cover sm:h-auto sm:w-52" />
-              ) : (
-                <div className="flex h-28 items-center justify-center bg-emerald-500/10 sm:w-40">
-                  <ExternalLink className="size-6 text-emerald-600" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1 p-4">
-                <p className="eos-portal-label eos-portal-label--ok">{siteName}</p>
-                <p className="mt-1 text-sm font-black text-[var(--eos-text)]">{title}</p>
-                {description ? (
-                  <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-[var(--eos-muted)]">{description}</p>
-                ) : null}
-                {url ? (
-                  <p className="mt-2 truncate text-[11px] font-semibold text-emerald-700">{url}</p>
-                ) : null}
-              </div>
-            </div>
-          </a>
-        );
-      })}
-    </section>
-  );
-}
-

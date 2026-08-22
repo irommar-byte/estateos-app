@@ -235,6 +235,7 @@ export default function AgencyClientDetailScreen() {
   const [wholePropertyScan, setWholePropertyScan] = useState<WholePropertyScan | null>(null);
   const [chatDraft, setChatDraft] = useState('');
   const [presentationAt, setPresentationAt] = useState('');
+  const [presentationOfferId, setPresentationOfferId] = useState('');
 
   // Seller Buyer Radar Controls
   const [sellerRadarSearching, setSellerRadarSearching] = useState(false);
@@ -325,7 +326,7 @@ export default function AgencyClientDetailScreen() {
       if (acq.ok) {
         setRecord(acq.acquisition);
         const nextForm = acq.acquisition?.formData || acq.defaultForm;
-        const nextStep = acq.acquisition?.currentStep || 1;
+        const nextStep = acq.acquisition?.status === 'SIGNED' ? 7 : acq.acquisition?.currentStep || 1;
         setForm(nextForm);
         setStep(nextStep);
         savedSnapshotRef.current = acquisitionSnapshot(nextForm, nextStep);
@@ -643,11 +644,11 @@ export default function AgencyClientDetailScreen() {
       signedRef.current = true;
       await AsyncStorage.removeItem(DRAFT_KEY);
       if (res.offerId) {
-        Alert.alert('Podpisano', `Warunki zapisane. Utworzono ofertę #${res.offerId}.`);
+        Alert.alert('Oferta pozyskana', `Umowa zamknięta. Szkic oferty #${res.offerId} nie jest publiczny — klient zobaczy go w panelu.`);
       } else if (res.offerError) {
         Alert.alert(
-          'Podpisano',
-          `Warunki zapisane. Oferty nie utworzono automatycznie: ${res.offerError}. Możesz dodać ją przyciskiem na karcie.`,
+          'Oferta pozyskana',
+          `Umowa zamknięta. Szkicu nie utworzono automatycznie: ${res.offerError}.`,
         );
       }
     } else if (name === 'send_preview') {
@@ -659,7 +660,7 @@ export default function AgencyClientDetailScreen() {
       );
     }
     setRecord(res.acquisition);
-    setStep(6);
+    setStep(name === 'sign' ? 7 : 6);
   };
 
   const field = (
@@ -966,273 +967,6 @@ export default function AgencyClientDetailScreen() {
                 </Text>
               </View>
 
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
-                  WSPÓŁPRACA Z KLIENTEM
-                </Text>
-                {client.meeting ? (
-                  <View style={{ marginTop: 10 }}>
-                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>SPOTKANIE</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
-                      {new Date(client.meeting.startsAt).toLocaleString('pl-PL')}
-                    </Text>
-                    {client.meeting.location ? (
-                      <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }}>{client.meeting.location}</Text>
-                    ) : null}
-                    <Text style={{ color: client.meeting.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
-                      {client.meeting.status === 'pending'
-                        ? client.meeting.reason
-                          ? `Propozycja klienta: ${client.meeting.reason}`
-                          : 'Oczekuje na Twoją decyzję'
-                        : 'Potwierdzone'}
-                    </Text>
-                    {client.meeting.status === 'pending' ? (
-                      <Pressable
-                        onPress={async () => {
-                          if (!token) return;
-                          setBusy('accept_meeting');
-                          const res = await postAgencyClientAction(token, clientId, { action: 'accept_schedule_change', kind: 'meeting' });
-                          setBusy('');
-                          if (!res.ok) Alert.alert('Termin', res.message);
-                          else void load();
-                        }}
-                        style={[styles.secondary, { borderColor: colors.accent, marginTop: 8 }]}
-                      >
-                        <Text style={{ color: colors.accent, fontWeight: '800', textAlign: 'center' }}>
-                          {busy === 'accept_meeting' ? '…' : 'Akceptuj nowy termin'}
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <View style={{ marginTop: 14 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>PREZENTACJA</Text>
-                  {client.presentation ? (
-                    <>
-                      <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
-                        {new Date(client.presentation.startsAt).toLocaleString('pl-PL')}
-                      </Text>
-                      <Text style={{ color: client.presentation.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
-                        {client.presentation.status === 'pending' ? 'Czeka na potwierdzenie klienta' : 'Potwierdzona'}
-                      </Text>
-                      {client.presentation.status === 'pending' && client.presentation.proposedBy === 'client' ? (
-                        <Pressable
-                          onPress={async () => {
-                            if (!token) return;
-                            setBusy('accept_pres');
-                            const res = await postAgencyClientAction(token, clientId, { action: 'accept_schedule_change', kind: 'presentation' });
-                            setBusy('');
-                            if (!res.ok) Alert.alert('Prezentacja', res.message);
-                            else void load();
-                          }}
-                          style={[styles.secondary, { borderColor: colors.accent, marginTop: 8 }]}
-                        >
-                          <Text style={{ color: colors.accent, fontWeight: '800', textAlign: 'center' }}>
-                            {busy === 'accept_pres' ? '…' : 'Akceptuj termin klienta'}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </>
-                  ) : (
-                    <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
-                      Zaproponuj termin prezentacji — klient potwierdzi albo poda swój.
-                    </Text>
-                  )}
-                  <Pressable
-                    onPress={() => setDateModalField('presentation')}
-                    style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
-                  >
-                    <Text style={{ color: presentationAt ? colors.text : colors.secondary, fontWeight: '700' }}>
-                      {presentationAt || 'Wybierz termin prezentacji'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={!presentationAt || busy === 'propose_pres'}
-                    onPress={async () => {
-                      if (!token || !presentationAt) return;
-                      const m = presentationAt.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-                      if (!m) {
-                        Alert.alert('Prezentacja', 'Wybierz kompletny termin.');
-                        return;
-                      }
-                      setBusy('propose_pres');
-                      const startsAt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
-                      const res = await postAgencyClientAction(token, clientId, { action: 'propose_presentation', startsAt });
-                      setBusy('');
-                      if (!res.ok) Alert.alert('Prezentacja', res.message);
-                      else {
-                        setPresentationAt('');
-                        void load();
-                      }
-                    }}
-                    style={[styles.primary, { marginTop: 8, opacity: presentationAt ? 1 : 0.5 }]}
-                  >
-                    <Text style={styles.primaryText}>{busy === 'propose_pres' ? 'Wysyłam…' : 'Zaproponuj prezentację klientowi'}</Text>
-                  </Pressable>
-                </View>
-
-                <View style={{ marginTop: 16 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>WIADOMOŚCI</Text>
-                  <View style={{ maxHeight: 220, marginTop: 8 }}>
-                    {(client.messages || []).length === 0 ? (
-                      <Text style={{ color: colors.secondary, fontSize: 12 }}>Brak wiadomości — napisz pierwszy.</Text>
-                    ) : (
-                      (client.messages || []).slice(-12).map((msg) => (
-                        <View
-                          key={msg.id}
-                          style={{
-                            alignSelf: msg.fromMe ? 'flex-end' : 'flex-start',
-                            backgroundColor: msg.fromMe ? 'rgba(52,199,89,0.16)' : colors.input,
-                            borderRadius: 12,
-                            padding: 10,
-                            marginBottom: 6,
-                            maxWidth: '88%',
-                          }}
-                        >
-                          <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800' }}>
-                            {msg.fromMe ? 'Ty' : client.firstName}
-                          </Text>
-                          {msg.content ? (
-                            <Text style={{ color: colors.text, fontSize: 13, marginTop: 2 }}>{msg.content}</Text>
-                          ) : null}
-                          {(msg.attachments || []).map((att) => (
-                            <Pressable key={att.url} onPress={() => Linking.openURL(att.url.startsWith('http') ? att.url : `https://estateos.pl${att.url}`)}>
-                              <Text style={{ color: '#007AFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>📎 {att.name}</Text>
-                            </Pressable>
-                          ))}
-                        </View>
-                      ))
-                    )}
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                    <TextInput
-                      value={chatDraft}
-                      onChangeText={setChatDraft}
-                      placeholder="Wiadomość do klienta…"
-                      placeholderTextColor={colors.secondary}
-                      style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
-                    />
-                    <Pressable
-                      onPress={async () => {
-                        if (!token) return;
-                        const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
-                        if (picked.canceled || !picked.assets?.[0]) return;
-                        const file = picked.assets[0];
-                        setBusy('attach');
-                        const uploaded = await uploadClientPortalAttachment(token, clientId, {
-                          uri: file.uri,
-                          name: file.name || 'zalacznik',
-                          mimeType: file.mimeType || 'application/octet-stream',
-                        });
-                        if (!uploaded.ok) {
-                          setBusy('');
-                          Alert.alert('Załącznik', uploaded.message);
-                          return;
-                        }
-                        const res = await postAgencyClientAction(token, clientId, {
-                          action: 'send_portal_message',
-                          content: chatDraft.trim(),
-                          attachments: [uploaded.attachment],
-                        });
-                        setBusy('');
-                        if (!res.ok) Alert.alert('Wiadomość', res.message);
-                        else {
-                          setChatDraft('');
-                          void load();
-                        }
-                      }}
-                      style={[styles.iconBtn, { backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }]}
-                    >
-                      <Ionicons name="attach-outline" size={20} color={colors.text} />
-                    </Pressable>
-                    <Pressable
-                      disabled={busy === 'chat' || !chatDraft.trim()}
-                      onPress={async () => {
-                        if (!token || !chatDraft.trim()) return;
-                        setBusy('chat');
-                        const res = await postAgencyClientAction(token, clientId, {
-                          action: 'send_portal_message',
-                          content: chatDraft.trim(),
-                        });
-                        setBusy('');
-                        if (!res.ok) Alert.alert('Wiadomość', res.message);
-                        else {
-                          setChatDraft('');
-                          void load();
-                        }
-                      }}
-                      style={[styles.iconBtn, { backgroundColor: colors.accent }]}
-                    >
-                      <Ionicons name="send" size={18} color="#000" />
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-
-              {/* Offer Creation / Link Section for Sellers */}
-              {client.type === 'SELLER' ? (
-                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
-                    OFERTA NIERUCHOMOŚCI
-                  </Text>
-                  {client.linkedOfferId ? (
-                    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>
-                          Oferta #{client.linkedOfferId}
-                        </Text>
-                        <Text style={{ color: '#34C759', fontSize: 12, marginTop: 2, fontWeight: '700' }}>
-                          ● Widoczna w panelu klienta
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => navigation.navigate('OfferDetail', { offerId: client.linkedOfferId })}
-                        style={{ backgroundColor: colors.bg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
-                      >
-                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>Zobacz ofertę</Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <View style={{ marginTop: 8 }}>
-                      <Text style={{ color: colors.secondary, fontSize: 13 }}>
-                        Brak przypisanej oferty. Wykorzystaj wprowadzone dane z karty pozyskania do utworzenia oficjalnego ogłoszenia.
-                      </Text>
-                      <Pressable
-                        onPress={handleCreateOfferFromAcquisition}
-                        disabled={creatingOffer}
-                        style={{
-                          marginTop: 12,
-                          backgroundColor: '#34C759',
-                          paddingVertical: 12,
-                          paddingHorizontal: 16,
-                          borderRadius: 12,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 8,
-                          opacity: creatingOffer ? 0.7 : 1,
-                        }}
-                      >
-                        {creatingOffer ? (
-                          <ActivityIndicator color="#000" size="small" />
-                        ) : (
-                          <Ionicons name="flash" size={18} color="#000" />
-                        )}
-                        <Text style={{ color: '#000', fontWeight: '900', fontSize: 14 }}>
-                          Utwórz ofertę z karty pozyskania
-                        </Text>
-                      </Pressable>
-                      {showOfferErrors && offerGaps.length > 0 ? (
-                        <Text style={{ color: ERROR_RED, fontSize: 12, fontWeight: '700', marginTop: 8 }}>
-                          Brakuje: {offerGaps.map((item) => item.label).join(', ')}. Kroki i pola podświetlone na czerwono.
-                        </Text>
-                      ) : null}
-                    </View>
-                  )}
-                </View>
-              ) : null}
-
               {/* Acquisition Card (For Sellers) */}
               {client.type === 'SELLER' && form ? (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -1246,6 +980,7 @@ export default function AgencyClientDetailScreen() {
                     errorSteps={errorSteps}
                     onSelectStep={goToStep}
                     isDark={isDark}
+                    locked={signed}
                   />
 
                   <AcquisitionGuideChrome step={step} hasError={errorSteps.includes(step)} isDark={isDark} />
@@ -1704,22 +1439,6 @@ export default function AgencyClientDetailScreen() {
                         </Text>
                       </Pressable>
 
-                      <TextInput
-                        value={signerName}
-                        onChangeText={setSignerName}
-                        placeholder="Imię i nazwisko podpisującego"
-                        placeholderTextColor={colors.secondary}
-                        style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
-                      />
-                      <TextInput
-                        value={signerEmail}
-                        onChangeText={setSignerEmail}
-                        autoCapitalize="none"
-                        placeholder="Adres e-mail"
-                        placeholderTextColor={colors.secondary}
-                        style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
-                      />
-
                       {/* Signature Pad with Scroll Lock */}
                       <SignaturePad
                         isDark={isDark}
@@ -1742,6 +1461,19 @@ export default function AgencyClientDetailScreen() {
                     </>
                   ) : null}
 
+                  {step === 7 ? (
+                    <View style={{ marginTop: 8, padding: 16, borderRadius: 16, backgroundColor: 'rgba(52,199,89,0.12)' }}>
+                      <Text style={{ color: '#34C759', fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>OFERTA POZYSKANA</Text>
+                      <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 6 }}>Umowa zamknięta</Text>
+                      <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6, lineHeight: 18 }}>
+                        Kopia poszła do klienta. Od tej pory nic w umowie nie zmieniasz — tylko podgląd. Szkic ogłoszenia nie jest publiczny, dopóki go nie opublikujesz.
+                      </Text>
+                      {client.linkedOfferId ? (
+                        <Text style={{ color: colors.text, fontWeight: '800', marginTop: 10 }}>Szkic oferty #{client.linkedOfferId}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
                   {!signed ? (
                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
                       {step > 1 ? (
@@ -1762,6 +1494,271 @@ export default function AgencyClientDetailScreen() {
                       ) : null}
                     </View>
                   ) : null}
+                </View>
+              ) : null}
+
+
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                  WSPÓŁPRACA Z KLIENTEM
+                </Text>
+                {client.meeting ? (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>SPOTKANIE</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
+                      {new Date(client.meeting.startsAt).toLocaleString('pl-PL')}
+                    </Text>
+                    {client.meeting.location ? (
+                      <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }}>{client.meeting.location}</Text>
+                    ) : null}
+                    <Text style={{ color: client.meeting.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
+                      {client.meeting.status === 'pending'
+                        ? client.meeting.reason
+                          ? `Propozycja klienta: ${client.meeting.reason}`
+                          : 'Oczekuje na Twoją decyzję'
+                        : 'Potwierdzone'}
+                    </Text>
+                    {client.meeting.status === 'pending' ? (
+                      <Pressable
+                        onPress={async () => {
+                          if (!token) return;
+                          setBusy('accept_meeting');
+                          const res = await postAgencyClientAction(token, clientId, { action: 'accept_schedule_change', kind: 'meeting' });
+                          setBusy('');
+                          if (!res.ok) Alert.alert('Termin', res.message);
+                          else void load();
+                        }}
+                        style={[styles.secondary, { borderColor: colors.accent, marginTop: 8 }]}
+                      >
+                        <Text style={{ color: colors.accent, fontWeight: '800', textAlign: 'center' }}>
+                          {busy === 'accept_meeting' ? '…' : 'Akceptuj nowy termin'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {client.type === 'BUYER' ? (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>PREZENTACJA OFERTY</Text>
+                  {client.presentation ? (
+                    <>
+                      <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
+                        {new Date(client.presentation.startsAt).toLocaleString('pl-PL')}
+                      </Text>
+                      <Text style={{ color: client.presentation.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
+                        {client.presentation.status === 'pending' ? 'Propozycja wysłana obu stronom' : 'Potwierdzona'}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
+                      Wpisz ID oferty sprzedającego i zaproponuj termin — dostaną go kupujący i sprzedający.
+                    </Text>
+                  )}
+                  <TextInput
+                    value={presentationOfferId}
+                    onChangeText={setPresentationOfferId}
+                    keyboardType="number-pad"
+                    placeholder="ID oferty do prezentacji"
+                    placeholderTextColor={colors.secondary}
+                    style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 8 }]}
+                  />
+                  <Pressable
+                    onPress={() => setDateModalField('presentation')}
+                    style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
+                  >
+                    <Text style={{ color: presentationAt ? colors.text : colors.secondary, fontWeight: '700' }}>
+                      {presentationAt || 'Wybierz termin prezentacji'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={!presentationAt || !presentationOfferId.trim() || busy === 'propose_pres'}
+                    onPress={async () => {
+                      if (!token || !presentationAt) return;
+                      const m = presentationAt.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+                      if (!m) {
+                        Alert.alert('Prezentacja', 'Wybierz kompletny termin.');
+                        return;
+                      }
+                      setBusy('propose_pres');
+                      const startsAt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
+                      const res = await postAgencyClientAction(token, clientId, {
+                        action: 'propose_presentation',
+                        startsAt,
+                        offerId: Number(presentationOfferId),
+                      });
+                      setBusy('');
+                      if (!res.ok) Alert.alert('Prezentacja', res.message);
+                      else {
+                        setPresentationAt('');
+                        void load();
+                      }
+                    }}
+                    style={[styles.primary, { marginTop: 8, opacity: presentationAt && presentationOfferId.trim() ? 1 : 0.5 }]}
+                  >
+                    <Text style={styles.primaryText}>{busy === 'propose_pres' ? 'Wysyłam…' : 'Zaproponuj termin obu stronom'}</Text>
+                  </Pressable>
+                </View>
+                ) : null}
+
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>WIADOMOŚCI</Text>
+                  <View style={{ maxHeight: 220, marginTop: 8 }}>
+                    {(client.messages || []).length === 0 ? (
+                      <Text style={{ color: colors.secondary, fontSize: 12 }}>Brak wiadomości — napisz pierwszy.</Text>
+                    ) : (
+                      (client.messages || []).slice(-12).map((msg) => (
+                        <View
+                          key={msg.id}
+                          style={{
+                            alignSelf: msg.fromMe ? 'flex-end' : 'flex-start',
+                            backgroundColor: msg.fromMe ? 'rgba(52,199,89,0.16)' : colors.input,
+                            borderRadius: 12,
+                            padding: 10,
+                            marginBottom: 6,
+                            maxWidth: '88%',
+                          }}
+                        >
+                          <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800' }}>
+                            {msg.fromMe ? 'Ty' : client.firstName}
+                          </Text>
+                          {msg.content ? (
+                            <Text style={{ color: colors.text, fontSize: 13, marginTop: 2 }}>{msg.content}</Text>
+                          ) : null}
+                          {(msg.attachments || []).map((att) => (
+                            <Pressable key={att.url} onPress={() => Linking.openURL(att.url.startsWith('http') ? att.url : `https://estateos.pl${att.url}`)}>
+                              <Text style={{ color: '#007AFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>📎 {att.name}</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ))
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                    <TextInput
+                      value={chatDraft}
+                      onChangeText={setChatDraft}
+                      placeholder="Wiadomość do klienta…"
+                      placeholderTextColor={colors.secondary}
+                      style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                    />
+                    <Pressable
+                      onPress={async () => {
+                        if (!token) return;
+                        const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+                        if (picked.canceled || !picked.assets?.[0]) return;
+                        const file = picked.assets[0];
+                        setBusy('attach');
+                        const uploaded = await uploadClientPortalAttachment(token, clientId, {
+                          uri: file.uri,
+                          name: file.name || 'zalacznik',
+                          mimeType: file.mimeType || 'application/octet-stream',
+                        });
+                        if (!uploaded.ok) {
+                          setBusy('');
+                          Alert.alert('Załącznik', uploaded.message);
+                          return;
+                        }
+                        const res = await postAgencyClientAction(token, clientId, {
+                          action: 'send_portal_message',
+                          content: chatDraft.trim(),
+                          attachments: [uploaded.attachment],
+                        });
+                        setBusy('');
+                        if (!res.ok) Alert.alert('Wiadomość', res.message);
+                        else {
+                          setChatDraft('');
+                          void load();
+                        }
+                      }}
+                      style={[styles.iconBtn, { backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }]}
+                    >
+                      <Ionicons name="attach-outline" size={20} color={colors.text} />
+                    </Pressable>
+                    <Pressable
+                      disabled={busy === 'chat' || !chatDraft.trim()}
+                      onPress={async () => {
+                        if (!token || !chatDraft.trim()) return;
+                        setBusy('chat');
+                        const res = await postAgencyClientAction(token, clientId, {
+                          action: 'send_portal_message',
+                          content: chatDraft.trim(),
+                        });
+                        setBusy('');
+                        if (!res.ok) Alert.alert('Wiadomość', res.message);
+                        else {
+                          setChatDraft('');
+                          void load();
+                        }
+                      }}
+                      style={[styles.iconBtn, { backgroundColor: colors.accent }]}
+                    >
+                      <Ionicons name="send" size={18} color="#000" />
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+
+              {/* Offer Creation / Link Section for Sellers */}
+              {client.type === 'SELLER' ? (
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                    OFERTA NIERUCHOMOŚCI
+                  </Text>
+                  {client.linkedOfferId ? (
+                    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>
+                          Oferta #{client.linkedOfferId}
+                        </Text>
+                        <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2, fontWeight: '700' }}>
+                          Szkic niepubliczny — klient zobaczy go po zamknięciu pozysku
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => navigation.navigate('OfferDetail', { offerId: client.linkedOfferId })}
+                        style={{ backgroundColor: colors.bg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>Zobacz ofertę</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ color: colors.secondary, fontSize: 13 }}>
+                        Brak szkicu oferty. Po podpisie i wysłaniu kopii powstanie niepubliczny szkic do akceptacji.
+                      </Text>
+                      <Pressable
+                        onPress={handleCreateOfferFromAcquisition}
+                        disabled={creatingOffer}
+                        style={{
+                          marginTop: 12,
+                          backgroundColor: '#34C759',
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          borderRadius: 12,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          opacity: creatingOffer ? 0.7 : 1,
+                        }}
+                      >
+                        {creatingOffer ? (
+                          <ActivityIndicator color="#000" size="small" />
+                        ) : (
+                          <Ionicons name="flash" size={18} color="#000" />
+                        )}
+                        <Text style={{ color: '#000', fontWeight: '900', fontSize: 14 }}>
+                          Utwórz szkic oferty (niepubliczny)
+                        </Text>
+                      </Pressable>
+                      {showOfferErrors && offerGaps.length > 0 ? (
+                        <Text style={{ color: ERROR_RED, fontSize: 12, fontWeight: '700', marginTop: 8 }}>
+                          Brakuje: {offerGaps.map((item) => item.label).join(', ')}. Kroki i pola podświetlone na czerwono.
+                        </Text>
+                      ) : null}
+                    </View>
+                  )}
                 </View>
               ) : null}
 

@@ -19,7 +19,7 @@ import {
   type PortalAttachment,
   type PortalChatMessage,
 } from '@/lib/crm/clientJourney';
-import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { crmAgentPushData, crmClientChatThreadId } from '@/lib/crm/agentPush';
 
 const SAFE_NAME_RE = /[^a-zA-Z0-9._-]+/g;
 
@@ -139,15 +139,31 @@ export async function sendPortalChat(params: {
   }
 
   if (params.from === 'client') {
+    const thread = crmClientChatThreadId(params.clientId);
     await sendNotification({
       userId: params.agencyUserId,
       type: 'CHAT_MESSAGE',
       title: 'Wiadomość od klienta',
       body: `${params.clientName || 'Klient'}: ${body.slice(0, 120)}`,
-      data: crmAgentPushData(params.clientId, { notificationType: 'crm_client_message' }),
+      data: {
+        ...crmAgentPushData(params.clientId, { notificationType: 'crm_client_message' }),
+        threadIdentifier: thread,
+        iosThreadId: thread,
+      },
     }).catch(() => {});
   }
 
   const [message] = parsePortalMessages([activity], params.from === 'agent' ? 'agent' : 'client');
   return { ok: true as const, message };
+}
+
+const typingUntil = new Map<string, number>();
+
+export function markPortalTyping(clientId: number, who: 'agent' | 'client') {
+  typingUntil.set(`${clientId}:${who}`, Date.now() + 4000);
+}
+
+export function isPortalPeerTyping(clientId: number, viewer: 'agent' | 'client') {
+  const peer = viewer === 'agent' ? 'client' : 'agent';
+  return (typingUntil.get(`${clientId}:${peer}`) || 0) > Date.now();
 }

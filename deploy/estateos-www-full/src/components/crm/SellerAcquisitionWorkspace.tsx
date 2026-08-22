@@ -323,7 +323,7 @@ export default function SellerAcquisitionWorkspace({
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Nie udało się wykonać akcji.");
       setRecord(json.acquisition);
-      setStep(6);
+      setStep(name === "sign" ? 7 : 6);
       setNotice(
         name === "prepare_terms"
           ? "Warunki zostały utrwalone. Możesz wysłać podgląd klientowi."
@@ -403,31 +403,47 @@ export default function SellerAcquisitionWorkspace({
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {ACQUISITION_STEPS.map((item) => (
+        <div className="relative mt-6">
+          <div className="absolute left-[7%] right-[7%] top-[13px] h-1 rounded-full bg-[rgba(15,23,42,0.1)]" />
+          <div
+            className="absolute top-[13px] h-1 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.45)]"
+            style={{
+              left: "7%",
+              width: `${Math.max(0, ((signed ? 6 : Math.max(0, step - 1)) / 6) * 86)}%`,
+            }}
+          />
+          <div className="relative z-10 flex">
+          {ACQUISITION_STEPS.map((item) => {
+            const done = signed || item.id < step;
+            const current = item.id === step;
+            return (
             <button
               key={item.id}
               type="button"
               onClick={() => setStep(item.id)}
-              className={`rounded-xl border px-2 py-2.5 text-left transition ${
-                step === item.id
-                  ? "border-emerald-500/50 bg-emerald-500/12"
-                  : item.id < step || signed
-                    ? "border-emerald-500/20 bg-emerald-500/5"
-                    : "border-[var(--eos-border)] bg-[var(--eos-card)]/50"
-              }`}
+              className="flex min-w-0 flex-1 flex-col items-center px-0.5 text-center"
             >
-              <p className="eos-portal-label eos-portal-label--ok">0{item.id}</p>
-              <p className="mt-0.5 text-[10px] font-bold leading-tight text-[var(--eos-text)]">{item.title}</p>
+              <span className={`flex size-7 items-center justify-center rounded-full border text-[11px] font-black shadow-[0_6px_14px_rgba(15,23,42,0.14)] ${
+                done
+                  ? "border-emerald-500 bg-emerald-500 text-white"
+                  : current
+                    ? "border-emerald-300 bg-emerald-700 text-white"
+                    : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-muted)]"
+              }`}>
+                {done ? <Check className="size-3.5" strokeWidth={3} /> : item.id}
+              </span>
+              <p className={`mt-2 text-[10px] font-bold leading-tight ${done || current ? "text-[var(--eos-text)]" : "text-[var(--eos-muted)]"}`}>{item.title}</p>
             </button>
-          ))}
+            );
+          })}
+          </div>
         </div>
       </div>
 
       <div className="p-5 sm:p-6">
         <div className="mb-5">
           <p className="eos-portal-label eos-portal-label--ok">
-            Krok {step} z 6
+            Krok {step} z {ACQUISITION_STEPS.length}
           </p>
           <h4 className="mt-1 text-lg font-black text-[var(--eos-text)]">{ACQUISITION_STEPS[step - 1].title}</h4>
           <p className="text-sm text-[var(--eos-muted)]">{ACQUISITION_STEPS[step - 1].subtitle}</p>
@@ -766,10 +782,6 @@ export default function SellerAcquisitionWorkspace({
                   </button>
                   {portalUrl ? <Link href={portalUrl} target="_blank" className={eosBtn("secondary")}><ExternalLink className="size-4" /> Otwórz na tablecie</Link> : null}
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Imię i nazwisko podpisującego" value={signerName} onChange={setSignerName} />
-                  <Field label="E-mail do wysyłki kopii" type="email" value={signerEmail} onChange={setSignerEmail} />
-                </div>
                 <SignaturePad onChange={setSignatureData} />
                 <button
                   type="button"
@@ -783,8 +795,9 @@ export default function SellerAcquisitionWorkspace({
               </>
             ) : (
               <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
-                <p className="flex items-center gap-2 font-black text-emerald-700"><BadgeCheck className="size-5" /> Dokument podpisany</p>
+                <p className="flex items-center gap-2 font-black text-emerald-700"><BadgeCheck className="size-5" /> Oferta pozyskana — umowa zamknięta</p>
                 <p className="mt-2 text-sm text-[var(--eos-text)]">{record.signerName} · {record.signedAt ? new Date(record.signedAt).toLocaleString("pl-PL") : ""}</p>
+                <p className="mt-1 text-sm text-[var(--eos-muted)]">Szkic ogłoszenia nie jest publiczny. Od tej pory umowa jest tylko do podglądu.</p>
                 <p className="mt-1 break-all text-[10px] text-[var(--eos-muted)]">SHA-256: {record.documentHash}</p>
                 <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-[var(--eos-muted)]"><Mail className="size-3.5" /> {record.copyEmailSentAt ? "Kopia wysłana e-mailem" : "Kopia e-mail wymaga ponownej wysyłki"}</p>
               </div>

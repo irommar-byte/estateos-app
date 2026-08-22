@@ -30,7 +30,12 @@ export const ACQUISITION_GUIDE_STEPS = [
   {
     id: 6,
     title: 'Podpis',
-    question: 'Potwierdź wzór umowy i zbierz podpis klienta.',
+    question: 'Potwierdź wzór umowy, zbierz podpis i wyślij kopię klientowi.',
+  },
+  {
+    id: 7,
+    title: 'Oferta pozyskana',
+    question: 'Umowa jest zamknięta. Od tej pory nic w niej nie zmieniasz — tylko podgląd.',
   },
 ] as const;
 
