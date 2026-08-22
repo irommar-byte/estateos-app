@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import type { OfferImageMetaPublic } from "@/lib/upload/offerImageMeta";
+import { OfferAdaptiveImage } from "@/components/offer/OfferAdaptiveImage";
 
 type Props = {
   images: string[];
@@ -11,6 +13,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onIndexChange: (index: number) => void;
+  imageMeta?: Record<string, OfferImageMetaPublic>;
   accentClass?: string;
   primaryHoverClass?: string;
   borderActiveClass?: string;
@@ -36,6 +39,7 @@ export default function OfferGalleryLightbox({
   isOpen,
   onClose,
   onIndexChange,
+  imageMeta,
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const [scale, setScale] = useState(1);
@@ -336,19 +340,20 @@ export default function OfferGalleryLightbox({
                 transition: isInteracting ? "none" : "transform 0.16s ease-out",
               }}
             >
-              <motion.img
+              <motion.div
                 key={`${index}-${images[index]}`}
-                src={images[index]}
-                alt=""
-                draggable={false}
                 initial={{ opacity: 0.35 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.18 }}
                 className="max-h-[min(86vh,960px)] w-auto max-w-[min(100vw,1400px)] select-none object-contain"
-                style={{
-                  filter: "contrast(1.04) saturate(1.08) brightness(1.02)",
-                }}
-              />
+              >
+                <OfferAdaptiveImage
+                  sdrSrc={images[index]}
+                  meta={imageMeta?.[images[index]] || null}
+                  showHdrBadge
+                  imgClassName="max-h-[min(86vh,960px)] w-auto max-w-[min(100vw,1400px)] object-contain"
+                />
+              </motion.div>
             </div>
           </div>
         </div>
@@ -367,7 +372,14 @@ export default function OfferGalleryLightbox({
                       : "border-transparent opacity-45 hover:opacity-100"
                   }`}
                 >
-                  <img src={img} alt="" className="h-full w-full object-cover" />
+                  <OfferAdaptiveImage
+                    sdrSrc={img}
+                    meta={imageMeta?.[img] || null}
+                    showHdrBadge
+                    badgeCompact
+                    className="h-full w-full"
+                    imgClassName="h-full w-full object-cover"
+                  />
                 </button>
               ))}
             </div>

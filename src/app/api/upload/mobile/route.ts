@@ -255,6 +255,8 @@ export async function POST(req: Request) {
         url: img.url,
         path: img.url,
         backendRegistered: true,
+        isHdr: img.isHdr === true,
+        masterUrl: img.masterUrl || null,
       });
     } finally {
       releaseOfferUploadLock(offerIdNum);

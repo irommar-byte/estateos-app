@@ -136,6 +136,14 @@ export type CrmExtendedDictionary = {
     noteSave: string;
     noteSaveCloud: string;
     noteSaveError: string;
+    quickNavTitle: string;
+    quickNavRadar: string;
+    quickNavPlanning: string;
+    quickNavOffers: string;
+    quickNavDeals: string;
+    notesMonthTitle: string;
+    notesEmpty: string;
+    notesCount: string;
     weekdays: string[];
     months: string[];
   };
@@ -521,6 +529,14 @@ const pl: CrmExtendedDictionary = {
     noteSave: "Zapisz",
     noteSaveCloud: "Zapisz w chmurze",
     noteSaveError: "Błąd zapisu notatki",
+    quickNavTitle: "Szybkie przejścia",
+    quickNavRadar: "Radar",
+    quickNavPlanning: "Planowanie",
+    quickNavOffers: "Ogłoszenia",
+    quickNavDeals: "Transakcje",
+    notesMonthTitle: "Notatki miesiąca",
+    notesEmpty: "Kliknij dzień w kalendarzu, aby dodać prywatną notatkę.",
+    notesCount: "{n} zapisanych",
     weekdays: ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"],
     months: [
       "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
@@ -943,6 +959,14 @@ const en: CrmExtendedDictionary = {
     noteSave: "Save",
     noteSaveCloud: "Save to cloud",
     noteSaveError: "Could not save note",
+    quickNavTitle: "Quick links",
+    quickNavRadar: "Radar",
+    quickNavPlanning: "Planning",
+    quickNavOffers: "Listings",
+    quickNavDeals: "Deals",
+    notesMonthTitle: "Month notes",
+    notesEmpty: "Tap a day on the calendar to add a private note.",
+    notesCount: "{n} saved",
     weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     months: [
       "January", "February", "March", "April", "May", "June",
@@ -1354,6 +1378,14 @@ const uk: CrmExtendedDictionary = {
     noteSave: "Зберегти",
     noteSaveCloud: "Зберегти в хмарі",
     noteSaveError: "Помилка збереження нотатки",
+    quickNavTitle: "Швидкі переходи",
+    quickNavRadar: "Радар",
+    quickNavPlanning: "Планування",
+    quickNavOffers: "Оголошення",
+    quickNavDeals: "Угоди",
+    notesMonthTitle: "Нотатки місяця",
+    notesEmpty: "Натисніть день у календарі, щоб додати приватну нотатку.",
+    notesCount: "{n} збережено",
     weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"],
     months: [
       "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",

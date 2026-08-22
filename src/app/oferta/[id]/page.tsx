@@ -31,6 +31,7 @@ import DiscoveryOfferExplainer from "@/components/discovery/DiscoveryOfferExplai
 import EosButton from "@/components/ui/EosButton";
 import DiscoveryVisitHint from "@/components/discovery/DiscoveryVisitHint";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
+import { OfferAdaptiveImage } from "@/components/offer/OfferAdaptiveImage";
 import ClientPortalReturnBar from "@/components/portal/ClientPortalReturnBar";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -46,6 +47,7 @@ import AuctionBidModal from "@/components/offer/AuctionBidModal";
 import ProfileWriteMessageButton from "@/components/contact/ProfileWriteMessageButton";
 import OfferHeroMetaBar from "@/components/offer/OfferHeroMetaBar";
 import LiveOfferHero from "@/components/offer/LiveOfferHero";
+import { useOfferImageMeta } from "@/hooks/useOfferImageMeta";
 import OfferGuestAskModal from "@/components/offer/OfferGuestAskModal";
 import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
 import type { AuctionEventRecord } from "@/lib/auctionTypes";
@@ -160,6 +162,7 @@ function OfferDetails({
           (v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i,
         );
   const images: string[] = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
+  const { meta: offerImageMeta } = useOfferImageMeta(offer?.id);
   const thumbImages: string[] = images.slice(1);
   const mosaicCells = offerPhotoMosaicCells(Math.min(thumbImages.length, 6));
   const hiddenThumbCount = Math.max(0, thumbImages.length - mosaicCells.length);
@@ -646,7 +649,7 @@ function OfferDetails({
       
       <div className="eos-cinematic-dark relative h-[58svh] min-h-[52svh] w-full overflow-hidden bg-black sm:h-[100dvh] sm:min-h-[100vh]">
         <motion.div style={{ y: bgY }} className="absolute inset-0 z-0 overflow-hidden">
-          <LiveOfferHero images={images} disabled={isArchived || isLocked} />
+          <LiveOfferHero images={images} disabled={isArchived || isLocked} imageMeta={offerImageMeta} />
         </motion.div>
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
@@ -944,12 +947,14 @@ function OfferDetails({
                     key={`${idx}-${src}`}
                     className={`${mosaicCellClass(mosaicCells[idx])} relative overflow-hidden bg-zinc-950`}
                   >
-                    <img
-                      onClick={() => openGallery(idx + 1)}
-                      src={src}
+                    <OfferAdaptiveImage
+                      sdrSrc={src}
+                      meta={offerImageMeta[src] || null}
+                      className="h-full w-full"
+                      imgClassName="h-full w-full cursor-pointer object-cover transition-transform duration-500 hover:scale-[1.03]"
                       alt=""
-                      className="h-full w-full cursor-pointer object-cover transition-transform duration-500 hover:scale-[1.03]"
-                      style={{ filter: "contrast(1.04) saturate(1.08) brightness(1.02)" }}
+                      loading="lazy"
+                      onClick={() => openGallery(idx + 1)}
                     />
                     {hiddenThumbCount > 0 && idx === mosaicCells.length - 1 ? (
                       <button
@@ -1509,6 +1514,7 @@ function OfferDetails({
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
         onIndexChange={setCurrentImageIndex}
+        imageMeta={offerImageMeta}
         accentClass={themeColors.textActive}
         primaryHoverClass={themeColors.primaryHover}
         borderActiveClass={themeColors.borderActive}

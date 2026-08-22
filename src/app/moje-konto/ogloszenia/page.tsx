@@ -8,6 +8,7 @@ import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import EosButton from "@/components/ui/EosButton";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { isAgentOrAgencySeller } from "@/lib/sellerDisplay";
+import EstateOsDeskCrmButton from "@/components/account/EstateOsDeskCrmButton";
 
 type HomeListing = {
   id: number;
@@ -231,14 +232,7 @@ export default function AccountListingsPage() {
               <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
               <span className="relative z-10">Panel zarządzania</span>
             </a>
-            {isAgent ? (
-              <a href="/moje-konto/crm" className="eos-agent-crm-cta min-w-[16.5rem]">
-                <span className="eos-agent-crm-cta__plate">
-                  <span className="eos-agent-crm-cta__glow" aria-hidden />
-                  <span className="eos-agent-crm-cta__engraved">EstateOS™ CRM</span>
-                </span>
-              </a>
-            ) : null}
+            {isAgent ? <EstateOsDeskCrmButton /> : null}
           </div>
         </header>
 

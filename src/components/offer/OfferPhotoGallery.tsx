@@ -2,15 +2,18 @@
 
 import { Images } from "lucide-react";
 import { mosaicCellClass, offerPhotoMosaicCells, OFFER_GALLERY_GRID_MAX } from "@/lib/offerPhotoMosaic";
+import type { OfferImageMetaPublic } from "@/lib/upload/offerImageMeta";
+import { OfferAdaptiveImage } from "@/components/offer/OfferAdaptiveImage";
 
 type Props = {
   images: string[];
   onOpen: (index: number) => void;
   isArchived?: boolean;
   galleryLabel: string;
+  imageMeta?: Record<string, OfferImageMetaPublic>;
 };
 
-export default function OfferPhotoGallery({ images, onOpen, isArchived, galleryLabel }: Props) {
+export default function OfferPhotoGallery({ images, onOpen, isArchived, galleryLabel, imageMeta }: Props) {
   if (images.length === 0) return null;
 
   const gridCount = Math.min(images.length, OFFER_GALLERY_GRID_MAX);
@@ -31,11 +34,13 @@ export default function OfferPhotoGallery({ images, onOpen, isArchived, galleryL
             onClick={() => onOpen(idx)}
             className={`${mosaicCellClass(cells[idx])} group relative overflow-hidden bg-zinc-900 text-left`}
           >
-            <img
-              src={src}
-              alt=""
-              className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
-              style={{ filter: "contrast(1.04) saturate(1.08) brightness(1.02)" }}
+            <OfferAdaptiveImage
+              sdrSrc={src}
+              meta={imageMeta?.[src] || null}
+              showHdrBadge
+              badgeCompact
+              className="h-full w-full"
+              imgClassName="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
             {idx === 0 && images.length > 1 ? (
@@ -59,11 +64,13 @@ export default function OfferPhotoGallery({ images, onOpen, isArchived, galleryL
                 onClick={() => onOpen(index)}
                 className="relative h-[4.5rem] w-[6.5rem] shrink-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 sm:h-24 sm:w-36 sm:rounded-2xl"
               >
-                <img
-                  src={src}
-                  alt=""
-                  className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
-                  style={{ filter: "contrast(1.04) saturate(1.06) brightness(1.02)" }}
+                <OfferAdaptiveImage
+                  sdrSrc={src}
+                  meta={imageMeta?.[src] || null}
+                  showHdrBadge
+                  badgeCompact
+                  className="h-full w-full"
+                  imgClassName="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
                 />
               </button>
             );

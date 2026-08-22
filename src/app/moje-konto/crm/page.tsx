@@ -1172,6 +1172,18 @@ export default function CRMDashboard() {
           onPasskeyRefresh={refreshCurrentUserFromBackend}
         />
 
+        {isAgencyWorkspace ? (
+          <div className="mb-4 flex justify-end">
+            <Link
+              href="/crm"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)] transition hover:border-amber-500/40 hover:text-[var(--eos-text)]"
+            >
+              Open in EstateOS™ Desk
+              <ExternalLink className="size-3.5" aria-hidden />
+            </Link>
+          </div>
+        ) : null}
+
         <CrmDayBrief
           personName={personName}
           onAddClient={() => {

@@ -89,6 +89,7 @@ export default function Navbar() {
   const brandIsCar = highlightCar;
 
   const isOfferShareLanding = pathname?.startsWith("/o/");
+  const isDeskApp = pathname?.startsWith("/crm");
   const isAdmin = user?.role === "ADMIN";
   const loggedIn = Boolean(user);
   const unread = useNavUnreadBadge(loggedIn);
@@ -213,6 +214,7 @@ export default function Navbar() {
   }, [loggedIn, isAdmin]);
 
   if (isOfferShareLanding) return null;
+  if (isDeskApp) return null;
 
   const handleLogout = async () => {
     try {

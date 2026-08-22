@@ -183,6 +183,19 @@ export async function syncOfferPriceHistory(params: {
     changeType,
     source,
   });
+
+  try {
+    const { dispatchDeskPriceDropForOffer } = await import("@/lib/desk/priceDropLoop");
+    await dispatchDeskPriceDropForOffer({
+      offerId,
+      changeType,
+      pricePln,
+      previousPricePln: lastHistoryPln,
+      source,
+    });
+  } catch {
+    /* Desk price-drop loop best-effort */
+  }
 }
 
 export async function fetchOfferPriceHistory(offerId: number): Promise<OfferPriceHistoryRow[]> {

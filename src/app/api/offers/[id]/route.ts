@@ -55,6 +55,10 @@ import { planDiscoveryGallery, isPersonalizedGalleryPlan } from '@/lib/discovery
 import { topStatEntries } from '@/lib/discoveryInsights';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { userHasMarketPro } from '@/lib/officePartnerPro';
+import {
+  deleteRemovedOfferImages,
+  parseOfferImagesField,
+} from '@/lib/upload/deleteOfferImageArtifacts';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -741,6 +745,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
         status: newStatus,
       };
+
+    if (body.images != null) {
+      const prevImages = parseOfferImagesField(currentOffer.images);
+      const nextImages = parseOfferImagesField(body.images);
+      await deleteRemovedOfferImages(Number(resolvedParams.id), prevImages, nextImages);
+    }
 
     let updatedOffer: typeof currentOffer;
     try {

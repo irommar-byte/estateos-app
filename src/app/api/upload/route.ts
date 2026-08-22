@@ -98,7 +98,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    return NextResponse.json({ url: result.url, success: true });
+    return NextResponse.json({
+      url: result.url,
+      success: true,
+      isHdr: result.isHdr === true,
+      masterUrl: result.masterUrl || null,
+    });
   } catch (e) {
     console.error('❌ UPLOAD ERROR:', e);
     return NextResponse.json({ error: 'Błąd serwera.' }, { status: 500 });

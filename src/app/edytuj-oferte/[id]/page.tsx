@@ -79,16 +79,23 @@ const SortablePhoto = ({
   onRemove,
   onMarkAsPlan,
   isMain,
+  isHdr,
 }: {
   url: string;
   onRemove: (url: string) => void;
   onMarkAsPlan?: (url: string) => void;
   isMain: boolean;
+  isHdr?: boolean;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: url });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 group transition-all ${isMain ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]' : 'border-[#222] bg-[#0a0a0a] hover:border-emerald-500/50'}`}>
       <img src={url} className={`w-full h-full object-cover saturate-[1.2] transition-all duration-700 ${isMain ? 'opacity-100 scale-110' : 'opacity-60 group-hover:opacity-100 group-hover:scale-105'}`} alt="Foto" />
+      {isHdr ? (
+        <span className="absolute left-2 top-2 z-20 rounded-md border border-amber-200/30 bg-black/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-100">
+          HDR
+        </span>
+      ) : null}
       <div
         {...attributes}
         {...listeners}
@@ -153,6 +160,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [data, setData] = useState<any>({});
   const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
   const [imagesList, setImagesList] = useState<string[]>([]);
+  const [hdrImages, setHdrImages] = useState<Record<string, boolean>>({});
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
   const [floorPlanExtraUrls, setFloorPlanExtraUrls] = useState<string[]>([]);
   const [floorPlanUploading, setFloorPlanUploading] = useState(false);
@@ -235,6 +243,19 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
         );
         if (parsedImages.length) setImagesList(parsedImages);
+        try {
+          const metaRes = await fetch(`/api/offers/${offerId}/images-meta`, { credentials: 'include' });
+          if (metaRes.ok) {
+            const metaJson = await metaRes.json();
+            const map: Record<string, boolean> = {};
+            for (const [url, entry] of Object.entries(metaJson.images || {})) {
+              if ((entry as { isHdr?: boolean }).isHdr) map[url] = true;
+            }
+            setHdrImages(map);
+          }
+        } catch {
+          /* brak metadanych HDR */
+        }
         const fp = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
         setFloorPlanUrl(fp || null);
         setFloorPlanExtraUrls(parseFloorPlanExtraUrls(offer.floorPlanExtraUrls).filter((url) => url !== fp));
@@ -266,7 +287,12 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           throw new Error(err.error || err.message || 'Upload się nie powiódł');
         }
         const d = await res.json();
-        if (d.url) newUrls.push(d.url);
+        if (d.url) {
+          newUrls.push(d.url);
+          if (d.isHdr) {
+            setHdrImages((prev) => ({ ...prev, [d.url]: true }));
+          }
+        }
       }
       const merged = [...imagesList, ...newUrls].slice(0, OFFER_MAX_IMAGES);
       setImagesList(merged);
@@ -279,7 +305,27 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     }
   };
 
-  const handleRemoveImage = (url: string) => { const n = imagesList.filter(u => u !== url); setImagesList(n); updateData({ images: n.join(","), imageUrl: n[0] || '' }); };
+  const handleRemoveImage = async (url: string) => {
+    const n = imagesList.filter((u) => u !== url);
+    setImagesList(n);
+    updateData({ images: n.join(','), imageUrl: n[0] || '' });
+    setHdrImages((prev) => {
+      const next = { ...prev };
+      delete next[url];
+      return next;
+    });
+    if (!offerId) return;
+    try {
+      await fetch(`/api/offers/${offerId}/image`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+    } catch {
+      /* best-effort — PATCH diff też usuwa przy zapisie */
+    }
+  };
 
   const handleFloorPlanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -885,7 +931,14 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             <SortableContext items={imagesList} strategy={horizontalListSortingStrategy}>
               <div className="flex flex-wrap gap-4 md:gap-6 mb-6">
                 {imagesList.map((url, idx) => (
-                  <SortablePhoto key={url} url={url} onRemove={handleRemoveImage} onMarkAsPlan={handleMarkAsPlan} isMain={idx === 0} />
+                  <SortablePhoto
+                    key={url}
+                    url={url}
+                    onRemove={handleRemoveImage}
+                    onMarkAsPlan={handleMarkAsPlan}
+                    isMain={idx === 0}
+                    isHdr={Boolean(hdrImages[url])}
+                  />
                 ))}
                 
                 {imagesList.length < OFFER_MAX_IMAGES && (
