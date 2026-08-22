@@ -3,6 +3,7 @@ import { extractVerificationMeta } from '@/lib/offerVerification';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { applyLegalStatusOverride, type LegalStatusOverride } from '@/lib/offerLegalStatusOverlay';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { stripInternalOfferDescriptionMarkers } from '@/lib/offerDescriptionHtml';
 import { enrichOfferMoneyFieldsWithRate } from '@/lib/money/offerPrice';
 import { enrichOfferPriceDiscountFields } from '@/lib/offerPriceHistory';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
@@ -79,7 +80,7 @@ export function shapePublicListOffer(
     conditionLabel: formatOfferCondition(rest.condition, 'pl'),
     conditionLabelEn: formatOfferCondition(rest.condition, 'en'),
     imageUrl: resolveOfferPrimaryImage(rest),
-    description: cleanDescription,
+    description: stripInternalOfferDescriptionMarkers(cleanDescription),
     apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
     landRegistryNumber: verification.landRegistryNumber || '',
     ...legal,

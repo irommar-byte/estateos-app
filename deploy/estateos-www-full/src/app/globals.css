@@ -4393,6 +4393,135 @@ html:not(.light) .eos-crm-section-hero__icon {
   }
 }
 
+/* —— CRM Moi klienci —— */
+.eos-crm-clients-hero-title {
+  font-family: var(--eos-crm-font, "Fraunces", Georgia, serif);
+  font-size: clamp(2.15rem, 5vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  color: var(--eos-text);
+  text-wrap: balance;
+}
+
+.eos-crm-clients-hero-title__accent {
+  background: linear-gradient(135deg, #059669 0%, #10b981 45%, #34d399 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.eos-crm-clients-section-kicker {
+  font-family: var(--eos-crm-font, "Fraunces", Georgia, serif);
+  font-size: clamp(1.35rem, 2.8vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eos-text);
+}
+
+.eos-crm-client-lamps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.eos-crm-client-lamp {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 163, 90, 0.22);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(243, 241, 236, 0.75));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  color: rgba(120, 113, 108, 0.55);
+}
+
+html:not(.light) .eos-crm-client-lamp {
+  border-color: rgba(196, 163, 90, 0.18);
+  background: linear-gradient(165deg, rgba(42, 42, 44, 0.95), rgba(24, 24, 26, 0.92));
+  color: rgba(168, 162, 158, 0.45);
+}
+
+.eos-crm-client-lamp__icon {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.eos-crm-client-lamp--on {
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #059669;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(16, 185, 129, 0.12),
+    0 0 14px rgba(16, 185, 129, 0.35);
+}
+
+html:not(.light) .eos-crm-client-lamp--on {
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #34d399;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 16px rgba(16, 185, 129, 0.28);
+}
+
+.eos-crm-client-lamp__glow {
+  pointer-events: none;
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 35%, rgba(16, 185, 129, 0.45), transparent 68%);
+  opacity: 0.85;
+}
+
+.eos-crm-meeting-countdown {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(16, 185, 129, 0.06));
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--eos-text);
+}
+
+.eos-crm-meeting-countdown--live {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.08));
+  color: #047857;
+  animation: eos-crm-meeting-pulse 2s ease-in-out infinite;
+}
+
+.eos-crm-meeting-countdown__label {
+  text-transform: uppercase;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  color: var(--eos-muted);
+}
+
+.eos-crm-meeting-countdown__time {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+@keyframes eos-crm-meeting-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+}
+
 /* —— CRM my offers board —— */
 .eos-crm-offer-card {
   position: relative;
@@ -4859,6 +4988,96 @@ html:not(.light) .eos-crm-offer-card__title {
   }
   100% {
     transform: translateX(130%) rotate(8deg);
+  }
+}
+
+.eos-btn--plane {
+  overflow: visible;
+}
+
+.eos-send-plane__stack {
+  position: relative;
+  display: inline-flex;
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+}
+
+.eos-send-plane__stack svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.eos-send-plane__park {
+  opacity: 0;
+  transform: translate(-10px, 10px) scale(0.55);
+}
+
+.eos-btn--plane:hover:not(:disabled) .eos-send-plane__fly,
+.eos-btn--plane.is-sending .eos-send-plane__fly {
+  animation: eos-plane-launch 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.eos-btn--plane:hover:not(:disabled) .eos-send-plane__park,
+.eos-btn--plane.is-sending .eos-send-plane__park {
+  animation: eos-plane-arrive 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes eos-plane-launch {
+  0% {
+    transform: translate(0, 0) rotate(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(18px, -22px) rotate(32deg);
+    opacity: 0;
+  }
+}
+
+@keyframes eos-plane-arrive {
+  0% {
+    transform: translate(-10px, 10px) scale(0.5);
+    opacity: 0;
+  }
+  45% {
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+.eos-chat-tile {
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+.eos-chat-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-chat-tile:hover .eos-send-plane__fly {
+  animation: eos-plane-launch 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.eos-chat-tile:hover .eos-send-plane__park {
+  animation: eos-plane-arrive 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eos-btn--plane:hover:not(:disabled) .eos-send-plane__fly,
+  .eos-btn--plane.is-sending .eos-send-plane__fly,
+  .eos-btn--plane:hover:not(:disabled) .eos-send-plane__park,
+  .eos-btn--plane.is-sending .eos-send-plane__park,
+  .eos-chat-tile:hover .eos-send-plane__fly,
+  .eos-chat-tile:hover .eos-send-plane__park {
+    animation: none;
   }
 }
 
@@ -5579,19 +5798,6 @@ html:not(.light) .eos-mgmt-panel-btn {
 .eos-gold-featured__inner > * {
   height: 100%;
 }
-.eos-gold-featured__corner {
-  pointer-events: none;
-  position: absolute;
-  z-index: 2;
-  width: 18px;
-  height: 18px;
-  border: 1.5px solid rgba(255, 248, 220, 0.95);
-  box-shadow: 0 0 8px rgba(212, 175, 55, 0.45);
-}
-.eos-gold-featured__corner--tl { top: 8px; left: 8px; border-right: 0; border-bottom: 0; border-top-left-radius: 8px; }
-.eos-gold-featured__corner--tr { top: 8px; right: 8px; border-left: 0; border-bottom: 0; border-top-right-radius: 8px; }
-.eos-gold-featured__corner--bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; border-bottom-left-radius: 8px; }
-.eos-gold-featured__corner--br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; border-bottom-right-radius: 8px; }
 @keyframes eos-gold-sheen {
   0%, 55% { transform: translateX(0) skewX(-18deg); }
   80% { transform: translateX(420%) skewX(-18deg); }
@@ -5601,84 +5807,370 @@ html:not(.light) .eos-mgmt-panel-btn {
   .eos-gold-featured__shine::after { animation: none; }
 }
 
-/* —— Agent CRM 3D engraved CTA —— */
+/* —— Agent Desk CRM — premium flagship CTA —— */
 .eos-agent-crm-cta {
   --eos-crm-font: var(--font-eos-crm), "Nunito", "Avenir Next Rounded", "Varela Round", ui-rounded, sans-serif;
+  --eos-crm-gold: #d4af37;
+  --eos-crm-gold-light: #f5e6a8;
+  --eos-crm-brass: #b8860b;
   position: relative;
   display: inline-flex;
-  min-height: 3.65rem;
+  min-height: 4rem;
   align-items: center;
   justify-content: center;
-  padding: 4px;
-  border-radius: 1.35rem;
+  padding: 3px;
+  border: none;
+  border-radius: 1.5rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
   text-decoration: none;
+  isolation: isolate;
   background:
-    linear-gradient(180deg, #3a3a3c 0%, #1c1c1e 48%, #0a0a0c 100%);
+    linear-gradient(135deg, #f5e6a8 0%, #d4af37 22%, #8b6914 52%, #3d2e0a 78%, #1a1408 100%);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.22) inset,
-    0 -2px 6px rgba(0, 0, 0, 0.55) inset,
-    0 16px 32px rgba(15, 23, 42, 0.28);
-  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 280ms ease, filter 280ms ease;
+    0 0 0 1px rgba(212, 175, 55, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 -2px 8px rgba(0, 0, 0, 0.45) inset,
+    0 0 32px rgba(212, 175, 55, 0.28),
+    0 20px 44px rgba(61, 46, 10, 0.35);
+  animation: eos-crm-cta-breathe 4.2s ease-in-out infinite;
+  transition:
+    transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 320ms ease;
+}
+.eos-agent-crm-cta__halo {
+  pointer-events: none;
+  position: absolute;
+  inset: -6px;
+  z-index: 0;
+  border-radius: 1.65rem;
+  opacity: 0.55;
+  background: conic-gradient(
+    from 210deg,
+    rgba(212, 175, 55, 0) 0deg,
+    rgba(245, 230, 168, 0.55) 80deg,
+    rgba(212, 175, 55, 0.35) 160deg,
+    rgba(245, 230, 168, 0.5) 240deg,
+    rgba(212, 175, 55, 0) 360deg
+  );
+  filter: blur(8px);
+  animation: eos-crm-cta-halo-spin 8s linear infinite;
 }
 .eos-agent-crm-cta__plate {
   position: relative;
+  z-index: 1;
   display: flex;
-  min-height: 3.35rem;
+  min-height: 3.65rem;
   width: 100%;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 1.15rem;
-  padding: 0.7rem 1.7rem;
+  border-radius: 1.28rem;
+  padding: 0.82rem 1.85rem;
   background:
-    linear-gradient(180deg, #2a2a2c 0%, #141416 55%, #080809 100%);
+    linear-gradient(180deg, #2a2418 0%, #14110c 42%, #080706 100%);
   box-shadow:
-    0 2px 4px rgba(255, 255, 255, 0.08) inset,
-    0 -10px 18px rgba(0, 0, 0, 0.55) inset;
+    0 2px 6px rgba(255, 255, 255, 0.1) inset,
+    0 -12px 22px rgba(0, 0, 0, 0.65) inset;
+}
+.eos-agent-crm-cta__gears {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 1;
+  transition: opacity 420ms ease, filter 420ms ease;
+}
+.eos-agent-crm-cta__gears-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 3.65rem;
+}
+.eos-agent-crm-cta.is-hovered .eos-agent-crm-cta__gears,
+.eos-agent-crm-cta:hover .eos-agent-crm-cta__gears {
+  filter: brightness(1.18) saturate(1.12);
+}
+.eos-agent-crm-cta.is-launching {
+  opacity: 0;
+  pointer-events: none;
+}
+.eos-agent-crm-cta__portal {
+  position: fixed;
+  z-index: 99999;
+  overflow: hidden;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(212, 175, 55, 0.14), transparent 52%),
+    linear-gradient(168deg, #1f1a12 0%, #0f0d0a 45%, #050504 100%);
+  box-shadow:
+    inset 0 0 120px rgba(0, 0, 0, 0.65),
+    0 0 80px rgba(212, 175, 55, 0.22);
+  transition:
+    top 920ms cubic-bezier(0.16, 1, 0.3, 1),
+    left 920ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 920ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 920ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 920ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.eos-agent-crm-cta__portal.is-expanded {
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  border-radius: 0 !important;
+}
+.eos-agent-crm-cta__portal-gears {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  pointer-events: none;
+}
+.eos-agent-crm-cta__portal-gears-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.eos-agent-crm-cta__portal-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 22%, rgba(0, 0, 0, 0.72) 100%);
+  pointer-events: none;
+}
+.eos-agent-crm-cta__portal-title {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: center;
+  opacity: 0;
+  transform: scale(0.82) translateY(12px);
+  filter: blur(6px);
+  transition:
+    opacity 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 680ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 520ms ease;
+}
+.eos-agent-crm-cta__portal.is-title-visible .eos-agent-crm-cta__portal-title {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  filter: blur(0);
+}
+.eos-agent-crm-cta__portal.is-scattering .eos-agent-crm-cta__portal-gears {
+  opacity: 1;
+}
+.eos-agent-crm-cta__portal.is-scattering .eos-agent-crm-cta__portal-vignette {
+  opacity: 0.35;
+  transition: opacity 480ms ease;
+}
+.eos-agent-crm-cta__portal.is-scattering .eos-agent-crm-cta__portal-title {
+  transform: scale(1.06) translateY(-4px);
+  transition:
+    transform 680ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 520ms ease;
+}
+.eos-agent-crm-cta__portal.is-exiting {
+  opacity: 0;
+  transition: opacity 520ms cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.eos-agent-crm-cta__portal.is-exiting .eos-agent-crm-cta__portal-title {
+  opacity: 0;
+  transform: scale(1.18) translateY(-18px);
+  filter: blur(10px);
+  transition:
+    opacity 380ms ease,
+    transform 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 380ms ease;
+}
+.eos-agent-crm-cta__portal.is-exiting .eos-agent-crm-cta__portal-gears {
+  opacity: 0;
+}
+.eos-agent-crm-cta__portal-kicker {
+  font-family: var(--eos-crm-font, ui-sans-serif, system-ui, sans-serif);
+  font-size: clamp(0.75rem, 2vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: rgba(245, 230, 168, 0.62);
+}
+.eos-agent-crm-cta__portal-crm {
+  font-family: var(--eos-crm-font, ui-sans-serif, system-ui, sans-serif);
+  font-size: clamp(4.5rem, 22vw, 11rem);
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #fff9e6 0%, #f5e6a8 28%, #d4af37 58%, #8b6914 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 8px 28px rgba(212, 175, 55, 0.45)) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55));
+}
+.eos-agent-crm-cta__portal-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(
+    115deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.05) 42%,
+    rgba(245, 230, 168, 0.16) 50%,
+    rgba(255, 255, 255, 0.04) 58%,
+    transparent 72%
+  );
+  animation: eos-crm-portal-sheen 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes eos-crm-gear-cw {
+  to { transform: rotate(360deg); }
+}
+@keyframes eos-crm-gear-ccw {
+  to { transform: rotate(-360deg); }
+}
+@keyframes eos-crm-portal-sheen {
+  0% { transform: translateX(-30%) skewX(-12deg); opacity: 0.4; }
+  50% { opacity: 0.9; }
+  100% { transform: translateX(30%) skewX(-12deg); opacity: 0.4; }
+}
+.eos-agent-crm-cta__sheen {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.14) 46%,
+    rgba(245, 230, 168, 0.38) 50%,
+    rgba(255, 255, 255, 0.12) 54%,
+    transparent 68%
+  );
+  transform: translateX(-130%);
+  animation: eos-crm-cta-sheen 3.8s ease-in-out infinite;
+}
+.eos-agent-crm-cta__spark {
+  pointer-events: none;
+  position: absolute;
+  top: 0.55rem;
+  right: 1rem;
+  z-index: 4;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, #fff9e6 0%, #d4af37 55%, transparent 70%);
+  box-shadow: 0 0 10px rgba(245, 230, 168, 0.95);
+  animation: eos-crm-cta-spark 2.4s ease-in-out infinite;
 }
 .eos-agent-crm-cta__engraved {
   position: relative;
-  z-index: 2;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12rem;
   font-family: var(--eos-crm-font);
-  font-size: 1.15rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
   line-height: 1;
-  color: #9ca3af;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.18),
-    0 -1px 0 rgba(0, 0, 0, 0.7);
-  transition: color 280ms ease, text-shadow 280ms ease, filter 280ms ease;
+  text-align: center;
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1), filter 320ms ease;
+}
+.eos-agent-crm-cta__brand {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(245, 230, 168, 0.72);
+}
+.eos-agent-crm-cta__label {
+  font-size: 1.28rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #fff9e6 0%, #f5e6a8 35%, #d4af37 70%, #b8860b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.55));
 }
 .eos-agent-crm-cta__glow {
   pointer-events: none;
   position: absolute;
-  inset: -20%;
+  inset: -25%;
   z-index: 1;
-  opacity: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.45), transparent 58%);
-  transition: opacity 280ms ease;
+  opacity: 0.35;
+  background: radial-gradient(circle at 50% 40%, rgba(212, 175, 55, 0.55), transparent 62%);
+  animation: eos-crm-cta-glow-pulse 4.2s ease-in-out infinite;
 }
 .eos-agent-crm-cta:hover {
-  transform: translateY(-3px) scale(1.02);
+  transform: translateY(-4px) scale(1.03);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.3) inset,
-    0 0 28px rgba(52, 211, 153, 0.35),
-    0 22px 44px rgba(15, 23, 42, 0.32);
+    0 0 0 1px rgba(245, 230, 168, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 0 48px rgba(212, 175, 55, 0.55),
+    0 0 80px rgba(184, 134, 11, 0.28),
+    0 26px 52px rgba(61, 46, 10, 0.42);
+  animation: none;
 }
 .eos-agent-crm-cta:hover .eos-agent-crm-cta__engraved {
-  color: #ecfdf5;
-  filter: brightness(1.35);
-  text-shadow:
-    0 0 10px rgba(167, 243, 208, 0.95),
-    0 0 24px rgba(16, 185, 129, 0.75),
-    0 1px 0 rgba(255, 255, 255, 0.35);
+  transform: scale(1.02);
 }
 .eos-agent-crm-cta:hover .eos-agent-crm-cta__glow {
-  opacity: 1;
+  opacity: 0.85;
 }
 .eos-agent-crm-cta:active {
   transform: translateY(1px) scale(0.985);
+}
+@keyframes eos-crm-cta-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35), 0 1px 0 rgba(255, 255, 255, 0.45) inset, 0 -2px 8px rgba(0, 0, 0, 0.45) inset, 0 0 28px rgba(212, 175, 55, 0.22), 0 20px 44px rgba(61, 46, 10, 0.35); }
+  50% { box-shadow: 0 0 0 1px rgba(245, 230, 168, 0.45), 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 -2px 8px rgba(0, 0, 0, 0.45) inset, 0 0 42px rgba(212, 175, 55, 0.42), 0 22px 48px rgba(61, 46, 10, 0.38); }
+}
+@keyframes eos-crm-cta-halo-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes eos-crm-cta-sheen {
+  0%, 42% { transform: translateX(-130%); }
+  58% { transform: translateX(130%); }
+  100% { transform: translateX(130%); }
+}
+@keyframes eos-crm-cta-glow-pulse {
+  0%, 100% { opacity: 0.28; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.06); }
+}
+@keyframes eos-crm-cta-spark {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eos-agent-crm-cta,
+  .eos-agent-crm-cta__halo,
+  .eos-agent-crm-cta__sheen,
+  .eos-agent-crm-cta__glow,
+  .eos-agent-crm-cta__spark,
+  .eos-agent-crm-cta__portal-sheen,
+  .eos-agent-crm-cta__portal-title {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    filter: none !important;
+  }
+  .eos-agent-crm-cta__portal {
+    transition-duration: 0.01ms !important;
+  }
+  .eos-agent-crm-cta__portal.is-title-visible .eos-agent-crm-cta__portal-title {
+    opacity: 1;
+    transform: none;
+  }
+}
+html:not(.light) .eos-agent-crm-cta {
+  box-shadow:
+    0 0 0 1px rgba(212, 175, 55, 0.42),
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 -2px 8px rgba(0, 0, 0, 0.55) inset,
+    0 0 40px rgba(212, 175, 55, 0.32),
+    0 20px 44px rgba(0, 0, 0, 0.45);
 }
 
 
