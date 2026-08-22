@@ -281,6 +281,7 @@ export function buildJourneyStages(params: {
   criteriaUpdatedAt?: string | null;
   lastOfferSentAt?: string | null;
   lastReactionAt?: string | null;
+  listingSold?: boolean;
 }): JourneyStage[] {
   const stages: Array<{ id: JourneyStageId; label: string; done: boolean; hint?: string; at?: string | null }> =
     params.clientType === 'BUYER'
@@ -317,7 +318,7 @@ export function buildJourneyStages(params: {
             label: 'Prezentacja na żywo',
             done: params.hasPresentation && params.presentationConfirmed,
             hint: params.hasPresentation
-              ? 'Potwierdź termin albo zaproponuj inny — idziemy oglądać mieszkanie.'
+              ? 'Termin prezentacji jest ustalony. Szczegóły znajdziesz poniżej.'
               : 'Gdy któraś oferta naprawdę pasuje, agent umówi prezentację.',
           },
           {
@@ -328,26 +329,35 @@ export function buildJourneyStages(params: {
           },
         ]
       : [
-          { id: 'added', label: 'Klient w CRM', done: true, hint: 'Jesteś w systemie agencji EstateOS.' },
           {
             id: 'meeting',
-            label: 'Termin spotkania',
-            done: params.hasMeeting && params.meetingConfirmed,
-            hint: 'Potwierdź datę spotkania z agentem albo zaproponuj inną.',
+            label: 'Umówienie spotkania',
+            done: params.hasMeeting,
+            hint: 'Termin jest ustalony. Poniżej data i lista rzeczy do przygotowania na wizytę.',
           },
           {
             id: 'visit',
-            label: 'Karta pozyskania',
-            done: params.acquisitionStarted || params.signed,
-            hint: 'Dokument współpracy pojawi się tutaj, zanim podpiszecie umowę.',
+            label: 'Pozysk',
+            done: params.signed,
+            hint: 'Umowa i ustalenia ze spotkania. Podpisaną kopię dostajesz na e-mail.',
           },
-          { id: 'signed', label: 'Umowa podpisana', done: params.signed, hint: 'Po podpisie agent publikuje ogłoszenie.' },
-          { id: 'offer', label: 'Oferta na rynku', done: params.hasOffer, hint: 'Twoje ogłoszenie jest widoczne dla kupujących.' },
+          {
+            id: 'offer',
+            label: 'Sprzedaż',
+            done: params.hasOffer,
+            hint: 'Ogłoszenie jest aktywne. Widzisz je tutaj i na rynku.',
+          },
           {
             id: 'presentation',
-            label: 'Prezentacja',
+            label: 'Transakcja',
             done: params.hasPresentation && params.presentationConfirmed,
-            hint: 'Pokazujemy nieruchomość zainteresowanym.',
+            hint: 'Termin u notariusza i prezentacje dla kupujących.',
+          },
+          {
+            id: 'done',
+            label: 'Finalizacja',
+            done: Boolean(params.listingSold),
+            hint: 'Przekazanie lokalu z protokołem zdawczo-odbiorczym i kluczami.',
           },
         ];
   const firstOpen = stages.findIndex((stage) => !stage.done);

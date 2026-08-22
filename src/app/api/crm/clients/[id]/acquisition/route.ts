@@ -281,7 +281,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       emailSent = await sendTransactionalEmail({
         to: client.email,
         subject: `Warunki współpracy do zapoznania · ${client.agencyUser.companyName || "EstateOS"}`,
-        html: `<div style="font-family:-apple-system,sans-serif;padding:24px"><h2>Przygotowanie do spotkania</h2><p>Dzień dobry ${escapeHtml(client.firstName)},</p><p>Agent przygotował kartę nieruchomości, listę dokumentów i warunki współpracy. Zapoznaj się z nimi przed spotkaniem i zaznacz przygotowane dokumenty.</p><p><a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#07130e;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">Otwórz panel klienta</a></p></div>`,
+        html: `<div style="font-family:-apple-system,sans-serif;padding:24px"><h2>Przygotowanie do spotkania</h2><p>Dzień dobry ${escapeHtml(client.firstName)},</p><p>Agent przygotował umowę i warunki współpracy. Szczegóły oraz listę rzeczy na spotkanie znajdziesz w panelu klienta.</p><p><a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#07130e;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">Otwórz panel klienta</a></p></div>`,
         attachments: [{
           filename: `warunki-wspolpracy-${clientId}.html`,
           content: documentHtml({ agreement }),

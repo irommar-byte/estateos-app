@@ -25,6 +25,7 @@ export type AgencyClientListItem = {
   linkedUserLastLoginAt: string | null;
   upcomingMeetingStartsAt?: string | null;
   upcomingMeetingLocation?: string | null;
+  portalUrl?: string | null;
 };
 
 export function buyerPrefToRadarRecord(pref: AgencyClientBuyerPreference | null): Record<string, unknown> {
@@ -151,6 +152,9 @@ export function shapeClientListItem(
     linkedUserLastLoginAt: client.linkedUser?.lastLoginAt?.toISOString() ?? null,
     upcomingMeetingStartsAt,
     upcomingMeetingLocation,
+    portalUrl: client.portalToken
+      ? `${(process.env.NEXT_PUBLIC_SITE_URL || 'https://estateos.pl').replace(/\/$/, '')}/klient/${client.portalToken}`
+      : null,
   };
 }
 
