@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Paperclip, Plus, Send, X } from "lucide-react";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
 import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAttachmentShared";
+import SendPlaneButton from "@/components/ui/SendPlaneButton";
 
 type PortalMessage = {
   id: number;
@@ -125,13 +126,24 @@ export default function ClientPortalChatDock({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="eos-lux-btn eos-lux-btn--primary inline-flex items-center gap-2 px-4 py-2.5 text-[10px]"
+        className="eos-inset-well eos-chat-tile flex w-full items-center gap-3 rounded-xl p-3 text-left"
       >
-        <MessageSquare className="size-3.5" />
-        Napisz do agenta
-        {messages.length ? (
-          <span className="rounded-full bg-black/15 px-1.5 py-0.5 text-[9px] font-black">{messages.length}</span>
-        ) : null}
+        <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+          <MessageSquare className="size-4" />
+          {messages.length ? (
+            <span className="absolute -right-1.5 -top-1.5 min-w-[1.1rem] rounded-full bg-emerald-500 px-1 text-center text-[9px] font-black leading-4 text-black">
+              {messages.length > 9 ? "9+" : messages.length}
+            </span>
+          ) : null}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="eos-portal-label">Kontakt z agentem</p>
+          <p className="text-xs font-bold text-[var(--eos-text)]">Napisz wiadomość</p>
+        </div>
+        <span className="eos-send-plane__stack text-emerald-600" aria-hidden>
+          <Send className="eos-send-plane__fly size-3.5" />
+          <Send className="eos-send-plane__park size-3.5" />
+        </span>
       </button>
 
       {open ? (
@@ -225,15 +237,15 @@ export default function ClientPortalChatDock({
                 placeholder="Napisz wiadomość do agenta…"
                 className="eos-field-inset flex-1 rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
               />
-              <button
-                type="button"
+              <SendPlaneButton
+                sending={busy}
+                block={false}
                 disabled={busy || (!draft.trim() && !pendingFile)}
                 onClick={() => void sendChat()}
-                className="eos-lux-btn eos-lux-btn--primary inline-flex items-center gap-2 px-4 py-2 text-[10px] disabled:opacity-50"
+                className="shrink-0 px-4"
               >
-                <Send className="size-3" />
                 Wyślij
-              </button>
+              </SendPlaneButton>
             </div>
           </div>
         </div>

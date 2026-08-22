@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Send, ThumbsDown, ThumbsUp, HelpCircle } from "lucide-react";
-import EosButton from "@/components/ui/EosButton";
+import { ExternalLink, ThumbsDown, ThumbsUp, HelpCircle } from "lucide-react";
+import SendPlaneButton from "@/components/ui/SendPlaneButton";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import {
   DISLIKE_PHRASES,
@@ -209,16 +209,14 @@ export default function ClientPortalMatchCard({
           className="eos-field-inset mt-3 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
         />
 
-        <EosButton
-          variant="home"
-          block
-          className="mt-4"
+        <SendPlaneButton
+          sending={saving}
           disabled={saving || !canSend}
           onClick={() => void onSubmit({ sentiment, liked, disliked, phrases, note })}
+          className="mt-4"
         >
-          <Send className="size-3.5" />
-          {saving ? "Wysyłanie…" : match.clientFeedback ? "Zaktualizuj reakcję" : "Wyślij reakcję do agenta"}
-        </EosButton>
+          {match.clientFeedback ? "Zaktualizuj reakcję" : "Wyślij reakcję do agenta"}
+        </SendPlaneButton>
         {!canSend ? (
           <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
             Wybierz ocenę albo zaznacz, co zostaje / odpada — wtedy przycisk ożywa.

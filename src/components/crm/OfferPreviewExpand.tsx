@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { plainOfferDescription } from "@/lib/offerDescriptionHtml";
 
 export type ExpandableOfferPreviewData = {
   title: string;
@@ -81,7 +82,7 @@ export function OfferDescriptionToggle({
   offer: ExpandableOfferPreviewData;
   className?: string;
 }) {
-  const text = String(offer.description || offer.excerpt || "").trim();
+  const text = plainOfferDescription(offer.description || offer.excerpt);
   const [open, setOpen] = useState(false);
   if (!text) return null;
 

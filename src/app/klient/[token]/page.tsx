@@ -89,7 +89,9 @@ type PortalData = {
       area: number;
       rooms?: number | null;
       excerpt?: string | null;
+      description?: string | null;
       imageUrl: string;
+      imageUrls?: string[] | null;
     };
   }>;
   listing: {
@@ -276,15 +278,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
         {/* Agency Office Details & Direct Actions */}
         <div className="mt-6 grid gap-3 border-t border-[var(--eos-border)]/60 pt-6 sm:grid-cols-2 lg:grid-cols-3">
-          {token ? (
-            <div className="eos-inset-well flex items-center justify-between gap-3 rounded-xl p-3">
-              <div className="min-w-0">
-                <p className="eos-portal-label">Kontakt z agentem</p>
-                <p className="text-xs font-bold text-[var(--eos-text)]">Czat jak w dealroomie</p>
-              </div>
-              <ClientPortalChatDock token={token} agentName={portal.agentName} />
-            </div>
-          ) : null}
+          {token ? <ClientPortalChatDock token={token} agentName={portal.agentName} /> : null}
           {portal.agentPhone && (
             <a
               href={`tel:${portal.agentPhone}`}
