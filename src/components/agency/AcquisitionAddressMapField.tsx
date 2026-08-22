@@ -25,10 +25,12 @@ import {
   streetLineFromGeocodedPlace,
   type GeocodedPlaceInput,
 } from '../../constants/locationEcosystem';
+import StreetViewPreviewModal from './StreetViewPreviewModal';
 
 const DEFAULT_LAT = 52.2297;
 const DEFAULT_LNG = 21.0122;
 const DEFAULT_DELTA = 0.012;
+const PIN_DELTA = 0.0035;
 const ERROR_RED = '#FF3B30';
 
 export type AcquisitionAddressValue = {
@@ -116,6 +118,8 @@ export default function AcquisitionAddressMapField({
   const [hints, setHints] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [mapType, setMapType] = useState<'standard' | 'hybrid'>('hybrid');
+  const [streetViewOpen, setStreetViewOpen] = useState(false);
 
   const colors = {
     text: isDark ? '#fff' : '#000',
@@ -163,13 +167,14 @@ export default function AcquisitionAddressMapField({
     return () => clearTimeout(handle);
   }, [query, token, disabled]);
 
-  const flyTo = useCallback((lat: number, lng: number, delta = DEFAULT_DELTA) => {
+  const flyTo = useCallback((lat: number, lng: number, delta?: number) => {
+    const zoom = delta ?? (Number.isFinite(value.lat) && Number.isFinite(value.lng) ? PIN_DELTA : DEFAULT_DELTA);
     skipRegion.current = true;
     mapRef.current?.animateToRegion(
-      { latitude: lat, longitude: lng, latitudeDelta: delta, longitudeDelta: delta },
+      { latitude: lat, longitude: lng, latitudeDelta: zoom, longitudeDelta: zoom },
       280,
     );
-  }, []);
+  }, [value.lat, value.lng]);
 
   const applyCoords = useCallback(
     async (lat: number, lng: number, preferredLabel?: string, preferredCity?: string | null) => {
@@ -354,7 +359,7 @@ export default function AcquisitionAddressMapField({
           ref={mapRef}
           style={styles.map}
           userInterfaceStyle={isDark ? 'dark' : 'light'}
-          mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+          mapType={mapType}
           scrollEnabled={!disabled}
           zoomEnabled={!disabled}
           pitchEnabled={false}
@@ -362,16 +367,47 @@ export default function AcquisitionAddressMapField({
           initialRegion={{
             latitude: mapLat,
             longitude: mapLng,
-            latitudeDelta: DEFAULT_DELTA,
-            longitudeDelta: DEFAULT_DELTA,
+            latitudeDelta: pinReady ? PIN_DELTA : DEFAULT_DELTA,
+            longitudeDelta: pinReady ? PIN_DELTA : DEFAULT_DELTA,
           }}
           onRegionChangeComplete={onRegionComplete}
         />
+        <View style={styles.mapToolbar} pointerEvents="box-none">
+          <Pressable
+            onPress={() => setMapType((current) => (current === 'hybrid' ? 'standard' : 'hybrid'))}
+            style={[styles.mapToolBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Ionicons name={mapType === 'hybrid' ? 'earth' : 'map'} size={16} color={colors.accent} />
+            <Text style={{ color: colors.text, fontSize: 10, fontWeight: '800' }}>
+              {mapType === 'hybrid' ? 'Satelita' : 'Mapa'}
+            </Text>
+          </Pressable>
+          {pinReady && value.lat != null && value.lng != null ? (
+            <Pressable
+              onPress={() => setStreetViewOpen(true)}
+              style={[styles.mapToolBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Ionicons name="walk" size={16} color={colors.accent} />
+              <Text style={{ color: colors.text, fontSize: 10, fontWeight: '800' }}>Street View</Text>
+            </Pressable>
+          ) : null}
+        </View>
         <View style={styles.pin} pointerEvents="none">
           <View style={styles.pinHead} />
           <View style={styles.pinNeedle} />
         </View>
       </View>
+
+      {pinReady && value.lat != null && value.lng != null ? (
+        <StreetViewPreviewModal
+          visible={streetViewOpen}
+          lat={value.lat}
+          lng={value.lng}
+          title={value.address}
+          isDark={isDark}
+          onClose={() => setStreetViewOpen(false)}
+        />
+      ) : null}
 
       {pinReady ? (
         <View style={styles.okRow}>
@@ -516,10 +552,30 @@ const styles = StyleSheet.create({
   },
   mapWrap: {
     marginTop: 10,
-    height: 196,
+    height: 220,
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1.5,
+  },
+  mapToolbar: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    gap: 8,
+    alignItems: 'flex-end',
+  },
+  mapToolBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
   map: { ...StyleSheet.absoluteFillObject },
   pin: {

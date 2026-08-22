@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { crmKindColor, type CrmScheduleEvent } from '../../hooks/useCrmSchedule';
 import { crmKindTone, type CrmPalette } from './crmGoldTheme';
+import { capitalizeSentence } from '../../lib/polishText';
 
 type Props = {
   events: CrmScheduleEvent[];
@@ -176,7 +177,7 @@ export default function CrmMonthCalendar({
 
       <View style={styles.weekRow}>
         {WEEKDAYS.map((label, i) => (
-          <View key={label} style={styles.cell}>
+          <View key={label} style={styles.weekCell}>
             <Text style={[styles.weekLabel, { color: i > 4 ? weekendLabel : secondary }]}>
               {label}
             </Text>
@@ -193,8 +194,10 @@ export default function CrmMonthCalendar({
           },
         ]}
       >
-        {cells.map((cell, index) => {
-          if (!cell) return <View key={`blank-${index}`} style={styles.cell} />;
+        {Array.from({ length: Math.ceil(cells.length / 7) }, (_, weekIndex) => (
+          <View key={`week-${weekIndex}`} style={styles.weekRow}>
+            {cells.slice(weekIndex * 7, weekIndex * 7 + 7).map((cell, index) => {
+          if (!cell) return <View key={`blank-${weekIndex}-${index}`} style={styles.weekCell} />;
           const dayEvents = byDay.get(cell.key) || [];
           const isToday =
             cell.day === today.getDate() &&
@@ -211,7 +214,7 @@ export default function CrmMonthCalendar({
                 void Haptics.selectionAsync();
                 setSelected(cell.key);
               }}
-              style={styles.cell}
+              style={styles.weekCell}
             >
               <View
                 style={[
@@ -243,7 +246,9 @@ export default function CrmMonthCalendar({
               </View>
             </Pressable>
           );
-        })}
+            })}
+          </View>
+        ))}
       </Animated.View>
 
       <View style={styles.legendRow}>
@@ -262,7 +267,9 @@ export default function CrmMonthCalendar({
       <View style={[styles.divider, { backgroundColor: hairline }]} />
 
       <Text style={[styles.selectedLabel, { color: secondary }]}>
-        {selectedDate.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
+        {capitalizeSentence(
+          selectedDate.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }),
+        )}
       </Text>
 
       {selectedEvents.length === 0 ? (
@@ -326,9 +333,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  weekRow: { flexDirection: 'row', marginBottom: 2 },
+  weekRow: { flexDirection: 'row', width: '100%', marginBottom: 2 },
   weekLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  grid: { width: '100%' },
+  weekCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingVertical: 2,
+  },
   cell: {
     width: `${100 / 7}%`,
     alignItems: 'center',

@@ -152,6 +152,22 @@ export function formatDateTimePl(
   }).format(d);
 }
 
+export function formatMeetingWhenPl(value: Date | string | null | undefined): string {
+  const d = value == null ? null : parseForDisplay(value instanceof Date ? value : String(value));
+  if (!d || Number.isNaN(d.getTime())) return "—";
+  const label = new Intl.DateTimeFormat("pl-PL", {
+    timeZone: ESTATEOS_TIMEZONE,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.charAt(0).toLocaleUpperCase("pl-PL") + trimmed.slice(1);
+}
+
 export function getWarsawYmd(value: Date | string): string {
   const d = value instanceof Date ? value : parseForDisplay(value);
   if (!d) return "";

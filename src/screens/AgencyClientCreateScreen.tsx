@@ -32,6 +32,18 @@ import AgencyClientRadarSurvey, {
   defaultClientRadarFilters,
   type ClientRadarFilters,
 } from '../components/agency/AgencyClientRadarSurvey';
+import AgencyClientCreateStepper from '../components/agency/AgencyClientCreateStepper';
+import ClientEmailPreviewModal, {
+  CLIENT_CARD_EMAIL_INTRO,
+  CLIENT_MEETING_EMAIL_INTRO,
+  type ClientEmailPreviewData,
+} from '../components/agency/ClientEmailPreviewModal';
+import {
+  capitalizeSentence,
+  capitalizeWords,
+  formatPolishDateTime,
+  parseMeetingLocal,
+} from '../lib/polishText';
 
 const DRAFT_KEY = '@eos_agency_client_create_draft';
 
@@ -49,6 +61,8 @@ export default function AgencyClientCreateScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const membership = useAuthStore((s) => s.agencyMembership);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const [type, setType] = useState<'BUYER' | 'SELLER'>('SELLER');
   const [busy, setBusy] = useState(false);
@@ -66,7 +80,8 @@ export default function AgencyClientCreateScreen() {
     sellerPrice: '',
     buyerCity: 'Warszawa',
     maxPrice: '',
-    comments: '',
+    emailComment: '',
+    internalNotes: '',
     listingUrl: '',
     meetingAt: '',
   });
@@ -82,6 +97,8 @@ export default function AgencyClientCreateScreen() {
   const [buyerFilters, setBuyerFilters] = useState<ClientRadarFilters>(defaultClientRadarFilters);
   const [importBusy, setImportBusy] = useState(false);
   const [importPreview, setImportPreview] = useState<string | null>(null);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [emailPreview, setEmailPreview] = useState<ClientEmailPreviewData | null>(null);
   const submittedRef = useRef(false);
 
   const colors = {
@@ -129,7 +146,14 @@ export default function AgencyClientCreateScreen() {
             {
               text: 'Kontynuuj',
               onPress: () => {
-                if (parsed.form) setForm((current) => ({ ...current, ...parsed.form }));
+                if (parsed.form) {
+                  setForm((current) => ({
+                    ...current,
+                    ...parsed.form,
+                    emailComment: parsed.form.emailComment || parsed.form.comments || current.emailComment,
+                    internalNotes: parsed.form.internalNotes || current.internalNotes,
+                  }));
+                }
                 if (parsed.type) setType(parsed.type);
                 if (parsed.alsoSearching !== undefined) setAlsoSearching(parsed.alsoSearching);
                 if (parsed.address) setAddress({ district: null, ...parsed.address });
@@ -161,6 +185,96 @@ export default function AgencyClientCreateScreen() {
   }, [form, type, alsoSearching, address, prepItems, buyerFilters]);
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  const totalSteps = type === 'SELLER' ? 5 : 4;
+
+  useEffect(() => {
+    if (wizardStep > totalSteps) setWizardStep(totalSteps);
+  }, [totalSteps, wizardStep]);
+
+  const stepMeta = (() => {
+    if (wizardStep === 1) {
+      return {
+        title: 'Kupujący czy sprzedający?',
+        subtitle: 'Wybierz typ klienta — reszta formularza dopasuje się do procesu.',
+      };
+    }
+    if (wizardStep === 2) {
+      return {
+        title: 'Dane kontaktowe',
+        subtitle: 'E-mail i telefon sprawdzamy na żywo w bazie CRM.',
+      };
+    }
+    if (type === 'SELLER' && wizardStep === 3) {
+      return { title: 'Adres nieruchomości', subtitle: 'Mapa satelitarna, pinezka i Street View jak przy dodawaniu ogłoszenia.' };
+    }
+    if (type === 'SELLER' && wizardStep === 4) {
+      return { title: 'Umówienie spotkania', subtitle: 'Termin, lista przygotowań i komentarz do maila. Notatka wewnętrzna zostaje tylko u Ciebie.' };
+    }
+    if (type === 'BUYER' && wizardStep === 3) {
+      return { title: 'Kryteria poszukiwań', subtitle: 'Ankieta radaru — dopasujemy oferty z bazy.' };
+    }
+    return { title: 'Podsumowanie', subtitle: 'Sprawdź dane i dodaj klienta do CRM.' };
+  })();
+
+  const canGoNext = () => {
+    if (wizardStep === 1) return true;
+    if (wizardStep === 2) {
+      if (!form.firstName.trim() || !form.lastName.trim()) return false;
+      if (form.email.trim() && !isValidEmail(form.email.trim())) return false;
+      if (form.phone.replace(/\D/g, '').length > 0 && form.phone.replace(/\D/g, '').length < 9) return false;
+      return true;
+    }
+    if (type === 'SELLER' && wizardStep === 3) {
+      return Boolean(address.lat && address.lng && address.address.trim());
+    }
+    if (type === 'SELLER' && wizardStep === 4) {
+      return Boolean(form.meetingAt.trim());
+    }
+    if (type === 'BUYER' && wizardStep === 3) {
+      return clientRadarSurveyReady(buyerFilters);
+    }
+    return true;
+  };
+
+  const goNext = () => {
+    if (!canGoNext()) {
+      if (wizardStep === 2 && form.email.trim() && !isValidEmail(form.email.trim())) {
+        Alert.alert('E-mail', 'Wpisz poprawny adres e-mail.');
+        return;
+      }
+      if (wizardStep === 2) {
+        Alert.alert('Dane kontaktowe', 'Uzupełnij imię, nazwisko i poprawny telefon z prefiksem kraju.');
+        return;
+      }
+      if (type === 'SELLER' && wizardStep === 3) {
+        Alert.alert('Adres', 'Ustaw pinezkę na mapie i potwierdź adres nieruchomości.');
+        return;
+      }
+      if (type === 'SELLER' && wizardStep === 4) {
+        Alert.alert('Spotkanie', 'Wybierz termin spotkania — klient dostanie potwierdzenie mailem.');
+        return;
+      }
+      if (type === 'BUYER' && wizardStep === 3) {
+        Alert.alert('Ankieta radaru', clientRadarSurveyHint(buyerFilters) || 'Uzupełnij kryteria poszukiwań.');
+        return;
+      }
+      return;
+    }
+    if (wizardStep >= totalSteps) {
+      void submit();
+      return;
+    }
+    setWizardStep((s) => Math.min(totalSteps, s + 1));
+  };
+
+  const goBack = () => {
+    if (wizardStep <= 1) {
+      navigation.goBack();
+      return;
+    }
+    setWizardStep((s) => Math.max(1, s - 1));
+  };
 
   // Real-time lookup check for duplicates (lightweight quick=1)
   const lookupSeq = useRef(0);
@@ -230,7 +344,7 @@ export default function AgencyClientCreateScreen() {
             text: 'Dodaj klienta mimo to',
             onPress: () => {
               setIgnoreDuplicateWarning(true);
-              void executeCreate();
+              void continueAfterDuplicateCheck();
             },
           },
         ]
@@ -238,14 +352,53 @@ export default function AgencyClientCreateScreen() {
       return;
     }
 
+    void continueAfterDuplicateCheck();
+  };
+
+  const continueAfterDuplicateCheck = () => {
+    if (form.email.trim()) {
+      setEmailPreview(buildEmailPreview());
+      return;
+    }
     void executeCreate();
   };
 
   const meetingIso = () => {
-    const raw = form.meetingAt.trim();
-    const m = raw.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-    if (!m) return null;
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
+    const date = parseMeetingLocal(form.meetingAt);
+    return date ? date.toISOString() : null;
+  };
+
+  const buildEmailPreview = (): ClientEmailPreviewData => {
+    const meetingAt = parseMeetingLocal(form.meetingAt);
+    const agencyName =
+      membership?.company?.name?.trim() ||
+      membership?.companyName?.trim() ||
+      user?.companyName?.trim() ||
+      'EstateOS';
+    const agentName =
+      user?.name?.trim() ||
+      [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
+      'Twój agent';
+    const prepLabels = CLIENT_PREP_ITEMS.filter((item) => prepItems.includes(item.id)).map((item) => item.label);
+    const subject = meetingAt
+      ? `Spotkanie ${formatPolishDateTime(meetingAt, { weekday: false, year: false })} · ${agencyName}`
+      : `${agentName} · wizytówka ${agencyName}`;
+    return {
+      to: form.email.trim(),
+      subject,
+      clientFirstName: form.firstName.trim() || 'Kliencie',
+      agentName,
+      agentTitle: membership?.titleLabel || membership?.agentTitle || 'Agent nieruchomości',
+      agencyName,
+      agentPhone: user?.phone || membership?.company?.officePhone || null,
+      agentEmail: user?.email || membership?.company?.officeEmail || null,
+      agentAvatarUrl: membership?.displayAvatarUrl || user?.avatar || null,
+      intro: meetingAt ? CLIENT_MEETING_EMAIL_INTRO : CLIENT_CARD_EMAIL_INTRO,
+      meetingAt,
+      meetingLocation: address.address || null,
+      emailComment: form.emailComment.trim() || null,
+      prepLabels,
+    };
   };
 
   const runPortalPreview = async () => {
@@ -287,13 +440,14 @@ export default function AgencyClientCreateScreen() {
     setBusy(true);
     try {
       const startsAt = meetingIso();
+      const emailComment = form.emailComment.trim() ? capitalizeSentence(form.emailComment) : '';
       const res = await createAgencyClient(token, {
         type,
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
+        firstName: capitalizeWords(form.firstName),
+        lastName: capitalizeWords(form.lastName),
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
-        notes: form.comments.trim() || null,
+        notes: form.internalNotes.trim() || null,
         ...(type === 'SELLER'
           ? {
               sellerCity: address.city || form.sellerCity || null,
@@ -307,7 +461,7 @@ export default function AgencyClientCreateScreen() {
                 ? {
                     startsAt,
                     location: address.address || null,
-                    notes: form.comments.trim() || null,
+                    notes: emailComment || null,
                     prepItems,
                   }
                 : null,
@@ -323,6 +477,7 @@ export default function AgencyClientCreateScreen() {
         return;
       }
 
+      setEmailPreview(null);
       submittedRef.current = true;
       await AsyncStorage.removeItem(DRAFT_KEY);
       const listingUrl = form.listingUrl.trim();
@@ -388,6 +543,14 @@ export default function AgencyClientCreateScreen() {
         onClose={() => setMeetingModal(false)}
         onSelect={(value) => setForm((current) => ({ ...current, meetingAt: value }))}
       />
+      <ClientEmailPreviewModal
+        visible={Boolean(emailPreview)}
+        data={emailPreview}
+        isDark={isDark}
+        busy={busy}
+        onCancel={() => setEmailPreview(null)}
+        onConfirm={() => void executeCreate()}
+      />
       <View style={[styles.nav, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.navBtn}>
           <Ionicons name="chevron-back" size={28} color="#007AFF" />
@@ -404,66 +567,156 @@ export default function AgencyClientCreateScreen() {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 220 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         >
-          {/* Type Selector */}
-          <View style={[styles.segmented, { backgroundColor: colors.input, borderColor: colors.border }]}>
-            <Pressable
-              onPress={() => setType('SELLER')}
-              style={[styles.segBtn, type === 'SELLER' && { backgroundColor: colors.card }]}
-            >
-              <Text style={{ fontWeight: '800', color: type === 'SELLER' ? colors.text : colors.secondary }}>
-                SPRZEDAJĄCY
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setType('BUYER')}
-              style={[styles.segBtn, type === 'BUYER' && { backgroundColor: colors.card }]}
-            >
-              <Text style={{ fontWeight: '800', color: type === 'BUYER' ? colors.text : colors.secondary }}>
-                KUPUJĄCY
-              </Text>
-            </Pressable>
-          </View>
+          <AgencyClientCreateStepper
+            step={wizardStep}
+            total={totalSteps}
+            title={stepMeta.title}
+            subtitle={stepMeta.subtitle}
+            isDark={isDark}
+          />
 
-          {/* Form Card */}
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {field('firstName', 'IMIĘ')}
-            {field('lastName', 'NAZWISKO')}
-            {field('email', 'E-MAIL', 'email-address')}
-            <AcquisitionPhoneField
-              value={form.phone}
-              onChange={(phone) => setForm((current) => ({ ...current, phone }))}
-              isDark={isDark}
-            />
-
-            {/* Duplicate warning banner */}
-            {checkingDuplicates ? (
-              <View style={styles.dupRow}>
-                <ActivityIndicator size="small" color={colors.warning} />
-                <Text style={{ color: colors.secondary, fontSize: 11 }}>Sprawdzam bazę klientów…</Text>
-              </View>
-            ) : duplicateMatches.length > 0 ? (
-              <View style={[styles.warningBox, { backgroundColor: 'rgba(255,149,0,0.12)', borderColor: colors.warning }]}>
-                <Ionicons name="warning-outline" size={18} color={colors.warning} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.warning, fontWeight: '800', fontSize: 12 }}>
-                    Uwaga: Klient z tym kontaktem istnieje już w bazie!
+            {wizardStep === 1 ? (
+              <View style={{ gap: 12 }}>
+                <Pressable
+                  onPress={() => setType('SELLER')}
+                  style={[
+                    styles.typeCard,
+                    {
+                      borderColor: type === 'SELLER' ? colors.accent : colors.border,
+                      backgroundColor: type === 'SELLER' ? 'rgba(52,199,89,0.1)' : colors.input,
+                    },
+                  ]}
+                >
+                  <Ionicons name="home" size={28} color={type === 'SELLER' ? colors.accent : colors.secondary} />
+                  <Text style={{ color: colors.text, fontWeight: '900', fontSize: 18 }}>Sprzedający</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18 }}>
+                    Pozyskanie, umowa, publikacja ogłoszenia i transakcja krok po kroku.
                   </Text>
-                  {duplicateMatches.map((match) => (
-                    <Text key={match.id} style={{ color: colors.text, fontSize: 11, marginTop: 2 }}>
-                      • {match.firstName} {match.lastName} {match.email || match.phone}
-                    </Text>
-                  ))}
-                  <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 4 }}>
-                    Możesz kontynuować i dodać ten profil ponownie.
+                </Pressable>
+                <Pressable
+                  onPress={() => setType('BUYER')}
+                  style={[
+                    styles.typeCard,
+                    {
+                      borderColor: type === 'BUYER' ? '#FF9500' : colors.border,
+                      backgroundColor: type === 'BUYER' ? 'rgba(255,149,0,0.1)' : colors.input,
+                    },
+                  ]}
+                >
+                  <Ionicons name="search" size={28} color={type === 'BUYER' ? '#FF9500' : colors.secondary} />
+                  <Text style={{ color: colors.text, fontWeight: '900', fontSize: 18 }}>Kupujący</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18 }}>
+                    Kryteria, dopasowania ofert i prezentacje nieruchomości.
                   </Text>
-                </View>
+                </Pressable>
               </View>
             ) : null}
 
-            {type === 'SELLER' ? (
+            {wizardStep === 2 ? (
               <>
+                {field('firstName', 'IMIĘ')}
+                {field('lastName', 'NAZWISKO')}
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>E-MAIL</Text>
+                  <TextInput
+                    value={form.email}
+                    onChangeText={(value) => setForm((current) => ({ ...current, email: value }))}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    placeholderTextColor={colors.secondary}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: colors.input,
+                        color: colors.text,
+                        borderColor:
+                          form.email.trim() && !isValidEmail(form.email.trim()) ? '#FF3B30' : colors.border,
+                      },
+                    ]}
+                  />
+                </View>
+                <AcquisitionPhoneField
+                  value={form.phone}
+                  onChange={(phone) => setForm((current) => ({ ...current, phone }))}
+                  isDark={isDark}
+                />
+                {type === 'SELLER' ? (
+                  <View style={{ marginTop: 4 }}>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>LINK DO OGŁOSZENIA KLIENTA</Text>
+                    <TextInput
+                      value={form.listingUrl}
+                      onChangeText={(value) => setForm((current) => ({ ...current, listingUrl: value }))}
+                      autoCapitalize="none"
+                      keyboardType="url"
+                      placeholder="https://www.otodom.pl/pl/oferta/…"
+                      placeholderTextColor={colors.secondary}
+                      style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                    />
+                  </View>
+                ) : null}
+                {checkingDuplicates ? (
+                  <View style={styles.dupRow}>
+                    <ActivityIndicator size="small" color={colors.warning} />
+                    <Text style={{ color: colors.secondary, fontSize: 11 }}>Sprawdzam bazę klientów…</Text>
+                  </View>
+                ) : duplicateMatches.length > 0 ? (
+                  <View style={[styles.warningBox, { backgroundColor: 'rgba(255,149,0,0.12)', borderColor: colors.warning }]}>
+                    <Ionicons name="warning-outline" size={18} color={colors.warning} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.warning, fontWeight: '800', fontSize: 12 }}>
+                        Ten e-mail lub telefon jest już w bazie CRM.
+                      </Text>
+                      {duplicateMatches.map((match) => (
+                        <Text key={match.id} style={{ color: colors.text, fontSize: 11, marginTop: 2 }}>
+                          • {match.firstName} {match.lastName}
+                        </Text>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
+            {type === 'SELLER' && wizardStep === 3 ? (
+              <>
+                <View
+                  style={[
+                    styles.priceCard,
+                    {
+                      backgroundColor: isDark ? 'rgba(52,199,89,0.12)' : '#F3FBF4',
+                      borderColor: colors.accent,
+                    },
+                  ]}
+                >
+                  <View style={styles.priceHead}>
+                    <View style={styles.priceIcon}>
+                      <Ionicons name="cash-outline" size={18} color="#052e16" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.priceKicker, { color: colors.accent }]}>CENA OCZEKIWANA</Text>
+                      <Text style={[styles.priceTitle, { color: colors.text }]}>Ile klient chce uzyskać?</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.priceInputRow, { backgroundColor: isDark ? '#102016' : '#fff', borderColor: colors.accent }]}>
+                    <TextInput
+                      value={form.sellerPrice}
+                      onChangeText={(value) =>
+                        setForm((current) => ({ ...current, sellerPrice: formatPriceInput(value) }))
+                      }
+                      keyboardType="numeric"
+                      placeholder="np. 1 250 000"
+                      placeholderTextColor={colors.secondary}
+                      style={[styles.priceInput, { color: colors.text }]}
+                    />
+                    <Text style={styles.priceSuffix}>zł</Text>
+                  </View>
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 8, lineHeight: 16 }}>
+                    To pole jest widoczne na karcie klienta i w pozyskaniu — nie chowa się w tłumie pozostałych danych.
+                  </Text>
+                </View>
                 <AcquisitionAddressMapField
                   token={token}
                   value={address}
@@ -473,165 +726,235 @@ export default function AgencyClientCreateScreen() {
                   }}
                   isDark={isDark}
                 />
-                {field('sellerPrice', 'CENA OCZEKIWANA (zł)', 'numeric', formatPriceInput)}
+              </>
+            ) : null}
 
+            {type === 'SELLER' && wizardStep === 4 ? (
+              <>
                 <View style={{ marginBottom: 12 }}>
                   <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
                     TERMIN SPOTKANIA
                   </Text>
                   <Pressable
                     onPress={() => setMeetingModal(true)}
-                    style={[styles.input, styles.meetingBtn, { backgroundColor: colors.input, borderColor: form.meetingAt ? colors.accent : colors.border }]}
-                  >
-                    <Ionicons name="calendar-outline" size={18} color={form.meetingAt ? colors.accent : colors.secondary} />
-                    <Text style={{ color: form.meetingAt ? colors.text : colors.secondary, fontWeight: '700', flex: 1 }}>
-                      {form.meetingAt || 'Wybierz dzień i godzinę'}
-                    </Text>
-                    {form.meetingAt ? <Ionicons name="checkmark-circle" size={18} color={colors.accent} /> : null}
-                  </Pressable>
-                  <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>
-                    Kartę pozyskania wypełniasz na miejscu. Tu ustalamy tylko wizytę — klient dostanie maila z
-                    wizytówką, listą przygotowań i przyciskiem do panelu.
-                  </Text>
-                </View>
-
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
-                    KLIENT MA PRZYGOTOWAĆ
-                  </Text>
-                  <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, marginBottom: 8 }}>
-                    Zaznacz przed dodaniem — lista trafi na maila i do panelu klienta.
-                  </Text>
-                  {CLIENT_PREP_ITEMS.map((item) => {
-                    const checked = prepItems.includes(item.id);
-                    return (
-                      <Pressable
-                        key={item.id}
-                        onPress={() =>
-                          setPrepItems((current) =>
-                            checked ? current.filter((id) => id !== item.id) : [...current, item.id],
-                          )
-                        }
-                        style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}
-                      >
-                        <Ionicons
-                          name={checked ? 'checkbox' : 'square-outline'}
-                          size={22}
-                          color={colors.accent}
-                        />
-                        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600', flex: 1, lineHeight: 18 }}>
-                          {item.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>KOMENTARZ</Text>
-                  <TextInput
-                    value={form.comments}
-                    onChangeText={(value) => setForm((current) => ({ ...current, comments: value }))}
-                    multiline
-                    placeholder="Notatka do spotkania / dla Ciebie"
-                    placeholderTextColor={colors.secondary}
                     style={[
                       styles.input,
+                      styles.meetingBtn,
                       {
                         backgroundColor: colors.input,
-                        color: colors.text,
-                        borderColor: colors.border,
-                        height: 88,
-                        paddingTop: 10,
-                        textAlignVertical: 'top',
+                        borderColor: form.meetingAt ? colors.accent : colors.border,
+                        shadowColor: form.meetingAt ? colors.accent : 'transparent',
+                        shadowOpacity: form.meetingAt ? 0.18 : 0,
+                        shadowRadius: 10,
+                        shadowOffset: { width: 0, height: 4 },
+                        elevation: form.meetingAt ? 3 : 0,
+                        minHeight: 56,
+                        height: undefined,
+                        paddingVertical: 10,
                       },
                     ]}
-                  />
-                </View>
-
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>
-                    LINK DO OGŁOSZENIA KLIENTA
-                  </Text>
-                  <TextInput
-                    value={form.listingUrl}
-                    onChangeText={(value) => setForm((current) => ({ ...current, listingUrl: value }))}
-                    autoCapitalize="none"
-                    keyboardType="url"
-                    placeholder="https://www.otodom.pl/pl/oferta/…"
-                    placeholderTextColor={colors.secondary}
-                    style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
-                  />
-                  <Pressable
-                    disabled={importBusy}
-                    onPress={() => void runPortalPreview()}
-                    style={[styles.importBtn, { borderColor: colors.accent }]}
                   >
-                    {importBusy ? (
-                      <ActivityIndicator color={colors.accent} />
-                    ) : (
-                      <>
-                        <Ionicons name="cloud-download-outline" size={18} color={colors.accent} />
-                        <Text style={{ color: colors.accent, fontWeight: '800' }}>Importuj z portalu (jak KEI)</Text>
-                      </>
-                    )}
+                    <Ionicons name="calendar" size={20} color={form.meetingAt ? colors.accent : colors.secondary} />
+                    <Text style={{ color: form.meetingAt ? colors.text : colors.secondary, fontWeight: '800', flex: 1, fontSize: 15 }}>
+                      {(() => {
+                        const d = parseMeetingLocal(form.meetingAt);
+                        return d ? formatPolishDateTime(d) : 'Wybierz dzień i godzinę';
+                      })()}
+                    </Text>
                   </Pressable>
-                  {importPreview ? (
-                    <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700', marginTop: 6 }}>
-                      Odczytano: {importPreview}
-                    </Text>
-                  ) : (
-                    <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>
-                      Otodom, OLX lub Nieruchomości-Online. Po dodaniu klienta dokończysz publikację tak jak przy
-                      imporcie KEI.
-                    </Text>
-                  )}
                 </View>
-
-                <Pressable
-                  onPress={() => setAlsoSearching((v) => !v)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}
-                >
-                  <Ionicons
-                    name={alsoSearching ? 'checkbox' : 'square-outline'}
-                    size={22}
-                    color={colors.accent}
-                  />
+                <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                  KLIENT MA PRZYGOTOWAĆ
+                </Text>
+                {CLIENT_PREP_ITEMS.map((item) => {
+                  const checked = prepItems.includes(item.id);
+                  return (
+                    <Pressable
+                      key={item.id}
+                      onPress={() =>
+                        setPrepItems((current) =>
+                          checked ? current.filter((id) => id !== item.id) : [...current, item.id],
+                        )
+                      }
+                      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8, marginTop: 8 }}
+                    >
+                      <Ionicons name={checked ? 'checkbox' : 'square-outline'} size={22} color={colors.accent} />
+                      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600', flex: 1, lineHeight: 18 }}>
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                <View style={{ marginTop: 8, gap: 12 }}>
+                  <View>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>KOMENTARZ DO MAILA KLIENTA</Text>
+                    <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 3, marginBottom: 4, lineHeight: 16 }}>
+                      Ta treść trafia do e-maila z potwierdzeniem spotkania. Zdanie zaczyna się od wielkiej litery.
+                    </Text>
+                    <TextInput
+                      value={form.emailComment}
+                      onChangeText={(value) => setForm((current) => ({ ...current, emailComment: value }))}
+                      onBlur={() =>
+                        setForm((current) =>
+                          current.emailComment.trim()
+                            ? { ...current, emailComment: capitalizeSentence(current.emailComment) }
+                            : current,
+                        )
+                      }
+                      multiline
+                      placeholder="Np. Proszę zabrać akt notarialny i dowód."
+                      placeholderTextColor={colors.secondary}
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: colors.input,
+                          color: colors.text,
+                          borderColor: colors.border,
+                          height: 88,
+                          paddingTop: 10,
+                          textAlignVertical: 'top',
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={{
+                      borderRadius: 14,
+                      padding: 12,
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F7F5F0',
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Ionicons name="lock-closed" size={13} color={colors.secondary} />
+                      <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>
+                        KOMENTARZ WEWNĘTRZNY — TYLKO AGENT
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.secondary, fontSize: 12, marginBottom: 6, lineHeight: 16 }}>
+                      Zostaje w CRM. Klient tego nie dostanie na maila ani w panelu.
+                    </Text>
+                    <TextInput
+                      value={form.internalNotes}
+                      onChangeText={(value) => setForm((current) => ({ ...current, internalNotes: value }))}
+                      multiline
+                      placeholder="Notatka tylko dla Ciebie i biura"
+                      placeholderTextColor={colors.secondary}
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: isDark ? '#1C1C1E' : '#fff',
+                          color: colors.text,
+                          borderColor: colors.border,
+                          height: 88,
+                          paddingTop: 10,
+                          textAlignVertical: 'top',
+                          marginTop: 0,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+                <Pressable onPress={() => setAlsoSearching((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 }}>
+                  <Ionicons name={alsoSearching ? 'checkbox' : 'square-outline'} size={22} color={colors.accent} />
                   <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700', flex: 1 }}>
-                    Klient sprzedający szuka również nieruchomości do kupienia
+                    Klient szuka również nieruchomości do kupna
                   </Text>
                 </Pressable>
-
                 {alsoSearching ? (
-                  <AgencyClientRadarSurvey
-                    value={buyerFilters}
-                    onChange={setBuyerFilters}
-                    isDark={isDark}
-                    title="RADAR ZAKUPOWY"
-                    subtitle="Sprzedający też szuka — te same filtry co w radarze. Po zapisie zobaczysz, które oferty wysłać."
-                  />
+                  <AgencyClientRadarSurvey value={buyerFilters} onChange={setBuyerFilters} isDark={isDark} title="RADAR ZAKUPOWY" />
                 ) : null}
               </>
-            ) : (
+            ) : null}
+
+            {type === 'BUYER' && wizardStep === 3 ? (
               <AgencyClientRadarSurvey
                 value={buyerFilters}
                 onChange={setBuyerFilters}
                 isDark={isDark}
-                subtitle="Wypełnij ankietę jak w radarze. System dopasuje oferty i pokaże, które warto wysłać klientowi."
+                subtitle="Wypełnij ankietę — dopasujemy oferty i pokażemy, które warto wysłać."
               />
-            )}
+            ) : null}
 
-            <Pressable disabled={busy} onPress={submit} style={[styles.submitBtn, { backgroundColor: colors.accent }]}>
-              {busy ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={styles.submitText}>
-                  {duplicateMatches.length > 0 && !ignoreDuplicateWarning ? 'Dodaj klienta (mimo istniejącego)' : 'Dodaj klienta'}
+            {wizardStep === totalSteps ? (
+              <View style={{ gap: 8 }}>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>
+                  {form.firstName} {form.lastName} · {type === 'SELLER' ? 'Sprzedający' : 'Kupujący'}
                 </Text>
-              )}
-            </Pressable>
+                <Text style={{ color: colors.secondary, fontSize: 13 }}>{form.email || '—'} · {form.phone || '—'}</Text>
+                {type === 'SELLER' ? (
+                  <>
+                    <Text style={{ color: colors.secondary, fontSize: 13 }}>{address.address || '—'}</Text>
+                    {form.sellerPrice ? (
+                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>
+                        Cena oczekiwana: {form.sellerPrice} zł
+                      </Text>
+                    ) : null}
+                    <Text style={{ color: colors.secondary, fontSize: 13 }}>
+                      Spotkanie:{' '}
+                      {(() => {
+                        const d = parseMeetingLocal(form.meetingAt);
+                        return d ? formatPolishDateTime(d) : '—';
+                      })()}
+                    </Text>
+                    {form.emailComment.trim() ? (
+                      <Text style={{ color: colors.secondary, fontSize: 13 }}>
+                        Mail: {capitalizeSentence(form.emailComment)}
+                      </Text>
+                    ) : null}
+                    {form.internalNotes.trim() ? (
+                      <Text style={{ color: colors.secondary, fontSize: 13 }}>Notatka wewnętrzna: tak (nie idzie na mail)</Text>
+                    ) : null}
+                    {form.listingUrl.trim() ? (
+                      <Pressable disabled={importBusy} onPress={() => void runPortalPreview()} style={[styles.importBtn, { borderColor: colors.accent }]}>
+                        {importBusy ? <ActivityIndicator color={colors.accent} /> : (
+                          <>
+                            <Ionicons name="cloud-download-outline" size={18} color={colors.accent} />
+                            <Text style={{ color: colors.accent, fontWeight: '800' }}>Podgląd importu ogłoszenia</Text>
+                          </>
+                        )}
+                      </Pressable>
+                    ) : null}
+                  </>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         </ScrollView>
+        <View
+          style={[
+            styles.footerBar,
+            {
+              paddingBottom: Math.max(12, insets.bottom),
+              backgroundColor: colors.bg,
+              borderTopColor: colors.border,
+            },
+          ]}
+        >
+          <Pressable onPress={goBack} style={[styles.footerBtn, styles.footerGhost, { borderColor: colors.border, backgroundColor: colors.card }]}>
+            <Text style={[styles.footerBtnText, { color: colors.text }]}>{wizardStep === 1 ? 'Anuluj' : 'Wstecz'}</Text>
+          </Pressable>
+          <Pressable
+            disabled={busy}
+            onPress={() => (wizardStep >= totalSteps ? void submit() : goNext())}
+            style={[styles.footerBtn, { backgroundColor: colors.accent }]}
+          >
+            {busy ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={[styles.footerBtnText, { color: '#052e16' }]} numberOfLines={2}>
+                {wizardStep >= totalSteps
+                  ? duplicateMatches.length > 0 && !ignoreDuplicateWarning
+                    ? 'Dodaj mimo duplikatu'
+                    : form.email.trim()
+                      ? 'Podgląd maila'
+                      : 'Dodaj klienta'
+                  : 'Dalej'}
+              </Text>
+            )}
+          </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -663,10 +986,77 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   card: {
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
   },
+  typeCard: {
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 16,
+    gap: 8,
+  },
+  footerBar: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  footerBtn: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  footerGhost: {
+    borderWidth: 1,
+  },
+  footerBtnText: {
+    fontWeight: '900',
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  priceCard: {
+    borderWidth: 1.5,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 16,
+    shadowColor: '#14532d',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  priceHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  priceIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#34C759',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  priceKicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  priceTitle: { fontSize: 17, fontWeight: '900', letterSpacing: -0.3, marginTop: 1 },
+  priceInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 56,
+  },
+  priceInput: { flex: 1, fontSize: 22, fontWeight: '900', letterSpacing: -0.4 },
+  priceSuffix: { fontSize: 18, fontWeight: '800', color: '#166534', marginLeft: 8 },
   input: {
     height: 44,
     borderRadius: 12,
@@ -688,18 +1078,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 14,
-  },
-  submitBtn: {
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  submitText: {
-    color: '#000',
-    fontWeight: '900',
-    fontSize: 15,
   },
   meetingBtn: {
     flexDirection: 'row',

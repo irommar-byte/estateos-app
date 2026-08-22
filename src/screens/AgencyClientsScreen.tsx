@@ -15,6 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { fetchAgencyClients, type AgencyClientListItem } from '../services/agencyClientService';
+import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBar';
+import { useSellerClientPipelines } from '../hooks/useSellerClientPipelines';
+import { hasLiveMeetingCountdown } from '../lib/sellerClientPipeline';
+import { formatPolishDateTime } from '../lib/polishText';
 
 function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso: string; location?: string | null; isDark?: boolean }) {
   const [now, setNow] = useState(Date.now());
@@ -40,28 +44,10 @@ function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso:
     ? 'SPOTKANIE W TRAKCIE'
     : `Za ${days > 0 ? `${days}d ` : ''}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-  const dateStr = new Date(startsAtIso).toLocaleString('pl-PL', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const dateStr = formatPolishDateTime(new Date(startsAtIso), { year: false });
 
   return (
-    <View
-      style={{
-        marginTop: 8,
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        borderRadius: 10,
-        backgroundColor: isLive ? 'rgba(255,149,0,0.18)' : 'rgba(52,199,89,0.12)',
-        borderWidth: 1,
-        borderColor: isLive ? '#FF9500' : '#34C759',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-      }}
-    >
+    <View style={[styles.meetingBadge, isLive ? styles.meetingBadgeLive : styles.meetingBadgeUpcoming]}>
       <Ionicons name="time-outline" size={14} color={isLive ? '#FF9500' : '#34C759'} />
       <View style={{ flex: 1 }}>
         <Text style={{ color: isLive ? '#FF9500' : '#34C759', fontSize: 11, fontWeight: '800' }}>
@@ -83,6 +69,7 @@ export default function AgencyClientsScreen() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'ALL' | 'BUYER' | 'SELLER'>('ALL');
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
+  const { pipelines } = useSellerClientPipelines(token, clients);
 
   const colors = {
     bg: isDark ? '#000' : '#F2F2F7',
@@ -120,15 +107,19 @@ export default function AgencyClientsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
-      <View style={[styles.nav, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
+      <View style={[styles.nav, { paddingTop: insets.top + 8, borderBottomColor: colors.border, backgroundColor: colors.card }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.navBtn}>
           <Ionicons name="chevron-back" size={28} color="#007AFF" />
         </Pressable>
-        <Text style={[styles.navTitle, { color: colors.text }]}>Moi klienci</Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={[styles.navKicker, { color: colors.secondary }]}>SEKCJA CRM</Text>
+          <Text style={[styles.navTitle, { color: colors.text }]}>Moi klienci</Text>
+        </View>
         <Pressable onPress={() => navigation.navigate('AgencyClientCreate')} hitSlop={12} style={styles.navBtn}>
-          <Ionicons name="add" size={28} color="#34C759" />
+          <Ionicons name="add-circle" size={28} color="#34C759" />
         </Pressable>
       </View>
+
       <View style={styles.filters}>
         {([
           ['ALL', 'Wszyscy'],
@@ -138,49 +129,71 @@ export default function AgencyClientsScreen() {
           <Pressable
             key={id}
             onPress={() => setFilter(id)}
-            style={[styles.chip, { backgroundColor: filter === id ? '#34C759' : colors.card, borderColor: colors.border }]}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: filter === id ? '#34C759' : colors.card,
+                borderColor: filter === id ? '#34C759' : colors.border,
+              },
+            ]}
           >
             <Text style={{ color: filter === id ? '#000' : colors.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
           </Pressable>
         ))}
       </View>
+
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
       >
         {loading && clients.length === 0 ? <ActivityIndicator color="#34C759" /> : null}
-        {visible.map((client) => (
-          <Pressable
-            key={client.id}
-            onPress={() => navigation.navigate('AgencyClientDetail', { clientId: client.id })}
-            style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: client.type === 'BUYER' ? '#FF9500' : '#34C759', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 }}>
-                {client.type === 'BUYER' ? 'KUPUJĄCY' : 'SPRZEDAJĄCY'}
-              </Text>
-              <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 4 }}>
-                {client.firstName} {client.lastName}
-              </Text>
-              <Text style={{ color: colors.secondary, marginTop: 4, fontSize: 13 }}>
-                {client.email || client.phone || 'Brak kontaktu'}
-              </Text>
-              {client.matchCount > 0 ? (
-                <Text style={{ color: colors.secondary, marginTop: 6, fontSize: 12 }}>
-                  {client.matchCount} dopasowań{client.topMatchScore ? ` · top ${client.topMatchScore}%` : ''}
+        {visible.map((client) => {
+          const showMeeting =
+            client.upcomingMeetingStartsAt && hasLiveMeetingCountdown(client.upcomingMeetingStartsAt);
+          const pipeline = client.type === 'SELLER' ? pipelines[client.id] : undefined;
+
+          return (
+            <Pressable
+              key={client.id}
+              onPress={() => navigation.navigate('AgencyClientDetail', { clientId: client.id })}
+              style={[
+                styles.card,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  shadowColor: isDark ? '#000' : '#1a1612',
+                },
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: client.type === 'BUYER' ? '#FF9500' : '#34C759', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>
+                  {client.type === 'BUYER' ? 'KUPUJĄCY' : 'SPRZEDAJĄCY'}
                 </Text>
-              ) : null}
-              {client.upcomingMeetingStartsAt ? (
-                <MeetingCountdownBadge
-                  startsAtIso={client.upcomingMeetingStartsAt}
-                  location={client.upcomingMeetingLocation}
-                  isDark={isDark}
-                />
-              ) : null}
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
-          </Pressable>
-        ))}
+                <Text style={{ color: colors.text, fontSize: 19, fontWeight: '900', marginTop: 4, letterSpacing: -0.3 }}>
+                  {client.firstName} {client.lastName}
+                </Text>
+                <Text style={{ color: colors.secondary, marginTop: 4, fontSize: 13 }}>
+                  {client.email || client.phone || 'Brak kontaktu'}
+                </Text>
+
+                {showMeeting && client.upcomingMeetingStartsAt ? (
+                  <MeetingCountdownBadge
+                    startsAtIso={client.upcomingMeetingStartsAt}
+                    location={client.upcomingMeetingLocation}
+                    isDark={isDark}
+                  />
+                ) : pipeline ? (
+                  <SellerClientPipelineBar stages={pipeline} isDark={isDark} compact />
+                ) : client.type === 'BUYER' && client.matchCount > 0 ? (
+                  <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 12, fontWeight: '700' }}>
+                    {client.matchCount} dopasowań{client.topMatchScore ? ` · top ${client.topMatchScore}%` : ''}
+                  </Text>
+                ) : null}
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+            </Pressable>
+          );
+        })}
         {!loading && visible.length === 0 ? (
           <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 40 }}>Brak klientów w tej grupie.</Text>
         ) : null}
@@ -191,10 +204,45 @@ export default function AgencyClientsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  nav: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  nav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
   navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  navTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800' },
+  navKicker: { fontSize: 10, fontWeight: '800', letterSpacing: 1.3 },
+  navTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4, marginTop: 1 },
   filters: { flexDirection: 'row', gap: 8, padding: 16 },
   chip: { borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8 },
-  card: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  card: {
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  meetingBadge: {
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  meetingBadgeLive: { backgroundColor: 'rgba(255,149,0,0.14)', borderColor: '#FF9500' },
+  meetingBadgeUpcoming: { backgroundColor: 'rgba(52,199,89,0.12)', borderColor: '#34C759' },
 });

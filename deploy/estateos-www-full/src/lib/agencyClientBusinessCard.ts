@@ -4,9 +4,19 @@ import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { formatAgentTitle } from '@/lib/agentProfile';
+import { formatMeetingWhenPl } from '@/lib/datetime/warsaw';
+
+export const CLIENT_MEETING_EMAIL_INTRO =
+  'Umówiliśmy się na spotkanie. Termin jest ustalony — szczegóły i listę przygotowań znajdziesz poniżej.';
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || 'https://estateos.pl').replace(/\/$/, '');
+}
+
+function capitalizePl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.charAt(0).toLocaleUpperCase('pl-PL') + trimmed.slice(1);
 }
 
 function escapeHtml(value: string): string {
@@ -106,10 +116,10 @@ function buildBusinessCardHtml(params: {
   ].join('');
 
   const ctaPrimary = params.companyUrl
-    ? `<a href="${escapeHtml(params.companyUrl)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Zobacz wizytówkę biura</a>`
+    ? `<a href="${escapeHtml(params.companyUrl)}" style="display:block;text-align:center;background:#111;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Zobacz wizytówkę biura</a>`
     : '';
   const ctaPortal = params.portalUrl
-    ? `<a href="${escapeHtml(params.portalUrl)}" style="display:inline-block;margin-left:8px;background:#10b981;color:#052e1c;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Panel klienta</a>`
+    ? `<a href="${escapeHtml(params.portalUrl)}" style="display:block;text-align:center;margin-top:10px;background:#10b981;color:#052e1c;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Panel klienta</a>`
     : '';
 
   const note = params.message?.trim()
@@ -122,7 +132,7 @@ function buildBusinessCardHtml(params: {
       <div style="background:linear-gradient(135deg,#0b1220 0%,#102a23 55%,#0f766e 100%);padding:28px 28px 36px;">
         <div style="margin-bottom:22px;">${logo}</div>
         <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.55);">Wizytówka agenta</p>
-        <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15;color:#fff;letter-spacing:-0.03em;">Witaj ${escapeHtml(params.clientName)}</h1>
+        <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15;color:#fff;letter-spacing:-0.03em;">Witaj ${escapeHtml(capitalizePl(params.clientName))}</h1>
       </div>
       <div style="padding:0 28px 28px;">
         <div style="margin-top:-28px;background:#fff;border:1px solid #e5e7eb;border-radius:24px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,0.06);">
@@ -239,9 +249,9 @@ export async function sendAgencyClientBusinessCard(params: {
   const meetingHtml = meeting
     ? `<div style="margin:0 0 20px;padding:16px 18px;border-radius:18px;background:#ecfdf5;border:1px solid #a7f3d0;">
         <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#047857;">Umówione spotkanie</p>
-        <p style="margin:8px 0 0;font-size:18px;font-weight:900;color:#064e3b;">${escapeHtml(meeting.startsAt.toLocaleString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p>
+        <p style="margin:8px 0 0;font-size:18px;font-weight:900;color:#064e3b;">${escapeHtml(formatMeetingWhenPl(meeting.startsAt))}</p>
         ${meeting.location ? `<p style="margin:6px 0 0;color:#065f46;">${escapeHtml(meeting.location)}</p>` : ''}
-        ${meeting.notes ? `<p style="margin:6px 0 0;color:#374151;">${escapeHtml(meeting.notes)}</p>` : ''}
+        ${meeting.notes ? `<p style="margin:6px 0 0;color:#374151;">${escapeHtml(capitalizePl(meeting.notes))}</p>` : ''}
       </div>${prepHtml}`
     : prepHtml;
 
@@ -256,7 +266,7 @@ export async function sendAgencyClientBusinessCard(params: {
     companyLogoUrl,
     companyUrl,
     portalUrl,
-    message: params.customMessage,
+    message: params.customMessage || (params.meeting ? CLIENT_MEETING_EMAIL_INTRO : undefined),
     meetingHtml,
   });
 
@@ -284,7 +294,7 @@ export async function sendAgencyClientBusinessCard(params: {
   const sent = await sendTransactionalEmail({
     to: client.email,
     subject: meeting
-      ? `Spotkanie ${meeting.startsAt.toLocaleString('pl-PL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · ${agencyName}`
+      ? `Spotkanie ${formatMeetingWhenPl(meeting.startsAt)} · ${agencyName}`
       : `${agentName} · wizytówka ${agencyName}`,
     html,
     attachments: [
