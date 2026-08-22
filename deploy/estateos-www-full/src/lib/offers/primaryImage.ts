@@ -23,29 +23,42 @@ function firstFromArray(rawImages: unknown[]): string {
   return "";
 }
 
-export function resolveOfferPrimaryImage(offer: OfferLike | null | undefined): string {
-  if (!offer) return "";
-
-  const direct = normalizeUrl(offer.imageUrl);
-  if (direct) return direct;
-
-  const rawImages = offer.images;
+function collectFromImagesField(rawImages: unknown): string[] {
   if (Array.isArray(rawImages)) {
-    return firstFromArray(rawImages);
+    return rawImages.map(normalizeUrl).filter(Boolean);
   }
 
   if (typeof rawImages === "string") {
     const trimmed = rawImages.trim();
-    if (!trimmed) return "";
-    if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) return trimmed;
+    if (!trimmed) return [];
+    if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) return [trimmed];
     try {
       const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return firstFromArray(parsed);
-      return normalizeUrl(parsed);
+      if (Array.isArray(parsed)) return parsed.map(normalizeUrl).filter(Boolean);
+      const one = normalizeUrl(parsed);
+      return one ? [one] : [];
     } catch {
-      return "";
+      return [];
     }
   }
 
-  return "";
+  return [];
+}
+
+export function resolveOfferImageUrls(offer: OfferLike | null | undefined): string[] {
+  if (!offer) return [];
+  const urls: string[] = [];
+  const push = (value: string) => {
+    if (value && !urls.includes(value)) urls.push(value);
+  };
+  push(normalizeUrl(offer.imageUrl));
+  for (const url of collectFromImagesField(offer.images)) push(url);
+  return urls;
+}
+
+export function resolveOfferPrimaryImage(offer: OfferLike | null | undefined): string {
+  if (!offer) return "";
+  const direct = normalizeUrl(offer.imageUrl);
+  if (direct) return direct;
+  return firstFromArray(collectFromImagesField(offer.images));
 }

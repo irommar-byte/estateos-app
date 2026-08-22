@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
+import { absolutizeMediaUrl } from '@/lib/offerShareLanding';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { buyerPrefToWebRadarFilters } from '@/lib/agencyClientShape';
@@ -289,22 +291,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             notifiedAt: m.notifiedAt?.toISOString() ?? null,
             clientFeedback: m.clientFeedback,
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
-            offer: {
-              id: m.offer.id,
-              title: m.offer.title,
-              price: m.offer.price,
-              priceCurrency: m.offer.priceCurrency,
-              city: m.offer.city,
-              district: m.offer.district,
-              street: m.offer.street,
-              area: m.offer.area,
-              rooms: m.offer.rooms,
-              excerpt: String(m.offer.description || '')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .slice(0, 180),
-              imageUrl: resolveOfferPrimaryImage(m.offer),
-            },
+            offer: shapeAgencyClientMatchOffer(m.offer),
           }))
         : [],
       listing: listingVisible && client.linkedOffer
@@ -318,7 +305,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             status: client.linkedOffer.status,
             statusLabel: listingStatusLabel(client.linkedOffer.status),
             managementStatus: client.linkedOffer.managementStatus,
-            imageUrl: resolveOfferPrimaryImage(client.linkedOffer),
+            imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(client.linkedOffer)),
             promotedUntil: client.linkedOffer.promotedUntil
               ? client.linkedOffer.promotedUntil.toISOString()
               : null,
@@ -402,7 +389,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             title: m.offer.title,
             city: m.offer.city,
             district: m.offer.district,
-            imageUrl: resolveOfferPrimaryImage(m.offer),
+            imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(m.offer)),
           })),
         };
       }),

@@ -15,13 +15,14 @@ const ALLOWED_TAGS = new Set([
   'span',
 ]);
 
-const OTODOM_MARKER_RE = /<!--\s*estateos-otodom:\d+\s*-->/gi;
+const IMPORT_MARKER_RE = /<!--\s*estateos-(?:otodom|olx|nieruchomosci-online):\d+\s*-->/gi;
 const IMPORT_FOOTER_RE = /<p>\s*<small>\s*Import OtoDom[\s\S]*?<\/small>\s*<\/p>/gi;
 
 export function stripInternalOfferDescriptionMarkers(html: string): string {
   return String(html || '')
-    .replace(OTODOM_MARKER_RE, '')
+    .replace(IMPORT_MARKER_RE, '')
     .replace(IMPORT_FOOTER_RE, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
     .trim();
 }
 
@@ -48,6 +49,13 @@ export function shouldRenderOfferDescriptionAsHtml(value: string): boolean {
 
 export function descriptionForEditForm(raw: unknown): string {
   return stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(raw ?? '')));
+}
+
+/** Czysty tekst oferty do kart CRM / radaru — bez znaczników importu i HTML. */
+export function plainOfferDescription(raw: unknown): string {
+  return stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(raw ?? '')))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function descriptionForStorageFromEdit(raw: unknown): string {

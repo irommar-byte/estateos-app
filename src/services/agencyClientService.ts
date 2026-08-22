@@ -42,7 +42,9 @@ export type AgencyClientMatch = {
     district?: string | null;
     area?: number | null;
     excerpt?: string | null;
+    description?: string | null;
     imageUrl: string;
+    imageUrls?: string[] | null;
   };
 };
 

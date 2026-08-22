@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   KeyboardAvoidingView,
   LayoutAnimation,
   Linking,
@@ -61,6 +62,8 @@ import {
 } from '../services/agencyClientService';
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
 import { formatClientFeedbackForAgent } from '../utils/clientPortalFeedback';
+import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
+import { API_URL } from '../config/network';
 import type { WholePropertyScan } from '../types/roomScan';
 import MarketValuationCard from '../components/market/MarketValuationCard';
 import {
@@ -113,6 +116,27 @@ function acquisitionSnapshot(form: AcquisitionFormData | null, step: number) {
   return JSON.stringify({ form, step });
 }
 
+function mediaUrl(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return raw.startsWith('/') ? `${API_URL}${raw}` : `${API_URL}/${raw}`;
+}
+
+function matchOfferImages(offer: AgencyClientMatch['offer']): string[] {
+  const raw = Array.isArray(offer.imageUrls) && offer.imageUrls.length
+    ? offer.imageUrls
+    : offer.imageUrl
+      ? [offer.imageUrl]
+      : [];
+  const out: string[] = [];
+  for (const item of raw) {
+    const uri = mediaUrl(item);
+    if (uri && !out.includes(uri)) out.push(uri);
+  }
+  return out;
+}
+
 function MatchRow({
   item,
   colors,
@@ -128,11 +152,22 @@ function MatchRow({
   onSend: () => void;
   onOpen: () => void;
 }) {
+  const [descOpen, setDescOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const meta = [item.offer.city, item.offer.district, item.offer.area ? `${item.offer.area} m²` : null]
     .filter(Boolean)
     .join(' · ');
   const feedback = formatClientFeedbackForAgent(item.clientFeedback);
   const scoreColor = item.score >= 85 ? '#34C759' : item.score >= 70 ? '#A3E635' : item.score >= 55 ? '#FF9F0A' : '#FF453A';
+  const description = formatOfferDescriptionForDisplay(item.offer.description || item.offer.excerpt);
+  const images = matchOfferImages(item.offer);
+  const photoHeight = Math.round(Dimensions.get('window').height * 0.5);
+
+  const toggle = (next: () => void) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    next();
+  };
+
   return (
     <View
       style={{
@@ -141,33 +176,65 @@ function MatchRow({
         borderBottomColor: colors.border,
       }}
     >
-      <Pressable onPress={onOpen} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-        {item.offer.imageUrl ? (
-          <Image source={{ uri: item.offer.imageUrl }} style={{ width: 88, height: 72, borderRadius: 12 }} />
-        ) : (
-          <View
-            style={{
-              width: 88,
-              height: 72,
-              borderRadius: 12,
-              backgroundColor: colors.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="home-outline" size={22} color={colors.secondary} />
-          </View>
-        )}
+      {galleryOpen && images.length > 0 ? (
+        <View style={{ gap: 10, marginBottom: 12 }}>
+          <Pressable onPress={() => toggle(() => setGalleryOpen(false))} hitSlop={8}>
+            <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 11 }}>Zwiń zdjęcia</Text>
+          </Pressable>
+          {images.map((uri) => (
+            <Pressable key={uri} onPress={() => toggle(() => setGalleryOpen(false))}>
+              <Image
+                source={{ uri }}
+                contentFit="cover"
+                style={{ width: '100%', height: photoHeight, borderRadius: 14 }}
+              />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        {!galleryOpen ? (
+          <Pressable onPress={() => (images.length ? toggle(() => setGalleryOpen(true)) : onOpen())}>
+            {images[0] ? (
+              <Image
+                source={{ uri: images[0] }}
+                contentFit="cover"
+                style={{ width: 88, height: 72, borderRadius: 12 }}
+              />
+            ) : (
+              <View
+                style={{
+                  width: 88,
+                  height: 72,
+                  borderRadius: 12,
+                  backgroundColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="home-outline" size={22} color={colors.secondary} />
+              </View>
+            )}
+          </Pressable>
+        ) : null}
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>{item.offer.title}</Text>
-          <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 13, marginTop: 2 }}>
-            {formatCurrencyPLN(item.offer.price)}
-          </Text>
-          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>{meta}</Text>
-          {item.offer.excerpt ? (
-            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4 }} numberOfLines={2}>
-              {item.offer.excerpt}
+          <Pressable onPress={onOpen}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>{item.offer.title}</Text>
+            <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 13, marginTop: 2 }}>
+              {formatCurrencyPLN(item.offer.price)}
             </Text>
+            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>{meta}</Text>
+          </Pressable>
+          {description ? (
+            <Pressable onPress={() => toggle(() => setDescOpen((value) => !value))}>
+              <Text
+                style={{ color: colors.secondary, fontSize: 11, marginTop: 4, lineHeight: 16 }}
+                numberOfLines={descOpen ? undefined : 2}
+              >
+                {description}
+              </Text>
+            </Pressable>
           ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
             <View style={{ flex: 1, height: 6, borderRadius: 99, backgroundColor: colors.border, overflow: 'hidden' }}>
@@ -176,7 +243,7 @@ function MatchRow({
             <Text style={{ color: scoreColor, fontWeight: '900', fontSize: 11 }}>{item.score || 0}%</Text>
           </View>
         </View>
-      </Pressable>
+      </View>
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
         {sent ? (
           <View style={{ backgroundColor: 'rgba(52,199,89,0.16)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>

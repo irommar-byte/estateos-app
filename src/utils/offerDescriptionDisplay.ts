@@ -1,4 +1,4 @@
-const OTODOM_MARKER_RE = /<!--\s*estateos-otodom:\d+\s*-->/gi;
+const IMPORT_MARKER_RE = /<!--\s*estateos-(?:otodom|olx|nieruchomosci-online):\d+\s*-->/gi;
 const VERIFY_COMMENT_RE = /<!--\s*ESTATEOS_VERIFY:[\s\S]*?-->/gi;
 const IMPORT_FOOTER_RE = /<p>\s*<small>\s*Import OtoDom[\s\S]*?<\/small>\s*<\/p>/gi;
 const HTML_TAG_RE = /<\s*\/?[a-z][a-z0-9]*\b/i;
@@ -24,7 +24,7 @@ export function formatOfferDescriptionForDisplay(input: unknown): string {
   if (!raw) return '';
 
   raw = raw
-    .replace(OTODOM_MARKER_RE, '')
+    .replace(IMPORT_MARKER_RE, '')
     .replace(VERIFY_COMMENT_RE, '')
     .replace(/\bESTATEOS_VERIFY:[A-Za-z0-9._=-]+\b/gi, '')
     .replace(IMPORT_FOOTER_RE, '')

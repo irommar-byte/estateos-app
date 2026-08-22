@@ -33,6 +33,7 @@ import {
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import OpenContactThreadButton from "@/components/contact/OpenContactThreadButton";
+import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
@@ -85,8 +86,10 @@ type ClientDetail = AgencyClientListItem & {
       city: string;
       district: string;
       excerpt?: string | null;
+      description?: string | null;
       area: number;
       imageUrl: string;
+      imageUrls?: string[] | null;
     };
   }>;
   buyerFilters?: WebRadarFilters | null;
@@ -981,7 +984,7 @@ export default function CrmClientsWorkspace() {
                               selected ? "border-emerald-500/40 bg-emerald-500/5" : "border-[var(--eos-border)] bg-[var(--eos-input)]/40"
                             }`}
                           >
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
                               <button
                                 type="button"
                                 disabled={sent}
@@ -996,12 +999,7 @@ export default function CrmClientsWorkspace() {
                               >
                                 {(sent || selected) ? <Check className={`size-4 ${sent ? "text-emerald-600" : "text-black"}`} /> : null}
                               </button>
-                              <Link
-                                href={offerHref(m.offer.id, detail.portalToken)}
-                                className="h-24 w-32 shrink-0 overflow-hidden rounded-xl bg-cover bg-center sm:h-20 sm:w-28"
-                                style={{ backgroundImage: `url(${m.offer.imageUrl})` }}
-                                aria-label={m.offer.title}
-                              />
+                              <OfferPhotoCascade offer={m.offer} />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <Link
@@ -1019,9 +1017,7 @@ export default function CrmClientsWorkspace() {
                                 <p className="text-xs text-[var(--eos-muted)]">
                                   {[m.offer.city, m.offer.district].filter(Boolean).join(" · ")} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł
                                 </p>
-                                {m.offer.excerpt ? (
-                                  <p className="mt-1 text-[11px] leading-snug text-[var(--eos-muted)]">{m.offer.excerpt}</p>
-                                ) : null}
+                                <OfferDescriptionToggle offer={m.offer} />
                                 <div className="mt-2 flex items-center gap-2">
                                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--eos-input)]">
                                     <div
@@ -1160,7 +1156,7 @@ export default function CrmClientsWorkspace() {
                             const selected = selectedOffers.has(m.offer.id);
                             return (
                               <div key={m.id} className={`flex flex-col gap-3 rounded-2xl border p-4 ${selected ? "border-emerald-500/40 bg-emerald-500/5" : "border-[var(--eos-border)]"}`}>
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
                                   <button
                                     type="button"
                                     disabled={sent}
@@ -1171,12 +1167,7 @@ export default function CrmClientsWorkspace() {
                                   >
                                     {(sent || selected) ? <Check className="size-4 text-black" /> : null}
                                   </button>
-                                  <Link
-                                    href={offerHref(m.offer.id, detail.portalToken)}
-                                    className="h-16 w-20 shrink-0 rounded-xl bg-cover bg-center"
-                                    style={{ backgroundImage: `url(${m.offer.imageUrl})` }}
-                                    aria-label={m.offer.title}
-                                  />
+                                  <OfferPhotoCascade offer={m.offer} thumbClassName="h-16 w-20 shrink-0 rounded-xl bg-[var(--eos-input)]" />
                                   <div className="min-w-0 flex-1">
                                     <Link href={offerHref(m.offer.id, detail.portalToken)} className="font-semibold text-[var(--eos-text)] hover:text-emerald-600">
                                       {m.offer.title}
@@ -1184,6 +1175,7 @@ export default function CrmClientsWorkspace() {
                                     <p className="text-xs text-[var(--eos-muted)]">
                                       {[m.offer.city, m.offer.district].filter(Boolean).join(" · ")} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}%
                                     </p>
+                                    <OfferDescriptionToggle offer={m.offer} />
                                   </div>
                                   {!sent ? (
                                     <button
