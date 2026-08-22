@@ -241,10 +241,49 @@ export function drawMetallicGear(
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fill();
 
-  // Połysk metaliczny — podwójny streak
+  // Szczotkowany metal — mikro-rysy radialne
+  ctx.save();
+  ctx.globalAlpha = 0.14 * hi;
+  for (let i = 0; i < 36; i++) {
+    const a = (i / 36) * Math.PI * 2 + angle * 0.02;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * holeR * 1.2, Math.sin(a) * holeR * 1.2);
+    ctx.lineTo(Math.cos(a) * outerR * 0.98, Math.sin(a) * outerR * 0.98);
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(255,248,220,0.35)' : 'rgba(0,0,0,0.28)';
+    ctx.lineWidth = Math.max(0.35, outerR * 0.006);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Rowki międzyzębne — AO (ambient occlusion)
+  for (let i = 0; i < teeth; i++) {
+    const mid = i * step + step * 0.5;
+    ctx.save();
+    ctx.rotate(mid);
+    const groove = ctx.createLinearGradient(rootR, 0, outerR * 0.92, 0);
+    groove.addColorStop(0, 'rgba(0,0,0,0.55)');
+    groove.addColorStop(0.55, 'rgba(0,0,0,0.22)');
+    groove.addColorStop(1, 'rgba(255,255,255,0.06)');
+    ctx.fillStyle = groove;
+    ctx.fillRect(rootR * 0.96, -outerR * 0.055, outerR * 0.08, outerR * 0.11);
+    ctx.restore();
+  }
+
+  // Fazowanie korony — rim light
+  traceGearPath(ctx, teeth, outerR * 0.995, rootR * 1.008);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = Math.max(0.45, outerR * 0.008);
+  ctx.stroke();
+  traceGearPath(ctx, teeth, outerR * 0.94, rootR * 1.02);
+  ctx.strokeStyle = 'rgba(0,0,0,0.38)';
+  ctx.lineWidth = Math.max(0.55, outerR * 0.01);
+  ctx.stroke();
+
+  // Połysk metaliczny — podwójny streak + chrom na czubkach
   for (const [ox, oy, rx, ry, op] of [
     [-0.18, -0.32, 0.4, 0.2, 0.48],
     [0.12, -0.08, 0.22, 0.1, 0.22],
+    [-0.28, 0.18, 0.16, 0.08, 0.16],
   ] as const) {
     ctx.beginPath();
     ctx.ellipse(outerR * ox, outerR * oy, outerR * rx, outerR * ry, -0.45, 0, Math.PI * 2);

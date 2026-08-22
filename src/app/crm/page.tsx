@@ -3,7 +3,12 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useDeskInspector } from '@/components/desk/DeskShell';
-import { DESK_UI } from '@/lib/desk/labels';
+import {
+  DESK_UI,
+  labelDeskStage,
+  labelHealth,
+  labelTemperature,
+} from '@/lib/desk/labels';
 
 type TodayPayload = {
   timeline: Array<{
@@ -19,6 +24,7 @@ type TodayPayload = {
     id: number;
     title: string | null;
     pipelineStage: string;
+    kind: string;
     health: string;
     temperature: string;
     nextAction: string | null;
@@ -77,59 +83,68 @@ export default function DeskTodayPage() {
     };
   }, [refreshKey]);
 
-  return (
-    <div>
-      <p className="eos-desk-kicker">{DESK_UI.todayKicker}</p>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-        <h1 className="eos-desk-h1">{DESK_UI.todayTitle}</h1>
-        <Link href="/crm/prospecting" className="eos-desk-btn eos-desk-btn-primary">
-          + {DESK_UI.newProspect}
-        </Link>
-      </div>
-      <p className="eos-desk-muted" style={{ marginTop: '0.5rem', maxWidth: '38rem' }}>
-        Co mam dziś zrobić, co jest pilne, do kogo zadzwonić, gdzie jechać.
-      </p>
+  const alertCount = data?.alerts?.length ?? 0;
+  const taskCount = data?.openTasks?.length ?? 0;
+  const eventCount = data?.timeline?.length ?? 0;
 
-      {loading ? <p className="eos-desk-muted" style={{ marginTop: '1.5rem' }}>Ładuję dzień…</p> : null}
-      {error ? (
-        <div className="eos-desk-card" style={{ marginTop: '1.5rem', color: 'var(--desk-danger)' }}>
-          {error}
+  return (
+    <div className="eos-desk-page">
+      <header className="eos-desk-page-header">
+        <div className="eos-desk-page-header__main">
+          <p className="eos-desk-kicker">{DESK_UI.todayKicker}</p>
+          <div className="eos-desk-page-header__row">
+            <h1 className="eos-desk-h1">{DESK_UI.todayTitle}</h1>
+            <Link href="/crm/prospecting" className="eos-desk-btn eos-desk-btn-primary">
+              + {DESK_UI.newProspect}
+            </Link>
+          </div>
+          <p className="eos-desk-muted eos-desk-page-subtitle">{DESK_UI.todaySubtitle}</p>
         </div>
+      </header>
+
+      {data ? (
+        <div className="eos-desk-stats-strip" aria-label="Podsumowanie dnia">
+          <div className="eos-desk-stat">
+            <span>Wydarzenia</span>
+            <strong>{eventCount}</strong>
+          </div>
+          <div className="eos-desk-stat">
+            <span>Zadania</span>
+            <strong>{taskCount}</strong>
+          </div>
+          <div className="eos-desk-stat">
+            <span>Alerty</span>
+            <strong>{alertCount}</strong>
+          </div>
+        </div>
+      ) : null}
+
+      {loading ? <p className="eos-desk-muted eos-desk-page-loading">{DESK_UI.loading}</p> : null}
+      {error ? (
+        <div className="eos-desk-card eos-desk-page-error">{error}</div>
       ) : null}
 
       {data ? (
         <div className="eos-desk-today-grid">
-          <section className="eos-desk-card">
-            <p className="eos-desk-kicker">Oś dnia</p>
+          <section className="eos-desk-card eos-desk-today-card">
+            <p className="eos-desk-kicker">{DESK_UI.timelineAxis}</p>
             {data.timeline.length === 0 ? (
-              <p className="eos-desk-muted">Brak zaplanowanych wydarzeń na dziś — sprawdź zadania po prawej.</p>
+              <p className="eos-desk-muted eos-desk-empty-copy">{DESK_UI.emptyTimeline}</p>
             ) : (
-              <ul style={{ listStyle: 'none', margin: '0.75rem 0 0', padding: 0 }}>
+              <ul className="eos-desk-timeline">
                 {data.timeline.map((item) => (
-                  <li
-                    key={item.id}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '3.5rem 1fr',
-                      gap: '0.75rem',
-                      padding: '0.55rem 0',
-                      borderTop: '1px solid var(--desk-line)',
-                    }}
-                  >
-                    <strong>{formatTime(item.startsAt)}</strong>
+                  <li key={item.id} className="eos-desk-timeline__row">
+                    <strong className="eos-desk-timeline__time">{formatTime(item.startsAt)}</strong>
                     <button
                       type="button"
-                      className="eos-desk-btn"
-                      style={{ textAlign: 'left', borderRadius: '0.65rem' }}
+                      className="eos-desk-btn eos-desk-timeline__btn"
                       onClick={() => {
                         if (item.caseId) setCaseId(item.caseId);
                       }}
                     >
-                      <div style={{ fontWeight: 600 }}>{item.title}</div>
+                      <div className="eos-desk-timeline__title">{item.title}</div>
                       {item.subtitle ? (
-                        <div className="eos-desk-muted" style={{ fontSize: '0.85rem' }}>
-                          {item.subtitle}
-                        </div>
+                        <div className="eos-desk-muted eos-desk-timeline__sub">{item.subtitle}</div>
                       ) : null}
                     </button>
                   </li>
@@ -138,57 +153,65 @@ export default function DeskTodayPage() {
             )}
           </section>
 
-          <section className="eos-desk-card">
-            <p className="eos-desk-kicker">What matters most</p>
+          <section className="eos-desk-card eos-desk-today-card">
+            <p className="eos-desk-kicker">{DESK_UI.whatMattersMost}</p>
+
             {data.nextBestAction ? (
               <button
                 type="button"
-                className="eos-desk-btn"
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  marginBottom: '0.9rem',
-                  padding: '0.75rem',
-                  background: 'var(--desk-brass-soft)',
-                  borderRadius: '0.75rem',
-                }}
+                className="eos-desk-btn eos-desk-nba-hero"
                 onClick={() => data.nextBestAction?.caseId && setCaseId(data.nextBestAction.caseId)}
               >
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.1em' }}>NEXT</div>
-                <div style={{ fontWeight: 700, marginTop: '0.2rem' }}>{data.nextBestAction.title}</div>
+                <div className="eos-desk-nba-hero__label">{DESK_UI.nextNow}</div>
+                <div className="eos-desk-nba-hero__title">{data.nextBestAction.title}</div>
                 {data.nextBestAction.caseTitle ? (
-                  <div className="eos-desk-muted" style={{ fontSize: '0.85rem' }}>
-                    {data.nextBestAction.caseTitle}
-                  </div>
+                  <div className="eos-desk-muted eos-desk-nba-hero__sub">{data.nextBestAction.caseTitle}</div>
                 ) : null}
               </button>
             ) : null}
 
-            {data.alerts?.map((a, i) => (
-              <div key={`${a.text}-${i}`} className="eos-desk-muted" style={{ fontSize: '0.9rem', marginBottom: '0.35rem' }}>
-                {a.level === 'danger' ? '🔴' : '🟠'} {a.text}
-              </div>
-            ))}
+            {data.alerts?.length ? (
+              <ul className="eos-desk-alerts">
+                {data.alerts.map((a, i) => (
+                  <li key={`${a.text}-${i}`} className={`eos-desk-alert eos-desk-alert--${a.level}`}>
+                    {a.text}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             {data.whatMattersMost.length === 0 ? (
-              <p className="eos-desk-muted" style={{ marginTop: '0.75rem' }}>
-                Brak spraw AT_RISK / HOT. Pipeline jest spokojny.
-              </p>
+              <p className="eos-desk-muted eos-desk-empty-copy">{DESK_UI.emptyPipelineCalm}</p>
             ) : (
-              <ul style={{ listStyle: 'none', margin: '0.75rem 0 0', padding: 0 }}>
+              <ul className="eos-desk-priority-list">
                 {data.whatMattersMost.map((c) => (
-                  <li key={c.id} style={{ borderTop: '1px solid var(--desk-line)', padding: '0.55rem 0' }}>
+                  <li key={c.id}>
                     <button
                       type="button"
-                      className="eos-desk-btn"
-                      style={{ width: '100%', textAlign: 'left', borderRadius: '0.75rem' }}
+                      className="eos-desk-btn eos-desk-priority-row"
                       onClick={() => setCaseId(c.id)}
                     >
-                      <div style={{ fontWeight: 700 }}>
+                      <div className="eos-desk-priority-row__name">
                         {c.client.firstName} {c.client.lastName}
                       </div>
-                      <div className="eos-desk-muted" style={{ fontSize: '0.85rem' }}>
-                        {c.nextAction || c.pipelineStage} · {c.health}/{c.temperature}
+                      <div className="eos-desk-priority-row__meta">
+                        <span>{c.nextAction || labelDeskStage(c.kind, c.pipelineStage)}</span>
+                        <span className="eos-desk-priority-row__chips">
+                          <span className={c.temperature === 'HOT' ? 'eos-desk-chip eos-desk-chip-hot' : 'eos-desk-chip'}>
+                            {labelTemperature(c.temperature)}
+                          </span>
+                          <span
+                            className={
+                              c.health === 'AT_RISK'
+                                ? 'eos-desk-chip eos-desk-chip-risk'
+                                : c.health === 'ATTENTION'
+                                  ? 'eos-desk-chip eos-desk-chip-attention'
+                                  : 'eos-desk-chip eos-desk-chip-ok'
+                            }
+                          >
+                            {labelHealth(c.health)}
+                          </span>
+                        </span>
                       </div>
                     </button>
                   </li>
@@ -197,14 +220,13 @@ export default function DeskTodayPage() {
             )}
 
             {data.openTasks.length ? (
-              <div style={{ marginTop: '1rem' }}>
-                <p className="eos-desk-kicker">Zadania</p>
+              <div className="eos-desk-today-tasks">
+                <p className="eos-desk-kicker">{DESK_UI.tasksSection}</p>
                 {data.openTasks.slice(0, 8).map((t) => (
                   <button
                     key={t.id}
                     type="button"
-                    className="eos-desk-btn"
-                    style={{ width: '100%', textAlign: 'left', marginTop: '0.35rem' }}
+                    className="eos-desk-btn eos-desk-task-row"
                     onClick={() => t.caseId && setCaseId(t.caseId)}
                   >
                     {t.title}

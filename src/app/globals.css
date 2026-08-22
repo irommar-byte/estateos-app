@@ -5743,6 +5743,36 @@ html:not(.light) .eos-mgmt-panel-btn {
   transform: scale(1) translateY(0);
   filter: blur(0);
 }
+.eos-agent-crm-cta__portal.is-scattering .eos-agent-crm-cta__portal-gears {
+  opacity: 1;
+}
+.eos-agent-crm-cta__portal.is-scattering .eos-agent-crm-cta__portal-vignette {
+  opacity: 0.35;
+  transition: opacity 480ms ease;
+}
+.eos-agent-crm-cta__portal.is-scattering .eos-agent-crm-cta__portal-title {
+  transform: scale(1.06) translateY(-4px);
+  transition:
+    transform 680ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 520ms ease;
+}
+.eos-agent-crm-cta__portal.is-exiting {
+  opacity: 0;
+  transition: opacity 520ms cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.eos-agent-crm-cta__portal.is-exiting .eos-agent-crm-cta__portal-title {
+  opacity: 0;
+  transform: scale(1.18) translateY(-18px);
+  filter: blur(10px);
+  transition:
+    opacity 380ms ease,
+    transform 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 380ms ease;
+}
+.eos-agent-crm-cta__portal.is-exiting .eos-agent-crm-cta__portal-gears {
+  opacity: 0;
+}
 .eos-agent-crm-cta__portal-kicker {
   font-family: var(--eos-crm-font, ui-sans-serif, system-ui, sans-serif);
   font-size: clamp(0.75rem, 2vw, 1rem);

@@ -25,6 +25,11 @@ import {
 } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
+import {
+  LISTING_SECTION_LABELS,
+  LISTING_SECTION_ORDER,
+  type ListingSection,
+} from "@/lib/offers/listingSections";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
 
@@ -50,9 +55,11 @@ type OfferBoardCopy = CrmExtendedDictionary["offers"] & {
 type Props = {
   offers: any[];
   bids: Bid[];
-  sectionFilter: "ACTIVE" | "PENDING" | "COMPLETED";
-  onSectionFilter: (v: "ACTIVE" | "PENDING" | "COMPLETED") => void;
+  sectionFilter: ListingSection;
+  onSectionFilter: (v: ListingSection) => void;
   sectionCounts: { ACTIVE: number; PENDING: number; COMPLETED: number };
+  /** Gdy podane — renderuj wszystkie sekcje naraz (trwałe grupowanie). */
+  offersBySection?: Record<ListingSection, any[]>;
   isListingsTab: boolean;
   isFavoritesTab: boolean;
   isAgencyWorkspace: boolean;
@@ -71,7 +78,7 @@ type Props = {
   ) => void;
   onPriceSaved?: (offerId: number, price: number) => void;
   isOfferAwaitingReview: (offer: any) => boolean;
-  classifyOfferSection: (offer: any) => "ACTIVE" | "PENDING" | "COMPLETED";
+  classifyOfferSection: (offer: any) => ListingSection;
 };
 
 const VIEW_KEY = "eos-crm-offers-view";
@@ -102,6 +109,7 @@ export default function CrmMyOffersBoard(props: Props) {
     sectionFilter,
     onSectionFilter,
     sectionCounts,
+    offersBySection,
     isListingsTab,
     isFavoritesTab,
     isAgencyWorkspace,
@@ -143,9 +151,37 @@ export default function CrmMyOffersBoard(props: Props) {
     }
   }, []);
 
-  const items = useMemo(
-    () => [...(showAddTile ? [{ id: "ADD_NEW_BTN", isDummy: true }] : []), ...offers],
-    [offers, showAddTile],
+  const stackedGrouping = Boolean(offersBySection && isListingsTab);
+
+  const scrollToSection = useCallback((key: ListingSection) => {
+    onSectionFilter(key);
+    requestAnimationFrame(() => {
+      document.getElementById(`eos-listing-section-${key}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [onSectionFilter]);
+
+  const sectionBlocks = useMemo(() => {
+    if (stackedGrouping && offersBySection) {
+      return LISTING_SECTION_ORDER.map((key) => ({
+        key,
+        offers: offersBySection[key] ?? [],
+      }));
+    }
+    return [{ key: sectionFilter, offers }];
+  }, [offers, offersBySection, sectionFilter, stackedGrouping]);
+
+  const totalOffers = useMemo(
+    () => sectionBlocks.reduce((sum, block) => sum + block.offers.length, 0),
+    [sectionBlocks],
+  );
+
+  const itemsForSection = useCallback(
+    (sectionOffers: any[], sectionKey: ListingSection) =>
+      [...(showAddTile && sectionKey === "ACTIVE" ? [{ id: "ADD_NEW_BTN", isDummy: true }] : []), ...sectionOffers],
+    [showAddTile],
   );
 
   const savePrice = async (offer: any) => {
@@ -210,7 +246,7 @@ export default function CrmMyOffersBoard(props: Props) {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => onSectionFilter(key)}
+                  onClick={() => (stackedGrouping ? scrollToSection(key) : onSectionFilter(key))}
                   className={`eos-raised-chip ${on ? "eos-raised-chip--on" : ""} px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.14em] sm:text-[10px]`}
                 >
                   {fmtDict(labelTpl, { n })}
@@ -252,7 +288,7 @@ export default function CrmMyOffersBoard(props: Props) {
         </div>
       </div>
 
-      {offers.length === 0 ? (
+      {totalOffers === 0 && !showAddTile ? (
         <div className="eos-lux-panel flex flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-[rgba(196,163,90,0.28)] px-6 py-20 text-center">
           <p className="eos-portal-label mb-6">
             {isFavoritesTab
@@ -281,6 +317,52 @@ export default function CrmMyOffersBoard(props: Props) {
           ) : null}
         </div>
       ) : (
+        <div className="space-y-8">
+          {sectionBlocks.map(({ key: sectionKey, offers: sectionOffers }) => {
+            const items = itemsForSection(sectionOffers, sectionKey);
+            const hideEmptySection = stackedGrouping && sectionOffers.length === 0 && sectionKey !== "ACTIVE";
+            if (hideEmptySection) return null;
+
+            return (
+              <section
+                key={sectionKey}
+                id={`eos-listing-section-${sectionKey}`}
+                className="eos-crm-offers-section scroll-mt-28"
+                aria-labelledby={`eos-listing-section-title-${sectionKey}`}
+              >
+                {stackedGrouping ? (
+                  <div className="eos-crm-offers-section__head mb-4 flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="eos-portal-label text-[var(--eos-muted)]">
+                        {LISTING_SECTION_LABELS[sectionKey]}
+                      </p>
+                      <h3
+                        id={`eos-listing-section-title-${sectionKey}`}
+                        className="text-lg font-semibold tracking-tight text-[var(--eos-text)]"
+                      >
+                        {fmtDict(
+                          sectionKey === "ACTIVE"
+                            ? filterLabels.active
+                            : sectionKey === "PENDING"
+                              ? filterLabels.pending
+                              : filterLabels.completed,
+                          { n: sectionCounts[sectionKey] },
+                        )}
+                      </h3>
+                    </div>
+                  </div>
+                ) : null}
+
+                {sectionOffers.length === 0 && sectionKey === "ACTIVE" && showAddTile ? (
+                  <div className="eos-lux-panel flex flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-[rgba(196,163,90,0.28)] px-6 py-14 text-center">
+                    <p className="eos-portal-label mb-6">{c.emptyActive}</p>
+                    <button type="button" onClick={onAdd} className="eos-lux-btn eos-lux-btn--primary">
+                      <Plus size={16} /> {c.addProperty}
+                    </button>
+                  </div>
+                ) : null}
+
+                {items.length > 0 ? (
         <div className={gridClass}>
           <AnimatePresence mode="popLayout" initial={false}>
             {items.map((offer: any) => {
@@ -647,6 +729,11 @@ export default function CrmMyOffersBoard(props: Props) {
               );
             })}
           </AnimatePresence>
+        </div>
+                ) : null}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>

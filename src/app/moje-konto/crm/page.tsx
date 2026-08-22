@@ -27,6 +27,13 @@ import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisp
 import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
 import CrmSectionTabBar, { type CrmSectionTabId } from "@/components/crm/CrmSectionTabBar";
 import CrmMyOffersBoard from "@/components/crm/CrmMyOffersBoard";
+import {
+  classifyListingSection,
+  groupListingsBySection,
+  isOfferAwaitingReview,
+  sortListingsInSection,
+  type ListingSection,
+} from "@/lib/offers/listingSections";
 import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
 import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
@@ -450,7 +457,7 @@ export default function CRMDashboard() {
   }, [crmData]);
 
   const [activeTab, setActiveTab] = useState<CrmTab>("radar");
-  const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
+  const [offerSectionFilter, setOfferSectionFilter] = useState<ListingSection>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
   const [pinnedDealIds, setPinnedDealIds] = useState<number[]>([]);
@@ -1042,50 +1049,12 @@ export default function CRMDashboard() {
     ? (crmData.offers || [])
     : favoriteOffers;
 
-  const isOfferAwaitingReview = (offer: any): boolean => {
-    const status = String(offer?.status || '').toUpperCase();
-    if (['PENDING', 'PENDING_APPROVAL', 'IN_REVIEW'].includes(status)) return true;
-    if (offer?.awaitingModeration || offer?.pendingPublicationKind) return true;
-    if (String(offer?.legalCheckStatus || '').toUpperCase() === 'PENDING') return true;
-    return false;
-  };
+  const classifyOfferSection = classifyListingSection;
 
-  const classifyOfferSection = (offer: any): 'ACTIVE' | 'PENDING' | 'COMPLETED' => {
-    const now = new Date();
-    const status = String(offer?.status || '').toUpperCase();
-    const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : Number.NaN;
-    const isExpired = Number.isFinite(expiresAtMs) && expiresAtMs < now.getTime();
-    const isCompleted = isExpired || ['ARCHIVED', 'SOLD', 'REJECTED', 'EXPIRED', 'INACTIVE', 'PAUSED', 'CANCELLED'].includes(status);
-    if (isOfferAwaitingReview(offer)) return 'PENDING';
-    if (isCompleted) return 'COMPLETED';
-    return 'ACTIVE';
-  };
+  const sortOffersBySection = (offers: any[], section: ListingSection) =>
+    sortListingsInSection(offers, section);
 
-  const sortOffersBySection = (offers: any[]) => {
-    const withTs = (offer: any) => {
-      const createdAtMs = offer?.createdAt ? new Date(offer.createdAt).getTime() : 0;
-      const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : 0;
-      return { createdAtMs, expiresAtMs };
-    };
-
-    return [...offers].sort((a: any, b: any) => {
-      const sectionA = classifyOfferSection(a);
-      const sectionB = classifyOfferSection(b);
-      const tsA = withTs(a);
-      const tsB = withTs(b);
-
-      if (sectionA === 'COMPLETED' && sectionB === 'COMPLETED') {
-        return tsB.expiresAtMs - tsA.expiresAtMs;
-      }
-      return tsB.createdAtMs - tsA.createdAtMs;
-    });
-  };
-
-  const offersBySection = {
-    ACTIVE: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'ACTIVE')),
-    PENDING: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'PENDING')),
-    COMPLETED: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'COMPLETED')),
-  };
+  const offersBySection = groupListingsBySection(baseOffersForView, classifyOfferSection);
 
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: CrmTab[] = isAgencyWorkspace
@@ -1602,6 +1571,7 @@ export default function CRMDashboard() {
         {(activeTab === 'offers' || activeTab === 'my_offers') && (
           <CrmMyOffersBoard
             offers={offersVisibleInSection}
+            offersBySection={isListingsTab ? offersBySection : undefined}
             bids={crmData?.bids || []}
             sectionFilter={offerSectionFilter}
             onSectionFilter={setOfferSectionFilter}
