@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   KeyboardAvoidingView,
   LayoutAnimation,
   Linking,
@@ -39,6 +38,7 @@ import AgencyClientRadarSurvey, {
   defaultClientRadarFilters,
   type ClientRadarFilters,
 } from '../components/agency/AgencyClientRadarSurvey';
+import MatchPhotoCascade from '../components/agency/MatchPhotoCascade';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import { buildYearBuiltPickerValues } from '../lib/offerYearBuilt';
 import {
@@ -161,7 +161,6 @@ function MatchRow({
   const scoreColor = item.score >= 85 ? '#34C759' : item.score >= 70 ? '#A3E635' : item.score >= 55 ? '#FF9F0A' : '#FF453A';
   const description = formatOfferDescriptionForDisplay(item.offer.description || item.offer.excerpt);
   const images = matchOfferImages(item.offer);
-  const photoHeight = Math.round(Dimensions.get('window').height * 0.5);
 
   const toggle = (next: () => void) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -176,48 +175,31 @@ function MatchRow({
         borderBottomColor: colors.border,
       }}
     >
-      {galleryOpen && images.length > 0 ? (
-        <View style={{ gap: 10, marginBottom: 12 }}>
-          <Pressable onPress={() => toggle(() => setGalleryOpen(false))} hitSlop={8}>
-            <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 11 }}>Zwiń zdjęcia</Text>
-          </Pressable>
-          {images.map((uri) => (
-            <Pressable key={uri} onPress={() => toggle(() => setGalleryOpen(false))}>
-              <Image
-                source={{ uri }}
-                contentFit="cover"
-                style={{ width: '100%', height: photoHeight, borderRadius: 14 }}
-              />
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
+      <MatchPhotoCascade visible={galleryOpen} images={images} onClose={() => setGalleryOpen(false)} />
 
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-        {!galleryOpen ? (
-          <Pressable onPress={() => (images.length ? toggle(() => setGalleryOpen(true)) : onOpen())}>
-            {images[0] ? (
-              <Image
-                source={{ uri: images[0] }}
-                contentFit="cover"
-                style={{ width: 88, height: 72, borderRadius: 12 }}
-              />
-            ) : (
-              <View
-                style={{
-                  width: 88,
-                  height: 72,
-                  borderRadius: 12,
-                  backgroundColor: colors.border,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="home-outline" size={22} color={colors.secondary} />
-              </View>
-            )}
-          </Pressable>
-        ) : null}
+        <Pressable onPress={() => (images.length ? setGalleryOpen(true) : onOpen())}>
+          {images[0] ? (
+            <Image
+              source={{ uri: images[0] }}
+              contentFit="cover"
+              style={{ width: 88, height: 72, borderRadius: 12 }}
+            />
+          ) : (
+            <View
+              style={{
+                width: 88,
+                height: 72,
+                borderRadius: 12,
+                backgroundColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="home-outline" size={22} color={colors.secondary} />
+            </View>
+          )}
+        </Pressable>
         <View style={{ flex: 1 }}>
           <Pressable onPress={onOpen}>
             <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>{item.offer.title}</Text>
