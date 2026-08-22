@@ -24,10 +24,10 @@ import {
 import { ACQUISITION_DOCUMENTS, type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
 import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAttachmentShared";
-import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
+import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
 
 type SearchCriteria = {
   location: string;
@@ -166,7 +166,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [changeDraft, setChangeDraft] = useState({ startsAt: "", reason: "" });
   const [presentationChange, setPresentationChange] = useState({ startsAt: "", reason: "" });
   const [scheduleBusy, setScheduleBusy] = useState("");
   const [acquisitionBusy, setAcquisitionBusy] = useState("");
@@ -470,17 +469,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </div>
       </header>
 
-      <section className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
-        <p className="eos-portal-label eos-portal-label--ok">Aplikacja iPhone</p>
-        <h2 className="mt-1 text-lg font-black text-[var(--eos-text)]">Otwórz panel w aplikacji i łap powiadomienia od razu</h2>
-        <p className="mt-1 text-sm leading-relaxed text-[var(--eos-muted)]">
-          Mail otwiera ten panel w przeglądarce. W aplikacji EstateOS masz te same oferty, czat z agentem i natychmiastowe powiadomienia, gdy pojawi się nowa propozycja albo zmiana etapu.
-        </p>
-        <div className="mt-4">
-          <AppStoreBadgeLink compact />
-        </div>
-      </section>
-
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} /> : null}
 
       {portal.meeting ? (
@@ -489,83 +477,33 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             <div>
               <p className="eos-portal-label eos-portal-label--ok">Umówione spotkanie</p>
               <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">
-                {new Date(portal.meeting.startsAt).toLocaleString("pl-PL", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {formatMeetingWhenPl(portal.meeting.startsAt)}
               </h2>
               {portal.meeting.location ? (
                 <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.meeting.location}</p>
               ) : null}
             </div>
-            <span
-              className={`eos-raised-chip rounded-full px-3 py-1 text-[10px] ${
-                portal.meeting.status === "confirmed"
-                  ? "eos-raised-chip--on"
-                  : ""
-              }`}
-            >
-              {portal.meeting.status === "confirmed" ? "Potwierdzone" : "Oczekuje na agenta"}
+            <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-[10px]">
+              Potwierdzone
             </span>
           </div>
-          {portal.meeting.prepLabels?.length ? (
-            <ul className="mt-4 space-y-1.5 text-sm text-[var(--eos-text)]">
-              {portal.meeting.prepLabels.map((label) => (
-                <li key={label} className="flex gap-2">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
-                  {label}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {portal.meeting.status === "confirmed" ? (
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={scheduleBusy === "confirm_meeting"}
-                onClick={() => void postSchedule("confirm_meeting", {})}
-                className="eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[10px] disabled:opacity-50"
-              >
-                Potwierdzam termin
-              </button>
-            </div>
-          ) : null}
-          <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <label className="block">
-              <span className="eos-portal-label">
-                Zaproponuj inny termin
-              </span>
-              <input
-                type="datetime-local"
-                value={changeDraft.startsAt}
-                onChange={(e) => setChangeDraft((d) => ({ ...d, startsAt: e.target.value }))}
-                className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={scheduleBusy === "propose_meeting_change"}
-              onClick={() =>
-                void postSchedule("propose_meeting_change", {
-                  startsAt: changeDraft.startsAt ? new Date(changeDraft.startsAt).toISOString() : "",
-                  reason: changeDraft.reason,
-                })
-              }
-              className="eos-lux-btn eos-lux-btn--platinum px-4 py-3 text-[10px] disabled:opacity-50"
-            >
-              Wyślij propozycję
-            </button>
+          <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+            <p className="eos-portal-label">Na spotkanie proszę przygotować</p>
+            {portal.meeting.prepLabels?.length ? (
+              <ul className="mt-3 space-y-2 text-sm text-[var(--eos-text)]">
+                {portal.meeting.prepLabels.map((label) => (
+                  <li key={label} className="flex gap-2">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-[var(--eos-muted)]">
+                Agent nie zaznaczył dodatkowych dokumentów do przygotowania.
+              </p>
+            )}
           </div>
-          <textarea
-            value={changeDraft.reason}
-            onChange={(e) => setChangeDraft((d) => ({ ...d, reason: e.target.value }))}
-            rows={2}
-            placeholder="Powód zmiany terminu lub godziny"
-            className="eos-field-inset mt-3 w-full rounded-xl px-4 py-3 text-sm"
-          />
         </section>
       ) : null}
 

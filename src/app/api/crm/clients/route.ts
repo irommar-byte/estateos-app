@@ -239,7 +239,7 @@ export async function POST(req: Request) {
       clientId: client.id,
       agencyUserId,
       customMessage: meetingPayload
-        ? 'Potwierdzam nasze spotkanie i przesyłam wizytówkę. W panelu klienta możesz napisać do mnie, potwierdzić termin albo zaproponować inną godzinę.'
+        ? 'Umówiliśmy się na spotkanie. Termin jest ustalony — szczegóły i listę przygotowań znajdziesz poniżej.'
         : undefined,
       meeting: meetingPayload
         ? {
