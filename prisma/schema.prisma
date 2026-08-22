@@ -1155,6 +1155,12 @@ model AgencyClient {
   linkedOfferId         Int?
   linkedUserId          Int?
   portalToken           String?            @unique @db.VarChar(64)
+  intelligenceEnabled          Boolean   @default(false)
+  intelligenceIntervalHours    Int       @default(24)
+  intelligenceDailyLimit       Int       @default(1)
+  intelligenceMinLearns        Int       @default(3)
+  intelligenceMinScore         Int       @default(92)
+  intelligenceLastSentAt       DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
@@ -1205,6 +1211,8 @@ model AgencyClientMatch {
   sharedAt         DateTime?
   clientFeedback   String?   @db.Text
   clientFeedbackAt DateTime?
+  intelligenceSent    Boolean  @default(false)
+  intelligenceReason  String?  @db.Text
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

@@ -102,5 +102,17 @@ module.exports = {
       cron_restart: "*/5 * * * *",
       time: true,
     },
+    {
+      name: "client-intelligence",
+      cwd: root,
+      script: "node",
+      args: "scripts/client-intelligence.cjs",
+      env_file: path.join(root, ".env"),
+      env: sharedEnv,
+      env_production: sharedEnv,
+      autorestart: false,
+      cron_restart: "12 * * * *",
+      time: true,
+    },
   ],
 };

@@ -78,6 +78,8 @@ type PortalData = {
     notifiedAt: string | null;
     clientFeedback: string | null;
     clientFeedbackAt: string | null;
+    intelligenceSent?: boolean;
+    intelligenceReason?: string | null;
     offer: {
       id: number;
       title: string;

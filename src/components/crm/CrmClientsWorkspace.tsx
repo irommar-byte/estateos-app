@@ -34,6 +34,8 @@ import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import OpenContactThreadButton from "@/components/contact/OpenContactThreadButton";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
+import CrmIntelligenceAssistant from "@/components/crm/CrmIntelligenceAssistant";
+import type { IntelligenceSettings } from "@/lib/crm/clientIntelligence";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
@@ -79,6 +81,8 @@ type ClientDetail = AgencyClientListItem & {
     notifiedAt: string | null;
     clientFeedback: string | null;
     clientFeedbackAt: string | null;
+    intelligenceSent?: boolean;
+    intelligenceReason?: string | null;
     offer: {
       id: number;
       title: string;
@@ -93,6 +97,7 @@ type ClientDetail = AgencyClientListItem & {
     };
   }>;
   buyerFilters?: WebRadarFilters | null;
+  intelligence?: IntelligenceSettings | null;
   activities?: Array<{
     id: number;
     kind: string;
@@ -319,6 +324,27 @@ export default function CrmClientsWorkspace() {
       if (json.success) setPreviewData(json.preview);
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+  const saveIntelligence = async (next: IntelligenceSettings) => {
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intelligence: next }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json?.error || "Nie udało się zapisać asystenta."));
+      await loadDetail(selectedId);
+      setToast("Zapisano tęczowego asystenta.");
+      window.setTimeout(() => setToast(""), 3500);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Błąd zapisu asystenta.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -945,6 +971,11 @@ export default function CrmClientsWorkspace() {
 
               {detail.type === "BUYER" ? (
                 <>
+                  <CrmIntelligenceAssistant
+                    value={detail.intelligence}
+                    busy={busy}
+                    onSave={(next) => void saveIntelligence(next)}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -981,7 +1012,11 @@ export default function CrmClientsWorkspace() {
                           <div
                             key={m.id}
                             className={`flex flex-col gap-3 rounded-2xl border p-4 transition ${
-                              selected ? "border-emerald-500/40 bg-emerald-500/5" : "border-[var(--eos-border)] bg-[var(--eos-input)]/40"
+                              m.intelligenceSent
+                                ? "eos-intel-frame"
+                                : selected
+                                  ? "border-emerald-500/40 bg-emerald-500/5"
+                                  : "border-[var(--eos-border)] bg-[var(--eos-input)]/40"
                             }`}
                           >
                             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
@@ -1008,7 +1043,11 @@ export default function CrmClientsWorkspace() {
                                   >
                                     {m.offer.title}
                                   </Link>
-                                  {sent ? (
+                                  {m.intelligenceSent ? (
+                                    <span className="eos-intel-kicker text-[10px] font-black uppercase tracking-[0.12em]">
+                                      Domysł EstateOS™ Intelligence
+                                    </span>
+                                  ) : sent ? (
                                     <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
                                       {cl.sentBadge}
                                     </span>
@@ -1112,6 +1151,11 @@ export default function CrmClientsWorkspace() {
                     </div>
                     {sellerSearching ? (
                       <>
+                        <CrmIntelligenceAssistant
+                          value={detail.intelligence}
+                          busy={busy}
+                          onSave={(next) => void saveIntelligence(next)}
+                        />
                         <AgencyClientCriteriaEditor
                           compact
                           value={sellerFilters}
@@ -1155,7 +1199,16 @@ export default function CrmClientsWorkspace() {
                             const sent = Boolean(m.notifiedAt);
                             const selected = selectedOffers.has(m.offer.id);
                             return (
-                              <div key={m.id} className={`flex flex-col gap-3 rounded-2xl border p-4 ${selected ? "border-emerald-500/40 bg-emerald-500/5" : "border-[var(--eos-border)]"}`}>
+                              <div
+                                key={m.id}
+                                className={`flex flex-col gap-3 rounded-2xl border p-4 ${
+                                  m.intelligenceSent
+                                    ? "eos-intel-frame"
+                                    : selected
+                                      ? "border-emerald-500/40 bg-emerald-500/5"
+                                      : "border-[var(--eos-border)]"
+                                }`}
+                              >
                                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
                                   <button
                                     type="button"
@@ -1172,6 +1225,11 @@ export default function CrmClientsWorkspace() {
                                     <Link href={offerHref(m.offer.id, detail.portalToken)} className="font-semibold text-[var(--eos-text)] hover:text-emerald-600">
                                       {m.offer.title}
                                     </Link>
+                                    {m.intelligenceSent ? (
+                                      <p className="eos-intel-kicker mt-0.5 text-[10px] font-black uppercase tracking-[0.12em]">
+                                        Domysł EstateOS™ Intelligence
+                                      </p>
+                                    ) : null}
                                     <p className="text-xs text-[var(--eos-muted)]">
                                       {[m.offer.city, m.offer.district].filter(Boolean).join(" · ")} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}%
                                     </p>

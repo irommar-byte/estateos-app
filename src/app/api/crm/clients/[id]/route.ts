@@ -17,6 +17,8 @@ import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
+import { parseIntelligencePatch, shapeIntelligenceSettings } from '@/lib/crm/clientIntelligence';
+import { pickIntelligenceOffer, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
@@ -122,8 +124,11 @@ export async function GET(req: Request, ctx: RouteCtx) {
         sharedAt: m.sharedAt?.toISOString() ?? null,
         clientFeedback: m.clientFeedback,
         clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
+        intelligenceSent: Boolean(m.intelligenceSent),
+        intelligenceReason: m.intelligenceReason || null,
         offer: shapeAgencyClientMatchOffer(m.offer),
       })),
+      intelligence: shapeIntelligenceSettings(client),
       meeting,
       presentation,
       journey,
@@ -223,6 +228,16 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     }
   }
 
+  if (body.intelligence && typeof body.intelligence === 'object') {
+    const intelPatch = parseIntelligencePatch(body.intelligence);
+    if (intelPatch && Object.keys(intelPatch).length) {
+      await prisma.agencyClient.update({
+        where: { id: clientId },
+        data: intelPatch,
+      });
+    }
+  }
+
   if (body.buyerFilters || body.alsoSearching === true) {
     const prefData = webRadarFiltersToBuyerPrefCreate(
       (body.buyerFilters || {}) as WebRadarFilters,
@@ -284,6 +299,20 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: 'Brak kryteriów wyszukiwania dla tego klienta.' }, { status: 404 });
     }
     const result = await refreshAgencyClientMatches(clientId);
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'intelligence_preview') {
+    const owned = await prisma.agencyClient.findFirst({ where: { id: clientId, agencyUserId }, select: { id: true } });
+    if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    const { pick } = await pickIntelligenceOffer(clientId, { force: true });
+    return NextResponse.json({ success: true, pick });
+  }
+
+  if (action === 'intelligence_send') {
+    const owned = await prisma.agencyClient.findFirst({ where: { id: clientId, agencyUserId }, select: { id: true } });
+    if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    const result = await sendIntelligenceOffer({ clientId, force: true });
     return NextResponse.json({ success: true, ...result });
   }
 

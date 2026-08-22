@@ -291,6 +291,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             notifiedAt: m.notifiedAt?.toISOString() ?? null,
             clientFeedback: m.clientFeedback,
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
+            intelligenceSent: Boolean(m.intelligenceSent),
+            intelligenceReason: m.intelligenceReason || null,
             offer: shapeAgencyClientMatchOffer(m.offer),
           }))
         : [],
