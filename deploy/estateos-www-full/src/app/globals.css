@@ -5327,6 +5327,360 @@ html:not(.light) .eos-mgmt-panel-btn {
   color: #042f1e;
 }
 
+/* —— Live CEPIK / OC registry buttons —— */
+.eos-live-reg {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 7.4rem;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  overflow: hidden;
+  border-radius: 1.35rem;
+  border: 1px solid rgba(15, 23, 42, 0.22);
+  padding: 1.05rem 0.85rem 0.9rem;
+  color: #f8fafc;
+  cursor: pointer;
+  text-align: center;
+  transition:
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 280ms ease,
+    filter 280ms ease;
+}
+.eos-live-reg__well {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(165deg, #334155 0%, #1e293b 42%, #0f172a 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.16) inset,
+    0 -8px 18px rgba(0, 0, 0, 0.35) inset;
+}
+.eos-live-reg__grid,
+.eos-live-reg__scan,
+.eos-live-reg__oc-ring,
+.eos-live-reg__link {
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+.eos-live-reg__grid {
+  inset: 0;
+  opacity: 0.12;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.55) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.55) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+.eos-live-reg__icon,
+.eos-live-reg__copy,
+.eos-live-reg__status {
+  position: relative;
+  z-index: 2;
+}
+.eos-live-reg__icon {
+  display: flex;
+  height: 2.4rem;
+  width: 2.4rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 23, 42, 0.35);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+.eos-live-reg__copy {
+  max-width: 11.5rem;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+}
+.eos-live-reg__status {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.55);
+}
+.eos-live-reg__link {
+  right: 0.7rem;
+  top: 0.7rem;
+  display: flex;
+  gap: 4px;
+}
+.eos-live-reg__link i {
+  display: block;
+  height: 6px;
+  width: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.4);
+}
+.eos-live-reg__scan {
+  left: -40%;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.28), transparent);
+  opacity: 0;
+}
+.eos-live-reg__oc-ring {
+  inset: 12%;
+  border-radius: 999px;
+  border: 1px solid rgba(52, 211, 153, 0.0);
+  opacity: 0;
+}
+.eos-live-reg--live .eos-live-reg__status {
+  color: #6ee7b7;
+}
+.eos-live-reg--live .eos-live-reg__link i {
+  background: #34d399;
+  animation: eos-live-reg-dot 1.4s ease-in-out infinite;
+}
+.eos-live-reg--live .eos-live-reg__link i:nth-child(2) { animation-delay: 0.18s; }
+.eos-live-reg--live .eos-live-reg__link i:nth-child(3) { animation-delay: 0.36s; }
+.eos-live-reg--history.eos-live-reg--live {
+  box-shadow:
+    0 1px 0 rgba(186, 230, 253, 0.25) inset,
+    0 16px 36px rgba(14, 165, 233, 0.28),
+    0 0 0 1px rgba(56, 189, 248, 0.28);
+}
+.eos-live-reg--history.eos-live-reg--live .eos-live-reg__icon {
+  color: #7dd3fc;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+  animation: eos-live-reg-doc 2.8s ease-in-out infinite;
+}
+.eos-live-reg--history.eos-live-reg--live .eos-live-reg__scan {
+  opacity: 1;
+  animation: eos-live-reg-scan 2.2s linear infinite;
+}
+.eos-live-reg--insurance.eos-live-reg--live {
+  box-shadow:
+    0 1px 0 rgba(167, 243, 208, 0.28) inset,
+    0 16px 36px rgba(16, 185, 129, 0.28),
+    0 0 0 1px rgba(52, 211, 153, 0.3);
+}
+.eos-live-reg--insurance.eos-live-reg--live .eos-live-reg__icon {
+  color: #6ee7b7;
+  box-shadow: 0 0 18px rgba(16, 185, 129, 0.5);
+  animation: eos-live-reg-shield 1.15s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.eos-live-reg--insurance.eos-live-reg--live .eos-live-reg__oc-ring {
+  opacity: 1;
+  border-color: rgba(52, 211, 153, 0.45);
+  animation: eos-live-reg-oc 1.8s ease-out infinite;
+}
+.eos-live-reg--busy .eos-live-reg__status {
+  color: #fde68a;
+}
+.eos-live-reg--busy .eos-live-reg__scan {
+  opacity: 1;
+  animation: eos-live-reg-scan 0.85s linear infinite;
+}
+.eos-live-reg:not(:disabled):hover {
+  transform: translateY(-3px);
+  filter: brightness(1.06);
+}
+.eos-live-reg:not(:disabled):active {
+  transform: translateY(0) scale(0.985);
+}
+.eos-live-reg--off {
+  cursor: not-allowed;
+  filter: saturate(0.55) brightness(0.82);
+}
+.eos-live-reg:disabled {
+  cursor: not-allowed;
+}
+@keyframes eos-live-reg-scan {
+  from { transform: translateX(0); }
+  to { transform: translateX(340%); }
+}
+@keyframes eos-live-reg-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes eos-live-reg-doc {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes eos-live-reg-shield {
+  0%, 70%, 100% { transform: scale(1); }
+  12% { transform: scale(1.14); }
+  24% { transform: scale(0.96); }
+  36% { transform: scale(1.08); }
+}
+@keyframes eos-live-reg-oc {
+  0% { transform: scale(0.72); opacity: 0.55; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eos-live-reg__scan,
+  .eos-live-reg__icon,
+  .eos-live-reg__oc-ring,
+  .eos-live-reg__link i {
+    animation: none !important;
+  }
+}
+
+/* —— Gold premium frames for featured listings —— */
+.eos-gold-featured {
+  position: relative;
+  padding: 3px;
+  border-radius: 2.15rem;
+  background:
+    linear-gradient(135deg, #fff6d4 0%, #e8c56b 18%, #a67c2a 42%, #f3e0a0 58%, #c9a227 78%, #fff1b8 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 18px 40px rgba(166, 124, 42, 0.28),
+    0 0 28px rgba(212, 175, 55, 0.22);
+}
+.eos-gold-featured__metal {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 1px rgba(255, 248, 220, 0.55) inset,
+    0 0 0 2px rgba(120, 80, 12, 0.25) inset;
+}
+.eos-gold-featured__shine {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.eos-gold-featured__shine::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  left: -40%;
+  height: 140%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: skewX(-18deg);
+  animation: eos-gold-sheen 4.8s ease-in-out infinite;
+}
+.eos-gold-featured__inner {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 2rem;
+  height: 100%;
+}
+.eos-gold-featured__inner > a,
+.eos-gold-featured__inner > * {
+  height: 100%;
+}
+.eos-gold-featured__corner {
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid rgba(255, 248, 220, 0.95);
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.45);
+}
+.eos-gold-featured__corner--tl { top: 8px; left: 8px; border-right: 0; border-bottom: 0; border-top-left-radius: 8px; }
+.eos-gold-featured__corner--tr { top: 8px; right: 8px; border-left: 0; border-bottom: 0; border-top-right-radius: 8px; }
+.eos-gold-featured__corner--bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; border-bottom-left-radius: 8px; }
+.eos-gold-featured__corner--br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; border-bottom-right-radius: 8px; }
+@keyframes eos-gold-sheen {
+  0%, 55% { transform: translateX(0) skewX(-18deg); }
+  80% { transform: translateX(420%) skewX(-18deg); }
+  100% { transform: translateX(420%) skewX(-18deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eos-gold-featured__shine::after { animation: none; }
+}
+
+/* —— Agent CRM 3D engraved CTA —— */
+.eos-agent-crm-cta {
+  --eos-crm-font: var(--font-eos-crm), "Nunito", "Avenir Next Rounded", "Varela Round", ui-rounded, sans-serif;
+  position: relative;
+  display: inline-flex;
+  min-height: 3.65rem;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 1.35rem;
+  text-decoration: none;
+  background:
+    linear-gradient(180deg, #3a3a3c 0%, #1c1c1e 48%, #0a0a0c 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 -2px 6px rgba(0, 0, 0, 0.55) inset,
+    0 16px 32px rgba(15, 23, 42, 0.28);
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 280ms ease, filter 280ms ease;
+}
+.eos-agent-crm-cta__plate {
+  position: relative;
+  display: flex;
+  min-height: 3.35rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 1.15rem;
+  padding: 0.7rem 1.7rem;
+  background:
+    linear-gradient(180deg, #2a2a2c 0%, #141416 55%, #080809 100%);
+  box-shadow:
+    0 2px 4px rgba(255, 255, 255, 0.08) inset,
+    0 -10px 18px rgba(0, 0, 0, 0.55) inset;
+}
+.eos-agent-crm-cta__engraved {
+  position: relative;
+  z-index: 2;
+  font-family: var(--eos-crm-font);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: #9ca3af;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18),
+    0 -1px 0 rgba(0, 0, 0, 0.7);
+  transition: color 280ms ease, text-shadow 280ms ease, filter 280ms ease;
+}
+.eos-agent-crm-cta__glow {
+  pointer-events: none;
+  position: absolute;
+  inset: -20%;
+  z-index: 1;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.45), transparent 58%);
+  transition: opacity 280ms ease;
+}
+.eos-agent-crm-cta:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 0 28px rgba(52, 211, 153, 0.35),
+    0 22px 44px rgba(15, 23, 42, 0.32);
+}
+.eos-agent-crm-cta:hover .eos-agent-crm-cta__engraved {
+  color: #ecfdf5;
+  filter: brightness(1.35);
+  text-shadow:
+    0 0 10px rgba(167, 243, 208, 0.95),
+    0 0 24px rgba(16, 185, 129, 0.75),
+    0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.eos-agent-crm-cta:hover .eos-agent-crm-cta__glow {
+  opacity: 1;
+}
+.eos-agent-crm-cta:active {
+  transform: translateY(1px) scale(0.985);
+}
+
 
 /* Cars add/edit form — premium footer CTAs (beat button{color:inherit}) */
 .eos-car-form-publish {
