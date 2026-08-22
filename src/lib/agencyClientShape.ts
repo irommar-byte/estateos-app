@@ -120,8 +120,13 @@ export function shapeClientListItem(
   const top = client.matches?.[0]?.score ?? null;
   const meetingAct = client.activities?.[0];
   const meetingMeta = (meetingAct?.metadata || {}) as Record<string, unknown>;
-  const upcomingMeetingStartsAt = typeof meetingMeta.startsAt === 'string' ? meetingMeta.startsAt : null;
-  const upcomingMeetingLocation = typeof meetingMeta.location === 'string' ? meetingMeta.location : null;
+  const rawMeetingStart = typeof meetingMeta.startsAt === 'string' ? meetingMeta.startsAt : null;
+  const meetingStartMs = rawMeetingStart ? new Date(rawMeetingStart).getTime() : NaN;
+  const meetingStillRelevant =
+    Number.isFinite(meetingStartMs) && meetingStartMs + 60 * 60 * 1000 > Date.now();
+  const upcomingMeetingStartsAt = meetingStillRelevant ? rawMeetingStart : null;
+  const upcomingMeetingLocation =
+    meetingStillRelevant && typeof meetingMeta.location === 'string' ? meetingMeta.location : null;
 
   return {
     id: client.id,

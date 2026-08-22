@@ -40,6 +40,8 @@ import SellerAcquisitionWorkspace from "@/components/crm/SellerAcquisitionWorksp
 import AgencyClientCriteriaEditor from "@/components/crm/AgencyClientCriteriaEditor";
 import { defaultWebRadarFilters, type WebRadarFilters } from "@/lib/radarCalibrationWeb";
 import { formatClientFeedbackForAgent, parseClientOfferFeedback, sentimentLabel } from "@/lib/crm/clientPortalFeedback";
+import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
+import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -500,10 +502,13 @@ export default function CrmClientsWorkspace() {
         </p>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="min-w-0 break-words text-xs font-bold uppercase tracking-[0.15em] text-[var(--eos-muted)]">
-          Wszystkie kontakty CRM
-        </p>
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="eos-crm-clients-section-kicker">Moi klienci</p>
+          <p className="mt-1 text-sm text-[var(--eos-muted)]">
+            Lampki: e-mail · telefon · konto · dopasowanie. Spotkanie pozyskania ma odliczanie zamiast lampek.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setFormOpen(true)}
@@ -567,6 +572,7 @@ export default function CrmClientsWorkspace() {
                 <thead>
                   <tr className="border-b border-[var(--eos-border)] text-[10px] uppercase tracking-[0.14em] text-[var(--eos-muted)]">
                     <th className="px-3 py-2">Klient</th>
+                    <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Typ</th>
                     <th className="px-3 py-2">Kontakt</th>
                     <th className="px-3 py-2">Konto</th>
@@ -593,6 +599,16 @@ export default function CrmClientsWorkspace() {
                             {client.matchCount} dopasowań
                           </span>
                         ) : null}
+                      </td>
+                      <td className="px-3 py-3">
+                        {clientHasUpcomingMeeting(client) && client.upcomingMeetingStartsAt ? (
+                          <CrmClientMeetingCountdown
+                            startsAt={client.upcomingMeetingStartsAt}
+                            location={client.upcomingMeetingLocation}
+                          />
+                        ) : (
+                          <CrmClientStatusLamps client={client} />
+                        )}
                       </td>
                       <td className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                         {client.type === "BUYER" ? "Kupujący" : "Sprzedający"}

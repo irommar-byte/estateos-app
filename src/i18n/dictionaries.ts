@@ -1193,7 +1193,7 @@ const pl: Dictionary = {
     accountEyebrow: "Moje konto EstateOS™",
     userIdLabel: "ID użytkownika",
     tabRadar: "Radar inwestycji",
-    tabClients: "Klienci",
+    tabClients: "Moi klienci",
     tabMyOffers: "Moje ogłoszenia",
     tabFavorites: "Ulubione",
     tabPlanning: "Planowanie",
@@ -1239,7 +1239,7 @@ const pl: Dictionary = {
     myOffersTitle: "Moje",
     myOffersTitleHighlight: "ogłoszenia",
     myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
-    clientsTitle: "Twoi",
+    clientsTitle: "Moi",
     clientsTitleHighlight: "klienci",
     clientsDesc:
       "Profesjonalne CRM dla biura — kupujący spoza bazy, dopasowania ofert, powiadomienia w Twoim imieniu i pełna historia współpracy.",

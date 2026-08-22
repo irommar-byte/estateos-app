@@ -1312,10 +1312,17 @@ export default function CRMDashboard() {
               {activeTab === "planowanie" && c.tabPlanning}
               {activeTab === "transakcje" && c.tabDeals}
             </p>
-            <h2 className="mb-2 text-2xl font-black tracking-tight text-[var(--eos-text)] sm:text-3xl">
+            <h2
+              className={
+                activeTab === "klienci"
+                  ? "eos-crm-clients-hero-title mb-2"
+                  : "mb-2 text-2xl font-black tracking-tight text-[var(--eos-text)] sm:text-3xl"
+              }
+            >
               {activeTab === "klienci" && (
                 <>
-                  {c.clientsTitle} <span className="text-emerald-600">{c.clientsTitleHighlight}</span>
+                  {c.clientsTitle}{" "}
+                  <span className="eos-crm-clients-hero-title__accent">{c.clientsTitleHighlight}</span>
                 </>
               )}
               {activeTab === "radar" && (
