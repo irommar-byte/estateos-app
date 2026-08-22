@@ -307,7 +307,8 @@ export default function MarketValuationPanel({
         : null;
 
   return (
-    <div className="eos-lux-panel overflow-hidden rounded-[1.75rem]">
+    <>
+    <div className="eos-lux-panel rounded-[1.75rem]">
       <div className="border-b border-[rgba(196,163,90,0.22)] px-5 py-4">
         <p className="eos-portal-label eos-portal-label--ok">EstateOS™ Market</p>
         <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">Rzeczywiste ceny transakcyjne — Rejestr Cen Nieruchomości</p>
@@ -429,6 +430,7 @@ export default function MarketValuationPanel({
           </>
         ) : null}
       </div>
+    </div>
 
       {reportState === "confirming" && result ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
@@ -504,6 +506,6 @@ export default function MarketValuationPanel({
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

@@ -149,6 +149,7 @@ export const DESK_UI = {
   inspectorPickCaseHint:
     'Kontakt, oferta, pozysk, dopasowanie i transakcja — wszystko w jednym miejscu, bez przełączania widoków.',
   offerPanel: 'Oferta',
+  offerPickTitle: 'Wybierz ofertę',
   offerPickHint: 'Wybierz ofertę z dopasowania lub wyszukiwarki ⌘K.',
   closeInspector: 'Zamknij panel',
   prospectingKicker: 'Pozyskiwanie',

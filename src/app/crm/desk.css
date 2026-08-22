@@ -364,10 +364,17 @@
   --desk-inspector: clamp(18rem, 28vw, 26rem);
   --desk-font-display: 'Fraunces', Georgia, serif;
   --desk-font-ui: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --desk-shadow-soft: 0 1px 2px rgba(26, 22, 18, 0.04), 0 8px 24px rgba(26, 22, 18, 0.06);
+  --desk-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.65) inset, 0 12px 32px rgba(26, 22, 18, 0.08);
+  --desk-shadow-lift: 0 18px 40px rgba(26, 22, 18, 0.12);
   min-height: 100vh;
-  background: var(--desk-paper);
+  background:
+    radial-gradient(ellipse 120% 80% at 0% 0%, color-mix(in srgb, var(--desk-brass) 8%, transparent), transparent 55%),
+    radial-gradient(ellipse 90% 60% at 100% 10%, color-mix(in srgb, var(--desk-brass) 5%, transparent), transparent 50%),
+    var(--desk-paper);
   color: var(--desk-ink);
   font-family: var(--desk-font-ui);
+  -webkit-font-smoothing: antialiased;
 }
 
 html.dark .eos-desk-root,
@@ -402,8 +409,9 @@ html[data-theme='dark'] .eos-desk-root {
   flex-wrap: wrap;
   padding: 0.85rem 1.25rem;
   border-bottom: 1px solid var(--desk-line);
-  background: color-mix(in srgb, var(--desk-paper) 92%, transparent);
-  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--desk-paper) 88%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--desk-shadow-soft);
   position: sticky;
   top: 0;
   z-index: 40;
@@ -491,10 +499,15 @@ html[data-theme='dark'] .eos-desk-root {
 
 .eos-desk-inspector {
   border-left: 1px solid var(--desk-line);
-  background: var(--desk-paper-2);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--desk-paper-2) 96%, white 4%) 0%,
+    var(--desk-paper-2) 100%
+  );
   padding: 1.1rem 1rem 5rem;
   overflow: auto;
   min-width: 0;
+  box-shadow: inset 8px 0 24px rgba(26, 22, 18, 0.03);
 }
 
 .eos-desk-h1 {
@@ -525,10 +538,15 @@ html[data-theme='dark'] .eos-desk-root {
 }
 
 .eos-desk-card {
-  border: 1px solid var(--desk-line);
-  background: color-mix(in srgb, var(--desk-paper) 80%, white 20%);
-  border-radius: 1rem;
-  padding: 1rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--desk-brass) 14%, var(--desk-line));
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--desk-paper) 92%, white 8%) 0%,
+    color-mix(in srgb, var(--desk-paper-2) 75%, transparent) 100%
+  );
+  border-radius: 1.15rem;
+  padding: 1.15rem 1.25rem;
+  box-shadow: var(--desk-shadow-card);
 }
 
 html.dark .eos-desk-card,
@@ -550,9 +568,10 @@ html[data-theme='dark'] .eos-desk-card {
 }
 
 .eos-desk-btn-primary {
-  background: var(--desk-ink);
+  background: linear-gradient(180deg, var(--desk-ink) 0%, color-mix(in srgb, var(--desk-ink) 88%, black 12%) 100%);
   color: var(--desk-paper);
   border-color: var(--desk-ink);
+  box-shadow: 0 4px 14px rgba(26, 22, 18, 0.18);
 }
 
 .eos-desk-btn-brass {
@@ -771,6 +790,283 @@ html[data-theme='dark'] .eos-desk-card {
 .eos-desk-mobile-dock {
   display: none;
   position: relative;
+}
+
+/* —— Today page & workspace polish —— */
+.eos-desk-page {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.eos-desk-page-header {
+  margin-bottom: 0.25rem;
+}
+
+.eos-desk-page-header__main {
+  min-width: 0;
+}
+
+.eos-desk-page-header__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.15rem;
+}
+
+.eos-desk-page-subtitle {
+  margin: 0.65rem 0 0;
+  max-width: 42rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.eos-desk-page-loading {
+  margin-top: 1rem;
+  font-size: 0.92rem;
+}
+
+.eos-desk-page-error {
+  margin-top: 1rem;
+  color: var(--desk-danger);
+}
+
+.eos-desk-stats-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.eos-desk-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--desk-brass) 18%, var(--desk-line));
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--desk-paper) 90%, white 10%) 0%,
+    color-mix(in srgb, var(--desk-paper-2) 80%, transparent) 100%
+  );
+  box-shadow: var(--desk-shadow-soft);
+}
+
+.eos-desk-stat span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--desk-ink-faint);
+}
+
+.eos-desk-stat strong {
+  font-family: var(--desk-font-display);
+  font-size: 1.65rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.eos-desk-today-card {
+  min-height: 14rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.eos-desk-empty-copy {
+  margin: 0.25rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.eos-desk-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.eos-desk-timeline__row {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.eos-desk-timeline__time {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--desk-brass);
+  padding-top: 0.55rem;
+}
+
+.eos-desk-timeline__btn {
+  width: 100%;
+  text-align: left;
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.eos-desk-timeline__btn:hover {
+  border-color: color-mix(in srgb, var(--desk-brass) 35%, var(--desk-line));
+  box-shadow: var(--desk-shadow-soft);
+}
+
+.eos-desk-timeline__title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.eos-desk-timeline__sub {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.eos-desk-nba-hero {
+  width: 100%;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border-color: color-mix(in srgb, var(--desk-brass) 35%, var(--desk-line));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--desk-brass) 14%, var(--desk-paper)) 0%,
+    color-mix(in srgb, var(--desk-paper-2) 70%, transparent) 100%
+  );
+  box-shadow: var(--desk-shadow-soft);
+  margin-bottom: 0.65rem;
+}
+
+.eos-desk-nba-hero__label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--desk-brass);
+}
+
+.eos-desk-nba-hero__title {
+  margin-top: 0.25rem;
+  font-family: var(--desk-font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.eos-desk-nba-hero__sub {
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+}
+
+.eos-desk-alerts {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.eos-desk-alert {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.4;
+  border: 1px solid var(--desk-line);
+}
+
+.eos-desk-alert--danger {
+  color: var(--desk-danger);
+  border-color: color-mix(in srgb, var(--desk-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--desk-danger) 8%, var(--desk-paper));
+}
+
+.eos-desk-alert--warn {
+  color: var(--desk-warn);
+  border-color: color-mix(in srgb, var(--desk-warn) 35%, transparent);
+  background: color-mix(in srgb, var(--desk-warn) 10%, var(--desk-paper));
+}
+
+.eos-desk-priority-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.eos-desk-priority-row {
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.75rem;
+  border-radius: 0.85rem;
+}
+
+.eos-desk-priority-row:hover {
+  border-color: color-mix(in srgb, var(--desk-brass) 30%, var(--desk-line));
+  box-shadow: var(--desk-shadow-soft);
+}
+
+.eos-desk-priority-row__name {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.eos-desk-priority-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--desk-ink-soft);
+}
+
+.eos-desk-priority-row__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.eos-desk-today-tasks {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--desk-line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.eos-desk-task-row {
+  width: 100%;
+  text-align: left;
+  font-size: 0.84rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.eos-desk-inspector-empty {
+  padding: 0.5rem 0.15rem 1rem;
+}
+
+.eos-desk-inspector-empty__hint {
+  margin-top: 0.75rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  max-width: 22rem;
 }
 
 .eos-desk-today-grid {

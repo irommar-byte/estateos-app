@@ -11,3 +11,8 @@ export function crmAgentPushData(clientId: number, extra: Record<string, unknown
     clientId,
   };
 }
+
+/** Jeden stos powiadomień iOS/Android per klient CRM (wiadomości z panelu klienta). */
+export function crmClientChatThreadId(clientId: number) {
+  return `estateos-crm-client-${clientId}`;
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { DESK_UI } from '@/lib/desk/labels';
 
 type HomePayload = {
   asset: 'home';
@@ -81,9 +82,10 @@ export function DeskOfferInspector({
 
   if (!offerId) {
     return (
-      <div>
-        <p className="eos-desk-kicker">Offer Inspector</p>
-        <p className="eos-desk-muted">Wybierz ofertę z matchingu lub Cmd+K.</p>
+      <div className="eos-desk-inspector-empty">
+        <p className="eos-desk-kicker">{DESK_UI.offerPanel}</p>
+        <h2 className="eos-desk-h1 eos-desk-inspector-title">{DESK_UI.offerPickTitle}</h2>
+        <p className="eos-desk-muted eos-desk-inspector-empty__hint">{DESK_UI.offerPickHint}</p>
       </div>
     );
   }

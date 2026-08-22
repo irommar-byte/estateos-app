@@ -357,6 +357,24 @@ export function buildJourneyStages(params: {
   }));
 }
 
+function resolvePortalMessageFrom(
+  meta: Record<string, unknown>,
+  title: string | null | undefined,
+): 'agent' | 'client' {
+  const from = String(meta.from || '').toLowerCase();
+  if (from === 'agent') return 'agent';
+  if (from === 'client') return 'client';
+
+  const t = String(title || '').toLowerCase();
+  if (t.includes('od klienta')) return 'client';
+  if (t.includes('do klienta')) return 'agent';
+
+  if (meta.fromAgent === true) return 'agent';
+  if (meta.fromAgent === false) return 'client';
+
+  return 'client';
+}
+
 export function parsePortalMessages(
   activities: ActivityLike[],
   viewer: 'client' | 'agent',
@@ -367,7 +385,8 @@ export function parsePortalMessages(
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .map((row) => {
       const meta = asMeta(row.metadata);
-      const fromAgent = meta.from === 'agent' || (!meta.from && Boolean(meta.fromAgent));
+      const from = resolvePortalMessageFrom(meta, row.title);
+      const fromAgent = from === 'agent';
       return {
         id: row.id,
         content: String(meta.content || row.body || ''),

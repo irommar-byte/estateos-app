@@ -363,14 +363,10 @@ export function DeskCaseInspector({
 
   if (!caseId) {
     return (
-      <div>
-        <p className="eos-desk-kicker">Inspector</p>
-        <h2 className="eos-desk-h1" style={{ fontSize: '1.35rem' }}>
-          Wybierz sprawę
-        </h2>
-        <p className="eos-desk-muted" style={{ marginTop: '0.75rem', fontSize: '0.92rem' }}>
-          Prospect, klient, oferta, pozysk, matching i deal — bez opuszczania Desk.
-        </p>
+      <div className="eos-desk-inspector-empty">
+        <p className="eos-desk-kicker">{DESK_UI.inspectorPanel}</p>
+        <h2 className="eos-desk-h1 eos-desk-inspector-title">{DESK_UI.inspectorPickCase}</h2>
+        <p className="eos-desk-muted eos-desk-inspector-empty__hint">{DESK_UI.inspectorPickCaseHint}</p>
       </div>
     );
   }

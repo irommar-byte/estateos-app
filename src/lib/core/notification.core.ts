@@ -1,6 +1,7 @@
 import { notificationService } from '@/lib/services/notification.service';
 import { prisma } from '@/lib/prisma';
 import { NotificationType as PrismaNotificationType, Prisma } from '@prisma/client';
+import { ESTATEOS_NOTIFY_SOUND, CONTACT_PUSH_CHANNEL_ID } from '@/lib/contactPushPayload';
 
 export type NotificationType =
   | 'NEW_OFFER'
@@ -78,6 +79,14 @@ export async function sendNotification(params: SendNotificationParams) {
       title,
       body,
       data,
+      ...(data?.threadIdentifier
+        ? {
+            threadIdentifier: String(data.threadIdentifier),
+            mutableContent: true,
+            sound: ESTATEOS_NOTIFY_SOUND,
+            channelId: CONTACT_PUSH_CHANNEL_ID,
+          }
+        : {}),
     });
 
     await prisma.notification.update({

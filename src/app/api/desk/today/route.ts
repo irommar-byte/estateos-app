@@ -286,7 +286,7 @@ export async function GET(req: Request) {
     attentionCases.filter((c) => c.health === 'AT_RISK').length
       ? {
           level: 'danger',
-          text: `${attentionCases.filter((c) => c.health === 'AT_RISK').length} spraw wymaga uwagi (AT_RISK)`,
+          text: `${attentionCases.filter((c) => c.health === 'AT_RISK').length} spraw w strefie ryzyka`,
         }
       : null,
     noContact

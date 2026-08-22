@@ -152,15 +152,16 @@ export const notificationService = {
           : undefined);
       if (threadIdentifier) {
         const thread = String(threadIdentifier);
-        // Expo nie mapuje oficjalnie aps.thread-id — NSE czyta to z data.body.
-        // Duplikujemy klucze, żeby grupowanie nie znikało przy zmianie kształtu payloadu.
+        // Expo Push API: oficjalne pole threadId → aps.thread-id (grupowanie bez NSE).
+        (msg as Record<string, unknown>).threadId = thread;
+        // Duplikujemy klucze, żeby grupowanie nie znikało przy zmianie kształtu payloadu / NSE.
         msg.data = {
           ...(typeof msg.data === 'object' && msg.data != null ? msg.data : {}),
           threadIdentifier: thread,
           iosThreadId: thread,
         };
         (msg as Record<string, unknown>).threadIdentifier = thread;
-        // Wymuś NSE: bez mutableContent iOS nie odpali Notification Service Extension.
+        // Wymuś NSE jako fallback gdy Expo nie ustawi aps.thread-id.
         msg.mutableContent = true;
         msg.ios = {
           ...(typeof msg.ios === 'object' && msg.ios != null
