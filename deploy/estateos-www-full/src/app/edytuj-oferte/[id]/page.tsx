@@ -20,9 +20,15 @@ import type { ListingCurrency } from '@/lib/money/types';
 import {
   amenityBooleanPatch,
   buildAmenityOptions,
+  OFFER_AMENITY_DEFS,
   readAmenitySelectionFromOffer,
   type OfferAmenityId,
 } from '@/lib/offerAmenities';
+import {
+  parseAmenityPatchMap,
+  type IntelligenceAmenityField,
+  type IntelligenceAmenityPatchMap,
+} from '@/lib/intelligenceAmenityBrain';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
 import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
@@ -79,16 +85,23 @@ const SortablePhoto = ({
   onRemove,
   onMarkAsPlan,
   isMain,
+  isHdr,
 }: {
   url: string;
   onRemove: (url: string) => void;
   onMarkAsPlan?: (url: string) => void;
   isMain: boolean;
+  isHdr?: boolean;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: url });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 group transition-all ${isMain ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]' : 'border-[#222] bg-[#0a0a0a] hover:border-emerald-500/50'}`}>
       <img src={url} className={`w-full h-full object-cover saturate-[1.2] transition-all duration-700 ${isMain ? 'opacity-100 scale-110' : 'opacity-60 group-hover:opacity-100 group-hover:scale-105'}`} alt="Foto" />
+      {isHdr ? (
+        <span className="absolute left-2 top-2 z-20 rounded-md border border-amber-200/30 bg-black/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-100">
+          HDR
+        </span>
+      ) : null}
       <div
         {...attributes}
         {...listeners}
@@ -152,7 +165,9 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [offerId, setOfferId] = useState<string | null>(null);
   const [data, setData] = useState<any>({});
   const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
+  const [intelPatches, setIntelPatches] = useState<IntelligenceAmenityPatchMap>({});
   const [imagesList, setImagesList] = useState<string[]>([]);
+  const [hdrImages, setHdrImages] = useState<Record<string, boolean>>({});
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
   const [floorPlanExtraUrls, setFloorPlanExtraUrls] = useState<string[]>([]);
   const [floorPlanUploading, setFloorPlanUploading] = useState(false);
@@ -230,11 +245,25 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           isLegalSafeVerified: Boolean(offer.isLegalSafeVerified),
         });
         setSelectedAmenities(readAmenitySelectionFromOffer(offer));
+        setIntelPatches(parseAmenityPatchMap(offer.intelligenceAmenityPatches));
         const cp = offer.agentCommissionPercent;
         setAgentCommissionPercent(
           cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
         );
         if (parsedImages.length) setImagesList(parsedImages);
+        try {
+          const metaRes = await fetch(`/api/offers/${offerId}/images-meta`, { credentials: 'include' });
+          if (metaRes.ok) {
+            const metaJson = await metaRes.json();
+            const map: Record<string, boolean> = {};
+            for (const [url, entry] of Object.entries(metaJson.images || {})) {
+              if ((entry as { isHdr?: boolean }).isHdr) map[url] = true;
+            }
+            setHdrImages(map);
+          }
+        } catch {
+          /* brak metadanych HDR */
+        }
         const fp = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
         setFloorPlanUrl(fp || null);
         setFloorPlanExtraUrls(parseFloorPlanExtraUrls(offer.floorPlanExtraUrls).filter((url) => url !== fp));
@@ -266,7 +295,12 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           throw new Error(err.error || err.message || 'Upload się nie powiódł');
         }
         const d = await res.json();
-        if (d.url) newUrls.push(d.url);
+        if (d.url) {
+          newUrls.push(d.url);
+          if (d.isHdr) {
+            setHdrImages((prev) => ({ ...prev, [d.url]: true }));
+          }
+        }
       }
       const merged = [...imagesList, ...newUrls].slice(0, OFFER_MAX_IMAGES);
       setImagesList(merged);
@@ -279,7 +313,27 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     }
   };
 
-  const handleRemoveImage = (url: string) => { const n = imagesList.filter(u => u !== url); setImagesList(n); updateData({ images: n.join(","), imageUrl: n[0] || '' }); };
+  const handleRemoveImage = async (url: string) => {
+    const n = imagesList.filter((u) => u !== url);
+    setImagesList(n);
+    updateData({ images: n.join(','), imageUrl: n[0] || '' });
+    setHdrImages((prev) => {
+      const next = { ...prev };
+      delete next[url];
+      return next;
+    });
+    if (!offerId) return;
+    try {
+      await fetch(`/api/offers/${offerId}/image`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+    } catch {
+      /* best-effort — PATCH diff też usuwa przy zapisie */
+    }
+  };
 
   const handleFloorPlanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -420,8 +474,36 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     }
   };
 
+  const amenityFieldForId = (id: OfferAmenityId): IntelligenceAmenityField | null => {
+    const field = OFFER_AMENITY_DEFS.find((item) => item.id === id)?.field;
+    return field && field !== 'isDuplex' ? (field as IntelligenceAmenityField) : null;
+  };
+
+  const syncIntelPatch = async (field: IntelligenceAmenityField, turningOff: boolean) => {
+    const patch = intelPatches[field];
+    if (!patch || !offerId) return;
+    const action = turningOff ? 'undo' : 'reapply';
+    if (patch.status === 'applied' && !turningOff) return;
+    if (patch.status === 'undone' && turningOff) return;
+    try {
+      const res = await fetch(`/api/offers/${offerId}/intelligence-amenities`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, action }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.patches) setIntelPatches(parseAmenityPatchMap(json.patches));
+    } catch {
+      /* keep local toggle */
+    }
+  };
+
   const toggleAmenity = (id: OfferAmenityId) => {
+    const turningOff = selectedAmenities.includes(id);
     setSelectedAmenities((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    const field = amenityFieldForId(id);
+    if (field) void syncIntelPatch(field, turningOff);
   };
 
   const listingCurrency = (String(data.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as ListingCurrency;
@@ -711,9 +793,18 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <div>
                 <label className={labelPremium}>{ao.furnishedLabel}</label>
                 <div className="flex gap-4">
-                  <button type="button" onClick={() => updateData({ isFurnished: true })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'eos-chip-on' : 'eos-chip-off'}`}>{ao.yes}</button>
-                  <button type="button" onClick={() => updateData({ isFurnished: false })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'border-red-500 bg-red-500 text-white' : 'eos-chip-off'}`}>{ao.no}</button>
+                  <button type="button" onClick={() => {
+                    updateData({ isFurnished: true });
+                    if (intelPatches.isFurnished?.status === 'undone') void syncIntelPatch('isFurnished', false);
+                  }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? (intelPatches.isFurnished?.status === 'applied' ? 'eos-intel-frame' : 'eos-chip-on') : 'eos-chip-off'}`}>{ao.yes}</button>
+                  <button type="button" onClick={() => {
+                    updateData({ isFurnished: false });
+                    if (intelPatches.isFurnished?.status === 'applied') void syncIntelPatch('isFurnished', true);
+                  }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'border-red-500 bg-red-500 text-white' : 'eos-chip-off'}`}>{ao.no}</button>
                 </div>
+                {intelPatches.isFurnished?.status === 'applied' ? (
+                  <p className="mt-2 text-[10px] font-bold text-[var(--eos-muted)]">EstateOS™ Intelligence · Cofnij = Nie</p>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -739,13 +830,40 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             <div className="flex flex-wrap gap-3 mt-4">
               {amenityOptions.map(({ id, label }) => {
                 const isActive = selectedAmenities.includes(id);
+                const field = amenityFieldForId(id);
+                const patch = field ? intelPatches[field] : undefined;
+                const intelOn = patch?.status === 'applied';
                 return (
-                  <div
-                    key={id}
-                    onClick={() => toggleAmenity(id)}
-                    className={`max-w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.08em] leading-snug text-balance cursor-pointer transition-all duration-300 border ${isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:bg-[#111] hover:border-white/10'}`}
-                  >
-                    {label}
+                  <div key={id} className="flex flex-col gap-1">
+                    <div
+                      onClick={() => toggleAmenity(id)}
+                      className={`max-w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.08em] leading-snug text-balance cursor-pointer transition-all duration-300 border ${
+                        intelOn
+                          ? 'eos-intel-frame text-[var(--eos-text)]'
+                          : isActive
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                            : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:bg-[#111] hover:border-white/10'
+                      }`}
+                    >
+                      {label}
+                      {intelOn ? (
+                        <span className="mt-1 block text-[9px] font-bold normal-case tracking-normal text-[var(--eos-text)]/70">
+                          EstateOS™ Intelligence
+                        </span>
+                      ) : null}
+                    </div>
+                    {intelOn ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleAmenity(id);
+                        }}
+                        className="self-start text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)] underline-offset-2 hover:underline"
+                      >
+                        Cofnij
+                      </button>
+                    ) : null}
                   </div>
                 );
               })}
@@ -885,7 +1003,14 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             <SortableContext items={imagesList} strategy={horizontalListSortingStrategy}>
               <div className="flex flex-wrap gap-4 md:gap-6 mb-6">
                 {imagesList.map((url, idx) => (
-                  <SortablePhoto key={url} url={url} onRemove={handleRemoveImage} onMarkAsPlan={handleMarkAsPlan} isMain={idx === 0} />
+                  <SortablePhoto
+                    key={url}
+                    url={url}
+                    onRemove={handleRemoveImage}
+                    onMarkAsPlan={handleMarkAsPlan}
+                    isMain={idx === 0}
+                    isHdr={Boolean(hdrImages[url])}
+                  />
                 ))}
                 
                 {imagesList.length < OFFER_MAX_IMAGES && (

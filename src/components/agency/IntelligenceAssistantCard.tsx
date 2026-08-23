@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { postAgencyClientAction } from '../../services/agencyClientService';
+import { API_URL } from '../../config/network';
 
 export type IntelligenceSettings = {
   enabled: boolean;
@@ -129,10 +130,42 @@ export default function IntelligenceAssistantCard({
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
   const [pick, setPick] = useState<IntelligencePickPreview | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [smartAdd, setSmartAdd] = useState(false);
 
   useEffect(() => {
     setDraft(value || DEFAULT_INTELLIGENCE_SETTINGS);
   }, [value]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/api/mobile/v1/intelligence-smart-add`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && typeof json?.enabled === 'boolean') setSmartAdd(json.enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const saveSmartAdd = async (enabled: boolean) => {
+    setSmartAdd(enabled);
+    try {
+      const res = await fetch(`${API_URL}/api/mobile/v1/intelligence-smart-add`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) setSmartAdd(!enabled);
+      else if (typeof json.enabled === 'boolean') setSmartAdd(json.enabled);
+    } catch {
+      setSmartAdd(!enabled);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +225,20 @@ export default function IntelligenceAssistantCard({
             <Switch
               value={draft.enabled}
               onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+              trackColor={{ false: '#D1D1D6', true: '#BF5AF2' }}
+              ios_backgroundColor="#D1D1D6"
+            />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.kicker}>Inteligentne dodawanie</Text>
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
+                Przy imporcie mózg pyta o balkon, komórkę i ogród z opisu. Zmiany widać na ofercie i można cofnąć.
+              </Text>
+            </View>
+            <Switch
+              value={smartAdd}
+              onValueChange={(enabled) => void saveSmartAdd(enabled)}
               trackColor={{ false: '#D1D1D6', true: '#BF5AF2' }}
               ios_backgroundColor="#D1D1D6"
             />

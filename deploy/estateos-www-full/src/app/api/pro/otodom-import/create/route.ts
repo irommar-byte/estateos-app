@@ -7,6 +7,9 @@ import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImpor
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
 import type { OtodomPublicationInput } from '@/lib/otodomImportPublication';
 import { requireInvestorProWeb } from '@/lib/requireInvestorProWeb';
+import { resolveSmartAddCreateOptions } from '@/lib/importSmartAddHttp';
+
+export const maxDuration = 300;
 
 function isImportDraft(value: unknown): value is OtodomImportDraft {
   if (!value || typeof value !== 'object') return false;
@@ -84,7 +87,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await createOfferFromOtodomDraft(draft, gate.userId, publication);
+    const result = await createOfferFromOtodomDraft(draft, gate.userId, publication, {
+      skipAutoFloorPlanProbe: true,
+      ...(await resolveSmartAddCreateOptions(gate.userId, body as Record<string, unknown>)),
+    });
     if (!result.ok) {
       return NextResponse.json(
         {

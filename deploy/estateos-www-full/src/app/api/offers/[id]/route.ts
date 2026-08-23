@@ -23,6 +23,7 @@ import { notifyAdminsLegalVerificationPending } from '@/lib/adminAttentionPush';
 import { enrichOfferMoneyFieldsForApi, resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
 import { enrichOfferMoneyFields, parsePriceAmount, getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
+import { readOfferAmenityPatches } from '@/lib/intelligenceAmenityPatches';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import { formatOfferBuildYear, resolveOfferBuildYear } from '@/lib/offerDisplayLabels';
@@ -55,6 +56,10 @@ import { planDiscoveryGallery, isPersonalizedGalleryPlan } from '@/lib/discovery
 import { topStatEntries } from '@/lib/discoveryInsights';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { userHasMarketPro } from '@/lib/officePartnerPro';
+import {
+  deleteRemovedOfferImages,
+  parseOfferImagesField,
+} from '@/lib/upload/deleteOfferImageArtifacts';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -387,6 +392,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             }
           : enrichedUserFinal;
 
+    const amenityPatches = await readOfferAmenityPatches(offerId).catch(() => ({}));
+
     return NextResponse.json(
       enrichOfferPriceDiscountFields({
       ...moneyOffer,
@@ -439,6 +446,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       favoritesCount,
       galleryPlan,
       galleryPersonalized,
+      intelligenceAmenityPatches: amenityPatches,
     }),
     );
   } catch (error) {
@@ -741,6 +749,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
         status: newStatus,
       };
+
+    if (body.images != null) {
+      const prevImages = parseOfferImagesField(currentOffer.images);
+      const nextImages = parseOfferImagesField(body.images);
+      await deleteRemovedOfferImages(Number(resolvedParams.id), prevImages, nextImages);
+    }
 
     let updatedOffer: typeof currentOffer;
     try {

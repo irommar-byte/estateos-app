@@ -3,6 +3,7 @@ import type { OtodomImportDraft } from "@/lib/otodomImport";
 import { importOfferFromUrl, isSupportedImportOfferUrl } from "@/lib/otodomImport";
 import { createOfferFromOtodomDraft } from "@/lib/otodomImportCreate";
 import { requireOtodomImporter } from "@/lib/otodomImportAuth";
+import { resolveSmartAddCreateOptions } from "@/lib/importSmartAddHttp";
 import type { OtodomPublicationInput } from "@/lib/otodomImportPublication";
 import {
   applyImportDraftPatch,
@@ -56,6 +57,8 @@ function parsePublicationBody(body: Record<string, unknown>): OtodomPublicationI
   if (!kind && !bonusCouponId && !consumePlusPublication && !iapTransactionId) return null;
   return { kind, bonusCouponId, iapTransactionId, consumePlusPublication };
 }
+
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
@@ -117,6 +120,8 @@ export async function POST(req: Request) {
     const result = await createOfferFromOtodomDraft(draft, user.id, publication, {
       floorPlanImageIndex: filtered.floorPlanImageIndex,
       lastImageFloorPlan: filtered.floorPlanImageIndex == null ? false : undefined,
+      skipAutoFloorPlanProbe: true,
+      ...(await resolveSmartAddCreateOptions(user.id, body as Record<string, unknown>)),
     });
 
     if (!result.ok) {

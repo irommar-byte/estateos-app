@@ -1295,6 +1295,10 @@ export default function KeiAmerWorkspace() {
               {autoDraft.enabled ? "Włączony" : "Wyłączony"}
             </label>
           </div>
+          <p className="mt-3 text-[11px] leading-snug text-white/55">
+            Inteligentne dodawanie (przełącznik w tęczowym asystencie Intelligence): mózg uzupełni balkon / komórkę / ogród
+            z opisu. W KEI stosuje to od razu i zostawia ślad na ofercie — można cofnąć w edycji.
+          </p>
           {autoExpanded ? (
           <div>
           <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

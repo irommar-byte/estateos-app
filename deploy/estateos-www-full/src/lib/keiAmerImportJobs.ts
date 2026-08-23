@@ -6,6 +6,7 @@ import {
 } from '@/lib/keiAmerExport';
 import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
 import type { KeiPropertyKind, KeiTransactionKind } from '@/lib/keiAmerClient';
+import { getIntelligenceSmartAddEnabled } from '@/lib/intelligenceSmartAdd';
 
 export type KeiImportJobItemStatus = 'pending' | 'active' | 'done' | 'skipped';
 
@@ -69,6 +70,8 @@ export type KeiImportJobCreateInput = {
   selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
+  smartAddEnabled?: boolean;
+  smartAddDecisionsByUrl?: Record<string, Record<string, boolean>>;
   /** Cron vs ręczny Importuj — jeden job na raz, żeby się nie gryzły. */
   source?: KeiImportJobSource;
 };
@@ -554,6 +557,9 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         fillUntilPublished: payload.source === 'auto',
         shouldCancel: () => isCancelRequested(jobId),
         onProgress: enqueueProgress,
+        smartAddEnabled:
+          payload.smartAddEnabled ?? (await getIntelligenceSmartAddEnabled(payload.adminUserId)),
+        smartAddDecisionsByUrl: payload.smartAddDecisionsByUrl,
       });
       await progressChain;
 

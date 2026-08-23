@@ -463,6 +463,7 @@ export default function EditOfferScreen({ route }: any) {
     isTwoLevel: false,
     isFurnished: false,
   });
+  const [intelPatches, setIntelPatches] = useState<Record<string, { status?: string; quote?: string }>>({});
 
   const showLandRegistryVerification = isPolandLocationDraft(originalData);
   const landRegistryRaw = landRegistryNumber.trim();
@@ -656,6 +657,20 @@ export default function EditOfferScreen({ route }: any) {
             isTwoLevel: isTrue(offer.isTwoLevel),
             isFurnished: isTrue(offer.isFurnished),
           });
+          const patches = offer.intelligenceAmenityPatches && typeof offer.intelligenceAmenityPatches === 'object'
+            ? offer.intelligenceAmenityPatches
+            : {};
+          setIntelPatches(patches as Record<string, { status?: string; quote?: string }>);
+          if (token) {
+            void fetch(`${API_URL}/api/mobile/v1/offers/${offerId}/intelligence-amenities`, { headers })
+              .then((res) => res.json())
+              .then((json) => {
+                if (json?.patches && typeof json.patches === 'object') {
+                  setIntelPatches(json.patches as Record<string, { status?: string; quote?: string }>);
+                }
+              })
+              .catch(() => undefined);
+          }
       } else {
         Alert.alert(t('offer.edit.alerts.errorTitle'), t('offer.edit.alerts.loadNotFound'));
       }
@@ -664,6 +679,28 @@ export default function EditOfferScreen({ route }: any) {
     }
     setLoading(false);
   }, [offerId, token, user?.id]);
+
+  const setAmenityFlag = (
+    field: 'hasBalcony' | 'hasParking' | 'hasStorage' | 'hasElevator' | 'hasGarden' | 'isFurnished',
+    value: boolean,
+  ) => {
+    setAmenities((prev) => ({ ...prev, [field]: value }));
+    const patch = intelPatches[field];
+    if (!patch || !token || !offerId) return;
+    const action = value ? 'reapply' : 'undo';
+    if (patch.status === 'applied' && value) return;
+    if (patch.status !== 'applied' && !value) return;
+    void fetch(`${API_URL}/api/mobile/v1/offers/${offerId}/intelligence-amenities`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field, action }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.patches) setIntelPatches(json.patches);
+      })
+      .catch(() => undefined);
+  };
 
   useEffect(() => {
     fetchOffer();
@@ -2871,7 +2908,8 @@ export default function EditOfferScreen({ route }: any) {
               tint="#34C759"
               label={t('offer.shared.amenitiesEdit.balcony')}
               value={amenities.hasBalcony}
-              onChange={(v) => setAmenities({ ...amenities, hasBalcony: v })}
+              intelApplied={intelPatches.hasBalcony?.status === 'applied'}
+              onChange={(v) => setAmenityFlag('hasBalcony', v)}
               borderColor={borderColor}
               txtColor={txtColor}
               isDark={isDark}
@@ -2882,7 +2920,8 @@ export default function EditOfferScreen({ route }: any) {
               tint="#FF2D55"
               label={t('offer.shared.amenitiesEdit.garden')}
               value={amenities.hasGarden}
-              onChange={(v) => setAmenities({ ...amenities, hasGarden: v })}
+              intelApplied={intelPatches.hasGarden?.status === 'applied'}
+              onChange={(v) => setAmenityFlag('hasGarden', v)}
               borderColor={borderColor}
               txtColor={txtColor}
               isDark={isDark}
@@ -2904,7 +2943,8 @@ export default function EditOfferScreen({ route }: any) {
               tint="#5856D6"
               label={t('offer.shared.amenitiesEdit.parking')}
               value={amenities.hasParking}
-              onChange={(v) => setAmenities({ ...amenities, hasParking: v })}
+              intelApplied={intelPatches.hasParking?.status === 'applied'}
+              onChange={(v) => setAmenityFlag('hasParking', v)}
               borderColor={borderColor}
               txtColor={txtColor}
               isDark={isDark}
@@ -2915,7 +2955,8 @@ export default function EditOfferScreen({ route }: any) {
               tint="#007AFF"
               label={t('offer.shared.amenitiesEdit.elevator')}
               value={amenities.hasElevator}
-              onChange={(v) => setAmenities({ ...amenities, hasElevator: v })}
+              intelApplied={intelPatches.hasElevator?.status === 'applied'}
+              onChange={(v) => setAmenityFlag('hasElevator', v)}
               borderColor={borderColor}
               txtColor={txtColor}
               isDark={isDark}
@@ -2926,7 +2967,8 @@ export default function EditOfferScreen({ route }: any) {
               tint="#FF9500"
               label={t('offer.shared.amenitiesEdit.storage')}
               value={amenities.hasStorage}
-              onChange={(v) => setAmenities({ ...amenities, hasStorage: v })}
+              intelApplied={intelPatches.hasStorage?.status === 'applied'}
+              onChange={(v) => setAmenityFlag('hasStorage', v)}
               borderColor={borderColor}
               txtColor={txtColor}
               isDark={isDark}
@@ -2937,7 +2979,8 @@ export default function EditOfferScreen({ route }: any) {
               tint="#AF52DE"
               label={t('offer.shared.amenitiesEdit.furnished')}
               value={amenities.isFurnished}
-              onChange={(v) => setAmenities({ ...amenities, isFurnished: v })}
+              intelApplied={intelPatches.isFurnished?.status === 'applied'}
+              onChange={(v) => setAmenityFlag('isFurnished', v)}
               borderColor={borderColor}
               txtColor={txtColor}
               isDark={isDark}
@@ -3324,6 +3367,7 @@ function AmenityRow({
   onChange,
   txtColor,
   isDark,
+  intelApplied,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   tint: string;
@@ -3333,21 +3377,31 @@ function AmenityRow({
   borderColor?: string;
   txtColor: string;
   isDark: boolean;
+  intelApplied?: boolean;
 }) {
   return (
-    <View style={styles.switchRow}>
-      <View style={[styles.amenityIconWrap, { backgroundColor: `${tint}22` }]}>
-        <Ionicons name={icon} size={16} color={tint} />
+    <View>
+      <View style={styles.switchRow}>
+        <View style={[styles.amenityIconWrap, { backgroundColor: `${tint}22` }]}>
+          <Ionicons name={icon} size={16} color={intelApplied ? '#BF5AF2' : tint} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.amenityLabel, { color: txtColor }]}>{label}</Text>
+          {intelApplied ? (
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#BF5AF2', marginTop: 2 }}>
+              EstateOS™ Intelligence · Cofnij wyłącznikiem
+            </Text>
+          ) : null}
+        </View>
+        <Switch
+          value={value}
+          onValueChange={(v) => {
+            Haptics.selectionAsync();
+            onChange(v);
+          }}
+          trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: intelApplied ? '#BF5AF2' : '#34C759' }}
+        />
       </View>
-      <Text style={[styles.amenityLabel, { color: txtColor }]}>{label}</Text>
-      <Switch
-        value={value}
-        onValueChange={(v) => {
-          Haptics.selectionAsync();
-          onChange(v);
-        }}
-        trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#34C759' }}
-      />
     </View>
   );
 }

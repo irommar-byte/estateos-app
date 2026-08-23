@@ -7,8 +7,9 @@ import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImpor
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
 import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import type { OtodomPublicationInput } from '@/lib/otodomImportPublication';
+import { resolveSmartAddCreateOptions } from '@/lib/importSmartAddHttp';
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 async function requireInvestorPro(req: Request) {
   const auth = await authorizeMobile(req);
@@ -121,7 +122,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await createOfferFromOtodomDraft(draft, gate.userId, publication);
+    const result = await createOfferFromOtodomDraft(draft, gate.userId, publication, {
+      skipAutoFloorPlanProbe: true,
+      ...(await resolveSmartAddCreateOptions(gate.userId, body as Record<string, unknown>)),
+    });
     if (!result.ok) {
       return NextResponse.json(
         {

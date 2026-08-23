@@ -77,14 +77,9 @@ function nextSendAtIso(lastSentAt: Date | null, intervalHours: number, canSend: 
   return (dueAt.getTime() > Date.now() ? dueAt : new Date()).toISOString();
 }
 
-async function persistBalconiesFromDescription(offers: OfferRow[]): Promise<number[]> {
-  const ids = [...new Set(offers.filter((offer) => shouldPersistBalcony(offer)).map((offer) => offer.id))];
-  if (!ids.length) return [];
-  await prisma.offer.updateMany({ where: { id: { in: ids } }, data: { hasBalcony: true } });
-  for (const offer of offers) {
-    if (ids.includes(offer.id)) offer.hasBalcony = true;
-  }
-  return ids;
+/** Bez zapisu w bazie — import + radar biorą balkon z opisu; tu tylko informacja w kolejce. */
+function overlayBalconyIds(offers: OfferRow[]): number[] {
+  return [...new Set(offers.filter((offer) => shouldPersistBalcony(offer)).map((offer) => offer.id))];
 }
 
 function buildAnalysis(params: {
@@ -101,7 +96,7 @@ function buildAnalysis(params: {
     `Po nauce z reakcji pewność tej oferty to ${params.score}% (próg ${params.minScore}%).`,
     params.tasteSummary ? `Dotychczasowa nauka: ${params.tasteSummary}.` : null,
     params.correctedBalcony
-      ? 'Opis wymienia balkon albo loggię, a w parametrach było pusto — parametr balkonu zostaje zaznaczony, żeby kolejne scoringi tego nie gubiły.'
+      ? 'Opis wymienia balkon albo loggię, choć parametr był pusty — scoring i radar i tak to widzą.'
       : null,
     ...params.reasons,
     `Spośród ${params.considered} niewysłanych trafień radaru to najwyższy wynik.`,
@@ -184,7 +179,7 @@ export async function pickIntelligenceOffer(
       });
 
   const offers = matches.map((row) => row.offer);
-  const correctedBalconyIds = await persistBalconiesFromDescription(offers);
+  const correctedBalconyIds = overlayBalconyIds(offers);
 
   type Cand = {
     offerId: number;
