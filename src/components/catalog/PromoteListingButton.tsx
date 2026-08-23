@@ -29,7 +29,7 @@ function looksLikeNoCredits(message: string) {
 export default function PromoteListingButton({
   endpoint,
   label = "Wyróżnij (1 kredyt)",
-  successLabel = "Wyróżniono",
+  successLabel = "Wyróżnione",
   onPromoted,
   className = "",
   buttonClassName = "",
@@ -65,16 +65,22 @@ export default function PromoteListingButton({
     }
   };
 
+  const pressed = disabled || done;
+
   return (
     <div className={className}>
       <button
         type="button"
         onClick={() => void promote()}
-        disabled={loading || disabled || done}
-        className={buttonClassName || eosBtn("promote", { size: "sm" })}
+        disabled={loading || pressed}
+        aria-pressed={pressed}
+        className={
+          buttonClassName ||
+          eosBtn("promote", { size: "sm", className: pressed ? "is-pressed" : "" })
+        }
       >
         {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Crown className="size-3.5" />}
-        {done ? successLabel : label}
+        {pressed ? successLabel : label}
       </button>
       {error ? <p className="mt-1 text-[10px] text-red-400">{error}</p> : null}
       <NoCreditsModal open={noCreditsOpen} onClose={() => setNoCreditsOpen(false)} />

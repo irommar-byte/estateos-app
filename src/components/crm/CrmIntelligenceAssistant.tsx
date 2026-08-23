@@ -428,36 +428,61 @@ export default function CrmIntelligenceAssistant({
           </div>
         ) : null}
 
-        <div className="eos-intel-queue rounded-2xl p-3">
-          <p className="eos-intel-kicker text-[10px] font-black uppercase tracking-[0.14em]">Następne w kolejce</p>
+        <div className="eos-intel-queue eos-intel-ledger rounded-2xl p-3">
+          <p className="eos-intel-ledger__title">Następne w kolejce</p>
           {queueBusy ? (
             <p className="mt-2 text-sm text-[var(--eos-muted)]">Analizuję opisy i reakcje…</p>
           ) : pick?.offerId ? (
             <>
-              <p className="mt-1 text-sm font-black text-[var(--eos-text)]">{pick.title}</p>
-              <p className="mt-0.5 text-xs font-semibold text-[var(--eos-text)]/75">
+              <p className="eos-intel-ledger__next">{pick.title}</p>
+              <p className="eos-intel-ledger__meta">
                 {[pick.city, pick.district].filter(Boolean).join(" · ")}
                 {pick.price ? ` · ${Math.round(pick.price).toLocaleString("pl-PL")} zł` : ""}
                 {pick.area ? ` · ${pick.area} m²` : ""}
-                {pick.score != null ? ` · pewność ${pick.score}%` : ""}
+                {pick.score != null ? ` · ${pick.score}%` : ""}
               </p>
-              <p className="mt-2 text-sm text-[var(--eos-text)]">
+              <p className="eos-intel-ledger__meta">
                 {pick.ready
-                  ? `${pick.calibrating ? "Kalibracja · " : ""}Wyślę przy najbliższym cyklu${nextWhen ? ` · ${nextWhen}` : " (co godzinę)."}`
+                  ? `${pick.calibrating ? "Kalibracja · " : ""}Wyślę przy cyklu${nextWhen ? ` · ${nextWhen}` : ""}`
                   : pick.skipReason
-                    ? `${pick.skipReason}${nextWhen ? ` Planowana wysyłka: ${nextWhen}.` : ""}`
+                    ? `${pick.skipReason}${nextWhen ? ` · ${nextWhen}` : ""}`
                     : nextWhen
-                      ? `Planowana wysyłka: ${nextWhen}.`
-                      : "Czeka na włączenie albo kolejne reakcje."}
+                      ? `Plan: ${nextWhen}`
+                      : "Czeka na cykl albo reakcje."}
               </p>
-              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">
-                Dlaczego akurat to
-              </p>
-              <ul className="mt-1 space-y-1 text-[13px] leading-snug text-[var(--eos-text)]/90">
-                {(pick.analysis?.length ? pick.analysis : pick.reasons).map((line) => (
-                  <li key={line}>• {line}</li>
-                ))}
-              </ul>
+              {(pick.lessons || []).length ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Wysłane</th>
+                      <th>Reakcja klienta</th>
+                      <th>Vs ta oferta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pick.lessons.map((lesson) => (
+                      <tr key={lesson.offerId}>
+                        <td>
+                          {lesson.title}
+                          {lesson.when ? (
+                            <span className="eos-intel-ledger__said">
+                              {" "}
+                              · {new Date(lesson.when).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="eos-intel-ledger__said">{lesson.said}</td>
+                        <td className="eos-intel-ledger__vs">{lesson.vsNext || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="mt-3 text-[0.8rem] leading-snug text-[var(--eos-text)]/80">
+                  {(pick.analysis?.length ? pick.analysis : pick.reasons).slice(0, 3).join(" · ") ||
+                    "Brak jeszcze wysyłek do porównania."}
+                </p>
+              )}
             </>
           ) : (
             <p className="mt-2 text-sm text-[var(--eos-muted)]">

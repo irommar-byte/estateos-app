@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   DEFAULT_INTELLIGENCE_SETTINGS,
+  buildIntelligenceLessons,
   clientFacingWhyLine,
   descriptionImpliesBalcony,
   intelligenceAdjustScore,
@@ -228,4 +229,25 @@ test('client-facing why is a single concrete sentence', () => {
   });
   assert.match(line, /balkon/i);
   assert.equal(line.includes('Radar dał'), false);
+});
+
+test('lesson ledger compares sent reaction against the next listing', () => {
+  const lessons = buildIntelligenceLessons(
+    [
+      {
+        offerId: 1,
+        notifiedAt: '2026-08-22T10:00:00.000Z',
+        clientFeedback: serializeClientOfferFeedback({
+          sentiment: 'dislike',
+          phrases: ['Brak balkonu', 'Za drogo'],
+        }),
+        offer: { ...baseOffer, id: 1, title: 'Mokotów 2 pok.', hasBalcony: false, price: 1200000, rooms: 2 },
+      },
+    ],
+    { ...baseOffer, id: 10, hasBalcony: true, price: 850000, rooms: 3 },
+  );
+  assert.equal(lessons.length, 1);
+  assert.match(lessons[0].said, /Nie pasuje/i);
+  assert.match(lessons[0].vsNext, /balkon/i);
+  assert.match(lessons[0].vsNext, /Taniej/i);
 });

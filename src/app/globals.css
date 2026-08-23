@@ -428,7 +428,8 @@ html:not(.light) .eos-field-inset {
   filter: brightness(1.1);
 }
 
-button:disabled, .btn-action:disabled {
+button:disabled:not(.eos-btn):not(.eos-engraved-cta),
+.btn-action:disabled {
   background: var(--eos-input);
   color: var(--eos-muted);
   border: 1px solid var(--eos-border);
@@ -1210,9 +1211,11 @@ html:not(.light) .eos-lux-panel {
 /* HOME / CAR luxury switch — recessed metal capsule */
 .eos-lux-switch {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.125rem;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  justify-items: stretch;
+  gap: 0;
   border-radius: 999px;
   border: 1px solid rgba(196, 163, 90, 0.42);
   background:
@@ -1273,8 +1276,11 @@ html:not(.light) .eos-lux-switch {
   position: relative;
   z-index: 3;
   display: inline-flex;
+  width: 100%;
+  min-width: 0;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  gap: 0.35rem;
   border-radius: 999px;
   font-weight: 800;
   text-transform: uppercase;
@@ -1327,10 +1333,19 @@ html:not(.light) .eos-lux-switch__seg[aria-pressed="true"].eos-lux-switch__seg--
 
 .eos-lux-switch__pill {
   position: absolute;
+  top: 0.22rem;
+  bottom: 0.22rem;
+  left: 0.22rem;
+  width: calc(50% - 0.22rem);
   border-radius: 999px;
   pointer-events: none;
   z-index: 1;
   overflow: hidden;
+  transition: left 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.eos-lux-switch__pill.is-end {
+  left: calc(50% - 0.02rem);
 }
 
 .eos-lux-switch__pill--home {
@@ -2029,6 +2044,41 @@ html.light .eos-lux-home .premium-hero-cta-primary.eos-lux-btn--primary:hover,
 
 
 /* Lux nav depth on light */
+nav.fixed {
+  overflow: visible;
+}
+
+nav .eos-lux-btn {
+  overflow: visible;
+}
+
+.eos-nav-badge-host {
+  position: relative;
+  overflow: visible;
+}
+
+.eos-nav-unread {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  min-height: 18px;
+  min-width: 18px;
+  translate: 28% -28%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ef4444;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.55);
+  pointer-events: none;
+}
+
 html.light nav.fixed {
   background: linear-gradient(180deg, rgba(251, 250, 247, 0.9) 0%, rgba(243, 241, 236, 0.82) 100%) !important;
   border-bottom-color: rgba(196, 163, 90, 0.18) !important;
@@ -5519,8 +5569,37 @@ html:not(.light) .eos-intel-queue {
   filter: saturate(0.85);
   cursor: not-allowed;
   transform: none;
-  box-shadow: none;
   pointer-events: none;
+}
+
+.eos-btn.is-pressed,
+.eos-btn--promote.is-pressed,
+.eos-btn--promote:disabled {
+  opacity: 1;
+  filter: none;
+  cursor: default;
+  pointer-events: none;
+  transform: translateY(1px);
+  background: linear-gradient(180deg, #fde68a 0%, #f59e0b 42%, #b45309 100%);
+  color: #451a03 !important;
+  -webkit-text-fill-color: #451a03 !important;
+  border-color: rgba(146, 64, 14, 0.45);
+  box-shadow:
+    inset 0 4px 10px rgba(69, 26, 3, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+html:not(.light) .eos-btn.is-pressed,
+html:not(.light) .eos-btn--promote.is-pressed,
+html:not(.light) .eos-btn--promote:disabled {
+  background: linear-gradient(180deg, #fbbf24 0%, #d97706 48%, #78350f 100%);
+  color: #fff7ed !important;
+  -webkit-text-fill-color: #fff7ed !important;
+  box-shadow:
+    inset 0 4px 10px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 1px rgba(251, 191, 36, 0.25);
 }
 
 .eos-btn--sm {
@@ -5728,6 +5807,177 @@ html:not(.light) .eos-btn--promote {
   --eos-btn-bg: #f59e0b;
   --eos-btn-bg-hover: #fbbf24;
   --eos-btn-fg: #451a03;
+}
+
+.eos-engraved-cta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.7rem;
+  padding: 0.7rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 163, 90, 0.4);
+  background:
+    linear-gradient(180deg, #fbfaf7 0%, #ebe8e1 48%, #e0dcd4 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 -3px 6px rgba(26, 27, 30, 0.08) inset,
+    0 8px 20px rgba(26, 27, 30, 0.1);
+  color: #111827;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.eos-engraved-cta::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 2px 5px rgba(26, 27, 30, 0.1);
+}
+
+.eos-engraved-cta > * {
+  position: relative;
+  z-index: 1;
+}
+
+.eos-engraved-cta--home {
+  background:
+    linear-gradient(180deg, #a7f3d0 0%, #34d399 46%, #059669 100%);
+  border-color: rgba(5, 150, 105, 0.38);
+  color: #022c22;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 -2px 4px rgba(5, 150, 105, 0.25) inset,
+    0 10px 24px rgba(5, 150, 105, 0.22);
+}
+
+.eos-engraved-cta--car {
+  background:
+    linear-gradient(180deg, #bae6fd 0%, #38bdf8 46%, #0284c7 100%);
+  border-color: rgba(2, 132, 199, 0.38);
+  color: #082f49;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 -2px 4px rgba(2, 132, 199, 0.25) inset,
+    0 10px 24px rgba(2, 132, 199, 0.22);
+}
+
+html:not(.light) .eos-engraved-cta {
+  border-color: rgba(196, 163, 90, 0.28);
+  background: linear-gradient(180deg, rgba(48, 48, 52, 0.98) 0%, rgba(18, 18, 20, 0.96) 100%);
+  color: #f5f5f7;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 -3px 8px rgba(0, 0, 0, 0.45) inset,
+    0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+html:not(.light) .eos-engraved-cta--home {
+  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+  color: #022c22;
+}
+
+html:not(.light) .eos-engraved-cta--car {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  color: #082f49;
+}
+
+.eos-engraved-cta:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.eos-intel-ledger {
+  margin-top: 0.85rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+.eos-intel-ledger__title {
+  font-family: inherit;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--eos-muted);
+}
+
+.eos-intel-ledger__next {
+  margin-top: 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--eos-text);
+}
+
+.eos-intel-ledger__meta {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--eos-text) 72%, transparent);
+}
+
+.eos-intel-ledger table {
+  width: 100%;
+  margin-top: 0.65rem;
+  border-collapse: collapse;
+}
+
+.eos-intel-ledger th {
+  padding: 0.35rem 0.4rem 0.4rem 0;
+  font-family: inherit;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--eos-muted);
+  border-bottom: 1px solid var(--eos-border);
+}
+
+.eos-intel-ledger td {
+  padding: 0.45rem 0.5rem 0.45rem 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  vertical-align: top;
+  color: var(--eos-text);
+  border-bottom: 1px solid color-mix(in srgb, var(--eos-border) 70%, transparent);
+}
+
+.eos-intel-ledger__said {
+  color: color-mix(in srgb, var(--eos-text) 78%, transparent);
+}
+
+.eos-intel-ledger__vs {
+  font-style: italic;
+  color: #047857;
+}
+
+html:not(.light) .eos-intel-ledger__vs {
+  color: #6ee7b7;
+}
+
+.eos-intel-console {
+  font-size: 0.78rem;
+}
+
+.eos-intel-console h4 {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--eos-muted);
+}
+
+.eos-intel-console li {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 /* Danger */

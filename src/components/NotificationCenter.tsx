@@ -303,17 +303,17 @@ export default function NotificationCenter() {
       : null;
 
   return (
-    <div className="relative z-50 shrink-0" ref={rootRef}>
+    <div className="relative z-50 shrink-0 overflow-visible" ref={rootRef}>
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         aria-label={dict.notifications.label}
         aria-expanded={isOpen}
-        className="relative rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:border-[var(--eos-accent)]/30 hover:text-[var(--eos-accent)]"
+        className="relative overflow-visible rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:border-[var(--eos-accent)]/30 hover:text-[var(--eos-accent)]"
       >
         <Bell className={`size-5 ${unreadCount > 0 ? "animate-[wiggle_3s_ease-in-out_infinite]" : ""}`} />
         {unreadCount > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white shadow-[0_0_14px_rgba(239,68,68,0.55)] ring-2 ring-[var(--eos-card)]">
+          <span className="eos-nav-unread">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}

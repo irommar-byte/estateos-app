@@ -792,17 +792,15 @@ export default function CarsCatalogClient() {
                   {denied ? nearestCopy.denied : nearestCopy.needs}
                 </p>
                 {!denied ? (
-                  <EosButton
+                  <button
                     type="button"
-                    variant="car"
-                    size="sm"
                     onClick={() => void request()}
                     disabled={pending}
-                    className="mt-4"
+                    className="eos-engraved-cta eos-engraved-cta--car mt-4"
                   >
                     {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
                     {nearestCopy.enable}
-                  </EosButton>
+                  </button>
                 ) : null}
               </div>
             )}
