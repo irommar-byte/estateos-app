@@ -67,6 +67,17 @@ export type AgencyClientDetail = AgencyClientListItem & {
     minLearns: number;
     minScore: number;
     lastSentAt: string | null;
+    lockedFields?: {
+      districts: boolean;
+      maxPrice: boolean;
+      minArea: boolean;
+      minYear: boolean;
+      requireBalcony: boolean;
+      requireGarden: boolean;
+      requireElevator: boolean;
+      requireParking: boolean;
+      requireFurnished: boolean;
+    };
   } | null;
   meeting?: {
     startsAt: string;

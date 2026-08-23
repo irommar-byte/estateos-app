@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 type Props = {
   label: string;
   min: number;
@@ -8,6 +10,7 @@ type Props = {
   value: number;
   displayValue: string;
   accentClass?: string;
+  trailing?: ReactNode;
   onChange: (value: number) => void;
 };
 
@@ -19,6 +22,7 @@ export default function CrmRadarScrubber({
   value,
   displayValue,
   accentClass = "accent-emerald-500",
+  trailing,
   onChange,
 }: Props) {
   const safeValue = Math.min(max, Math.max(min, value || min));
@@ -28,7 +32,10 @@ export default function CrmRadarScrubber({
         <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--eos-muted)]">
           {label}
         </span>
-        <span className="text-sm font-black tabular-nums text-emerald-600">{displayValue}</span>
+        <span className="flex items-center gap-2">
+          {trailing}
+          <span className="text-sm font-black tabular-nums text-emerald-600">{displayValue}</span>
+        </span>
       </div>
       <input
         type="range"

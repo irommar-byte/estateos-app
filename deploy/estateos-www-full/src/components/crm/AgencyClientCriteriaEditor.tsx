@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, MapPin, SlidersHorizontal } from "lucide-react";
+import { Check, Lock, LockOpen, MapPin, SlidersHorizontal } from "lucide-react";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 import {
   radarIntelligenceLabel,
@@ -21,6 +21,11 @@ import {
   formatRadarYearLabel,
 } from "@/lib/radarScrubberLimits";
 import type { RadarMapAreaSelection } from "@/lib/radarMapArea";
+import {
+  DEFAULT_INTELLIGENCE_LOCKS,
+  type IntelligenceLockKey,
+  type IntelligenceLocks,
+} from "@/lib/crm/clientIntelligence";
 
 type Catalog = {
   strictCities: string[];
@@ -33,6 +38,8 @@ type Props = {
   catalog: Catalog;
   /** Compact embed inside client create wizard step 3 */
   compact?: boolean;
+  locks?: IntelligenceLocks;
+  onLocksChange?: (next: IntelligenceLocks) => void;
 };
 
 const PROPERTY_TYPES = [
@@ -78,15 +85,47 @@ function amenityChip(active: boolean) {
   ].join(" ");
 }
 
-/**
- * Client buyer search criteria for CRM offer matching (email outreach).
- * Same parameter set as personal radar, but NOT personal radar / push branding.
- */
+function LockToggle({
+  locked,
+  label,
+  onToggle,
+}: {
+  locked: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={locked}
+      aria-label={locked ? `Odblokuj ${label}` : `Zablokuj ${label}`}
+      title={
+        locked
+          ? "Zablokowane — asystent nie zmieni tego kryterium na podstawie reakcji"
+          : "Odblokowane — asystent może dopisać naukę z reakcji klienta"
+      }
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle();
+      }}
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
+        locked
+          ? "border-amber-400/50 bg-amber-400/15 text-amber-600"
+          : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-emerald-500/40 hover:text-[var(--eos-text)]"
+      }`}
+    >
+      {locked ? <Lock size={13} /> : <LockOpen size={13} />}
+    </button>
+  );
+}
 export default function AgencyClientCriteriaEditor({
   value,
   onChange,
   catalog,
   compact = false,
+  locks,
+  onLocksChange,
 }: Props) {
   const [areaPickerOpen, setAreaPickerOpen] = useState(false);
   const [mapAreaLabel, setMapAreaLabel] = useState(() => {
@@ -109,6 +148,12 @@ export default function AgencyClientCriteriaEditor({
 
   const patch = (partial: Partial<WebRadarFilters>) => {
     onChange({ ...value, ...partial, pushNotifications: false });
+  };
+
+  const currentLocks = locks || DEFAULT_INTELLIGENCE_LOCKS;
+  const toggleLock = (key: IntelligenceLockKey) => {
+    if (!onLocksChange) return;
+    onLocksChange({ ...currentLocks, [key]: !currentLocks[key] });
   };
 
   const toggleDistrict = (d: string) => {
@@ -147,6 +192,9 @@ export default function AgencyClientCriteriaEditor({
           <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
             Kryteria wyszukiwania ofert w CRM. Dopasowania wysyłasz e-mailem — to nie jest osobisty radar
             ani powiadomienia push.
+            {onLocksChange
+              ? " Kłódka przy polu: asystent nie zmieni go na podstawie reakcji klienta."
+              : ""}
           </p>
         </div>
       </div>
@@ -249,9 +297,18 @@ export default function AgencyClientCriteriaEditor({
           </div>
 
           <div>
-            <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-              Dzielnice · {value.city}
-            </label>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <label className="block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                Dzielnice · {value.city}
+              </label>
+              {onLocksChange ? (
+                <LockToggle
+                  locked={currentLocks.districts}
+                  label="dzielnice"
+                  onToggle={() => toggleLock("districts")}
+                />
+              ) : null}
+            </div>
             <div className="eos-modal-panel grid max-h-52 grid-cols-1 gap-2 overflow-y-auto overscroll-y-contain p-2 sm:grid-cols-2">
               {districts.map((d) => {
                 const selected = value.selectedDistricts.includes(d);
@@ -328,6 +385,11 @@ export default function AgencyClientCriteriaEditor({
           step={1}
           value={value.minArea > 0 ? value.minArea : RADAR_MIN_AREA}
           displayValue={formatRadarAreaLabel(value.minArea)}
+          trailing={
+            onLocksChange ? (
+              <LockToggle locked={currentLocks.minArea} label="metraż" onToggle={() => toggleLock("minArea")} />
+            ) : null
+          }
           onChange={(v) => patch({ minArea: v <= RADAR_MIN_AREA ? 0 : v })}
         />
         <CrmRadarScrubber
@@ -337,6 +399,11 @@ export default function AgencyClientCriteriaEditor({
           step={1}
           value={value.minYear > RADAR_MIN_YEAR ? value.minYear : RADAR_MIN_YEAR}
           displayValue={formatRadarYearLabel(value.minYear)}
+          trailing={
+            onLocksChange ? (
+              <LockToggle locked={currentLocks.minYear} label="rok budowy" onToggle={() => toggleLock("minYear")} />
+            ) : null
+          }
           onChange={(v) => patch({ minYear: v <= RADAR_MIN_YEAR ? RADAR_MIN_YEAR : v })}
         />
         <CrmRadarScrubber
@@ -346,6 +413,11 @@ export default function AgencyClientCriteriaEditor({
           step={50_000}
           value={value.maxPrice > 0 ? Math.min(value.maxPrice, RADAR_MAX_BUDGET) : RADAR_MAX_BUDGET}
           displayValue={formatRadarBudgetLabel(value.maxPrice)}
+          trailing={
+            onLocksChange ? (
+              <LockToggle locked={currentLocks.maxPrice} label="budżet" onToggle={() => toggleLock("maxPrice")} />
+            ) : null
+          }
           onChange={(v) => patch({ maxPrice: v >= RADAR_MAX_BUDGET ? 0 : v })}
         />
       </div>
@@ -358,16 +430,28 @@ export default function AgencyClientCriteriaEditor({
           Zaznacz tylko to, bez czego klient absolutnie nie kupi. Balkon na 100% odcina mieszkania bez balkonu, parking odcina oferty bez miejsca — i tak dalej.
         </p>
         <div className="flex flex-wrap gap-2">
-          {AMENITIES.map((a) => (
-            <button
-              key={a.key}
-              type="button"
-              onClick={() => patch({ [a.key]: !value[a.key] })}
-              className={amenityChip(value[a.key])}
-            >
-              {a.label}
-            </button>
-          ))}
+          {AMENITIES.map((a) => {
+            const lockKey = a.key as IntelligenceLockKey | "requireTwoLevel";
+            const canLock = onLocksChange && lockKey !== "requireTwoLevel";
+            return (
+              <span key={a.key} className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => patch({ [a.key]: !value[a.key] })}
+                  className={amenityChip(value[a.key])}
+                >
+                  {a.label}
+                </button>
+                {canLock ? (
+                  <LockToggle
+                    locked={currentLocks[lockKey]}
+                    label={a.label}
+                    onToggle={() => toggleLock(lockKey)}
+                  />
+                ) : null}
+              </span>
+            );
+          })}
         </div>
       </div>
 

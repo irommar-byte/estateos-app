@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_INTELLIGENCE_LOCKS,
   DEFAULT_INTELLIGENCE_SETTINGS,
+  clientFacingWhyLine,
   descriptionImpliesBalcony,
   intelligenceAdjustScore,
   learnFromFeedback,
   parseIntelligencePatch,
+  preferenceUpdatesFromTaste,
   shouldPersistBalcony,
   summarizeTaste,
 } from '../src/lib/crm/clientIntelligence';
@@ -157,5 +160,72 @@ test('parseIntelligencePatch clamps assistant settings', () => {
     intelligenceMinScore: 92,
   });
   assert.equal(parseIntelligencePatch({ intervalHours: 2 })?.intelligenceIntervalHours, undefined);
+  assert.equal(parseIntelligencePatch({ intervalHours: 7 })?.intelligenceIntervalHours, 6);
+  assert.equal(parseIntelligencePatch({ minScore: 90 })?.intelligenceMinScore, 92);
   assert.equal(DEFAULT_INTELLIGENCE_SETTINGS.minScore, 92);
+});
+
+test('maybe does not reject the listing, likes pull similar rooms and price band', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'maybe', phrases: ['Za drogo'] }),
+      offer: { ...baseOffer, id: 1, rooms: 3, price: 890000 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'like' }),
+      offer: { ...baseOffer, id: 2, rooms: 3, price: 870000, district: 'Ursynów' },
+    },
+  ]);
+  assert.equal(taste.rejectedOfferIds.includes(1), false);
+  assert.equal(taste.maybes, 1);
+  const similar = intelligenceAdjustScore({
+    radarScore: 80,
+    taste,
+    maxPrice: 1000000,
+    offer: { ...baseOffer, id: 30, rooms: 3, price: 880000, district: 'Ursynów' },
+  });
+  assert.ok(similar.score > 80);
+});
+
+test('write-back tightens unlocked budget and balcony, but respects district lock', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Brak balkonu', 'Za drogo', 'Nie ta dzielnica'] }),
+      offer: { ...baseOffer, id: 1, district: 'Mokotów', hasBalcony: false, price: 1200000 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Brak balkonu', 'Za drogo'] }),
+      offer: { ...baseOffer, id: 2, district: 'Wola', hasBalcony: false, price: 1100000 },
+    },
+  ]);
+  const locked = preferenceUpdatesFromTaste({
+    pref: { districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000, requireBalcony: false },
+    taste,
+    locks: { ...DEFAULT_INTELLIGENCE_LOCKS, districts: true },
+  });
+  assert.equal(locked.data.districts, undefined);
+  assert.equal(locked.data.requireBalcony, true);
+  assert.ok((locked.data.maxPrice || 0) < 1000000);
+  assert.ok(locked.notes.some((item) => /zablokowana/.test(item)));
+
+  const unlocked = preferenceUpdatesFromTaste({
+    pref: { districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000, requireBalcony: false },
+    taste,
+    locks: DEFAULT_INTELLIGENCE_LOCKS,
+  });
+  assert.deepEqual(unlocked.data.districts, ['Ursynów']);
+});
+
+test('client-facing why is a single concrete sentence', () => {
+  const line = clientFacingWhyLine({
+    reasons: ['Ma balkon / loggię — tego wcześniej brakowało.', 'Radar dał 97% względem ankiety klienta.'],
+    city: 'Warszawa',
+    district: 'Młynów',
+  });
+  assert.match(line, /balkon/i);
+  assert.equal(line.includes('Radar dał'), false);
 });

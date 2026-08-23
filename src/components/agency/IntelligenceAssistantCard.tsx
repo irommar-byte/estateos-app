@@ -1,8 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { postAgencyClientAction } from '../../services/agencyClientService';
 import { API_URL } from '../../config/network';
+import {
+  DEFAULT_INTELLIGENCE_LOCKS,
+  INTELLIGENCE_DAILY_LIMIT_OPTIONS,
+  INTELLIGENCE_INTERVAL_OPTIONS,
+  INTELLIGENCE_MIN_LEARNS_OPTIONS,
+  INTELLIGENCE_MIN_SCORE_OPTIONS,
+  type IntelligenceChoice,
+  type IntelligenceLocks,
+} from '../../lib/intelligenceAssistantOptions';
 
 export type IntelligenceSettings = {
   enabled: boolean;
@@ -11,6 +20,7 @@ export type IntelligenceSettings = {
   minLearns: number;
   minScore: number;
   lastSentAt: string | null;
+  lockedFields?: IntelligenceLocks;
 };
 
 export type IntelligencePickPreview = {
@@ -26,6 +36,7 @@ export type IntelligencePickPreview = {
   reasons?: string[];
   nextSendAt?: string | null;
   offerId?: number | null;
+  calibrating?: boolean;
 };
 
 export const DEFAULT_INTELLIGENCE_SETTINGS: IntelligenceSettings = {
@@ -35,6 +46,7 @@ export const DEFAULT_INTELLIGENCE_SETTINGS: IntelligenceSettings = {
   minLearns: 3,
   minScore: 92,
   lastSentAt: null,
+  lockedFields: { ...DEFAULT_INTELLIGENCE_LOCKS },
 };
 
 const BUBBLES = [
@@ -184,18 +196,35 @@ export default function IntelligenceAssistantCard({
     };
   }, [clientId, token, value?.lastSentAt, value?.enabled, value?.minScore, value?.minLearns, value?.intervalHours]);
 
-  const field = (label: string, key: 'intervalHours' | 'dailyLimit' | 'minLearns' | 'minScore', min: number, max: number) => (
-    <View style={{ flex: 1, minWidth: '46%' }}>
+  const choiceRow = (
+    label: string,
+    key: 'intervalHours' | 'dailyLimit' | 'minLearns' | 'minScore',
+    options: IntelligenceChoice[],
+  ) => (
+    <View style={{ width: '100%' }}>
       <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800' }}>{label}</Text>
-      <TextInput
-        keyboardType="number-pad"
-        value={String(draft[key] ?? '')}
-        onChangeText={(raw) => {
-          const n = Number(raw.replace(/\D/g, ''));
-          setDraft((current) => ({ ...current, [key]: Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min }));
-        }}
-        style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.input }]}
-      />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+        {options.map((option) => {
+          const active = draft[key] === option.value;
+          return (
+            <Pressable
+              key={`${key}-${option.value}`}
+              onPress={() => setDraft((current) => ({ ...current, [key]: option.value }))}
+              style={[
+                styles.choice,
+                {
+                  borderColor: active ? colors.accent : colors.border,
+                  backgroundColor: active ? colors.accent : colors.input,
+                },
+              ]}
+            >
+              <Text style={{ color: active ? '#000' : colors.text, fontSize: 11, fontWeight: '800' }}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 
@@ -243,11 +272,11 @@ export default function IntelligenceAssistantCard({
               ios_backgroundColor="#D1D1D6"
             />
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-            {field('Interwał (godziny)', 'intervalHours', 6, 168)}
-            {field('Ofert na cykl', 'dailyLimit', 1, 3)}
-            {field('Ile reakcji zanim wyśle', 'minLearns', 1, 12)}
-            {field('Minimalna pewność (%)', 'minScore', 70, 100)}
+          <View style={{ gap: 12, marginTop: 12 }}>
+            {choiceRow('Interwał', 'intervalHours', INTELLIGENCE_INTERVAL_OPTIONS)}
+            {choiceRow('Ofert na cykl', 'dailyLimit', INTELLIGENCE_DAILY_LIMIT_OPTIONS)}
+            {choiceRow('Ile reakcji zanim wyśle', 'minLearns', INTELLIGENCE_MIN_LEARNS_OPTIONS)}
+            {choiceRow('Minimalna pewność', 'minScore', INTELLIGENCE_MIN_SCORE_OPTIONS)}
           </View>
           <View style={[styles.queue, { borderColor: colors.border, backgroundColor: colors.input }]}>
             <Text style={styles.kicker}>Następne w kolejce</Text>
@@ -263,7 +292,7 @@ export default function IntelligenceAssistantCard({
                 </Text>
                 <Text style={{ color: colors.text, fontSize: 12, marginTop: 8, lineHeight: 17 }}>
                   {pick.ready
-                    ? `Wyślę przy najbliższym cyklu${nextWhen ? ` · ${nextWhen}` : ''}`
+                    ? `${pick.calibrating ? 'Kalibracja · ' : ''}Wyślę przy najbliższym cyklu${nextWhen ? ` · ${nextWhen}` : ''}`
                     : `${pick.skipReason || 'Czeka na kolejne reakcje.'}${nextWhen ? ` Plan: ${nextWhen}.` : ''}`}
                 </Text>
                 <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '900', letterSpacing: 0.5, marginTop: 10 }}>
@@ -327,6 +356,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 14,
     fontWeight: '700',
+  },
+  choice: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   queue: {
     marginTop: 12,

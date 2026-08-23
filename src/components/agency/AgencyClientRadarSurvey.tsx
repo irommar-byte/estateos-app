@@ -1,7 +1,13 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { METRO_STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../../constants/locationEcosystem';
 import { formatPriceInput, parseGroupedNumber } from '../../utils/crmFormatters';
+import {
+  DEFAULT_INTELLIGENCE_LOCKS,
+  type IntelligenceLockKey,
+  type IntelligenceLocks,
+} from '../../lib/intelligenceAssistantOptions';
 
 export type ClientRadarFilters = {
   calibrationMode: 'CITY' | 'MAP';
@@ -130,12 +136,16 @@ export default function AgencyClientRadarSurvey({
   isDark,
   title,
   subtitle,
+  locks,
+  onLocksChange,
 }: {
   value: ClientRadarFilters;
   onChange: (next: ClientRadarFilters) => void;
   isDark?: boolean;
   title?: string;
   subtitle?: string;
+  locks?: IntelligenceLocks;
+  onLocksChange?: (next: IntelligenceLocks) => void;
 }) {
   const colors = {
     text: isDark ? '#FFFFFF' : '#000000',
@@ -149,6 +159,26 @@ export default function AgencyClientRadarSurvey({
   const pricePresets = value.transactionType === 'RENT' ? PRICE_PRESETS_RENT : PRICE_PRESETS_SELL;
   const intel = thresholdLabel(value.matchThreshold);
   const hint = clientRadarSurveyHint(value);
+
+  const currentLocks = locks || DEFAULT_INTELLIGENCE_LOCKS;
+  const toggleLock = (key: IntelligenceLockKey) => {
+    if (!onLocksChange) return;
+    onLocksChange({ ...currentLocks, [key]: !currentLocks[key] });
+  };
+
+  const lockBtn = (key: IntelligenceLockKey, label: string) => {
+    if (!onLocksChange) return null;
+    const locked = currentLocks[key];
+    return (
+      <Pressable
+        onPress={() => toggleLock(key)}
+        hitSlop={8}
+        accessibilityLabel={locked ? `Odblokuj ${label}` : `Zablokuj ${label}`}
+      >
+        <Ionicons name={locked ? 'lock-closed' : 'lock-open-outline'} size={16} color={locked ? '#FF9F0A' : colors.secondary} />
+      </Pressable>
+    );
+  };
 
   const patch = (partial: Partial<ClientRadarFilters>) => {
     onChange({ ...value, ...partial, pushNotifications: false });
@@ -242,7 +272,10 @@ export default function AgencyClientRadarSurvey({
 
       {districts.length ? (
         <>
-          <Text style={[styles.label, { color: colors.secondary }]}>DZIELNICE · {value.city}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={[styles.label, { color: colors.secondary }]}>DZIELNICE · {value.city}</Text>
+            {lockBtn('districts', 'dzielnice')}
+          </View>
           <View style={styles.rowWrap}>
             {districts.map((district) => {
               const active = value.selectedDistricts.includes(district);
@@ -264,7 +297,13 @@ export default function AgencyClientRadarSurvey({
       </View>
 
       <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
-      <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>BUDŻET, METRAŻ, ROK</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>BUDŻET, METRAŻ, ROK</Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={[styles.label, { color: colors.secondary, marginTop: 8 }]}>MAKS. BUDŻET</Text>
+        {lockBtn('maxPrice', 'budżet')}
+      </View>
       <View style={styles.rowWrap}>
         {pricePresets.map((price) =>
           chip(
@@ -284,14 +323,20 @@ export default function AgencyClientRadarSurvey({
         style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
       />
 
-      <Text style={[styles.label, { color: colors.secondary }]}>MIN. METRAŻ</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={[styles.label, { color: colors.secondary }]}>MIN. METRAŻ</Text>
+        {lockBtn('minArea', 'metraż')}
+      </View>
       <View style={styles.rowWrap}>
         {AREA_PRESETS.map((area) =>
           chip(value.minArea === area, `${area} m²`, () => patch({ minArea: area }), `a-${area}`),
         )}
       </View>
 
-      <Text style={[styles.label, { color: colors.secondary }]}>ROK BUDOWY OD</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={[styles.label, { color: colors.secondary }]}>ROK BUDOWY OD</Text>
+        {lockBtn('minYear', 'rok budowy')}
+      </View>
       <View style={styles.rowWrap}>
         {chip(value.minYear <= 1900, 'Bez limitu', () => patch({ minYear: 1900 }), 'y-any')}
         {YEAR_PRESETS.map((year) =>
@@ -301,14 +346,22 @@ export default function AgencyClientRadarSurvey({
       </View>
 
       <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
-      <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>OBOWIĄZKOWE 100%</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>OBOWIĄZKOWE 100%</Text>
+      </View>
       <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
-        Zaznacz tylko to, bez czego klient nie kupi. Balkon na 100% odcina mieszkania bez balkonu.
+        Zaznacz tylko to, bez czego klient nie kupi. Balkon na 100% odcina mieszkania bez balkonu. Kłódka: asystent nie dopisze tego z reakcji.
       </Text>
       <View style={styles.rowWrap}>
-        {AMENITIES.map((item) =>
-          chip(Boolean(value[item.key]), item.label, () => patch({ [item.key]: !value[item.key] }), item.key),
-        )}
+        {AMENITIES.map((item) => {
+          const lockKey = item.key as IntelligenceLockKey | 'requireTwoLevel';
+          return (
+            <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              {chip(Boolean(value[item.key]), item.label, () => patch({ [item.key]: !value[item.key] }), item.key)}
+              {lockKey !== 'requireTwoLevel' ? lockBtn(lockKey, item.label) : null}
+            </View>
+          );
+        })}
       </View>
       </View>
 

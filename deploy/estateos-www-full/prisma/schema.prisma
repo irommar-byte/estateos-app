@@ -1165,6 +1165,7 @@ model AgencyClient {
   intelligenceMinLearns        Int       @default(3)
   intelligenceMinScore         Int       @default(92)
   intelligenceLastSentAt       DateTime?
+  intelligenceLockedFields     Json?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 

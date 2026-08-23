@@ -43,6 +43,10 @@ import MatchPhotoCascade, { type CascadeOrigin } from '../components/agency/Matc
 import IntelligenceAssistantCard, {
   DEFAULT_INTELLIGENCE_SETTINGS,
 } from '../components/agency/IntelligenceAssistantCard';
+import {
+  DEFAULT_INTELLIGENCE_LOCKS,
+  type IntelligenceLocks,
+} from '../lib/intelligenceAssistantOptions';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import { buildYearBuiltPickerValues } from '../lib/offerYearBuilt';
 import {
@@ -330,6 +334,7 @@ export default function AgencyClientDetailScreen() {
   // Seller Buyer Radar Controls
   const [sellerRadarSearching, setSellerRadarSearching] = useState(false);
   const [buyerFilters, setBuyerFilters] = useState<ClientRadarFilters>(defaultClientRadarFilters);
+  const [intelLocks, setIntelLocks] = useState<IntelligenceLocks>(DEFAULT_INTELLIGENCE_LOCKS);
 
   const colors = {
     bg: isDark ? '#000' : '#F2F2F7',
@@ -410,6 +415,7 @@ export default function AgencyClientDetailScreen() {
       setSellerRadarSearching(detail.client.type === 'BUYER');
       setBuyerFilters(defaultClientRadarFilters());
     }
+    setIntelLocks(detail.client.intelligence?.lockedFields || DEFAULT_INTELLIGENCE_LOCKS);
 
     if (detail.client.type === 'SELLER') {
       const acq = await fetchAcquisition(token, clientId);
@@ -921,6 +927,7 @@ export default function AgencyClientDetailScreen() {
     const res = await patchAgencyClient(token, clientId, {
       alsoSearching: enabled,
       buyerFilters: enabled ? { ...filters, pushNotifications: false } : null,
+      intelligence: { lockedFields: intelLocks },
     });
     if (res.ok && enabled) {
       await refreshClientMatches(token, clientId);
@@ -937,7 +944,7 @@ export default function AgencyClientDetailScreen() {
   const saveIntelligence = async (next: typeof DEFAULT_INTELLIGENCE_SETTINGS) => {
     if (!token) return;
     setBusy('intel');
-    const res = await patchAgencyClient(token, clientId, { intelligence: next });
+    const res = await patchAgencyClient(token, clientId, { intelligence: { ...next, lockedFields: intelLocks } });
     setBusy('');
     if (!res.ok) Alert.alert('Asystent', res.message);
     else void load();
@@ -1915,7 +1922,9 @@ export default function AgencyClientDetailScreen() {
                       onChange={setBuyerFilters}
                       isDark={isDark}
                       title="ANKIETA RADARU"
-                      subtitle="Miasto, dzielnice, budżet, metraż i udogodnienia — potem radar dobiera oferty."
+                      subtitle="Miasto, dzielnice, budżet, metraż i udogodnienia — potem radar dobiera oferty. Kłódka: asystent nie zmieni pola."
+                      locks={intelLocks}
+                      onLocksChange={setIntelLocks}
                     />
                     <Pressable
                       onPress={() => void saveBuyerRadar(true)}
