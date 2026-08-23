@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import type { KeiImportContext } from '@/lib/keiAmerListingExtras';
 
 const IMPORT_MARKER_RE =
   /<!--\s*estateos-(otodom|olx|nieruchomosci-online):(\d+)\s*-->/i;
@@ -170,13 +171,36 @@ export async function ensureOfferPrivateNoteTable() {
   `);
 }
 
+export async function listInactiveImportedOfferIds(offerIds: number[]): Promise<Set<number>> {
+  await ensureOfferPrivateNoteTable();
+  const ids = [...new Set(offerIds.filter((id) => Number.isFinite(id) && id > 0))];
+  if (!ids.length) return new Set();
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
+    `
+      SELECT offerId
+      FROM OfferPrivateNote
+      WHERE offerId IN (${placeholders})
+        AND importExternalUrl IS NOT NULL
+        AND TRIM(importExternalUrl) <> ''
+        AND sourceIsActive = 0
+    `,
+    ...ids,
+  );
+  return new Set(rows.map((row) => Number(row.offerId)));
+}
+
 export async function upsertImportedOfferPrivateSnapshot(params: {
   offerId: number;
   userId: number;
   draft: OtodomImportDraft;
+  kei?: KeiImportContext | null;
 }) {
   await ensureOfferPrivateNoteTable();
   const draft = params.draft;
+  const kei = params.kei || null;
+  const portalPhone = draft.agency?.phone || null;
+  const keiPhone = kei?.phone || null;
   const importSummary = {
     source: draft.source,
     externalUrl: draft.externalUrl,
@@ -189,10 +213,43 @@ export async function upsertImportedOfferPrivateSnapshot(params: {
     status: draft.status,
     createdAt: draft.createdAt,
     modifiedAt: draft.modifiedAt,
+    contact: {
+      keiPhone,
+      portalPhone,
+      phone: keiPhone || portalPhone,
+      agencyName: draft.agency?.name || null,
+      address: kei?.address || draft.agency?.address || null,
+      advertiserType: draft.advertiserType,
+      directOwner: Boolean(kei?.directOwner),
+    },
+    kei: kei
+      ? {
+          id: kei.keiId,
+          phone: kei.phone,
+          address: kei.address,
+          district: kei.district,
+          street: kei.street,
+          rooms: kei.rooms,
+          pricePerSqm: kei.pricePerSqm,
+          listedAt: kei.listedAt,
+          directOwner: kei.directOwner,
+          textExcerpt: kei.listingText ? kei.listingText.slice(0, 400) : null,
+        }
+      : null,
+    portal: {
+      source: draft.source,
+      url: draft.externalUrl,
+      externalId: draft.externalId,
+      titleOriginal: draft.title,
+      status: draft.status,
+    },
+    import: {
+      importedAt: new Date().toISOString(),
+    },
     contactHints: {
       agencyName: draft.agency?.name || null,
-      phone: draft.agency?.phone || null,
-      address: draft.agency?.address || null,
+      phone: keiPhone || portalPhone,
+      address: kei?.address || draft.agency?.address || null,
     },
     nonMappedFields: {
       features: draft.features,
@@ -447,3 +504,5 @@ export async function refreshOfferSourceStatusIfStale(
 
   return getOfferPrivateNote(offerId, userId);
 }
+
+export { shapeOfferPrivateNoteView, type PrivateNoteView } from '@/lib/offerPrivateNoteView';

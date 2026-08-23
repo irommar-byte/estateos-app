@@ -66,6 +66,12 @@ type PreviewListing = {
   blockedReason: "imported" | "outreach" | "inactive" | null;
   portalActive?: boolean | null;
   portalCheckReason?: string | null;
+  phone?: string | null;
+  district?: string | null;
+  street?: string | null;
+  rooms?: number | null;
+  listedAt?: string | null;
+  directOwner?: boolean;
 };
 
 type PreviewState = {
@@ -925,6 +931,12 @@ export default function KeiAmerWorkspace() {
               blockedReason: (row.blockedReason as PreviewListing["blockedReason"]) || null,
               portalActive: typeof row.portalActive === "boolean" ? row.portalActive : null,
               portalCheckReason: row.portalCheckReason ? String(row.portalCheckReason) : null,
+              phone: row.phone ? String(row.phone) : null,
+              district: row.district ? String(row.district) : null,
+              street: row.street ? String(row.street) : null,
+              rooms: Number.isFinite(Number(row.rooms)) ? Number(row.rooms) : null,
+              listedAt: row.listedAt ? String(row.listedAt) : String(row.date || "") || null,
+              directOwner: Boolean(row.directOwner),
             }))
           : [];
         setPreview({
@@ -1107,6 +1119,12 @@ export default function KeiAmerWorkspace() {
           keiId: row.keiId,
           portalUrl: row.portalUrl,
           address: row.address,
+          phone: row.phone || undefined,
+          district: row.district || undefined,
+          street: row.street || undefined,
+          rooms: row.rooms ?? undefined,
+          listedAt: row.listedAt || row.date || undefined,
+          directOwner: Boolean(row.directOwner),
         })),
         floorPlanSelections: floorPlanPayload,
       },
@@ -1178,13 +1196,15 @@ export default function KeiAmerWorkspace() {
   const listingGroups = useMemo(() => {
     const imported: PreviewListing[] = [];
     const outreach: PreviewListing[] = [];
+    const inactive: PreviewListing[] = [];
     const available: PreviewListing[] = [];
     for (const item of preview.listings) {
       if (item.blockedReason === "imported" || item.alreadyImported) imported.push(item);
       else if (item.blockedReason === "outreach" || item.outreachSent) outreach.push(item);
+      else if (item.blockedReason === "inactive" || item.portalActive === false) inactive.push(item);
       else available.push(item);
     }
-    return { imported, outreach, available };
+    return { imported, outreach, inactive, available };
   }, [preview.listings]);
 
   const primaryActionLabel =
@@ -1718,6 +1738,25 @@ export default function KeiAmerWorkspace() {
                 </StackSection>
               ) : null}
 
+              {listingGroups.inactive.length > 0 ? (
+                <StackSection
+                  title={`Nieaktualne na portalu (${listingGroups.inactive.length})`}
+                  expanded
+                  onToggle={() => undefined}
+                  tone="rose"
+                >
+                  {listingGroups.inactive.map((item) => (
+                    <BlockedRow
+                      key={item.keiId}
+                      item={item}
+                      badge="WYGASŁO"
+                      seal="dead"
+                      detail={item.portalCheckReason || "Ogłoszenie nieaktualne / usunięte na portalu."}
+                    />
+                  ))}
+                </StackSection>
+              ) : null}
+
               <div className="px-4 py-2.5 border-b border-emerald-500/20 bg-emerald-500/[0.04]">
                 <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300/90">
                   Dostępne · {listingGroups.available.length}
@@ -1742,8 +1781,12 @@ export default function KeiAmerWorkspace() {
                         <div className="flex-1 min-w-0">
                           <p className="text-[9px] font-bold uppercase text-white/40">{item.date} · {item.sourceLabel}</p>
                           <p className="text-xs text-white/90 truncate">{item.address || "Brak adresu"}</p>
-                          <p className="text-[10px] text-white/45">{item.price || "—"} · {item.area ? `${item.area} m²` : "—"}</p>
+                          <p className="text-[10px] text-white/45">
+                            {item.price || "—"} · {item.area ? `${item.area} m²` : "—"}
+                            {item.phone ? ` · ${item.phone}` : ""}
+                          </p>
                         </div>
+                        {item.portalActive === true ? <span className="eos-source-seal" title="Źródło aktywne" /> : null}
                         {item.portalUrl ? (
                           <a href={item.portalUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-white/50 hover:text-white">
                             <ExternalLink size={14} />
@@ -1841,10 +1884,11 @@ function StackSection(props: {
   title: string;
   expanded: boolean;
   onToggle: () => void;
-  tone: "amber" | "cyan";
+  tone: "amber" | "cyan" | "rose";
   children: ReactNode;
 }) {
-  const toneClass = props.tone === "amber" ? "text-amber-200" : "text-cyan-200";
+  const toneClass =
+    props.tone === "amber" ? "text-amber-200" : props.tone === "rose" ? "text-rose-200" : "text-cyan-200";
   return (
     <div className="border-b border-white/10">
       <button type="button" onClick={props.onToggle} className="w-full px-4 py-3 flex items-center gap-2 hover:bg-white/[0.03]">
@@ -1856,11 +1900,15 @@ function StackSection(props: {
   );
 }
 
-function BlockedRow(props: { item: PreviewListing; badge: string }) {
+function BlockedRow(props: { item: PreviewListing; badge: string; seal?: "dead"; detail?: string }) {
   return (
-    <div className="px-3 py-2 flex items-center gap-2 opacity-65">
+    <div className="px-3 py-2 flex items-center gap-2 opacity-80">
+      {props.seal === "dead" ? <span className="eos-source-seal eos-source-seal--dead" title="Źródło nieaktywne" /> : null}
       <span className="text-[9px] font-black uppercase text-white/45 shrink-0">{props.badge}</span>
-      <span className="text-[11px] text-white/60 truncate flex-1">{props.item.address || "—"}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] text-white/70 truncate">{props.item.address || "—"}</span>
+        {props.detail ? <span className="block text-[10px] text-rose-200/80 truncate">{props.detail}</span> : null}
+      </span>
       {props.item.portalUrl ? (
         <a href={props.item.portalUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-white/40 hover:text-white">
           <ExternalLink size={12} />

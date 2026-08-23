@@ -6,6 +6,7 @@ import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy, isOtodomImportAiConfigured } from '@/lib/otodomImportRewrite';
 import { inferCountryFromCoordinates } from '@/lib/offerLocalityCountry';
 import { upsertImportedOfferPrivateSnapshot, ensureOfferPrivateNoteTable } from '@/lib/offerPrivateNotes';
+import type { KeiImportContext } from '@/lib/keiAmerListingExtras';
 import {
   consumeAndReserveImportPublication,
   deleteOfferAfterImportPaymentFailure,
@@ -512,6 +513,7 @@ export async function createOfferFromOtodomDraft(
     smartAddEnabled?: boolean;
     smartAddAutoApply?: boolean;
     smartAddDecisions?: unknown;
+    kei?: KeiImportContext | null;
   },
 ) {
   const throwIfCancelled = async () => {
@@ -584,7 +586,18 @@ export async function createOfferFromOtodomDraft(
     { rewrittenByAi: presentation.rewrittenByAi },
   );
   await throwIfCancelled();
-  const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, {
+  const kei = options?.kei || null;
+  const patchedDraft: OtodomImportDraft = {
+    ...draft,
+    rooms: draft.rooms || kei?.rooms || null,
+    district:
+      draft.district && draft.district !== 'OTHER'
+        ? draft.district
+        : kei?.district || draft.district,
+    street: draft.street || kei?.street || null,
+  };
+
+  const body = await draftToOfferCreateBody(patchedDraft, ownerUserId, presentation, {
     agentCommissionPercent: options?.agentCommissionPercent,
     smartAddEnabled: options?.smartAddEnabled,
     smartAddAutoApply: options?.smartAddAutoApply,
@@ -614,7 +627,8 @@ export async function createOfferFromOtodomDraft(
     await upsertImportedOfferPrivateSnapshot({
       offerId,
       userId: ownerUserId,
-      draft,
+      draft: patchedDraft,
+      kei,
     });
 
     await throwIfCancelled();

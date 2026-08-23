@@ -18,6 +18,7 @@ import {
 } from '@/lib/keiAmerClient';
 import { assertKeiListingAvailableForImport, markKeiListingImported } from '@/lib/keiAmerListingState';
 import { importUrlLookupCandidates } from '@/lib/importDuplicateGuard';
+import { buildKeiImportContext, keiContextFromSelection, type KeiImportContext } from '@/lib/keiAmerListingExtras';
 
 const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
@@ -152,7 +153,17 @@ export async function exportKeiListingsToEstateOS(options?: {
   count?: number;
   propertyKind?: KeiPropertyKind;
   transactionKind?: KeiTransactionKind;
-  selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
+  selections?: Array<{
+    keiId?: string;
+    portalUrl: string;
+    address?: string;
+    phone?: string;
+    district?: string;
+    street?: string;
+    rooms?: number | null;
+    listedAt?: string;
+    directOwner?: boolean;
+  }>;
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
   /** Auto: pomijaj duplikaty i leć dalej aż wystawisz `count` ofert. */
@@ -197,6 +208,13 @@ export async function exportKeiListingsToEstateOS(options?: {
     .map((row) => ({
       keiId: String(row?.keiId || '').trim(),
       portalUrl: String(row?.portalUrl || '').trim(),
+      address: String(row?.address || '').trim(),
+      phone: String(row?.phone || '').trim(),
+      district: String(row?.district || '').trim(),
+      street: String(row?.street || '').trim(),
+      rooms: row?.rooms ?? null,
+      listedAt: String(row?.listedAt || '').trim(),
+      directOwner: Boolean(row?.directOwner),
     }))
     .filter((row) => row.portalUrl);
 
@@ -212,7 +230,7 @@ export async function exportKeiListingsToEstateOS(options?: {
     throw new Error(`Użytkownik docelowy #${targetUserId} nie istnieje.`);
   }
 
-  type ExportTarget = { keiListingId: string; portalUrl: string };
+  type ExportTarget = { keiListingId: string; portalUrl: string; kei: KeiImportContext | null };
 
   let exportTargets: ExportTarget[] = [];
 
@@ -220,6 +238,7 @@ export async function exportKeiListingsToEstateOS(options?: {
     exportTargets = selections.map((row) => ({
       keiListingId: row.keiId || row.portalUrl,
       portalUrl: row.portalUrl,
+      kei: keiContextFromSelection(row),
     }));
   } else {
     const listings = await findWarsawPortalListings({
@@ -239,6 +258,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       .map((listing) => ({
         keiListingId: listing.id,
         portalUrl: String(listing.www || '').trim(),
+        kei: buildKeiImportContext(listing),
       }))
       .filter((row) => row.portalUrl);
   }
@@ -415,6 +435,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       }
 
       const created = await createOfferFromOtodomDraft(draft, targetUserId, undefined, {
+        kei: target.kei,
         agentCommissionPercent,
         maxImportImages: KEI_MAX_IMPORT_IMAGES,
         floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,

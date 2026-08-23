@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { notifyAgencyClientAboutOffer, remindPendingClientFeedback } from '@/lib/agencyClientNotify';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
+import { listInactiveImportedOfferIds, refreshOfferSourceStatusIfStale } from '@/lib/offerPrivateNotes';
 import {
   clientFacingWhyLine,
   intelligenceAdjustScore,
@@ -141,7 +142,7 @@ function buildAnalysis(params: {
 
 export async function pickIntelligenceOffer(
   clientId: number,
-  options: { force?: boolean; preview?: boolean; ignoreInterval?: boolean } = {},
+  options: { force?: boolean; preview?: boolean; ignoreInterval?: boolean; excludeOfferIds?: number[] } = {},
 ): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null }> {
   await ensureIntelligenceLockedFieldsColumn();
 
@@ -266,12 +267,15 @@ export async function pickIntelligenceOffer(
     radarScore: number;
     reasons: string[];
   };
+  const deadSourceIds = await listInactiveImportedOfferIds(matches.map((row) => row.offerId));
+  const excluded = new Set(options.excludeOfferIds || []);
   let best: Cand | null = null;
   let considered = 0;
   const relaxScore = Boolean(options.force || options.preview || calibrating);
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
     if (taste.rejectedOfferIds.includes(row.offerId)) continue;
+    if (excluded.has(row.offerId) || deadSourceIds.has(row.offerId)) continue;
     considered += 1;
     const radarScore = row.score;
     const adjusted = intelligenceAdjustScore({
@@ -397,38 +401,85 @@ export async function sendIntelligenceOffer(params: {
   force?: boolean;
   ignoreInterval?: boolean;
 }): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
-  const { pick, agencyUserId } = await pickIntelligenceOffer(params.clientId, {
-    force: params.force,
-    ignoreInterval: params.ignoreInterval,
-  });
-  if (!pick.ready || !pick.offerId || !agencyUserId) {
-    return { sent: false, pick };
+  const excludeOfferIds: number[] = [];
+  let lastPick: IntelligencePick | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { pick, agencyUserId } = await pickIntelligenceOffer(params.clientId, {
+      force: params.force,
+      ignoreInterval: params.ignoreInterval,
+      excludeOfferIds,
+    });
+    lastPick = pick;
+    if (!pick.ready || !pick.offerId || !agencyUserId) {
+      return { sent: false, pick };
+    }
+
+    const offer = await prisma.offer.findUnique({
+      where: { id: pick.offerId },
+      select: { userId: true },
+    });
+    if (offer?.userId) {
+      const source = await refreshOfferSourceStatusIfStale(pick.offerId, offer.userId, {
+        maxAgeMs: 12 * 60 * 60 * 1000,
+      });
+      if (source?.importExternalUrl && source.sourceIsActive === 0) {
+        excludeOfferIds.push(pick.offerId);
+        continue;
+      }
+    }
+
+    const reason = [`EstateOS™ Intelligence · pewność ${pick.score}%`, pick.tasteSummary, ...pick.analysis]
+      .filter(Boolean)
+      .join('\n');
+
+    const notified = await notifyAgencyClientAboutOffer({
+      clientId: params.clientId,
+      offerId: pick.offerId,
+      agencyUserId,
+      channel: 'email',
+      customMessage: pick.clientWhy || clientFacingWhyLine({
+        reasons: pick.reasons,
+        city: pick.city,
+        district: pick.district,
+        calibrating: pick.calibrating,
+      }),
+      intelligence: { reason },
+    });
+
+    await prisma.agencyClient.update({
+      where: { id: params.clientId },
+      data: { intelligenceLastSentAt: new Date() },
+    });
+
+    return { sent: true, pick, emailSent: notified.emailSent };
   }
 
-  const reason = [`EstateOS™ Intelligence · pewność ${pick.score}%`, pick.tasteSummary, ...pick.analysis]
-    .filter(Boolean)
-    .join('\n');
-
-  const notified = await notifyAgencyClientAboutOffer({
-    clientId: params.clientId,
-    offerId: pick.offerId,
-    agencyUserId,
-    channel: 'email',
-    customMessage: pick.clientWhy || clientFacingWhyLine({
-      reasons: pick.reasons,
-      city: pick.city,
-      district: pick.district,
-      calibrating: pick.calibrating,
-    }),
-    intelligence: { reason },
-  });
-
-  await prisma.agencyClient.update({
-    where: { id: params.clientId },
-    data: { intelligenceLastSentAt: new Date() },
-  });
-
-  return { sent: true, pick, emailSent: notified.emailSent };
+  return {
+    sent: false,
+    pick: lastPick || {
+      ready: false,
+      skipReason: 'Źródła na portalach wygasły — brak żywej oferty do wysyłki.',
+      tasteSummary: '',
+      learnCount: 0,
+      calibrating: false,
+      offerId: null,
+      title: null,
+      city: null,
+      district: null,
+      price: null,
+      area: null,
+      score: null,
+      radarScore: null,
+      reasons: [],
+      analysis: [],
+      considered: 0,
+      nextSendAt: null,
+      correctedBalconyIds: [],
+      clientWhy: null,
+      lessons: [],
+    },
+  };
 }
 
 export async function tickClientIntelligence(): Promise<{
