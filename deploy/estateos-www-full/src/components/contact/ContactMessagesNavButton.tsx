@@ -54,7 +54,7 @@ export default function ContactMessagesNavButton({ compact = false, className = 
       type="button"
       onClick={() => router.push("/moje-konto/wiadomosci")}
       aria-label={`Wiadomości${badge ? `, ${badge} nieprzeczytanych` : ""}`}
-      className={`group relative rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] transition-colors hover:border-emerald-500/30 ${
+      className={`group relative overflow-visible rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] transition-colors hover:border-emerald-500/30 ${
         compact ? "p-1.5" : "p-2"
       } ${className}`}
     >
@@ -64,11 +64,7 @@ export default function ContactMessagesNavButton({ compact = false, className = 
         }`}
         aria-hidden
       />
-      {badge ? (
-        <span className="absolute -right-1 -top-1 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white shadow-[0_0_12px_rgba(239,68,68,0.55)]">
-          {badge}
-        </span>
-      ) : null}
+      {badge ? <span className="eos-nav-unread">{badge}</span> : null}
       {!loading && unread === 0 ? null : null}
     </button>
   );

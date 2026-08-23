@@ -1,4 +1,9 @@
-import { parseClientOfferFeedback, type ClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
+import {
+  formatClientFeedbackForAgent,
+  parseClientOfferFeedback,
+  sentimentLabel,
+  type ClientOfferFeedback,
+} from '@/lib/crm/clientPortalFeedback';
 import { descriptionImpliesAmenity, offerHasAmenityFromBrain } from '@/lib/intelligenceAmenityBrain';
 import { plainOfferDescription } from '@/lib/offerDescriptionHtml';
 
@@ -663,4 +668,88 @@ export function shapeIntelligenceSettings(
 
 export function feedbackHasLearningSignal(feedback: ClientOfferFeedback): boolean {
   return Boolean(feedback.sentiment || feedback.disliked || feedback.liked || feedback.phrases.length || feedback.note);
+}
+
+export type IntelligenceLesson = {
+  offerId: number;
+  title: string;
+  when: string | null;
+  reaction: "like" | "maybe" | "dislike" | "none";
+  reactionLabel: string;
+  said: string;
+  vsNext: string;
+};
+
+export function compareLessonToNext(
+  prev: OfferLike,
+  feedback: ClientOfferFeedback,
+  next: OfferLike | null,
+): string {
+  if (!next) return "";
+  const bits: string[] = [];
+  const phrases = new Set(feedback.phrases);
+  const note = `${feedback.disliked} ${feedback.note}`.toLowerCase();
+  if ((phrases.has("Brak balkonu") || note.includes("balkon")) && next.hasBalcony) {
+    bits.push("Ma balkon");
+  }
+  if (
+    (phrases.has("Za drogo") || note.includes("drogo")) &&
+    next.price &&
+    prev.price &&
+    Number(next.price) < Number(prev.price)
+  ) {
+    bits.push("Taniej");
+  }
+  if (
+    (phrases.has("Nie ta dzielnica") || note.includes("dzielnic")) &&
+    next.district &&
+    prev.district &&
+    String(next.district) !== String(prev.district)
+  ) {
+    bits.push(`Inna dzielnica (${next.district})`);
+  }
+  if (phrases.has("Za wysoko albo za nisko") && next.floor != null && String(next.floor) !== String(prev.floor ?? "")) {
+    bits.push(`Inne piętro (${next.floor})`);
+  }
+  if (next.rooms && prev.rooms && Number(next.rooms) !== Number(prev.rooms)) {
+    bits.push(`${next.rooms} pok. zamiast ${prev.rooms}`);
+  }
+  return bits.join(" · ");
+}
+
+export function buildIntelligenceLessons(
+  rows: Array<{
+    offerId: number;
+    notifiedAt?: Date | string | null;
+    sharedAt?: Date | string | null;
+    intelligenceSent?: boolean | null;
+    clientFeedback: string | null;
+    clientFeedbackAt?: Date | string | null;
+    offer?: OfferLike | null;
+  }>,
+  next: OfferLike | null,
+): IntelligenceLesson[] {
+  const lessons: IntelligenceLesson[] = [];
+  for (const row of rows) {
+    const feedback = parseClientOfferFeedback(row.clientFeedback);
+    const sent = Boolean(row.notifiedAt || row.sharedAt || row.intelligenceSent);
+    if (!sent && !feedbackHasLearningSignal(feedback)) continue;
+    const whenRaw = row.clientFeedbackAt || row.notifiedAt || row.sharedAt;
+    const whenMs = whenRaw ? new Date(whenRaw).getTime() : 0;
+    lessons.push({
+      offerId: row.offerId,
+      title: String(row.offer?.title || `Oferta #${row.offerId}`),
+      when: Number.isFinite(whenMs) && whenMs > 0 ? new Date(whenMs).toISOString() : null,
+      reaction: feedback.sentiment || "none",
+      reactionLabel: sentimentLabel(feedback.sentiment),
+      said: formatClientFeedbackForAgent(row.clientFeedback) || (sent ? "Wysłane, bez reakcji" : "—"),
+      vsNext: row.offer ? compareLessonToNext(row.offer, feedback, next) : "",
+    });
+  }
+  lessons.sort((a, b) => {
+    const aMs = a.when ? Date.parse(a.when) : 0;
+    const bMs = b.when ? Date.parse(b.when) : 0;
+    return bMs - aMs;
+  });
+  return lessons.slice(0, 8);
 }

@@ -89,6 +89,7 @@ export default function Navbar() {
   const brandIsCar = highlightCar;
 
   const isOfferShareLanding = pathname?.startsWith("/o/");
+  const isDeskApp = pathname?.startsWith("/crm");
   const isAdmin = user?.role === "ADMIN";
   const loggedIn = Boolean(user);
   const unread = useNavUnreadBadge(loggedIn);
@@ -213,6 +214,7 @@ export default function Navbar() {
   }, [loggedIn, isAdmin]);
 
   if (isOfferShareLanding) return null;
+  if (isDeskApp) return null;
 
   const handleLogout = async () => {
     try {
@@ -300,7 +302,7 @@ export default function Navbar() {
           </button>
         </div>
 
-        <div className="relative z-10 flex min-w-0 items-center justify-center overflow-hidden px-0.5">
+        <div className="relative z-10 flex min-w-0 items-center justify-center overflow-visible px-0.5">
           <EcosystemLuxurySwitch
             density={switchDensity}
             highlightHome={highlightHome}
@@ -310,7 +312,7 @@ export default function Navbar() {
           />
         </div>
 
-        <div className="relative z-40 flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
+        <div className="relative z-40 flex min-w-0 items-center justify-end gap-1 overflow-visible pt-1 sm:gap-1.5">
           <div className="hidden min-w-0 max-w-full items-center justify-end gap-1 lg:flex lg:gap-1.5 xl:gap-2">
             {user && (
               <>
@@ -372,15 +374,13 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => setIsOpen((open) => !open)}
-              className="eos-lux-btn eos-lux-btn--platinum relative !min-h-0 rounded-2xl !px-2.5 !py-2.5 text-[var(--eos-text)]"
+              className="eos-lux-btn eos-lux-btn--platinum eos-nav-badge-host relative !min-h-0 overflow-visible rounded-2xl !px-2.5 !py-2.5 text-[var(--eos-text)]"
               aria-label={isOpen ? "Close menu" : "Open menu"}
               aria-expanded={isOpen}
             >
               {isOpen ? <X className="size-5" /> : <Menu className="size-5" />}
               {hamburgerBadge && !isOpen ? (
-                <span className="absolute -right-1 -top-1 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white shadow-[0_0_12px_rgba(239,68,68,0.55)]">
-                  {hamburgerBadge}
-                </span>
+                <span className="eos-nav-unread">{hamburgerBadge}</span>
               ) : null}
             </button>
           </div>

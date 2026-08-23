@@ -784,17 +784,15 @@ export default function CatalogPage() {
                     {denied ? nearestCopy.denied : labels.nearestRequiresLocation}
                   </p>
                   {!denied ? (
-                    <EosButton
+                    <button
                       type="button"
-                      variant="home"
-                      size="sm"
                       onClick={() => void request()}
                       disabled={pending}
-                      className="mt-4"
+                      className="eos-engraved-cta eos-engraved-cta--home mt-4"
                     >
                       {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
                       {nearestCopy.enable}
-                    </EosButton>
+                    </button>
                   ) : null}
                 </div>
               )}

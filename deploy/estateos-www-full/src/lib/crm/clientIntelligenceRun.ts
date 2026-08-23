@@ -9,6 +9,8 @@ import {
   preferenceUpdatesFromTaste,
   shouldPersistBalcony,
   summarizeTaste,
+  buildIntelligenceLessons,
+  type IntelligenceLesson,
   type LearnedTaste,
 } from '@/lib/crm/clientIntelligence';
 
@@ -68,6 +70,7 @@ export type IntelligencePick = {
   nextSendAt: string | null;
   correctedBalconyIds: number[];
   clientWhy: string | null;
+  lessons: IntelligenceLesson[];
 };
 
 function due(lastSentAt: Date | null, intervalHours: number): boolean {
@@ -164,6 +167,7 @@ export async function pickIntelligenceOffer(
     nextSendAt: extras.nextSendAt || null,
     correctedBalconyIds: extras.correctedBalconyIds || [],
     clientWhy: extras.clientWhy ?? null,
+    lessons: extras.lessons || [],
   });
 
   if (!client || !client.buyerPreference) {
@@ -289,6 +293,12 @@ export async function pickIntelligenceOffer(
     }
   }
 
+  const bestId = best?.offerId;
+  const nextOffer = bestId
+    ? matches.find((row) => row.offerId === bestId)?.offer || null
+    : null;
+  const lessons = buildIntelligenceLessons(matches, nextOffer);
+
   let skipReason: string | null = null;
   if (!enabled && !options.force) skipReason = 'Asystent wyłączony — włącz, żeby wysyłał sam.';
   else if (!calibrating && taste.learnCount < minLearns && !options.force) {
@@ -318,6 +328,7 @@ export async function pickIntelligenceOffer(
         considered,
         nextSendAt,
         correctedBalconyIds,
+        lessons,
       }, taste),
     };
   }
@@ -363,6 +374,7 @@ export async function pickIntelligenceOffer(
       nextSendAt,
       correctedBalconyIds,
       clientWhy,
+      lessons,
     },
   };
 }
