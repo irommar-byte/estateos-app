@@ -5,6 +5,7 @@ import {
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
   inferDistrictFromStreet,
+  preferStreetOrOsiedleDistrict,
   isNonCityLabel,
   isPlaceholderDistrict,
   isStrictCity,
@@ -137,6 +138,10 @@ export async function resolveOfferLocationFromCoordinates(params: {
   const districtGuess = districtGuessByContext || districtGuessByLabel || areaGuess;
   const districtMerged = districtGuess || inferAreaLabelFromMapboxFeature(city, feature);
   let district = canonicalizeDistrict(city, districtMerged);
+  const fromAddress = preferStreetOrOsiedleDistrict(city, {
+    street: params.streetHint || street,
+  });
+  if (fromAddress) district = fromAddress;
   let validation = validateCityDistrict(city, district);
 
   if (strict && !validation.valid) {
@@ -170,6 +175,7 @@ export async function resolveOtodomImportLocationFields(draft: {
   district?: string | null;
   neighborhood?: string | null;
   street?: string | null;
+  title?: string | null;
 }): Promise<{ city: string; district: string; street: string }> {
   if (draft.lat == null || draft.lng == null) {
     throw new Error("Brak współrzędnych GPS — nie można utworzyć oferty.");
@@ -189,6 +195,18 @@ export async function resolveOtodomImportLocationFields(draft: {
   }
 
   const street = resolved?.street || String(draft.street || "").trim();
+  const knownDistrict = preferStreetOrOsiedleDistrict(city, {
+    street: draft.street || street,
+    neighborhood: draft.neighborhood,
+    title: draft.title,
+  });
+  if (knownDistrict) {
+    const known = validateCityDistrict(city, knownDistrict);
+    if (known.valid) {
+      return { city: known.city, district: known.district, street };
+    }
+  }
+
   const importCandidates = collectOtodomDistrictCandidates(city, draft);
 
   if (resolved?.validation.valid) {
