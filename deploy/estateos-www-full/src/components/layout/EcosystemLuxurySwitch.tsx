@@ -47,7 +47,7 @@ export default function EcosystemLuxurySwitch({
     <motion.div
       role="group"
       aria-label="EstateOS Home or Car"
-      className={`eos-lux-switch ${shellPad}`}
+      className={`eos-lux-switch eos-lux-switch--pair ${shellPad}`}
       whileTap={reduceMotion ? undefined : { scale: 0.985 }}
       transition={spring}
     >

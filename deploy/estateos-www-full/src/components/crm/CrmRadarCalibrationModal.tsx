@@ -30,6 +30,7 @@ import {
   formatRadarYearLabel,
 } from "@/lib/radarScrubberLimits";
 import type { RadarMapAreaSelection } from "@/lib/radarMapArea";
+import LuxurySegmentSwitch from "@/components/ui/LuxurySegmentSwitch";
 
 type Catalog = {
   strictCities: string[];
@@ -60,16 +61,6 @@ const AMENITIES = [
   { key: "requireParking" as const, label: "Parking" },
   { key: "requireFurnished" as const, label: "Umeblowane" },
 ];
-
-function segmentBtn(active: boolean, extra = "") {
-  return [
-    "flex-1 rounded-full py-3 text-[10px] font-black uppercase tracking-widest transition-all",
-    active
-      ? "bg-emerald-500 text-black shadow-[0_0_20px_rgba(16,185,129,0.35)]"
-      : "eos-segment-inactive text-[var(--eos-muted)] hover:text-[var(--eos-text)]",
-    extra,
-  ].join(" ");
-}
 
 function choiceChip(active: boolean) {
   return [
@@ -289,18 +280,16 @@ export default function CrmRadarCalibrationModal({
                     <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400/90">
                       Lokalizacja · wybierz sposób
                     </p>
-                    <div className="eos-segment-track">
-                      {(["CITY", "MAP"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => setDraft((p) => ({ ...p, calibrationMode: mode }))}
-                          className={segmentBtn(draft.calibrationMode === mode)}
-                        >
-                          {mode === "CITY" ? "Miasto i dzielnice" : "Obszar na mapie"}
-                        </button>
-                      ))}
-                    </div>
+                    <LuxurySegmentSwitch
+                      ariaLabel="Sposób lokalizacji"
+                      className="w-full"
+                      value={draft.calibrationMode}
+                      onChange={(mode) => setDraft((p) => ({ ...p, calibrationMode: mode }))}
+                      options={[
+                        { value: "CITY", label: "Miasto i dzielnice", accent: "home" },
+                        { value: "MAP", label: "Obszar na mapie", accent: "car" },
+                      ]}
+                    />
                   </div>
 
                   {draft.calibrationMode === "MAP" ? (
@@ -398,25 +387,16 @@ export default function CrmRadarCalibrationModal({
                     <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
                       Przeznaczenie i typ
                     </label>
-                    <div className="eos-segment-track mb-4">
-                      {(["SELL", "RENT"] as const).map((tx) => (
-                        <button
-                          key={tx}
-                          type="button"
-                          onClick={() => setDraft((p) => ({ ...p, transactionType: tx }))}
-                          className={[
-                            "flex-1 rounded-full py-2.5 text-[10px] font-black uppercase tracking-widest",
-                            draft.transactionType === tx
-                              ? tx === "SELL"
-                                ? "bg-emerald-500 text-black"
-                                : "bg-sky-500 text-black"
-                              : "eos-segment-inactive text-[var(--eos-muted)]",
-                          ].join(" ")}
-                        >
-                          {tx === "SELL" ? "Kupno" : "Wynajem"}
-                        </button>
-                      ))}
-                    </div>
+                    <LuxurySegmentSwitch
+                      ariaLabel="Kupno lub wynajem"
+                      className="mb-4 w-full"
+                      value={draft.transactionType}
+                      onChange={(tx) => setDraft((p) => ({ ...p, transactionType: tx }))}
+                      options={[
+                        { value: "SELL", label: "Kupno", accent: "home" },
+                        { value: "RENT", label: "Wynajem", accent: "rent" },
+                      ]}
+                    />
                     <div className="flex flex-wrap gap-2">
                       {PROPERTY_TYPES.map((pt) => (
                         <button

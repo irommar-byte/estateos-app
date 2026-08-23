@@ -216,7 +216,9 @@ export default function CrmIntelligenceAssistant({
 
   const intelHistory = useMemo(() => {
     return (activities || [])
-      .filter((item) => /intelligence|taste|offer/i.test(`${item.kind} ${item.title || ""}`))
+      .filter((item) =>
+        /intelligence|taste|offer|remind|plan|feedback/i.test(`${item.kind} ${item.title || ""}`),
+      )
       .slice(0, 6);
   }, [activities]);
 

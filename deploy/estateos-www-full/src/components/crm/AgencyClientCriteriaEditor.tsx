@@ -21,6 +21,7 @@ import {
   formatRadarYearLabel,
 } from "@/lib/radarScrubberLimits";
 import type { RadarMapAreaSelection } from "@/lib/radarMapArea";
+import LuxurySegmentSwitch from "@/components/ui/LuxurySegmentSwitch";
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   type IntelligenceLockKey,
@@ -57,15 +58,6 @@ const AMENITIES = [
   { key: "requireParking" as const, label: "Parking" },
   { key: "requireFurnished" as const, label: "Umeblowane" },
 ];
-
-function segmentBtn(active: boolean) {
-  return [
-    "flex-1 rounded-full py-3 text-[10px] font-black uppercase tracking-widest transition-all",
-    active
-      ? "bg-emerald-500 text-black shadow-[0_0_20px_rgba(16,185,129,0.35)]"
-      : "eos-segment-inactive text-[var(--eos-muted)] hover:text-[var(--eos-text)]",
-  ].join(" ");
-}
 
 function choiceChip(active: boolean) {
   return [
@@ -234,18 +226,16 @@ export default function AgencyClientCriteriaEditor({
         <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400/90">
           Lokalizacja · wybierz sposób
         </p>
-        <div className="eos-segment-track">
-          {(["CITY", "MAP"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => patch({ calibrationMode: mode })}
-              className={segmentBtn(value.calibrationMode === mode)}
-            >
-              {mode === "CITY" ? "Miasto i dzielnice" : "Obszar na mapie"}
-            </button>
-          ))}
-        </div>
+        <LuxurySegmentSwitch
+          ariaLabel="Sposób lokalizacji"
+          className="w-full"
+          value={value.calibrationMode}
+          onChange={(mode) => patch({ calibrationMode: mode })}
+          options={[
+            { value: "CITY", label: "Miasto i dzielnice", accent: "home" },
+            { value: "MAP", label: "Obszar na mapie", accent: "car" },
+          ]}
+        />
       </div>
 
       {value.calibrationMode === "MAP" ? (
@@ -344,25 +334,16 @@ export default function AgencyClientCriteriaEditor({
         <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
           Przeznaczenie i typ
         </label>
-        <div className="eos-segment-track mb-4">
-          {(["SELL", "RENT"] as const).map((tx) => (
-            <button
-              key={tx}
-              type="button"
-              onClick={() => patch({ transactionType: tx })}
-              className={[
-                "flex-1 rounded-full py-2.5 text-[10px] font-black uppercase tracking-widest",
-                value.transactionType === tx
-                  ? tx === "SELL"
-                    ? "bg-emerald-500 text-black"
-                    : "bg-sky-500 text-black"
-                  : "eos-segment-inactive text-[var(--eos-muted)]",
-              ].join(" ")}
-            >
-              {tx === "SELL" ? "Kupno" : "Wynajem"}
-            </button>
-          ))}
-        </div>
+        <LuxurySegmentSwitch
+          ariaLabel="Kupno lub wynajem"
+          className="mb-4 w-full"
+          value={value.transactionType}
+          onChange={(tx) => patch({ transactionType: tx })}
+          options={[
+            { value: "SELL", label: "Kupno", accent: "home" },
+            { value: "RENT", label: "Wynajem", accent: "rent" },
+          ]}
+        />
         <div className="flex flex-wrap gap-2">
           {PROPERTY_TYPES.map((pt) => (
             <button

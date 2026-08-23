@@ -50,7 +50,9 @@ export default function LuxurySegmentSwitch<T extends string>({
     <motion.div
       role="group"
       aria-label={ariaLabel}
-      className={`eos-lux-switch relative shrink-0 ${pad} ${className}`}
+      className={`eos-lux-switch relative shrink-0 ${
+        options.length === 2 ? "eos-lux-switch--pair" : ""
+      } ${pad} ${className}`}
       whileTap={reduceMotion ? undefined : { scale: 0.985 }}
       transition={spring}
     >

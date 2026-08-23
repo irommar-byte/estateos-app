@@ -385,16 +385,65 @@ html:not(.light) .eos-raised-chip,
 html:not(.light) .eos-choice-btn {
   border-color: rgba(196, 163, 90, 0.28);
   background: linear-gradient(180deg, rgba(42, 42, 44, 0.98) 0%, rgba(18, 18, 20, 0.96) 100%);
-  color: rgba(255, 255, 255, 0.55);
-  -webkit-text-fill-color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.72);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.72);
   text-shadow: none;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    inset 0 2px 6px rgba(0, 0, 0, 0.35),
     0 8px 18px rgba(0, 0, 0, 0.4);
+}
+html:not(.light) .eos-raised-chip:hover,
+html:not(.light) .eos-choice-btn:hover {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  border-color: rgba(196, 163, 90, 0.45);
+}
+html:not(.light) .eos-raised-chip--on,
+html:not(.light) .eos-choice-btn--on {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: linear-gradient(165deg, #34d399 0%, #059669 55%, #064e3b 100%);
+  color: #ecfdf5;
+  -webkit-text-fill-color: #ecfdf5;
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.35),
+    0 0 18px rgba(16, 185, 129, 0.35);
+}
+html:not(.light) .eos-choice-btn--maybe {
+  border-color: rgba(212, 175, 55, 0.5);
+  background: linear-gradient(165deg, #e8c98a 0%, #b45309 55%, #78350f 100%);
+  color: #fffbeb;
+  -webkit-text-fill-color: #fffbeb;
+}
+html:not(.light) .eos-raised-chip--no,
+html:not(.light) .eos-choice-btn--off {
+  border-color: rgba(251, 113, 133, 0.5);
+  background: linear-gradient(165deg, #fb7185 0%, #e11d48 50%, #9f1239 100%);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.4),
+    0 0 18px rgba(244, 63, 94, 0.35);
+}
+html:not(.light) .eos-raised-chip:active,
+html:not(.light) .eos-choice-btn:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.55);
+}
+html:not(.light) .eos-portal-label {
+  color: #e8c98a;
+  text-shadow: none;
+}
+html:not(.light) .eos-portal-label--ok {
+  color: #6ee7b7;
+}
+html:not(.light) .eos-portal-label--no {
+  color: #fda4af;
 }
 html:not(.light) .eos-field-inset {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.12);
+  color: var(--eos-text);
   box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.45);
 }
 
@@ -1211,10 +1260,8 @@ html:not(.light) .eos-lux-panel {
 /* HOME / CAR luxury switch — recessed metal capsule */
 .eos-lux-switch {
   position: relative;
-  display: inline-grid;
-  grid-template-columns: 1fr 1fr;
+  display: inline-flex;
   align-items: stretch;
-  justify-items: stretch;
   gap: 0;
   border-radius: 999px;
   border: 1px solid rgba(196, 163, 90, 0.42);
@@ -1229,6 +1276,26 @@ html:not(.light) .eos-lux-panel {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   isolation: isolate;
+}
+
+.eos-lux-switch--pair {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  justify-items: stretch;
+}
+
+.eos-lux-switch--pair .eos-lux-switch__seg {
+  width: 100%;
+}
+
+.eos-lux-switch--pair .eos-lux-switch__pill {
+  left: 0.22rem;
+  width: calc(50% - 0.22rem);
+  transition: left 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.eos-lux-switch--pair .eos-lux-switch__pill.is-end {
+  left: calc(50% - 0.02rem);
 }
 
 .eos-lux-switch__rim {
@@ -1276,7 +1343,6 @@ html:not(.light) .eos-lux-switch {
   position: relative;
   z-index: 3;
   display: inline-flex;
-  width: 100%;
   min-width: 0;
   align-items: center;
   justify-content: center;
@@ -1335,17 +1401,10 @@ html:not(.light) .eos-lux-switch__seg[aria-pressed="true"].eos-lux-switch__seg--
   position: absolute;
   top: 0.22rem;
   bottom: 0.22rem;
-  left: 0.22rem;
-  width: calc(50% - 0.22rem);
   border-radius: 999px;
   pointer-events: none;
   z-index: 1;
   overflow: hidden;
-  transition: left 380ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.eos-lux-switch__pill.is-end {
-  left: calc(50% - 0.02rem);
 }
 
 .eos-lux-switch__pill--home {
@@ -4296,6 +4355,7 @@ html.light .eos-modal-panel {
 }
 
 .eos-crm-lux-tabs {
+  display: flex !important;
   width: 100%;
   border-radius: 999px !important;
   overflow: visible;

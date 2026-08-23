@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
@@ -19,6 +19,7 @@ import ClientPortalChatDock from "@/components/portal/ClientPortalChatDock";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
+import type { ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
 
 type SearchCriteria = {
   location: string;
@@ -153,16 +154,43 @@ type PortalData = {
   }>;
 };
 
+const SENTIMENTS = new Set<ClientOfferSentiment>(["like", "maybe", "dislike"]);
+
+function sortPortalMatches(matches: PortalData["matches"]) {
+  return [...matches].sort((a, b) => {
+    const aPending = a.clientFeedback ? 1 : 0;
+    const bPending = b.clientFeedback ? 1 : 0;
+    if (aPending !== bPending) return aPending - bPending;
+    const aIntel = a.intelligenceSent ? 0 : 1;
+    const bIntel = b.intelligenceSent ? 0 : 1;
+    if (aIntel !== bIntel) return aIntel - bIntel;
+    return String(b.notifiedAt || "").localeCompare(String(a.notifiedAt || ""));
+  });
+}
+
 export default function ClientPortalPage({ params }: { params: Promise<{ token: string }> }) {
   const [token, setToken] = useState<string | null>(null);
   const [portal, setPortal] = useState<PortalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [openMatchId, setOpenMatchId] = useState<number | null>(null);
+  const [focusOfferId, setFocusOfferId] = useState(0);
+  const [focusMatchId, setFocusMatchId] = useState(0);
+  const [reactPrefill, setReactPrefill] = useState("");
+  const [phrasePrefill, setPhrasePrefill] = useState<string | null>(null);
 
   useEffect(() => {
     void params.then((p) => setToken(p.token));
   }, [params]);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    setFocusOfferId(Number(query.get("offer") || 0));
+    setFocusMatchId(Number(query.get("match") || 0));
+    setReactPrefill(query.get("react") || "");
+    setPhrasePrefill(query.get("phrase"));
+  }, []);
 
   useEffect(() => {
     if (token) rememberClientPortalToken(token);
@@ -186,6 +214,21 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const sortedMatches = useMemo(
+    () => sortPortalMatches(portal?.matches || []),
+    [portal?.matches],
+  );
+  const pendingMatches = sortedMatches.filter((match) => !match.clientFeedback);
+  const pendingFirstId = pendingMatches[0]?.id ?? null;
+
+  useEffect(() => {
+    if (!sortedMatches.length) return;
+    const focused = sortedMatches.find(
+      (match) => match.id === focusMatchId || match.offer.id === focusOfferId,
+    );
+    setOpenMatchId(focused?.id ?? pendingFirstId ?? sortedMatches[0]?.id ?? null);
+  }, [sortedMatches, focusMatchId, focusOfferId, pendingFirstId]);
 
   const submitFeedback = async (
     matchId: number,
@@ -573,25 +616,51 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "BUYER" ? (
-        <section className="space-y-4">
-          <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
-            <Radar className="size-5 text-emerald-500" />
-            Propozycje od agenta
-          </h2>
-          <p className="mt-1 text-sm text-[var(--eos-muted)]">
-            Każda karta to osobna nieruchomość. Reakcja schodzi do agenta przy tej ofercie — proces idzie dalej.
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
+                <Radar className="size-5 text-emerald-500" />
+                Propozycje od agenta
+              </h2>
+              <p className="mt-1 text-sm text-[var(--eos-muted)]">
+                Lista jest zwinięta. Nowe oferty są na górze — rozwiń, zaznacz konkretnie i wyślij agentowi.
+              </p>
+            </div>
+            {pendingMatches.length ? (
+              <span className="eos-lux-badge">
+                {pendingMatches.length === 1
+                  ? "1 nowa do rozpatrzenia"
+                  : `${pendingMatches.length} nowe do rozpatrzenia`}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">
+            Kliknij zdjęcie, żeby zobaczyć galerię. Kliknij początek opisu albo wiersz, żeby otworzyć całość do szybkiego przeglądu i odesłać reakcję.
           </p>
-          {portal.matches.length === 0 ? (
+          {sortedMatches.length === 0 ? (
             <p className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center text-sm text-[var(--eos-muted)]">
               Agent właśnie szuka dopasowań — wróć za chwilę.
             </p>
           ) : (
-            portal.matches.map((m) => (
+            sortedMatches.map((m) => (
               <ClientPortalMatchCard
                 key={m.id}
                 match={m}
                 token={token || ""}
                 saving={savingId === m.id}
+                expanded={openMatchId === m.id}
+                onToggle={() => setOpenMatchId((current) => (current === m.id ? null : m.id))}
+                prefill={
+                  m.offer.id === focusOfferId || m.id === focusMatchId
+                    ? {
+                        sentiment: SENTIMENTS.has(reactPrefill as ClientOfferSentiment)
+                          ? (reactPrefill as ClientOfferSentiment)
+                          : null,
+                        phrase: phrasePrefill,
+                      }
+                    : undefined
+                }
                 onSubmit={(payload) => submitFeedback(m.id, payload)}
               />
             ))
