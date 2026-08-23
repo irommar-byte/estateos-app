@@ -14,7 +14,6 @@ import {
   Send,
   RefreshCcw,
   FileText,
-  Sparkles,
   BarChart3,
   Check,
   Radar,
@@ -672,19 +671,14 @@ export default function CrmClientsWorkspace() {
               <p className="mt-2 break-words text-sm leading-relaxed text-[var(--eos-muted)]">{cl.emptyBody}</p>
             </div>
           ) : (
-            <div className="-mx-1 max-w-full overflow-x-auto overscroll-x-contain px-1 touch-pan-x">
-              <table className="w-full min-w-[44rem] text-left">
+            <div className="w-full overflow-x-visible">
+              <table className="eos-crm-clients-table w-full table-fixed text-left">
                 <thead>
                   <tr className="border-b border-[var(--eos-border)] text-[10px] uppercase tracking-[0.14em] text-[var(--eos-muted)]">
-                    <th className="px-3 py-2">Klient</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Typ</th>
-                    <th className="px-3 py-2">Kontakt</th>
-                    <th className="px-3 py-2">Konto</th>
-                    <th className="px-3 py-2">Weryfikacja</th>
-                    <th className="px-3 py-2">Analityka</th>
-                    <th className="px-3 py-2">Aktualizacja</th>
-                    <th className="px-3 py-2">Wizytówka</th>
+                    <th className="w-[38%] px-3 py-2">Klient</th>
+                    <th className="w-[18%] px-3 py-2">Status</th>
+                    <th className="w-[28%] px-3 py-2">Kontakt</th>
+                    <th className="w-[16%] px-3 py-2 text-right">Wizytówka</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -696,16 +690,37 @@ export default function CrmClientsWorkspace() {
                         selectedId === client.id ? "bg-emerald-500/10" : ""
                       }`}
                     >
-                      <td className="max-w-[11rem] px-3 py-3">
+                      <td className="px-3 py-3 align-top">
                         <p className="break-words font-semibold text-[var(--eos-text)]">{client.firstName} {client.lastName}</p>
-                        <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{client.email || "—"} · {client.phone || "—"}</p>
-                        {client.type === "BUYER" && client.matchCount > 0 ? (
-                          <span className="mt-1 inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
-                            {client.matchCount} dopasowań
+                        <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{client.email || "—"}{client.phone ? ` · ${client.phone}` : ""}</p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full bg-[var(--eos-input)] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+                            {client.type === "BUYER" ? "Kupujący" : "Sprzedający"}
                           </span>
-                        ) : null}
+                          {client.type === "BUYER" && client.matchCount > 0 ? (
+                            <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
+                              {client.matchCount} dopasowań{client.topMatchScore ? ` · ${client.topMatchScore}%` : ""}
+                            </span>
+                          ) : null}
+                          {client.linkedUserId ? (
+                            <span className={`text-[9px] font-black uppercase tracking-wider ${
+                              client.linkedUserLastLoginAt && Date.now() - new Date(client.linkedUserLastLoginAt).getTime() <= 10 * 60 * 1000
+                                ? "text-emerald-600"
+                                : "text-[var(--eos-muted)]"
+                            }`}>
+                              {client.linkedUserLastLoginAt && Date.now() - new Date(client.linkedUserLastLoginAt).getTime() <= 10 * 60 * 1000
+                                ? "Online"
+                                : "Konto"}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-black uppercase tracking-wider text-amber-700">Brak konta</span>
+                          )}
+                          <span className="text-[9px] font-semibold text-[var(--eos-muted)]">
+                            {new Date(client.updatedAt).toLocaleDateString("pl-PL")}
+                          </span>
+                        </div>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3 align-top">
                         {clientHasUpcomingMeeting(client) && client.upcomingMeetingStartsAt ? (
                           <CrmClientMeetingCountdown
                             startsAt={client.upcomingMeetingStartsAt}
@@ -715,16 +730,13 @@ export default function CrmClientsWorkspace() {
                           <CrmClientStatusLamps client={client} />
                         )}
                       </td>
-                      <td className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-[var(--eos-muted)]">
-                        {client.type === "BUYER" ? "Kupujący" : "Sprzedający"}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-[var(--eos-muted)]">
-                        <div className="flex items-center gap-2">
+                      <td className="px-3 py-3 align-top">
+                        <div className="flex flex-wrap items-center gap-2">
                           {client.phone ? (
                             <a
                               href={`tel:${client.phone}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 rounded-lg border border-[var(--eos-border)] px-2 py-1 hover:border-emerald-500/40"
+                              className="inline-flex items-center gap-1 rounded-lg border border-[var(--eos-border)] px-2 py-1 text-xs hover:border-emerald-500/40"
                             >
                               <PhoneCall className="size-3" />
                               Zadzwoń
@@ -734,7 +746,7 @@ export default function CrmClientsWorkspace() {
                             <a
                               href={`mailto:${client.email}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 rounded-lg border border-[var(--eos-border)] px-2 py-1 hover:border-emerald-500/40"
+                              className="inline-flex items-center gap-1 rounded-lg border border-[var(--eos-border)] px-2 py-1 text-xs hover:border-emerald-500/40"
                             >
                               <Mail className="size-3" />
                               E-mail
@@ -742,32 +754,7 @@ export default function CrmClientsWorkspace() {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-xs text-[var(--eos-muted)]">
-                        {client.linkedUserId ? (
-                          <div>
-                            <p className="font-semibold text-[var(--eos-text)]">ID: {client.linkedUserId}</p>
-                            <p className={client.linkedUserLastLoginAt && Date.now() - new Date(client.linkedUserLastLoginAt).getTime() <= 10 * 60 * 1000 ? "text-emerald-600" : ""}>
-                              {client.linkedUserLastLoginAt && Date.now() - new Date(client.linkedUserLastLoginAt).getTime() <= 10 * 60 * 1000
-                                ? "Online"
-                                : "Offline"}
-                            </p>
-                          </div>
-                        ) : (
-                          <span>Brak konta</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-xs">
-                        <p className={clientEmailVerified(client) ? "text-emerald-600" : "text-amber-700"}>E-mail</p>
-                        <p className={clientPhoneVerified(client) ? "text-emerald-600" : "text-amber-700"}>Telefon</p>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-[var(--eos-muted)]">
-                        {client.matchCount} dop.
-                        {client.topMatchScore ? ` · ${client.topMatchScore}%` : ""}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-[var(--eos-muted)]">
-                        {new Date(client.updatedAt).toLocaleDateString("pl-PL")}
-                      </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3 align-top text-right">
                         <button
                           type="button"
                           disabled={!client.email || cardBusyId === client.id}
@@ -806,15 +793,9 @@ export default function CrmClientsWorkspace() {
             </div>
           ) : null}
 
-          {!selectedId ? (
-            <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-2 py-8 text-center sm:min-h-[360px] sm:px-4">
-              <Sparkles className="mb-4 size-10 shrink-0 text-emerald-500/60" />
-              <p className="max-w-full break-words text-lg font-semibold text-[var(--eos-text)]">{cl.selectClientTitle}</p>
-              <p className="mt-2 max-w-sm break-words text-sm leading-relaxed text-[var(--eos-muted)]">{cl.selectClientBody}</p>
-            </div>
-          ) : detailLoading || !detail ? (
+          {selectedId && (detailLoading || !detail) ? (
             <p className="text-sm text-[var(--eos-muted)]">{cl.loading}</p>
-          ) : (
+          ) : selectedId && detail ? (
             <div className="min-w-0 space-y-6">
               <div className="eos-crm-switcher">
                 <button
@@ -1490,7 +1471,7 @@ export default function CrmClientsWorkspace() {
                 </div>
               ) : null}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 

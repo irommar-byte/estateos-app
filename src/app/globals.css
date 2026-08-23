@@ -5252,9 +5252,8 @@ html:not(.light) .eos-intel-queue {
 .eos-crm-split {
   display: grid;
   min-width: 0;
-  gap: 1.5rem;
+  gap: 0;
   grid-template-columns: minmax(0, 1fr);
-  transition: grid-template-columns 480ms cubic-bezier(0.22, 1, 0.36, 1), gap 420ms ease;
 }
 
 .eos-crm-split__list,
@@ -5265,7 +5264,6 @@ html:not(.light) .eos-intel-queue {
 .eos-crm-split__list {
   overflow: hidden;
   opacity: 1;
-  max-height: none;
   transform: translate3d(0, 0, 0);
   transition: opacity 280ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1), max-height 420ms ease, margin 420ms ease, padding 420ms ease, border-width 420ms ease;
 }
@@ -5278,7 +5276,15 @@ html:not(.light) .eos-intel-queue {
   padding-top: 0;
   padding-bottom: 0;
   border-width: 0;
-  transform: translate3d(-12px, 0, 0);
+  transform: translate3d(0, -10px, 0);
+}
+
+.eos-crm-split:not(.is-open) .eos-crm-split__list {
+  overflow: visible;
+}
+
+.eos-crm-split:not(.is-open) .eos-crm-split__detail {
+  display: none;
 }
 
 .eos-crm-split.is-open .eos-crm-split__detail {
@@ -5308,18 +5314,14 @@ html:not(.light) .eos-intel-queue {
   outline: none;
 }
 
-@media (min-width: 1024px) {
-  .eos-crm-split {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  }
-  .eos-crm-split.is-open {
-    grid-template-columns: 0fr minmax(0, 1fr);
-    gap: 0;
-  }
-  .eos-crm-split.is-open .eos-crm-split__list {
-    max-height: none;
-    transform: translate3d(-8px, 0, 0);
-  }
+.eos-crm-clients-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.eos-crm-clients-table th,
+.eos-crm-clients-table td {
+  overflow-wrap: anywhere;
 }
 
 .eos-glow-select__value,
