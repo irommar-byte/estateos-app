@@ -15,7 +15,7 @@
     "pm2:reload:web": "pm2 reload nieruchomosci --update-env",
     "pm2:save": "pm2 save",
     "deploy:prod": "npm ci && npm run build && npm run pm2:reload && npm run pm2:save",
-    "deploy:server-only": "npm run build && node scripts/wait-kei-idle.cjs && npm run pm2:reload:web",
+    "deploy:server-only": "npm run build && node scripts/wait-kei-idle.cjs && npm run pm2:reload:web && node scripts/wait-web-ready.cjs",
     "release:ship": "npm run check && npm run build && npm run pm2:reload && npm run pm2:save",
     "lint": "eslint .",
     "type-check": "tsc --noEmit --incremental false",
