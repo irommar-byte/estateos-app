@@ -36,6 +36,7 @@ import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import OpenContactThreadButton from "@/components/contact/OpenContactThreadButton";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import CrmIntelligenceAssistant from "@/components/crm/CrmIntelligenceAssistant";
+import { timelineKindLabel } from "@/lib/desk/timeline";
 import type { IntelligenceLocks, IntelligenceSettings } from "@/lib/crm/clientIntelligence";
 import { DEFAULT_INTELLIGENCE_LOCKS } from "@/lib/crm/clientIntelligence";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -133,6 +134,30 @@ type Report = {
     offerId: number;
   }>;
 };
+
+const ACTIVITY_GROUPS: Array<{ label: string; kinds: string[] }> = [
+  { label: "Plan i kolejka", kinds: ["INTELLIGENCE_PLANNED"] },
+  {
+    label: "Wysłane i przypomnienia",
+    kinds: ["INTELLIGENCE_OFFER", "CLIENT_NOTIFIED", "OFFER_SHARED", "FEEDBACK_REMINDER"],
+  },
+  { label: "Reakcje i nauka", kinds: ["CLIENT_FEEDBACK", "INTELLIGENCE_TASTE"] },
+];
+
+function groupClientActivities<T extends { kind: string }>(items: T[]) {
+  const remaining = [...items.slice(0, 24)];
+  const groups: Array<{ label: string; items: T[] }> = [];
+  for (const group of ACTIVITY_GROUPS) {
+    const matched = remaining.filter((item) => group.kinds.includes(item.kind));
+    if (matched.length) groups.push({ label: group.label, items: matched });
+    for (const item of matched) {
+      const index = remaining.indexOf(item);
+      if (index >= 0) remaining.splice(index, 1);
+    }
+  }
+  if (remaining.length) groups.push({ label: "Pozostałe", items: remaining });
+  return groups;
+}
 
 export default function CrmClientsWorkspace() {
   const { dict } = useLocale();
@@ -1454,17 +1479,31 @@ export default function CrmClientsWorkspace() {
                     <FileText className="size-3.5" />
                     Timeline i historia działań
                   </p>
-                  <div className="space-y-2">
-                    {(detail.activities || []).slice(0, 8).map((a) => (
-                      <div key={a.id} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 px-4 py-3 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-medium text-[var(--eos-text)]">{a.title || "Aktywność CRM"}</p>
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--eos-muted)]">
-                            <Clock3 className="size-3" />
-                            {new Date(a.createdAt).toLocaleString("pl-PL")}
-                          </span>
+                  <div className="space-y-5">
+                    {groupClientActivities(detail.activities || []).map((group) => (
+                      <div key={group.label}>
+                        <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                          {group.label}
+                        </p>
+                        <div className="space-y-2">
+                          {group.items.map((a) => (
+                            <div key={a.id} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 px-4 py-3 text-sm">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">
+                                    {timelineKindLabel(a.kind)}
+                                  </p>
+                                  <p className="font-medium text-[var(--eos-text)]">{a.title || "Aktywność CRM"}</p>
+                                </div>
+                                <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[var(--eos-muted)]">
+                                  <Clock3 className="size-3" />
+                                  {new Date(a.createdAt).toLocaleString("pl-PL")}
+                                </span>
+                              </div>
+                              {a.body ? <p className="mt-1 whitespace-pre-line text-xs text-[var(--eos-muted)]">{a.body}</p> : null}
+                            </div>
+                          ))}
                         </div>
-                        {a.body ? <p className="mt-1 text-xs text-[var(--eos-muted)]">{a.body}</p> : null}
                       </div>
                     ))}
                   </div>

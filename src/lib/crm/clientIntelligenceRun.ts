@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
+import { notifyAgencyClientAboutOffer, remindPendingClientFeedback } from '@/lib/agencyClientNotify';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 import {
   clientFacingWhyLine,
@@ -422,15 +422,52 @@ export async function tickClientIntelligence(): Promise<{
   scanned: number;
   sent: number;
   skipped: number;
+  reminded: number;
 }> {
   await ensureIntelligenceLockedFieldsColumn();
   const clients = await prisma.agencyClient.findMany({
     where: { status: 'ACTIVE', intelligenceEnabled: true, buyerPreference: { isNot: null } },
-    select: { id: true, intelligenceDailyLimit: true },
+    select: { id: true, agencyUserId: true, intelligenceDailyLimit: true, intelligenceLastSentAt: true },
   });
   let sent = 0;
   let skipped = 0;
   for (const client of clients) {
+    const preview = await pickIntelligenceOffer(client.id, { preview: true });
+    if (
+      preview.pick.offerId &&
+      preview.pick.skipReason === 'Interwał jeszcze nie minął.' &&
+      preview.pick.nextSendAt
+    ) {
+      const since = client.intelligenceLastSentAt || new Date(0);
+      const planned = await prisma.agencyClientActivity.findFirst({
+        where: { clientId: client.id, kind: 'INTELLIGENCE_PLANNED', createdAt: { gte: since } },
+        select: { id: true },
+      });
+      if (!planned) {
+        await prisma.agencyClientActivity.create({
+          data: {
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            offerId: preview.pick.offerId,
+            kind: 'INTELLIGENCE_PLANNED',
+            title: `Plan: wyślę maila — ${preview.pick.title}`,
+            body: [
+              preview.pick.nextSendAt
+                ? `Planowana wysyłka: ${new Date(preview.pick.nextSendAt).toLocaleString('pl-PL')}`
+                : null,
+              preview.pick.clientWhy,
+            ]
+              .filter(Boolean)
+              .join('\n'),
+            metadata: {
+              offerId: preview.pick.offerId,
+              nextSendAt: preview.pick.nextSendAt,
+              score: preview.pick.score,
+            },
+          },
+        });
+      }
+    }
     const limit = Math.max(1, Math.min(3, client.intelligenceDailyLimit || 1));
     let sentForClient = 0;
     for (let i = 0; i < limit; i += 1) {
@@ -448,5 +485,6 @@ export async function tickClientIntelligence(): Promise<{
     }
     if (!sentForClient) skipped += 1;
   }
-  return { scanned: clients.length, sent, skipped };
+  const reminders = await remindPendingClientFeedback();
+  return { scanned: clients.length, sent, skipped, reminded: reminders.reminded };
 }

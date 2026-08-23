@@ -5,6 +5,9 @@ import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { absolutizeMediaUrl } from '@/lib/offerShareLanding';
 import { appendPresentationQuery } from '@/lib/offerPresentingAgent';
+import { DISLIKE_PHRASES, LIKE_PHRASES } from '@/lib/crm/clientPortalFeedback';
+import { sendNotification } from '@/lib/core/notification.core';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 
 function buildTransporter() {
   const smtpPort = Number(process.env.EMAIL_PORT) || 587;
@@ -60,6 +63,23 @@ function offerUrlForClient(offerId: number, portalToken: string | null | undefin
   return `https://estateos.pl${appendPresentationQuery(`/oferta/${offerId}`, { portalToken })}`;
 }
 
+function portalReactUrl(
+  token: string,
+  offerId: number,
+  sentiment: 'like' | 'maybe' | 'dislike',
+  phrase?: string,
+): string {
+  const url = new URL(buildPortalUrl(token));
+  url.searchParams.set('offer', String(offerId));
+  url.searchParams.set('react', sentiment);
+  if (phrase) url.searchParams.set('phrase', phrase);
+  return url.toString();
+}
+
+function emailChip(href: string, label: string, bg: string, color: string): string {
+  return `<a href="${escapeHtml(href)}" style="display:inline-block;margin:0 6px 8px 0;background:${bg};color:${color};text-decoration:none;padding:9px 14px;border-radius:999px;font-weight:800;font-size:11px;letter-spacing:0.04em;">${escapeHtml(label)}</a>`;
+}
+
 function formatMetaLine(offer: OfferBrief): string {
   const bits: string[] = [];
   if (offer.rooms != null && Number(offer.rooms) > 0) {
@@ -98,6 +118,23 @@ function buildOfferCardHtml(offer: OfferBrief, portalToken?: string | null): str
           <p style="margin:0 0 4px;font-size:20px;font-weight:900;color:#111827;letter-spacing:-0.03em;">${escapeHtml(priceLabel)}</p>
           ${meta ? `<p style="margin:0 0 16px;font-size:13px;color:#6b7280;">${escapeHtml(meta)}</p>` : `<div style="height:12px;line-height:12px;font-size:12px;">&nbsp;</div>`}
           <a href="${escapeHtml(offerUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:13px 22px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Zobacz ofertę</a>
+          ${
+            portalToken
+              ? `<div style="margin-top:18px;padding-top:16px;border-top:1px solid #f3f4f6;">
+                  <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#059669;">Po zdjęciach — czemu tak?</p>
+                  ${emailChip(portalReactUrl(portalToken, offer.id, 'like'), 'Chcę oglądać', '#10b981', '#052e1c')}
+                  ${LIKE_PHRASES.slice(0, 3)
+                    .map((phrase) => emailChip(portalReactUrl(portalToken, offer.id, 'like', phrase), phrase, '#ecfdf5', '#065f46'))
+                    .join('')}
+                  <p style="margin:10px 0 8px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#be123c;">Czemu nie?</p>
+                  ${emailChip(portalReactUrl(portalToken, offer.id, 'dislike'), 'Odłóż', '#e11d48', '#ffffff')}
+                  ${DISLIKE_PHRASES.slice(0, 3)
+                    .map((phrase) => emailChip(portalReactUrl(portalToken, offer.id, 'dislike', phrase), phrase, '#fff1f2', '#9f1239'))
+                    .join('')}
+                  <p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:#6b7280;">Otwiera panel z zaznaczoną odpowiedzią — możesz dopisać szczegóły i wysłać agentowi.</p>
+                </div>`
+              : ''
+          }
         </td>
       </tr>
     </table>`;
@@ -490,4 +527,146 @@ export async function notifyAgencyClientAboutOffers(params: {
   });
 
   return { emailSent, sentCount: toSend.length, skippedCount: blockedIds.size, preview };
+}
+
+const FEEDBACK_REMIND_AFTER_MS = 36 * 60 * 60 * 1000;
+const FEEDBACK_REMIND_COOLDOWN_MS = 5 * 24 * 60 * 60 * 1000;
+
+export async function remindPendingClientFeedback(): Promise<{ scanned: number; reminded: number }> {
+  const cutoff = new Date(Date.now() - FEEDBACK_REMIND_AFTER_MS);
+  const stale = await prisma.agencyClientMatch.findMany({
+    where: {
+      notifiedAt: { lte: cutoff },
+      clientFeedback: null,
+      client: {
+        status: 'ACTIVE',
+        type: 'BUYER',
+        email: { not: null },
+        portalToken: { not: null },
+      },
+    },
+    include: {
+      offer: {
+        select: {
+          id: true,
+          title: true,
+          city: true,
+          district: true,
+          price: true,
+          priceCurrency: true,
+          area: true,
+          rooms: true,
+          images: true,
+        },
+      },
+      client: {
+        select: {
+          id: true,
+          firstName: true,
+          email: true,
+          portalToken: true,
+          agencyUserId: true,
+        },
+      },
+    },
+    orderBy: { notifiedAt: 'asc' },
+    take: 80,
+  });
+
+  const byClient = new Map<number, typeof stale>();
+  for (const row of stale) {
+    const list = byClient.get(row.clientId) || [];
+    list.push(row);
+    byClient.set(row.clientId, list);
+  }
+
+  let reminded = 0;
+  const cooldown = new Date(Date.now() - FEEDBACK_REMIND_COOLDOWN_MS);
+  for (const [clientId, rows] of byClient) {
+    const recent = await prisma.agencyClientActivity.findFirst({
+      where: { clientId, kind: 'FEEDBACK_REMINDER', createdAt: { gte: cooldown } },
+      select: { id: true },
+    });
+    if (recent) continue;
+    const first = rows[0];
+    if (!first?.client.email || !first.client.portalToken) continue;
+
+    const agent = await prisma.user.findUnique({
+      where: { id: first.client.agencyUserId },
+      select: { name: true, companyName: true, email: true, phone: true },
+    });
+    if (!agent) continue;
+
+    const agentName = resolveSellerPersonName(agent) || agent.name || 'Twój agent';
+    const agencyName = agent.companyName?.trim() || 'EstateOS';
+    const clientName = first.client.firstName?.trim() || 'Kliencie';
+    const portalUrl = buildPortalUrl(first.client.portalToken);
+    const briefs = rows.slice(0, 4).map((row) => toOfferBrief(row.offer));
+    const waiting = rows.length;
+    const intro =
+      waiting === 1
+        ? `Czekam jeszcze na Twoją opinię przy tej propozycji. Zerknij na zdjęcia i od razu zaznacz, czemu tak albo czemu nie — to uczy kolejne dopasowania.`
+        : `Czekają ${waiting} propozycje bez odpowiedzi. Po zdjęciach zaznacz czemu tak / czemu nie — agent i EstateOS™ Intelligence uczą się z każdej reakcji.`;
+
+    const html = buildEmailHtml({
+      agencyName,
+      agentName,
+      clientName,
+      intro,
+      offers: briefs,
+      portalUrl,
+      portalToken: first.client.portalToken,
+      agentPhone: agent.phone,
+      agentEmail: agent.email,
+    });
+
+    const transporter = buildTransporter();
+    await transporter.sendMail({
+      from: `"${agencyName}" <powiadomienia@estateos.pl>`,
+      to: first.client.email,
+      replyTo: agent.email || undefined,
+      subject:
+        waiting === 1
+          ? `${agentName}: przypomnienie — czekam na Twoją opinię`
+          : `${agentName}: przypomnienie — ${waiting} propozycje czekają na odpowiedź`,
+      html,
+    });
+
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId,
+        agencyUserId: first.client.agencyUserId,
+        offerId: first.offerId,
+        kind: 'FEEDBACK_REMINDER',
+        title:
+          waiting === 1
+            ? `Przypomnienie: czekamy na opinię — ${first.offer.title}`
+            : `Przypomnienie: ${waiting} oferty bez odpowiedzi klienta`,
+        body: rows
+          .slice(0, 6)
+          .map((row) => row.offer.title)
+          .join('\n'),
+        metadata: {
+          offerIds: rows.map((row) => row.offerId),
+          waiting,
+          via: 'email',
+        },
+      },
+    });
+
+    await sendNotification({
+      userId: first.client.agencyUserId,
+      type: 'CRM_EVENT',
+      title: `Przypomnienie do klienta: ${clientName}`,
+      body:
+        waiting === 1
+          ? `Wysłano mail z prośbą o opinię przy ofercie ${first.offer.title}.`
+          : `Wysłano mail: ${waiting} propozycje nadal bez odpowiedzi.`,
+      data: crmAgentPushData(clientId, { kind: 'FEEDBACK_REMINDER' }),
+    }).catch(() => {});
+
+    reminded += 1;
+  }
+
+  return { scanned: byClient.size, reminded };
 }

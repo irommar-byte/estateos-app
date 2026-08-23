@@ -61,6 +61,13 @@ const KIND_LABELS: Record<string, string> = {
   TASK: 'Zadanie',
   TASK_DONE: 'Zadanie ukończone',
   DESK_CHECKLIST: 'Checklist',
+  INTELLIGENCE_OFFER: 'Intelligence — wysłano',
+  INTELLIGENCE_PLANNED: 'Intelligence — plan wysyłki',
+  INTELLIGENCE_TASTE: 'Intelligence — nauka',
+  FEEDBACK_REMINDER: 'Przypomnienie do klienta',
+  CLIENT_NOTIFIED: 'Mail do klienta',
+  OFFER_SHARED: 'Udostępniono ofertę',
+  CLIENT_FEEDBACK: 'Reakcja klienta',
 };
 
 export function timelineKindLabel(kind: string): string {

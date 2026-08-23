@@ -36,6 +36,7 @@ import AddOfferDocVerificationPanel from '@/components/offer/AddOfferDocVerifica
 import { HEATING_DICT_KEYS } from '@/i18n/addOfferDictionary';
 import { isValidLandRegistryNumber, normalizeLandRegistryInput } from '@/lib/landRegistryInput';
 import dynamic from 'next/dynamic';
+import LuxurySegmentSwitch from '@/components/ui/LuxurySegmentSwitch';
 
 const NeighborhoodMapPreview = dynamic(
   () => import('@/components/map/NeighborhoodMapPreview'),
@@ -883,22 +884,15 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           </div>
 
           <div className="space-y-6">
-            <div className="inline-flex rounded-2xl border border-white/10 bg-black/30 p-1">
-              <button
-                type="button"
-                onClick={() => updateData({ isExactLocation: true })}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${data.isExactLocation !== false ? 'bg-emerald-500 text-black' : 'text-zinc-400 hover:text-white'}`}
-              >
-                Dokładna lokalizacja
-              </button>
-              <button
-                type="button"
-                onClick={() => updateData({ isExactLocation: false })}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${data.isExactLocation === false ? 'bg-cyan-500 text-black' : 'text-zinc-400 hover:text-white'}`}
-              >
-                Przybliżona okolica
-              </button>
-            </div>
+            <LuxurySegmentSwitch
+              ariaLabel="Dokładność lokalizacji"
+              value={data.isExactLocation === false ? 'approx' : 'exact'}
+              onChange={(mode) => updateData({ isExactLocation: mode === 'exact' })}
+              options={[
+                { value: 'exact', label: 'Dokładna lokalizacja', accent: 'home' },
+                { value: 'approx', label: 'Przybliżona okolica', accent: 'car' },
+              ]}
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>

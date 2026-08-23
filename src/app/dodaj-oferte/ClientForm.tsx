@@ -24,6 +24,7 @@ import AddOfferStepProgress from '@/components/offers/AddOfferStepProgress';
 import AddOfferPublishSummary from '@/components/offers/AddOfferPublishSummary';
 import ContactVerificationPanel from '@/components/ContactVerificationPanel';
 import SiriMagicButton from '@/components/ui/SiriMagicButton';
+import LuxurySegmentSwitch from '@/components/ui/LuxurySegmentSwitch';
 import { typewriterReveal } from '@/lib/typewriterReveal';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
@@ -1830,10 +1831,16 @@ export default function ClientForm({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <div className="space-y-8">
                   
-                  <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
-                    <button onClick={() => updateData({ locationType: 'exact' })} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${data.locationType === 'exact' ? 'bg-emerald-500 text-black shadow-md' : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'}`}><MapPin size={16}/> {ao.locationExact}</button>
-                    <button onClick={() => updateData({ locationType: 'approximate' })} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${data.locationType === 'approximate' ? 'bg-emerald-500 text-black shadow-md' : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'}`}><Navigation size={16}/> {ao.locationApprox}</button>
-                  </div>
+                  <LuxurySegmentSwitch
+                    ariaLabel={ao.locationExact}
+                    className="w-full"
+                    value={data.locationType === 'approximate' ? 'approximate' : 'exact'}
+                    onChange={(mode) => updateData({ locationType: mode })}
+                    options={[
+                      { value: 'exact', label: (<span className="inline-flex items-center gap-2"><MapPin size={16} /> {ao.locationExact}</span>), accent: 'home' },
+                      { value: 'approximate', label: (<span className="inline-flex items-center gap-2"><Navigation size={16} /> {ao.locationApprox}</span>), accent: 'car' },
+                    ]}
+                  />
                   
                   <div className="p-4 bg-white/5 rounded-2xl border border-white/10 text-xs text-zinc-400 leading-relaxed">
                     <strong className="text-[var(--eos-text)]">{ao.locationVisibilityTitle}</strong> {ao.locationVisibilityBody}

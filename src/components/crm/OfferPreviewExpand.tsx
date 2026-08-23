@@ -1,8 +1,9 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { X } from "lucide-react";
 import { plainOfferDescription } from "@/lib/offerDescriptionHtml";
 
 export type ExpandableOfferPreviewData = {
@@ -17,8 +18,8 @@ function collectImages(offer: ExpandableOfferPreviewData): string[] {
   const raw = Array.isArray(offer.imageUrls) && offer.imageUrls.length
     ? offer.imageUrls
     : offer.imageUrl
-      ? [offer.imageUrl]
-      : [];
+    ? [offer.imageUrl]
+    : [];
   const out: string[] = [];
   for (const item of raw) {
     const url = String(item || "").trim();
@@ -45,9 +46,11 @@ function fallbackDelta(index: number): Delta {
 export function OfferPhotoCascade({
   offer,
   thumbClassName = "h-24 w-32 shrink-0 overflow-hidden rounded-xl bg-[var(--eos-input)] sm:h-20 sm:w-28",
+  onOpen,
 }: {
   offer: ExpandableOfferPreviewData;
   thumbClassName?: string;
+  onOpen?: () => void;
 }) {
   const images = collectImages(offer);
   const [open, setOpen] = useState(false);
@@ -70,12 +73,29 @@ export function OfferPhotoCascade({
     setEnlarged(null);
     setReady(false);
     setOpen(true);
+    onOpen?.();
   };
 
   const close = () => {
     setEnlarged(null);
     setOpen(false);
   };
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (enlarged) setEnlarged(null);
+      else close();
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, enlarged]);
 
   useLayoutEffect(() => {
     if (!open || enlarged || ready) return;
@@ -104,33 +124,48 @@ export function OfferPhotoCascade({
       ? createPortal(
           <AnimatePresence>
             {open ? (
-              <motion.button
-                type="button"
-                aria-label="Zamknij zdjęcia"
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Zdjęcia oferty"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.42 }}
-                className="fixed inset-0 z-[90] bg-black/62 text-left"
+                transition={{ duration: 0.32 }}
+                className="fixed inset-0 z-[90] bg-black/72"
                 onClick={() => {
                   if (enlarged) setEnlarged(null);
                   else close();
                 }}
               >
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    close();
+                  }}
+                  className="absolute right-4 top-[max(0.85rem,env(safe-area-inset-top))] z-[95] inline-flex size-11 items-center justify-center rounded-full border border-white/25 bg-black/70 text-white shadow-lg"
+                  aria-label="Zamknij zdjęcia"
+                >
+                  <X className="size-5" />
+                </button>
                 {enlarged ? (
-                  <span className="flex h-full items-center justify-center p-4" onClick={(event) => event.stopPropagation()}>
+                  <span className="flex h-full items-center justify-center p-4 pt-16">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={enlarged}
                       alt=""
-                      className="max-h-[78vh] max-w-[min(96vw,1100px)] rounded-2xl object-contain"
+                      className="max-h-[78vh] max-w-[min(96vw,1100px)] cursor-zoom-out rounded-2xl object-contain"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setEnlarged(null);
+                      }}
                     />
                   </span>
                 ) : (
                   <span
-                    className="block px-2.5 pt-[max(0.75rem,env(safe-area-inset-top))]"
+                    className="block px-2.5 pt-[max(3.5rem,calc(env(safe-area-inset-top)+2.75rem))]"
                     style={{ height: "50vh" }}
-                    onClick={(event) => event.stopPropagation()}
                   >
                     <span className="grid h-full grid-cols-3 gap-2" style={{ gridAutoRows: "calc((50vh - 1.25rem) / 2)" }}>
                       {images.map((src, index) => {
@@ -161,7 +196,10 @@ export function OfferPhotoCascade({
                               delay: ready ? index * 0.18 : 0,
                               ease: EASE,
                             }}
-                            onClick={() => (ready ? setEnlarged(src) : undefined)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (ready) setEnlarged(src);
+                            }}
                             className="overflow-hidden rounded-xl bg-black/35"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -172,7 +210,7 @@ export function OfferPhotoCascade({
                     </span>
                   </span>
                 )}
-              </motion.button>
+              </motion.div>
             ) : null}
           </AnimatePresence>,
           document.body,
@@ -184,7 +222,10 @@ export function OfferPhotoCascade({
       <button
         ref={thumbRef}
         type="button"
-        onClick={openCascade}
+        onClick={(event) => {
+          event.stopPropagation();
+          openCascade();
+        }}
         className={`${thumbClassName} bg-[var(--eos-input)]`}
         aria-label={`Pokaż zdjęcia: ${offer.title}`}
       >
@@ -199,9 +240,11 @@ export function OfferPhotoCascade({
 export function OfferDescriptionToggle({
   offer,
   className = "mt-1 text-[11px] leading-snug text-[var(--eos-muted)]",
+  hint = false,
 }: {
   offer: ExpandableOfferPreviewData;
   className?: string;
+  hint?: boolean;
 }) {
   const text = plainOfferDescription(offer.description || offer.excerpt);
   const [open, setOpen] = useState(false);
@@ -210,6 +253,11 @@ export function OfferDescriptionToggle({
   return (
     <button type="button" onClick={() => setOpen((value) => !value)} className="block w-full text-left">
       <p className={`${className} ${open ? "whitespace-pre-wrap" : "line-clamp-2"}`}>{text}</p>
+      {hint ? (
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--eos-subtle)]">
+          {open ? "Zwiń opis" : "Kliknij początek opisu, żeby otworzyć całość do szybkiego przeglądu"}
+        </p>
+      ) : null}
     </button>
   );
 }
