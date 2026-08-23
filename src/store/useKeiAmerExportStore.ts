@@ -141,13 +141,27 @@ function applyJobSnapshot(
 }
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollIntervalMs = 0;
 let exportCancelledByUser = false;
+
+const ACTIVE_POLL_MS = 1500;
+const IDLE_AUTO_POLL_MS = 30_000;
 
 function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+  pollIntervalMs = 0;
+}
+
+function setPollInterval(ms: number) {
+  if (pollTimer && pollIntervalMs === ms) return;
+  if (pollTimer) clearInterval(pollTimer);
+  pollIntervalMs = ms;
+  pollTimer = setInterval(() => {
+    void pollOnce();
+  }, ms);
 }
 
 async function pollOnce() {
@@ -170,7 +184,9 @@ async function pollOnce() {
     }
     if (exportCancelledByUser) return;
     if (!job) {
-      if (!useKeiAmerExportStore.getState().autoEnabled) stopPolling();
+      const autoEnabled = useKeiAmerExportStore.getState().autoEnabled;
+      if (autoEnabled) setPollInterval(IDLE_AUTO_POLL_MS);
+      else stopPolling();
       return;
     }
     if (job.cancelRequested || job.status === 'cancelled') {
@@ -181,7 +197,8 @@ async function pollOnce() {
         running: false,
         ...(job.source === 'auto' ? { jobId: null, items: [], modalVisible: false } : {}),
       });
-      if (!useKeiAmerExportStore.getState().autoEnabled) stopPolling();
+      if (useKeiAmerExportStore.getState().autoEnabled) setPollInterval(IDLE_AUTO_POLL_MS);
+      else stopPolling();
       return;
     }
     const prev = useKeiAmerExportStore.getState();
@@ -191,11 +208,16 @@ async function pollOnce() {
       job.status !== 'queued' &&
       job.status !== 'running';
     const autoTerminal = job.source === 'auto' && job.status !== 'queued' && job.status !== 'running';
+    const live = job.status === 'queued' || job.status === 'running';
     useKeiAmerExportStore.setState({
       ...applyJobSnapshot(job, onComplete, { haptic: becameTerminal }),
       ...(autoTerminal ? { items: [], modalVisible: false, jobId: null } : {}),
     });
-    if (job.status !== 'queued' && job.status !== 'running' && !useKeiAmerExportStore.getState().autoEnabled) {
+    if (live) {
+      setPollInterval(ACTIVE_POLL_MS);
+    } else if (useKeiAmerExportStore.getState().autoEnabled) {
+      setPollInterval(IDLE_AUTO_POLL_MS);
+    } else {
       stopPolling();
     }
   } catch {
@@ -206,9 +228,7 @@ async function pollOnce() {
 function startPolling() {
   stopPolling();
   void pollOnce();
-  pollTimer = setInterval(() => {
-    void pollOnce();
-  }, 1500);
+  setPollInterval(ACTIVE_POLL_MS);
 }
 
 export function isKeiExportStreamAlive(): boolean {

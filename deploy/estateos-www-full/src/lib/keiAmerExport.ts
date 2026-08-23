@@ -8,6 +8,7 @@ import { activateOfferPublication } from '@/lib/offerPublication';
 import type { KeiExportProgressEmitter } from '@/lib/keiAmerExportProgress';
 import {
   findWarsawPortalListings,
+  findKeiListingsByIdsOrUrls,
   ensureKeiAmerSession,
   keiPropertyKindLabel,
   keiTransactionKindLabel,
@@ -241,15 +242,15 @@ export async function exportKeiListingsToEstateOS(options?: {
       kei: keiContextFromSelection(row),
     }));
 
-    // Selekcje z apki/auto czasem mają tylko id+url+adres — dograj telefon i resztę z KEI.
-    const needsEnrich = exportTargets.some((row) => !row.kei?.phone || !row.kei?.listedAt || !row.kei?.rooms);
-    if (needsEnrich) {
-      const listings = await findWarsawPortalListings({
+    // Thin selections (legacy auto / old app) — fetch only missing KEI rows, stop early.
+    const thin = exportTargets.filter((row) => !row.kei?.phone);
+    if (thin.length > 0) {
+      const listings = await findKeiListingsByIdsOrUrls({
         propertyKind,
         transactionKind,
-        maxResults: Math.max(exportTargets.length * 8, 40),
-        maxPages: 10,
-        search: { propertyKind, transactionKind, okres: '0' },
+        keiIds: thin.map((row) => row.keiListingId),
+        portalUrls: thin.map((row) => row.portalUrl),
+        maxPages: 3,
       });
       const byId = new Map(listings.map((row) => [String(row.id), row]));
       const byUrl = new Map(
@@ -258,7 +259,7 @@ export async function exportKeiListingsToEstateOS(options?: {
           .filter(([url]) => Boolean(url)),
       );
       exportTargets = exportTargets.map((target) => {
-        if (target.kei?.phone && target.kei.listedAt && target.kei.rooms) return target;
+        if (target.kei?.phone) return target;
         const urlKey = String(target.portalUrl || '').trim().replace(/\/+$/, '');
         const full =
           byId.get(String(target.keiListingId || '')) ||
@@ -271,7 +272,6 @@ export async function exportKeiListingsToEstateOS(options?: {
           ...target,
           kei: {
             ...enriched,
-            // Prefer explicit selection values when the client already sent them.
             phone: target.kei?.phone || enriched.phone,
             address: target.kei?.address || enriched.address,
             district: target.kei?.district || enriched.district,

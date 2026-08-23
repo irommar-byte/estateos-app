@@ -107,6 +107,46 @@ export async function POST(req: Request) {
       notifyNewSimilar: typedBoolean(favorites.notifyNewSimilar, 'notifyNewSimilar'),
     };
 
+    // App often re-registers the same device on focus — skip noisy DB writes within 90s.
+    const existingDevice = await prisma.device.findUnique({
+      where: { userId_expoPushToken: { userId, expoPushToken } },
+      select: {
+        isActive: true,
+        platform: true,
+        deviceModel: true,
+        appVersion: true,
+        lastSyncedAt: true,
+      },
+    });
+    const existingPref = await prisma.devicePushPreference.findUnique({ where: { userId } });
+    const resolvedPrefPreview = {
+      favoritesEnabled: prefInput.favoritesEnabled ?? existingPref?.favoritesEnabled ?? true,
+      notifyPriceChange: prefInput.notifyPriceChange ?? existingPref?.notifyPriceChange ?? true,
+      notifyDealProposals: prefInput.notifyDealProposals ?? existingPref?.notifyDealProposals ?? true,
+      notifyIncludeAmounts: prefInput.notifyIncludeAmounts ?? existingPref?.notifyIncludeAmounts ?? true,
+      notifyStatusChange: prefInput.notifyStatusChange ?? existingPref?.notifyStatusChange ?? true,
+      notifyNewSimilar: prefInput.notifyNewSimilar ?? existingPref?.notifyNewSimilar ?? true,
+    };
+    const syncedAgeMs = existingDevice?.lastSyncedAt
+      ? Date.now() - new Date(existingDevice.lastSyncedAt).getTime()
+      : Number.POSITIVE_INFINITY;
+    const sameDevice =
+      Boolean(existingDevice?.isActive) &&
+      existingDevice?.platform === platform &&
+      existingDevice?.deviceModel === deviceModel &&
+      existingDevice?.appVersion === appVersion;
+    const samePrefs =
+      existingPref &&
+      existingPref.favoritesEnabled === resolvedPrefPreview.favoritesEnabled &&
+      existingPref.notifyPriceChange === resolvedPrefPreview.notifyPriceChange &&
+      existingPref.notifyDealProposals === resolvedPrefPreview.notifyDealProposals &&
+      existingPref.notifyIncludeAmounts === resolvedPrefPreview.notifyIncludeAmounts &&
+      existingPref.notifyStatusChange === resolvedPrefPreview.notifyStatusChange &&
+      existingPref.notifyNewSimilar === resolvedPrefPreview.notifyNewSimilar;
+    if (sameDevice && samePrefs && syncedAgeMs < 90_000) {
+      return NextResponse.json({ success: true, skipped: true });
+    }
+
     await prisma.$transaction(async (tx) => {
       // Jeden fizyczny token urządzenia ma należeć tylko do jednego konta.
       await tx.device.updateMany({
