@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
@@ -14,7 +14,6 @@ import {
   Send,
   RefreshCcw,
   FileText,
-  X,
   Sparkles,
   BarChart3,
   Check,
@@ -29,6 +28,9 @@ import {
   SlidersHorizontal,
   Contact2,
   IdCard,
+  ChevronLeft,
+  ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
@@ -166,6 +168,7 @@ export default function CrmClientsWorkspace() {
     strictCities: string[];
     strictCityDistricts: Record<string, string[]>;
   }>({ strictCities: [], strictCityDistricts: {} });
+  const hadClientSelection = useRef(false);
 
   useEffect(() => {
     const open = () => setFormOpen(true);
@@ -254,6 +257,32 @@ export default function CrmClientsWorkspace() {
     else setDetail(null);
   }, [selectedId, loadDetail]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && selectedId && !formOpen && !previewOpen) {
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, formOpen, previewOpen]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedId) {
+      hadClientSelection.current = true;
+      url.searchParams.set("clientId", String(selectedId));
+    } else if (hadClientSelection.current) {
+      url.searchParams.delete("clientId");
+    } else {
+      return;
+    }
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== next) {
+      window.history.replaceState({}, "", next);
+    }
+  }, [selectedId]);
+
   const sendBusinessCard = async (clientId: number) => {
     setCardBusyId(clientId);
     setToast("");
@@ -301,6 +330,25 @@ export default function CrmClientsWorkspace() {
     });
   }, [clients, onlyAttention, query, sortBy]);
 
+  const switcherClients = useMemo(() => {
+    if (selectedId && !filtered.some((client) => client.id === selectedId)) {
+      const current = clients.find((client) => client.id === selectedId);
+      return current ? [current, ...filtered] : filtered;
+    }
+    return filtered;
+  }, [clients, filtered, selectedId]);
+
+  const switcherIndex = switcherClients.findIndex((client) => client.id === selectedId);
+
+  const goPrevClient = () => {
+    if (switcherIndex > 0) setSelectedId(switcherClients[switcherIndex - 1].id);
+  };
+  const goNextClient = () => {
+    if (switcherIndex >= 0 && switcherIndex < switcherClients.length - 1) {
+      setSelectedId(switcherClients[switcherIndex + 1].id);
+    }
+  };
+
   const toggleOffer = (offerId: number, notified: boolean) => {
     if (notified) return;
     setSelectedOffers((prev) => {
@@ -331,7 +379,7 @@ export default function CrmClientsWorkspace() {
   };
 
   const saveIntelligence = async (next: IntelligenceSettings) => {
-    if (!selectedId) return;
+    if (!selectedId) return false;
     setBusy(true);
     try {
       const res = await fetch(`/api/crm/clients/${selectedId}`, {
@@ -342,10 +390,11 @@ export default function CrmClientsWorkspace() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(json?.error || "Nie udało się zapisać asystenta."));
       await loadDetail(selectedId);
-      setToast("Zapisano tęczowego asystenta.");
-      window.setTimeout(() => setToast(""), 3500);
+      return true;
     } catch (e) {
       setToast(e instanceof Error ? e.message : "Błąd zapisu asystenta.");
+      window.setTimeout(() => setToast(""), 3500);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -581,8 +630,8 @@ export default function CrmClientsWorkspace() {
         </p>
       ) : null}
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-        <div className="min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/85 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className={`eos-crm-split ${selectedId ? "is-open" : ""}`}>
+        <div className="eos-crm-split__list min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/85 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]">
           <div className="mb-3 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
             <label className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 px-3 py-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
               <Search className="size-4 shrink-0 text-[var(--eos-muted)]" />
@@ -744,7 +793,7 @@ export default function CrmClientsWorkspace() {
           )}
         </div>
 
-        <div className="relative min-h-[420px] min-w-0 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[0_24px_60px_rgba(0,0,0,0.12),0_6px_18px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl sm:p-6">
+        <div className="eos-crm-split__detail relative min-h-[420px] min-w-0 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[0_24px_60px_rgba(0,0,0,0.12),0_6px_18px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl sm:p-6">
           {scanning ? (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-[1.75rem] bg-[var(--eos-card)]/90 px-4 backdrop-blur-sm">
               <motion.div
@@ -767,6 +816,50 @@ export default function CrmClientsWorkspace() {
             <p className="text-sm text-[var(--eos-muted)]">{cl.loading}</p>
           ) : (
             <div className="min-w-0 space-y-6">
+              <div className="eos-crm-switcher">
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(null)}
+                  className={eosBtn("secondary", { size: "sm" })}
+                >
+                  <ArrowLeft className="size-3.5" />
+                  Powrót
+                </button>
+                <button
+                  type="button"
+                  disabled={switcherIndex <= 0}
+                  onClick={goPrevClient}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--eos-border)] text-[var(--eos-text)] disabled:opacity-30"
+                  aria-label="Poprzedni klient"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <select
+                  className="eos-crm-switcher__select"
+                  value={detail.id}
+                  onChange={(event) => setSelectedId(Number(event.target.value))}
+                  aria-label="Szybka zmiana klienta"
+                >
+                  {switcherClients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.firstName} {client.lastName}
+                      {client.type === "BUYER" ? " · kupujący" : " · sprzedający"}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={switcherIndex < 0 || switcherIndex >= switcherClients.length - 1}
+                  onClick={goNextClient}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--eos-border)] text-[var(--eos-text)] disabled:opacity-30"
+                  aria-label="Następny klient"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+                <span className="text-[11px] font-bold text-[var(--eos-muted)]">
+                  {switcherIndex >= 0 ? `${switcherIndex + 1} / ${switcherClients.length}` : ""}
+                </span>
+              </div>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
@@ -776,9 +869,6 @@ export default function CrmClientsWorkspace() {
                     {detail.firstName} {detail.lastName}
                   </h3>
                 </div>
-                <button type="button" onClick={() => setSelectedId(null)} className="rounded-full p-2 text-[var(--eos-muted)] hover:bg-[var(--eos-input)]">
-                  <X className="size-4" />
-                </button>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -1002,7 +1092,8 @@ export default function CrmClientsWorkspace() {
                     clientId={detail.id}
                     value={detail.intelligence}
                     busy={busy}
-                    onSave={(next) => void saveIntelligence(next)}
+                    activities={detail.activities}
+                    onSave={(next) => saveIntelligence(next)}
                   />
                   <AgencyClientCriteriaEditor
                     compact
@@ -1199,7 +1290,8 @@ export default function CrmClientsWorkspace() {
                           clientId={detail.id}
                           value={detail.intelligence}
                           busy={busy}
-                          onSave={(next) => void saveIntelligence(next)}
+                          activities={detail.activities}
+                          onSave={(next) => saveIntelligence(next)}
                         />
                         <AgencyClientCriteriaEditor
                           compact
