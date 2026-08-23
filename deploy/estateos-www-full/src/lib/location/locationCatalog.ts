@@ -182,6 +182,8 @@ const STREET_DISTRICT_RULES: Array<{ city: string; streetPatterns: string[]; dis
       "swiatowida", "światowida", "mehoffera", "poraj", "przytulna", "obrazkowa",
       "figowa", "strumykowa", "mysliborska", "myśliborska", "tarchominska", "tarchomińska",
       "ostrodzka", "ostródzka", "nowodwory",
+      "ksiazkowa", "książkowa", "pajdaka", "zagaje", "oczary", "odkryta",
+      "ciolkosza", "ciołkosza", "stefanika",
     ],
     district: "Białołęka",
   },
@@ -369,18 +371,34 @@ export function inferDistrictFromStreet(city: string, street?: string | null): s
   for (const rule of STREET_DISTRICT_RULES) {
     if (canonicalizeCity(rule.city) !== canonicalCity) continue;
     for (const pattern of rule.streetPatterns) {
-      const patternNorm = normalizeText(pattern);
-      if (!patternNorm) continue;
-      if (normStreet.includes(patternNorm)) {
-        const allowed = getDistrictsForCity(canonicalCity);
-        if (allowed.some((entry) => normalizeText(entry) === normalizeText(rule.district))) {
-          return rule.district;
-        }
+      if (!containsNormalizedToken(normStreet, pattern)) continue;
+      const allowed = getDistrictsForCity(canonicalCity);
+      if (allowed.some((entry) => normalizeText(entry) === normalizeText(rule.district))) {
+        return rule.district;
       }
     }
   }
 
   return "";
+}
+
+/**
+ * Ulica / osiedle z ogłoszenia wygrywa z pinezką i złą etykietą portalu
+ * (Książkowa / Nowodwory ≠ centroid Bielan).
+ */
+export function preferStreetOrOsiedleDistrict(
+  city: string,
+  hints: {
+    street?: string | null;
+    neighborhood?: string | null;
+    title?: string | null;
+  },
+): string {
+  const canonicalCity = canonicalizeCity(city);
+  const fromStreet = inferDistrictFromStreet(canonicalCity, hints.street);
+  if (fromStreet) return fromStreet;
+  const blob = [hints.neighborhood, hints.title].filter(Boolean).join(" · ");
+  return matchDistrictAlias(canonicalCity, blob);
 }
 
 /** Dopasowuje synonim (np. „Nowa Praga”) do dzielnicy z katalogu strict city. */
