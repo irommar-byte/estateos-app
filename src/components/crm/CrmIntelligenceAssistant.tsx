@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { IntelligenceChoice, IntelligenceSettings } from "@/lib/crm/clientIntelligence";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Sparkles } from "lucide-react";
+import type { IntelligenceSettings } from "@/lib/crm/clientIntelligence";
 import {
   DEFAULT_INTELLIGENCE_SETTINGS,
   INTELLIGENCE_DAILY_LIMIT_OPTIONS,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/crm/clientIntelligence";
 import type { IntelligencePick } from "@/lib/crm/clientIntelligenceRun";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import EosGlowSelect from "@/components/crm/EosGlowSelect";
 
 const BUBBLES = [
   { color: "#ff4d6d", size: 118, x: "8%", y: "72%", delay: "0s", duration: "11s" },
@@ -22,6 +24,14 @@ const BUBBLES = [
   { color: "#80ffdb", size: 52, x: "52%", y: "18%", delay: "2.4s", duration: "15s" },
   { color: "#ff70a6", size: 70, x: "4%", y: "42%", delay: "0.6s", duration: "11s" },
 ];
+
+export type IntelligenceActivity = {
+  id: number;
+  kind: string;
+  title: string | null;
+  body: string | null;
+  createdAt: string;
+};
 
 function IosRainbowSwitch({
   checked,
@@ -56,66 +66,94 @@ function IosRainbowSwitch({
   );
 }
 
-function ChoiceRow({
-  label,
-  hint,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  value: number;
-  options: IntelligenceChoice[];
-  onChange: (next: number) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-bold text-[var(--eos-muted)]">{label}</p>
-      {hint ? <p className="text-[11px] leading-snug text-[var(--eos-text)]/65">{hint}</p> : null}
-      <div className="flex flex-wrap gap-1.5">
-        {options.map((option) => {
-          const active = option.value === value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              className={`rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide transition ${
-                active
-                  ? "border-emerald-400 bg-emerald-400 text-black"
-                  : "border-white/15 bg-black/20 text-[var(--eos-text)]/80 hover:border-white/35"
-              }`}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+function scoreColor(score: number): string {
+  const t = Math.max(0, Math.min(1, (score - 75) / 20));
+  const hue = 8 + t * 127;
+  return `hsl(${hue} 82% 46%)`;
+}
+
+function scoreGuide(score: number): { title: string; body: string; worth: string } {
+  if (score <= 75) {
+    return {
+      title: "Więcej propozycji",
+      body: "Próg 75% puszcza też oferty „prawie pasuje”. Klient dostanie więcej maili, a mózg szybciej zbierze obiekcje.",
+      worth: "Opłaca się na starcie albo gdy radar jest bardzo wąski i kolejka stoi pusta.",
+    };
+  }
+  if (score <= 80) {
+    return {
+      title: "Zrównoważone",
+      body: "80% odcina słabe trafienia, ale nie czeka na niemal idealne dopasowanie. To bezpieczny kompromis między ilością a jakością.",
+      worth: "Najczęściej się opłaca, gdy klient już raz-dwa zareagował na oferty.",
+    };
+  }
+  if (score <= 85) {
+    return {
+      title: "Pewniej",
+      body: "85% zostawia tylko mocniejsze dopasowania. Mniej szumu w skrzynce, wolniejsza nauka.",
+      worth: "Warto, gdy klient jest wybredny albo agent nie chce wysyłać „na wszelki wypadek”.",
+    };
+  }
+  if (score <= 92) {
+    return {
+      title: "Tylko pewne",
+      body: "92% to domyślna ostrożność: mózg koryguje wynik radaru, a ten próg nadal odcina wszystko poniżej.",
+      worth: "Opłaca się przy spokojnym cyklu. Nie opłaca się, jeśli chcesz szybko nauczyć ankietę z reakcji.",
+    };
+  }
+  return {
+    title: "Bardzo ostrożnie",
+    body: "95% puszcza wyłącznie niemal idealne trafienia. Przy braku reakcji kalibracja i tak wyśle pakiet z radaru, ale potem kolejka może milczeć.",
+    worth: "Włączaj dopiero gdy ankieta i reakcje są już ostre. Na starcie zwykle za ciasno.",
+  };
+}
+
+function formatWhen(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleString("pl-PL", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function CrmIntelligenceAssistant({
   clientId,
   value,
   busy,
+  activities,
   onSave,
 }: {
   clientId: number;
   value?: IntelligenceSettings | null;
   busy?: boolean;
-  onSave: (next: IntelligenceSettings) => void;
+  activities?: IntelligenceActivity[];
+  onSave: (next: IntelligenceSettings) => void | boolean | Promise<unknown>;
 }) {
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
   const [pick, setPick] = useState<IntelligencePick | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
   const [smartAdd, setSmartAdd] = useState(false);
   const [smartAddBusy, setSmartAddBusy] = useState(false);
+  const [blooming, setBlooming] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const enabledRef = useRef(Boolean(value?.enabled));
 
   useEffect(() => {
     setDraft(value || DEFAULT_INTELLIGENCE_SETTINGS);
   }, [value]);
+
+  useEffect(() => {
+    if (draft.enabled && !enabledRef.current) {
+      setBlooming(true);
+      const timer = window.setTimeout(() => setBlooming(false), 900);
+      enabledRef.current = true;
+      return () => window.clearTimeout(timer);
+    }
+    enabledRef.current = draft.enabled;
+    return undefined;
+  }, [draft.enabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,17 +209,69 @@ export default function CrmIntelligenceAssistant({
     };
   }, [clientId, value?.lastSentAt, value?.enabled, value?.minScore, value?.minLearns, value?.intervalHours]);
 
-  const nextWhen = pick?.nextSendAt
-    ? new Date(pick.nextSendAt).toLocaleString("pl-PL", {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
+  const nextWhen = formatWhen(pick?.nextSendAt);
+  const guide = scoreGuide(draft.minScore);
+  const scoreAccent = scoreColor(draft.minScore);
+  const knobLeft = `${Math.max(0, Math.min(100, ((draft.minScore - 75) / 20) * 100))}%`;
+
+  const intelHistory = useMemo(() => {
+    return (activities || [])
+      .filter((item) => /intelligence|taste|offer/i.test(`${item.kind} ${item.title || ""}`))
+      .slice(0, 6);
+  }, [activities]);
+
+  const nowLines = useMemo(() => {
+    if (!draft.enabled) return ["Asystent jest wyłączony — nic nie wyjdzie, kolejka tylko podgląda."];
+    if (queueBusy) return ["Analizuję opisy, ankietę i reakcje…"];
+    if (pick?.ready && pick.title) {
+      return [
+        `Teraz: kolejka gotowa — ${pick.title}.`,
+        pick.calibrating ? "Tryb kalibracji: brak reakcji, więc idzie najlepsze z radaru." : `Pewność ${pick.score ?? "—"}%.`,
+      ];
+    }
+    return [pick?.skipReason || "Czeka na kolejny cykl albo reakcję klienta."];
+  }, [draft.enabled, pick, queueBusy]);
+
+  const plannedLines = useMemo(() => {
+    const interval = INTELLIGENCE_INTERVAL_OPTIONS.find((item) => item.value === draft.intervalHours)?.label || `${draft.intervalHours} godz.`;
+    return [
+      `Cykl: ${interval}, do ${draft.dailyLimit} ofert za razem.`,
+      nextWhen ? `Następna próba: ${nextWhen}.` : "Brak zaplanowanej godziny — włącz asystenta albo zbierz reakcje.",
+      pick?.title ? `W kolejce: ${pick.title}.` : "Brak kandydata w kolejce.",
+    ];
+  }, [draft.dailyLimit, draft.intervalHours, nextWhen, pick?.title]);
+
+  const recommendedLines = useMemo(() => {
+    const lines: string[] = [];
+    if (!draft.enabled) lines.push("Włącz asystenta, zapisz, i daj mu jeden cykl — inaczej nic nie wyśle.");
+    if (draft.enabled && (pick?.learnCount || 0) === 0) {
+      lines.push("Brak reakcji: zostaw kalibrację, potem zejdź do 80%, jeśli 92% będzie za pusto.");
+    }
+    if (draft.minScore >= 95 && (pick?.learnCount || 0) < 3) {
+      lines.push("95% na starcie zwykle nie opłaca się — za mało nauki, za cicha skrzynka.");
+    }
+    if (draft.minScore <= 75 && (pick?.learnCount || 0) >= 3) {
+      lines.push("Po kilku reakcjach warto podnieść próg do 85–92%, żeby nie zasypywać klienta.");
+    }
+    if (pick?.ready) lines.push("Kolejka jest gotowa — po zapisie asystent wyśle przy najbliższym tiku.");
+    if (!lines.length) lines.push("Ustawienia wyglądają spójnie. Zostaw cykl i zbieraj reakcje.");
+    return lines;
+  }, [draft.enabled, draft.minScore, pick?.learnCount, pick?.ready]);
+
+  const handleSave = async () => {
+    setSaved(false);
+    try {
+      const result = await onSave(draft);
+      if (result === false) return;
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2200);
+    } catch {
+      setSaved(false);
+    }
+  };
 
   return (
-    <div className={`eos-intel-shell ${draft.enabled ? "is-on" : ""}`}>
+    <div className={`eos-intel-shell ${draft.enabled ? "is-on" : ""} ${blooming ? "is-blooming" : ""}`}>
       <div className="eos-intel-bubbles" aria-hidden>
         {BUBBLES.map((bubble) => (
           <span
@@ -231,7 +321,7 @@ export default function CrmIntelligenceAssistant({
               ofercie i można cofnąć.
             </p>
           </div>
-            <IosRainbowSwitch
+          <IosRainbowSwitch
             checked={smartAdd}
             disabled={smartAddBusy}
             label="Inteligentne dodawanie"
@@ -239,35 +329,104 @@ export default function CrmIntelligenceAssistant({
           />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <ChoiceRow
+          <EosGlowSelect
             label="Interwał"
             hint="Jak często asystent wraca do kolejki."
             value={draft.intervalHours}
             options={INTELLIGENCE_INTERVAL_OPTIONS}
             onChange={(intervalHours) => setDraft((current) => ({ ...current, intervalHours }))}
           />
-          <ChoiceRow
+          <EosGlowSelect
             label="Ofert na cykl"
             hint="Ile ogłoszeń może wysłać za jednym razem, gdy interwał minie."
             value={draft.dailyLimit}
             options={INTELLIGENCE_DAILY_LIMIT_OPTIONS}
             onChange={(dailyLimit) => setDraft((current) => ({ ...current, dailyLimit }))}
           />
-          <ChoiceRow
+          <EosGlowSelect
             label="Ile reakcji zanim wyśle"
             hint="Przy braku reakcji asystent i tak wyśle pakiet kalibracyjny z radaru."
             value={draft.minLearns}
             options={INTELLIGENCE_MIN_LEARNS_OPTIONS}
             onChange={(minLearns) => setDraft((current) => ({ ...current, minLearns }))}
           />
-          <ChoiceRow
-            label="Minimalna pewność"
-            hint="Próg wysyłki po ankiecie i nauce. Mózg tylko koryguje wynik — ten próg nadal odcina słabe trafienia."
-            value={draft.minScore}
-            options={INTELLIGENCE_MIN_SCORE_OPTIONS}
-            onChange={(minScore) => setDraft((current) => ({ ...current, minScore }))}
-          />
+          <div>
+            <EosGlowSelect
+              label="Minimalna pewność"
+              hint="Próg wysyłki po ankiecie i nauce. Mózg tylko koryguje wynik — ten próg nadal odcina słabe trafienia."
+              value={draft.minScore}
+              options={INTELLIGENCE_MIN_SCORE_OPTIONS}
+              accent={scoreAccent}
+              optionAccent={scoreColor}
+              onChange={(minScore) => setDraft((current) => ({ ...current, minScore }))}
+            />
+            <div className="eos-intel-score mt-3">
+              <div className="eos-intel-score__track" aria-hidden>
+                <span className="eos-intel-score__knob" style={{ left: knobLeft, ["--eos-glow" as string]: scoreAccent }} />
+              </div>
+              <p className="mt-2 text-[11px] font-black uppercase tracking-[0.12em]" style={{ color: scoreAccent }}>
+                {draft.minScore}% · {guide.title}
+              </p>
+              <p className="mt-1 text-xs leading-snug text-[var(--eos-text)]/80">{guide.body}</p>
+              <p className="mt-1 text-xs font-semibold leading-snug text-[var(--eos-text)]">{guide.worth}</p>
+            </div>
+          </div>
         </div>
+
+        {draft.enabled ? (
+          <div className="eos-intel-console">
+            <p className="eos-intel-kicker inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
+              <Sparkles className="size-3.5" />
+              Konsola asystenta
+            </p>
+            <div className="eos-intel-console__grid">
+              <section>
+                <h4>Teraz</h4>
+                <ul>
+                  {nowLines.map((line) => (
+                    <li key={line}>• {line}</li>
+                  ))}
+                </ul>
+              </section>
+              <section>
+                <h4>Zaplanowane</h4>
+                <ul>
+                  {plannedLines.map((line) => (
+                    <li key={line}>• {line}</li>
+                  ))}
+                </ul>
+              </section>
+              <section>
+                <h4>Historia</h4>
+                <ul>
+                  {intelHistory.length ? (
+                    intelHistory.map((item) => (
+                      <li key={item.id}>
+                        • {item.title || "Zdarzenie"}{" "}
+                        <span className="text-[var(--eos-muted)]">
+                          · {new Date(item.createdAt).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </li>
+                    ))
+                  ) : (
+                    <li>• Brak jeszcze wysyłek ani dopisek z reakcji.</li>
+                  )}
+                  {draft.lastSentAt ? (
+                    <li>• Ostatni domysł: {new Date(draft.lastSentAt).toLocaleString("pl-PL")}</li>
+                  ) : null}
+                </ul>
+              </section>
+              <section>
+                <h4>Polecane</h4>
+                <ul>
+                  {recommendedLines.map((line) => (
+                    <li key={line}>• {line}</li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+          </div>
+        ) : null}
 
         <div className="eos-intel-queue rounded-2xl p-3">
           <p className="eos-intel-kicker text-[10px] font-black uppercase tracking-[0.14em]">Następne w kolejce</p>
@@ -305,15 +464,24 @@ export default function CrmIntelligenceAssistant({
               {pick?.skipReason || "Brak jeszcze kandydata. Potrzeba reakcji klienta albo niewysłanych trafień radaru."}
             </p>
           )}
-          {draft.lastSentAt ? (
-            <p className="mt-3 text-[11px] text-[var(--eos-muted)]">
-              Ostatni domysł: {new Date(draft.lastSentAt).toLocaleString("pl-PL")}
-            </p>
-          ) : null}
         </div>
 
-        <button type="button" disabled={busy} onClick={() => onSave(draft)} className={eosBtn("home", { size: "sm" })}>
-          {busy ? "Zapisuję…" : "Zapisz asystenta"}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void handleSave()}
+          className={`${eosBtn("home", { size: "sm" })} eos-intel-save ${saved ? "is-saved" : ""}`}
+        >
+          {busy ? (
+            "Zapisuję…"
+          ) : saved ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Check className="size-3.5" />
+              Zapisany
+            </span>
+          ) : (
+            "Zapisz asystenta"
+          )}
         </button>
       </div>
     </div>
