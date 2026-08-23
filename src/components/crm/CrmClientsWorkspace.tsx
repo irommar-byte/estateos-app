@@ -35,7 +35,8 @@ import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import OpenContactThreadButton from "@/components/contact/OpenContactThreadButton";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import CrmIntelligenceAssistant from "@/components/crm/CrmIntelligenceAssistant";
-import type { IntelligenceSettings } from "@/lib/crm/clientIntelligence";
+import type { IntelligenceLocks, IntelligenceSettings } from "@/lib/crm/clientIntelligence";
+import { DEFAULT_INTELLIGENCE_LOCKS } from "@/lib/crm/clientIntelligence";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
@@ -160,6 +161,7 @@ export default function CrmClientsWorkspace() {
     pushNotifications: false,
   }));
   const [sellerSearching, setSellerSearching] = useState(false);
+  const [intelLocks, setIntelLocks] = useState<IntelligenceLocks>(DEFAULT_INTELLIGENCE_LOCKS);
   const [criteriaCatalog, setCriteriaCatalog] = useState<{
     strictCities: string[];
     strictCityDistricts: Record<string, string[]>;
@@ -205,6 +207,7 @@ export default function CrmClientsWorkspace() {
     if (detail.buyerFilters) {
       setSellerFilters({ ...defaultWebRadarFilters(), ...detail.buyerFilters, pushNotifications: false });
     }
+    setIntelLocks(detail.intelligence?.lockedFields || DEFAULT_INTELLIGENCE_LOCKS);
   }, [detail?.id, detail?.buyerFilters]);
 
   const offerHref = (offerId: number, portalToken?: string | null) => {
@@ -334,7 +337,7 @@ export default function CrmClientsWorkspace() {
       const res = await fetch(`/api/crm/clients/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intelligence: next }),
+        body: JSON.stringify({ intelligence: { ...next, lockedFields: intelLocks } }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(json?.error || "Nie udało się zapisać asystenta."));
@@ -390,6 +393,26 @@ export default function CrmClientsWorkspace() {
     }
   };
 
+  const saveBuyerCriteria = async (filters = sellerFilters) => {
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/crm/clients/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerFilters: { ...filters, pushNotifications: false },
+          intelligence: { lockedFields: intelLocks },
+        }),
+      });
+      await loadDetail(selectedId);
+      setToast("Zapisano kryteria i kłódki asystenta.");
+      window.setTimeout(() => setToast(""), 3500);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveSellerRadar = async (enabled: boolean, filters = sellerFilters) => {
     if (!selectedId) return;
     setBusy(true);
@@ -399,7 +422,11 @@ export default function CrmClientsWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           enabled
-            ? { alsoSearching: true, buyerFilters: { ...filters, pushNotifications: false } }
+            ? {
+                alsoSearching: true,
+                buyerFilters: { ...filters, pushNotifications: false },
+                intelligence: { lockedFields: intelLocks },
+              }
             : { alsoSearching: false },
         ),
       });
@@ -977,7 +1004,23 @@ export default function CrmClientsWorkspace() {
                     busy={busy}
                     onSave={(next) => void saveIntelligence(next)}
                   />
+                  <AgencyClientCriteriaEditor
+                    compact
+                    value={sellerFilters}
+                    onChange={setSellerFilters}
+                    catalog={criteriaCatalog}
+                    locks={intelLocks}
+                    onLocksChange={setIntelLocks}
+                  />
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void saveBuyerCriteria()}
+                      className={eosBtn("home", { size: "sm" })}
+                    >
+                      Zapisz kryteria
+                    </button>
                     <button
                       type="button"
                       disabled={busy}
@@ -1163,6 +1206,8 @@ export default function CrmClientsWorkspace() {
                           value={sellerFilters}
                           onChange={setSellerFilters}
                           catalog={criteriaCatalog}
+                          locks={intelLocks}
+                          onLocksChange={setIntelLocks}
                         />
                         <div className="flex flex-wrap gap-2">
                           <button

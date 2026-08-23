@@ -18,7 +18,7 @@ import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
 import { parseIntelligencePatch, shapeIntelligenceSettings } from '@/lib/crm/clientIntelligence';
-import { pickIntelligenceOffer, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
+import { ensureIntelligenceLockedFieldsColumn, pickIntelligenceOffer, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
@@ -54,6 +54,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: 'Dostęp tylko dla agencji i agentów.' }, { status: 403 });
   }
 
+  await ensureIntelligenceLockedFieldsColumn();
   const { id } = await ctx.params;
   const clientId = Number(id);
   const client = await getAgencyClientForUser(clientId, agencyUserId);
@@ -128,7 +129,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         intelligenceReason: m.intelligenceReason || null,
         offer: shapeAgencyClientMatchOffer(m.offer),
       })),
-      intelligence: shapeIntelligenceSettings(client),
+      intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
       meeting,
       presentation,
       journey,
@@ -229,6 +230,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   }
 
   if (body.intelligence && typeof body.intelligence === 'object') {
+    await ensureIntelligenceLockedFieldsColumn();
     const intelPatch = parseIntelligencePatch(body.intelligence);
     if (intelPatch && Object.keys(intelPatch).length) {
       await prisma.agencyClient.update({

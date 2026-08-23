@@ -2,8 +2,11 @@ import { prisma } from '@/lib/prisma';
 import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 import {
+  clientFacingWhyLine,
   intelligenceAdjustScore,
   learnFromFeedback,
+  parseIntelligenceLocks,
+  preferenceUpdatesFromTaste,
   shouldPersistBalcony,
   summarizeTaste,
   type LearnedTaste,
@@ -50,6 +53,7 @@ export type IntelligencePick = {
   skipReason: string | null;
   tasteSummary: string;
   learnCount: number;
+  calibrating: boolean;
   offerId: number | null;
   title: string | null;
   city: string | null;
@@ -63,6 +67,7 @@ export type IntelligencePick = {
   considered: number;
   nextSendAt: string | null;
   correctedBalconyIds: number[];
+  clientWhy: string | null;
 };
 
 function due(lastSentAt: Date | null, intervalHours: number): boolean {
@@ -82,6 +87,17 @@ function overlayBalconyIds(offers: OfferRow[]): number[] {
   return [...new Set(offers.filter((offer) => shouldPersistBalcony(offer)).map((offer) => offer.id))];
 }
 
+export async function ensureIntelligenceLockedFieldsColumn(): Promise<void> {
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE \`AgencyClient\` ADD COLUMN \`intelligenceLockedFields\` JSON NULL`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Duplicate column|exists/i.test(message)) throw error;
+  }
+}
+
 function buildAnalysis(params: {
   tasteSummary: string;
   radarScore: number;
@@ -90,10 +106,13 @@ function buildAnalysis(params: {
   considered: number;
   minScore: number;
   correctedBalcony: boolean;
+  calibrating: boolean;
 }): string[] {
   const lines = [
     `Radar dał ${params.radarScore}% względem ankiety klienta.`,
-    `Po nauce z reakcji pewność tej oferty to ${params.score}% (próg ${params.minScore}%).`,
+    params.calibrating
+      ? `Kalibracja: brak jeszcze reakcji, więc wysyłam najlepsze z radaru do oceny (próg ${params.minScore}% chwilowo nie blokuje).`
+      : `Po nauce z reakcji pewność tej oferty to ${params.score}% (próg ${params.minScore}%).`,
     params.tasteSummary ? `Dotychczasowa nauka: ${params.tasteSummary}.` : null,
     params.correctedBalcony
       ? 'Opis wymienia balkon albo loggię, choć parametr był pusty — scoring i radar i tak to widzą.'
@@ -106,8 +125,10 @@ function buildAnalysis(params: {
 
 export async function pickIntelligenceOffer(
   clientId: number,
-  options: { force?: boolean; preview?: boolean } = {},
+  options: { force?: boolean; preview?: boolean; ignoreInterval?: boolean } = {},
 ): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null }> {
+  await ensureIntelligenceLockedFieldsColumn();
+
   const client = await prisma.agencyClient.findUnique({
     where: { id: clientId },
     include: {
@@ -128,6 +149,7 @@ export async function pickIntelligenceOffer(
     skipReason,
     tasteSummary: extras.tasteSummary ?? summarizeTaste(taste),
     learnCount: extras.learnCount ?? taste.learnCount,
+    calibrating: extras.calibrating ?? false,
     offerId: extras.offerId ?? null,
     title: extras.title ?? null,
     city: extras.city ?? null,
@@ -141,6 +163,7 @@ export async function pickIntelligenceOffer(
     considered: extras.considered || 0,
     nextSendAt: extras.nextSendAt || null,
     correctedBalconyIds: extras.correctedBalconyIds || [],
+    clientWhy: extras.clientWhy ?? null,
   });
 
   if (!client || !client.buyerPreference) {
@@ -157,6 +180,7 @@ export async function pickIntelligenceOffer(
       offerId: row.offerId,
       clientFeedback: row.clientFeedback,
       offer: row.offer,
+      clientFeedbackAt: row.clientFeedbackAt,
     })),
   );
 
@@ -164,6 +188,39 @@ export async function pickIntelligenceOffer(
   const minScore = client.intelligenceMinScore || 92;
   const intervalHours = client.intelligenceIntervalHours || 24;
   const enabled = Boolean(client.intelligenceEnabled);
+  const calibrating = enabled && taste.learnCount === 0;
+  const locks = parseIntelligenceLocks(client.intelligenceLockedFields, client.buyerPreference);
+
+  if (!options.preview && (enabled || options.force)) {
+    const writeback = preferenceUpdatesFromTaste({
+      pref: client.buyerPreference,
+      taste,
+      locks,
+    });
+    if (Object.keys(writeback.data).length) {
+      await prisma.agencyClientBuyerPreference.update({
+        where: { clientId },
+        data: writeback.data,
+      });
+      client.buyerPreference = {
+        ...client.buyerPreference,
+        ...writeback.data,
+        districts: writeback.data.districts ?? client.buyerPreference.districts,
+      };
+      if (writeback.notes.length) {
+        await prisma.agencyClientActivity.create({
+          data: {
+            clientId,
+            agencyUserId: client.agencyUserId,
+            kind: 'INTELLIGENCE_TASTE',
+            title: 'EstateOS™ Intelligence dopisało kryteria z reakcji',
+            body: writeback.notes.join('\n'),
+            metadata: { notes: writeback.notes, locks },
+          },
+        });
+      }
+    }
+  }
 
   if (!options.preview) {
     await refreshAgencyClientMatches(clientId);
@@ -194,6 +251,7 @@ export async function pickIntelligenceOffer(
   };
   let best: Cand | null = null;
   let considered = 0;
+  const relaxScore = Boolean(options.force || options.preview || calibrating);
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
     if (taste.rejectedOfferIds.includes(row.offerId)) continue;
@@ -205,8 +263,18 @@ export async function pickIntelligenceOffer(
       taste,
       maxPrice: client.buyerPreference.maxPrice,
     });
-    if (adjusted.score < minScore && !options.force && !options.preview) continue;
-    if (!best || adjusted.score > best.score) {
+    if (adjusted.score < minScore && !relaxScore) continue;
+    const cheaperTie =
+      best &&
+      adjusted.score === best.score &&
+      radarScore === best.radarScore &&
+      Number(row.offer.price || 0) < Number(best.price || 0);
+    const better =
+      !best ||
+      adjusted.score > best.score ||
+      (adjusted.score === best.score && radarScore > best.radarScore) ||
+      cheaperTie;
+    if (better) {
       best = {
         offerId: row.offerId,
         title: String(row.offer.title || ''),
@@ -223,18 +291,18 @@ export async function pickIntelligenceOffer(
 
   let skipReason: string | null = null;
   if (!enabled && !options.force) skipReason = 'Asystent wyłączony — włącz, żeby wysyłał sam.';
-  else if (taste.learnCount < minLearns && !options.force) {
+  else if (!calibrating && taste.learnCount < minLearns && !options.force) {
     skipReason = `Za mało nauki (${taste.learnCount}/${minLearns} reakcji).`;
-  } else if (!due(client.intelligenceLastSentAt, intervalHours) && !options.force) {
+  } else if (!options.ignoreInterval && !due(client.intelligenceLastSentAt, intervalHours) && !options.force) {
     skipReason = 'Interwał jeszcze nie minął.';
   } else if (!best) {
     skipReason = 'Brak oferty z wystarczającą pewnością.';
-  } else if (best.score < minScore && !options.force) {
+  } else if (!calibrating && best.score < minScore && !options.force) {
     skipReason = `Najlepsza oferta ma ${best.score}%, a próg to ${minScore}%.`;
   }
 
-  const canSchedule = enabled && taste.learnCount >= minLearns;
-  const qualifies = Boolean(best && (best.score >= minScore || options.force));
+  const canSchedule = enabled && (calibrating || taste.learnCount >= minLearns);
+  const qualifies = Boolean(best && (calibrating || best.score >= minScore || options.force));
   const nextSendAt = nextSendAtIso(client.intelligenceLastSentAt, intervalHours, canSchedule && qualifies);
   const ready = !skipReason && qualifies;
 
@@ -246,6 +314,7 @@ export async function pickIntelligenceOffer(
       pick: empty(skipReason || 'Brak oferty z wystarczającą pewnością.', {
         tasteSummary: summarizeTaste(taste),
         learnCount: taste.learnCount,
+        calibrating,
         considered,
         nextSendAt,
         correctedBalconyIds,
@@ -261,6 +330,13 @@ export async function pickIntelligenceOffer(
     considered,
     minScore,
     correctedBalcony: correctedBalconyIds.includes(best.offerId),
+    calibrating,
+  });
+  const clientWhy = clientFacingWhyLine({
+    reasons: best.reasons,
+    city: best.city,
+    district: best.district,
+    calibrating,
   });
 
   return {
@@ -272,6 +348,7 @@ export async function pickIntelligenceOffer(
       skipReason: ready ? null : skipReason,
       tasteSummary: summarizeTaste(taste),
       learnCount: taste.learnCount,
+      calibrating,
       offerId: best.offerId,
       title: best.title,
       city: best.city,
@@ -285,6 +362,7 @@ export async function pickIntelligenceOffer(
       considered,
       nextSendAt,
       correctedBalconyIds,
+      clientWhy,
     },
   };
 }
@@ -292,8 +370,12 @@ export async function pickIntelligenceOffer(
 export async function sendIntelligenceOffer(params: {
   clientId: number;
   force?: boolean;
+  ignoreInterval?: boolean;
 }): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
-  const { pick, agencyUserId } = await pickIntelligenceOffer(params.clientId, { force: params.force });
+  const { pick, agencyUserId } = await pickIntelligenceOffer(params.clientId, {
+    force: params.force,
+    ignoreInterval: params.ignoreInterval,
+  });
   if (!pick.ready || !pick.offerId || !agencyUserId) {
     return { sent: false, pick };
   }
@@ -307,8 +389,12 @@ export async function sendIntelligenceOffer(params: {
     offerId: pick.offerId,
     agencyUserId,
     channel: 'email',
-    customMessage:
-      'EstateOS™ Intelligence wybrało tę ofertę w imieniu agenta, na podstawie Twoich wcześniejszych reakcji.',
+    customMessage: pick.clientWhy || clientFacingWhyLine({
+      reasons: pick.reasons,
+      city: pick.city,
+      district: pick.district,
+      calibrating: pick.calibrating,
+    }),
     intelligence: { reason },
   });
 
@@ -325,6 +411,7 @@ export async function tickClientIntelligence(): Promise<{
   sent: number;
   skipped: number;
 }> {
+  await ensureIntelligenceLockedFieldsColumn();
   const clients = await prisma.agencyClient.findMany({
     where: { status: 'ACTIVE', intelligenceEnabled: true, buyerPreference: { isNot: null } },
     select: { id: true, intelligenceDailyLimit: true },
@@ -335,7 +422,10 @@ export async function tickClientIntelligence(): Promise<{
     const limit = Math.max(1, Math.min(3, client.intelligenceDailyLimit || 1));
     let sentForClient = 0;
     for (let i = 0; i < limit; i += 1) {
-      const result = await sendIntelligenceOffer({ clientId: client.id });
+      const result = await sendIntelligenceOffer({
+        clientId: client.id,
+        ignoreInterval: i > 0,
+      });
       if (result.sent) {
         sent += 1;
         sentForClient += 1;

@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IntelligenceSettings } from "@/lib/crm/clientIntelligence";
-import { DEFAULT_INTELLIGENCE_SETTINGS } from "@/lib/crm/clientIntelligence";
+import type { IntelligenceChoice, IntelligenceSettings } from "@/lib/crm/clientIntelligence";
+import {
+  DEFAULT_INTELLIGENCE_SETTINGS,
+  INTELLIGENCE_DAILY_LIMIT_OPTIONS,
+  INTELLIGENCE_INTERVAL_OPTIONS,
+  INTELLIGENCE_MIN_LEARNS_OPTIONS,
+  INTELLIGENCE_MIN_SCORE_OPTIONS,
+} from "@/lib/crm/clientIntelligence";
 import type { IntelligencePick } from "@/lib/crm/clientIntelligenceRun";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 
@@ -47,6 +53,46 @@ function IosRainbowSwitch({
       ) : null}
       <span className="eos-intel-switch__knob" />
     </button>
+  );
+}
+
+function ChoiceRow({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  options: IntelligenceChoice[];
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-bold text-[var(--eos-muted)]">{label}</p>
+      {hint ? <p className="text-[11px] leading-snug text-[var(--eos-text)]/65">{hint}</p> : null}
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide transition ${
+                active
+                  ? "border-emerald-400 bg-emerald-400 text-black"
+                  : "border-white/15 bg-black/20 text-[var(--eos-text)]/80 hover:border-white/35"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -192,51 +238,35 @@ export default function CrmIntelligenceAssistant({
             onChange={(enabled) => void saveSmartAdd(enabled)}
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs font-bold text-[var(--eos-muted)]">
-            Interwał (godziny)
-            <input
-              type="number"
-              min={6}
-              max={168}
-              value={draft.intervalHours}
-              onChange={(event) => setDraft((current) => ({ ...current, intervalHours: Number(event.target.value) || 24 }))}
-              className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/80 px-3 py-2 text-sm text-[var(--eos-text)]"
-            />
-          </label>
-          <label className="text-xs font-bold text-[var(--eos-muted)]">
-            Ofert na cykl
-            <input
-              type="number"
-              min={1}
-              max={3}
-              value={draft.dailyLimit}
-              onChange={(event) => setDraft((current) => ({ ...current, dailyLimit: Number(event.target.value) || 1 }))}
-              className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/80 px-3 py-2 text-sm text-[var(--eos-text)]"
-            />
-          </label>
-          <label className="text-xs font-bold text-[var(--eos-muted)]">
-            Ile reakcji zanim wyśle
-            <input
-              type="number"
-              min={1}
-              max={12}
-              value={draft.minLearns}
-              onChange={(event) => setDraft((current) => ({ ...current, minLearns: Number(event.target.value) || 3 }))}
-              className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/80 px-3 py-2 text-sm text-[var(--eos-text)]"
-            />
-          </label>
-          <label className="text-xs font-bold text-[var(--eos-muted)]">
-            Minimalna pewność (%)
-            <input
-              type="number"
-              min={70}
-              max={100}
-              value={draft.minScore}
-              onChange={(event) => setDraft((current) => ({ ...current, minScore: Number(event.target.value) || 92 }))}
-              className="mt-1 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/80 px-3 py-2 text-sm text-[var(--eos-text)]"
-            />
-          </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ChoiceRow
+            label="Interwał"
+            hint="Jak często asystent wraca do kolejki."
+            value={draft.intervalHours}
+            options={INTELLIGENCE_INTERVAL_OPTIONS}
+            onChange={(intervalHours) => setDraft((current) => ({ ...current, intervalHours }))}
+          />
+          <ChoiceRow
+            label="Ofert na cykl"
+            hint="Ile ogłoszeń może wysłać za jednym razem, gdy interwał minie."
+            value={draft.dailyLimit}
+            options={INTELLIGENCE_DAILY_LIMIT_OPTIONS}
+            onChange={(dailyLimit) => setDraft((current) => ({ ...current, dailyLimit }))}
+          />
+          <ChoiceRow
+            label="Ile reakcji zanim wyśle"
+            hint="Przy braku reakcji asystent i tak wyśle pakiet kalibracyjny z radaru."
+            value={draft.minLearns}
+            options={INTELLIGENCE_MIN_LEARNS_OPTIONS}
+            onChange={(minLearns) => setDraft((current) => ({ ...current, minLearns }))}
+          />
+          <ChoiceRow
+            label="Minimalna pewność"
+            hint="Próg wysyłki po ankiecie i nauce. Mózg tylko koryguje wynik — ten próg nadal odcina słabe trafienia."
+            value={draft.minScore}
+            options={INTELLIGENCE_MIN_SCORE_OPTIONS}
+            onChange={(minScore) => setDraft((current) => ({ ...current, minScore }))}
+          />
         </div>
 
         <div className="eos-intel-queue rounded-2xl p-3">
@@ -254,7 +284,7 @@ export default function CrmIntelligenceAssistant({
               </p>
               <p className="mt-2 text-sm text-[var(--eos-text)]">
                 {pick.ready
-                  ? `Wyślę przy najbliższym cyklu${nextWhen ? ` · ${nextWhen}` : " (co godzinę)."}`
+                  ? `${pick.calibrating ? "Kalibracja · " : ""}Wyślę przy najbliższym cyklu${nextWhen ? ` · ${nextWhen}` : " (co godzinę)."}`
                   : pick.skipReason
                     ? `${pick.skipReason}${nextWhen ? ` Planowana wysyłka: ${nextWhen}.` : ""}`
                     : nextWhen
