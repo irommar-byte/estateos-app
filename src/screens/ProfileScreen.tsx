@@ -57,7 +57,6 @@ import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import ProfileCrmSection from '../components/agency/ProfileCrmSection';
-import ProfileAdminCoreSection from '../components/admin/ProfileAdminCoreSection';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
@@ -4403,8 +4402,6 @@ function ProfileScreenLoggedIn({
           ) : null}
         </ProfileCardShell>
 
-        {isAdminOperator ? <ProfileAdminCoreSection isDark={isDark} /> : null}
-
         {isAgentProfile ? (
           <ProfileCrmSection isDark={isDark} isAgency={isAgentProfile} />
         ) : (
@@ -4851,7 +4848,7 @@ function ProfileScreenLoggedIn({
                 icon="pulse"
                 color="#10b981"
                 title="EstateOS™ CORE"
-                subtitle="Centrum dowodzenia — CPU, RAM, dysk, LIVE"
+                subtitle="Otwórz tylko gdy potrzeba — CPU, RAM, dysk"
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   setIsAdminCoreVisible(true);
