@@ -6,6 +6,7 @@ import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImpor
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import { requireInvestorProWeb } from '@/lib/requireInvestorProWeb';
+import { buildSmartAddPreview } from '@/lib/importSmartAddHttp';
 
 export const maxDuration = 120;
 
@@ -29,7 +30,8 @@ export async function POST(req: Request) {
     const rawDraft = await importOfferFromUrl(url);
     const draft = await enrichOtodomImportDraft(rawDraft);
     const presentation = await buildOtodomPresentationCopy(draft);
-    return NextResponse.json({ success: true, draft, presentation });
+    const smartAdd = await buildSmartAddPreview(gate.userId, draft);
+    return NextResponse.json({ success: true, draft, presentation, ...smartAdd });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Import oferty nie powiódł się.';
     return NextResponse.json({ success: false, message }, { status: 422 });

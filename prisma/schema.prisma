@@ -53,6 +53,8 @@ model User {
   /// EstateOS Intelligence opt-in (WWW + app)
   intelligenceEnabled       Boolean                       @default(false)
   intelligenceDecidedAt     DateTime?
+  /// Inteligentne dodawanie parametrów z opisu przy imporcie
+  intelligenceSmartAddEnabled Boolean                     @default(false)
   createdAt                 DateTime                      @default(now())
   updatedAt                 DateTime                      @updatedAt
   lastLoginIp               String?                       @db.VarChar(64)
@@ -227,6 +229,8 @@ model Offer {
   isLegalSafeVerified       Boolean                    @default(false)
   /// JSON: [{ field, label, from, to }] — ostatnia edycja czekająca na admina.
   pendingEditChanges        Json?
+  /// JSON: { hasBalcony: { status, quote, quotes, source, appliedAt } } — tęczowy mózg
+  intelligenceAmenityPatches Json?
   status                    OfferStatus                @default(ACTIVE)
   expiresAt                 DateTime?
   promotedUntil             DateTime?

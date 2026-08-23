@@ -3,6 +3,7 @@ import type { OtodomImportDraft } from "@/lib/otodomImport";
 import { importOfferFromUrl, isSupportedImportOfferUrl } from "@/lib/otodomImport";
 import { createOfferFromOtodomDraft } from "@/lib/otodomImportCreate";
 import { requireOtodomImporter } from "@/lib/otodomImportAuth";
+import { resolveSmartAddCreateOptions } from "@/lib/importSmartAddHttp";
 import type { OtodomPublicationInput } from "@/lib/otodomImportPublication";
 import {
   applyImportDraftPatch,
@@ -120,6 +121,7 @@ export async function POST(req: Request) {
       floorPlanImageIndex: filtered.floorPlanImageIndex,
       lastImageFloorPlan: filtered.floorPlanImageIndex == null ? false : undefined,
       skipAutoFloorPlanProbe: true,
+      ...(await resolveSmartAddCreateOptions(user.id, body as Record<string, unknown>)),
     });
 
     if (!result.ok) {

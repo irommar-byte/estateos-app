@@ -5,6 +5,7 @@
 let audioCtx: AudioContext | null = null;
 let lastPresentAt = 0;
 let lastLearnAt = 0;
+let lastBingoAt = 0;
 
 function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -21,11 +22,12 @@ function getCtx(): AudioContext | null {
   }
 }
 
-export type IntelligenceChimeKind = "suggest" | "progress" | "celebrate" | "learn";
+export type IntelligenceChimeKind = "suggest" | "progress" | "celebrate" | "learn" | "bingo";
 
 const PRESENT_DEBOUNCE_MS = 12_000;
 /** Learn may fire more often — still soft, never a click track. */
 const LEARN_DEBOUNCE_MS = 1_600;
+const BINGO_DEBOUNCE_MS = 700;
 
 function tone(
   ctx: AudioContext,
@@ -135,6 +137,35 @@ function playLearnSound(ctx: AudioContext) {
   master.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.55);
 }
 
+/** Short glass-sparkle thank-you after Inteligentne dodawanie. */
+function playBingoSound(ctx: AudioContext) {
+  const t0 = ctx.currentTime + 0.01;
+  const master = ctx.createGain();
+  master.gain.value = 0.0001;
+  master.connect(ctx.destination);
+
+  const notes = [
+    { freq: 523.25, start: 0, peak: 0.045 },
+    { freq: 659.25, start: 0.07, peak: 0.04 },
+    { freq: 783.99, start: 0.14, peak: 0.038 },
+    { freq: 1046.5, start: 0.22, peak: 0.028 },
+  ];
+  for (const note of notes) {
+    tone(ctx, master, {
+      freq: note.freq,
+      peak: note.peak,
+      attack: 0.018,
+      hold: 0.08,
+      release: 0.55,
+      start: t0 + note.start,
+    });
+  }
+
+  master.gain.setValueAtTime(0.0001, t0);
+  master.gain.exponentialRampToValueAtTime(1, t0 + 0.02);
+  master.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.05);
+}
+
 export async function playIntelligenceChime(kind: IntelligenceChimeKind = "suggest") {
   if (typeof window === "undefined") return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -143,6 +174,9 @@ export async function playIntelligenceChime(kind: IntelligenceChimeKind = "sugge
   if (kind === "learn") {
     if (now - lastLearnAt < LEARN_DEBOUNCE_MS) return;
     lastLearnAt = now;
+  } else if (kind === "bingo") {
+    if (now - lastBingoAt < BINGO_DEBOUNCE_MS) return;
+    lastBingoAt = now;
   } else {
     if (now - lastPresentAt < PRESENT_DEBOUNCE_MS) return;
     lastPresentAt = now;
@@ -158,6 +192,10 @@ export async function playIntelligenceChime(kind: IntelligenceChimeKind = "sugge
 
   if (kind === "learn") {
     playLearnSound(ctx);
+    return;
+  }
+  if (kind === "bingo") {
+    playBingoSound(ctx);
     return;
   }
 

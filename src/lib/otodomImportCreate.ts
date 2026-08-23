@@ -35,6 +35,16 @@ import {
   importUrlLookupCandidates,
   releaseImportExternalClaim,
 } from '@/lib/importDuplicateGuard';
+import {
+  buildAppliedPatch,
+  inferAmenitySuggestions,
+  parseSmartAddDecisions,
+  portalFeaturesIncludeAmenity,
+  type IntelligenceAmenityField,
+  type IntelligenceAmenityPatchMap,
+  type IntelligenceAmenitySuggestion,
+} from '@/lib/intelligenceAmenityBrain';
+import { writeOfferAmenityPatches } from '@/lib/intelligenceAmenityPatches';
 
 const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
   OTODOM: 'estateos-otodom:',
@@ -121,17 +131,69 @@ export async function findExistingImportedOfferByPortalUrl(portalUrl: string) {
   return findExistingOfferByImportUrl(portalUrl);
 }
 
+export function suggestionsFromOtodomDraft(draft: OtodomImportDraft): IntelligenceAmenitySuggestion[] {
+  return inferAmenitySuggestions({
+    features: draft.features,
+    title: draft.title,
+    description: [draft.descriptionText, draft.descriptionHtml].filter(Boolean).join('\n'),
+  });
+}
+
+export function resolveImportSmartAdd(params: {
+  draft: OtodomImportDraft;
+  enabled?: boolean;
+  autoApply?: boolean;
+  decisions?: unknown;
+}): {
+  amenities: Record<IntelligenceAmenityField, boolean>;
+  patches: IntelligenceAmenityPatchMap;
+  suggestions: IntelligenceAmenitySuggestion[];
+} {
+  const features = params.draft.features || [];
+  const suggestions = suggestionsFromOtodomDraft(params.draft);
+  const decisions = parseSmartAddDecisions(params.decisions);
+  const amenities: Record<IntelligenceAmenityField, boolean> = {
+    hasBalcony: portalFeaturesIncludeAmenity(features, 'hasBalcony'),
+    hasElevator: portalFeaturesIncludeAmenity(features, 'hasElevator'),
+    hasStorage: portalFeaturesIncludeAmenity(features, 'hasStorage'),
+    hasParking: portalFeaturesIncludeAmenity(features, 'hasParking'),
+    hasGarden: portalFeaturesIncludeAmenity(features, 'hasGarden'),
+    isFurnished: portalFeaturesIncludeAmenity(features, 'isFurnished'),
+  };
+  const patches: IntelligenceAmenityPatchMap = {};
+  if (params.enabled) {
+    for (const suggestion of suggestions) {
+      const decided = decisions[suggestion.field];
+      const apply = decided === true || (params.autoApply && decided !== false);
+      if (!apply) continue;
+      amenities[suggestion.field] = true;
+      patches[suggestion.field] = buildAppliedPatch(suggestion, 'import');
+    }
+  }
+  return { amenities, patches, suggestions };
+}
+
 export async function draftToOfferCreateBody(
   draft: OtodomImportDraft,
   userId: number,
   presentation: { title: string; descriptionHtml: string },
-  options?: { agentCommissionPercent?: number | null },
+  options?: {
+    agentCommissionPercent?: number | null;
+    smartAddEnabled?: boolean;
+    smartAddAutoApply?: boolean;
+    smartAddDecisions?: unknown;
+  },
 ) {
   assertOtodomImportDraftReady(draft);
 
   const { city, district, street } = await resolveOtodomImportLocationFields(draft);
   const country = await inferCountryFromCoordinates(draft.lat, draft.lng);
-  const features = draft.features || [];
+  const smart = resolveImportSmartAdd({
+    draft,
+    enabled: options?.smartAddEnabled,
+    autoApply: options?.smartAddAutoApply,
+    decisions: options?.smartAddDecisions,
+  });
 
   return {
     userId,
@@ -158,12 +220,12 @@ export async function draftToOfferCreateBody(
     localityCountryCode: country.localityCountryCode,
     localityCountry: country.localityCountry,
     isExactLocation: true,
-    hasBalcony: featureIncludes(features, ['balkon']),
-    hasElevator: featureIncludes(features, ['winda']),
-    hasStorage: featureIncludes(features, ['piwnica', 'komórka']),
-    hasParking: featureIncludes(features, ['garaż', 'parking', 'miejsce parking']),
-    hasGarden: featureIncludes(features, ['ogród', 'ogródek']),
-    isFurnished: featureIncludes(features, ['meble', 'umeblow']),
+    hasBalcony: smart.amenities.hasBalcony,
+    hasElevator: smart.amenities.hasElevator,
+    hasStorage: smart.amenities.hasStorage,
+    hasParking: smart.amenities.hasParking,
+    hasGarden: smart.amenities.hasGarden,
+    isFurnished: smart.amenities.isFurnished,
     heating: sanitizeImportHeating(draft.heating, draft.heatingCode),
     status: 'PENDING',
     images: '[]',
@@ -447,6 +509,9 @@ export async function createOfferFromOtodomDraft(
     preserveOriginalCopy?: boolean;
     /** Pomiń automatyczne wykrywanie rzutu (oszczędza ~25s przy imporcie mobilnym). */
     skipAutoFloorPlanProbe?: boolean;
+    smartAddEnabled?: boolean;
+    smartAddAutoApply?: boolean;
+    smartAddDecisions?: unknown;
   },
 ) {
   const throwIfCancelled = async () => {
@@ -519,7 +584,12 @@ export async function createOfferFromOtodomDraft(
     { rewrittenByAi: presentation.rewrittenByAi },
   );
   await throwIfCancelled();
-  const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
+  const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, {
+    agentCommissionPercent: options?.agentCommissionPercent,
+    smartAddEnabled: options?.smartAddEnabled,
+    smartAddAutoApply: options?.smartAddAutoApply,
+    smartAddDecisions: options?.smartAddDecisions,
+  });
   let offerId: number | null = null;
   let publicationReserved = false;
 
@@ -530,6 +600,16 @@ export async function createOfferFromOtodomDraft(
       throw new Error('Nie udało się odczytać ID nowej oferty.');
     }
     await bindImportExternalKey(draft.source, draft.externalId, offerId);
+
+    const smart = resolveImportSmartAdd({
+      draft,
+      enabled: options?.smartAddEnabled,
+      autoApply: options?.smartAddAutoApply,
+      decisions: options?.smartAddDecisions,
+    });
+    if (Object.keys(smart.patches).length) {
+      await writeOfferAmenityPatches(offerId, smart.patches);
+    }
 
     await upsertImportedOfferPrivateSnapshot({
       offerId,

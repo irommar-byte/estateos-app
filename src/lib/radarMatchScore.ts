@@ -5,6 +5,7 @@ import {
   resolveCanonicalOfferDistrict,
 } from '@/lib/location/locationCatalog';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
+import { offerHasAmenityFromBrain, type IntelligenceAmenityField } from '@/lib/intelligenceAmenityBrain';
 
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, value));
@@ -42,12 +43,28 @@ function offerDistrictNormalized(pref: Record<string, unknown>, offer: Record<st
   return resolved ? normalizeText(resolved) : null;
 }
 
+function amenityOn(offer: Record<string, unknown>, field: IntelligenceAmenityField): boolean {
+  return offerHasAmenityFromBrain(
+    {
+      title: offer.title != null ? String(offer.title) : null,
+      description: offer.description != null ? String(offer.description) : null,
+      hasBalcony: offer.hasBalcony as boolean | null | undefined,
+      hasGarden: offer.hasGarden as boolean | null | undefined,
+      hasElevator: offer.hasElevator as boolean | null | undefined,
+      hasParking: offer.hasParking as boolean | null | undefined,
+      isFurnished: offer.isFurnished as boolean | null | undefined,
+      hasStorage: offer.hasStorage as boolean | null | undefined,
+    },
+    field,
+  );
+}
+
 function passesAmenityGate(offer: Record<string, unknown>, pref: Record<string, unknown>): boolean {
-  if (pref.requireBalcony && !offer.hasBalcony) return false;
-  if (pref.requireGarden && !offer.hasGarden) return false;
-  if (pref.requireElevator && !offer.hasElevator) return false;
-  if (pref.requireParking && !offer.hasParking) return false;
-  if (pref.requireFurnished && !offer.isFurnished) return false;
+  if (pref.requireBalcony && !amenityOn(offer, 'hasBalcony')) return false;
+  if (pref.requireGarden && !amenityOn(offer, 'hasGarden')) return false;
+  if (pref.requireElevator && !amenityOn(offer, 'hasElevator')) return false;
+  if (pref.requireParking && !amenityOn(offer, 'hasParking')) return false;
+  if (pref.requireFurnished && !amenityOn(offer, 'isFurnished')) return false;
   if (pref.requireTwoLevel && !offer.isTwoLevel && !offer.isDuplex) return false;
   return true;
 }
@@ -95,11 +112,11 @@ function yearScore(year: number, minYear: number): number {
 
 function amenityScore(offer: Record<string, unknown>, pref: Record<string, unknown>): number {
   const required = [
-    pref.requireBalcony ? !!offer.hasBalcony : null,
-    pref.requireGarden ? !!offer.hasGarden : null,
-    pref.requireElevator ? !!offer.hasElevator : null,
-    pref.requireParking ? !!offer.hasParking : null,
-    pref.requireFurnished ? !!offer.isFurnished : null,
+    pref.requireBalcony ? amenityOn(offer, 'hasBalcony') : null,
+    pref.requireGarden ? amenityOn(offer, 'hasGarden') : null,
+    pref.requireElevator ? amenityOn(offer, 'hasElevator') : null,
+    pref.requireParking ? amenityOn(offer, 'hasParking') : null,
+    pref.requireFurnished ? amenityOn(offer, 'isFurnished') : null,
     pref.requireTwoLevel ? !!(offer.isTwoLevel || offer.isDuplex) : null,
   ].filter((v) => v !== null) as boolean[];
   if (required.length === 0) return 100;

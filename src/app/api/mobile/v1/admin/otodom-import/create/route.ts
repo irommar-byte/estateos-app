@@ -3,6 +3,7 @@ import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
+import { resolveSmartAddCreateOptions } from '@/lib/importSmartAddHttp';
 
 export const maxDuration = 300;
 
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
 
     const result = await createOfferFromOtodomDraft(draft, gate.adminId, undefined, {
       skipAutoFloorPlanProbe: true,
+      ...(await resolveSmartAddCreateOptions(gate.adminId, body as Record<string, unknown>)),
     });
     if (!result.ok) {
       return NextResponse.json(

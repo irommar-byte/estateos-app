@@ -5,6 +5,7 @@ import { requireOtodomImporter } from "@/lib/otodomImportAuth";
 import { collectOtodomImportDraftIssues } from "@/lib/importDraftValidate";
 import { enrichOtodomImportDraft } from "@/lib/portalImportEnrich";
 import { peekLastImageInfo } from "@/lib/otodomImportFloorPlan";
+import { buildSmartAddPreview } from "@/lib/importSmartAddHttp";
 
 export const maxDuration = 120;
 
@@ -35,7 +36,8 @@ export async function POST(req: Request) {
     const presentation = await buildOtodomPresentationCopy(draft);
     const issues = collectOtodomImportDraftIssues(draft);
     const imagePeek = peekLastImageInfo(draft);
-    return NextResponse.json({ ok: true, draft, presentation, issues, imagePeek });
+    const smartAdd = await buildSmartAddPreview(user.id, draft);
+    return NextResponse.json({ ok: true, draft, presentation, issues, imagePeek, ...smartAdd });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Import oferty nie powiódł się.";
     return NextResponse.json({ error: message }, { status: 422 });

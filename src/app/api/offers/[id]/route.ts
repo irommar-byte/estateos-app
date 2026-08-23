@@ -23,6 +23,7 @@ import { notifyAdminsLegalVerificationPending } from '@/lib/adminAttentionPush';
 import { enrichOfferMoneyFieldsForApi, resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
 import { enrichOfferMoneyFields, parsePriceAmount, getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
+import { readOfferAmenityPatches } from '@/lib/intelligenceAmenityPatches';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import { formatOfferBuildYear, resolveOfferBuildYear } from '@/lib/offerDisplayLabels';
@@ -391,6 +392,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             }
           : enrichedUserFinal;
 
+    const amenityPatches = await readOfferAmenityPatches(offerId).catch(() => ({}));
+
     return NextResponse.json(
       enrichOfferPriceDiscountFields({
       ...moneyOffer,
@@ -443,6 +446,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       favoritesCount,
       galleryPlan,
       galleryPersonalized,
+      intelligenceAmenityPatches: amenityPatches,
     }),
     );
   } catch (error) {

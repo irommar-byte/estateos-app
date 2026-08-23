@@ -48,5 +48,10 @@ export function parseKeiExportBody(body: Record<string, unknown>) {
     selections,
     floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
     floorPlanSelections: parseFloorPlanSelections(body?.floorPlanSelections),
+    smartAddEnabled: typeof body?.smartAddEnabled === 'boolean' ? body.smartAddEnabled : undefined,
+    smartAddDecisionsByUrl:
+      body?.smartAddDecisionsByUrl && typeof body.smartAddDecisionsByUrl === 'object'
+        ? (body.smartAddDecisionsByUrl as Record<string, Record<string, boolean>>)
+        : undefined,
   };
 }

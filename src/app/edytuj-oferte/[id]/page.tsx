@@ -20,9 +20,15 @@ import type { ListingCurrency } from '@/lib/money/types';
 import {
   amenityBooleanPatch,
   buildAmenityOptions,
+  OFFER_AMENITY_DEFS,
   readAmenitySelectionFromOffer,
   type OfferAmenityId,
 } from '@/lib/offerAmenities';
+import {
+  parseAmenityPatchMap,
+  type IntelligenceAmenityField,
+  type IntelligenceAmenityPatchMap,
+} from '@/lib/intelligenceAmenityBrain';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
 import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
@@ -159,6 +165,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [offerId, setOfferId] = useState<string | null>(null);
   const [data, setData] = useState<any>({});
   const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
+  const [intelPatches, setIntelPatches] = useState<IntelligenceAmenityPatchMap>({});
   const [imagesList, setImagesList] = useState<string[]>([]);
   const [hdrImages, setHdrImages] = useState<Record<string, boolean>>({});
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
@@ -238,6 +245,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           isLegalSafeVerified: Boolean(offer.isLegalSafeVerified),
         });
         setSelectedAmenities(readAmenitySelectionFromOffer(offer));
+        setIntelPatches(parseAmenityPatchMap(offer.intelligenceAmenityPatches));
         const cp = offer.agentCommissionPercent;
         setAgentCommissionPercent(
           cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
@@ -466,8 +474,36 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     }
   };
 
+  const amenityFieldForId = (id: OfferAmenityId): IntelligenceAmenityField | null => {
+    const field = OFFER_AMENITY_DEFS.find((item) => item.id === id)?.field;
+    return field && field !== 'isDuplex' ? (field as IntelligenceAmenityField) : null;
+  };
+
+  const syncIntelPatch = async (field: IntelligenceAmenityField, turningOff: boolean) => {
+    const patch = intelPatches[field];
+    if (!patch || !offerId) return;
+    const action = turningOff ? 'undo' : 'reapply';
+    if (patch.status === 'applied' && !turningOff) return;
+    if (patch.status === 'undone' && turningOff) return;
+    try {
+      const res = await fetch(`/api/offers/${offerId}/intelligence-amenities`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, action }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.patches) setIntelPatches(parseAmenityPatchMap(json.patches));
+    } catch {
+      /* keep local toggle */
+    }
+  };
+
   const toggleAmenity = (id: OfferAmenityId) => {
+    const turningOff = selectedAmenities.includes(id);
     setSelectedAmenities((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    const field = amenityFieldForId(id);
+    if (field) void syncIntelPatch(field, turningOff);
   };
 
   const listingCurrency = (String(data.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as ListingCurrency;
@@ -757,9 +793,18 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <div>
                 <label className={labelPremium}>{ao.furnishedLabel}</label>
                 <div className="flex gap-4">
-                  <button type="button" onClick={() => updateData({ isFurnished: true })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'eos-chip-on' : 'eos-chip-off'}`}>{ao.yes}</button>
-                  <button type="button" onClick={() => updateData({ isFurnished: false })} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'border-red-500 bg-red-500 text-white' : 'eos-chip-off'}`}>{ao.no}</button>
+                  <button type="button" onClick={() => {
+                    updateData({ isFurnished: true });
+                    if (intelPatches.isFurnished?.status === 'undone') void syncIntelPatch('isFurnished', false);
+                  }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? (intelPatches.isFurnished?.status === 'applied' ? 'eos-intel-frame' : 'eos-chip-on') : 'eos-chip-off'}`}>{ao.yes}</button>
+                  <button type="button" onClick={() => {
+                    updateData({ isFurnished: false });
+                    if (intelPatches.isFurnished?.status === 'applied') void syncIntelPatch('isFurnished', true);
+                  }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'border-red-500 bg-red-500 text-white' : 'eos-chip-off'}`}>{ao.no}</button>
                 </div>
+                {intelPatches.isFurnished?.status === 'applied' ? (
+                  <p className="mt-2 text-[10px] font-bold text-[var(--eos-muted)]">EstateOS™ Intelligence · Cofnij = Nie</p>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -785,13 +830,40 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             <div className="flex flex-wrap gap-3 mt-4">
               {amenityOptions.map(({ id, label }) => {
                 const isActive = selectedAmenities.includes(id);
+                const field = amenityFieldForId(id);
+                const patch = field ? intelPatches[field] : undefined;
+                const intelOn = patch?.status === 'applied';
                 return (
-                  <div
-                    key={id}
-                    onClick={() => toggleAmenity(id)}
-                    className={`max-w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.08em] leading-snug text-balance cursor-pointer transition-all duration-300 border ${isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:bg-[#111] hover:border-white/10'}`}
-                  >
-                    {label}
+                  <div key={id} className="flex flex-col gap-1">
+                    <div
+                      onClick={() => toggleAmenity(id)}
+                      className={`max-w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.08em] leading-snug text-balance cursor-pointer transition-all duration-300 border ${
+                        intelOn
+                          ? 'eos-intel-frame text-[var(--eos-text)]'
+                          : isActive
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                            : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:bg-[#111] hover:border-white/10'
+                      }`}
+                    >
+                      {label}
+                      {intelOn ? (
+                        <span className="mt-1 block text-[9px] font-bold normal-case tracking-normal text-[var(--eos-text)]/70">
+                          EstateOS™ Intelligence
+                        </span>
+                      ) : null}
+                    </div>
+                    {intelOn ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleAmenity(id);
+                        }}
+                        className="self-start text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)] underline-offset-2 hover:underline"
+                      >
+                        Cofnij
+                      </button>
+                    ) : null}
                   </div>
                 );
               })}

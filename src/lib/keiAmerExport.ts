@@ -160,6 +160,8 @@ export async function exportKeiListingsToEstateOS(options?: {
   onProgress?: KeiExportProgressEmitter;
   /** Cooperative cancel between items (durable server jobs). */
   shouldCancel?: () => boolean | Promise<boolean>;
+  smartAddEnabled?: boolean;
+  smartAddDecisionsByUrl?: Record<string, Record<string, boolean>>;
 }): Promise<{
   ok: true;
   exported: KeiExportItemResult[];
@@ -417,6 +419,9 @@ export async function exportKeiListingsToEstateOS(options?: {
         maxImportImages: KEI_MAX_IMPORT_IMAGES,
         floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
         shouldCancel: checkCancel,
+        smartAddEnabled: options?.smartAddEnabled,
+        smartAddAutoApply: options?.smartAddEnabled === true && !options?.smartAddDecisionsByUrl?.[portalUrl],
+        smartAddDecisions: options?.smartAddDecisionsByUrl?.[portalUrl],
         onCopyProgress: (label, detail, meta) => {
           emit?.({
             type: 'step',

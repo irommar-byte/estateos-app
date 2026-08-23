@@ -1,4 +1,5 @@
 import { parseClientOfferFeedback, type ClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
+import { descriptionImpliesAmenity, offerHasAmenityFromBrain } from '@/lib/intelligenceAmenityBrain';
 import { plainOfferDescription } from '@/lib/offerDescriptionHtml';
 
 export type IntelligenceSettings = {
@@ -84,14 +85,8 @@ function includesAny(text: string, needles: string[]): boolean {
   return needles.some((needle) => needle && text.includes(needle.toLowerCase()));
 }
 
-const NO_BALCONY = /bez balkonu|brak balkonu|bez loggii|brak loggii/;
-const HAS_BALCONY = /balkon|loggi/;
-
 export function descriptionImpliesBalcony(text: string): boolean {
-  const hay = String(text || '').toLowerCase();
-  if (!hay.trim()) return false;
-  if (NO_BALCONY.test(hay)) return false;
-  return HAS_BALCONY.test(hay);
+  return descriptionImpliesAmenity(text, 'hasBalcony');
 }
 
 export function shouldPersistBalcony(offer: OfferLike): boolean {
@@ -176,9 +171,9 @@ export function intelligenceAdjustScore(params: {
   }
 
   const balconyFromDescription = descriptionImpliesBalcony(text);
-  const hasBalcony = offer.hasBalcony === true || balconyFromDescription;
+  const hasBalcony = offerHasAmenityFromBrain(offer, 'hasBalcony');
   if (offer.hasBalcony !== true && balconyFromDescription) {
-    reasons.push('W opisie jest balkon albo loggia, choć parametr był odznaczony — zaznaczam balkon w ofercie.');
+    reasons.push('W opisie jest balkon albo loggia, choć parametr był odznaczony — scoring traktuje ofertę jak z balkonem.');
   }
   if (phraseCounts.get('Brak balkonu') && !hasBalcony) {
     score -= 18;
