@@ -27,6 +27,7 @@ import {
   clientFeedbackHasContent,
   formatClientFeedbackForAgent,
 } from '@/lib/crm/clientPortalFeedback';
+import { applyIntelligenceLearning } from '@/lib/crm/clientIntelligenceRun';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -183,6 +184,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'CLIENT_NOTIFIED',
               'OFFER_SHARED',
               'CLIENT_FEEDBACK',
+              'INTELLIGENCE_OFFER',
+              'INTELLIGENCE_PLANNED',
+              'FEEDBACK_REMINDER',
               'ACQUISITION_MEETING',
               'ACQUISITION_SIGNED',
               'MARKET_REPORT_SENT',
@@ -227,7 +231,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const meeting = resolveMeeting(scheduleActs);
   const presentation = resolvePresentation(scheduleActs);
   const notifiedMatches = client.matches.filter((m) => m.notifiedAt);
-  const reactedMatches = notifiedMatches.filter((m) => m.clientFeedback);
+  const reactedMatches = notifiedMatches.filter((m) => clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)));
   const lastOfferSentAt = notifiedMatches
     .map((m) => m.notifiedAt)
     .filter(Boolean)
@@ -545,6 +549,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       title: `Reakcja do oferty: ${match.offer.title}`,
       body: `${clientName}: ${agentSummary.slice(0, 160)}`,
     });
+    await applyIntelligenceLearning(client.id).catch(() => {});
     return NextResponse.json({ success: true });
   }
 

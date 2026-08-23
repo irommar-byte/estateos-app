@@ -220,13 +220,13 @@ export const profile = {
   intelligence: {
     sectionTitle: 'EstateOS™ Intelligence',
     title: 'Intelligence',
-    subtitleOn: 'Uczy się z decyzji i podpowiada tropy',
-    subtitleOff: 'Włącz, by personalizować Discovery',
+    subtitleOn: 'Personalizacja Discovery i tropów (nie asystent CRM)',
+    subtitleOff: 'Włącz personalizację Discovery — to nie tęczowy asystent CRM',
     footer:
-      'Ta sama preferencja co na estateos.pl — jeden mózg na koncie.',
+      'Ten przełącznik dotyczy Discovery na koncie. Asystenta CRM włączasz przy kliencie.',
     gateTitle: 'Włącz Intelligence',
     gateBody:
-      'Jeden przełącznik. Potem system uczy się z Twoich ocen i spokojnie podpowiada tropy — bez formularzy.',
+      'Jeden przełącznik na koncie: Discovery i tropy. Tęczowy asystent CRM włączasz osobno przy kliencie.',
     gateEnable: 'Włącz Intelligence',
     gateLater: 'Nie teraz',
   },

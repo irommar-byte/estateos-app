@@ -219,13 +219,13 @@ export const profile = {
   intelligence: {
     sectionTitle: 'EstateOS™ Intelligence',
     title: 'Intelligence',
-    subtitleOn: 'Персонализация Discovery и подсказки',
-    subtitleOff: 'Персонализация Discovery и подсказки',
+    subtitleOn: 'Персонализация Discovery (не CRM-ассистент)',
+    subtitleOff: 'Включите персонализацию Discovery — это не радужный ассистент CRM',
     footer:
-      'Та же настройка, что на estateos.pl — включает персонализацию на аккаунте.',
+      'Этот переключатель для Discovery на аккаунте. CRM-ассистент включается у клиента.',
     gateTitle: 'Включите Intelligence',
     gateBody:
-      'Discovery и тропы работают, когда EstateOS™ Intelligence включён на вашем аккаунте.',
+      'Один переключатель аккаунта для Discovery и троп. Радужный ассистент CRM включается отдельно у клиента.',
     gateEnable: 'Включить Intelligence',
     gateLater: 'Не сейчас',
   },

@@ -37,6 +37,7 @@ import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
+import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -80,7 +81,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
     presentationConfirmed: presentation?.status === 'confirmed',
     hasCriteria: Boolean(client.buyerPreference),
     sentOfferCount: client.matches.filter((m) => m.notifiedAt).length,
-    reactedCount: client.matches.filter((m) => m.clientFeedback).length,
+    reactedCount: client.matches.filter((m) =>
+      clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)),
+    ).length,
     lastOfferSentAt: client.matches
       .map((m) => m.notifiedAt)
       .filter(Boolean)

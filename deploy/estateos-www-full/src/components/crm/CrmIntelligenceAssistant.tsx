@@ -33,6 +33,16 @@ export type IntelligenceActivity = {
   createdAt: string;
 };
 
+const INTEL_HISTORY_KINDS = new Set([
+  "INTELLIGENCE_OFFER",
+  "INTELLIGENCE_PLANNED",
+  "INTELLIGENCE_TASTE",
+  "FEEDBACK_REMINDER",
+  "CLIENT_NOTIFIED",
+  "CLIENT_FEEDBACK",
+  "OFFER_SHARED",
+]);
+
 function IosRainbowSwitch({
   checked,
   onChange,
@@ -138,6 +148,8 @@ export default function CrmIntelligenceAssistant({
   const [smartAddBusy, setSmartAddBusy] = useState(false);
   const [blooming, setBlooming] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [sendingNow, setSendingNow] = useState(false);
+  const [sendNote, setSendNote] = useState("");
   const enabledRef = useRef(Boolean(value?.enabled));
 
   useEffect(() => {
@@ -215,11 +227,7 @@ export default function CrmIntelligenceAssistant({
   const knobLeft = `${Math.max(0, Math.min(100, ((draft.minScore - 75) / 20) * 100))}%`;
 
   const intelHistory = useMemo(() => {
-    return (activities || [])
-      .filter((item) =>
-        /intelligence|taste|offer|remind|plan|feedback/i.test(`${item.kind} ${item.title || ""}`),
-      )
-      .slice(0, 6);
+    return (activities || []).filter((item) => INTEL_HISTORY_KINDS.has(item.kind)).slice(0, 6);
   }, [activities]);
 
   const nowLines = useMemo(() => {
@@ -237,7 +245,7 @@ export default function CrmIntelligenceAssistant({
   const plannedLines = useMemo(() => {
     const interval = INTELLIGENCE_INTERVAL_OPTIONS.find((item) => item.value === draft.intervalHours)?.label || `${draft.intervalHours} godz.`;
     return [
-      `Cykl: ${interval}, do ${draft.dailyLimit} ofert za razem.`,
+      `Gdy cykl minie, wyślę do ${draft.dailyLimit} ${draft.dailyLimit === 1 ? "oferty" : "ofert"} naraz.`,
       nextWhen ? `Następna próba: ${nextWhen}.` : "Brak zaplanowanej godziny — włącz asystenta albo zbierz reakcje.",
       pick?.title ? `W kolejce: ${pick.title}.` : "Brak kandydata w kolejce.",
     ];
@@ -269,6 +277,40 @@ export default function CrmIntelligenceAssistant({
       window.setTimeout(() => setSaved(false), 2200);
     } catch {
       setSaved(false);
+    }
+  };
+
+  const refreshPick = async () => {
+    const res = await fetch(`/api/crm/clients/${clientId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "intelligence_preview" }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (json?.pick) setPick(json.pick as IntelligencePick);
+  };
+
+  const handleSendNow = async () => {
+    setSendingNow(true);
+    setSendNote("");
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "intelligence_send" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json.error || "Nie udało się wysłać."));
+      if (json.sent) {
+        setSendNote(json.emailSent ? "Wysłane teraz — klient dostał maila." : "Wysłane teraz — propozycja jest w panelu.");
+      } else {
+        setSendNote(json.pick?.skipReason || "Nic nie poszło — brak gotowego kandydata.");
+      }
+      await refreshPick();
+    } catch (error) {
+      setSendNote(error instanceof Error ? error.message : "Nie udało się wysłać.");
+    } finally {
+      setSendingNow(false);
     }
   };
 
@@ -340,7 +382,7 @@ export default function CrmIntelligenceAssistant({
           />
           <EosGlowSelect
             label="Ofert na cykl"
-            hint="Ile ogłoszeń może wysłać za jednym razem, gdy interwał minie."
+            hint="Limit na jeden cykl: jak minie interwał, wyśle do N ofert naraz — nie codziennie po jednej."
             value={draft.dailyLimit}
             options={INTELLIGENCE_DAILY_LIMIT_OPTIONS}
             onChange={(dailyLimit) => setDraft((current) => ({ ...current, dailyLimit }))}
@@ -493,23 +535,34 @@ export default function CrmIntelligenceAssistant({
           )}
         </div>
 
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void handleSave()}
-          className={`${eosBtn("home", { size: "sm" })} eos-intel-save ${saved ? "is-saved" : ""}`}
-        >
-          {busy ? (
-            "Zapisuję…"
-          ) : saved ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Check className="size-3.5" />
-              Zapisany
-            </span>
-          ) : (
-            "Zapisz asystenta"
-          )}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleSave()}
+            className={`${eosBtn("home", { size: "sm" })} eos-intel-save ${saved ? "is-saved" : ""}`}
+          >
+            {busy ? (
+              "Zapisuję…"
+            ) : saved ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="size-3.5" />
+                Zapisany
+              </span>
+            ) : (
+              "Zapisz asystenta"
+            )}
+          </button>
+          <button
+            type="button"
+            disabled={busy || sendingNow || !pick?.offerId}
+            onClick={() => void handleSendNow()}
+            className={eosBtn("ghost", { size: "sm" })}
+          >
+            {sendingNow ? "Wysyłam…" : "Wyślij teraz"}
+          </button>
+        </div>
+        {sendNote ? <p className="text-xs font-semibold text-[var(--eos-text)]/80">{sendNote}</p> : null}
       </div>
     </div>
   );

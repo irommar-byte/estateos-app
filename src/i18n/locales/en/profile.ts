@@ -219,13 +219,13 @@ export const profile = {
   intelligence: {
     sectionTitle: 'EstateOS™ Intelligence',
     title: 'Intelligence',
-    subtitleOn: 'Discovery personalization and suggestions',
-    subtitleOff: 'Discovery personalization and suggestions',
+    subtitleOn: 'Discovery personalization (not the CRM assistant)',
+    subtitleOff: 'Enable Discovery personalization — not the CRM rainbow assistant',
     footer:
-      'Same preference as on estateos.pl — enables personalization on your account.',
+      'This switch is for Discovery on your account. The CRM assistant is enabled per client.',
     gateTitle: 'Turn on Intelligence',
     gateBody:
-      'Discovery and tropes work when EstateOS™ Intelligence is enabled on your account.',
+      'One account switch for Discovery and tropes. The CRM rainbow assistant is turned on per client.',
     gateEnable: 'Enable Intelligence',
     gateLater: 'Not now',
   },

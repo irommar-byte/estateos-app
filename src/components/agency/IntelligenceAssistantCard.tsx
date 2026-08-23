@@ -23,6 +23,14 @@ export type IntelligenceSettings = {
   lockedFields?: IntelligenceLocks;
 };
 
+export type IntelligenceLessonPreview = {
+  offerId: number;
+  title: string;
+  when?: string | null;
+  said: string;
+  vsNext?: string;
+};
+
 export type IntelligencePickPreview = {
   ready?: boolean;
   skipReason?: string | null;
@@ -37,6 +45,9 @@ export type IntelligencePickPreview = {
   nextSendAt?: string | null;
   offerId?: number | null;
   calibrating?: boolean;
+  learnCount?: number;
+  clientWhy?: string | null;
+  lessons?: IntelligenceLessonPreview[];
 };
 
 export const DEFAULT_INTELLIGENCE_SETTINGS: IntelligenceSettings = {
@@ -143,6 +154,8 @@ export default function IntelligenceAssistantCard({
   const [pick, setPick] = useState<IntelligencePickPreview | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
   const [smartAdd, setSmartAdd] = useState(false);
+  const [sendingNow, setSendingNow] = useState(false);
+  const [sendNote, setSendNote] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(value || DEFAULT_INTELLIGENCE_SETTINGS);
@@ -232,6 +245,37 @@ export default function IntelligenceAssistantCard({
     ? new Date(pick.nextSendAt).toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : null;
 
+  const handleSendNow = async () => {
+    setSendingNow(true);
+    setSendNote(null);
+    try {
+      const res = await postAgencyClientAction(token, clientId, { action: 'intelligence_send' });
+      if (!res.ok) {
+        setSendNote(res.message || 'Nie udało się wysłać.');
+        return;
+      }
+      const sent = Boolean((res as { sent?: boolean }).sent);
+      const emailSent = Boolean((res as { emailSent?: boolean }).emailSent);
+      const nextPick = (res as { pick?: IntelligencePickPreview }).pick;
+      if (nextPick) setPick(nextPick);
+      setSendNote(
+        sent
+          ? emailSent
+            ? 'Wysłane teraz — klient dostał maila.'
+            : 'Wysłane teraz — propozycja jest w panelu.'
+          : nextPick?.skipReason || 'Nic nie poszło — brak gotowego kandydata.',
+      );
+      const preview = await postAgencyClientAction(token, clientId, { action: 'intelligence_preview' });
+      if (preview.ok && (preview as { pick?: IntelligencePickPreview }).pick) {
+        setPick((preview as { pick: IntelligencePickPreview }).pick);
+      }
+    } catch {
+      setSendNote('Nie udało się wysłać.');
+    } finally {
+      setSendingNow(false);
+    }
+  };
+
   return (
     <LinearGradient
       colors={['#ff4d6d', '#ffd166', '#06d6a0', '#4cc9f0', '#c77dff']}
@@ -274,10 +318,47 @@ export default function IntelligenceAssistantCard({
           </View>
           <View style={{ gap: 12, marginTop: 12 }}>
             {choiceRow('Interwał', 'intervalHours', INTELLIGENCE_INTERVAL_OPTIONS)}
-            {choiceRow('Ofert na cykl', 'dailyLimit', INTELLIGENCE_DAILY_LIMIT_OPTIONS)}
+            {choiceRow('Ofert na cykl (wyśle naraz, gdy cykl minie)', 'dailyLimit', INTELLIGENCE_DAILY_LIMIT_OPTIONS)}
             {choiceRow('Ile reakcji zanim wyśle', 'minLearns', INTELLIGENCE_MIN_LEARNS_OPTIONS)}
             {choiceRow('Minimalna pewność', 'minScore', INTELLIGENCE_MIN_SCORE_OPTIONS)}
           </View>
+          {draft.enabled ? (
+            <View style={[styles.queue, { borderColor: colors.border, backgroundColor: colors.input }]}>
+              <Text style={styles.kicker}>Konsola asystenta</Text>
+              <Text style={{ color: colors.text, fontSize: 12, marginTop: 8, lineHeight: 17 }}>
+                Teraz:{' '}
+                {!draft.enabled
+                  ? 'asystent wyłączony.'
+                  : queueBusy
+                    ? 'analizuję opisy i reakcje…'
+                    : pick?.ready && pick.title
+                      ? `${pick.title}${pick.calibrating ? ' · kalibracja' : pick.score != null ? ` · ${pick.score}%` : ''}`
+                      : pick?.skipReason || 'czeka na cykl albo reakcję.'}
+              </Text>
+              <Text style={{ color: colors.text, fontSize: 12, marginTop: 6, lineHeight: 17 }}>
+                Zaplanowane: gdy cykl minie, wyślę do {draft.dailyLimit}{' '}
+                {draft.dailyLimit === 1 ? 'oferty' : 'ofert'} naraz
+                {nextWhen ? ` · ${nextWhen}` : ''}.
+              </Text>
+              {(pick?.lessons || []).length ? (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>
+                    LEKCJE Z REAKCJI
+                  </Text>
+                  {(pick?.lessons || []).slice(0, 3).map((lesson) => (
+                    <Text key={lesson.offerId} style={{ color: colors.text, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                      • {lesson.title}: {lesson.said}
+                      {lesson.vsNext ? ` · ${lesson.vsNext}` : ''}
+                    </Text>
+                  ))}
+                </View>
+              ) : (pick?.learnCount || 0) === 0 ? (
+                <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 6 }}>
+                  Brak jeszcze lekcji — pierwsza wysyłka to kalibracja.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           <View style={[styles.queue, { borderColor: colors.border, backgroundColor: colors.input }]}>
             <Text style={styles.kicker}>Następne w kolejce</Text>
             {queueBusy ? (
@@ -324,6 +405,26 @@ export default function IntelligenceAssistantCard({
               {busy ? 'Zapisuję…' : 'Zapisz asystenta'}
             </Text>
           </Pressable>
+          <Pressable
+            disabled={busy || sendingNow || !pick?.offerId}
+            onPress={() => void handleSendNow()}
+            style={[
+              styles.save,
+              {
+                backgroundColor: colors.input,
+                borderWidth: 1,
+                borderColor: colors.border,
+                opacity: busy || sendingNow || !pick?.offerId ? 0.5 : 1,
+              },
+            ]}
+          >
+            <Text style={{ color: colors.text, fontWeight: '900', fontSize: 12, textAlign: 'center' }}>
+              {sendingNow ? 'Wysyłam…' : 'Wyślij teraz'}
+            </Text>
+          </Pressable>
+          {sendNote ? (
+            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 8 }}>{sendNote}</Text>
+          ) : null}
         </View>
       </View>
     </LinearGradient>
