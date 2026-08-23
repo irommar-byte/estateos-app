@@ -85,6 +85,7 @@ export default function ClientPortalMatchCard({
   const tone = scoreTone(match.score);
   const location = [match.offer.city, match.offer.district, match.offer.street].filter(Boolean).join(" · ");
   const canSend = Boolean(sentiment || liked.trim() || disliked.trim() || phrases.length || note.trim());
+  const emailConfirmPending = Boolean(!match.clientFeedback && (prefill?.sentiment || prefill?.phrase));
   const badge = sentimentBadge(sentiment, Boolean(match.clientFeedback));
 
   useEffect(() => {
@@ -175,6 +176,22 @@ export default function ClientPortalMatchCard({
           </div>
 
           <div className="eos-portal-react mt-4 rounded-2xl p-4 sm:p-5">
+            {emailConfirmPending ? (
+              <div className="mb-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3">
+                <p className="text-sm font-black text-[var(--eos-text)]">Potwierdź wybór z maila</p>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
+                  Nic jeszcze nie poszło do agenta — jeden tap i ta reakcja ląduje u niego.
+                </p>
+                <SendPlaneButton
+                  sending={saving}
+                  disabled={saving || !canSend}
+                  onClick={() => void onSubmit({ sentiment, liked, disliked, phrases, note })}
+                  className="mt-3"
+                >
+                  Potwierdź i wyślij agentowi
+                </SendPlaneButton>
+              </div>
+            ) : null}
             <div className="mb-4 flex items-start gap-2.5">
               <span className="eos-live-dot mt-1.5 shrink-0" aria-hidden />
               <div>

@@ -94,14 +94,14 @@ export async function refreshAgencyClientMatches(clientId: number) {
     });
   }
 
-  if (upserts.length > 0) {
+  if (newlyCreated.length > 0) {
     await prisma.agencyClientActivity.create({
       data: {
         clientId,
         agencyUserId: client.agencyUserId,
         kind: 'MATCH_REFRESH',
-        title: 'Odświeżono dopasowania',
-        body: `Znaleziono ${upserts.length} ofert spełniających kryteria klienta.`,
+        title: 'Nowe dopasowania',
+        body: `Wpadło ${newlyCreated.length} ${newlyCreated.length === 1 ? 'nowa oferta' : 'nowych ofert'} spełniających kryteria.`,
         metadata: { count: upserts.length, newCount: newlyCreated.length },
       },
     });

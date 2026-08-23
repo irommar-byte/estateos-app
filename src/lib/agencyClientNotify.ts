@@ -423,6 +423,21 @@ export async function notifyAgencyClientAboutOffer(params: {
     },
   });
 
+  if (params.intelligence) {
+    await sendNotification({
+      userId: params.agencyUserId,
+      type: 'CRM_EVENT',
+      title: `Intelligence wysłało: ${preview.offers[0]?.title || 'ofertę'}`,
+      body: emailSent
+        ? `${preview.clientName} dostał maila z propozycją.`
+        : `${preview.clientName} ma nową propozycję w panelu (bez maila).`,
+      data: crmAgentPushData(params.clientId, {
+        kind: 'INTELLIGENCE_OFFER',
+        offerId: params.offerId,
+      }),
+    }).catch(() => {});
+  }
+
   return { emailSent, offerUrl: `https://estateos.pl/oferta/${params.offerId}`, preview };
 }
 
@@ -541,7 +556,6 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
       client: {
         status: 'ACTIVE',
         type: 'BUYER',
-        email: { not: null },
         portalToken: { not: null },
       },
     },
@@ -566,6 +580,7 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
           email: true,
           portalToken: true,
           agencyUserId: true,
+          linkedUserId: true,
         },
       },
     },
@@ -589,7 +604,7 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
     });
     if (recent) continue;
     const first = rows[0];
-    if (!first?.client.email || !first.client.portalToken) continue;
+    if (!first?.client.portalToken) continue;
 
     const agent = await prisma.user.findUnique({
       where: { id: first.client.agencyUserId },
@@ -608,29 +623,42 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         ? `Czekam jeszcze na Twoją opinię przy tej propozycji. Zerknij na zdjęcia i od razu zaznacz, czemu tak albo czemu nie — to uczy kolejne dopasowania.`
         : `Czekają ${waiting} propozycje bez odpowiedzi. Po zdjęciach zaznacz czemu tak / czemu nie — agent i EstateOS™ Intelligence uczą się z każdej reakcji.`;
 
-    const html = buildEmailHtml({
-      agencyName,
-      agentName,
-      clientName,
-      intro,
-      offers: briefs,
-      portalUrl,
-      portalToken: first.client.portalToken,
-      agentPhone: agent.phone,
-      agentEmail: agent.email,
-    });
+    let via: 'email' | 'portal' = 'portal';
+    if (first.client.email) {
+      const html = buildEmailHtml({
+        agencyName,
+        agentName,
+        clientName,
+        intro,
+        offers: briefs,
+        portalUrl,
+        portalToken: first.client.portalToken,
+        agentPhone: agent.phone,
+        agentEmail: agent.email,
+      });
+      const transporter = buildTransporter();
+      await transporter.sendMail({
+        from: `"${agencyName}" <powiadomienia@estateos.pl>`,
+        to: first.client.email,
+        replyTo: agent.email || undefined,
+        subject:
+          waiting === 1
+            ? `${agentName}: przypomnienie — czekam na Twoją opinię`
+            : `${agentName}: przypomnienie — ${waiting} propozycje czekają na odpowiedź`,
+        html,
+      });
+      via = 'email';
+    }
 
-    const transporter = buildTransporter();
-    await transporter.sendMail({
-      from: `"${agencyName}" <powiadomienia@estateos.pl>`,
-      to: first.client.email,
-      replyTo: agent.email || undefined,
-      subject:
-        waiting === 1
-          ? `${agentName}: przypomnienie — czekam na Twoją opinię`
-          : `${agentName}: przypomnienie — ${waiting} propozycje czekają na odpowiedź`,
-      html,
-    });
+    if (first.client.linkedUserId) {
+      await sendNotification({
+        userId: first.client.linkedUserId,
+        type: 'CRM_EVENT',
+        title: waiting === 1 ? 'Czekamy na Twoją opinię' : `${waiting} propozycje czekają na odpowiedź`,
+        body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
+        data: { kind: 'FEEDBACK_REMINDER', portalUrl },
+      }).catch(() => {});
+    }
 
     await prisma.agencyClientActivity.create({
       data: {
@@ -649,7 +677,7 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         metadata: {
           offerIds: rows.map((row) => row.offerId),
           waiting,
-          via: 'email',
+          via,
         },
       },
     });
@@ -659,9 +687,11 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
       type: 'CRM_EVENT',
       title: `Przypomnienie do klienta: ${clientName}`,
       body:
-        waiting === 1
-          ? `Wysłano mail z prośbą o opinię przy ofercie ${first.offer.title}.`
-          : `Wysłano mail: ${waiting} propozycje nadal bez odpowiedzi.`,
+        via === 'email'
+          ? waiting === 1
+            ? `Wysłano mail z prośbą o opinię przy ofercie ${first.offer.title}.`
+            : `Wysłano mail: ${waiting} propozycje nadal bez odpowiedzi.`
+          : `Brak maila — przypomnienie w panelu${first.client.linkedUserId ? ' i w aplikacji' : ''}.`,
       data: crmAgentPushData(clientId, { kind: 'FEEDBACK_REMINDER' }),
     }).catch(() => {});
 

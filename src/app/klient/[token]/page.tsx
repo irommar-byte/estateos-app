@@ -156,6 +156,23 @@ type PortalData = {
 
 const SENTIMENTS = new Set<ClientOfferSentiment>(["like", "maybe", "dislike"]);
 
+const AGENT_ACTIVITY_KINDS = new Set([
+  "INTELLIGENCE_OFFER",
+  "INTELLIGENCE_PLANNED",
+  "FEEDBACK_REMINDER",
+  "CLIENT_NOTIFIED",
+  "OFFER_SHARED",
+]);
+
+function agentActivityLabel(kind: string): string {
+  if (kind === "INTELLIGENCE_OFFER") return "Intelligence";
+  if (kind === "INTELLIGENCE_PLANNED") return "Plan asystenta";
+  if (kind === "FEEDBACK_REMINDER") return "Przypomnienie";
+  if (kind === "CLIENT_NOTIFIED") return "Wiadomość od agenta";
+  if (kind === "OFFER_SHARED") return "Udostępnienie";
+  return "Od agenta";
+}
+
 function sortPortalMatches(matches: PortalData["matches"]) {
   return [...matches].sort((a, b) => {
     const aPending = a.clientFeedback ? 1 : 0;
@@ -221,6 +238,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   );
   const pendingMatches = sortedMatches.filter((match) => !match.clientFeedback);
   const pendingFirstId = pendingMatches[0]?.id ?? null;
+  const agentUpdates = useMemo(
+    () =>
+      (portal?.activities || [])
+        .filter((item) => AGENT_ACTIVITY_KINDS.has(item.kind))
+        .slice(0, 4),
+    [portal?.activities],
+  );
 
   useEffect(() => {
     if (!sortedMatches.length) return;
@@ -612,6 +636,30 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               Obowiązkowe 100%: {criteria.amenities.join(", ")}
             </p>
           ) : null}
+        </section>
+      ) : null}
+
+      {portal.type === "BUYER" && agentUpdates.length ? (
+        <section className="eos-inset-frame rounded-[1.6rem] p-5">
+          <p className="eos-portal-label eos-portal-label--ok">Od agenta</p>
+          <ul className="mt-3 space-y-2">
+            {agentUpdates.map((item) => (
+              <li key={item.id} className="text-sm leading-snug text-[var(--eos-text)]">
+                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+                  {agentActivityLabel(item.kind)}
+                </span>
+                <p className="mt-0.5 font-semibold">{item.title || "Aktualizacja"}</p>
+                <p className="text-[11px] text-[var(--eos-muted)]">
+                  {new Date(item.createdAt).toLocaleString("pl-PL", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

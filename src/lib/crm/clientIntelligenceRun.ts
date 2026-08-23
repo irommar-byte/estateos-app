@@ -90,15 +90,28 @@ function overlayBalconyIds(offers: OfferRow[]): number[] {
   return [...new Set(offers.filter((offer) => shouldPersistBalcony(offer)).map((offer) => offer.id))];
 }
 
+let locksColumnReady = false;
+
 export async function ensureIntelligenceLockedFieldsColumn(): Promise<void> {
+  if (locksColumnReady) return;
   try {
     await prisma.$executeRawUnsafe(
       `ALTER TABLE \`AgencyClient\` ADD COLUMN \`intelligenceLockedFields\` JSON NULL`,
     );
+    locksColumnReady = true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!/Duplicate column|exists/i.test(message)) throw error;
+    if (/Duplicate column|exists/i.test(message)) {
+      locksColumnReady = true;
+      return;
+    }
+    throw error;
   }
+}
+
+/** Zapisuje naukę z reakcji i odświeża kolejkę — bez wysyłki. */
+export async function applyIntelligenceLearning(clientId: number): Promise<void> {
+  await pickIntelligenceOffer(clientId, { preview: false });
 }
 
 function buildAnalysis(params: {
@@ -195,7 +208,7 @@ export async function pickIntelligenceOffer(
   const calibrating = enabled && taste.learnCount === 0;
   const locks = parseIntelligenceLocks(client.intelligenceLockedFields, client.buyerPreference);
 
-  if (!options.preview && (enabled || options.force)) {
+  if (!options.preview) {
     const writeback = preferenceUpdatesFromTaste({
       pref: client.buyerPreference,
       taste,
@@ -479,7 +492,6 @@ export async function tickClientIntelligence(): Promise<{
         sent += 1;
         sentForClient += 1;
       } else {
-        skipped += 1;
         break;
       }
     }
