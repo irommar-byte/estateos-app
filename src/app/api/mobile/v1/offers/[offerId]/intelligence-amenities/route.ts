@@ -16,10 +16,10 @@ async function canEdit(userId: number, offerId: number) {
   return offer.userId === userId;
 }
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ offerId: string }> }) {
   const auth = await authorizeMobile(req);
   if (!auth.ok) return auth.response;
-  const offerId = Number((await params).id);
+  const offerId = Number((await params).offerId);
   if (!Number.isFinite(offerId) || offerId <= 0) {
     return NextResponse.json({ success: false, message: 'Nieprawidłowe ID.' }, { status: 400 });
   }
@@ -30,10 +30,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   return NextResponse.json({ success: true, patches });
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ offerId: string }> }) {
   const auth = await authorizeMobile(req);
   if (!auth.ok) return auth.response;
-  const offerId = Number((await params).id);
+  const offerId = Number((await params).offerId);
   if (!Number.isFinite(offerId) || offerId <= 0) {
     return NextResponse.json({ success: false, message: 'Nieprawidłowe ID.' }, { status: 400 });
   }
