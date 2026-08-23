@@ -48,13 +48,20 @@ export function buildKeiImportContext(row: Partial<KeiListingRow> | null | undef
   const keiId = String(row.id || '').trim();
   const phone = parseKeiPhone(row.telefon);
   const address = cleanText(row.adres);
-  const district = cleanText(row.dzielnica || row.dzielnica_);
+  let district = cleanText(row.dzielnica || row.dzielnica_);
   const street = cleanText(row.ulica);
   const rooms = parseKeiRooms(row.typ || row.typ_);
   const pricePerSqm = parseKeiNumeric(row.cena_m);
   const listedAt = cleanText(row.data);
   const listingText = cleanText(row.tekst);
   const directOwner = truthyKeiFlag(row.bez_posrednikow);
+  if (!district && address) {
+    const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      // "warszawa, białołęka, żerań" → dzielnica = białołęka
+      district = parts[1] || null;
+    }
+  }
   if (!keiId && !phone && !address && !district && !rooms && !listingText) return null;
   return {
     keiId,

@@ -99,13 +99,31 @@ function applyAutoConfig(config: KeiAutoImportConfig): Partial<KeiAmerExportStat
   };
 }
 
+/** One haptic per finished job — auto-import keeps polling and must not re-buzz. */
+let lastTerminalHapticKey: string | null = null;
+
+function fireTerminalHapticOnce(job: KeiImportJobSnapshot) {
+  if (job.status === 'queued' || job.status === 'running') return;
+  const key = `${job.id}:${job.status}:${job.finishedAt || ''}`;
+  if (key === lastTerminalHapticKey) return;
+  lastTerminalHapticKey = key;
+  if (job.status === 'done') {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  } else if (job.status === 'error') {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+  } else if (job.status === 'cancelled') {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  }
+}
+
 function applyJobSnapshot(
   job: KeiImportJobSnapshot,
   onComplete?: () => void,
+  options?: { haptic?: boolean },
 ): Partial<KeiAmerExportState> {
   const running = job.status === 'queued' || job.status === 'running';
   const patch: Partial<KeiAmerExportState> = {
-    jobId: job.id,
+    jobId: running ? job.id : job.source === 'auto' ? null : job.id,
     running,
     source: job.source === 'auto' ? 'auto' : 'manual',
     targetCount: Number(job.targetCount || 0),
@@ -117,13 +135,7 @@ function applyJobSnapshot(
   if (!running) {
     patch.onComplete = undefined;
     if (onComplete) queueMicrotask(() => onComplete());
-    if (job.status === 'done') {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } else if (job.status === 'error') {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } else if (job.status === 'cancelled') {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }
+    if (options?.haptic) fireTerminalHapticOnce(job);
   }
   return patch;
 }
@@ -162,18 +174,26 @@ async function pollOnce() {
       return;
     }
     if (job.cancelRequested || job.status === 'cancelled') {
+      const prev = useKeiAmerExportStore.getState();
+      const becameTerminal = Boolean(prev.running || prev.jobId === job.id);
       useKeiAmerExportStore.setState({
-        ...applyJobSnapshot({ ...job, status: 'cancelled' }),
+        ...applyJobSnapshot({ ...job, status: 'cancelled' }, undefined, { haptic: becameTerminal }),
         running: false,
+        ...(job.source === 'auto' ? { jobId: null, items: [], modalVisible: false } : {}),
       });
       if (!useKeiAmerExportStore.getState().autoEnabled) stopPolling();
       return;
     }
-    const onComplete = useKeiAmerExportStore.getState().onComplete;
+    const prev = useKeiAmerExportStore.getState();
+    const onComplete = prev.onComplete;
+    const becameTerminal =
+      (prev.running || prev.jobId === job.id) &&
+      job.status !== 'queued' &&
+      job.status !== 'running';
     const autoTerminal = job.source === 'auto' && job.status !== 'queued' && job.status !== 'running';
     useKeiAmerExportStore.setState({
-      ...applyJobSnapshot(job, onComplete),
-      ...(autoTerminal ? { items: [], modalVisible: false } : {}),
+      ...applyJobSnapshot(job, onComplete, { haptic: becameTerminal }),
+      ...(autoTerminal ? { items: [], modalVisible: false, jobId: null } : {}),
     });
     if (job.status !== 'queued' && job.status !== 'running' && !useKeiAmerExportStore.getState().autoEnabled) {
       stopPolling();
@@ -331,7 +351,9 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
         if (exportCancelledByUser) return;
         const job = started.job;
         set({
-          ...applyJobSnapshot(job),
+          ...applyJobSnapshot(job, onComplete, {
+            haptic: job.status !== 'queued' && job.status !== 'running',
+          }),
           authToken: token,
           onComplete,
           modalVisible: false,

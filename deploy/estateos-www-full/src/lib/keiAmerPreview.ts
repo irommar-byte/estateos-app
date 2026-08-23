@@ -252,15 +252,27 @@ export async function previewKeiExportListings(options?: {
   };
 }
 
+export type KeiImportSelection = {
+  keiId: string;
+  portalUrl: string;
+  address?: string;
+  phone?: string;
+  district?: string;
+  street?: string;
+  rooms?: number | null;
+  listedAt?: string;
+  directOwner?: boolean;
+};
+
 /** To samo co „Wybierz najnowsze”: feed od najnowszych, bez już zaimportowanych / zablokowanych. */
 export async function pickNewestKeiListingsForImport(options: {
   propertyKind: KeiPropertyKind;
   transactionKind: KeiTransactionKind;
   count: number;
-}): Promise<Array<{ keiId: string; portalUrl: string; address?: string }>> {
+}): Promise<KeiImportSelection[]> {
   const publishCount = Math.max(1, Math.min(25, Math.floor(options.count) || 1));
   const poolSize = Math.min(80, Math.max(publishCount * 8, publishCount));
-  const picked: Array<{ keiId: string; portalUrl: string; address?: string }> = [];
+  const picked: KeiImportSelection[] = [];
   const seen = new Set<string>();
 
   for (let page = 1; page <= 16 && picked.length < poolSize; page += 1) {
@@ -278,6 +290,12 @@ export async function pickNewestKeiListingsForImport(options: {
         keiId: row.keiId,
         portalUrl: row.portalUrl,
         address: row.address,
+        phone: row.phone || undefined,
+        district: row.district || undefined,
+        street: row.street || undefined,
+        rooms: row.rooms ?? undefined,
+        listedAt: row.listedAt || row.date || undefined,
+        directOwner: Boolean(row.directOwner),
       });
       if (picked.length >= poolSize) break;
     }
