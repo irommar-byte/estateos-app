@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Heartbeat PM2: tylko budzi Next.js. Sam import musi żyć w procesie `nieruchomosci`.
- * Czysty Node (bez npx/tsx) — cron */5 nie powinien za każdym razem odpalać TypeScriptu.
+ * Heartbeat PM2: only wakes Next.js. The import itself must live in `nieruchomosci`.
+ * Plain Node (no npx/tsx) so the every-5-minute cron does not compile TypeScript.
  */
 async function main() {
   const port = process.env.PORT || '3000';

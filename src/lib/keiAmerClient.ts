@@ -378,6 +378,72 @@ export async function fetchKeiListingsPage(params: {
   };
 }
 
+/**
+ * Cheap lookup for known KEI ids/urls — stops as soon as every key is found.
+ * Used to enrich thin import selections without scanning the whole archive.
+ */
+export async function findKeiListingsByIdsOrUrls(options: {
+  propertyKind?: KeiPropertyKind;
+  transactionKind?: KeiTransactionKind;
+  keiIds?: string[];
+  portalUrls?: string[];
+  maxPages?: number;
+}): Promise<KeiListingRow[]> {
+  const propertyKind = options.propertyKind ?? 'apartment';
+  const transactionKind = options.transactionKind ?? 'sale';
+  const wantIds = new Set(
+    (options.keiIds || []).map((id) => String(id || '').trim()).filter(Boolean),
+  );
+  const wantUrls = new Set(
+    (options.portalUrls || [])
+      .map((url) => String(url || '').trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+  );
+  if (wantIds.size === 0 && wantUrls.size === 0) return [];
+
+  const found = new Map<string, KeiListingRow>();
+  const maxPages = Math.max(1, Math.min(options.maxPages ?? 4, 8));
+  const limit = 50;
+
+  for (const okres of ['1', '0'] as const) {
+    for (let page = 0; page < maxPages; page += 1) {
+      const { rows } = await fetchKeiListingsPage({
+        start: page * limit,
+        limit,
+        sort: 'data',
+        dir: 'DESC',
+        propertyKind,
+        transactionKind,
+        okres,
+      });
+      for (const row of rows) {
+        const id = String(row.id || '').trim();
+        const url = String(row.www || '').trim().replace(/\/+$/, '');
+        if ((id && wantIds.has(id)) || (url && wantUrls.has(url))) {
+          found.set(id || url, row);
+        }
+      }
+      const allFound =
+        [...wantIds].every((id) => [...found.values()].some((row) => String(row.id) === id)) &&
+        [...wantUrls].every((url) =>
+          [...found.values()].some((row) => String(row.www || '').trim().replace(/\/+$/, '') === url),
+        );
+      if (allFound) return [...found.values()];
+      if (rows.length < limit) break;
+    }
+    if (
+      [...wantIds].every((id) => [...found.values()].some((row) => String(row.id) === id)) &&
+      [...wantUrls].every((url) =>
+        [...found.values()].some((row) => String(row.www || '').trim().replace(/\/+$/, '') === url),
+      )
+    ) {
+      break;
+    }
+  }
+
+  return [...found.values()];
+}
+
 export async function findWarsawPortalListings(options?: {
   propertyKind?: KeiPropertyKind;
   transactionKind?: KeiTransactionKind;
