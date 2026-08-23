@@ -67,7 +67,17 @@ export type KeiImportJobCreateInput = {
   targetUserId?: number;
   agentCommissionPercent?: number;
   count?: number;
-  selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
+  selections?: Array<{
+    keiId?: string;
+    portalUrl: string;
+    address?: string;
+    phone?: string;
+    district?: string;
+    street?: string;
+    rooms?: number | null;
+    listedAt?: string;
+    directOwner?: boolean;
+  }>;
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
   smartAddEnabled?: boolean;

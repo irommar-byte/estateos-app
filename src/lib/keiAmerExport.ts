@@ -240,6 +240,49 @@ export async function exportKeiListingsToEstateOS(options?: {
       portalUrl: row.portalUrl,
       kei: keiContextFromSelection(row),
     }));
+
+    // Selekcje z apki/auto czasem mają tylko id+url+adres — dograj telefon i resztę z KEI.
+    const needsEnrich = exportTargets.some((row) => !row.kei?.phone || !row.kei?.listedAt || !row.kei?.rooms);
+    if (needsEnrich) {
+      const listings = await findWarsawPortalListings({
+        propertyKind,
+        transactionKind,
+        maxResults: Math.max(exportTargets.length * 8, 40),
+        maxPages: 10,
+        search: { propertyKind, transactionKind, okres: '0' },
+      });
+      const byId = new Map(listings.map((row) => [String(row.id), row]));
+      const byUrl = new Map(
+        listings
+          .map((row) => [String(row.www || '').trim().replace(/\/+$/, ''), row] as const)
+          .filter(([url]) => Boolean(url)),
+      );
+      exportTargets = exportTargets.map((target) => {
+        if (target.kei?.phone && target.kei.listedAt && target.kei.rooms) return target;
+        const urlKey = String(target.portalUrl || '').trim().replace(/\/+$/, '');
+        const full =
+          byId.get(String(target.keiListingId || '')) ||
+          byUrl.get(urlKey) ||
+          null;
+        if (!full) return target;
+        const enriched = buildKeiImportContext(full);
+        if (!enriched) return target;
+        return {
+          ...target,
+          kei: {
+            ...enriched,
+            // Prefer explicit selection values when the client already sent them.
+            phone: target.kei?.phone || enriched.phone,
+            address: target.kei?.address || enriched.address,
+            district: target.kei?.district || enriched.district,
+            street: target.kei?.street || enriched.street,
+            rooms: target.kei?.rooms || enriched.rooms,
+            listedAt: target.kei?.listedAt || enriched.listedAt,
+            directOwner: Boolean(target.kei?.directOwner || enriched.directOwner),
+          },
+        };
+      });
+    }
   } else {
     const listings = await findWarsawPortalListings({
       propertyKind,
