@@ -13,6 +13,7 @@ import {
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
+import { buildKeiImportContext } from '@/lib/keiAmerListingExtras';
 import { getKeiListingDispositions, normalizeKeiPortalUrl } from '@/lib/keiAmerListingState';
 import { verifyPortalListingsActive } from '@/lib/keiAmerPortalVerify';
 
@@ -35,6 +36,12 @@ export type KeiPreviewListing = {
   /** null = not verified yet; true/false after portal check */
   portalActive: boolean | null;
   portalCheckReason: string | null;
+  phone: string | null;
+  district: string | null;
+  street: string | null;
+  rooms: number | null;
+  listedAt: string | null;
+  directOwner: boolean;
 };
 
 function portalHostFromUrl(url: string): string {
@@ -122,6 +129,7 @@ async function mapRowsToPreviewListings(
     else if (outreachSent) blockedReason = 'outreach';
     else if (portalActive === false) blockedReason = 'inactive';
 
+    const kei = buildKeiImportContext(row);
     listings.push({
       keiId: row.id,
       date: row.data || '',
@@ -140,6 +148,12 @@ async function mapRowsToPreviewListings(
       blockedReason,
       portalActive,
       portalCheckReason,
+      phone: kei?.phone || null,
+      district: kei?.district || null,
+      street: kei?.street || null,
+      rooms: kei?.rooms || null,
+      listedAt: kei?.listedAt || row.data || null,
+      directOwner: Boolean(kei?.directOwner),
     });
   }
 

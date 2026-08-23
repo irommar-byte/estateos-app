@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ExternalLink, Loader2, Save } from "lucide-react";
+import { ExternalLink, Loader2, Phone, Save } from "lucide-react";
 import EosModal from "@/components/ui/EosModal";
-import { eosBtn } from "@/components/ui/eosButtonStyles";
+import { shapeOfferPrivateNoteView } from "@/lib/offerPrivateNoteView";
 
 type Props = {
   open: boolean;
@@ -24,6 +24,12 @@ type ApiNote = {
   sourceLastError: string | null;
 };
 
+function phoneHref(raw: string | null): string | null {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (digits.length < 9) return null;
+  return `tel:+48${digits.length === 9 ? digits : digits.replace(/^48/, "")}`;
+}
+
 export default function OfferPrivateCommentModal({ open, offerId, offerTitle, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -31,14 +37,8 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
   const [note, setNote] = useState<ApiNote | null>(null);
   const [userNote, setUserNote] = useState("");
 
-  const parsedSnapshot = useMemo(() => {
-    if (!note?.importSnapshotJson) return null;
-    try {
-      return JSON.parse(note.importSnapshotJson) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
-  }, [note?.importSnapshotJson]);
+  const view = useMemo(() => shapeOfferPrivateNoteView(note?.importSnapshotJson), [note?.importSnapshotJson]);
+  const callHref = phoneHref(view.phone);
 
   useEffect(() => {
     if (!open || !offerId) return;
@@ -89,17 +89,20 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
     }
   };
 
+  const sourceLive = note?.sourceIsActive === true;
+  const sourceDead = note?.sourceIsActive === false;
+
   return (
     <EosModal
       open={open}
       onClose={onClose}
-      title={offerTitle ? `Komentarz · ${offerTitle}` : "Komentarz oferty"}
-      badge="Prywatne notatki właściciela"
+      title={offerTitle ? `Notatka · ${offerTitle}` : "Notatka oferty"}
+      badge="Prywatne — tylko agent"
       maxWidth="max-w-4xl"
     >
       <div className="space-y-4">
         {loading ? (
-          <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-6 flex items-center justify-center">
+          <div className="eos-inset-well flex items-center justify-center rounded-2xl p-6">
             <Loader2 size={18} className="animate-spin text-emerald-500" />
           </div>
         ) : null}
@@ -110,91 +113,113 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
 
         {!loading ? (
           <>
-            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 space-y-3">
-              <p className="text-[11px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
-                Twój komentarz (widoczny tylko dla Ciebie)
+            <div className="eos-inset-frame rounded-[1.4rem] p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`eos-source-seal ${sourceDead ? "eos-source-seal--dead" : ""}`}
+                  title={sourceLive ? "Źródło aktywne" : sourceDead ? "Źródło nieaktywne" : "Nie sprawdzone"}
+                />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[var(--eos-subtle)]">
+                    Jakość źródła
+                  </p>
+                  <p className="text-sm font-bold text-[var(--eos-text)]">
+                    {sourceLive
+                      ? "Aktywne na portalu"
+                      : sourceDead
+                        ? "Prawdopodobnie wygasło / wycofane"
+                        : "Jeszcze nie sprawdzone"}
+                  </p>
+                  {note?.sourceLastCheckAt ? (
+                    <p className="text-[11px] text-[var(--eos-muted)]">
+                      Sprawdzone {new Date(note.sourceLastCheckAt).toLocaleString("pl-PL")}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <section className="eos-inset-well rounded-2xl p-4 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-subtle)]">Kontakt</p>
+                <p className="text-sm text-[var(--eos-text)]">
+                  Telefon KEI: <span className="font-bold">{view.keiPhone || "—"}</span>
+                </p>
+                <p className="text-sm text-[var(--eos-text)]">
+                  Telefon z portalu: <span className="font-bold">{view.portalPhone || "—"}</span>
+                </p>
+                <p className="text-sm text-[var(--eos-text)]">
+                  Osoba / biuro: <span className="font-bold">{view.agencyName || "—"}</span>
+                </p>
+                <p className="text-sm text-[var(--eos-muted)]">
+                  {view.directOwner ? "Bez pośredników (KEI)" : view.advertiserType || "Typ ogłoszeniodawcy nieznany"}
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {callHref ? (
+                    <a href={callHref} className="eos-engraved-cta eos-engraved-cta--home">
+                      <Phone size={14} />
+                      Zadzwoń
+                    </a>
+                  ) : null}
+                  {note?.importExternalUrl ? (
+                    <a
+                      href={note.importExternalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="eos-engraved-cta"
+                    >
+                      <ExternalLink size={14} />
+                      Otwórz źródło
+                    </a>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="eos-inset-well rounded-2xl p-4 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-subtle)]">Źródło KEI</p>
+                <p className="text-sm text-[var(--eos-text)]">ID: <span className="font-bold">{view.keiId || "—"}</span></p>
+                <p className="text-sm text-[var(--eos-text)]">Adres: <span className="font-bold">{view.keiAddress || view.contactAddress || "—"}</span></p>
+                <p className="text-sm text-[var(--eos-text)]">
+                  {[view.keiDistrict, view.keiStreet, view.keiRooms ? `${view.keiRooms} pok.` : null]
+                    .filter(Boolean)
+                    .join(" · ") || "Brak dodatkowych danych KEI"}
+                </p>
+                <p className="text-[11px] text-[var(--eos-muted)]">
+                  {view.keiListedAt ? `W KEI od ${view.keiListedAt}` : "Data KEI nieznana"}
+                  {view.keiPricePerSqm ? ` · ${Math.round(view.keiPricePerSqm).toLocaleString("pl-PL")} zł/m²` : ""}
+                </p>
+              </section>
+            </div>
+
+            <section className="eos-inset-well rounded-2xl p-4 space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-subtle)]">Portal</p>
+              <p className="text-sm font-bold text-[var(--eos-text)]">{note?.importSource || "brak"} · {view.titleOriginal || offerTitle || "—"}</p>
+              {view.descriptionOriginalText ? (
+                <p className="max-h-36 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-[var(--eos-muted)]">
+                  {view.descriptionOriginalText}
+                </p>
+              ) : (
+                <p className="text-xs text-[var(--eos-muted)]">Brak oryginalnego opisu — oferta sprzed archiwum importu.</p>
+              )}
+            </section>
+
+            <section className="eos-inset-frame rounded-[1.4rem] p-4 space-y-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-subtle)]">
+                Twoje notatki
               </p>
               <textarea
                 value={userNote}
                 onChange={(e) => setUserNote(e.target.value)}
-                placeholder="Dodaj prywatne notatki o tej nieruchomości, ustalenia, follow-up, kontakt..."
-                className="w-full min-h-[140px] rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] p-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/40"
+                placeholder="Ustalenia, follow-up, kto odbiera, kiedy dzwonić…"
+                className="eos-field-inset w-full min-h-[140px] rounded-xl p-3 text-sm text-[var(--eos-text)] outline-none"
               />
               <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={saving}
-                  className={eosBtn("home", { size: "sm" })}
-                >
+                <button type="button" onClick={() => void save()} disabled={saving} className="eos-engraved-cta eos-engraved-cta--home">
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  Zapisz komentarz
+                  Zapisz notatkę
                 </button>
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-blue-500/25 bg-blue-500/5 p-4 space-y-3">
-              <p className="text-[11px] font-black uppercase tracking-widest text-sky-600">Oryginalne dane z importu</p>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="eos-modal-chip">
-                  Źródło: {note?.importSource || "brak"}
-                </span>
-                {note?.sourceIsActive === false ? (
-                  <span className="rounded-full border border-red-500/30 px-3 py-1 bg-red-500/10 text-red-400 inline-flex items-center gap-1">
-                    <AlertTriangle size={12} />
-                    Oferta źródłowa prawdopodobnie wygasła
-                  </span>
-                ) : note?.sourceIsActive === true ? (
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-100 px-3 py-1 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
-                    Link źródłowy aktywny
-                  </span>
-                ) : (
-                  <span className="eos-modal-chip">
-                    Status linku: niezweryfikowany
-                  </span>
-                )}
-              </div>
-
-              {note?.importExternalUrl ? (
-                <a
-                  href={note.importExternalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-xs font-bold text-blue-300 hover:text-blue-200"
-                >
-                  Otwórz oryginalną ofertę <ExternalLink size={12} />
-                </a>
-              ) : null}
-
-              {parsedSnapshot?.contactHints ? (
-                <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 text-xs text-[var(--eos-muted)]">
-                  <p className="font-black uppercase tracking-widest text-[10px] text-[var(--eos-muted)] mb-2">Kontakt źródłowy</p>
-                  <p>Firma / osoba: {String((parsedSnapshot.contactHints as Record<string, unknown>)?.agencyName || "—")}</p>
-                  <p>Telefon: {String((parsedSnapshot.contactHints as Record<string, unknown>)?.phone || "—")}</p>
-                  <p>Adres: {String((parsedSnapshot.contactHints as Record<string, unknown>)?.address || "—")}</p>
-                </div>
-              ) : null}
-
-              {parsedSnapshot?.descriptionOriginalText ? (
-                <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
-                  <p className="font-black uppercase tracking-widest text-[10px] text-[var(--eos-muted)] mb-2">
-                    Oryginalny opis (bez zmian)
-                  </p>
-                  <p className="text-xs text-[var(--eos-muted)] whitespace-pre-wrap max-h-48 overflow-y-auto">
-                    {String(parsedSnapshot.descriptionOriginalText)}
-                  </p>
-                </div>
-              ) : null}
-
-              <details className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
-                <summary className="cursor-pointer text-xs font-black uppercase tracking-widest text-[var(--eos-muted)]">
-                  Pełny surowy JSON importu
-                </summary>
-                <pre className="mt-3 text-[11px] text-emerald-300/90 whitespace-pre-wrap break-words max-h-72 overflow-y-auto">
-                  {note?.importSnapshotJson || "{}"}
-                </pre>
-              </details>
-            </div>
+            </section>
           </>
         ) : null}
       </div>

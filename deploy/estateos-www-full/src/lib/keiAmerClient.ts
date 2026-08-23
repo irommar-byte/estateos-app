@@ -15,6 +15,13 @@ export type KeiListingRow = {
   typ: string;
   zrodlo: string;
   tekst?: string;
+  telefon?: string;
+  dzielnica?: string;
+  dzielnica_?: string;
+  ulica?: string;
+  cena_m?: string;
+  typ_?: string;
+  bez_posrednikow?: string | number | boolean;
 };
 
 /** KEI query `rodzaj`: 1 = sprzedaż, 2 = wynajem */

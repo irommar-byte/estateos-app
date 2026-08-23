@@ -6,7 +6,17 @@ export type KeiExportRequestBody = {
   count?: number;
   propertyKind?: 'apartment' | 'house';
   transactionKind?: 'sale' | 'rent';
-  selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
+  selections?: Array<{
+    keiId?: string;
+    portalUrl: string;
+    address?: string;
+    phone?: string;
+    district?: string;
+    street?: string;
+    rooms?: number | null;
+    listedAt?: string;
+    directOwner?: boolean;
+  }>;
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, { enabled: boolean; imageIndex: number }>;
 };

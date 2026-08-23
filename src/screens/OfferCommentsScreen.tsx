@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
+import { shapeOfferPrivateNoteView } from '../lib/offerPrivateNoteView';
 
 type RouteParams = {
   offerId?: number;
@@ -34,25 +35,10 @@ type PrivateNoteApi = {
   sourceLastError: string | null;
 };
 
-type ImportSnapshot = {
-  titleOriginal?: string;
-  descriptionOriginalText?: string;
-  descriptionOriginalHtml?: string;
-  contactHints?: {
-    agencyName?: string | null;
-    phone?: string | null;
-    address?: string | null;
-  };
-  fullDraft?: {
-    floor?: number | null;
-    transactionType?: string;
-  };
-};
-
-function formatFloorLabel(floor: number | null | undefined): string {
-  if (floor == null) return '—';
-  if (floor === 0) return 'parter (0)';
-  return String(floor);
+function phoneHref(raw: string | null): string | null {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length < 9) return null;
+  return `tel:+48${digits.length === 9 ? digits : digits.replace(/^48/, '')}`;
 }
 
 export default function OfferCommentsScreen() {
@@ -79,27 +65,8 @@ export default function OfferCommentsScreen() {
   const [note, setNote] = useState<PrivateNoteApi | null>(null);
   const [userNote, setUserNote] = useState('');
 
-  const parsedSnapshot = useMemo<ImportSnapshot | null>(() => {
-    if (!note?.importSnapshotJson) return null;
-    try {
-      return JSON.parse(note.importSnapshotJson) as ImportSnapshot;
-    } catch {
-      return null;
-    }
-  }, [note?.importSnapshotJson]);
-
-  const originalDescription = useMemo(() => {
-    const text = String(parsedSnapshot?.descriptionOriginalText || '').trim();
-    if (text) return text;
-    const html = String(parsedSnapshot?.descriptionOriginalHtml || '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return html;
-  }, [parsedSnapshot]);
+  const view = useMemo(() => shapeOfferPrivateNoteView(note?.importSnapshotJson), [note?.importSnapshotJson]);
+  const callHref = phoneHref(view.phone);
 
   const handleBack = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -196,11 +163,13 @@ export default function OfferCommentsScreen() {
     void Linking.openURL(url);
   };
 
-  const sourceStatusLabel = (() => {
-    if (note?.sourceIsActive === true) return { text: 'Link źródłowy aktywny', tone: '#10B981' };
-    if (note?.sourceIsActive === false) return { text: 'Oferta źródłowa prawdopodobnie wygasła', tone: '#FF3B30' };
-    return { text: 'Status linku: niezweryfikowany', tone: theme.sub };
-  })();
+  const sourceLive = note?.sourceIsActive === true;
+  const sourceDead = note?.sourceIsActive === false;
+  const sourceStatusLabel = sourceLive
+    ? { text: 'Aktywne na portalu', tone: '#10B981' }
+    : sourceDead
+      ? { text: 'Prawdopodobnie wygasło / wycofane', tone: '#FF3B30' }
+      : { text: 'Jeszcze nie sprawdzone', tone: theme.sub };
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg, paddingTop: insets.top + 8 }]}>
@@ -229,109 +198,91 @@ export default function OfferCommentsScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Prywatna notatka</Text>
-          <Text style={[styles.hint, { color: theme.sub }]}>Widoczna tylko dla Ciebie — synchronizowana z kontem.</Text>
+          <View style={styles.badgeRow}>
+            <View style={[styles.seal, sourceDead ? styles.sealDead : sourceLive ? styles.sealLive : styles.sealIdle]} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.contactTitle, { color: theme.text }]}>Jakość źródła</Text>
+              <Text style={[styles.line, { color: sourceStatusLabel.tone }]}>{sourceStatusLabel.text}</Text>
+              {note?.sourceLastCheckAt ? (
+                <Text style={[styles.meta, { color: theme.sub }]}>
+                  Sprawdzone {new Date(note.sourceLastCheckAt).toLocaleString('pl-PL')}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Kontakt</Text>
+          <Text style={[styles.line, { color: theme.sub }]}>
+            Telefon KEI: <Text style={[styles.strong, { color: theme.text }]}>{view.keiPhone || '—'}</Text>
+          </Text>
+          <Text style={[styles.line, { color: theme.sub }]}>
+            Telefon z portalu: <Text style={[styles.strong, { color: theme.text }]}>{view.portalPhone || '—'}</Text>
+          </Text>
+          <Text style={[styles.line, { color: theme.sub }]}>
+            Osoba / biuro: <Text style={[styles.strong, { color: theme.text }]}>{view.agencyName || '—'}</Text>
+          </Text>
+          <View style={styles.badgeRow}>
+            {callHref ? (
+              <Pressable onPress={() => void Linking.openURL(callHref)} style={styles.saveBtn}>
+                <Ionicons name="call" size={16} color="#022c22" />
+                <Text style={[styles.saveBtnText, { color: '#022c22' }]}>Zadzwoń</Text>
+              </Pressable>
+            ) : null}
+            {note?.importExternalUrl ? (
+              <Pressable onPress={openSourceUrl} style={[styles.saveBtn, styles.ghostBtn]}>
+                <Ionicons name="open-outline" size={16} color={theme.text} />
+                <Text style={[styles.saveBtnText, { color: theme.text }]}>Źródło</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Źródło KEI</Text>
+          {loading ? <ActivityIndicator color="#10B981" style={{ marginVertical: 10 }} /> : null}
+          {!loading ? (
+            <>
+              <Text style={[styles.line, { color: theme.sub }]}>
+                ID: <Text style={[styles.strong, { color: theme.text }]}>{view.keiId || '—'}</Text>
+              </Text>
+              <Text style={[styles.line, { color: theme.sub }]}>
+                Adres: <Text style={[styles.strong, { color: theme.text }]}>{view.keiAddress || view.contactAddress || '—'}</Text>
+              </Text>
+              <Text style={[styles.line, { color: theme.sub }]}>
+                {[view.keiDistrict, view.keiStreet, view.keiRooms ? `${view.keiRooms} pok.` : null].filter(Boolean).join(' · ') ||
+                  'Brak dodatkowych danych KEI'}
+              </Text>
+            </>
+          ) : null}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Portal</Text>
+          <Text style={[styles.line, { color: theme.text }]}>{note?.importSource || 'brak'} · {view.titleOriginal || offerTitle || '—'}</Text>
+          {view.descriptionOriginalText ? (
+            <Text style={[styles.description, { color: theme.text }]}>{view.descriptionOriginalText}</Text>
+          ) : (
+            <Text style={[styles.line, { color: theme.sub }]}>Brak oryginalnego opisu — oferta sprzed archiwum importu.</Text>
+          )}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Twoje notatki</Text>
+          <Text style={[styles.hint, { color: theme.sub }]}>Widoczne tylko dla Ciebie.</Text>
           <TextInput
             multiline
             value={userNote}
             onChangeText={setUserNote}
-            placeholder="Dodaj notatkę, ustalenia, follow-up…"
+            placeholder="Ustalenia, follow-up, kto odbiera…"
             placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
             style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' }]}
           />
           <Pressable onPress={handleSave} disabled={saving} style={[styles.saveBtn, saving && { opacity: 0.6 }]}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="save" size={16} color="#fff" />}
-            <Text style={styles.saveBtnText}>Zapisz komentarz</Text>
+            {saving ? <ActivityIndicator color="#022c22" /> : <Ionicons name="save" size={16} color="#022c22" />}
+            <Text style={[styles.saveBtnText, { color: '#022c22' }]}>Zapisz notatkę</Text>
           </Pressable>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Dane importu (oryginał)</Text>
-          {loading ? <ActivityIndicator color="#0A84FF" style={{ marginVertical: 10 }} /> : null}
-
-          {!loading ? (
-            <>
-              <View style={styles.badgeRow}>
-                <View style={[styles.badge, { borderColor: theme.border }]}>
-                  <Text style={[styles.badgeText, { color: theme.text }]}>
-                    Źródło: {note?.importSource || 'brak'}
-                  </Text>
-                </View>
-                <View style={[styles.badge, { borderColor: `${sourceStatusLabel.tone}55` }]}>
-                  <Text style={[styles.badgeText, { color: sourceStatusLabel.tone }]}>{sourceStatusLabel.text}</Text>
-                </View>
-              </View>
-
-              {note?.importExternalUrl ? (
-                <Pressable onPress={openSourceUrl} style={styles.linkRow}>
-                  <Ionicons name="open-outline" size={16} color="#0A84FF" />
-                  <Text style={styles.linkText} numberOfLines={2}>
-                    {note.importExternalUrl}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Text style={[styles.line, { color: theme.sub }]}>Brak zapisanego adresu źródłowego.</Text>
-              )}
-
-              {note?.importExternalId ? (
-                <Text style={[styles.line, { color: theme.sub }]}>
-                  ID źródła: <Text style={[styles.strong, { color: theme.text }]}>{note.importExternalId}</Text>
-                </Text>
-              ) : null}
-
-              {parsedSnapshot?.titleOriginal ? (
-                <Text style={[styles.line, { color: theme.sub }]}>
-                  Tytuł (oryginał): <Text style={[styles.strong, { color: theme.text }]}>{parsedSnapshot.titleOriginal}</Text>
-                </Text>
-              ) : null}
-
-              {parsedSnapshot?.fullDraft?.floor != null ? (
-                <Text style={[styles.line, { color: theme.sub }]}>
-                  Piętro (oryginał):{' '}
-                  <Text style={[styles.strong, { color: theme.text }]}>
-                    {formatFloorLabel(parsedSnapshot.fullDraft.floor)}
-                  </Text>
-                </Text>
-              ) : null}
-
-              {parsedSnapshot?.contactHints ? (
-                <View style={[styles.contactCard, { borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' }]}>
-                  <Text style={[styles.contactTitle, { color: theme.text }]}>Kontakt źródłowy</Text>
-                  <Text style={[styles.line, { color: theme.sub }]}>
-                    Firma / osoba:{' '}
-                    <Text style={[styles.strong, { color: theme.text }]}>
-                      {parsedSnapshot.contactHints.agencyName || '—'}
-                    </Text>
-                  </Text>
-                  <Text style={[styles.line, { color: theme.sub }]}>
-                    Telefon:{' '}
-                    <Text style={[styles.strong, { color: theme.text }]}>{parsedSnapshot.contactHints.phone || '—'}</Text>
-                  </Text>
-                  <Text style={[styles.line, { color: theme.sub }]}>
-                    Adres:{' '}
-                    <Text style={[styles.strong, { color: theme.text }]}>{parsedSnapshot.contactHints.address || '—'}</Text>
-                  </Text>
-                </View>
-              ) : null}
-
-              {originalDescription ? (
-                <View style={[styles.descriptionWrap, { borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' }]}>
-                  <Text style={[styles.contactTitle, { color: theme.text }]}>Oryginalny opis (bez zmian)</Text>
-                  <Text style={[styles.description, { color: theme.text }]}>{originalDescription}</Text>
-                </View>
-              ) : (
-                <Text style={[styles.line, { color: theme.sub }]}>
-                  Brak zapisanego oryginalnego opisu. Dotyczy ofert utworzonych przed wdrożeniem archiwum importu.
-                </Text>
-              )}
-
-              {note?.sourceLastCheckAt ? (
-                <Text style={[styles.meta, { color: theme.sub }]}>
-                  Ostatnia weryfikacja linku: {new Date(note.sourceLastCheckAt).toLocaleString('pl-PL')}
-                </Text>
-              ) : null}
-            </>
-          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -363,14 +314,24 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 12, minHeight: 120, textAlignVertical: 'top', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   saveBtn: {
     marginTop: 12,
-    borderRadius: 12,
+    borderRadius: 999,
     minHeight: 46,
-    backgroundColor: '#0A84FF',
+    paddingHorizontal: 16,
+    backgroundColor: '#34D399',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
   },
-  saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  ghostBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(196,163,90,0.35)',
+  },
+  saveBtnText: { color: '#022c22', fontWeight: '800', fontSize: 13, letterSpacing: 0.4, textTransform: 'uppercase' },
+  seal: { width: 14, height: 14, borderRadius: 999, marginTop: 4 },
+  sealLive: { backgroundColor: '#22C55E', shadowColor: '#22C55E', shadowOpacity: 0.7, shadowRadius: 6 },
+  sealDead: { backgroundColor: '#EF4444', shadowColor: '#EF4444', shadowOpacity: 0.8, shadowRadius: 6 },
+  sealIdle: { backgroundColor: '#9CA3AF' },
   errorText: { color: '#FF3B30', fontSize: 13, marginBottom: 10, paddingHorizontal: 4 },
 });

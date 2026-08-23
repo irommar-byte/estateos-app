@@ -5948,9 +5948,54 @@ html:not(.light) .eos-engraved-cta--car {
   color: #082f49;
 }
 
+.eos-engraved-cta:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+  border-color: rgba(196, 163, 90, 0.55);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 -2px 4px rgba(26, 27, 30, 0.08) inset,
+    0 14px 28px rgba(26, 27, 30, 0.14);
+}
+.eos-engraved-cta--home:hover:not(:disabled) {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 14px 30px rgba(5, 150, 105, 0.32),
+    0 0 22px rgba(52, 211, 153, 0.22);
+}
 .eos-engraved-cta:disabled {
   opacity: 0.7;
   cursor: wait;
+}
+
+.eos-source-seal {
+  position: relative;
+  display: inline-flex;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #bbf7d0 0%, #22c55e 42%, #15803d 100%);
+  box-shadow:
+    0 0 0 2px rgba(34, 197, 94, 0.22),
+    0 0 12px rgba(34, 197, 94, 0.45);
+  flex-shrink: 0;
+}
+.eos-source-seal::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55);
+}
+.eos-source-seal--dead {
+  background: radial-gradient(circle at 35% 30%, #fecaca 0%, #ef4444 45%, #b91c1c 100%);
+  box-shadow:
+    0 0 0 2px rgba(239, 68, 68, 0.28),
+    0 0 14px rgba(239, 68, 68, 0.55);
+  animation: eos-source-seal-blink 1.1s ease-in-out infinite;
+}
+@keyframes eos-source-seal-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.86); }
 }
 
 .eos-intel-ledger {

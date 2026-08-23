@@ -19,6 +19,12 @@ export type KeiPreviewListing = {
   blockedReason?: 'imported' | 'outreach' | 'inactive' | null;
   portalActive?: boolean | null;
   portalCheckReason?: string | null;
+  phone?: string | null;
+  district?: string | null;
+  street?: string | null;
+  rooms?: number | null;
+  listedAt?: string | null;
+  directOwner?: boolean;
 };
 
 export type KeiSessionResponse = {
@@ -135,6 +141,12 @@ export type KeiExportSelection = {
   keiId?: string;
   portalUrl: string;
   address?: string;
+  phone?: string;
+  district?: string;
+  street?: string;
+  rooms?: number | null;
+  listedAt?: string;
+  directOwner?: boolean;
 };
 
 export type KeiAiRewriteProgress = {
