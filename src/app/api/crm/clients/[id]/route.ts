@@ -32,7 +32,13 @@ import {
   resolvePresentation,
 } from '@/lib/crm/clientJourney';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
-import { listPortalChat, sendPortalChat, markPortalTyping, isPortalPeerTyping } from '@/lib/crm/portalChat';
+import {
+  getPortalChatState,
+  isPortalPeerTyping,
+  markPortalChatRead,
+  markPortalTyping,
+  sendPortalChat,
+} from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
@@ -66,7 +72,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   const meeting = resolveMeeting(client.activities);
   const presentation = resolvePresentation(client.activities);
-  const messages = await listPortalChat(client.id, 'agent');
+  const portalChat = await getPortalChatState(client.id, 'agent');
   const acquisition = await prisma.agencyClientAcquisition.findUnique({
     where: { clientId: client.id },
     select: { status: true, currentStep: true, signedAt: true },
@@ -157,7 +163,8 @@ export async function GET(req: Request, ctx: RouteCtx) {
       meeting,
       presentation,
       journey,
-      messages,
+      messages: portalChat.messages,
+      portalUnreadCount: portalChat.unreadCount,
       activities: client.activities.map((a) => ({
         id: a.id,
         kind: a.kind,
@@ -547,13 +554,29 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ success: true });
   }
 
+  if (['list_portal_messages', 'mark_portal_messages_read', 'portal_typing'].includes(action)) {
+    const owned = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!owned) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+  }
+
   if (action === 'list_portal_messages') {
-    const messages = await listPortalChat(clientId, 'agent');
+    const { messages, unreadCount } = await getPortalChatState(clientId, 'agent');
     return NextResponse.json({
       success: true,
       messages,
+      unreadCount,
       peerTyping: isPortalPeerTyping(clientId, 'agent'),
     });
+  }
+
+  if (action === 'mark_portal_messages_read') {
+    await markPortalChatRead(clientId, 'agent');
+    return NextResponse.json({ success: true, unreadCount: 0 });
   }
 
   if (action === 'portal_typing') {

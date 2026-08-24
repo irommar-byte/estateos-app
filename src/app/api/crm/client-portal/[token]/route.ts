@@ -17,7 +17,13 @@ import {
   resolveMeeting,
   resolvePresentation,
 } from '@/lib/crm/clientJourney';
-import { listPortalChat, sendPortalChat, markPortalTyping, isPortalPeerTyping } from '@/lib/crm/portalChat';
+import {
+  getPortalChatState,
+  isPortalPeerTyping,
+  markPortalChatRead,
+  markPortalTyping,
+  sendPortalChat,
+} from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
 import { isPromotionActive } from '@/lib/listingPromotion';
@@ -628,12 +634,18 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'list_messages') {
-    const messages = await listPortalChat(client.id, 'client');
+    const { messages, unreadCount } = await getPortalChatState(client.id, 'client');
     return NextResponse.json({
       success: true,
       messages,
+      unreadCount,
       peerTyping: isPortalPeerTyping(client.id, 'client'),
     });
+  }
+
+  if (action === 'mark_messages_read') {
+    await markPortalChatRead(client.id, 'client');
+    return NextResponse.json({ success: true, unreadCount: 0 });
   }
 
   if (action === 'typing') {

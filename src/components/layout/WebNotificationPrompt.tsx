@@ -17,6 +17,7 @@ export default function WebNotificationPrompt() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (window.location.pathname.startsWith("/klient/")) return;
     if (!canUseWebNotifications()) return;
     const permission = getWebNotificationPermission();
     if (permission === "granted" || permission === "denied") return;

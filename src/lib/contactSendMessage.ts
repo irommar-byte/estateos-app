@@ -6,7 +6,10 @@ import {
   ContactAttachmentMeta,
   encodeContactAttachmentMessage,
   parseContactAttachmentMeta,
+  parseContactMessageParts,
 } from '@/lib/contactAttachmentShared';
+import { JOURNEY_ACTIVITY } from '@/lib/crm/clientJourney';
+import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
 
 const MESSAGE_DEDUP_WINDOW_MS = 10_000;
 
@@ -15,6 +18,7 @@ export async function sendContactThreadMessage(params: {
   userId: number;
   content?: string;
   attachment?: ContactAttachmentMeta | null;
+  mirrorToClientPortal?: boolean;
 }) {
   const thread = await prisma.contactThread.findUnique({
     where: { id: params.threadId },
@@ -56,6 +60,7 @@ export async function sendContactThreadMessage(params: {
     orderBy: { createdAt: 'desc' },
   });
 
+  const createdFresh = !recentSame;
   const newMessage =
     recentSame ||
     (await prisma.contactMessage.create({
@@ -115,6 +120,58 @@ export async function sendContactThreadMessage(params: {
     );
   } catch (pushErr) {
     console.error('[CONTACT MSG PUSH]', pushErr);
+  }
+
+  if (createdFresh && params.mirrorToClientPortal !== false) {
+    try {
+      const clients = await prisma.agencyClient.findMany({
+        where: {
+          status: 'ACTIVE',
+          portalToken: { not: null },
+          OR: [
+            { agencyUserId: params.userId, linkedUserId: receiverId },
+            { agencyUserId: receiverId, linkedUserId: params.userId },
+          ],
+        },
+        select: { id: true, agencyUserId: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 8,
+      });
+      const parts = parseContactMessageParts(newMessage);
+      for (const client of clients) {
+        const from = client.agencyUserId === params.userId ? 'agent' : 'client';
+        const attachments = parts.attachment ? [parts.attachment] : [];
+        const body = parts.text || parts.attachment?.name || 'Załącznik';
+        await prisma.agencyClientActivity.create({
+          data: {
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            kind: JOURNEY_ACTIVITY.PORTAL_MESSAGE,
+            title: from === 'client' ? 'Wiadomość od klienta' : 'Wiadomość do klienta',
+            body: body.slice(0, 280),
+            metadata: {
+              from,
+              content: parts.text,
+              attachments,
+              contactThreadId: params.threadId,
+              contactMessageId: newMessage.id,
+            },
+          },
+        });
+        if (from === 'agent') {
+          await sendClientPortalWebPush(client.id, {
+            title: 'Nowa wiadomość od Twojego agenta',
+            body: body.slice(0, 160),
+            tag: `estateos-client-chat-${client.id}`,
+          }).catch(() => {});
+        }
+      }
+    } catch (portalMirrorError) {
+      console.error(
+        '[CONTACT MSG → CLIENT PORTAL]',
+        portalMirrorError instanceof Error ? portalMirrorError.message : String(portalMirrorError),
+      );
+    }
   }
 
   return { ok: true as const, message: newMessage };

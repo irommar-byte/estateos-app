@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/core/notification.core';
 import { contactThreadPair } from '@/lib/contactThreadPair';
 import { sendContactThreadMessage } from '@/lib/contactSendMessage';
+import { parseContactMessageParts } from '@/lib/contactAttachmentShared';
 import {
   CONTACT_UPLOAD_BASE_FS,
   CONTACT_UPLOAD_PUBLIC_PREFIX,
@@ -20,6 +21,7 @@ import {
   type PortalChatMessage,
 } from '@/lib/crm/clientJourney';
 import { crmAgentPushData, crmClientChatThreadId } from '@/lib/crm/agentPush';
+import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
 
 const SAFE_NAME_RE = /[^a-zA-Z0-9._-]+/g;
 
@@ -33,14 +35,131 @@ async function ensureAgencyClientThread(agencyUserId: number, linkedUserId: numb
   });
 }
 
+function activityMeta(raw: unknown): Record<string, unknown> {
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+}
+
+function normalizedMessageText(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
 export async function listPortalChat(clientId: number, viewer: 'client' | 'agent'): Promise<PortalChatMessage[]> {
-  const activities = await prisma.agencyClientActivity.findMany({
-    where: { clientId, kind: JOURNEY_ACTIVITY.PORTAL_MESSAGE },
-    orderBy: { createdAt: 'asc' },
-    take: 200,
-    select: { id: true, kind: true, title: true, body: true, createdAt: true, metadata: true },
+  const [client, activities] = await Promise.all([
+    prisma.agencyClient.findUnique({
+      where: { id: clientId },
+      select: { agencyUserId: true, linkedUserId: true },
+    }),
+    prisma.agencyClientActivity.findMany({
+      where: { clientId, kind: JOURNEY_ACTIVITY.PORTAL_MESSAGE },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+      select: { id: true, kind: true, title: true, body: true, createdAt: true, metadata: true },
+    }),
+  ]);
+  const portalMessages = parsePortalMessages(activities, viewer);
+  if (!client?.linkedUserId) return portalMessages;
+
+  const pair = contactThreadPair(client.agencyUserId, client.linkedUserId);
+  const thread = await prisma.contactThread.findUnique({
+    where: { userLowId_userHighId: pair },
+    select: {
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+        select: {
+          id: true,
+          senderId: true,
+          content: true,
+          attachment: true,
+          createdAt: true,
+        },
+      },
+    },
   });
-  return parsePortalMessages(activities, viewer);
+  if (!thread) return portalMessages;
+
+  const representedContactIds = new Set(
+    activities
+      .map((row) => Number(activityMeta(row.metadata).contactMessageId || 0))
+      .filter((id) => Number.isFinite(id) && id > 0),
+  );
+  const merged = [...portalMessages];
+
+  for (const contact of thread.messages) {
+    if (representedContactIds.has(contact.id)) continue;
+    const parts = parseContactMessageParts(contact);
+    const fromAgent = contact.senderId === client.agencyUserId;
+    const attachmentUrl = parts.attachment?.url || '';
+    const representedByLegacyActivity = portalMessages.some((message) => {
+      if (message.fromAgent !== fromAgent) return false;
+      if (Math.abs(new Date(message.createdAt).getTime() - contact.createdAt.getTime()) > 15_000) return false;
+      if (normalizedMessageText(message.content) !== normalizedMessageText(parts.text)) return false;
+      const portalAttachmentUrl = message.attachments[0]?.url || '';
+      return portalAttachmentUrl === attachmentUrl;
+    });
+    if (representedByLegacyActivity) continue;
+
+    merged.push({
+      id: -contact.id,
+      content: parts.text,
+      createdAt: contact.createdAt.toISOString(),
+      fromAgent,
+      fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
+      attachments: parts.attachment ? [parts.attachment] : [],
+    });
+  }
+
+  return merged
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .slice(-300);
+}
+
+export async function getPortalChatState(clientId: number, viewer: 'client' | 'agent') {
+  const [client, messages] = await Promise.all([
+    prisma.clientPortalChatState.findUnique({
+      where: { clientId },
+      select: { clientLastReadAt: true, agentLastReadAt: true },
+    }),
+    listPortalChat(clientId, viewer),
+  ]);
+  const lastReadAt =
+    viewer === 'client' ? client?.clientLastReadAt || null : client?.agentLastReadAt || null;
+  const unreadCount = messages.filter((message) => {
+    const fromPeer = viewer === 'client' ? message.fromAgent : !message.fromAgent;
+    return fromPeer && (!lastReadAt || new Date(message.createdAt) > lastReadAt);
+  }).length;
+  return { messages, unreadCount };
+}
+
+export async function markPortalChatRead(clientId: number, viewer: 'client' | 'agent') {
+  const client = await prisma.agencyClient.findUnique({
+    where: { id: clientId },
+    select: { agencyUserId: true, linkedUserId: true },
+  });
+  if (!client) return;
+
+  const now = new Date();
+  await prisma.clientPortalChatState.upsert({
+    where: { clientId },
+    create:
+      viewer === 'client'
+        ? { clientId, clientLastReadAt: now }
+        : { clientId, agentLastReadAt: now },
+    update: viewer === 'client' ? { clientLastReadAt: now } : { agentLastReadAt: now },
+  });
+
+  if (!client.linkedUserId) return;
+  const pair = contactThreadPair(client.agencyUserId, client.linkedUserId);
+  const thread = await prisma.contactThread.findUnique({
+    where: { userLowId_userHighId: pair },
+    select: { id: true },
+  });
+  if (!thread) return;
+  const peerSenderId = viewer === 'client' ? client.agencyUserId : client.linkedUserId;
+  await prisma.contactMessage.updateMany({
+    where: { threadId: thread.id, senderId: peerSenderId, isRead: false },
+    data: { isRead: true },
+  });
 }
 
 export async function savePortalAttachment(params: {
@@ -107,6 +226,11 @@ export async function sendPortalChat(params: {
   }
 
   const body = content || attachments.map((item) => item.name).join(', ');
+  const metadata = {
+    from: params.from,
+    content,
+    attachments,
+  };
   const activity = await prisma.agencyClientActivity.create({
     data: {
       clientId: params.clientId,
@@ -114,31 +238,42 @@ export async function sendPortalChat(params: {
       kind: JOURNEY_ACTIVITY.PORTAL_MESSAGE,
       title: params.from === 'client' ? 'Wiadomość od klienta' : 'Wiadomość do klienta',
       body: body.slice(0, 280),
-      metadata: {
-        from: params.from,
-        content,
-        attachments,
-      },
+      metadata,
     },
     select: { id: true, kind: true, title: true, body: true, createdAt: true, metadata: true },
   });
 
+  let contactMirrored = false;
   if (params.linkedUserId) {
     try {
       const thread = await ensureAgencyClientThread(params.agencyUserId, params.linkedUserId);
       const senderId = params.from === 'agent' ? params.agencyUserId : params.linkedUserId;
-      await sendContactThreadMessage({
+      const contactResult = await sendContactThreadMessage({
         threadId: thread.id,
         userId: senderId,
         content: content || (attachments[0] ? `📎 ${attachments[0].name}` : ''),
         attachment: attachments[0] || null,
+        mirrorToClientPortal: false,
       });
+      if (contactResult.ok) {
+        contactMirrored = true;
+        await prisma.agencyClientActivity.update({
+          where: { id: activity.id },
+          data: {
+            metadata: {
+              ...metadata,
+              contactThreadId: thread.id,
+              contactMessageId: contactResult.message.id,
+            },
+          },
+        });
+      }
     } catch {
       /* portal activity remains the source of truth */
     }
   }
 
-  if (params.from === 'client') {
+  if (params.from === 'client' && !contactMirrored) {
     const thread = crmClientChatThreadId(params.clientId);
     await sendNotification({
       userId: params.agencyUserId,
@@ -150,6 +285,12 @@ export async function sendPortalChat(params: {
         threadIdentifier: thread,
         iosThreadId: thread,
       },
+    }).catch(() => {});
+  } else {
+    await sendClientPortalWebPush(params.clientId, {
+      title: 'Nowa wiadomość od Twojego agenta',
+      body: body.slice(0, 160),
+      tag: `estateos-client-chat-${params.clientId}`,
     }).catch(() => {});
   }
 
