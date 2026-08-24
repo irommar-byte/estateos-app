@@ -24,11 +24,12 @@ type Props = {
   showEngravedDate?: boolean;
 };
 
-const LUXURY_SERIF = Platform.select({
-  ios: 'Didot',
-  android: 'serif',
-  default: 'serif',
-}) as string;
+/** SF Pro on iOS (default system), Roboto medium on Android — bold, never italic. */
+const APPLE_TYPE = Platform.select({
+  ios: undefined,
+  android: 'sans-serif-medium',
+  default: undefined,
+}) as string | undefined;
 
 const WEEKDAYS_PL = [
   'niedziela',
@@ -55,40 +56,6 @@ const MONTHS_PL = [
   'grudnia',
 ] as const;
 
-const DAY_ORDINAL_PL: Record<number, string> = {
-  1: 'pierwszy',
-  2: 'drugi',
-  3: 'trzeci',
-  4: 'czwarty',
-  5: 'piąty',
-  6: 'szósty',
-  7: 'siódmy',
-  8: 'ósmy',
-  9: 'dziewiąty',
-  10: 'dziesiąty',
-  11: 'jedenasty',
-  12: 'dwunasty',
-  13: 'trzynasty',
-  14: 'czternasty',
-  15: 'piętnasty',
-  16: 'szesnasty',
-  17: 'siedemnasty',
-  18: 'osiemnasty',
-  19: 'dziewiętnasty',
-  20: 'dwudziesty',
-  21: 'dwudziesty pierwszy',
-  22: 'dwudziesty drugi',
-  23: 'dwudziesty trzeci',
-  24: 'dwudziesty czwarty',
-  25: 'dwudziesty piąty',
-  26: 'dwudziesty szósty',
-  27: 'dwudziesty siódmy',
-  28: 'dwudziesty ósmy',
-  29: 'dwudziesty dziewiąty',
-  30: 'trzydziesty',
-  31: 'trzydziesty pierwszy',
-};
-
 function truncateBrand(raw: string | null | undefined, max = 16): string {
   const t = String(raw || '').trim();
   if (!t) return 'ESTATEOS';
@@ -97,20 +64,21 @@ function truncateBrand(raw: string | null | undefined, max = 16): string {
 }
 
 function formatEngravedParts(date: Date) {
-  const weekday = WEEKDAYS_PL[date.getDay()];
-  const dayWord = DAY_ORDINAL_PL[date.getDate()] || String(date.getDate());
-  const monthWord = MONTHS_PL[date.getMonth()];
-  const year = String(date.getFullYear());
-  return { weekday, dayWord, monthWord, year };
+  return {
+    weekday: WEEKDAYS_PL[date.getDay()],
+    dayNum: String(date.getDate()),
+    monthWord: MONTHS_PL[date.getMonth()],
+    year: String(date.getFullYear()),
+  };
 }
 
-/** Multi-layer carved-metal lettering — no frame, just gold engraving. */
+/** Soft metal engraving — bold Apple system type, no italic, no jitter layers. */
 function EngravedLine({
   text,
   size,
   isDark,
   gold,
-  letterSpacing = 0.6,
+  letterSpacing = 0.4,
 }: {
   text: string;
   size: number;
@@ -118,43 +86,39 @@ function EngravedLine({
   gold: boolean;
   letterSpacing?: number;
 }) {
-  const cut = gold
+  const color = gold
     ? isDark
-      ? 'rgba(28, 18, 4, 0.88)'
-      : 'rgba(55, 38, 8, 0.78)'
+      ? 'rgba(72, 52, 14, 0.88)'
+      : 'rgba(62, 44, 10, 0.78)'
     : isDark
-      ? 'rgba(10,10,12,0.75)'
-      : 'rgba(40,40,44,0.7)';
-  const rim = gold
+      ? 'rgba(40,40,44,0.78)'
+      : 'rgba(50,50,54,0.72)';
+  const highlight = gold
     ? isDark
-      ? 'rgba(255, 236, 180, 0.45)'
-      : 'rgba(255, 248, 220, 0.75)'
+      ? 'rgba(255, 236, 180, 0.28)'
+      : 'rgba(255, 248, 220, 0.45)'
     : isDark
-      ? 'rgba(255,255,255,0.35)'
-      : 'rgba(255,255,255,0.55)';
-  const mid = gold
-    ? isDark
-      ? 'rgba(110, 80, 20, 0.95)'
-      : 'rgba(85, 62, 14, 0.88)'
-    : isDark
-      ? 'rgba(90,90,95,0.9)'
-      : 'rgba(70,70,74,0.85)';
+      ? 'rgba(255,255,255,0.22)'
+      : 'rgba(255,255,255,0.4)';
 
   const base = {
-    fontFamily: LUXURY_SERIF,
+    ...(APPLE_TYPE ? { fontFamily: APPLE_TYPE } : null),
     fontSize: size,
-    fontWeight: '400' as const,
+    fontWeight: '700' as const,
     letterSpacing,
-    fontStyle: 'italic' as const,
+    fontVariant: ['tabular-nums' as const],
   };
 
   return (
     <View>
-      <Text style={[base, { color: mid }]}>{text}</Text>
-      <Text style={[base, styles.engraveLayer, { color: 'rgba(0,0,0,0.5)', top: 1.35, left: 1.05 }]}>{text}</Text>
-      <Text style={[base, styles.engraveLayer, { color: cut, top: 0.55, left: 0.4 }]}>{text}</Text>
-      <Text style={[base, styles.engraveLayer, { color: mid }]}>{text}</Text>
-      <Text style={[base, styles.engraveLayer, { color: rim, top: -0.9, left: -0.6 }]}>{text}</Text>
+      <Text style={[base, { color }]}>{text}</Text>
+      {/* Single soft highlight lip — no multi-offset jitter */}
+      <Text
+        pointerEvents="none"
+        style={[base, styles.engraveLayer, { color: highlight, top: -0.5, left: -0.35 }]}
+      >
+        {text}
+      </Text>
     </View>
   );
 }
@@ -173,18 +137,15 @@ function EngravedDateBeside({
   gleam: Animated.Value;
 }) {
   const parts = useMemo(() => formatEngravedParts(date), [date]);
-  const daySize = height >= 160 ? 15 : 13;
-  const monthSize = height >= 160 ? 17 : 15;
-  const weekSize = height >= 160 ? 12 : 11;
-  const yearSize = height >= 160 ? 14 : 12;
+  const daySize = height >= 160 ? 22 : 19;
+  const monthSize = height >= 160 ? 16 : 14;
+  const weekSize = height >= 160 ? 13 : 12;
+  const yearSize = height >= 160 ? 15 : 13;
 
+  // Soft shared gleam with the dial — no harsh translate jitter on the lettering.
   const shine = gleam.interpolate({
     inputRange: [0, 0.4, 0.55, 1],
-    outputRange: [0.08, 0.38, 0.22, 0.08],
-  });
-  const shiftX = gleam.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 3.5],
+    outputRange: [0.94, 1, 0.97, 0.94],
   });
 
   return (
@@ -194,21 +155,16 @@ function EngravedDateBeside({
         {
           minHeight: height * 0.72,
           justifyContent: 'center',
-          opacity: shine.interpolate({
-            inputRange: [0.08, 0.38],
-            outputRange: [0.92, 1],
-            extrapolate: 'clamp',
-          }),
-          transform: [{ translateX: shiftX }],
+          opacity: shine,
         },
       ]}
     >
-      <EngravedLine text={parts.weekday} size={weekSize} isDark={isDark} gold={gold} letterSpacing={1.4} />
+      <EngravedLine text={parts.weekday} size={weekSize} isDark={isDark} gold={gold} letterSpacing={0.8} />
       <View style={styles.dateGap} />
-      <EngravedLine text={parts.dayWord} size={daySize} isDark={isDark} gold={gold} letterSpacing={0.8} />
-      <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={1.1} />
+      <EngravedLine text={parts.dayNum} size={daySize} isDark={isDark} gold={gold} letterSpacing={1.2} />
+      <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.5} />
       <View style={styles.dateGapSm} />
-      <EngravedLine text={parts.year} size={yearSize} isDark={isDark} gold={gold} letterSpacing={2.4} />
+      <EngravedLine text={parts.year} size={yearSize} isDark={isDark} gold={gold} letterSpacing={1.6} />
     </Animated.View>
   );
 }
@@ -301,10 +257,6 @@ function AnalogAppleClock({
   const gleamOpacity = gleam.interpolate({
     inputRange: [0, 0.35, 0.55, 1],
     outputRange: [0, 0.58, 0.32, 0],
-  });
-  const assemblyShift = gleam.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, 0.6, 0],
   });
 
   const dial = (
@@ -659,15 +611,12 @@ function AnalogAppleClock({
     return <View style={[styles.wrapper, { width: size, height: size }]}>{dial}</View>;
   }
 
-  // One rigid assembly — clock + engraving scroll / animate together.
+  // One rigid assembly — clock + engraving scroll together without micro-jitter.
   return (
-    <Animated.View
-      collapsable={false}
-      style={[styles.assembly, { transform: [{ translateX: assemblyShift }] }]}
-    >
+    <View collapsable={false} style={styles.assembly}>
       {dial}
       <EngravedDateBeside date={time} isDark={isDark} gold={gold || red} height={size} gleam={gleam} />
-    </Animated.View>
+    </View>
   );
 }
 
