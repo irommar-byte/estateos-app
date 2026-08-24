@@ -94,7 +94,16 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
       setHint("Gotowe — odpowiedź agenta pojawi się natychmiast, także gdy panel będzie w tle.");
     } catch (error) {
       setNotifyState("idle");
-      setHint(error instanceof Error ? error.message : "Nie udało się włączyć powiadomień.");
+      if (!askPermission) {
+        setHint("");
+        return;
+      }
+      const message = error instanceof Error ? error.message : "";
+      setHint(
+        /registration failed|push service not available|aborterror/i.test(message)
+          ? "Ta przeglądarka nie udostępnia usługi Push. Live Chat nadal odświeża się automatycznie."
+          : message || "Nie udało się włączyć powiadomień. Spróbuj ponownie w ustawieniach przeglądarki.",
+      );
     }
   };
 
