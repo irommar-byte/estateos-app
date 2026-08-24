@@ -46,6 +46,7 @@ import SellerAcquisitionWorkspace from "@/components/crm/SellerAcquisitionWorksp
 import AgencyClientCriteriaEditor from "@/components/crm/AgencyClientCriteriaEditor";
 import { defaultWebRadarFilters, type WebRadarFilters } from "@/lib/radarCalibrationWeb";
 import { formatClientFeedbackForAgent, parseClientOfferFeedback, sentimentLabel } from "@/lib/crm/clientPortalFeedback";
+import { type ClientNextStep } from "@/lib/crm/clientNextStep";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 
@@ -101,6 +102,7 @@ type ClientDetail = AgencyClientListItem & {
   }>;
   buyerFilters?: WebRadarFilters | null;
   intelligence?: IntelligenceSettings | null;
+  nextStep?: ClientNextStep | null;
   activities?: Array<{
     id: number;
     kind: string;
@@ -176,6 +178,7 @@ export default function CrmClientsWorkspace() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewData, setPreviewData] = useState<EmailPreview | null>(null);
   const [pendingOfferIds, setPendingOfferIds] = useState<number[]>([]);
+  const [allowResend, setAllowResend] = useState(false);
   const [query, setQuery] = useState("");
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [sortBy, setSortBy] = useState<"recent" | "name" | "match">("recent");
@@ -383,8 +386,9 @@ export default function CrmClientsWorkspace() {
     });
   };
 
-  const openPreview = async (offerIds: number[]) => {
+  const openPreview = async (offerIds: number[], opts?: { allowResend?: boolean }) => {
     if (!selectedId || !offerIds.length) return;
+    setAllowResend(Boolean(opts?.allowResend));
     setPendingOfferIds(offerIds);
     setPreviewOpen(true);
     setPreviewLoading(true);
@@ -428,7 +432,7 @@ export default function CrmClientsWorkspace() {
     if (!selectedId || !pendingOfferIds.length) return;
     setBusy(true);
     try {
-      await fetch(`/api/crm/clients/${selectedId}`, {
+      const res = await fetch(`/api/crm/clients/${selectedId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -437,12 +441,19 @@ export default function CrmClientsWorkspace() {
           offerId: pendingOfferIds[0],
           channel: "email",
           message,
+          allowResend,
         }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json.error || "Nie udało się wysłać ofert."));
       setPreviewOpen(false);
       setPendingOfferIds([]);
+      setAllowResend(false);
       await loadDetail(selectedId);
       await loadClients();
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Błąd wysyłki.");
+      window.setTimeout(() => setToast(""), 3500);
     } finally {
       setBusy(false);
     }
@@ -529,6 +540,42 @@ export default function CrmClientsWorkspace() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const runNextStep = () => {
+    if (!detail?.nextStep) return;
+    const action = detail.nextStep.action;
+    if (action === "send_offers") {
+      const first = (detail.matches || []).find((m) => !m.notifiedAt);
+      if (first) void openPreview([first.offer.id]);
+      else void refreshMatches();
+      return;
+    }
+    if (action === "refresh_matches") {
+      void refreshMatches();
+      return;
+    }
+    if (action === "set_criteria") {
+      document.getElementById("crm-criteria")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (action === "verify_contact") {
+      document.getElementById("crm-contact")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (action === "propose_presentation") {
+      document.getElementById("crm-matches")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (action === "finish_acquisition" || action === "create_offer") {
+      document.getElementById("crm-seller")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (action === "accept_schedule") {
+      document.getElementById("crm-contact")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (detail.portalUrl) window.open(detail.portalUrl, "_blank", "noopener,noreferrer");
   };
 
   const analytics = useMemo(() => {
@@ -878,6 +925,17 @@ export default function CrmClientsWorkspace() {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                {detail.nextStep ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={runNextStep}
+                    className={eosBtn("home", { size: "sm" })}
+                    title={detail.nextStep.hint}
+                  >
+                    {detail.nextStep.label}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={!detail.email || cardBusyId === detail.id}
@@ -1011,25 +1069,21 @@ export default function CrmClientsWorkspace() {
                     style={{ width: `${detailAnalytics?.scorePct ?? 0}%` }}
                   />
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(detailAnalytics?.pendingItems || []).length === 0 ? (
+                <div className="mt-3">
+                  {detail.nextStep ? (
+                    <p className="text-sm text-[var(--eos-text)]">
+                      <span className="font-semibold">{detail.nextStep.label}.</span>{" "}
+                      <span className="text-[var(--eos-muted)]">{detail.nextStep.hint}</span>
+                    </p>
+                  ) : (
                     <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
                       Wszystkie kluczowe kroki wykonane
                     </span>
-                  ) : (
-                    (detailAnalytics?.pendingItems || []).map((item) => (
-                      <span
-                        key={item}
-                        className="rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-bold text-amber-700"
-                      >
-                        {item}
-                      </span>
-                    ))
                   )}
                 </div>
               </div>
 
-              <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-2">
+              <div id="crm-contact" className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-2">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">PESEL</p>
                   <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{detail.pesel || "—"}</p>
@@ -1101,15 +1155,17 @@ export default function CrmClientsWorkspace() {
                     activities={detail.activities}
                     onSave={(next) => saveIntelligence(next)}
                   />
-                  <AgencyClientCriteriaEditor
-                    compact
-                    value={sellerFilters}
-                    onChange={setSellerFilters}
-                    catalog={criteriaCatalog}
-                    locks={intelLocks}
-                    onLocksChange={setIntelLocks}
-                  />
-                  <div className="flex flex-wrap gap-2">
+                  <div id="crm-criteria">
+                    <AgencyClientCriteriaEditor
+                      compact
+                      value={sellerFilters}
+                      onChange={setSellerFilters}
+                      catalog={criteriaCatalog}
+                      locks={intelLocks}
+                      onLocksChange={setIntelLocks}
+                    />
+                  </div>
+                  <div id="crm-matches" className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       disabled={busy}
@@ -1218,7 +1274,16 @@ export default function CrmClientsWorkspace() {
                                   >
                                     {cl.sendEmail}
                                   </button>
-                                ) : null}
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => void openPreview([m.offer.id], { allowResend: true })}
+                                    className={eosBtn("secondary", { size: "sm" })}
+                                  >
+                                    Wyślij ponownie
+                                  </button>
+                                )}
                             <Link
                               href={offerHref(m.offer.id, detail.portalToken)}
                               className={eosBtn("secondary", { size: "sm" })}
@@ -1255,7 +1320,7 @@ export default function CrmClientsWorkspace() {
                   </div>
                 </>
               ) : (
-                <div className="space-y-5">
+                <div id="crm-seller" className="space-y-5">
                   <SellerAcquisitionWorkspace
                     client={{
                       id: detail.id,
@@ -1390,7 +1455,14 @@ export default function CrmClientsWorkspace() {
                                       Zaproponuj
                                     </button>
                                   ) : (
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Wysłano</span>
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void openPreview([m.offer.id], { allowResend: true })}
+                                      className={eosBtn("secondary", { size: "sm" })}
+                                    >
+                                      Wyślij ponownie
+                                    </button>
                                   )}
                                 </div>
                                 {m.clientFeedback ? (

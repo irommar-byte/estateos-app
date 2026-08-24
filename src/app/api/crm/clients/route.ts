@@ -16,6 +16,7 @@ import { normalizePrepItemIds, prepItemLabels } from '@/lib/crm/clientJourney';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
 import { seedAcquisitionForm } from '@/lib/crm/acquisitionOffer';
+import { findDuplicateAgencyClients } from '@/lib/crm/clientDuplicate';
 
 function normalizePhone(raw: unknown): string | null {
   const input = String(raw || '').trim();
@@ -93,6 +94,24 @@ export async function POST(req: Request) {
   const peselRaw = body.pesel ? String(body.pesel).trim() : null;
   if (peselRaw && !parsePesel(peselRaw)) {
     return NextResponse.json({ error: 'Nieprawidłowy PESEL.' }, { status: 400 });
+  }
+
+  if (body.forceCreate !== true) {
+    const duplicates = await findDuplicateAgencyClients({
+      agencyUserId,
+      email: emailRaw,
+      phone: phoneRaw || body.phone,
+    });
+    if (duplicates.length) {
+      return NextResponse.json(
+        {
+          error: 'Klient o tym e-mailu lub telefonie już jest w CRM.',
+          code: 'DUPLICATE_CLIENT',
+          matches: duplicates,
+        },
+        { status: 409 },
+      );
+    }
   }
 
   const linkedUserId = await ensureAgencyClientLinkedUser({

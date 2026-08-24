@@ -134,8 +134,13 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Transakcja nie istnieje' }, { status: 404 });
     }
 
-    let senderId = await resolveUserId(req);
-    let senderIdFromBody: number | null = null;
+    const senderId = await resolveUserId(req);
+    if (!senderId) {
+      return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
+    }
+    if (senderId !== deal.buyerId && senderId !== deal.sellerId) {
+      return NextResponse.json({ success: false, error: 'Brak dostępu do tej transakcji' }, { status: 403 });
+    }
 
     const ct = (req.headers.get('content-type') || '').toLowerCase();
     let content = '';
@@ -143,22 +148,6 @@ export async function POST(
 
     if (ct.includes('multipart/form-data')) {
       const formData = await getWebFormData(req);
-      const sidRaw = formData.get('senderId');
-      if (sidRaw != null && String(sidRaw).trim() !== '') {
-        senderIdFromBody = Number(String(sidRaw));
-      }
-
-      if (!senderId && Number.isFinite(senderIdFromBody) && senderIdFromBody && senderIdFromBody > 0) {
-        if (senderIdFromBody === deal.buyerId || senderIdFromBody === deal.sellerId) {
-          senderId = senderIdFromBody;
-        }
-      }
-      if (!senderId) {
-        return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
-      }
-      if (senderId !== deal.buyerId && senderId !== deal.sellerId) {
-        return NextResponse.json({ success: false, error: 'Brak dostępu do tej transakcji' }, { status: 403 });
-      }
 
       content = String(formData.get('content') ?? formData.get('message') ?? formData.get('text') ?? '').trim();
       const rawFile = formData.get('file') ?? formData.get('attachment') ?? formData.get('document');
@@ -214,17 +203,6 @@ export async function POST(
           },
           { status: 400 }
         );
-      }
-
-      senderIdFromBody = body?.senderId ? Number(body.senderId) : null;
-      if (!senderId && senderIdFromBody && (senderIdFromBody === deal.buyerId || senderIdFromBody === deal.sellerId)) {
-        senderId = senderIdFromBody;
-      }
-      if (!senderId) {
-        return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
-      }
-      if (senderId !== deal.buyerId && senderId !== deal.sellerId) {
-        return NextResponse.json({ success: false, error: 'Brak dostępu do tej transakcji' }, { status: 403 });
       }
 
       content = String(body?.content ?? '').trim();

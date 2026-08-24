@@ -38,9 +38,9 @@ type LookupMatch = {
   lastName: string;
   email: string | null;
   phone: string | null;
-  notes: string | null;
+  notes?: string | null;
   createdAt?: string;
-  updatedAt: string;
+  updatedAt?: string;
   matchCount?: number;
   activityCount?: number;
   buyerCity?: string | null;
@@ -147,6 +147,7 @@ export default function AgencyClientFormModal({
   const [phoneStatus, setPhoneStatus] = useState<FieldStatus>("idle");
   const [lookupMatches, setLookupMatches] = useState<LookupMatch[]>([]);
   const [lookupBusy, setLookupBusy] = useState(false);
+  const [forceCreate, setForceCreate] = useState(false);
   const lookupSeq = useRef(0);
 
   useEffect(() => setMounted(true), []);
@@ -162,6 +163,7 @@ export default function AgencyClientFormModal({
     setPhoneStatus("idle");
     setLookupMatches([]);
     setLookupBusy(false);
+    setForceCreate(false);
     setBuyerFilters({ ...defaultWebRadarFilters(), pushNotifications: false });
     setMeeting({ enabled: true, date: "", time: "10:00", location: "", note: "" });
     setAlsoSearching(false);
@@ -300,6 +302,7 @@ export default function AgencyClientFormModal({
           phone: phoneE164 || form.phone,
           pesel: form.pesel,
           notes: form.notes,
+          forceCreate,
           ...(type === "BUYER"
             ? { buyerFilters: { ...buyerFilters, pushNotifications: false } }
             : {}),
@@ -322,6 +325,13 @@ export default function AgencyClientFormModal({
         }),
       });
       const json = await res.json();
+      if (res.status === 409) {
+        const matches = (Array.isArray(json.matches) ? json.matches : []) as LookupMatch[];
+        if (matches.length) setLookupMatches(matches);
+        setStep(2);
+        setForceCreate(false);
+        throw new Error(json.error || "Klient o tym e-mailu lub telefonie już jest w CRM.");
+      }
       if (!res.ok) throw new Error(json.error || cl.saveError);
 
       setScanning(true);
@@ -598,6 +608,15 @@ export default function AgencyClientFormModal({
                               +{lookupMatches.length - 1} innych trafień w bazie
                             </p>
                           ) : null}
+                          <label className="flex items-start gap-2 self-center text-xs text-[var(--eos-muted)]">
+                            <input
+                              type="checkbox"
+                              checked={forceCreate}
+                              onChange={(e) => setForceCreate(e.target.checked)}
+                              className="mt-0.5 size-4 accent-emerald-500"
+                            />
+                            To inna osoba — utwórz mimo to
+                          </label>
                         </div>
                       </motion.div>
                     ) : null}
@@ -841,6 +860,17 @@ export default function AgencyClientFormModal({
                 ) : null}
 
                 {error ? <p className="mt-4 text-sm text-red-500 break-words">{error}</p> : null}
+                {step === 3 && lookupMatches.length > 0 ? (
+                  <label className="mt-4 flex items-start gap-2 text-sm text-[var(--eos-text)]">
+                    <input
+                      type="checkbox"
+                      checked={forceCreate}
+                      onChange={(e) => setForceCreate(e.target.checked)}
+                      className="mt-0.5 size-4 accent-emerald-500"
+                    />
+                    To inna osoba — utwórz drugi profil mimo tego samego e-maila lub telefonu
+                  </label>
+                ) : null}
 
                 <div className="mt-8 flex flex-wrap gap-3">
                   {step > 1 ? (
@@ -875,13 +905,14 @@ export default function AgencyClientFormModal({
                         saving ||
                         !buyerStepReady ||
                         (form.pesel.length > 0 && !peselData) ||
-                        (type === "SELLER" && meeting.enabled && (!meeting.date || !meeting.time))
+                        (type === "SELLER" && meeting.enabled && (!meeting.date || !meeting.time)) ||
+                        (lookupMatches.length > 0 && !forceCreate)
                       }
                       onClick={() => void submit()}
                       className={eosBtn("home", { className: "ml-auto shadow-[0_12px_32px_rgba(16,185,129,0.25)]" })}
                     >
                       <Check className="size-4" />
-                      {saving ? cl.saving : cl.saveClient}
+                      {saving ? cl.saving : lookupMatches.length > 0 && forceCreate ? "Zapisz mimo to" : cl.saveClient}
                     </button>
                   )}
                 </div>
