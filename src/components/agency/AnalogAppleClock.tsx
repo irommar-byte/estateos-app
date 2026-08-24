@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -20,8 +20,73 @@ type Props = {
   accent?: string;
   variant?: 'steel' | 'gold' | 'red';
   brandLine?: string | null;
-  /** Engraved metal date plate beside the dial (day · month · year). */
+  /** Engraved date carved into the gold beside the dial — no plate/frame. */
   showEngravedDate?: boolean;
+};
+
+const LUXURY_SERIF = Platform.select({
+  ios: 'Didot',
+  android: 'serif',
+  default: 'serif',
+}) as string;
+
+const WEEKDAYS_PL = [
+  'niedziela',
+  'poniedziałek',
+  'wtorek',
+  'środa',
+  'czwartek',
+  'piątek',
+  'sobota',
+] as const;
+
+const MONTHS_PL = [
+  'stycznia',
+  'lutego',
+  'marca',
+  'kwietnia',
+  'maja',
+  'czerwca',
+  'lipca',
+  'sierpnia',
+  'września',
+  'października',
+  'listopada',
+  'grudnia',
+] as const;
+
+const DAY_ORDINAL_PL: Record<number, string> = {
+  1: 'pierwszy',
+  2: 'drugi',
+  3: 'trzeci',
+  4: 'czwarty',
+  5: 'piąty',
+  6: 'szósty',
+  7: 'siódmy',
+  8: 'ósmy',
+  9: 'dziewiąty',
+  10: 'dziesiąty',
+  11: 'jedenasty',
+  12: 'dwunasty',
+  13: 'trzynasty',
+  14: 'czternasty',
+  15: 'piętnasty',
+  16: 'szesnasty',
+  17: 'siedemnasty',
+  18: 'osiemnasty',
+  19: 'dziewiętnasty',
+  20: 'dwudziesty',
+  21: 'dwudziesty pierwszy',
+  22: 'dwudziesty drugi',
+  23: 'dwudziesty trzeci',
+  24: 'dwudziesty czwarty',
+  25: 'dwudziesty piąty',
+  26: 'dwudziesty szósty',
+  27: 'dwudziesty siódmy',
+  28: 'dwudziesty ósmy',
+  29: 'dwudziesty dziewiąty',
+  30: 'trzydziesty',
+  31: 'trzydziesty pierwszy',
 };
 
 function truncateBrand(raw: string | null | undefined, max = 16): string {
@@ -31,202 +96,120 @@ function truncateBrand(raw: string | null | undefined, max = 16): string {
   return `${t.slice(0, max - 1).trim().toUpperCase()}…`;
 }
 
-function pad2(n: number) {
-  return String(n).padStart(2, '0');
+function formatEngravedParts(date: Date) {
+  const weekday = WEEKDAYS_PL[date.getDay()];
+  const dayWord = DAY_ORDINAL_PL[date.getDate()] || String(date.getDate());
+  const monthWord = MONTHS_PL[date.getMonth()];
+  const year = String(date.getFullYear());
+  return { weekday, dayWord, monthWord, year };
 }
 
-function EngravedDatePlate({
+/** Multi-layer carved-metal lettering — no frame, just gold engraving. */
+function EngravedLine({
+  text,
+  size,
+  isDark,
+  gold,
+  letterSpacing = 0.6,
+}: {
+  text: string;
+  size: number;
+  isDark: boolean;
+  gold: boolean;
+  letterSpacing?: number;
+}) {
+  const cut = gold
+    ? isDark
+      ? 'rgba(28, 18, 4, 0.88)'
+      : 'rgba(55, 38, 8, 0.78)'
+    : isDark
+      ? 'rgba(10,10,12,0.75)'
+      : 'rgba(40,40,44,0.7)';
+  const rim = gold
+    ? isDark
+      ? 'rgba(255, 236, 180, 0.45)'
+      : 'rgba(255, 248, 220, 0.75)'
+    : isDark
+      ? 'rgba(255,255,255,0.35)'
+      : 'rgba(255,255,255,0.55)';
+  const mid = gold
+    ? isDark
+      ? 'rgba(110, 80, 20, 0.95)'
+      : 'rgba(85, 62, 14, 0.88)'
+    : isDark
+      ? 'rgba(90,90,95,0.9)'
+      : 'rgba(70,70,74,0.85)';
+
+  const base = {
+    fontFamily: LUXURY_SERIF,
+    fontSize: size,
+    fontWeight: '400' as const,
+    letterSpacing,
+    fontStyle: 'italic' as const,
+  };
+
+  return (
+    <View>
+      <Text style={[base, { color: mid }]}>{text}</Text>
+      <Text style={[base, styles.engraveLayer, { color: 'rgba(0,0,0,0.5)', top: 1.35, left: 1.05 }]}>{text}</Text>
+      <Text style={[base, styles.engraveLayer, { color: cut, top: 0.55, left: 0.4 }]}>{text}</Text>
+      <Text style={[base, styles.engraveLayer, { color: mid }]}>{text}</Text>
+      <Text style={[base, styles.engraveLayer, { color: rim, top: -0.9, left: -0.6 }]}>{text}</Text>
+    </View>
+  );
+}
+
+function EngravedDateBeside({
   date,
   isDark,
   gold,
   height,
+  gleam,
 }: {
   date: Date;
   isDark: boolean;
   gold: boolean;
   height: number;
+  gleam: Animated.Value;
 }) {
-  const uid = useId().replace(/:/g, '');
-  const day = pad2(date.getDate());
-  const month = pad2(date.getMonth() + 1);
-  const year = String(date.getFullYear());
-  const plateW = Math.max(72, Math.round(height * 0.52));
-  const plateH = Math.round(height * 0.78);
+  const parts = useMemo(() => formatEngravedParts(date), [date]);
+  const daySize = height >= 160 ? 15 : 13;
+  const monthSize = height >= 160 ? 17 : 15;
+  const weekSize = height >= 160 ? 12 : 11;
+  const yearSize = height >= 160 ? 14 : 12;
+
+  const shine = gleam.interpolate({
+    inputRange: [0, 0.4, 0.55, 1],
+    outputRange: [0.08, 0.38, 0.22, 0.08],
+  });
+  const shiftX = gleam.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 3.5],
+  });
 
   return (
-    <View
+    <Animated.View
       style={[
-        styles.datePlateShell,
+        styles.dateCarve,
         {
-          width: plateW,
-          height: plateH,
-          borderRadius: 12,
-          shadowColor: gold ? '#C9A227' : '#000',
+          minHeight: height * 0.72,
+          justifyContent: 'center',
+          opacity: shine.interpolate({
+            inputRange: [0.08, 0.38],
+            outputRange: [0.92, 1],
+            extrapolate: 'clamp',
+          }),
+          transform: [{ translateX: shiftX }],
         },
       ]}
     >
-      <Svg width={plateW} height={plateH} viewBox={`0 0 ${plateW} ${plateH}`}>
-        <Defs>
-          <LinearGradient id={`plateMetal-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
-            <Stop offset="0%" stopColor={gold ? (isDark ? '#F8E7B0' : '#FFF8E0') : '#F2F2F7'} stopOpacity={1} />
-            <Stop offset="28%" stopColor={gold ? (isDark ? '#C9A227' : '#E8D08A') : '#D1D1D6'} stopOpacity={1} />
-            <Stop offset="58%" stopColor={gold ? (isDark ? '#8A6A14' : '#B8952E') : '#8E8E93'} stopOpacity={1} />
-            <Stop offset="82%" stopColor={gold ? (isDark ? '#E8D090' : '#F5E6B8') : '#E5E5EA'} stopOpacity={1} />
-            <Stop offset="100%" stopColor={gold ? (isDark ? '#5C4510' : '#8A6A20') : '#636366'} stopOpacity={1} />
-          </LinearGradient>
-          <LinearGradient id={`plateInset-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={isDark ? '#1A1408' : '#3A2E12'} stopOpacity={0.92} />
-            <Stop offset="45%" stopColor={isDark ? '#0C0904' : '#2A220E'} stopOpacity={1} />
-            <Stop offset="100%" stopColor={isDark ? '#2A2010' : '#4A3A18'} stopOpacity={0.88} />
-          </LinearGradient>
-          <LinearGradient id={`engraveTop-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor="#000000" stopOpacity={0.55} />
-            <Stop offset="40%" stopColor={gold ? '#6B5420' : '#48484A'} stopOpacity={0.9} />
-            <Stop offset="100%" stopColor={gold ? '#F5E6B8' : '#FFFFFF'} stopOpacity={0.35} />
-          </LinearGradient>
-          <LinearGradient id={`plateShine-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0} />
-            <Stop offset="40%" stopColor="#FFFFFF" stopOpacity={0.35} />
-            <Stop offset="55%" stopColor="#FFFFFF" stopOpacity={0.08} />
-            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
-          </LinearGradient>
-        </Defs>
-
-        {/* Raised metal body */}
-        <Rect x={1} y={2} width={plateW - 2} height={plateH - 3} rx={10} fill="rgba(0,0,0,0.45)" />
-        <Rect x={0} y={0} width={plateW - 2} height={plateH - 3} rx={10} fill={`url(#plateMetal-${uid})`} />
-        <Rect
-          x={1.5}
-          y={1.5}
-          width={plateW - 5}
-          height={plateH - 6}
-          rx={8}
-          fill="none"
-          stroke={gold ? 'rgba(255,248,220,0.45)' : 'rgba(255,255,255,0.35)'}
-          strokeWidth={1}
-        />
-        <Rect
-          x={2.5}
-          y={2.5}
-          width={plateW - 7}
-          height={plateH - 8}
-          rx={7}
-          fill="none"
-          stroke="rgba(0,0,0,0.35)"
-          strokeWidth={1}
-        />
-
-        {/* Recessed engraving well */}
-        <Rect
-          x={8}
-          y={10}
-          width={plateW - 18}
-          height={plateH - 22}
-          rx={6}
-          fill={`url(#plateInset-${uid})`}
-        />
-        <Rect
-          x={8.5}
-          y={10.5}
-          width={plateW - 19}
-          height={plateH - 23}
-          rx={5.5}
-          fill="none"
-          stroke="rgba(0,0,0,0.55)"
-          strokeWidth={1.2}
-        />
-        <Rect
-          x={9}
-          y={11}
-          width={plateW - 20}
-          height={plateH - 24}
-          rx={5}
-          fill="none"
-          stroke={gold ? 'rgba(255,230,160,0.18)' : 'rgba(255,255,255,0.12)'}
-          strokeWidth={0.8}
-        />
-
-        {/* Engraved digits — dark cut + light rim = carved metal */}
-        {[
-          { label: day, y: plateH * 0.32, size: 15 },
-          { label: month, y: plateH * 0.52, size: 15 },
-          { label: year, y: plateH * 0.74, size: 12 },
-        ].map((row) => (
-          <G key={row.label + row.y}>
-            <SvgText
-              x={plateW / 2 + 0.7}
-              y={row.y + 0.8}
-              textAnchor="middle"
-              fill={gold ? 'rgba(255,240,200,0.28)' : 'rgba(255,255,255,0.22)'}
-              fontSize={row.size}
-              fontWeight="900"
-              letterSpacing={1.4}
-            >
-              {row.label}
-            </SvgText>
-            <SvgText
-              x={plateW / 2}
-              y={row.y}
-              textAnchor="middle"
-              fill={`url(#engraveTop-${uid})`}
-              fontSize={row.size}
-              fontWeight="900"
-              letterSpacing={1.4}
-            >
-              {row.label}
-            </SvgText>
-            <SvgText
-              x={plateW / 2 - 0.5}
-              y={row.y - 0.6}
-              textAnchor="middle"
-              fill="rgba(0,0,0,0.55)"
-              fontSize={row.size}
-              fontWeight="900"
-              letterSpacing={1.4}
-            >
-              {row.label}
-            </SvgText>
-          </G>
-        ))}
-
-        {/* Separators engraved */}
-        <Line
-          x1={14}
-          y1={plateH * 0.38}
-          x2={plateW - 16}
-          y2={plateH * 0.38}
-          stroke="rgba(0,0,0,0.45)"
-          strokeWidth={0.8}
-        />
-        <Line
-          x1={14}
-          y1={plateH * 0.38 + 0.7}
-          x2={plateW - 16}
-          y2={plateH * 0.38 + 0.7}
-          stroke={gold ? 'rgba(255,230,160,0.2)' : 'rgba(255,255,255,0.15)'}
-          strokeWidth={0.6}
-        />
-        <Line
-          x1={14}
-          y1={plateH * 0.58}
-          x2={plateW - 16}
-          y2={plateH * 0.58}
-          stroke="rgba(0,0,0,0.45)"
-          strokeWidth={0.8}
-        />
-        <Line
-          x1={14}
-          y1={plateH * 0.58 + 0.7}
-          x2={plateW - 16}
-          y2={plateH * 0.58 + 0.7}
-          stroke={gold ? 'rgba(255,230,160,0.2)' : 'rgba(255,255,255,0.15)'}
-          strokeWidth={0.6}
-        />
-
-        {/* Specular flash across plate */}
-        <Rect x={0} y={0} width={plateW - 2} height={plateH - 3} rx={10} fill={`url(#plateShine-${uid})`} opacity={0.55} />
-      </Svg>
-    </View>
+      <EngravedLine text={parts.weekday} size={weekSize} isDark={isDark} gold={gold} letterSpacing={1.4} />
+      <View style={styles.dateGap} />
+      <EngravedLine text={parts.dayWord} size={daySize} isDark={isDark} gold={gold} letterSpacing={0.8} />
+      <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={1.1} />
+      <View style={styles.dateGapSm} />
+      <EngravedLine text={parts.year} size={yearSize} isDark={isDark} gold={gold} letterSpacing={2.4} />
+    </Animated.View>
   );
 }
 
@@ -249,7 +232,6 @@ function AnalogAppleClock({
     return () => clearInterval(id);
   }, []);
 
-  // Slow metallic flash across the bezel — rare, not a frame loop.
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -282,7 +264,7 @@ function AnalogAppleClock({
 
   const radius = size / 2;
   const center = radius;
-  const bezelWidth = 11;
+  const bezelWidth = 12;
   const innerRadius = radius - bezelWidth;
   const dayOfMonth = time.getDate();
   const brand = useMemo(() => truncateBrand(brandLine), [brandLine]);
@@ -293,23 +275,23 @@ function AnalogAppleClock({
       : '#FBEFEE'
     : gold
       ? isDark
-        ? '#0C0904'
+        ? '#0A0803'
         : '#FBF4DF'
       : isDark
         ? '#0F0F11'
         : '#F7F7FA';
 
   const hourTick = gold ? (isDark ? '#F8E7B0' : '#6B4C10') : isDark ? '#FFFFFF' : '#1C1C1E';
-  const hourTickShade = gold ? (isDark ? 'rgba(40,28,5,0.9)' : 'rgba(40,28,5,0.4)') : 'rgba(0,0,0,0.4)';
+  const hourTickShade = gold ? (isDark ? 'rgba(40,28,5,0.92)' : 'rgba(40,28,5,0.42)') : 'rgba(0,0,0,0.4)';
   const minuteTick = gold
     ? isDark
-      ? 'rgba(255,214,120,0.78)'
-      : 'rgba(140,100,20,0.58)'
+      ? 'rgba(255,214,120,0.82)'
+      : 'rgba(140,100,20,0.6)'
     : isDark
       ? 'rgba(255,255,255,0.28)'
       : 'rgba(0,0,0,0.22)';
   const handFill = gold ? (isDark ? '#EFD9A4' : '#5A3F0A') : isDark ? '#E5E5EA' : '#2C2C2E';
-  const handShade = 'rgba(0,0,0,0.5)';
+  const handShade = 'rgba(0,0,0,0.55)';
   const secondColor = '#FF3B30';
 
   const gleamX = gleam.interpolate({
@@ -318,7 +300,11 @@ function AnalogAppleClock({
   });
   const gleamOpacity = gleam.interpolate({
     inputRange: [0, 0.35, 0.55, 1],
-    outputRange: [0, 0.55, 0.35, 0],
+    outputRange: [0, 0.58, 0.32, 0],
+  });
+  const assemblyShift = gleam.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0.6, 0],
   });
 
   const dial = (
@@ -344,18 +330,17 @@ function AnalogAppleClock({
         },
       ]}
     >
-      {/* Ambient gold glow behind case */}
       {gold ? (
         <View
           pointerEvents="none"
           style={[
             styles.ambientGlow,
             {
-              width: size + 24,
-              height: size + 24,
-              borderRadius: (size + 24) / 2,
-              left: -12,
-              top: -12,
+              width: size + 28,
+              height: size + 28,
+              borderRadius: (size + 28) / 2,
+              left: -14,
+              top: -14,
             },
           ]}
         />
@@ -363,112 +348,95 @@ function AnalogAppleClock({
 
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Defs>
-          <RadialGradient id={`caseBody-${uid}`} cx="32%" cy="28%" r="78%">
-            <Stop offset="0%" stopColor={gold ? (isDark ? '#FFF6DC' : '#FFFBEA') : '#FFFFFF'} stopOpacity={0.95} />
-            <Stop offset="22%" stopColor={gold ? (isDark ? '#E8D090' : '#F0DC9A') : '#E8E8ED'} stopOpacity={1} />
-            <Stop offset="48%" stopColor={gold ? (isDark ? '#A88420' : '#C9A227') : '#AEAEB2'} stopOpacity={1} />
-            <Stop offset="72%" stopColor={gold ? (isDark ? '#5C4510' : '#8A6A18') : '#636366'} stopOpacity={1} />
-            <Stop offset="100%" stopColor={gold ? (isDark ? '#1A1206' : '#4A3810') : '#1C1C1E'} stopOpacity={1} />
+          <RadialGradient id={`caseBody-${uid}`} cx="30%" cy="26%" r="80%">
+            <Stop offset="0%" stopColor={gold ? (isDark ? '#FFF8E8' : '#FFFBEA') : '#FFFFFF'} stopOpacity={1} />
+            <Stop offset="18%" stopColor={gold ? (isDark ? '#F0D878' : '#F5E4A8') : '#E8E8ED'} stopOpacity={1} />
+            <Stop offset="40%" stopColor={gold ? (isDark ? '#C9A227' : '#D4B24A') : '#AEAEB2'} stopOpacity={1} />
+            <Stop offset="62%" stopColor={gold ? (isDark ? '#7A5C12' : '#A88828') : '#8E8E93'} stopOpacity={1} />
+            <Stop offset="82%" stopColor={gold ? (isDark ? '#3A2A08' : '#6B5420') : '#636366'} stopOpacity={1} />
+            <Stop offset="100%" stopColor={gold ? (isDark ? '#100C04' : '#3A2A10') : '#1C1C1E'} stopOpacity={1} />
           </RadialGradient>
-          <LinearGradient id={`bezelRim-${uid}`} x1="15%" y1="0%" x2="85%" y2="100%">
-            <Stop offset="0%" stopColor={gold ? '#FFF8E0' : '#FFFFFF'} stopOpacity={0.95} />
-            <Stop offset="18%" stopColor={gold ? '#F0D878' : '#D1D1D6'} stopOpacity={0.85} />
-            <Stop offset="42%" stopColor={gold ? '#8A6A14' : '#8E8E93'} stopOpacity={0.9} />
-            <Stop offset="68%" stopColor={gold ? '#E8D090' : '#C7C7CC'} stopOpacity={0.7} />
-            <Stop offset="100%" stopColor={gold ? '#3A2A08' : '#3A3A3C'} stopOpacity={1} />
+          <LinearGradient id={`bezelRim-${uid}`} x1="12%" y1="0%" x2="88%" y2="100%">
+            <Stop offset="0%" stopColor={gold ? '#FFFCF0' : '#FFFFFF'} stopOpacity={1} />
+            <Stop offset="16%" stopColor={gold ? '#F5E08A' : '#D1D1D6'} stopOpacity={0.95} />
+            <Stop offset="38%" stopColor={gold ? '#8A6A14' : '#8E8E93'} stopOpacity={0.95} />
+            <Stop offset="58%" stopColor={gold ? '#E8D090' : '#C7C7CC'} stopOpacity={0.75} />
+            <Stop offset="78%" stopColor={gold ? '#5C4510' : '#636366'} stopOpacity={0.9} />
+            <Stop offset="100%" stopColor={gold ? '#1A1206' : '#2C2C2E'} stopOpacity={1} />
           </LinearGradient>
-          <RadialGradient id={`dialShade-${uid}`} cx="36%" cy="30%" r="74%">
-            <Stop offset="0%" stopColor={isDark ? '#3A2E14' : '#FFFFFF'} stopOpacity={gold ? 0.7 : 0.4} />
-            <Stop offset="35%" stopColor={dialFill} stopOpacity={1} />
-            <Stop offset="78%" stopColor={isDark ? '#080603' : '#E8D8A8'} stopOpacity={1} />
-            <Stop offset="100%" stopColor={isDark ? '#000000' : '#C4B07A'} stopOpacity={1} />
+          <RadialGradient id={`dialShade-${uid}`} cx="34%" cy="28%" r="76%">
+            <Stop offset="0%" stopColor={isDark ? '#3A2E14' : '#FFFFFF'} stopOpacity={gold ? 0.75 : 0.4} />
+            <Stop offset="32%" stopColor={dialFill} stopOpacity={1} />
+            <Stop offset="72%" stopColor={isDark ? '#060503' : '#E0D0A0'} stopOpacity={1} />
+            <Stop offset="100%" stopColor={isDark ? '#000000' : '#B8A474'} stopOpacity={1} />
           </RadialGradient>
           <RadialGradient id={`dialVignette-${uid}`} cx="50%" cy="50%" r="50%">
-            <Stop offset="55%" stopColor="#000000" stopOpacity={0} />
-            <Stop offset="100%" stopColor="#000000" stopOpacity={isDark ? 0.55 : 0.22} />
+            <Stop offset="48%" stopColor="#000000" stopOpacity={0} />
+            <Stop offset="100%" stopColor="#000000" stopOpacity={isDark ? 0.62 : 0.26} />
           </RadialGradient>
           <LinearGradient id={`handHighlight-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.6} />
-            <Stop offset="45%" stopColor="#FFFFFF" stopOpacity={0.05} />
-            <Stop offset="100%" stopColor="#000000" stopOpacity={0.4} />
+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.65} />
+            <Stop offset="45%" stopColor="#FFFFFF" stopOpacity={0.04} />
+            <Stop offset="100%" stopColor="#000000" stopOpacity={0.42} />
           </LinearGradient>
           <LinearGradient id={`specularArc-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0} />
-            <Stop offset="35%" stopColor="#FFFFFF" stopOpacity={0.55} />
-            <Stop offset="50%" stopColor="#FFF8E0" stopOpacity={0.15} />
+            <Stop offset="32%" stopColor="#FFFFFF" stopOpacity={0.62} />
+            <Stop offset="48%" stopColor="#FFF8E0" stopOpacity={0.18} />
             <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
           </LinearGradient>
         </Defs>
 
-        {/* Case body fill */}
         <Circle cx={center} cy={center} r={radius - 0.5} fill={`url(#caseBody-${uid})`} />
 
-        {/* Outer rim ridge */}
+        <Circle cx={center} cy={center} r={radius - 1.2} fill="none" stroke={`url(#bezelRim-${uid})`} strokeWidth={5.2} />
         <Circle
           cx={center}
           cy={center}
-          r={radius - 1.5}
+          r={radius - 3.8}
           fill="none"
-          stroke={`url(#bezelRim-${uid})`}
-          strokeWidth={4.5}
+          stroke={gold ? (isDark ? 'rgba(255,250,230,0.55)' : 'rgba(255,255,255,0.6)') : 'rgba(255,255,255,0.35)'}
+          strokeWidth={1.35}
         />
+        <Circle cx={center} cy={center} r={radius - 6.2} fill="none" stroke="rgba(0,0,0,0.5)" strokeWidth={2.2} />
         <Circle
           cx={center}
           cy={center}
-          r={radius - 4}
+          r={radius - 8}
           fill="none"
-          stroke={gold ? (isDark ? 'rgba(255,248,220,0.5)' : 'rgba(255,255,255,0.55)') : 'rgba(255,255,255,0.35)'}
-          strokeWidth={1.2}
-        />
-        <Circle
-          cx={center}
-          cy={center}
-          r={radius - 6.5}
-          fill="none"
-          stroke="rgba(0,0,0,0.45)"
-          strokeWidth={2}
-        />
-
-        {/* Inner bezel step into dial */}
-        <Circle
-          cx={center}
-          cy={center}
-          r={innerRadius + 3.5}
-          fill="none"
-          stroke={gold ? (isDark ? 'rgba(200,160,40,0.55)' : 'rgba(120,86,18,0.4)') : 'rgba(0,0,0,0.2)'}
-          strokeWidth={5}
-        />
-        <Circle
-          cx={center}
-          cy={center}
-          r={innerRadius + 1.2}
-          fill="none"
-          stroke="rgba(0,0,0,0.65)"
-          strokeWidth={2.5}
-        />
-        <Circle
-          cx={center}
-          cy={center}
-          r={innerRadius + 0.4}
-          fill="none"
-          stroke={gold ? 'rgba(255,230,160,0.25)' : 'rgba(255,255,255,0.12)'}
+          stroke={gold ? 'rgba(255,220,140,0.2)' : 'rgba(255,255,255,0.08)'}
           strokeWidth={1}
         />
 
-        {/* Dial + vignette */}
+        <Circle
+          cx={center}
+          cy={center}
+          r={innerRadius + 4}
+          fill="none"
+          stroke={gold ? (isDark ? 'rgba(180,140,30,0.6)' : 'rgba(120,86,18,0.45)') : 'rgba(0,0,0,0.22)'}
+          strokeWidth={5.5}
+        />
+        <Circle cx={center} cy={center} r={innerRadius + 1.4} fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={2.8} />
+        <Circle
+          cx={center}
+          cy={center}
+          r={innerRadius + 0.35}
+          fill="none"
+          stroke={gold ? 'rgba(255,230,160,0.28)' : 'rgba(255,255,255,0.12)'}
+          strokeWidth={1}
+        />
+
         <Circle cx={center} cy={center} r={innerRadius} fill={`url(#dialShade-${uid})`} />
         <Circle cx={center} cy={center} r={innerRadius} fill={`url(#dialVignette-${uid})`} />
 
-        {/* Soft specular on upper-left of dial */}
         <Ellipse
-          cx={center - radius * 0.18}
-          cy={center - radius * 0.22}
-          rx={radius * 0.28}
-          ry={radius * 0.18}
-          fill={gold ? 'rgba(255,240,200,0.12)' : 'rgba(255,255,255,0.08)'}
+          cx={center - radius * 0.2}
+          cy={center - radius * 0.24}
+          rx={radius * 0.3}
+          ry={radius * 0.19}
+          fill={gold ? 'rgba(255,242,200,0.14)' : 'rgba(255,255,255,0.08)'}
         />
 
-        {/* Minute ticks */}
         {Array.from({ length: 60 }).map((_, i) => {
           if (i % 5 === 0) return null;
           const angle = (i * 6 * Math.PI) / 180;
@@ -480,29 +448,21 @@ function AnalogAppleClock({
           const y2 = center - r2 * Math.cos(angle);
           return (
             <G key={`tick-${i}`}>
-              <Line
-                x1={x1 + 0.7}
-                y1={y1 + 0.7}
-                x2={x2 + 0.7}
-                y2={y2 + 0.7}
-                stroke="rgba(0,0,0,0.4)"
-                strokeWidth={1.3}
-              />
-              <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={minuteTick} strokeWidth={1.4} strokeLinecap="round" />
+              <Line x1={x1 + 0.7} y1={y1 + 0.7} x2={x2 + 0.7} y2={y2 + 0.7} stroke="rgba(0,0,0,0.42)" strokeWidth={1.3} />
+              <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={minuteTick} strokeWidth={1.45} strokeLinecap="round" />
               <Line
                 x1={x1 - 0.35}
                 y1={y1 - 0.35}
                 x2={x2 - 0.35}
                 y2={y2 - 0.35}
-                stroke={gold ? 'rgba(255,248,220,0.35)' : 'rgba(255,255,255,0.25)'}
-                strokeWidth={0.7}
+                stroke={gold ? 'rgba(255,248,220,0.4)' : 'rgba(255,255,255,0.25)'}
+                strokeWidth={0.75}
                 strokeLinecap="round"
               />
             </G>
           );
         })}
 
-        {/* Hour markers */}
         {Array.from({ length: 12 }).map((_, i) => {
           const angle = (i * 30 * Math.PI) / 180;
           const r1 = innerRadius - 2.5;
@@ -511,25 +471,25 @@ function AnalogAppleClock({
           const y1 = center - r1 * Math.cos(angle);
           const x2 = center + r2 * Math.sin(angle);
           const y2 = center - r2 * Math.cos(angle);
-          const w = i % 3 === 0 ? 3.6 : 2.5;
+          const w = i % 3 === 0 ? 3.7 : 2.55;
           return (
             <G key={`hour-${i}`}>
               <Line
-                x1={x1 + 1}
-                y1={y1 + 1}
-                x2={x2 + 1}
-                y2={y2 + 1}
+                x1={x1 + 1.05}
+                y1={y1 + 1.05}
+                x2={x2 + 1.05}
+                y2={y2 + 1.05}
                 stroke={hourTickShade}
-                strokeWidth={w + 1}
+                strokeWidth={w + 1.1}
                 strokeLinecap="round"
               />
               <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={hourTick} strokeWidth={w} strokeLinecap="round" />
               <Line
-                x1={x1 - 0.5}
-                y1={y1 - 0.5}
-                x2={x2 - 0.5}
-                y2={y2 - 0.5}
-                stroke={gold ? 'rgba(255,252,235,0.65)' : 'rgba(255,255,255,0.45)'}
+                x1={x1 - 0.55}
+                y1={y1 - 0.55}
+                x2={x2 - 0.55}
+                y2={y2 - 0.55}
+                stroke={gold ? 'rgba(255,252,235,0.7)' : 'rgba(255,255,255,0.45)'}
                 strokeWidth={Math.max(1, w - 1.5)}
                 strokeLinecap="round"
               />
@@ -537,12 +497,11 @@ function AnalogAppleClock({
           );
         })}
 
-        {/* Brand */}
         <SvgText
           x={center + 0.5}
           y={center - radius * 0.32 + 0.6}
           textAnchor="middle"
-          fill="rgba(0,0,0,0.45)"
+          fill="rgba(0,0,0,0.5)"
           fontSize={8}
           fontWeight="900"
           letterSpacing={2}
@@ -556,7 +515,7 @@ function AnalogAppleClock({
           fill={
             gold
               ? isDark
-                ? 'rgba(245,223,166,0.7)'
+                ? 'rgba(245,223,166,0.72)'
                 : 'rgba(107,76,16,0.65)'
               : isDark
                 ? 'rgba(255,255,255,0.45)'
@@ -580,9 +539,8 @@ function AnalogAppleClock({
           {brand}
         </SvgText>
 
-        {/* Day window */}
         <G transform={`translate(${center + radius * 0.4}, ${center - 10})`}>
-          <Rect x={1} y={1.2} width={20} height={20} rx={4} fill="rgba(0,0,0,0.5)" />
+          <Rect x={1} y={1.2} width={20} height={20} rx={4} fill="rgba(0,0,0,0.55)" />
           <Rect
             x={0}
             y={0}
@@ -592,16 +550,6 @@ function AnalogAppleClock({
             fill={gold ? (isDark ? '#141008' : '#FFFDF3') : isDark ? '#1C1C1E' : '#FFFFFF'}
             stroke={gold ? (isDark ? 'rgba(255,226,163,0.45)' : 'rgba(120,86,18,0.4)') : 'rgba(255,255,255,0.2)'}
             strokeWidth={1}
-          />
-          <Rect
-            x={1.2}
-            y={1.2}
-            width={17.6}
-            height={17.6}
-            rx={3}
-            fill="none"
-            stroke="rgba(0,0,0,0.35)"
-            strokeWidth={0.8}
           />
           <SvgText
             x={10.5}
@@ -615,9 +563,8 @@ function AnalogAppleClock({
           </SvgText>
         </G>
 
-        {/* Hour hand */}
         <G transform={`rotate(${hourAngle}, ${center}, ${center})`}>
-          <Rect x={center - 2} y={center - radius * 0.45} width={6.5} height={radius * 0.5} rx={3} fill={handShade} opacity={0.6} />
+          <Rect x={center - 2} y={center - radius * 0.45} width={6.5} height={radius * 0.5} rx={3} fill={handShade} opacity={0.65} />
           <Rect x={center - 3} y={center - radius * 0.48} width={6} height={radius * 0.52} rx={3} fill={handFill} />
           <Rect
             x={center - 1.5}
@@ -629,9 +576,8 @@ function AnalogAppleClock({
           />
         </G>
 
-        {/* Minute hand */}
         <G transform={`rotate(${minuteAngle}, ${center}, ${center})`}>
-          <Rect x={center - 1} y={center - radius * 0.69} width={4.2} height={radius * 0.74} rx={2} fill={handShade} opacity={0.55} />
+          <Rect x={center - 1} y={center - radius * 0.69} width={4.2} height={radius * 0.74} rx={2} fill={handShade} opacity={0.58} />
           <Rect
             x={center - 2}
             y={center - radius * 0.72}
@@ -650,14 +596,13 @@ function AnalogAppleClock({
           />
         </G>
 
-        {/* Second hand */}
         <G transform={`rotate(${secondAngle}, ${center}, ${center})`}>
           <Line
             x1={center + 0.9}
             y1={center + 15}
             x2={center + 0.9}
             y2={center - radius * 0.8}
-            stroke="rgba(0,0,0,0.4)"
+            stroke="rgba(0,0,0,0.42)"
             strokeWidth={1.9}
           />
           <Line
@@ -674,8 +619,7 @@ function AnalogAppleClock({
           <Circle cx={center} cy={center + 12} r={2.3} fill={secondColor} />
         </G>
 
-        {/* Center gem */}
-        <Circle cx={center + 0.7} cy={center + 0.9} r={5.4} fill="rgba(0,0,0,0.45)" />
+        <Circle cx={center + 0.7} cy={center + 0.9} r={5.4} fill="rgba(0,0,0,0.48)" />
         <Circle
           cx={center}
           cy={center}
@@ -683,21 +627,19 @@ function AnalogAppleClock({
           fill={gold ? (isDark ? '#FFF6DC' : '#3F2B05') : isDark ? '#FFFFFF' : '#000000'}
         />
         <Circle cx={center} cy={center} r={2.7} fill={secondColor} />
-        <Circle cx={center - 0.7} cy={center - 0.9} r={1.15} fill="rgba(255,255,255,0.6)" />
+        <Circle cx={center - 0.7} cy={center - 0.9} r={1.15} fill="rgba(255,255,255,0.62)" />
 
-        {/* Static bezel specular crescent */}
         <Path
           d={`M ${center - radius * 0.72} ${center - radius * 0.55}
               A ${radius * 0.85} ${radius * 0.85} 0 0 1 ${center + radius * 0.15} ${center - radius * 0.78}`}
           fill="none"
           stroke={`url(#specularArc-${uid})`}
-          strokeWidth={3.2}
+          strokeWidth={3.4}
           strokeLinecap="round"
-          opacity={0.7}
+          opacity={0.75}
         />
       </Svg>
 
-      {/* Animated metallic flash sweep */}
       <Animated.View
         pointerEvents="none"
         style={[
@@ -717,11 +659,15 @@ function AnalogAppleClock({
     return <View style={[styles.wrapper, { width: size, height: size }]}>{dial}</View>;
   }
 
+  // One rigid assembly — clock + engraving scroll / animate together.
   return (
-    <View style={styles.row}>
+    <Animated.View
+      collapsable={false}
+      style={[styles.assembly, { transform: [{ translateX: assemblyShift }] }]}
+    >
       {dial}
-      <EngravedDatePlate date={time} isDark={isDark} gold={gold || red} height={size} />
-    </View>
+      <EngravedDateBeside date={time} isDark={isDark} gold={gold || red} height={size} gleam={gleam} />
+    </Animated.View>
   );
 }
 
@@ -734,39 +680,44 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginVertical: 8,
   },
-  row: {
+  assembly: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
-    gap: 12,
+    gap: 14,
     marginVertical: 8,
   },
   outerRing: {
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,230,160,0.35)',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.55,
-    shadowRadius: 20,
-    elevation: 14,
+    borderWidth: 0,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.58,
+    shadowRadius: 22,
+    elevation: 16,
   },
   ambientGlow: {
     position: 'absolute',
-    backgroundColor: 'rgba(201,162,39,0.18)',
+    backgroundColor: 'rgba(201,162,39,0.2)',
   },
   gleamSweep: {
     position: 'absolute',
     top: 0,
     left: 0,
-    backgroundColor: 'rgba(255,248,220,0.35)',
+    backgroundColor: 'rgba(255,248,220,0.38)',
   },
-  datePlateShell: {
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+  dateCarve: {
+    maxWidth: 148,
+    paddingLeft: 2,
+    // No border, no background plate — pure engraving into the gold panel.
+  },
+  dateGap: { height: 8 },
+  dateGapSm: { height: 6 },
+  engraveLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
   },
 });
