@@ -151,6 +151,7 @@ function MatchRow({
   sent,
   busy,
   onSend,
+  onResend,
   onOpen,
 }: {
   item: AgencyClientMatch;
@@ -158,6 +159,7 @@ function MatchRow({
   sent: boolean;
   busy: boolean;
   onSend: () => void;
+  onResend?: () => void;
   onOpen: () => void;
 }) {
   const [descOpen, setDescOpen] = useState(false);
@@ -248,11 +250,21 @@ function MatchRow({
           </View>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
         {sent ? (
-          <View style={{ backgroundColor: 'rgba(52,199,89,0.16)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-            <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 11 }}>Wysłano</Text>
-          </View>
+          <>
+            <View style={{ backgroundColor: 'rgba(52,199,89,0.16)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+              <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 11 }}>Wysłano</Text>
+            </View>
+            {onResend ? (
+              <Pressable
+                onPress={onResend}
+                style={{ backgroundColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+              >
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 11 }}>{busy ? '…' : 'Wyślij ponownie'}</Text>
+              </Pressable>
+            ) : null}
+          </>
         ) : (
           <Pressable
             onPress={onSend}
@@ -950,10 +962,10 @@ export default function AgencyClientDetailScreen() {
     else void load();
   };
 
-  const sendMatches = async (offerIds: number[]) => {
+  const sendMatches = async (offerIds: number[], allowResend = false) => {
     if (!token || !offerIds.length) return;
     setBusy(`prop_${offerIds[0]}`);
-    const res = await proposeClientOffers(token, clientId, offerIds);
+    const res = await proposeClientOffers(token, clientId, offerIds, { allowResend });
     setBusy('');
     if (!res.ok) {
       Alert.alert('Wysyłka', res.message);
@@ -966,6 +978,51 @@ export default function AgencyClientDetailScreen() {
         : `Oferta jest w panelu klienta${client?.email ? ' i poszła na e-mail' : ''}.`,
     );
     void load();
+  };
+
+  const runNextStep = () => {
+    if (!client?.nextStep) return;
+    const action = client.nextStep.action;
+    if (action === 'send_offers') {
+      const ids = pendingMatches.map((item) => item.offer.id);
+      if (ids.length) void sendMatches(ids);
+      else void refreshMatchesAndReload();
+      return;
+    }
+    if (action === 'refresh_matches') {
+      void refreshMatchesAndReload();
+      return;
+    }
+    if (action === 'open_portal' || action === 'collect_feedback' || action === 'watch_listing') {
+      if (client.portalUrl) {
+        Linking.openURL(client.portalUrl.startsWith('http') ? client.portalUrl : `https://estateos.pl${client.portalUrl}`);
+      }
+      return;
+    }
+    if (action === 'propose_presentation') {
+      Alert.alert('Prezentacja', 'Wybierz ofertę z listy poniżej i zaproponuj termin.');
+      return;
+    }
+    if (action === 'accept_schedule') {
+      Alert.alert('Termin', 'Sprawdź sekcję spotkania poniżej i zaakceptuj propozycję klienta.');
+      return;
+    }
+    if (action === 'finish_acquisition' || action === 'create_offer') {
+      Alert.alert('Pozyskanie', 'Kontynuuj przewodnik pozyskania poniżej.');
+      return;
+    }
+    if (action === 'set_criteria' || action === 'verify_contact') {
+      Alert.alert('Klient', client.nextStep.hint);
+    }
+  };
+
+  const refreshMatchesAndReload = async () => {
+    if (!token) return;
+    setBusy('refresh');
+    const res = await refreshClientMatches(token, clientId);
+    setBusy('');
+    if (!res.ok) Alert.alert('Radar', res.message);
+    else void load();
   };
 
   return (
@@ -1071,6 +1128,17 @@ export default function AgencyClientDetailScreen() {
                 <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}>
                   {formatPhoneNumber(client.phone || '')} • {client.email || 'Brak e-maila'}
                 </Text>
+                {client.nextStep ? (
+                  <Pressable
+                    onPress={runNextStep}
+                    style={[styles.primary, { marginTop: 12 }]}
+                  >
+                    <Text style={styles.primaryText}>{client.nextStep.label}</Text>
+                    <Text style={{ color: '#052e16', fontSize: 11, marginTop: 4, opacity: 0.8 }} numberOfLines={2}>
+                      {client.nextStep.hint}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
 
               {/* Acquisition Card (For Sellers) */}
@@ -1658,17 +1726,50 @@ export default function AgencyClientDetailScreen() {
                     </>
                   ) : (
                     <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
-                      Wpisz ID oferty sprzedającego i zaproponuj termin — dostaną go kupujący i sprzedający.
+                      Wybierz ofertę z dopasowań i zaproponuj termin — dostaną go kupujący i sprzedający.
                     </Text>
                   )}
-                  <TextInput
-                    value={presentationOfferId}
-                    onChangeText={setPresentationOfferId}
-                    keyboardType="number-pad"
-                    placeholder="ID oferty do prezentacji"
-                    placeholderTextColor={colors.secondary}
-                    style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 8 }]}
-                  />
+                  {(client.matches || []).length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                      {[...(client.matches || [])]
+                        .sort((a, b) => Number(Boolean(b.notifiedAt)) - Number(Boolean(a.notifiedAt)) || b.score - a.score)
+                        .slice(0, 8)
+                        .map((m) => {
+                          const selected = presentationOfferId === String(m.offer.id);
+                          return (
+                            <Pressable
+                              key={m.id}
+                              onPress={() => setPresentationOfferId(String(m.offer.id))}
+                              style={{
+                                maxWidth: '100%',
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: selected ? colors.accent : colors.border,
+                                backgroundColor: selected ? 'rgba(52,199,89,0.14)' : colors.input,
+                                paddingHorizontal: 10,
+                                paddingVertical: 8,
+                              }}
+                            >
+                              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 11 }} numberOfLines={1}>
+                                #{m.offer.id} · {m.offer.title}
+                              </Text>
+                              <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 2 }}>
+                                {m.notifiedAt ? 'Wysłana' : 'Match'} · {m.score}%
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                    </View>
+                  ) : (
+                    <TextInput
+                      value={presentationOfferId}
+                      onChangeText={setPresentationOfferId}
+                      keyboardType="number-pad"
+                      placeholder="ID oferty do prezentacji"
+                      placeholderTextColor={colors.secondary}
+                      style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 8 }]}
+                    />
+                  )}
                   <Pressable
                     onPress={() => setDateModalField('presentation')}
                     style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
@@ -2003,8 +2104,21 @@ export default function AgencyClientDetailScreen() {
                           item={item}
                           colors={colors}
                           sent
-                          busy={false}
+                          busy={busy === `prop_${item.offer.id}`}
                           onSend={() => undefined}
+                          onResend={() => {
+                            Alert.alert(
+                              'Wyślij ponownie',
+                              'Klient dostał już tę ofertę. Wysłać jeszcze raz?',
+                              [
+                                { text: 'Anuluj', style: 'cancel' },
+                                {
+                                  text: 'Wyślij',
+                                  onPress: () => void sendMatches([item.offer.id], true),
+                                },
+                              ],
+                            );
+                          }}
                           onOpen={() => navigation.navigate('OfferDetail', { offerId: item.offer.id })}
                         />
                       ))}

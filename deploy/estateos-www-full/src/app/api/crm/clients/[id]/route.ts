@@ -38,6 +38,7 @@ import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
+import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -96,10 +97,30 @@ export async function GET(req: Request, ctx: RouteCtx) {
       ?.toISOString?.() || null,
   });
 
+  const nextStep = resolveClientNextStep({
+    type: client.type,
+    email: client.email,
+    phone: client.phone,
+    emailVerifiedAt: client.emailVerifiedAt,
+    phoneVerifiedAt: client.phoneVerifiedAt,
+    linkedUserId: client.linkedUserId,
+    hasCriteria: Boolean(client.buyerPreference),
+    matchCount: client.matches.length,
+    sentCount: client.matches.filter((m) => m.notifiedAt).length,
+    feedbackCount: client.matches.filter((m) =>
+      clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)),
+    ).length,
+    meetingStatus: meeting?.status ?? null,
+    presentationStatus: presentation?.status ?? null,
+    acquisitionStatus: acquisition?.status ?? null,
+    linkedOfferId: client.linkedOfferId,
+  });
+
   return NextResponse.json({
     success: true,
     client: {
       ...shapeClientListItem(client),
+      nextStep,
       notes: client.notes,
       sellerTransactionType: client.sellerTransactionType,
       sellerPropertyType: client.sellerPropertyType,
@@ -332,6 +353,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       agencyUserId,
       channel: body.channel === 'email' ? 'email' : 'manual',
       customMessage: body.message,
+      skipIfNotified: body.allowResend ? false : undefined,
     });
     return NextResponse.json({ success: true, ...result });
   }
@@ -365,6 +387,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       agencyUserId,
       channel: body.channel === 'email' ? 'email' : 'manual',
       customMessage: body.message,
+      allowResend: Boolean(body.allowResend),
     });
     return NextResponse.json({ success: true, ...result });
   }

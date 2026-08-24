@@ -447,6 +447,7 @@ export async function notifyAgencyClientAboutOffers(params: {
   agencyUserId: number;
   channel: 'email' | 'manual';
   customMessage?: string;
+  allowResend?: boolean;
 }) {
   const offerIds = [...new Set(params.offerIds.filter((id) => Number.isFinite(id)))];
   if (!offerIds.length) throw new Error('Wybierz co najmniej jedną ofertę.');
@@ -463,7 +464,7 @@ export async function notifyAgencyClientAboutOffers(params: {
     select: { offerId: true },
   });
   const blockedIds = new Set(alreadyNotified.map((m) => m.offerId));
-  const toSend = offerIds.filter((id) => !blockedIds.has(id));
+  const toSend = params.allowResend ? offerIds : offerIds.filter((id) => !blockedIds.has(id));
 
   if (!toSend.length && params.channel === 'email') {
     throw new Error('Wszystkie zaznaczone oferty zostały już wysłane tym klientowi.');

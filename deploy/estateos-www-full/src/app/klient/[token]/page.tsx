@@ -16,6 +16,7 @@ import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
 import ClientPortalChatDock from "@/components/portal/ClientPortalChatDock";
+import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
@@ -410,9 +411,12 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               ) : null}
             </div>
             <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-[10px]">
-              Potwierdzone
+              {portal.meeting.status === "confirmed" ? "Potwierdzone" : "Do potwierdzenia"}
             </span>
           </div>
+          {portal.meeting.status === "pending" && portal.meeting.reason ? (
+            <p className="mt-3 text-sm text-amber-700">Prośba o zmianę: {portal.meeting.reason}</p>
+          ) : null}
           {portal.meeting.prepLabels?.length ? (
             <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
               <p className="eos-portal-label">Na spotkanie proszę przygotować</p>
@@ -425,6 +429,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 ))}
               </ul>
             </div>
+          ) : null}
+          {token ? (
+            <ClientPortalScheduleActions
+              token={token}
+              kind="meeting"
+              slot={portal.meeting}
+              onDone={() => load()}
+            />
           ) : null}
         </section>
       ) : null}
@@ -585,9 +597,20 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               ) : null}
             </div>
             <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-[10px]">
-              {portal.presentation.status === "confirmed" ? "Potwierdzona" : "Umówiona"}
+              {portal.presentation.status === "confirmed" ? "Potwierdzona" : "Do potwierdzenia"}
             </span>
           </div>
+          {portal.presentation.status === "pending" && portal.presentation.reason ? (
+            <p className="mt-3 text-sm text-amber-700">Prośba o zmianę: {portal.presentation.reason}</p>
+          ) : null}
+          {token ? (
+            <ClientPortalScheduleActions
+              token={token}
+              kind="presentation"
+              slot={portal.presentation}
+              onDone={() => load()}
+            />
+          ) : null}
         </section>
       ) : null}
 

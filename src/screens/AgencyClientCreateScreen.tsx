@@ -100,6 +100,7 @@ export default function AgencyClientCreateScreen() {
   const [wizardStep, setWizardStep] = useState(1);
   const [emailPreview, setEmailPreview] = useState<ClientEmailPreviewData | null>(null);
   const submittedRef = useRef(false);
+  const forceCreateRef = useRef(false);
 
   const colors = {
     bg: isDark ? '#000' : '#F2F2F7',
@@ -337,17 +338,22 @@ export default function AgencyClientCreateScreen() {
     if (duplicateMatches.length > 0 && !ignoreDuplicateWarning) {
       Alert.alert(
         'Klient istnieje w bazie',
-        `Klient o tych danych (e-mail/telefon) już znajduje się w systemie CRM. Czy na pewno chcesz utworzyć powracający/drugi profil klienta?`,
+        `Klient o tych danych (e-mail/telefon) już znajduje się w systemie CRM.`,
         [
           { text: 'Anuluj', style: 'cancel' },
           {
-            text: 'Dodaj klienta mimo to',
+            text: 'Otwórz istniejącego',
+            onPress: () =>
+              navigation.replace('AgencyClientDetail', { clientId: duplicateMatches[0].id }),
+          },
+          {
+            text: 'Dodaj mimo to',
             onPress: () => {
               setIgnoreDuplicateWarning(true);
-              void continueAfterDuplicateCheck();
+              void continueAfterDuplicateCheck(true);
             },
           },
-        ]
+        ],
       );
       return;
     }
@@ -355,12 +361,13 @@ export default function AgencyClientCreateScreen() {
     void continueAfterDuplicateCheck();
   };
 
-  const continueAfterDuplicateCheck = () => {
+  const continueAfterDuplicateCheck = (forceCreate = ignoreDuplicateWarning) => {
+    forceCreateRef.current = forceCreate;
     if (form.email.trim()) {
       setEmailPreview(buildEmailPreview());
       return;
     }
-    void executeCreate();
+    void executeCreate(forceCreate);
   };
 
   const meetingIso = () => {
@@ -435,7 +442,7 @@ export default function AgencyClientCreateScreen() {
     }
   };
 
-  const executeCreate = async () => {
+  const executeCreate = async (forceCreate = ignoreDuplicateWarning) => {
     if (!token) return;
     setBusy(true);
     try {
@@ -448,6 +455,7 @@ export default function AgencyClientCreateScreen() {
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
         notes: form.internalNotes.trim() || null,
+        forceCreate,
         ...(type === 'SELLER'
           ? {
               sellerCity: address.city || form.sellerCity || null,
@@ -473,6 +481,25 @@ export default function AgencyClientCreateScreen() {
       });
 
       if (!res.ok) {
+        if ('code' in res && res.code === 'DUPLICATE_CLIENT' && res.matches?.length) {
+          setLookupMatches(res.matches);
+          setIgnoreDuplicateWarning(false);
+          Alert.alert('Klient istnieje w bazie', res.message, [
+            { text: 'Anuluj', style: 'cancel' },
+            {
+              text: 'Otwórz istniejącego',
+              onPress: () => navigation.replace('AgencyClientDetail', { clientId: res.matches[0].id }),
+            },
+            {
+              text: 'Dodaj mimo to',
+              onPress: () => {
+                setIgnoreDuplicateWarning(true);
+                void executeCreate(true);
+              },
+            },
+          ]);
+          return;
+        }
         Alert.alert('Klient', res.message);
         return;
       }
@@ -549,7 +576,7 @@ export default function AgencyClientCreateScreen() {
         isDark={isDark}
         busy={busy}
         onCancel={() => setEmailPreview(null)}
-        onConfirm={() => void executeCreate()}
+        onConfirm={() => void executeCreate(forceCreateRef.current || ignoreDuplicateWarning)}
       />
       <View style={[styles.nav, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.navBtn}>
@@ -670,9 +697,14 @@ export default function AgencyClientCreateScreen() {
                         Ten e-mail lub telefon jest już w bazie CRM.
                       </Text>
                       {duplicateMatches.map((match) => (
-                        <Text key={match.id} style={{ color: colors.text, fontSize: 11, marginTop: 2 }}>
-                          • {match.firstName} {match.lastName}
-                        </Text>
+                        <Pressable
+                          key={match.id}
+                          onPress={() => navigation.replace('AgencyClientDetail', { clientId: match.id })}
+                        >
+                          <Text style={{ color: colors.text, fontSize: 11, marginTop: 2, textDecorationLine: 'underline' }}>
+                            • {match.firstName} {match.lastName} — otwórz
+                          </Text>
+                        </Pressable>
                       ))}
                     </View>
                   </View>

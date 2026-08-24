@@ -50,6 +50,13 @@ export type AgencyClientMatch = {
   };
 };
 
+export type AgencyClientNextStep = {
+  id: string;
+  label: string;
+  hint: string;
+  action: string;
+};
+
 export type AgencyClientDetail = AgencyClientListItem & {
   notes: string | null;
   portalUrl: string | null;
@@ -60,6 +67,7 @@ export type AgencyClientDetail = AgencyClientListItem & {
   sellerDistrict: string | null;
   buyerFilters: Record<string, unknown> | null;
   matches: AgencyClientMatch[];
+  nextStep?: AgencyClientNextStep | null;
   intelligence?: {
     enabled: boolean;
     intervalHours: number;
@@ -151,6 +159,18 @@ export async function createAgencyClient(
     body: JSON.stringify(body),
   });
   const json = await parseJson(res);
+  if (res.status === 409) {
+    return {
+      ok: false as const,
+      code: 'DUPLICATE_CLIENT' as const,
+      message: String(json?.error || 'Klient o tym e-mailu lub telefonie już jest w CRM.'),
+      matches: (Array.isArray(json?.matches) ? json.matches : []) as Array<{
+        id: number;
+        firstName: string;
+        lastName: string;
+      }>,
+    };
+  }
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się dodać klienta.') };
   return { ok: true as const, clientId: Number(json.client?.id) };
 }
@@ -187,18 +207,33 @@ export async function refreshClientMatches(token: string, id: number) {
   return { ok: true as const };
 }
 
-export async function proposeClientOffers(token: string, id: number, offerIds: number[]) {
+export async function proposeClientOffers(
+  token: string,
+  id: number,
+  offerIds: number[],
+  opts?: { allowResend?: boolean },
+) {
   const res = await fetch(`${API_URL}/api/crm/clients/${id}`, {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'notify_offers', offerIds, channel: 'email' }),
+    body: JSON.stringify({
+      action: 'notify_offers',
+      offerIds,
+      channel: 'email',
+      allowResend: Boolean(opts?.allowResend),
+    }),
   });
   const json = await parseJson(res);
   if (!res.ok) {
     const fallback = await fetch(`${API_URL}/api/crm/clients/${id}`, {
       method: 'POST',
       headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'notify_offer', offerId: offerIds[0], channel: 'email' }),
+      body: JSON.stringify({
+        action: 'notify_offer',
+        offerId: offerIds[0],
+        channel: 'email',
+        allowResend: Boolean(opts?.allowResend),
+      }),
     });
     const fallbackJson = await parseJson(fallback);
     if (!fallback.ok) return { ok: false as const, message: String(fallbackJson?.error || json?.error || 'Nie udało się zaproponować.') };
