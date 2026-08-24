@@ -9,8 +9,7 @@ export type MobileFetchInit = RequestInit & { timeoutMs?: number };
 function mergeHeaders(init: MobileFetchInit): Record<string, string> {
   const base: Record<string, string> = {
     Accept: 'application/json',
-    'Cache-Control': 'no-cache',
-    Pragma: 'no-cache',
+    'Accept-Encoding': 'gzip, deflate',
     'User-Agent': `EstateOS-Mobile/${Platform.OS}`,
   };
   const extra = init.headers;

@@ -35,6 +35,7 @@ import {
   submitOfferActivation,
 } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
+import { trimOfferForMobileCatalog } from '@/lib/mobileOfferCatalogTrim';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -98,23 +99,6 @@ export async function GET(req: Request) {
   }
 
   try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS OfferViewLog (
-        id BIGINT NOT NULL AUTO_INCREMENT,
-        offerId INT NOT NULL,
-        visitorKey VARCHAR(128) NOT NULL,
-        source VARCHAR(16) NOT NULL DEFAULT 'web',
-        ip VARCHAR(64) NULL,
-        userAgent VARCHAR(255) NULL,
-        hits INT NOT NULL DEFAULT 1,
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        lastSeenAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        UNIQUE KEY OfferViewLog_offerId_visitorKey_key (offerId, visitorKey),
-        KEY OfferViewLog_offerId_lastSeenAt_idx (offerId, lastSeenAt)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
-
     const offers = await prisma.offer.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -145,17 +129,22 @@ export async function GET(req: Request) {
       });
     }
 
-    const viewsRows = await prisma.$queryRawUnsafe<any[]>(
-      `
-        SELECT offerId, COUNT(*) AS total
-        FROM OfferViewLog
-        WHERE offerId IN (${offerIds.join(',')})
-        GROUP BY offerId
-      `
-    );
-    const viewsMap = new Map<number, number>(
-      viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
-    );
+    let viewsMap = new Map<number, number>();
+    try {
+      const viewsRows = await prisma.$queryRawUnsafe<any[]>(
+        `
+          SELECT offerId, COUNT(*) AS total
+          FROM OfferViewLog
+          WHERE offerId IN (${offerIds.join(',')})
+          GROUP BY offerId
+        `
+      );
+      viewsMap = new Map<number, number>(
+        viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
+      );
+    } catch {
+      // OfferViewLog unavailable — keep zero views rather than fail catalog.
+    }
 
     let favoritesMap = new Map<number, number>();
     try {
@@ -189,11 +178,19 @@ export async function GET(req: Request) {
         viewsCount,
         favoritesCount,
       };
-      return enrichOfferWithLegalAliases(enrichOfferPriceDiscountFields(withListPrice));
+      const enriched = enrichOfferWithLegalAliases(enrichOfferPriceDiscountFields(withListPrice));
+      return catalogOnly ? trimOfferForMobileCatalog(enriched) : enriched;
     });
 
+    const cacheHeaders: Record<string, string> = catalogOnly && !userId && !includeAll
+      ? {
+          'Cache-Control': 'public, max-age=60, stale-while-revalidate=120',
+          Vary: 'Accept-Encoding',
+        }
+      : { 'Cache-Control': 'private, no-store, max-age=0' };
+
     return NextResponse.json({ success: true, offers: normalizedOffers }, {
-      headers: { 'Cache-Control': 'no-store, max-age=0' },
+      headers: cacheHeaders,
     });
 
   } catch (error: unknown) {

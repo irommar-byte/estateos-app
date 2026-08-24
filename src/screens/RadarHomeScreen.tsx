@@ -85,6 +85,11 @@ import { getOfferLifecycleState, isOfferClosed } from '../utils/offerLifecycle';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
 import { mobileFetchJson } from '../utils/mobileFetch';
+import {
+  readMobileCatalogCache,
+  readMobileCatalogMemory,
+  writeMobileCatalogCache,
+} from '../utils/mobileCatalogCache';
 import { parseOfferList } from '../utils/offerCatalogPipeline';
 import { resolveWarsawDistrictFromText } from '../utils/warsawNeighborhoodDistrict';
 import { findWebOfferById } from '../utils/webOffersFallback';
@@ -2227,10 +2232,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
    * — wtedy nie migamy spinnerem, bo ekran nie ma fokusu i nikt go nie widzi.
    */
   const fetchOffersOnce = useCallback(
-    async (showSpinner: boolean): Promise<boolean> => {
+    async (showSpinner: boolean, opts?: { forceNetwork?: boolean }): Promise<boolean> => {
       if (showSpinner) setLoading(true);
 
-      const applyRawOfferList = (rawList: any[]) => {
+      const applyRawOfferList = (rawList: any[], persistCache = true) => {
         const activeOnly = rawList.filter((o: any) => !isOfferClosed(o));
         setCatalogRawOffers(activeOnly);
         const mapped = activeOnly
@@ -2239,41 +2244,41 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         setOffers(mapped);
         catalogCountRef.current = mapped.length;
         setOffersFetchError('');
+        if (persistCache) {
+          void writeMobileCatalogCache(activeOnly as Record<string, unknown>[]);
+        }
       };
 
-      try {
-        const endpoints = [
-          `${API_URL}/api/mobile/v1/offers?catalog=1`,
-          `${API_URL}/api/mobile/v1/offers`,
-          `${API_URL}/api/offers`,
-        ];
-        let lastError = '';
-
-        for (const url of endpoints) {
-          try {
-            const { response: res, data } = await mobileFetchJson(url);
-            const list = parseOfferList(data);
-            if (res.ok && Array.isArray(list)) {
-              applyRawOfferList(list);
-              return true;
-            }
-            if (res.ok && list === null) {
-              lastError = 'Nieprawidłowa odpowiedź serwera (brak listy ofert)';
-            } else {
-              lastError = `HTTP ${res.status}`;
-            }
-          } catch (err) {
-            lastError = err instanceof Error ? err.message : 'network';
-          }
+      const useStaleWhileRevalidate = !opts?.forceNetwork && !showSpinner;
+      if (useStaleWhileRevalidate) {
+        const warm = readMobileCatalogMemory(45_000);
+        if (warm?.length) {
+          applyRawOfferList(warm, false);
         }
+      } else if (!opts?.forceNetwork) {
+        const cached = await readMobileCatalogCache(90_000);
+        if (cached?.length) {
+          applyRawOfferList(cached, false);
+          if (!showSpinner) return true;
+        }
+      }
 
+      try {
+        const url = `${API_URL}/api/mobile/v1/offers?catalog=1`;
+        const { response: res, data } = await mobileFetchJson(url, { timeoutMs: 60_000 });
+        const list = parseOfferList(data);
+        if (res.ok && Array.isArray(list)) {
+          applyRawOfferList(list);
+          return true;
+        }
+        const lastError = res.ok && list === null ? 'Nieprawidłowa odpowiedź serwera (brak listy ofert)' : `HTTP ${res.status}`;
         if (catalogCountRef.current === 0) {
           setOffersFetchError(lastError || 'Brak połączenia z katalogiem ofert');
         }
         return false;
-      } catch {
+      } catch (err) {
         if (catalogCountRef.current === 0) {
-          setOffersFetchError('Brak połączenia z katalogiem ofert');
+          setOffersFetchError(err instanceof Error ? err.message : 'Brak połączenia z katalogiem ofert');
         }
         return false;
       } finally {
