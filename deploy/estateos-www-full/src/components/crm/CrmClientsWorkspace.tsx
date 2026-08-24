@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
-import OpenContactThreadButton from "@/components/contact/OpenContactThreadButton";
+import CrmClientLiveChat from "@/components/crm/CrmClientLiveChat";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import CrmIntelligenceAssistant from "@/components/crm/CrmIntelligenceAssistant";
 import { timelineKindLabel } from "@/lib/desk/timeline";
@@ -956,15 +956,11 @@ export default function CrmClientsWorkspace() {
                     <ExternalLink className="size-3.5" />
                   </Link>
                 ) : null}
-                {detail.linkedUserId ? (
-                  <OpenContactThreadButton
-                    peerUserId={detail.linkedUserId}
-                    peerName={`${detail.firstName} ${detail.lastName}`.trim()}
-                    label="Napisz do klienta"
-                    returnTo="/moje-konto/crm?tab=klienci"
-                    className={eosBtn("secondary", { size: "sm" })}
-                  />
-                ) : null}
+                <CrmClientLiveChat
+                  clientId={detail.id}
+                  clientName={`${detail.firstName} ${detail.lastName}`.trim()}
+                  className={eosBtn("secondary", { size: "sm" })}
+                />
               </div>
 
               <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-3">

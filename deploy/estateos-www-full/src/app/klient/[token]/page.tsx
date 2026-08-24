@@ -15,7 +15,8 @@ import {
 import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
-import ClientPortalChatDock from "@/components/portal/ClientPortalChatDock";
+import ClientPortalLiveChat from "@/components/portal/ClientPortalLiveChat";
+import ClientPortalSetupPrompt from "@/components/portal/ClientPortalSetupPrompt";
 import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
@@ -348,7 +349,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
         {/* Agency Office Details & Direct Actions */}
         <div className="mt-6 grid gap-3 border-t border-[var(--eos-border)]/60 pt-6 sm:grid-cols-2 lg:grid-cols-3">
-          {token ? <ClientPortalChatDock token={token} agentName={portal.agentName} /> : null}
           {portal.agentPhone && (
             <a
               href={`tel:${portal.agentPhone}`}
@@ -394,6 +394,12 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             </a>
           )}
         </div>
+        {token ? (
+          <div className="mt-4 space-y-3">
+            <ClientPortalLiveChat token={token} agentName={portal.agentName} />
+            <ClientPortalSetupPrompt token={token} />
+          </div>
+        ) : null}
       </header>
 
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}

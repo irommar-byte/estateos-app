@@ -68,6 +68,7 @@ export type AgencyClientDetail = AgencyClientListItem & {
   buyerFilters: Record<string, unknown> | null;
   matches: AgencyClientMatch[];
   nextStep?: AgencyClientNextStep | null;
+  portalUnreadCount?: number;
   intelligence?: {
     enabled: boolean;
     intervalHours: number;
@@ -168,6 +169,8 @@ export async function createAgencyClient(
         id: number;
         firstName: string;
         lastName: string;
+        email: string | null;
+        phone: string | null;
       }>,
     };
   }

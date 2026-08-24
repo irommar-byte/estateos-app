@@ -155,7 +155,7 @@ function MatchRow({
   onOpen,
 }: {
   item: AgencyClientMatch;
-  colors: { text: string; secondary: string; accent: string; border: string };
+  colors: { text: string; secondary: string; accent: string; border: string; card: string };
   sent: boolean;
   busy: boolean;
   onSend: () => void;
@@ -417,6 +417,9 @@ export default function AgencyClientDetailScreen() {
       return;
     }
     setClient(detail.client);
+    if (Number(detail.client.portalUnreadCount || 0) > 0) {
+      void postAgencyClientAction(token, clientId, { action: 'mark_portal_messages_read' });
+    }
     setSignerName(`${detail.client.firstName} ${detail.client.lastName}`.trim());
     setSignerEmail(detail.client.email || '');
 

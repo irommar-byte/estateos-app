@@ -8,101 +8,101 @@ datasource db {
 }
 
 model User {
-  isPro                     Boolean                       @default(false)
-  leadsReceived             LeadTransfer[]                @relation("LeadAgency")
-  leadsOwned                LeadTransfer[]                @relation("LeadOwner")
-  id                        Int                           @id @default(autoincrement())
-  email                     String                        @unique
-  phone                     String?                       @unique
-  password                  String?
-  name                      String?
-  image                     String?                       @db.Text
-  companyName               String?
-  companyAddress            String?                       @db.VarChar(255)
-  companyWebsite            String?                       @db.VarChar(255)
-  companyLogoUrl            String?                       @db.VarChar(512)
-  officePhone               String?                       @db.VarChar(64)
-  officeEmail               String?                       @db.VarChar(191)
-  nip                       String?
-  role                      Role                          @default(USER)
-  planType                  PlanType?                     @default(NONE)
-  extraListings             Int                           @default(0)
-  marketReportCredits       Int                           @default(0)
-  plusExpiresAt             DateTime?
-  proExpiresAt              DateTime?
-  isVerified                Boolean                       @default(false)
-  emailVerifiedAt           DateTime?
-  otpCode                   String?
-  otpExpiry                 DateTime?
-  pendingEmail              String?
-  pendingEmailCode          String?
-  pendingEmailExpiresAt     DateTime?
-  emailVerifyCode           String?
-  emailVerifyExpiresAt      DateTime?
-  phoneVerifiedAt           DateTime?
-  searchType                String?
-  searchDistricts           String?
-  searchMaxPrice            Int?
-  searchAreaFrom            Int?
-  searchAreaTo              Int?
-  searchPlotArea            Int?
-  searchRooms               Int?
-  buyerType                 String?
-  searchTransactionType     String?
-  searchAmenities           String?
+  isPro                       Boolean                       @default(false)
+  leadsReceived               LeadTransfer[]                @relation("LeadAgency")
+  leadsOwned                  LeadTransfer[]                @relation("LeadOwner")
+  id                          Int                           @id @default(autoincrement())
+  email                       String                        @unique
+  phone                       String?                       @unique
+  password                    String?
+  name                        String?
+  image                       String?                       @db.Text
+  companyName                 String?
+  companyAddress              String?                       @db.VarChar(255)
+  companyWebsite              String?                       @db.VarChar(255)
+  companyLogoUrl              String?                       @db.VarChar(512)
+  officePhone                 String?                       @db.VarChar(64)
+  officeEmail                 String?                       @db.VarChar(191)
+  nip                         String?
+  role                        Role                          @default(USER)
+  planType                    PlanType?                     @default(NONE)
+  extraListings               Int                           @default(0)
+  marketReportCredits         Int                           @default(0)
+  plusExpiresAt               DateTime?
+  proExpiresAt                DateTime?
+  isVerified                  Boolean                       @default(false)
+  emailVerifiedAt             DateTime?
+  otpCode                     String?
+  otpExpiry                   DateTime?
+  pendingEmail                String?
+  pendingEmailCode            String?
+  pendingEmailExpiresAt       DateTime?
+  emailVerifyCode             String?
+  emailVerifyExpiresAt        DateTime?
+  phoneVerifiedAt             DateTime?
+  searchType                  String?
+  searchDistricts             String?
+  searchMaxPrice              Int?
+  searchAreaFrom              Int?
+  searchAreaTo                Int?
+  searchPlotArea              Int?
+  searchRooms                 Int?
+  buyerType                   String?
+  searchTransactionType       String?
+  searchAmenities             String?
   /// EstateOS Intelligence opt-in (WWW + app)
-  intelligenceEnabled       Boolean                       @default(false)
-  intelligenceDecidedAt     DateTime?
+  intelligenceEnabled         Boolean                       @default(false)
+  intelligenceDecidedAt       DateTime?
   /// Inteligentne dodawanie parametrów z opisu przy imporcie
-  intelligenceSmartAddEnabled Boolean                     @default(false)
-  createdAt                 DateTime                      @default(now())
-  updatedAt                 DateTime                      @updatedAt
-  lastLoginIp               String?                       @db.VarChar(64)
-  lastLoginAt               DateTime?
-  accounts                  Account[]
-  proposedAppointments      Appointment[]                 @relation("ProposedAppointments")
-  Authenticator             Authenticator[]
-  sentBids                  Bid[]                         @relation("SentBids")
-  dealsAsBuyer              Deal[]                        @relation("DealBuyer")
-  dealsAsSeller             Deal[]                        @relation("DealSeller")
-  sentDealMessages          DealMessage[]                 @relation("SentDealMessages")
-  contactThreadsAsLow       ContactThread[]               @relation("ContactThreadLow")
-  contactThreadsAsHigh      ContactThread[]               @relation("ContactThreadHigh")
-  sentContactMessages       ContactMessage[]              @relation("SentContactMessages")
-  offers                    Offer[]
-  legalVerificationRequests LegalVerificationRequest[]
-  photoSessionRequests      PhotoSessionRequest[]         @relation("PhotoSessionRequester")
-  photoSessionsAccepted     PhotoSessionRequest[]         @relation("PhotoSessionAcceptedBy")
-  reviewsReceived           Review[]                      @relation("ReviewsReceived")
-  reviewsGiven              Review[]                      @relation("ReviewsGiven")
-  sessions                  Session[]
-  devices                   Device[]
-  notifications             Notification[]
-  notificationPrefs         NotificationPreference[]
-  favoriteOffers            FavoriteOffer[]
-  devicePushPrefs           DevicePushPreference?
-  radarPreference           RadarPreference?
-  radarSearchHistory        RadarSearchHistory[]
-  calendarNotes             CalendarNote[]
-  discoveryEvents           DiscoveryEvent[]
-  discoveryProfile          DiscoveryProfile?
-  discoverySessions         DiscoverySession[]
-  discoveryTropes           DiscoveryTrope[]
-  hostedOpenHouseEvents     OpenHouseEvent[]              @relation("OpenHouseHost")
-  openHouseReservations     OpenHouseReservation[]        @relation("OpenHouseGuest")
-  hostedAuctionEvents       AuctionEvent[]                @relation("AuctionHost")
-  auctionBids               AuctionBidEntry[]             @relation("AuctionBidder")
-  agencyClients             AgencyClient[]                @relation("AgencyClientsOwned")
-  crmProfiles               AgencyClient[]                @relation("AgencyClientLinkedUser")
-  deskCases                 DeskCase[]                    @relation("DeskCasesOwned")
-  deskTasks                 DeskTask[]                    @relation("DeskTasksOwned")
-  offersAsOriginalOwner     Offer[]                       @relation("OfferOriginalOwner")
-  ownedAgencyCompany        AgencyCompany?                @relation("AgencyCompanyOwner")
-  agencyMembership          AgencyCompanyMember?          @relation("AgencyCompanyMembership")
-  approvedAgencyMembers     AgencyCompanyMember[]         @relation("AgencyMemberApprover")
-  agencyCreditsReceived     AgencyCompanyCreditTransfer[] @relation("AgencyCreditRecipient")
-  agencyCreditsGranted      AgencyCompanyCreditTransfer[] @relation("AgencyCreditCreator")
-  marketValuationReports    MarketValuationReport[]
+  intelligenceSmartAddEnabled Boolean                       @default(false)
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+  lastLoginIp                 String?                       @db.VarChar(64)
+  lastLoginAt                 DateTime?
+  accounts                    Account[]
+  proposedAppointments        Appointment[]                 @relation("ProposedAppointments")
+  Authenticator               Authenticator[]
+  sentBids                    Bid[]                         @relation("SentBids")
+  dealsAsBuyer                Deal[]                        @relation("DealBuyer")
+  dealsAsSeller               Deal[]                        @relation("DealSeller")
+  sentDealMessages            DealMessage[]                 @relation("SentDealMessages")
+  contactThreadsAsLow         ContactThread[]               @relation("ContactThreadLow")
+  contactThreadsAsHigh        ContactThread[]               @relation("ContactThreadHigh")
+  sentContactMessages         ContactMessage[]              @relation("SentContactMessages")
+  offers                      Offer[]
+  legalVerificationRequests   LegalVerificationRequest[]
+  photoSessionRequests        PhotoSessionRequest[]         @relation("PhotoSessionRequester")
+  photoSessionsAccepted       PhotoSessionRequest[]         @relation("PhotoSessionAcceptedBy")
+  reviewsReceived             Review[]                      @relation("ReviewsReceived")
+  reviewsGiven                Review[]                      @relation("ReviewsGiven")
+  sessions                    Session[]
+  devices                     Device[]
+  notifications               Notification[]
+  notificationPrefs           NotificationPreference[]
+  favoriteOffers              FavoriteOffer[]
+  devicePushPrefs             DevicePushPreference?
+  radarPreference             RadarPreference?
+  radarSearchHistory          RadarSearchHistory[]
+  calendarNotes               CalendarNote[]
+  discoveryEvents             DiscoveryEvent[]
+  discoveryProfile            DiscoveryProfile?
+  discoverySessions           DiscoverySession[]
+  discoveryTropes             DiscoveryTrope[]
+  hostedOpenHouseEvents       OpenHouseEvent[]              @relation("OpenHouseHost")
+  openHouseReservations       OpenHouseReservation[]        @relation("OpenHouseGuest")
+  hostedAuctionEvents         AuctionEvent[]                @relation("AuctionHost")
+  auctionBids                 AuctionBidEntry[]             @relation("AuctionBidder")
+  agencyClients               AgencyClient[]                @relation("AgencyClientsOwned")
+  crmProfiles                 AgencyClient[]                @relation("AgencyClientLinkedUser")
+  deskCases                   DeskCase[]                    @relation("DeskCasesOwned")
+  deskTasks                   DeskTask[]                    @relation("DeskTasksOwned")
+  offersAsOriginalOwner       Offer[]                       @relation("OfferOriginalOwner")
+  ownedAgencyCompany          AgencyCompany?                @relation("AgencyCompanyOwner")
+  agencyMembership            AgencyCompanyMember?          @relation("AgencyCompanyMembership")
+  approvedAgencyMembers       AgencyCompanyMember[]         @relation("AgencyMemberApprover")
+  agencyCreditsReceived       AgencyCompanyCreditTransfer[] @relation("AgencyCreditRecipient")
+  agencyCreditsGranted        AgencyCompanyCreditTransfer[] @relation("AgencyCreditCreator")
+  marketValuationReports      MarketValuationReport[]
 }
 
 model Alert {
@@ -167,88 +167,88 @@ model PageVisitLog {
 }
 
 model Offer {
-  leadTransfers             LeadTransfer[]
-  favoritedBy               FavoriteOffer[]
-  id                        Int                        @id @default(autoincrement())
-  title                     String
-  description               String?                    @db.Text
-  transactionType           TransactionType            @default(SELL)
-  propertyType              PropertyType               @default(FLAT)
-  condition                 PropertyCondition          @default(READY)
-  price                     Float
+  leadTransfers              LeadTransfer[]
+  favoritedBy                FavoriteOffer[]
+  id                         Int                        @id @default(autoincrement())
+  title                      String
+  description                String?                    @db.Text
+  transactionType            TransactionType            @default(SELL)
+  propertyType               PropertyType               @default(FLAT)
+  condition                  PropertyCondition          @default(READY)
+  price                      Float
   /// Kwota w walucie wpisanej przez użytkownika (alias API: priceAmount).
-  priceCurrency             String                     @default("PLN") @db.VarChar(8)
+  priceCurrency              String                     @default("PLN") @db.VarChar(8)
   /// Canonical PLN — sortowanie, filtry radaru, porównania.
-  pricePln                  Float?
-  exchangeRateUsed          Float?
-  exchangeRateDate          DateTime?                  @db.Date
-  pricePerSqm               Float?
-  adminFee                  Float?
+  pricePln                   Float?
+  exchangeRateUsed           Float?
+  exchangeRateDate           DateTime?                  @db.Date
+  pricePerSqm                Float?
+  adminFee                   Float?
   /// Prowizja agenta (% od ceny oferty), 0 lub 0,5–10 z krokiem 0,25 — informacyjnie; rozliczenia poza platformą.
-  agentCommissionPercent    Float?
-  deposit                   Float?
-  area                      Float
-  plotArea                  Float? /// Wymagane dla HOUSE i PLOT (walidacja aplikacji); nullable dla starszych rekordów.
-  rooms                     Int?
-  floor                     Int?
-  totalFloors               Int?
-  yearBuilt                 Int?
-  hasBalcony                Boolean                    @default(false)
-  hasElevator               Boolean                    @default(false)
-  hasStorage                Boolean                    @default(false)
-  hasParking                Boolean                    @default(false)
-  hasGarden                 Boolean                    @default(false)
-  hasAirConditioning        Boolean                    @default(false)
-  isDuplex                  Boolean                    @default(false)
-  isFurnished               Boolean                    @default(false)
-  heating                   String?
-  city                      String                     @default("Warszawa")
-  district                  String                     @default("OTHER")
-  localityCountry           String?                    @default("Polska") @db.VarChar(64)
-  localityCountryCode       String?                    @default("PL") @db.VarChar(8)
-  street                    String?
-  buildingNumber            String?
-  lat                       Float?
-  lng                       Float?
-  isExactLocation           Boolean                    @default(true)
-  images                    String?                    @db.Text
-  videoUrl                  String?
-  floorPlanUrl              String?
-  floorPlanExtraUrls        String?                    @db.Text
-  floorPlan3dUrl            String?
-  floorPlanScanMeta         String?                    @db.Text
-  landRegistryNumber        String?                    @db.VarChar(64)
-  apartmentNumber           String?                    @db.VarChar(32)
-  legalCheckStatus          String                     @default("NONE") @db.VarChar(16)
-  legalCheckSubmittedAt     DateTime?
-  legalCheckReviewedAt      DateTime?
-  legalCheckReviewedBy      Int?
-  legalCheckRejectionReason String?                    @db.VarChar(64)
-  legalCheckRejectionText   String?                    @db.Text
-  legalCheckOwnerNote       String?                    @db.Text
-  isLegalSafeVerified       Boolean                    @default(false)
+  agentCommissionPercent     Float?
+  deposit                    Float?
+  area                       Float
+  plotArea                   Float? /// Wymagane dla HOUSE i PLOT (walidacja aplikacji); nullable dla starszych rekordów.
+  rooms                      Int?
+  floor                      Int?
+  totalFloors                Int?
+  yearBuilt                  Int?
+  hasBalcony                 Boolean                    @default(false)
+  hasElevator                Boolean                    @default(false)
+  hasStorage                 Boolean                    @default(false)
+  hasParking                 Boolean                    @default(false)
+  hasGarden                  Boolean                    @default(false)
+  hasAirConditioning         Boolean                    @default(false)
+  isDuplex                   Boolean                    @default(false)
+  isFurnished                Boolean                    @default(false)
+  heating                    String?
+  city                       String                     @default("Warszawa")
+  district                   String                     @default("OTHER")
+  localityCountry            String?                    @default("Polska") @db.VarChar(64)
+  localityCountryCode        String?                    @default("PL") @db.VarChar(8)
+  street                     String?
+  buildingNumber             String?
+  lat                        Float?
+  lng                        Float?
+  isExactLocation            Boolean                    @default(true)
+  images                     String?                    @db.Text
+  videoUrl                   String?
+  floorPlanUrl               String?
+  floorPlanExtraUrls         String?                    @db.Text
+  floorPlan3dUrl             String?
+  floorPlanScanMeta          String?                    @db.Text
+  landRegistryNumber         String?                    @db.VarChar(64)
+  apartmentNumber            String?                    @db.VarChar(32)
+  legalCheckStatus           String                     @default("NONE") @db.VarChar(16)
+  legalCheckSubmittedAt      DateTime?
+  legalCheckReviewedAt       DateTime?
+  legalCheckReviewedBy       Int?
+  legalCheckRejectionReason  String?                    @db.VarChar(64)
+  legalCheckRejectionText    String?                    @db.Text
+  legalCheckOwnerNote        String?                    @db.Text
+  isLegalSafeVerified        Boolean                    @default(false)
   /// JSON: [{ field, label, from, to }] — ostatnia edycja czekająca na admina.
-  pendingEditChanges        Json?
+  pendingEditChanges         Json?
   /// JSON: { hasBalcony: { status, quote, quotes, source, appliedAt } } — tęczowy mózg
   intelligenceAmenityPatches Json?
-  status                    OfferStatus                @default(ACTIVE)
-  expiresAt                 DateTime?
-  promotedUntil             DateTime?
-  listPricePln              Float? /// Cena wystawienia (PLN) — punkt odniesienia dla przeceny.
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @updatedAt
-  userId                    Int
-  originalOwnerUserId       Int?
-  managementStatus          String                     @default("SELF") @db.VarChar(24)
-  deals                     Deal[]
-  user                      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  originalOwner             User?                      @relation("OfferOriginalOwner", fields: [originalOwnerUserId], references: [id], onDelete: SetNull)
-  legalVerificationRequests LegalVerificationRequest[]
-  openHouseEvents           OpenHouseEvent[]
-  auctionEvents             AuctionEvent[]
-  priceHistory              OfferPriceHistory[]
-  agencyClientMatches       AgencyClientMatch[]
-  agencyClientsLinked       AgencyClient[]             @relation("AgencyClientLinkedOffer")
+  status                     OfferStatus                @default(ACTIVE)
+  expiresAt                  DateTime?
+  promotedUntil              DateTime?
+  listPricePln               Float? /// Cena wystawienia (PLN) — punkt odniesienia dla przeceny.
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  userId                     Int
+  originalOwnerUserId        Int?
+  managementStatus           String                     @default("SELF") @db.VarChar(24)
+  deals                      Deal[]
+  user                       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalOwner              User?                      @relation("OfferOriginalOwner", fields: [originalOwnerUserId], references: [id], onDelete: SetNull)
+  legalVerificationRequests  LegalVerificationRequest[]
+  openHouseEvents            OpenHouseEvent[]
+  auctionEvents              AuctionEvent[]
+  priceHistory               OfferPriceHistory[]
+  agencyClientMatches        AgencyClientMatch[]
+  agencyClientsLinked        AgencyClient[]             @relation("AgencyClientLinkedOffer")
 
   @@index([userId], map: "Offer_userId_fkey")
   @@index([originalOwnerUserId])
@@ -1132,52 +1132,54 @@ enum AgencyClientStatus {
 
 /// Klient biura nieruchomości — poza kontem User (CRM agenta).
 model AgencyClient {
-  id                    Int                @id @default(autoincrement())
-  agencyUserId          Int
-  type                  AgencyClientType
-  status                AgencyClientStatus @default(ACTIVE)
-  firstName             String             @db.VarChar(96)
-  lastName              String             @db.VarChar(96)
-  email                 String?            @db.VarChar(191)
-  phone                 String?            @db.VarChar(32)
-  pesel                 String?            @db.VarChar(16)
-  emailVerifiedAt       DateTime?
-  phoneVerifiedAt       DateTime?
-  emailVerifyCode       String?            @db.VarChar(16)
-  emailVerifyExpiresAt  DateTime?
-  smsVerifyCode         String?            @db.VarChar(16)
-  smsVerifyExpiresAt    DateTime?
-  notes                 String?            @db.Text
-  sellerTransactionType TransactionType?
-  sellerPropertyType    PropertyType?
-  sellerCity            String?            @db.VarChar(128)
-  sellerDistrict        String?            @db.VarChar(128)
-  sellerPrice           Float?
-  sellerArea            Float?
-  sellerRooms           Int?
-  sellerDescription     String?            @db.Text
-  linkedOfferId         Int?
-  linkedUserId          Int?
-  portalToken           String?            @unique @db.VarChar(64)
-  intelligenceEnabled          Boolean   @default(false)
-  intelligenceIntervalHours    Int       @default(24)
-  intelligenceDailyLimit       Int       @default(1)
-  intelligenceMinLearns        Int       @default(3)
-  intelligenceMinScore         Int       @default(92)
-  intelligenceLastSentAt       DateTime?
-  intelligenceLockedFields     Json?
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  id                        Int                @id @default(autoincrement())
+  agencyUserId              Int
+  type                      AgencyClientType
+  status                    AgencyClientStatus @default(ACTIVE)
+  firstName                 String             @db.VarChar(96)
+  lastName                  String             @db.VarChar(96)
+  email                     String?            @db.VarChar(191)
+  phone                     String?            @db.VarChar(32)
+  pesel                     String?            @db.VarChar(16)
+  emailVerifiedAt           DateTime?
+  phoneVerifiedAt           DateTime?
+  emailVerifyCode           String?            @db.VarChar(16)
+  emailVerifyExpiresAt      DateTime?
+  smsVerifyCode             String?            @db.VarChar(16)
+  smsVerifyExpiresAt        DateTime?
+  notes                     String?            @db.Text
+  sellerTransactionType     TransactionType?
+  sellerPropertyType        PropertyType?
+  sellerCity                String?            @db.VarChar(128)
+  sellerDistrict            String?            @db.VarChar(128)
+  sellerPrice               Float?
+  sellerArea                Float?
+  sellerRooms               Int?
+  sellerDescription         String?            @db.Text
+  linkedOfferId             Int?
+  linkedUserId              Int?
+  portalToken               String?            @unique @db.VarChar(64)
+  intelligenceEnabled       Boolean            @default(false)
+  intelligenceIntervalHours Int                @default(24)
+  intelligenceDailyLimit    Int                @default(1)
+  intelligenceMinLearns     Int                @default(3)
+  intelligenceMinScore      Int                @default(92)
+  intelligenceLastSentAt    DateTime?
+  intelligenceLockedFields  Json?
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
 
-  agencyUser      User                         @relation("AgencyClientsOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
-  linkedOffer     Offer?                       @relation("AgencyClientLinkedOffer", fields: [linkedOfferId], references: [id], onDelete: SetNull)
-  linkedUser      User?                        @relation("AgencyClientLinkedUser", fields: [linkedUserId], references: [id], onDelete: SetNull)
-  buyerPreference AgencyClientBuyerPreference?
-  matches         AgencyClientMatch[]
-  activities      AgencyClientActivity[]
-  acquisition     AgencyClientAcquisition?
-  deskCases       DeskCase[]
-  deskTasks       DeskTask[]
+  agencyUser              User                           @relation("AgencyClientsOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
+  linkedOffer             Offer?                         @relation("AgencyClientLinkedOffer", fields: [linkedOfferId], references: [id], onDelete: SetNull)
+  linkedUser              User?                          @relation("AgencyClientLinkedUser", fields: [linkedUserId], references: [id], onDelete: SetNull)
+  buyerPreference         AgencyClientBuyerPreference?
+  matches                 AgencyClientMatch[]
+  activities              AgencyClientActivity[]
+  portalChatState         ClientPortalChatState?
+  portalPushSubscriptions ClientPortalPushSubscription[]
+  acquisition             AgencyClientAcquisition?
+  deskCases               DeskCase[]
+  deskTasks               DeskTask[]
 
   @@index([agencyUserId, type, status])
   @@index([agencyUserId, updatedAt])
@@ -1208,18 +1210,18 @@ model AgencyClientBuyerPreference {
 }
 
 model AgencyClientMatch {
-  id               Int       @id @default(autoincrement())
-  clientId         Int
-  offerId          Int
-  score            Int
-  notifiedAt       DateTime?
-  sharedAt         DateTime?
-  clientFeedback   String?   @db.Text
-  clientFeedbackAt DateTime?
-  intelligenceSent    Boolean  @default(false)
-  intelligenceReason  String?  @db.Text
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                 Int       @id @default(autoincrement())
+  clientId           Int
+  offerId            Int
+  score              Int
+  notifiedAt         DateTime?
+  sharedAt           DateTime?
+  clientFeedback     String?   @db.Text
+  clientFeedbackAt   DateTime?
+  intelligenceSent   Boolean   @default(false)
+  intelligenceReason String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   offer  Offer        @relation(fields: [offerId], references: [id], onDelete: Cascade)
@@ -1242,6 +1244,35 @@ model AgencyClientActivity {
   client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId, createdAt])
+}
+
+model ClientPortalChatState {
+  id               Int       @id @default(autoincrement())
+  clientId         Int       @unique
+  clientLastReadAt DateTime?
+  agentLastReadAt  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model ClientPortalPushSubscription {
+  id           Int      @id @default(autoincrement())
+  clientId     Int
+  endpoint     String   @db.Text
+  endpointHash String   @db.Char(64)
+  p256dh       String   @db.VarChar(255)
+  auth         String   @db.VarChar(255)
+  userAgent    String?  @db.VarChar(512)
+  lastUsedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, endpointHash])
+  @@index([clientId, updatedAt])
 }
 
 /// Prowadzony proces pozyskania nieruchomości wraz z utrwalonymi warunkami i śladem podpisu.
@@ -1313,35 +1344,35 @@ model PhotoSessionEvent {
 
 /// Transakcja z Rejestru Cen Nieruchomości (GUGiK) — magazyn EstateOS™ Market.
 model MarketTransaction {
-  id            Int       @id @default(autoincrement())
-  gmlId         String    @unique @db.VarChar(64)
-  sourceIip     String    @db.VarChar(64)
-  unitId        String?   @db.VarChar(191)
-  kind          String    @default("LOCAL") @db.VarChar(16)
-  teryt         String?   @db.VarChar(16)
-  city          String?   @db.VarChar(96)
-  district      String?   @db.VarChar(96)
-  street        String?   @db.VarChar(191)
-  address       String?   @db.VarChar(255)
-  lat           Float?
-  lng           Float?
-  deedAt        DateTime?
-  marketType    String?   @db.VarChar(24)
-  transactionKind String? @db.VarChar(48)
-  share         String?   @db.VarChar(24)
-  shareRatio    Float?
-  rooms         Int?
-  floor         Int?
-  areaM2        Float?
-  ancillaryM2   Float?
-  functionCode  String?   @db.VarChar(48)
-  priceGross    Float?
-  vatAmount     Float?
-  pricePerM2    Float?
-  qualityOk     Boolean   @default(false)
-  qualityFlags  String?   @db.VarChar(255)
-  ingestedAt    DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              Int       @id @default(autoincrement())
+  gmlId           String    @unique @db.VarChar(64)
+  sourceIip       String    @db.VarChar(64)
+  unitId          String?   @db.VarChar(191)
+  kind            String    @default("LOCAL") @db.VarChar(16)
+  teryt           String?   @db.VarChar(16)
+  city            String?   @db.VarChar(96)
+  district        String?   @db.VarChar(96)
+  street          String?   @db.VarChar(191)
+  address         String?   @db.VarChar(255)
+  lat             Float?
+  lng             Float?
+  deedAt          DateTime?
+  marketType      String?   @db.VarChar(24)
+  transactionKind String?   @db.VarChar(48)
+  share           String?   @db.VarChar(24)
+  shareRatio      Float?
+  rooms           Int?
+  floor           Int?
+  areaM2          Float?
+  ancillaryM2     Float?
+  functionCode    String?   @db.VarChar(48)
+  priceGross      Float?
+  vatAmount       Float?
+  pricePerM2      Float?
+  qualityOk       Boolean   @default(false)
+  qualityFlags    String?   @db.VarChar(255)
+  ingestedAt      DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([kind, qualityOk, deedAt])
   @@index([city, district, qualityOk, deedAt])
@@ -1370,15 +1401,15 @@ model MarketAreaStat {
 }
 
 model MarketIngestRun {
-  id         Int      @id @default(autoincrement())
-  status     String   @db.VarChar(24)
-  source     String   @db.VarChar(64)
-  startedAt  DateTime @default(now())
+  id         Int       @id @default(autoincrement())
+  status     String    @db.VarChar(24)
+  source     String    @db.VarChar(64)
+  startedAt  DateTime  @default(now())
   finishedAt DateTime?
-  fetched    Int      @default(0)
-  upserted   Int      @default(0)
-  skipped    Int      @default(0)
-  error      String?  @db.Text
+  fetched    Int       @default(0)
+  upserted   Int       @default(0)
+  skipped    Int       @default(0)
+  error      String?   @db.Text
 }
 
 model MarketValuationReport {
@@ -1398,41 +1429,41 @@ model MarketValuationReport {
 }
 
 model MarketValuationDraft {
-  id          Int      @id @default(autoincrement())
-  email       String   @db.VarChar(191)
-  userId      Int?
-  subjectJson String   @db.LongText
+  id           Int       @id @default(autoincrement())
+  email        String    @db.VarChar(191)
+  userId       Int?
+  subjectJson  String    @db.LongText
   listingPrice Float?
-  createdAt   DateTime @default(now())
-  consumedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  consumedAt   DateTime?
 
   @@index([email])
 }
 
 /// EstateOS™ Desk — sprawa agenta (SELL/BUY), osobno od starego CRM UI.
 model DeskCase {
-  id                   Int       @id @default(autoincrement())
-  agencyUserId         Int
-  clientId             Int
-  kind                 String    @db.VarChar(8)
-  pipelineStage        String    @db.VarChar(32)
-  source               String?   @db.VarChar(64)
-  sourceUrl            String?   @db.VarChar(1024)
-  propertySnapshot     Json?
-  linkedOfferId        Int?
-  linkedDealId         Int?
-  linkedAcquisitionId  Int?
-  nextAction           String?   @db.VarChar(255)
-  nextActionAt         DateTime?
-  temperature          String    @default("WARM") @db.VarChar(8)
-  health               String    @default("HEALTHY") @db.VarChar(16)
-  lastContactedAt      DateTime?
-  contractEndsAt       DateTime?
-  lostReason           String?   @db.VarChar(255)
-  title                String?   @db.VarChar(255)
-  metadata             Json?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                  Int       @id @default(autoincrement())
+  agencyUserId        Int
+  clientId            Int
+  kind                String    @db.VarChar(8)
+  pipelineStage       String    @db.VarChar(32)
+  source              String?   @db.VarChar(64)
+  sourceUrl           String?   @db.VarChar(1024)
+  propertySnapshot    Json?
+  linkedOfferId       Int?
+  linkedDealId        Int?
+  linkedAcquisitionId Int?
+  nextAction          String?   @db.VarChar(255)
+  nextActionAt        DateTime?
+  temperature         String    @default("WARM") @db.VarChar(8)
+  health              String    @default("HEALTHY") @db.VarChar(16)
+  lastContactedAt     DateTime?
+  contractEndsAt      DateTime?
+  lostReason          String?   @db.VarChar(255)
+  title               String?   @db.VarChar(255)
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   agencyUser User         @relation("DeskCasesOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
   client     AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -1460,8 +1491,8 @@ model DeskTask {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  agencyUser User         @relation("DeskTasksOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
-  case       DeskCase?    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  agencyUser User          @relation("DeskTasksOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
+  case       DeskCase?     @relation(fields: [caseId], references: [id], onDelete: Cascade)
   client     AgencyClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@index([agencyUserId, status, dueAt])
