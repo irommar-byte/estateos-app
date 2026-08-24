@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { fetchAgencyClients, archiveAgencyClients, type AgencyClientListItem } from '../services/agencyClientService';
+import { emitCrmClientsChanged } from '../lib/crmClientsEvents';
 import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBar';
 import { useSellerClientPipelines } from '../hooks/useSellerClientPipelines';
 import { hasLiveMeetingCountdown } from '../lib/sellerClientPipeline';
@@ -143,7 +144,9 @@ export default function AgencyClientsScreen() {
                 Alert.alert('Klienci', res.message);
                 return;
               }
+              const archivedIds = [...selectedIds];
               exitSelectMode();
+              emitCrmClientsChanged({ archivedIds, reason: 'archive' });
               await load();
             } finally {
               setArchiveBusy(false);

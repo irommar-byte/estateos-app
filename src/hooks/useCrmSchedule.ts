@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
+import { onCrmClientsChanged } from '../lib/crmClientsEvents';
 
 export type CrmScheduleKind = 'presentation' | 'open_house_host' | 'open_house_guest' | 'acquisition';
 
@@ -69,9 +70,23 @@ export function useCrmSchedule(pollMs = 60000) {
     const appSub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void load();
     });
+    const crmSub = onCrmClientsChanged((detail) => {
+      const archived = (detail.archivedIds || []).filter((id) => Number.isFinite(id) && id > 0);
+      if (archived.length) {
+        const drop = new Set(archived);
+        setEvents((prev) =>
+          prev.filter((event) => {
+            const clientId = crmEventClientId(event);
+            return clientId == null || !drop.has(clientId);
+          }),
+        );
+      }
+      void load();
+    });
     return () => {
       clearInterval(interval);
       appSub.remove();
+      crmSub.remove();
     };
   }, [load, pollMs]);
 

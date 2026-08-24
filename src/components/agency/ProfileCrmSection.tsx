@@ -6,6 +6,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../store/useAuthStore';
 import { fetchAgencyClients, type AgencyClientListItem } from '../../services/agencyClientService';
 import { crmEventClientId, useCrmSchedule, type CrmScheduleEvent } from '../../hooks/useCrmSchedule';
+import { onCrmClientsChanged } from '../../lib/crmClientsEvents';
 import TitaniumHomeKeyBackdrop from '../profile/TitaniumHomeKeyBackdrop';
 import InsetMetalRecess, { InsetMetalIconWell } from '../profile/InsetMetalRecess';
 import { profilePremiumCardShellStyle } from '../profile/profileCardElevation';
@@ -207,11 +208,21 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
   const { width: windowWidth } = useWindowDimensions();
   const isTablet = windowWidth >= 768;
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const agencyMembership = useAuthStore((s) => s.agencyMembership);
   const { events } = useCrmSchedule();
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
   const [expanded, setExpanded] = useState(false);
 
   const palette = useMemo(() => crmGoldPalette(isDark), [isDark]);
+  const companyBrand = useMemo(
+    () =>
+      agencyMembership?.companyName?.trim() ||
+      agencyMembership?.company?.name?.trim() ||
+      user?.companyName?.trim() ||
+      'EstateOS',
+    [agencyMembership, user?.companyName],
+  );
 
   const loadClients = useCallback(async () => {
     if (!token) return;
@@ -224,6 +235,13 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
       void loadClients();
     }, [loadClients]),
   );
+
+  useEffect(() => {
+    const sub = onCrmClientsChanged(() => {
+      void loadClients();
+    });
+    return () => sub.remove();
+  }, [loadClients]);
 
   const sellers = clients.filter((c) => c.type === 'SELLER').length;
   const buyers = clients.filter((c) => c.type === 'BUYER').length;
@@ -356,7 +374,13 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
 
           {expanded || !isTablet ? (
             <>
-              <AnalogAppleClock size={168} isDark={isDark} variant="gold" accent={palette.accent} />
+              <AnalogAppleClock
+                size={168}
+                isDark={isDark}
+                variant="gold"
+                accent={palette.accent}
+                brandLine={companyBrand}
+              />
               <View style={styles.pulseWrap}>
                 <PricePulseCard
                   isDark={isDark}
@@ -371,7 +395,13 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
 
           {!expanded && isTablet ? (
             <View style={styles.collapsedTablet}>
-              <AnalogAppleClock size={148} isDark={isDark} variant="gold" accent={palette.accent} />
+              <AnalogAppleClock
+                size={148}
+                isDark={isDark}
+                variant="gold"
+                accent={palette.accent}
+                brandLine={companyBrand}
+              />
               <View style={styles.collapsedRails}>
                 <PricePulseCard
                   isDark={isDark}
@@ -419,74 +449,44 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
                       : 'Brak terminów w tym tygodniu'}
                   </Text>
                 </InsetMetalRecess>
-                <View style={styles.actionsRow}>
-                  <View style={styles.actionFlex}>
-                    <InsetMetalRecess
-                      isDark={isDark}
-                      variant="gold"
-                      contentStyle={styles.actionContent}
-                      onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        navigation.navigate('AgencyClientCreate');
-                      }}
-                    >
-                      <Ionicons name="person-add" size={16} color={palette.onTrack} />
-                      <Text style={[styles.actionText, { color: palette.text }]}>Dodaj klienta</Text>
-                    </InsetMetalRecess>
-                  </View>
-                  <View style={styles.actionFlex}>
-                    <InsetMetalRecess
-                      isDark={isDark}
-                      variant="gold"
-                      contentStyle={styles.actionContent}
-                      onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        navigation.navigate('AgencyClients');
-                      }}
-                    >
-                      <Ionicons name="people" size={16} color={palette.accent} />
-                      <Text style={[styles.actionText, { color: palette.text }]}>Moi klienci</Text>
-                    </InsetMetalRecess>
-                  </View>
-                </View>
               </View>
             </View>
           ) : null}
 
+          {/* Always visible — also when the gold panel is collapsed */}
+          <View style={styles.actionsRow}>
+            <View style={styles.actionFlex}>
+              <InsetMetalRecess
+                isDark={isDark}
+                variant="gold"
+                contentStyle={styles.actionContent}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate('AgencyClientCreate');
+                }}
+              >
+                <Ionicons name="person-add" size={16} color={palette.onTrack} />
+                <Text style={[styles.actionText, { color: palette.text }]}>Dodaj klienta</Text>
+              </InsetMetalRecess>
+            </View>
+            <View style={styles.actionFlex}>
+              <InsetMetalRecess
+                isDark={isDark}
+                variant="gold"
+                contentStyle={styles.actionContent}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate('AgencyClients');
+                }}
+              >
+                <Ionicons name="people" size={16} color={palette.accent} />
+                <Text style={[styles.actionText, { color: palette.text }]}>Moi klienci</Text>
+              </InsetMetalRecess>
+            </View>
+          </View>
+
           {expanded ? (
             <>
-              <View style={styles.actionsRow}>
-                <View style={styles.actionFlex}>
-                  <InsetMetalRecess
-                    isDark={isDark}
-                    variant="gold"
-                    contentStyle={styles.actionContent}
-                    onPress={() => {
-                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      navigation.navigate('AgencyClientCreate');
-                    }}
-                  >
-                    <Ionicons name="person-add" size={16} color={palette.onTrack} />
-                    <Text style={[styles.actionText, { color: palette.text }]}>Dodaj klienta</Text>
-                  </InsetMetalRecess>
-                </View>
-
-                <View style={styles.actionFlex}>
-                  <InsetMetalRecess
-                    isDark={isDark}
-                    variant="gold"
-                    contentStyle={styles.actionContent}
-                    onPress={() => {
-                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      navigation.navigate('AgencyClients');
-                    }}
-                  >
-                    <Ionicons name="people" size={16} color={palette.accent} />
-                    <Text style={[styles.actionText, { color: palette.text }]}>Moi klienci</Text>
-                  </InsetMetalRecess>
-                </View>
-              </View>
-
               <View style={styles.metricsRow}>
                 <MetricTile
                   value={String(clients.length)}

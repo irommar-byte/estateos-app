@@ -99,9 +99,11 @@ export function formatPpsm(n: number) {
   return `${Math.round(n).toLocaleString('pl-PL')} zł/m²`;
 }
 
-export function formatSignedPct(value: number | null | undefined, digits = 1): string {
+export function formatSignedPct(value: number | null | undefined, digits = 2): string {
   if (value == null || !Number.isFinite(value)) return 'n/d';
-  if (Math.abs(value) < 0.05) return '0,0%';
+  if (Math.abs(value) < Math.pow(10, -digits) / 2) {
+    return `0,${'0'.repeat(digits)}%`;
+  }
   const shown = Math.abs(value).toFixed(digits).replace('.', ',');
   return `${value > 0 ? '+' : '-'}${shown}%`;
 }

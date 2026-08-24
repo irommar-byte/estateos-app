@@ -1,8 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import InsetMetalRecess from '../profile/InsetMetalRecess';
+import PricePulseHeartbeat from './PricePulseHeartbeat';
 import {
   fetchPricePulse,
   formatPpsm,
@@ -124,7 +123,6 @@ export default function PricePulseCard({
   const [open, setOpen] = useState(false);
   const [windowKey, setWindowKey] = useState<WindowKey>('d30');
   const [loading, setLoading] = useState(true);
-  const pulse = useRef(new Animated.Value(1)).current;
 
   const text = textColor || (isDark ? '#F4E7C5' : '#3F2B05');
   const muted = mutedColor || (isDark ? 'rgba(244,231,197,0.62)' : 'rgba(63,43,5,0.55)');
@@ -141,23 +139,13 @@ export default function PricePulseCard({
     }, [load]),
   );
 
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.08, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.92, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
-
   const spark = useMemo(() => sparklinePath(data?.sparkline || [], 280, 64), [data]);
   const win = data?.windows[windowKey] ?? null;
   const headlinePct = win?.listingChangePct ?? data?.windows.d30.listingChangePct ?? null;
   const tone = toneOfChange(headlinePct);
   const pctColor = toneColor(tone);
   const stroke = tone === 'down' ? '#F43F5E' : '#34C759';
+  const pctLabel = formatSignedPct(headlinePct, 2);
   const dual = useMemo(() => {
     const series = data?.series || [];
     const take = windowKey === 'd7' ? 14 : windowKey === 'd30' ? 30 : 90;
@@ -185,7 +173,10 @@ export default function PricePulseCard({
       >
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.eyebrow, { color: muted }]}>PULS CENOWY</Text>
+            <View style={styles.eyebrowRow}>
+              <PricePulseHeartbeat color={pctColor} size={14} />
+              <Text style={[styles.eyebrow, { color: muted }]}>PULS CENOWY</Text>
+            </View>
             <Text style={[styles.hint, { color: muted }]} numberOfLines={1}>
               {windowKey === 'd7' ? '7 dni' : windowKey === 'd90' ? '3 miesiące' : '30 dni'} · oferty
             </Text>
@@ -193,11 +184,7 @@ export default function PricePulseCard({
           {loading && !data ? (
             <ActivityIndicator size="small" color={pctColor} />
           ) : (
-            <Animated.Text
-              style={[styles.pct, { color: pctColor, transform: [{ scale: pulse }] }]}
-            >
-              {formatSignedPct(headlinePct)}
-            </Animated.Text>
+            <Text style={[styles.pct, { color: pctColor }]}>{pctLabel}</Text>
           )}
         </View>
 
@@ -216,7 +203,9 @@ export default function PricePulseCard({
         ) : null}
 
         <Text style={[styles.footer, { color: muted }]} numberOfLines={1}>
-          {data ? `${directionLabel(data.direction)} · 30 dni ${formatSignedPct(data.windows.d30.listingChangePct)}` : 'Dotknij, aby zobaczyć trend'}
+          {data
+            ? `${directionLabel(data.direction)} · 30 dni ${formatSignedPct(data.windows.d30.listingChangePct, 2)}`
+            : 'Dotknij, aby zobaczyć trend'}
         </Text>
       </InsetMetalRecess>
 
@@ -237,9 +226,7 @@ export default function PricePulseCard({
               <Text style={[styles.hint, { color: muted }]}>
                 Zmiana cen ofertowych · {windowKey === 'd7' ? '7 dni' : windowKey === 'd90' ? '3 miesiące' : '30 dni'}
               </Text>
-              <Animated.Text style={[styles.heroPct, { color: pctColor, transform: [{ scale: pulse }] }]}>
-                {formatSignedPct(headlinePct)}
-              </Animated.Text>
+              <Text style={[styles.heroPct, { color: pctColor }]}>{pctLabel}</Text>
               <Text style={[styles.narrative, { color: muted }]}>
                 {data && win ? narrative(data, win) : 'Brak pulsu.'}
               </Text>
@@ -334,6 +321,7 @@ const styles = StyleSheet.create({
   cardContent: { padding: 14, gap: 8 },
   compactContent: { paddingVertical: 12, paddingHorizontal: 12, gap: 4 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   eyebrow: { fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
   hint: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   pct: { fontSize: 26, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: -0.6 },
