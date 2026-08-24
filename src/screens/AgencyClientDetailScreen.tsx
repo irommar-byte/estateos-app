@@ -91,6 +91,13 @@ import {
   acquisitionOfferErrorSteps,
   findAcquisitionOfferGaps,
 } from '../lib/acquisitionOfferReady';
+import {
+  canSubmitOfferForOfficeActivation,
+  officeOfferStatusColor,
+  resolveOfficeOfferUiStatus,
+  type LinkedOfferSnapshot,
+} from '../lib/officeOfferStatusUi';
+import { fetchOfficeReviewCapability, postOfficeReviewAction } from '../services/agencyCompanyService';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -389,6 +396,9 @@ export default function AgencyClientDetailScreen() {
 
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [showOfferErrors, setShowOfferErrors] = useState(false);
+  const [linkedOffer, setLinkedOffer] = useState<LinkedOfferSnapshot | null>(null);
+  const [canManageOfficeOffers, setCanManageOfficeOffers] = useState(false);
+  const [offerActionBusy, setOfferActionBusy] = useState(false);
 
   const DRAFT_KEY = `@eos_acq_detail_draft_${clientId}`;
   const savedSnapshotRef = useRef('');
@@ -490,6 +500,16 @@ export default function AgencyClientDetailScreen() {
           .filter(Boolean);
         if (storedPlans.length) setPlanImages(storedPlans);
 
+        const nextLinkedOffer =
+          acq.linkedOffer ??
+          (acq.linkedOfferId
+            ? { id: acq.linkedOfferId }
+            : detail.client.linkedOfferId
+              ? { id: detail.client.linkedOfferId }
+              : null);
+        setLinkedOffer(nextLinkedOffer);
+        void fetchOfficeReviewCapability(token).then(setCanManageOfficeOffers).catch(() => setCanManageOfficeOffers(false));
+
         if (!draftPromptedRef.current && !acq.acquisition?.signedAt) {
           draftPromptedRef.current = true;
           try {
@@ -570,6 +590,36 @@ export default function AgencyClientDetailScreen() {
 
   const signed = record?.status === 'SIGNED';
   signedRef.current = signed;
+  const offerUiStatus = resolveOfficeOfferUiStatus(linkedOffer);
+  const canSubmitLinkedOffer = canSubmitOfferForOfficeActivation(linkedOffer);
+
+  const submitLinkedOfferActivation = async () => {
+    if (!token || !linkedOffer?.id) return;
+    setOfferActionBusy(true);
+    try {
+      const res = await postOfficeReviewAction(token, { action: 'submit', offerId: linkedOffer.id });
+      if (!res.ok) {
+        Alert.alert('Aktywacja oferty', res.message || 'Nie udało się wysłać oferty do aktywacji.');
+        return;
+      }
+      const acq = await fetchAcquisition(token, clientId);
+      if (acq.ok) {
+        setLinkedOffer(
+          acq.linkedOffer ??
+            (acq.linkedOfferId ? { id: acq.linkedOfferId } : linkedOffer ? { ...linkedOffer } : null),
+        );
+      }
+      await load();
+      Alert.alert(
+        'Aktywacja oferty',
+        canManageOfficeOffers
+          ? 'Oferta została aktywowana.'
+          : 'Oferta trafiła do kolejki akceptacji kierownika biura.',
+      );
+    } finally {
+      setOfferActionBusy(false);
+    }
+  };
 
   const planUploadInFlight = useRef(false);
   useEffect(() => {
@@ -1924,8 +1974,69 @@ export default function AgencyClientDetailScreen() {
                       <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6, lineHeight: 18 }}>
                         Kopia poszła do klienta. Od tej pory nic w umowie nie zmieniasz — tylko podgląd. Szkic ogłoszenia nie jest publiczny, dopóki go nie opublikujesz.
                       </Text>
-                      {client.linkedOfferId ? (
-                        <Text style={{ color: colors.text, fontWeight: '800', marginTop: 10 }}>Szkic oferty #{client.linkedOfferId}</Text>
+                      {linkedOffer ? (
+                        <View
+                          style={{
+                            marginTop: 14,
+                            padding: 14,
+                            borderRadius: 14,
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.72)',
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                            <Text style={{ color: colors.text, fontWeight: '800', flex: 1 }}>
+                              {linkedOffer.title?.trim() || `Szkic oferty #${linkedOffer.id}`}
+                            </Text>
+                            <Text
+                              style={{
+                                color: officeOfferStatusColor(offerUiStatus.key, isDark),
+                                fontSize: 10,
+                                fontWeight: '900',
+                                letterSpacing: 0.6,
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              {offerUiStatus.label}
+                            </Text>
+                          </View>
+                          {canSubmitLinkedOffer ? (
+                            <Pressable
+                              disabled={offerActionBusy}
+                              onPress={() => void submitLinkedOfferActivation()}
+                              style={[
+                                styles.primary,
+                                { marginTop: 12, opacity: offerActionBusy ? 0.6 : 1 },
+                              ]}
+                            >
+                              <Text style={styles.primaryText}>
+                                {offerActionBusy
+                                  ? 'Przetwarzam…'
+                                  : canManageOfficeOffers
+                                    ? 'Aktywuj ofertę'
+                                    : 'Wyślij do aktywacji'}
+                              </Text>
+                            </Pressable>
+                          ) : offerUiStatus.key === 'review' ? (
+                            <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 10, lineHeight: 18 }}>
+                              {canManageOfficeOffers
+                                ? 'Oferta czeka w kolejce biura — możesz ją zaakceptować w ekranie Biuro.'
+                                : 'Oferta czeka na akceptację kierownika biura.'}
+                            </Text>
+                          ) : offerUiStatus.key === 'active' ? (
+                            <Pressable
+                              onPress={() => navigation.navigate('OfferDetail', { offerId: linkedOffer.id })}
+                              style={[styles.secondary, { marginTop: 12, borderColor: colors.border }]}
+                            >
+                              <Text style={{ color: colors.text, fontWeight: '800', textAlign: 'center' }}>
+                                Otwórz aktywne ogłoszenie
+                              </Text>
+                            </Pressable>
+                          ) : offerUiStatus.key === 'rejected' ? (
+                            <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 10, lineHeight: 18 }}>
+                              Kierownik poprosił o poprawki przed aktywacją. Po korekcie wyślij ponownie.
+                            </Text>
+                          ) : null}
+                        </View>
                       ) : null}
                     </View>
                   ) : null}

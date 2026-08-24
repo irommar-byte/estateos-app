@@ -30,7 +30,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
+  Archive,
 } from "lucide-react";
+import EosModal from "@/components/ui/EosModal";
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import CrmClientLiveChat from "@/components/crm/CrmClientLiveChat";
@@ -184,6 +186,9 @@ export default function CrmClientsWorkspace() {
   const [sortBy, setSortBy] = useState<"recent" | "name" | "match">("recent");
   const [cardBusyId, setCardBusyId] = useState<number | null>(null);
   const [toast, setToast] = useState("");
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<number>>(new Set());
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
   const [portalLinkDraft, setPortalLinkDraft] = useState("");
   const [sellerFilters, setSellerFilters] = useState<WebRadarFilters>(() => ({
     ...defaultWebRadarFilters(),
@@ -356,6 +361,56 @@ export default function CrmClientsWorkspace() {
       return +new Date(b.updatedAt) - +new Date(a.updatedAt);
     });
   }, [clients, onlyAttention, query, sortBy]);
+
+  const toggleClientSelection = (clientId: number) => {
+    setSelectedClientIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId);
+      else next.add(clientId);
+      return next;
+    });
+  };
+
+  const toggleAllFiltered = () => {
+    const ids = filtered.map((client) => client.id);
+    setSelectedClientIds((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+      if (allSelected) {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...ids]);
+    });
+  };
+
+  const confirmBulkArchive = async () => {
+    const clientIds = [...selectedClientIds];
+    if (!clientIds.length) return;
+    setArchiveBusy(true);
+    setToast("");
+    try {
+      const res = await fetch("/api/crm/clients", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive_bulk", clientIds }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json?.error || "Nie udało się zarchiwizować klientów."));
+      if (selectedId && clientIds.includes(selectedId)) setSelectedId(null);
+      setSelectedClientIds(new Set());
+      setArchiveConfirmOpen(false);
+      await loadClients();
+      setToast(
+        String(json.message || `Zarchiwizowano ${json.archivedIds?.length ?? clientIds.length} klientów.`),
+      );
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Błąd archiwizacji.");
+    } finally {
+      setArchiveBusy(false);
+      window.setTimeout(() => setToast(""), 4500);
+    }
+  };
 
   const switcherClients = useMemo(() => {
     if (selectedId && !filtered.some((client) => client.id === selectedId)) {
@@ -735,6 +790,28 @@ export default function CrmClientsWorkspace() {
               <option value="match">Sort: najwyższe dopasowanie</option>
             </select>
           </div>
+          {selectedClientIds.size > 0 ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/8 px-3 py-2">
+              <span className="text-xs font-semibold text-[var(--eos-text)]">
+                Zaznaczono: {selectedClientIds.size}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedClientIds(new Set())}
+                className={eosBtn("ghost", { size: "sm" })}
+              >
+                Wyczyść
+              </button>
+              <button
+                type="button"
+                onClick={() => setArchiveConfirmOpen(true)}
+                className={eosBtn("danger", { size: "sm" })}
+              >
+                <Archive className="size-3.5" />
+                Archiwizuj
+              </button>
+            </div>
+          ) : null}
           {loading ? (
             <p className="text-sm text-[var(--eos-muted)]">{cl.loading}</p>
           ) : filtered.length === 0 ? (
@@ -747,7 +824,24 @@ export default function CrmClientsWorkspace() {
               <table className="eos-crm-clients-table w-full table-fixed text-left">
                 <thead>
                   <tr className="border-b border-[var(--eos-border)] text-[10px] uppercase tracking-[0.14em] text-[var(--eos-muted)]">
-                    <th className="w-[38%] px-3 py-2">Klient</th>
+                    <th className="w-10 px-2 py-2">
+                      <button
+                        type="button"
+                        onClick={toggleAllFiltered}
+                        disabled={filtered.length === 0}
+                        aria-label="Zaznacz wszystkich widocznych klientów"
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-30 ${
+                          filtered.length > 0 && filtered.every((client) => selectedClientIds.has(client.id))
+                            ? "border-emerald-500 bg-emerald-500"
+                            : "border-[var(--eos-border)] hover:border-emerald-500/40"
+                        }`}
+                      >
+                        {filtered.length > 0 && filtered.every((client) => selectedClientIds.has(client.id)) ? (
+                          <Check className="size-3.5 text-black" />
+                        ) : null}
+                      </button>
+                    </th>
+                    <th className="w-[34%] px-3 py-2">Klient</th>
                     <th className="w-[18%] px-3 py-2">Status</th>
                     <th className="w-[28%] px-3 py-2">Kontakt</th>
                     <th className="w-[16%] px-3 py-2 text-right">Wizytówka</th>
@@ -760,8 +854,22 @@ export default function CrmClientsWorkspace() {
                       onClick={() => setSelectedId(client.id)}
                       className={`cursor-pointer border-b border-[var(--eos-border)]/60 text-sm transition hover:bg-[var(--eos-input)]/60 ${
                         selectedId === client.id ? "bg-emerald-500/10" : ""
-                      }`}
+                      } ${selectedClientIds.has(client.id) ? "bg-rose-500/5" : ""}`}
                     >
+                      <td className="px-2 py-3 align-top" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => toggleClientSelection(client.id)}
+                          aria-label={`Zaznacz ${client.firstName} ${client.lastName}`}
+                          className={`flex h-7 w-7 items-center justify-center rounded-lg border transition ${
+                            selectedClientIds.has(client.id)
+                              ? "border-emerald-500 bg-emerald-500"
+                              : "border-[var(--eos-border)] hover:border-emerald-500/40"
+                          }`}
+                        >
+                          {selectedClientIds.has(client.id) ? <Check className="size-3.5 text-black" /> : null}
+                        </button>
+                      </td>
                       <td className="px-3 py-3 align-top">
                         <p className="break-words font-semibold text-[var(--eos-text)]">{client.firstName} {client.lastName}</p>
                         <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{client.email || "—"}{client.phone ? ` · ${client.phone}` : ""}</p>
@@ -1626,6 +1734,55 @@ export default function CrmClientsWorkspace() {
         onConfirm={(msg) => void confirmSend(msg)}
         confirming={busy}
       />
+
+      <EosModal
+        open={archiveConfirmOpen}
+        onClose={() => {
+          if (!archiveBusy) setArchiveConfirmOpen(false);
+        }}
+        title="Archiwizować klientów?"
+        subtitle={`Zaznaczono ${selectedClientIds.size} ${
+          selectedClientIds.size === 1 ? "klienta" : "klientów"
+        }. Ta operacja jest odwracalna tylko przez administratora.`}
+        icon={<Archive className="size-5" />}
+        iconWrapClassName="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-rose-500/25 bg-rose-500/10 text-rose-500 shadow-[0_8px_24px_rgba(244,63,94,0.12)]"
+        maxWidth="max-w-lg"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              disabled={archiveBusy}
+              onClick={() => setArchiveConfirmOpen(false)}
+              className={eosBtn("secondary", { size: "sm" })}
+            >
+              Anuluj
+            </button>
+            <button
+              type="button"
+              disabled={archiveBusy}
+              onClick={() => void confirmBulkArchive()}
+              className={eosBtn("danger", { size: "sm" })}
+            >
+              {archiveBusy ? "Archiwizowanie…" : "Archiwizuj"}
+            </button>
+          </div>
+        }
+      >
+        <ul className="space-y-2 text-sm leading-relaxed text-[var(--eos-muted)]">
+          <li className="flex gap-2">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-rose-500" />
+            Wyczyści zaplanowane spotkania, prezentacje, wpisy kalendarza i powiadomienia push.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+            Karta klienta, podpisane dokumenty i historia pozostają dostępne dla administratora.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
+            Klient znika z radaru dopasowań i automatyzacji Intelligence.
+          </li>
+        </ul>
+      </EosModal>
     </div>
   );
 }

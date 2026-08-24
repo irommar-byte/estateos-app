@@ -85,16 +85,23 @@ export function buildListingProgress(params: {
     status?: string | null;
     managementStatus?: string | null;
     images?: unknown;
+    officeReviewStatus?: string | null;
   } | null;
 }): ListingProgressStep[] {
   const status = String(params.offer?.status || '').toUpperCase();
+  const office = String(params.offer?.officeReviewStatus || '').toUpperCase();
   const published = ['ACTIVE', 'PUBLISHED'].includes(status);
   const live = published && String(params.offer?.managementStatus || '').toUpperCase() !== 'PAUSED';
+  const inOfficeReview = office === 'OFFICE_REVIEW';
   const steps: Array<{ id: ListingProgressStep['id']; label: string; done: boolean }> = [
     { id: 'signed', label: 'Umowa podpisana', done: params.signed },
     { id: 'draft', label: 'Szkic ogłoszenia', done: Boolean(params.offer) },
     { id: 'photos', label: 'Zdjęcia w ofercie', done: Boolean(params.offer && offerHasPhotos(params.offer.images)) },
-    { id: 'published', label: 'Ogłoszenie opublikowane', done: published },
+    {
+      id: 'published',
+      label: inOfficeReview ? 'Oferta weryfikowana przez biuro' : 'Ogłoszenie opublikowane',
+      done: published || office === 'OFFICE_APPROVED',
+    },
     { id: 'live', label: 'Widoczna dla kupujących', done: live },
   ];
   const firstOpen = steps.findIndex((step) => !step.done);
@@ -104,13 +111,19 @@ export function buildListingProgress(params: {
   }));
 }
 
-export function listingStatusLabel(status?: string | null): string {
+export function listingStatusLabel(
+  status?: string | null,
+  officeReviewStatus?: string | null,
+): string {
+  const office = String(officeReviewStatus || '').toUpperCase();
+  if (office === 'OFFICE_REVIEW') return 'Oferta weryfikowana przez biuro';
+  if (office === 'OFFICE_REJECTED') return 'Wymaga poprawek biura';
   switch (String(status || '').toUpperCase()) {
     case 'ACTIVE':
     case 'PUBLISHED':
       return 'Opublikowana';
     case 'PENDING':
-      return 'Szkic — niepubliczna';
+      return office === 'OFFICE_APPROVED' ? 'Aktywowana przez biuro' : 'Szkic — niepubliczna';
     case 'SOLD':
       return 'Sprzedana';
     case 'ARCHIVED':

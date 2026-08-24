@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { requireActiveAgencyAdmin, setMemberStatus, updateMemberProfile } from '@/lib/agencyCompany';
-import { resolveWebUserId } from '@/lib/webSessionAuth';
+import { requireActiveAgencyAdmin, setMemberRole, setMemberStatus, updateMemberProfile } from '@/lib/agencyCompany';
 import type { AgencyAgentTitle, AgencyMemberStatus } from '@prisma/client';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { AGENCY_AGENT_TITLES } from '@/lib/agentProfile';
 
 const ALLOWED_STATUS: AgencyMemberStatus[] = ['ACTIVE', 'REJECTED', 'SUSPENDED'];
@@ -25,6 +25,23 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const body = await req.json();
 
   try {
+    if (body.role) {
+      const roleRaw = String(body.role || '').toUpperCase();
+      if (roleRaw !== 'AGENT' && roleRaw !== 'MANAGER') {
+        return NextResponse.json({ success: false, message: 'Nieprawidłowa rola.' }, { status: 400 });
+      }
+      const updated = await setMemberRole({
+        companyId: admin.companyId,
+        adminUserId: userId,
+        memberId,
+        role: roleRaw as 'AGENT' | 'MANAGER',
+      });
+      return NextResponse.json({
+        success: true,
+        member: { id: updated.id, role: updated.role },
+      });
+    }
+
     if (body.agentTitle) {
       const title = String(body.agentTitle).toUpperCase() as AgencyAgentTitle;
       if (!AGENCY_AGENT_TITLES.includes(title)) {

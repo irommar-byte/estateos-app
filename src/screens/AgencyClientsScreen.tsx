@@ -15,7 +15,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
-import { fetchAgencyClients, type AgencyClientListItem } from '../services/agencyClientService';
+import { fetchAgencyClients, archiveAgencyClients, type AgencyClientListItem } from '../services/agencyClientService';
 import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBar';
 import { useSellerClientPipelines } from '../hooks/useSellerClientPipelines';
 import { hasLiveMeetingCountdown } from '../lib/sellerClientPipeline';
@@ -70,6 +70,9 @@ export default function AgencyClientsScreen() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'ALL' | 'BUYER' | 'SELLER'>('ALL');
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [archiveBusy, setArchiveBusy] = useState(false);
   const { pipelines, portalUrls } = useSellerClientPipelines(token, clients);
 
   const colors = {
@@ -106,6 +109,51 @@ export default function AgencyClientsScreen() {
     [clients, filter],
   );
 
+  const toggleSelection = (clientId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId);
+      else next.add(clientId);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const confirmBulkArchive = () => {
+    const count = selectedIds.size;
+    if (!count || !token) return;
+    const noun = count === 1 ? 'klienta' : 'klientów';
+    Alert.alert(
+      'Archiwizować klientów?',
+      `Zaznaczono ${count} ${noun}.\n\n• Wyczyści zaplanowane spotkania, prezentacje, wpisy kalendarza i powiadomienia push.\n• Karta klienta, podpisane dokumenty i historia pozostają dostępne dla administratora.\n• Klient znika z radaru dopasowań i automatyzacji Intelligence.`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Archiwizuj',
+          style: 'destructive',
+          onPress: async () => {
+            setArchiveBusy(true);
+            try {
+              const res = await archiveAgencyClients(token, [...selectedIds]);
+              if (!res.ok) {
+                Alert.alert('Klienci', res.message);
+                return;
+              }
+              exitSelectMode();
+              await load();
+            } finally {
+              setArchiveBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
       <View style={[styles.nav, { paddingTop: insets.top + 8, borderBottomColor: colors.border, backgroundColor: colors.card }]}>
@@ -121,27 +169,62 @@ export default function AgencyClientsScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.filters}>
-        {([
-          ['ALL', 'Wszyscy'],
-          ['BUYER', 'Kupujący'],
-          ['SELLER', 'Sprzedający'],
-        ] as const).map(([id, label]) => (
-          <Pressable
-            key={id}
-            onPress={() => setFilter(id)}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: filter === id ? '#34C759' : colors.card,
-                borderColor: filter === id ? '#34C759' : colors.border,
-              },
-            ]}
-          >
-            <Text style={{ color: filter === id ? '#000' : colors.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
-          </Pressable>
-        ))}
+      <View style={styles.filtersRow}>
+        <View style={styles.filters}>
+          {([
+            ['ALL', 'Wszyscy'],
+            ['BUYER', 'Kupujący'],
+            ['SELLER', 'Sprzedający'],
+          ] as const).map(([id, label]) => (
+            <Pressable
+              key={id}
+              onPress={() => setFilter(id)}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: filter === id ? '#34C759' : colors.card,
+                  borderColor: filter === id ? '#34C759' : colors.border,
+                },
+              ]}
+            >
+              <Text style={{ color: filter === id ? '#000' : colors.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Pressable
+          onPress={() => {
+            if (selectMode) exitSelectMode();
+            else setSelectMode(true);
+          }}
+          style={[
+            styles.selectToggle,
+            {
+              borderColor: selectMode ? '#FF3B30' : colors.border,
+              backgroundColor: selectMode ? 'rgba(255,59,48,0.12)' : colors.card,
+            },
+          ]}
+        >
+          <Text style={{ color: selectMode ? '#FF3B30' : colors.text, fontWeight: '800', fontSize: 12 }}>
+            {selectMode ? 'Anuluj' : 'Wybierz'}
+          </Text>
+        </Pressable>
       </View>
+
+      {selectMode && selectedIds.size > 0 ? (
+        <View style={[styles.bulkBar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+            Zaznaczono: {selectedIds.size}
+          </Text>
+          <Pressable
+            disabled={archiveBusy}
+            onPress={confirmBulkArchive}
+            style={[styles.archiveBtn, archiveBusy ? { opacity: 0.6 } : null]}
+          >
+            <Ionicons name="archive-outline" size={16} color="#fff" />
+            <Text style={styles.archiveBtnText}>{archiveBusy ? 'Archiwizowanie…' : 'Archiwizuj'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
@@ -153,20 +236,41 @@ export default function AgencyClientsScreen() {
             client.upcomingMeetingStartsAt && hasLiveMeetingCountdown(client.upcomingMeetingStartsAt);
           const pipeline = client.type === 'SELLER' ? pipelines[client.id] : undefined;
           const portalUrl = client.portalUrl || portalUrls[client.id];
+          const isSelected = selectedIds.has(client.id);
 
           return (
             <Pressable
               key={client.id}
-              onPress={() => navigation.navigate('AgencyClientDetail', { clientId: client.id })}
+              onPress={() => {
+                if (selectMode) {
+                  toggleSelection(client.id);
+                  return;
+                }
+                navigation.navigate('AgencyClientDetail', { clientId: client.id });
+              }}
               style={[
                 styles.card,
                 {
                   backgroundColor: colors.card,
-                  borderColor: colors.border,
+                  borderColor: isSelected ? '#34C759' : colors.border,
                   shadowColor: isDark ? '#000' : '#1a1612',
                 },
+                isSelected ? styles.cardSelected : null,
               ]}
             >
+              {selectMode ? (
+                <View
+                  style={[
+                    styles.selectMark,
+                    {
+                      borderColor: isSelected ? '#34C759' : colors.border,
+                      backgroundColor: isSelected ? '#34C759' : 'transparent',
+                    },
+                  ]}
+                >
+                  {isSelected ? <Ionicons name="checkmark" size={14} color="#000" /> : null}
+                </View>
+              ) : null}
               <View style={{ flex: 1 }}>
                 <Text style={{ color: client.type === 'BUYER' ? '#FF9500' : '#34C759', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>
                   {client.type === 'BUYER' ? 'KUPUJĄCY' : 'SPRZEDAJĄCY'}
@@ -210,7 +314,7 @@ export default function AgencyClientsScreen() {
                   </Pressable>
                 ) : null}
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+              {!selectMode ? <Ionicons name="chevron-forward" size={18} color={colors.secondary} /> : null}
             </Pressable>
           );
         })}
@@ -238,7 +342,35 @@ const styles = StyleSheet.create({
   navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   navKicker: { fontSize: 10, fontWeight: '800', letterSpacing: 1.3 },
   navTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4, marginTop: 1 },
-  filters: { flexDirection: 'row', gap: 8, padding: 16 },
+  filtersRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
+  filters: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  selectToggle: {
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  bulkBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  archiveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FF3B30',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  archiveBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 },
   chip: { borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8 },
   card: {
     borderRadius: 20,
@@ -252,6 +384,18 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 5,
+  },
+  cardSelected: {
+    backgroundColor: 'rgba(52,199,89,0.08)',
+  },
+  selectMark: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
   },
   portalBtn: {
     marginTop: 10,

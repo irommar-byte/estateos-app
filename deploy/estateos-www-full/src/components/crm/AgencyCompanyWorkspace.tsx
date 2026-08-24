@@ -227,6 +227,18 @@ function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPaylo
 
 type MemberStatusAction = 'ACTIVE' | 'REJECTED' | 'SUSPENDED';
 
+type OfficeQueueItem = {
+  id: number;
+  title: string;
+  city: string | null;
+  price: number;
+  status: string;
+  officeReviewStatus: string | null;
+  officeSubmittedAt: string | null;
+  userId: number;
+  user: { id: number; name: string | null; email: string };
+};
+
 export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const { locale } = useLocale();
   const t = getAgencyFirm(locale);
@@ -259,6 +271,23 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const searchParams = useSearchParams();
   const [assignBusyId, setAssignBusyId] = useState<number | null>(null);
   const [assignTargetByOffer, setAssignTargetByOffer] = useState<Record<number, string>>({});
+  const [officeQueue, setOfficeQueue] = useState<OfficeQueueItem[]>([]);
+  const [queueBusyId, setQueueBusyId] = useState<number | null>(null);
+  const [rejectDraft, setRejectDraft] = useState<{ offerId: number; note: string } | null>(null);
+
+  const loadOfficeQueue = useCallback(async () => {
+    try {
+      const res = await fetch('/api/agency-company/offers/office-review', { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        setOfficeQueue([]);
+        return;
+      }
+      setOfficeQueue(Array.isArray(data.queue) ? data.queue : []);
+    } catch {
+      setOfficeQueue([]);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -293,12 +322,21 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           setError(dashData.message || 'Panel administratora jest chwilowo niedostępny.');
         }
       }
+
+      if (
+        (meData.membership.role === 'ADMIN' || meData.membership.role === 'MANAGER') &&
+        meData.membership.status === 'ACTIVE'
+      ) {
+        await loadOfficeQueue();
+      } else {
+        setOfficeQueue([]);
+      }
     } catch {
       setError('Błąd połączenia z serwerem.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadOfficeQueue]);
 
   useEffect(() => {
     void load();
@@ -387,6 +425,58 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       setError(t.connectionError);
     } finally {
       setActionId(null);
+    }
+  };
+
+  const handleMemberRoleChange = async (memberId: number, role: 'AGENT' | 'MANAGER') => {
+    setActionId(memberId);
+    setError('');
+    try {
+      const res = await fetch(`/api/agency-company/members/${memberId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || t.operationFailed);
+        return;
+      }
+      await load();
+    } catch {
+      setError(t.connectionError);
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleOfficeReviewDecision = async (
+    offerId: number,
+    decision: 'approve' | 'reject',
+    note?: string,
+  ) => {
+    setQueueBusyId(offerId);
+    setError('');
+    try {
+      const res = await fetch('/api/agency-company/offers/office-review', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: decision, offerId, note: note || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        setError(data.error || t.operationFailed);
+        return;
+      }
+      setRejectDraft(null);
+      await loadOfficeQueue();
+      await load();
+    } catch {
+      setError(t.connectionError);
+    } finally {
+      setQueueBusyId(null);
     }
   };
 
@@ -614,6 +704,93 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const company = dashboard?.company ?? membership?.company ?? null;
   const isPending = membership.status === 'PENDING';
   const isAdmin = membership.role === 'ADMIN' && membership.status === 'ACTIVE';
+  const isManager = membership.role === 'MANAGER' && membership.status === 'ACTIVE';
+  const isOfficeManager = isAdmin || isManager;
+
+  const officeActivationQueueSection = (
+    <section className="rounded-3xl border border-amber-500/25 bg-amber-500/[0.04] p-6">
+      <h2 className="text-lg font-black text-[var(--eos-text)]">{t.offerActivationQueueTitle}</h2>
+      <p className="eos-muted-copy mb-4 text-xs">{t.offerActivationQueueSubtitle}</p>
+      {officeQueue.length === 0 ? (
+        <p className="text-sm font-semibold text-[var(--eos-muted)]">{t.offerActivationQueueEmpty}</p>
+      ) : (
+        <div className="space-y-3">
+          {officeQueue.map((offer) => (
+            <div
+              key={offer.id}
+              className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <Link href={`/oferta/${offer.id}`} className="font-bold text-[var(--eos-text)] hover:text-emerald-600">
+                    {offer.title || `Oferta #${offer.id}`}
+                  </Link>
+                  <p className="eos-muted-copy mt-1 text-xs">
+                    {formatOfferLocation(offer.city, null)} · {formatOfferPrice(offer.price, locale)}
+                  </p>
+                  <p className="eos-muted-copy mt-1 text-[10px] uppercase tracking-widest">
+                    {offer.user?.name || offer.user?.email || `Agent #${offer.userId}`}
+                    {offer.officeSubmittedAt
+                      ? ` · ${formatAgencyDateTime(offer.officeSubmittedAt, locale)}`
+                      : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={queueBusyId === offer.id}
+                    onClick={() => void handleOfficeReviewDecision(offer.id, 'approve')}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                  >
+                    {queueBusyId === offer.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    {t.activateOffer}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={queueBusyId === offer.id}
+                    onClick={() => setRejectDraft({ offerId: offer.id, note: '' })}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-red-500 disabled:opacity-50"
+                  >
+                    <X size={12} />
+                    {t.reject}
+                  </button>
+                </div>
+              </div>
+              {rejectDraft?.offerId === offer.id ? (
+                <div className="mt-3 space-y-2 border-t border-[var(--eos-border)] pt-3">
+                  <textarea
+                    rows={2}
+                    value={rejectDraft.note}
+                    onChange={(event) => setRejectDraft({ offerId: offer.id, note: event.target.value })}
+                    placeholder={t.rejectOfferNotePlaceholder}
+                    className="eos-field w-full rounded-xl px-3 py-2 text-sm"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={queueBusyId === offer.id}
+                      onClick={() => void handleOfficeReviewDecision(offer.id, 'reject', rejectDraft.note)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-red-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white disabled:opacity-50"
+                    >
+                      {queueBusyId === offer.id ? <Loader2 size={12} className="animate-spin" /> : null}
+                      {t.confirm}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRejectDraft(null)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]"
+                    >
+                      {t.cancel}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 
   if (!company) {
     return (
@@ -644,7 +821,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && !isManager) {
     return (
       <div className="space-y-6">
         <header className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-8">
@@ -665,6 +842,37 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           </div>
         </header>
         <p className="eos-muted-copy text-sm">{t.employeeOnlyHint}</p>
+        <Link href="/moje-konto/crm" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-500 hover:underline">
+          {t.goToCrm} <ExternalLink size={14} />
+        </Link>
+      </div>
+    );
+  }
+
+  if (isManager && !isAdmin) {
+    return (
+      <div className="space-y-6">
+        <header className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-8">
+          <div className="flex flex-wrap items-center gap-4">
+            {company.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={company.logoUrl} alt="" className="h-16 w-16 rounded-2xl object-cover" />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+                <Building2 size={28} />
+              </div>
+            )}
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">{t.yourOffice}</p>
+              <h1 className="text-2xl font-black text-[var(--eos-text)]">{company.name}</h1>
+              <span className="mt-2 inline-block rounded-full bg-sky-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-sky-600">
+                {t.manager}
+              </span>
+            </div>
+          </div>
+        </header>
+        <p className="eos-muted-copy text-sm">{t.managerPanelHint}</p>
+        {isOfficeManager ? officeActivationQueueSection : null}
         <Link href="/moje-konto/crm" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-500 hover:underline">
           {t.goToCrm} <ExternalLink size={14} />
         </Link>
@@ -965,6 +1173,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                               {t.administrator}
                             </span>
                           )}
+                          {m.role === 'MANAGER' && (
+                            <span className="mt-1 inline-block rounded-full bg-sky-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-sky-600">
+                              {t.manager}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -972,7 +1185,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                       <select
                         value={m.agentTitle}
                         onChange={(e) => void handleTitleChange(m.id, e.target.value)}
-                        disabled={m.role === 'ADMIN'}
+                        disabled={m.role === 'ADMIN' || m.role === 'MANAGER'}
                         className="eos-field min-w-[7.5rem] rounded-xl py-2 text-xs font-bold"
                       >
                         {AGENCY_AGENT_TITLES.map((titleKey) => (
@@ -1031,6 +1244,15 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                           <>
                             <button
                               type="button"
+                              disabled={actionId === m.id}
+                              onClick={() => void handleMemberRoleChange(m.id, 'MANAGER')}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-sky-600 transition hover:bg-sky-500/20 disabled:opacity-50"
+                            >
+                              <ShieldCheck size={12} />
+                              {t.promoteToManager}
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setCreditTarget(m.userId)}
                               className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-600 transition hover:bg-amber-500/20"
                             >
@@ -1068,6 +1290,17 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                               {t.removeFromOffice}
                             </button>
                           </>
+                        )}
+                        {m.role === 'MANAGER' && (
+                          <button
+                            type="button"
+                            disabled={actionId === m.id}
+                            onClick={() => void handleMemberRoleChange(m.id, 'AGENT')}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)] transition hover:border-amber-500/40 hover:text-amber-600 disabled:opacity-50"
+                          >
+                            <UserRound size={12} />
+                            {t.demoteToAgent}
+                          </button>
                         )}
                       </div>
                     </td>
@@ -1122,6 +1355,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           </div>
         </section>
       ) : null}
+
+      {isOfficeManager ? officeActivationQueueSection : null}
 
       {(dashboard?.recentOffers ?? []).length > 0 && (
         <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">

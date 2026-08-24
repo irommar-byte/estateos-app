@@ -16,7 +16,9 @@ import { normalizePrepItemIds, prepItemLabels } from '@/lib/crm/clientJourney';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
 import { seedAcquisitionForm } from '@/lib/crm/acquisitionOffer';
-import { findDuplicateAgencyClients } from '@/lib/crm/clientDuplicate';
+import { findDuplicateAgencyClients, findPeselCollision } from '@/lib/crm/clientDuplicate';
+import { hashPesel, normalizePeselDigits } from '@/lib/crm/peselHash';
+import { archiveAgencyClients } from '@/lib/crm/clientArchive';
 import {
   apartmentNumberForType,
   parseSellerPropertyType,
@@ -99,6 +101,9 @@ export async function POST(req: Request) {
   if (peselRaw && !parsePesel(peselRaw)) {
     return NextResponse.json({ error: 'Nieprawidłowy PESEL.' }, { status: 400 });
   }
+  const peselDigits = normalizePeselDigits(peselRaw);
+  const peselHash = hashPesel(peselDigits);
+  const peselCollision = await findPeselCollision({ pesel: peselDigits });
 
   if (body.forceCreate !== true) {
     const duplicates = await findDuplicateAgencyClients({
@@ -112,6 +117,7 @@ export async function POST(req: Request) {
           error: 'Klient o tym e-mailu lub telefonie już jest w CRM.',
           code: 'DUPLICATE_CLIENT',
           matches: duplicates,
+          peselCollision: peselCollision.exists ? { exists: true, message: peselCollision.message } : undefined,
         },
         { status: 409 },
       );
@@ -132,7 +138,8 @@ export async function POST(req: Request) {
       lastName,
       email: emailRaw,
       phone: phoneRaw,
-      pesel: peselRaw ? peselRaw.replace(/\D/g, '') : null,
+      pesel: peselDigits,
+      peselHash,
       linkedUserId,
       emailVerifiedAt: body.emailVerified === true ? new Date() : null,
       phoneVerifiedAt: body.phoneVerified === true ? new Date() : null,
@@ -291,5 +298,29 @@ export async function POST(req: Request) {
   return NextResponse.json({
     success: true,
     client: fresh ? shapeClientListItem(fresh) : shapeClientListItem(client),
+    peselWarning: peselCollision.exists
+      ? { exists: true, message: peselCollision.message }
+      : null,
+  });
+}
+
+/** Bulk soft-archive for the current agent. */
+export async function PATCH(req: Request) {
+  const agencyUserId = await requireAgencyUserId(req);
+  if (!agencyUserId) {
+    return NextResponse.json({ error: 'Dostęp tylko dla agencji i agentów.' }, { status: 403 });
+  }
+  const body = await req.json().catch(() => ({}));
+  if (String(body.action || '') !== 'archive_bulk') {
+    return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });
+  }
+  const clientIds = Array.isArray(body.clientIds) ? body.clientIds.map((id: unknown) => Number(id)) : [];
+  const result = await archiveAgencyClients({ agencyUserId, clientIds });
+  return NextResponse.json({
+    success: true,
+    ...result,
+    message: result.archivedIds.length
+      ? `Przeniesiono ${result.archivedIds.length} klientów do archiwum. Spotkania zostały wyczyszczone.`
+      : 'Nie znaleziono aktywnych klientów do archiwizacji.',
   });
 }

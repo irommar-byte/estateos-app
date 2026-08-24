@@ -23,6 +23,7 @@ export type AgencyClientListItem = {
   buyerCity: string | null;
   buyerMaxPrice: number | null;
   updatedAt: string;
+  status?: 'ACTIVE' | 'ARCHIVED' | string;
   upcomingMeetingStartsAt?: string | null;
   upcomingMeetingLocation?: string | null;
   portalUrl?: string | null;
@@ -141,7 +142,10 @@ export async function fetchAgencyClients(token: string, type?: 'BUYER' | 'SELLER
   const res = await fetch(`${API_URL}/api/crm/clients${qs}`, { headers: authHeaders(token) });
   const json = await parseJson(res);
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się pobrać klientów.'), clients: [] as AgencyClientListItem[] };
-  return { ok: true as const, clients: (json.clients || []) as AgencyClientListItem[] };
+  const clients = ((json.clients || []) as AgencyClientListItem[]).filter(
+    (client) => String(client.status || 'ACTIVE').toUpperCase() !== 'ARCHIVED',
+  );
+  return { ok: true as const, clients };
 }
 
 export async function fetchAgencyClient(token: string, id: number) {
@@ -200,6 +204,21 @@ export async function archiveAgencyClient(token: string, id: number) {
   return { ok: true as const };
 }
 
+export async function archiveAgencyClients(token: string, clientIds: number[]) {
+  const res = await fetch(`${API_URL}/api/crm/clients`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'archive_bulk', clientIds }),
+  });
+  const json = await parseJson(res);
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się zarchiwizować klientów.') };
+  return {
+    ok: true as const,
+    archivedCount: Array.isArray(json.archivedIds) ? json.archivedIds.length : clientIds.length,
+    message: String(json.message || ''),
+  };
+}
+
 export async function refreshClientMatches(token: string, id: number) {
   const res = await fetch(`${API_URL}/api/crm/clients/${id}`, {
     method: 'POST',
@@ -254,6 +273,11 @@ export async function fetchAcquisition(token: string, clientId: number) {
     acquisition: (json.acquisition || null) as AcquisitionRecord | null,
     defaultForm: json.defaultForm as AcquisitionFormData,
     portalUrl: json.portalUrl as string | null,
+    linkedOfferId: json.linkedOfferId != null ? Number(json.linkedOfferId) : null,
+    linkedOffer: json.linkedOffer as
+      | { id: number; status?: string | null; officeReviewStatus?: string | null; title?: string | null }
+      | null
+      | undefined,
   };
 }
 

@@ -155,6 +155,7 @@ export default function AgencyClientFormModal({
   const [lookupMatches, setLookupMatches] = useState<LookupMatch[]>([]);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [forceCreate, setForceCreate] = useState(false);
+  const [peselCollisionMsg, setPeselCollisionMsg] = useState<string | null>(null);
   const lookupSeq = useRef(0);
 
   useEffect(() => setMounted(true), []);
@@ -171,6 +172,7 @@ export default function AgencyClientFormModal({
     setLookupMatches([]);
     setLookupBusy(false);
     setForceCreate(false);
+    setPeselCollisionMsg(null);
     setBuyerFilters({ ...defaultWebRadarFilters(), pushNotifications: false });
     setMeeting({ enabled: true, date: "", time: "10:00", location: "", note: "" });
     setAlsoSearching(false);
@@ -204,12 +206,14 @@ export default function AgencyClientFormModal({
     })();
   }, [open, initialType]);
 
-  const runLookup = useCallback(async (email: string, phone: string) => {
+  const runLookup = useCallback(async (email: string, phone: string, pesel = "") => {
     const emailTrim = email.trim().toLowerCase();
     const phoneOk = isCompletePhoneE164(phone);
     const emailOk = isValidEmail(emailTrim);
     const emailPartial = emailTrim.length > 0 && !emailOk;
     const phonePartial = phone.trim().length > 0 && !phoneOk;
+    const peselDigits = pesel.replace(/\D/g, "");
+    const peselOk = peselDigits.length === 11 && Boolean(parsePesel(peselDigits));
 
     if (emailPartial) setEmailStatus("invalid");
     else if (!emailTrim) setEmailStatus("idle");
@@ -217,9 +221,10 @@ export default function AgencyClientFormModal({
     if (phonePartial) setPhoneStatus("invalid");
     else if (!phone.trim()) setPhoneStatus("idle");
 
-    if (!emailOk && !phoneOk) {
+    if (!emailOk && !phoneOk && !peselOk) {
       setLookupMatches([]);
       setLookupBusy(false);
+      setPeselCollisionMsg(null);
       if (emailOk === false && emailTrim && !emailPartial) setEmailStatus("idle");
       return;
     }
@@ -232,6 +237,7 @@ export default function AgencyClientFormModal({
     const params = new URLSearchParams({ quick: "1" });
     if (emailOk) params.set("email", emailTrim);
     if (phoneOk) params.set("phone", phone);
+    if (peselOk) params.set("pesel", peselDigits);
 
     try {
       const res = await fetch(`/api/crm/clients/lookup?${params.toString()}`, { cache: "no-store" });
@@ -241,11 +247,17 @@ export default function AgencyClientFormModal({
         if (emailOk) setEmailStatus("idle");
         if (phoneOk) setPhoneStatus("idle");
         setLookupMatches([]);
+        setPeselCollisionMsg(null);
         return;
       }
 
       const matches = (Array.isArray(json.matches) ? json.matches : []) as LookupMatch[];
       setLookupMatches(matches);
+      setPeselCollisionMsg(
+        json.peselCollision?.exists
+          ? String(json.peselCollision.message || "Ta osoba jest już w EstateOS.")
+          : null,
+      );
 
       if (emailOk) {
         const emailHit = matches.some((m) => m.matchedBy?.email);
@@ -260,6 +272,7 @@ export default function AgencyClientFormModal({
       if (emailOk) setEmailStatus("idle");
       if (phoneOk) setPhoneStatus("idle");
       setLookupMatches([]);
+      setPeselCollisionMsg(null);
     } finally {
       if (seq === lookupSeq.current) setLookupBusy(false);
     }
@@ -268,10 +281,10 @@ export default function AgencyClientFormModal({
   useEffect(() => {
     if (!open || step !== 2) return;
     const t = setTimeout(() => {
-      void runLookup(form.email, phoneE164);
+      void runLookup(form.email, phoneE164, form.pesel);
     }, 500);
     return () => clearTimeout(t);
-  }, [open, step, form.email, phoneE164, runLookup]);
+  }, [open, step, form.email, form.pesel, phoneE164, runLookup]);
 
   const primaryMatch = useMemo(() => lookupMatches[0] || null, [lookupMatches]);
 
@@ -655,6 +668,11 @@ export default function AgencyClientFormModal({
                         ) : (
                           <p className="mt-2 text-xs font-semibold text-red-500">PESEL niepoprawny</p>
                         )
+                      ) : null}
+                      {peselCollisionMsg ? (
+                        <p className="mt-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
+                          {peselCollisionMsg} Możesz dodać klienta — nie pokazujemy danych właściciela rekordu.
+                        </p>
                       ) : null}
                     </label>
                     <label className="block min-w-0">

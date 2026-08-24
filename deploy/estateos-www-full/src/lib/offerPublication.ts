@@ -445,6 +445,8 @@ export async function submitOfferActivation(params: {
   bonusCouponId?: string | null;
   iapTransactionId?: string | null;
   iapProductId?: string | null;
+  /** Agency owner/manager activation — skip platform admin moderation. */
+  skipPlatformModeration?: boolean;
   onFreeFirstCouponUsed?: (userId: number, couponId: string) => Promise<unknown>;
 }): Promise<{
   status: 'ACTIVE' | 'PENDING';
@@ -470,7 +472,7 @@ export async function submitOfferActivation(params: {
   const productId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
   const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
 
-  if (publicationQuoteSkipsModeration(quote.reason)) {
+  if (params.skipPlatformModeration || publicationQuoteSkipsModeration(quote.reason)) {
     const activation = await activateOfferPublication({
       userId: params.userId,
       offerId: params.offerId,

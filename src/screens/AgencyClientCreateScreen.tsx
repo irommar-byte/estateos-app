@@ -75,6 +75,7 @@ export default function AgencyClientCreateScreen() {
   const [duplicateMatches, setLookupMatches] = useState<LookupMatch[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [ignoreDuplicateWarning, setIgnoreDuplicateWarning] = useState(false);
+  const [peselCollisionMsg, setPeselCollisionMsg] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     firstName: '',
@@ -295,11 +296,14 @@ export default function AgencyClientCreateScreen() {
   useEffect(() => {
     const emailTrim = form.email.trim().toLowerCase();
     const phoneDigits = form.phone.replace(/\D/g, '');
+    const peselDigits = form.pesel.replace(/\D/g, '');
     const emailOk = isValidEmail(emailTrim);
     const phoneOk = phoneDigits.length >= 9;
+    const peselOk = peselDigits.length === 11 && Boolean(parsePesel(peselDigits));
 
-    if (!token || (!emailOk && !phoneOk)) {
+    if (!token || (!emailOk && !phoneOk && !peselOk)) {
       setLookupMatches([]);
+      setPeselCollisionMsg(null);
       setCheckingDuplicates(false);
       return;
     }
@@ -311,6 +315,7 @@ export default function AgencyClientCreateScreen() {
         const params = new URLSearchParams({ quick: '1' });
         if (emailOk) params.set('email', emailTrim);
         if (phoneOk) params.set('phone', phoneDigits);
+        if (peselOk) params.set('pesel', peselDigits);
 
         const res = await fetch(`${API_URL}/api/crm/clients/lookup?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
@@ -323,15 +328,24 @@ export default function AgencyClientCreateScreen() {
         } else {
           setLookupMatches([]);
         }
+        const collision = json.peselCollision;
+        setPeselCollisionMsg(
+          collision?.exists
+            ? String(collision.message || 'Ta osoba jest już w EstateOS.')
+            : null,
+        );
       } catch {
-        if (seq === lookupSeq.current) setLookupMatches([]);
+        if (seq === lookupSeq.current) {
+          setLookupMatches([]);
+          setPeselCollisionMsg(null);
+        }
       } finally {
         if (seq === lookupSeq.current) setCheckingDuplicates(false);
       }
     }, 600);
 
     return () => clearTimeout(t);
-  }, [form.email, form.phone, token]);
+  }, [form.email, form.phone, form.pesel, token]);
 
   const submit = async () => {
     if (!token) return;
@@ -723,6 +737,7 @@ export default function AgencyClientCreateScreen() {
                   value={form.phone}
                   onChange={(phone) => setForm((current) => ({ ...current, phone }))}
                   isDark={isDark}
+                  defaultCountryIso="PL"
                 />
                 {type === 'SELLER' ? (
                   <View style={{ marginTop: 4 }}>
@@ -736,6 +751,19 @@ export default function AgencyClientCreateScreen() {
                       placeholderTextColor={colors.secondary}
                       style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
                     />
+                  </View>
+                ) : null}
+                {peselCollisionMsg ? (
+                  <View style={[styles.warningBox, { backgroundColor: 'rgba(0,122,255,0.10)', borderColor: '#007AFF', marginTop: 8 }]}>
+                    <Ionicons name="information-circle-outline" size={18} color="#007AFF" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 12 }}>
+                        {peselCollisionMsg}
+                      </Text>
+                      <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                        Możesz dodać klienta — nie pokazujemy danych właściciela rekordu.
+                      </Text>
+                    </View>
                   </View>
                 ) : null}
                 {checkingDuplicates ? (

@@ -18,15 +18,19 @@ export default function AcquisitionPhoneField({
   isDark,
   disabled,
   label = 'TELEFON',
+  /** Stały kraj początkowy — dla nowych klientów CRM zawsze PL. */
+  defaultCountryIso = 'PL' as CountryCode,
 }: {
   value: string;
   onChange: (e164OrDisplay: string) => void;
   isDark?: boolean;
   disabled?: boolean;
   label?: string;
+  defaultCountryIso?: CountryCode;
 }) {
-  const parsed = parseStoredPhoneToLine(value, getDeviceRegionCountry());
-  const [iso, setIso] = useState<CountryCode>(parsed.iso);
+  const fallbackIso = defaultCountryIso || getDeviceRegionCountry();
+  const parsed = parseStoredPhoneToLine(value, fallbackIso);
+  const [iso, setIso] = useState<CountryCode>(value.trim() ? parsed.iso : fallbackIso);
   const [national, setNational] = useState(() => formatNationalAsYouType(parsed.iso, parsed.nationalDigits));
   const [pickerOpen, setPickerOpen] = useState(false);
 

@@ -67,7 +67,7 @@ export async function fetchAgencyMembership(token: string): Promise<AgencyMember
 export async function patchAgencyMember(
   token: string,
   memberId: number,
-  body: { status?: 'ACTIVE' | 'REJECTED' | 'SUSPENDED'; agentTitle?: string },
+  body: { status?: 'ACTIVE' | 'REJECTED' | 'SUSPENDED'; agentTitle?: string; role?: 'AGENT' | 'MANAGER' },
 ): Promise<{ ok: boolean; message?: string }> {
   const res = await fetch(`${API_URL}/api/agency-company/members/${memberId}`, {
     method: 'PATCH',
@@ -127,4 +127,52 @@ export async function transferAgencyCredits(
     return { ok: false, message: String(json?.message || 'Transfer nie powiódł się.') };
   }
   return { ok: true };
+}
+
+export type OfficeReviewQueueItem = {
+  id: number;
+  title: string;
+  city: string | null;
+  price: number;
+  status: string;
+  officeReviewStatus: string | null;
+  officeSubmittedAt: string | null;
+  userId: number;
+  user: { id: number; name: string | null; email: string };
+};
+
+export async function fetchOfficeReviewCapability(token: string): Promise<boolean> {
+  const res = await fetch(`${API_URL}/api/agency-company/offers/office-review`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'capability', offerId: 1 }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) return false;
+  return Boolean(json?.capability?.ok);
+}
+
+export async function fetchOfficeReviewQueue(token: string): Promise<OfficeReviewQueueItem[]> {
+  const res = await fetch(`${API_URL}/api/agency-company/offers/office-review?t=${Date.now()}`, {
+    headers: authHeaders(token),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success || !Array.isArray(json.queue)) return [];
+  return json.queue as OfficeReviewQueueItem[];
+}
+
+export async function postOfficeReviewAction(
+  token: string,
+  body: { action: 'submit' | 'approve' | 'reject'; offerId: number; note?: string },
+): Promise<{ ok: boolean; message?: string; status?: string }> {
+  const res = await fetch(`${API_URL}/api/agency-company/offers/office-review`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success) {
+    return { ok: false, message: String(json?.error || 'Operacja nie powiodła się.') };
+  }
+  return { ok: true, status: json.status ? String(json.status) : undefined };
 }

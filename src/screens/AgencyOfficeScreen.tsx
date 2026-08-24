@@ -20,9 +20,12 @@ import { useThemeStore } from '../store/useThemeStore';
 import { API_URL } from '../config/network';
 import {
   fetchAgencyDashboard,
+  fetchOfficeReviewQueue,
   patchAgencyMember,
   patchAgencyCompanyContact,
+  postOfficeReviewAction,
   transferAgencyCredits,
+  type OfficeReviewQueueItem,
 } from '../services/agencyCompanyService';
 import type { AgencyDashboardMember, AgencyDashboardPayload, AgencyTeamMember } from '../types/agencyMembership';
 import { AGENCY_TITLE_OPTIONS } from '../types/agencyMembership';
@@ -78,6 +81,9 @@ export default function AgencyOfficeScreen() {
   const [creditAmount, setCreditAmount] = useState('');
   const [creditNote, setCreditNote] = useState('');
   const [creditBusy, setCreditBusy] = useState(false);
+  const [officeQueue, setOfficeQueue] = useState<OfficeReviewQueueItem[]>([]);
+  const [queueBusyId, setQueueBusyId] = useState<number | null>(null);
+  const [rejectDraft, setRejectDraft] = useState<{ offerId: number; note: string } | null>(null);
 
   const colors = useMemo(
     () => ({
@@ -95,6 +101,8 @@ export default function AgencyOfficeScreen() {
   );
 
   const isAdmin = membership?.role === 'ADMIN' && membership?.status === 'ACTIVE';
+  const isManager = membership?.role === 'MANAGER' && membership?.status === 'ACTIVE';
+  const canManageOffers = isAdmin || isManager;
   const companyName = membership?.companyName || membership?.company?.name || user?.companyName || 'Biuro';
   const team = membership?.team || [];
   const companyCredits = dashboard?.company?.extraListings ?? membership?.company?.extraListings ?? 0;
@@ -118,20 +126,72 @@ export default function AgencyOfficeScreen() {
     setDashboard(data);
   }, [token, isAdmin]);
 
+  const loadOfficeQueue = useCallback(async () => {
+    if (!token || !canManageOffers) {
+      setOfficeQueue([]);
+      return;
+    }
+    const queue = await fetchOfficeReviewQueue(token);
+    setOfficeQueue(queue);
+  }, [token, canManageOffers]);
+
   const reload = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       await refreshAgencyMembership();
       await loadDashboard();
+      await loadOfficeQueue();
     } finally {
       setLoading(false);
     }
-  }, [token, refreshAgencyMembership, loadDashboard]);
+  }, [token, refreshAgencyMembership, loadDashboard, loadOfficeQueue]);
 
   React.useEffect(() => {
     void loadDashboard();
-  }, [loadDashboard]);
+    void loadOfficeQueue();
+  }, [loadDashboard, loadOfficeQueue]);
+
+  const handleOfficeReviewDecision = useCallback(
+    async (offerId: number, decision: 'approve' | 'reject', note?: string) => {
+      if (!token) return;
+      setQueueBusyId(offerId);
+      try {
+        const res = await postOfficeReviewAction(token, { action: decision, offerId, note });
+        if (!res.ok) {
+          Alert.alert('Kolejka aktywacji', res.message || 'Operacja nie powiodła się.');
+          return;
+        }
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setRejectDraft(null);
+        await loadOfficeQueue();
+        await loadDashboard();
+      } finally {
+        setQueueBusyId(null);
+      }
+    },
+    [token, loadOfficeQueue, loadDashboard],
+  );
+
+  const handleMemberRoleChange = useCallback(
+    async (memberId: number, role: 'AGENT' | 'MANAGER') => {
+      if (!token || !isAdmin) return;
+      setBusyId(memberId);
+      try {
+        const res = await patchAgencyMember(token, memberId, { role });
+        if (!res.ok) {
+          Alert.alert('Rola w biurze', res.message || 'Nie udało się zapisać roli.');
+          return;
+        }
+        void Haptics.selectionAsync();
+        await refreshAgencyMembership();
+        await loadDashboard();
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [token, isAdmin, refreshAgencyMembership, loadDashboard],
+  );
 
   const handleApprove = useCallback(
     async (member: AgencyTeamMember) => {
@@ -497,6 +557,85 @@ export default function AgencyOfficeScreen() {
           </View>
         ) : null}
 
+        ) : null}
+
+        {canManageOffers ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.secondary }]}>KOLEJKA AKTYWACJI OFERT</Text>
+            {officeQueue.length === 0 ? (
+              <Text style={{ color: colors.secondary, paddingVertical: 12 }}>Brak ofert oczekujących na akceptację.</Text>
+            ) : (
+              officeQueue.map((offer) => (
+                <View
+                  key={offer.id}
+                  style={[styles.queueCard, { backgroundColor: colors.card, borderColor: colors.separator }]}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '800' }} numberOfLines={2}>
+                    {offer.title || `Oferta #${offer.id}`}
+                  </Text>
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
+                    {offer.city || '—'} · {fmtPrice(offer.price)}
+                  </Text>
+                  <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4 }}>
+                    {offer.user?.name || offer.user?.email || `Agent #${offer.userId}`}
+                    {offer.officeSubmittedAt ? ` · ${fmtDate(offer.officeSubmittedAt)}` : ''}
+                  </Text>
+                  <View style={[styles.adminActions, { marginTop: 10, justifyContent: 'flex-start' }]}>
+                    <Pressable
+                      disabled={queueBusyId === offer.id}
+                      onPress={() => void handleOfficeReviewDecision(offer.id, 'approve')}
+                      style={[styles.inlineBtn, { borderColor: colors.accent, backgroundColor: 'rgba(52,199,89,0.12)' }]}
+                    >
+                      <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
+                        {queueBusyId === offer.id ? '…' : 'Aktywuj'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={queueBusyId === offer.id}
+                      onPress={() => setRejectDraft({ offerId: offer.id, note: '' })}
+                      style={[styles.inlineBtn, { borderColor: colors.accentRed, backgroundColor: 'rgba(255,59,48,0.08)' }]}
+                    >
+                      <Text style={{ color: colors.accentRed, fontWeight: '800', fontSize: 12 }}>Odrzuć</Text>
+                    </Pressable>
+                  </View>
+                  {rejectDraft?.offerId === offer.id ? (
+                    <View style={{ marginTop: 10, gap: 8 }}>
+                      <TextInput
+                        value={rejectDraft.note}
+                        onChangeText={(note) => setRejectDraft({ offerId: offer.id, note })}
+                        placeholder="Opcjonalna notatka dla agenta…"
+                        placeholderTextColor={colors.secondary}
+                        multiline
+                        style={{
+                          borderWidth: StyleSheet.hairlineWidth,
+                          borderColor: colors.separator,
+                          borderRadius: 12,
+                          padding: 10,
+                          color: colors.text,
+                          minHeight: 64,
+                          textAlignVertical: 'top',
+                        }}
+                      />
+                      <View style={styles.adminActions}>
+                        <Pressable
+                          disabled={queueBusyId === offer.id}
+                          onPress={() => void handleOfficeReviewDecision(offer.id, 'reject', rejectDraft.note)}
+                          style={[styles.inlineBtn, { borderColor: colors.accentRed, backgroundColor: colors.accentRed }]}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>Potwierdź odrzucenie</Text>
+                        </Pressable>
+                        <Pressable onPress={() => setRejectDraft(null)} style={[styles.inlineBtn, { borderColor: colors.separator }]}>
+                          <Text style={{ color: colors.secondary, fontWeight: '700', fontSize: 12 }}>Anuluj</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ))
+            )}
+          </View>
+        ) : null}
+
         {isAdmin && pendingTeam.length > 0 ? (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.secondary }]}>OCZEKUJĄCE ({pendingTeam.length})</Text>
@@ -546,6 +685,16 @@ export default function AgencyOfficeScreen() {
                   setCreditAmount('');
                   setCreditNote('');
                 }}
+                onPromoteManager={
+                  member.role === 'AGENT'
+                    ? () => void handleMemberRoleChange(member.id, 'MANAGER')
+                    : undefined
+                }
+                onDemoteManager={
+                  member.role === 'MANAGER'
+                    ? () => void handleMemberRoleChange(member.id, 'AGENT')
+                    : undefined
+                }
               />
             ))
           ) : activeTeam.length === 0 ? (
@@ -699,7 +848,7 @@ function MemberRow({
         </Text>
         <Text style={{ color: colors.secondary, fontSize: 12 }}>
           {member.titleLabel}
-          {member.role === 'ADMIN' ? ' · Administrator' : ''}
+          {member.role === 'ADMIN' ? ' · Administrator' : member.role === 'MANAGER' ? ' · Kierownik' : ''}
         </Text>
         <Text style={{ color: statusColor, fontSize: 11, fontWeight: '700', marginTop: 2 }}>
           {member.status === 'ACTIVE' ? 'AKTYWNY' : member.status === 'PENDING' ? 'OCZEKUJE' : member.status}
@@ -732,6 +881,8 @@ function AdminMemberRow({
   isAdmin,
   onChangeTitle,
   onTransferCredits,
+  onPromoteManager,
+  onDemoteManager,
 }: {
   member: AgencyDashboardMember;
   colors: Record<string, string>;
@@ -739,6 +890,8 @@ function AdminMemberRow({
   isAdmin: boolean;
   onChangeTitle: () => void;
   onTransferCredits: () => void;
+  onPromoteManager?: () => void;
+  onDemoteManager?: () => void;
 }) {
   const uri = memberAvatarUrl(member.profilePhotoUrl, member.user.image);
   const u = member.user;
@@ -759,7 +912,7 @@ function AdminMemberRow({
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 12 }}>
             {TITLE_LABELS[member.agentTitle] || member.agentTitle}
-            {member.role === 'ADMIN' ? ' · Administrator' : ''}
+            {member.role === 'ADMIN' ? ' · Administrator' : member.role === 'MANAGER' ? ' · Kierownik' : ''}
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
             Ostatnie logowanie: {fmtDate(u.lastLoginAt)}
@@ -789,6 +942,16 @@ function AdminMemberRow({
 
       {isAdmin && member.role !== 'ADMIN' ? (
         <View style={[styles.adminActions, { marginTop: 10, justifyContent: 'flex-end' }]}>
+          {onPromoteManager ? (
+            <Pressable onPress={onPromoteManager} style={[styles.inlineBtn, { borderColor: colors.accentBlue, backgroundColor: 'rgba(0,122,255,0.08)' }]}>
+              <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 12 }}>Awansuj</Text>
+            </Pressable>
+          ) : null}
+          {onDemoteManager ? (
+            <Pressable onPress={onDemoteManager} style={[styles.inlineBtn, { borderColor: colors.separator }]}>
+              <Text style={{ color: colors.secondary, fontWeight: '700', fontSize: 12 }}>Cofnij do agenta</Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={onChangeTitle} style={[styles.inlineBtn, { borderColor: colors.separator }]}>
             <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 12 }}>Stanowisko</Text>
           </Pressable>
@@ -844,6 +1007,12 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 },
+  queueCard: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 10,
+  },
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',

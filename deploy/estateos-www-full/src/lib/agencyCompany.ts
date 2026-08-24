@@ -307,6 +307,15 @@ export async function requireActiveAgencyAdmin(userId: number) {
   return membership;
 }
 
+/** Owner, ADMIN or MANAGER of an active agency membership. */
+export async function requireActiveAgencyManagerOrAdmin(userId: number) {
+  const membership = await getUserAgencyMembership(userId);
+  if (!membership || membership.status !== 'ACTIVE') return null;
+  const isOwner = membership.company.ownerUserId === userId;
+  if (!isOwner && membership.role !== 'ADMIN' && String(membership.role) !== 'MANAGER') return null;
+  return membership;
+}
+
 export async function requireActiveAgencyMember(userId: number) {
   const membership = await getUserAgencyMembership(userId);
   if (!membership || membership.status !== 'ACTIVE') return null;
@@ -644,6 +653,28 @@ export async function setMemberStatus(params: {
   }
 
   return updated;
+}
+
+export async function setMemberRole(params: {
+  companyId: number;
+  adminUserId: number;
+  memberId: number;
+  role: 'AGENT' | 'MANAGER';
+}) {
+  const admin = await requireActiveAgencyAdmin(params.adminUserId);
+  if (!admin || admin.companyId !== params.companyId) throw new Error('Brak uprawnień.');
+
+  const member = await prisma.agencyCompanyMember.findFirst({
+    where: { id: params.memberId, companyId: params.companyId },
+  });
+  if (!member) throw new Error('Nie znaleziono pracownika.');
+  if (member.role === 'ADMIN') throw new Error('Nie można zmienić roli administratora.');
+  if (member.userId === params.adminUserId) throw new Error('Nie możesz zmienić własnej roli.');
+
+  return prisma.agencyCompanyMember.update({
+    where: { id: params.memberId },
+    data: { role: params.role as AgencyMemberRole },
+  });
 }
 
 export async function updateMemberProfile(params: {

@@ -192,6 +192,7 @@ export async function fetchUpcomingScheduleEvents(userId: number): Promise<Upcom
           'PRESENTATION_CONFIRMED',
         ],
       },
+      client: { status: 'ACTIVE' },
     },
     include: {
       client: { select: { id: true, firstName: true, lastName: true } },

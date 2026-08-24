@@ -97,6 +97,7 @@ model User {
   deskCases                   DeskCase[]                    @relation("DeskCasesOwned")
   deskTasks                   DeskTask[]                    @relation("DeskTasksOwned")
   offersAsOriginalOwner       Offer[]                       @relation("OfferOriginalOwner")
+  offersOfficeReviewed        Offer[]                       @relation("OfferOfficeReviewer")
   ownedAgencyCompany          AgencyCompany?                @relation("AgencyCompanyOwner")
   agencyMembership            AgencyCompanyMember?          @relation("AgencyCompanyMembership")
   approvedAgencyMembers       AgencyCompanyMember[]         @relation("AgencyMemberApprover")
@@ -240,9 +241,16 @@ model Offer {
   userId                     Int
   originalOwnerUserId        Int?
   managementStatus           String                     @default("SELF") @db.VarChar(24)
+  /// NONE | DRAFT | OFFICE_REVIEW | OFFICE_APPROVED | OFFICE_REJECTED
+  officeReviewStatus         String                     @default("NONE") @db.VarChar(24)
+  officeSubmittedAt          DateTime?
+  officeReviewedAt           DateTime?
+  officeReviewedById         Int?
+  officeReviewNote           String?                    @db.VarChar(512)
   deals                      Deal[]
   user                       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   originalOwner              User?                      @relation("OfferOriginalOwner", fields: [originalOwnerUserId], references: [id], onDelete: SetNull)
+  officeReviewedBy           User?                      @relation("OfferOfficeReviewer", fields: [officeReviewedById], references: [id], onDelete: SetNull)
   legalVerificationRequests  LegalVerificationRequest[]
   openHouseEvents            OpenHouseEvent[]
   auctionEvents              AuctionEvent[]
@@ -253,6 +261,8 @@ model Offer {
   @@index([userId], map: "Offer_userId_fkey")
   @@index([originalOwnerUserId])
   @@index([legalCheckStatus, legalCheckSubmittedAt])
+  @@index([officeReviewStatus, officeSubmittedAt])
+  @@index([officeReviewedById])
 }
 
 model OfferPriceHistory {
@@ -1041,6 +1051,7 @@ model DiscoveryTrope {
 
 enum AgencyMemberRole {
   ADMIN
+  MANAGER
   AGENT
 }
 
@@ -1141,6 +1152,8 @@ model AgencyClient {
   email                     String?            @db.VarChar(191)
   phone                     String?            @db.VarChar(32)
   pesel                     String?            @db.VarChar(16)
+  /// HMAC-SHA256 of PESEL for privacy-preserving duplicate detection.
+  peselHash                 String?            @db.VarChar(64)
   emailVerifiedAt           DateTime?
   phoneVerifiedAt           DateTime?
   emailVerifyCode           String?            @db.VarChar(16)
@@ -1184,6 +1197,8 @@ model AgencyClient {
   @@index([agencyUserId, type, status])
   @@index([agencyUserId, updatedAt])
   @@index([linkedUserId])
+  @@index([peselHash])
+  @@index([status, updatedAt])
 }
 
 model AgencyClientBuyerPreference {

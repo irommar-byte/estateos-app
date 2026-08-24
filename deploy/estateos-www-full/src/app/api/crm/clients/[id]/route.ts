@@ -21,6 +21,9 @@ import { parseIntelligencePatch, shapeIntelligenceSettings } from '@/lib/crm/cli
 import { ensureIntelligenceLockedFieldsColumn, pickIntelligenceOffer, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { parsePesel } from '@/lib/pesel';
+import { findPeselCollision } from '@/lib/crm/clientDuplicate';
+import { hashPesel, normalizePeselDigits } from '@/lib/crm/peselHash';
+import { archiveAgencyClients } from '@/lib/crm/clientArchive';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 import { parseSellerPropertyType } from '@/lib/crm/sellerProperty';
 import { sendNotification } from '@/lib/core/notification.core';
@@ -205,6 +208,12 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   if (nextPesel && !parsePesel(nextPesel)) {
     return NextResponse.json({ error: 'Nieprawidłowy PESEL.' }, { status: 400 });
   }
+  const nextPeselDigits = nextPesel !== undefined ? normalizePeselDigits(nextPesel) : undefined;
+  const nextPeselHash = nextPesel !== undefined ? hashPesel(nextPeselDigits) : undefined;
+  const peselCollision =
+    nextPeselDigits
+      ? await findPeselCollision({ pesel: nextPeselDigits, excludeId: clientId })
+      : { exists: false, message: null };
 
   await prisma.agencyClient.update({
     where: { id: clientId },
@@ -213,7 +222,8 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       lastName: body.lastName != null ? String(body.lastName).trim() : undefined,
       email: nextEmail,
       phone: nextPhone,
-      pesel: nextPesel !== undefined ? (nextPesel ? nextPesel.replace(/\D/g, '') : null) : undefined,
+      pesel: nextPesel !== undefined ? nextPeselDigits : undefined,
+      peselHash: nextPesel !== undefined ? nextPeselHash : undefined,
       notes: body.notes !== undefined ? (body.notes ? String(body.notes).trim() : null) : undefined,
       ...(existing.type === 'SELLER'
         ? {
@@ -295,7 +305,12 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     await prisma.agencyClientBuyerPreference.delete({ where: { clientId } });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    peselWarning: peselCollision.exists
+      ? { exists: true, message: peselCollision.message }
+      : null,
+  });
 }
 
 export async function DELETE(req: Request, ctx: RouteCtx) {
@@ -306,14 +321,11 @@ export async function DELETE(req: Request, ctx: RouteCtx) {
 
   const { id } = await ctx.params;
   const clientId = Number(id);
-  const updated = await prisma.agencyClient.updateMany({
-    where: { id: clientId, agencyUserId },
-    data: { status: 'ARCHIVED' },
-  });
-  if (!updated.count) {
+  const result = await archiveAgencyClients({ agencyUserId, clientIds: [clientId] });
+  if (!result.archivedIds.length) {
     return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
   }
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, ...result });
 }
 
 export async function POST(req: Request, ctx: RouteCtx) {
