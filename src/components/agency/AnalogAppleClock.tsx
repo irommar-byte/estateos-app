@@ -81,7 +81,6 @@ function formatEngravedParts(date: Date) {
 /**
  * Luxury engraved metal lettering — bold SF, no italic.
  * Depth via soft textShadow + one highlight lip (stable, no jitter stack).
- * `tone: 'ruby'` matches the watch second hand for the day numeral.
  */
 function EngravedLine({
   text,
@@ -90,7 +89,6 @@ function EngravedLine({
   gold,
   letterSpacing = 0.4,
   emphasis = 'normal',
-  tone = 'metal',
 }: {
   text: string;
   size: number;
@@ -98,58 +96,57 @@ function EngravedLine({
   gold: boolean;
   letterSpacing?: number;
   emphasis?: 'normal' | 'hero';
-  tone?: 'metal' | 'ruby';
 }) {
-  const ruby = tone === 'ruby';
-  const fill = ruby
+  // Hero day numeral: titanium / graphite metal, not ruby.
+  const fill = gold
     ? isDark
-      ? '#E11D2E'
-      : '#C41E2A'
-    : gold
-      ? isDark
-        ? emphasis === 'hero'
-          ? 'rgba(58, 40, 8, 0.94)'
-          : 'rgba(68, 48, 12, 0.9)'
-        : emphasis === 'hero'
-          ? 'rgba(48, 34, 6, 0.86)'
-          : 'rgba(58, 42, 10, 0.8)'
-      : isDark
-        ? 'rgba(28,28,32,0.86)'
+      ? emphasis === 'hero'
+        ? 'rgba(18, 16, 14, 0.96)'
+        : 'rgba(68, 48, 12, 0.9)'
+      : emphasis === 'hero'
+        ? 'rgba(28, 26, 24, 0.9)'
+        : 'rgba(58, 42, 10, 0.8)'
+    : isDark
+      ? emphasis === 'hero'
+        ? 'rgba(12,12,14,0.95)'
+        : 'rgba(28,28,32,0.86)'
+      : emphasis === 'hero'
+        ? 'rgba(22,22,24,0.9)'
         : 'rgba(42,42,46,0.78)';
 
-  const lip = ruby
+  const lip = gold
     ? isDark
-      ? 'rgba(255, 170, 160, 0.55)'
-      : 'rgba(255, 200, 190, 0.65)'
-    : gold
-      ? isDark
-        ? 'rgba(255, 240, 190, 0.42)'
+      ? emphasis === 'hero'
+        ? 'rgba(210, 205, 195, 0.4)'
+        : 'rgba(255, 240, 190, 0.42)'
+      : emphasis === 'hero'
+        ? 'rgba(255, 255, 255, 0.55)'
         : 'rgba(255, 250, 230, 0.58)'
-      : isDark
-        ? 'rgba(255,255,255,0.28)'
-        : 'rgba(255,255,255,0.48)';
+    : isDark
+      ? 'rgba(255,255,255,0.28)'
+      : 'rgba(255,255,255,0.48)';
 
-  const shadowColor = ruby
+  const shadowColor = gold
     ? isDark
-      ? 'rgba(80, 0, 8, 0.85)'
-      : 'rgba(90, 10, 16, 0.5)'
-    : gold
-      ? isDark
-        ? 'rgba(0, 0, 0, 0.75)'
+      ? emphasis === 'hero'
+        ? 'rgba(0, 0, 0, 0.88)'
+        : 'rgba(0, 0, 0, 0.75)'
+      : emphasis === 'hero'
+        ? 'rgba(0, 0, 0, 0.4)'
         : 'rgba(40, 28, 6, 0.48)'
-      : 'rgba(0,0,0,0.4)';
+    : 'rgba(0,0,0,0.4)';
 
-  const ambientGlow = ruby
+  const ambientGlow = gold
     ? isDark
-      ? 'rgba(255, 59, 48, 0.35)'
-      : 'rgba(255, 59, 48, 0.22)'
-    : gold
-      ? isDark
-        ? 'rgba(201, 162, 39, 0.28)'
+      ? emphasis === 'hero'
+        ? 'rgba(140, 135, 125, 0.2)'
+        : 'rgba(201, 162, 39, 0.28)'
+      : emphasis === 'hero'
+        ? 'rgba(80, 75, 70, 0.12)'
         : 'rgba(201, 162, 39, 0.2)'
-      : 'rgba(0,0,0,0.08)';
+    : 'rgba(0,0,0,0.08)';
 
-  const weight = emphasis === 'hero' || ruby ? ('800' as const) : ('700' as const);
+  const weight = emphasis === 'hero' ? ('800' as const) : ('700' as const);
 
   const base = {
     ...(APPLE_TYPE ? { fontFamily: APPLE_TYPE } : null),
@@ -172,7 +169,7 @@ function EngravedLine({
             left: 0.7,
             textShadowColor: ambientGlow,
             textShadowOffset: { width: 0, height: 0 },
-            textShadowRadius: ruby || emphasis === 'hero' ? 10 : 5,
+            textShadowRadius: emphasis === 'hero' ? 8 : 5,
           },
         ]}
       >
@@ -184,8 +181,8 @@ function EngravedLine({
           {
             color: fill,
             textShadowColor: shadowColor,
-            textShadowOffset: { width: 0.7, height: ruby ? 1.8 : 1.4 },
-            textShadowRadius: ruby || emphasis === 'hero' ? 4.2 : 2.4,
+            textShadowOffset: { width: 0.7, height: emphasis === 'hero' ? 1.8 : 1.4 },
+            textShadowRadius: emphasis === 'hero' ? 4 : 2.4,
           },
         ]}
       >
@@ -280,10 +277,20 @@ function EngravedMiniMonthCalendar({
       ? 'rgba(120, 90, 28, 0.5)'
       : 'rgba(100, 75, 20, 0.42)'
     : 'rgba(120,120,128,0.45)';
-  /** Today marker — ruby like the second hand */
-  const todayFill = isDark ? 'rgba(255, 59, 48, 0.22)' : 'rgba(255, 59, 48, 0.18)';
-  const todayRing = isDark ? 'rgba(255, 120, 110, 0.7)' : 'rgba(196, 30, 42, 0.55)';
-  const todayInk = isDark ? '#FF6B5C' : '#C41E2A';
+  /** Today marker — titanium gold ring; Sundays use ruby numerals */
+  const todayFill = gold
+    ? isDark
+      ? 'rgba(201, 162, 39, 0.26)'
+      : 'rgba(201, 162, 39, 0.3)'
+    : 'rgba(52,199,89,0.2)';
+  const todayRing = gold
+    ? isDark
+      ? 'rgba(245, 223, 166, 0.65)'
+      : 'rgba(120, 86, 18, 0.5)'
+    : 'rgba(52,199,89,0.55)';
+  const todayInk = gold ? (isDark ? '#F5DFA6' : '#3F2B05') : isDark ? '#FFFFFF' : '#000000';
+  const sundayInk = isDark ? '#FF6B5C' : '#C41E2A';
+  const sundayDow = isDark ? 'rgba(255, 107, 92, 0.85)' : 'rgba(196, 30, 42, 0.8)';
   const arrow = gold
     ? isDark
       ? 'rgba(201, 162, 39, 0.9)'
@@ -341,25 +348,28 @@ function EngravedMiniMonthCalendar({
       </View>
 
       <View style={styles.miniCalDowRow}>
-        {DOW_SHORT.map((label, i) => (
-          <Text
-            key={`${label}-${i}`}
-            style={[
-              type,
-              {
-                width: cell,
-                color: mute,
-                fontSize: 8,
-                textAlign: 'center',
-                textShadowColor: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(40,28,6,0.15)',
-                textShadowOffset: { width: 0.2, height: 0.5 },
-                textShadowRadius: 0.8,
-              },
-            ]}
-          >
-            {label}
-          </Text>
-        ))}
+        {DOW_SHORT.map((label, i) => {
+          const isSundayCol = i === 6; // Monday-first grid → last column is Sunday
+          return (
+            <Text
+              key={`${label}-${i}`}
+              style={[
+                type,
+                {
+                  width: cell,
+                  color: isSundayCol ? sundayDow : mute,
+                  fontSize: 8,
+                  textAlign: 'center',
+                  textShadowColor: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(40,28,6,0.15)',
+                  textShadowOffset: { width: 0.2, height: 0.5 },
+                  textShadowRadius: 0.8,
+                },
+              ]}
+            >
+              {label}
+            </Text>
+          );
+        })}
       </View>
 
       <View style={styles.miniCalGrid}>
@@ -368,6 +378,8 @@ function EngravedMiniMonthCalendar({
             return <View key={`e-${index}`} style={{ width: cell, height: cell - 1 }} />;
           }
           const isToday = isViewingTodayMonth && cellData.day === today.getDate();
+          const isSunday = index % 7 === 6;
+          const dayColor = isToday ? todayInk : isSunday ? sundayInk : ink;
           return (
             <View
               key={`d-${index}`}
@@ -380,9 +392,9 @@ function EngravedMiniMonthCalendar({
                   backgroundColor: isToday ? todayFill : 'transparent',
                   borderWidth: isToday ? 1.5 : 0,
                   borderColor: isToday ? todayRing : 'transparent',
-                  shadowColor: isToday ? '#FF3B30' : 'transparent',
+                  shadowColor: isToday ? '#C9A227' : 'transparent',
                   shadowOffset: { width: 0, height: isToday ? 1 : 0 },
-                  shadowOpacity: isToday ? 0.45 : 0,
+                  shadowOpacity: isToday ? 0.4 : 0,
                   shadowRadius: isToday ? 3 : 0,
                   elevation: isToday ? 2 : 0,
                 },
@@ -393,15 +405,15 @@ function EngravedMiniMonthCalendar({
                   type,
                   {
                     fontSize: 9,
-                    color: isToday ? todayInk : ink,
-                    textShadowColor: isToday
+                    color: dayColor,
+                    textShadowColor: isSunday
                       ? isDark
-                        ? 'rgba(80,0,8,0.75)'
-                        : 'rgba(120,20,24,0.4)'
+                        ? 'rgba(80,0,8,0.55)'
+                        : 'rgba(120,20,24,0.28)'
                       : isDark
                         ? 'rgba(0,0,0,0.5)'
                         : 'rgba(40,28,6,0.25)',
-                    textShadowOffset: { width: 0.35, height: isToday ? 1 : 0.75 },
+                    textShadowOffset: { width: 0.35, height: 0.75 },
                     textShadowRadius: isToday ? 2 : 1.2,
                     fontWeight: isToday ? '800' : '700',
                   },
@@ -472,7 +484,6 @@ function EngravedDateBeside({
         gold={gold}
         letterSpacing={1.2}
         emphasis="hero"
-        tone="ruby"
       />
       <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.5} />
       <View style={styles.dateGapSm} />
