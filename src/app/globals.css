@@ -6727,7 +6727,7 @@ html:not(.light) .eos-mgmt-panel-btn {
 }
 .eos-agent-crm-cta__portal {
   position: fixed;
-  z-index: 99999;
+  z-index: 1000000;
   overflow: hidden;
   pointer-events: none;
   display: grid;
