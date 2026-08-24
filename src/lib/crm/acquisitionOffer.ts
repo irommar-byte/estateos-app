@@ -13,6 +13,11 @@ import {
 } from '@/lib/acquisitionWorkflow';
 import { validateCityDistrict } from '@/lib/location/locationCatalog';
 import { resolveOfferLocationFromCoordinates } from '@/lib/location/resolveOfferLocationFromCoordinates';
+import {
+  apartmentNumberForType,
+  parseSellerPropertyType,
+  sellerPropertyTypeLabel,
+} from '@/lib/crm/sellerProperty';
 
 export type ListingProgressStep = {
   id: 'signed' | 'draft' | 'photos' | 'published' | 'live';
@@ -21,18 +26,6 @@ export type ListingProgressStep = {
   current: boolean;
 };
 
-const PROPERTY_TYPE_MAP: Record<string, string> = {
-  mieszkanie: 'FLAT',
-  flat: 'FLAT',
-  apartment: 'FLAT',
-  dom: 'HOUSE',
-  house: 'HOUSE',
-  działka: 'PLOT',
-  dzialka: 'PLOT',
-  plot: 'PLOT',
-  lokal: 'COMMERCIAL',
-  commercial: 'COMMERCIAL',
-};
 
 export function amenitiesToOfferFlags(amenities: PropertyAmenities | string | null | undefined) {
   const parsed = parseAmenities(amenities);
@@ -71,8 +64,7 @@ export function resolveAcquisitionCoords(property: Record<string, unknown>): { l
 }
 
 function mapPropertyType(raw: unknown): string {
-  const key = String(raw || '').trim().toLowerCase();
-  return PROPERTY_TYPE_MAP[key] || 'FLAT';
+  return parseSellerPropertyType(raw);
 }
 
 function offerHasPhotos(images: unknown): boolean {
@@ -140,14 +132,20 @@ export function seedAcquisitionForm(params: {
     sellerArea?: number | null;
     sellerRooms?: number | null;
     sellerDescription?: string | null;
+    sellerPropertyType?: string | null;
   };
   meeting?: { startsAt?: string; location?: string | null; notes?: string | null } | null;
   lat?: number | null;
   lng?: number | null;
   prepItems?: string[];
+  sellerPropertyType?: string | null;
+  apartmentNumber?: string | null;
 }): AcquisitionFormData {
   const form = createDefaultAcquisitionForm(params.client);
   const prep = new Set(params.prepItems || []);
+  const propertyType = sellerPropertyTypeLabel(
+    params.sellerPropertyType || params.client.sellerPropertyType,
+  );
   return normalizeAcquisitionForm(
     {
       ...form,
@@ -163,6 +161,8 @@ export function seedAcquisitionForm(params: {
         district: params.client.sellerDistrict || form.property.district,
         lat: params.lat != null ? String(params.lat) : form.property.lat,
         lng: params.lng != null ? String(params.lng) : form.property.lng,
+        propertyType,
+        apartmentNumber: apartmentNumberForType(propertyType, params.apartmentNumber),
       },
       strategy: {
         ...form.strategy,
@@ -300,6 +300,7 @@ export async function createOfferFromAcquisitionRecord(params: {
 
   const kw = String(ownership.landRegisterNumber || '').trim().toUpperCase();
   const landRegistryNumber = /^[A-Z]{2}[A-Z0-9]{2}\/\d{8}\/\d$/.test(kw) ? kw : undefined;
+  const apartmentNumber = apartmentNumberForType(property.propertyType, property.apartmentNumber);
 
   if (client.acquisition?.id) {
     await prisma.agencyClientAcquisition.update({
@@ -326,6 +327,7 @@ export async function createOfferFromAcquisitionRecord(params: {
       sellerArea: areaVal,
       sellerRooms: Math.round(roomsVal),
       sellerPrice: priceVal,
+      sellerPropertyType: parseSellerPropertyType(property.propertyType),
     },
   }).catch(() => {});
 
@@ -348,6 +350,7 @@ export async function createOfferFromAcquisitionRecord(params: {
       lat: coords.lat,
       lng: coords.lng,
       landRegistryNumber,
+      apartmentNumber: apartmentNumber || undefined,
       description:
         [property.advantages || client.sellerDescription || client.notes, extraBits.join('. ')].filter(Boolean).join('\n\n') ||
         'Oferta utworzona z karty pozyskania CRM EstateOS.',

@@ -431,7 +431,7 @@ export async function createOffer(body: any) {
       city: locationValidation.city,
       district: locationValidation.district,
       street: body.street || body.address || null,
-      buildingNumber: body.buildingNumber || body.apartmentNumber || null,
+      buildingNumber: body.buildingNumber || null,
       isExactLocation: body.isExactLocation !== undefined ? !!body.isExactLocation : true,
 
       lat: Number(lat),

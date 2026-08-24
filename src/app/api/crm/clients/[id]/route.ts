@@ -22,6 +22,7 @@ import { ensureIntelligenceLockedFieldsColumn, pickIntelligenceOffer, sendIntell
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
+import { parseSellerPropertyType } from '@/lib/crm/sellerProperty';
 import { sendNotification } from '@/lib/core/notification.core';
 import {
   JOURNEY_ACTIVITY,
@@ -217,7 +218,10 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       ...(existing.type === 'SELLER'
         ? {
             sellerTransactionType: body.sellerTransactionType,
-            sellerPropertyType: body.sellerPropertyType,
+            sellerPropertyType:
+              body.sellerPropertyType != null
+                ? parseSellerPropertyType(body.sellerPropertyType)
+                : undefined,
             sellerCity: body.sellerCity,
             sellerDistrict: body.sellerDistrict,
             sellerPrice: body.sellerPrice != null ? Number(body.sellerPrice) : undefined,

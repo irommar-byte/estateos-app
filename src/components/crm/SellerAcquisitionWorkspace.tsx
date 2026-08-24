@@ -33,6 +33,13 @@ import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { COMMISSION_RATE_DEFAULT } from "@/lib/leadTransferShared";
 import { PROPERTY_AMENITIES } from "@/lib/crm/clientJourney";
 import { getDistrictsForCity } from "@/lib/location/locationCatalog";
+import SellerPropertyTypeOptions from "@/components/crm/SellerPropertyTypeOptions";
+import {
+  apartmentNumberForType,
+  isFlatSellerProperty,
+  parseSellerPropertyType,
+  sellerPropertyTypeLabel,
+} from "@/lib/crm/sellerProperty";
 
 const OFFER_CITIES = [
   "Warszawa",
@@ -483,6 +490,19 @@ export default function SellerAcquisitionWorkspace({
               <Field label="Właściciel / współwłaściciele" value={form.ownership.owners} onChange={(value) => updateSection("ownership", { owners: value })} />
               <Field label="Podstawa nabycia" value={form.ownership.ownershipBasis} onChange={(value) => updateSection("ownership", { ownershipBasis: value })} placeholder="akt notarialny, spadek, darowizna…" />
               <Field label="Numer księgi wieczystej" value={form.ownership.landRegisterNumber} onChange={(value) => updateSection("ownership", { landRegisterNumber: value })} />
+              {isFlatSellerProperty(form.property.propertyType) ? (
+                <div>
+                  <Field
+                    label="Numer mieszkania (CRM)"
+                    value={form.property.apartmentNumber || ""}
+                    onChange={(value) => updateSection("property", { apartmentNumber: value.slice(0, 32) })}
+                    placeholder="np. 12"
+                  />
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--eos-muted)]">
+                    Tylko agent i klient w CRM — nie publikujemy na ogłoszeniu.
+                  </p>
+                </div>
+              ) : null}
               <Field label="Stan cywilny / zgoda małżonka" value={form.ownership.maritalStatus} onChange={(value) => updateSection("ownership", { maritalStatus: value })} />
               <Field label="Hipoteka / kredyt" value={form.ownership.mortgage} onChange={(value) => updateSection("ownership", { mortgage: value })} />
               <Field label="Kto korzysta z lokalu?" value={form.ownership.occupancy} onChange={(value) => updateSection("ownership", { occupancy: value })} />
@@ -513,6 +533,31 @@ export default function SellerAcquisitionWorkspace({
 
         {step === 3 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="sm:col-span-2 lg:col-span-3">
+              <SellerPropertyTypeOptions
+                value={parseSellerPropertyType(form.property.propertyType)}
+                onChange={(id) =>
+                  updateSection("property", {
+                    propertyType: sellerPropertyTypeLabel(id),
+                    apartmentNumber: apartmentNumberForType(id, form.property.apartmentNumber),
+                  })
+                }
+                disabled={signed}
+              />
+            </div>
+            {isFlatSellerProperty(form.property.propertyType) ? (
+              <div className="sm:col-span-2 lg:col-span-3">
+                <Field
+                  label="Numer mieszkania (CRM)"
+                  value={form.property.apartmentNumber || ""}
+                  onChange={(value) => updateSection("property", { apartmentNumber: value.slice(0, 32) })}
+                  placeholder="np. 12"
+                />
+                <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--eos-muted)]">
+                  Widoczny tylko dla prowadzącego agenta i klienta — nie trafia na ogłoszenie publiczne.
+                </p>
+              </div>
+            ) : null}
             <div className="sm:col-span-2 lg:col-span-3">
             <AddressSuggestInput
               label="Pełny adres nieruchomości"
@@ -581,12 +626,6 @@ export default function SellerAcquisitionWorkspace({
                 })}
               </div>
             </div>
-            <ChipRow
-              label="Rodzaj nieruchomości"
-              options={["Mieszkanie", "Dom", "Działka", "Lokal"]}
-              value={form.property.propertyType}
-              onChange={(value) => updateSection("property", { propertyType: value })}
-            />
             <NumberStepper label="Powierzchnia" value={form.property.area} onChange={(value) => updateSection("property", { area: value })} step={1} suffix="m²" disabled={signed} />
             <NumberStepper label="Liczba pokoi" value={form.property.rooms} onChange={(value) => updateSection("property", { rooms: value })} step={1} disabled={signed} />
             <NumberStepper label="Piętro" value={form.property.floor} onChange={(value) => updateSection("property", { floor: value })} step={1} min={0} disabled={signed} />

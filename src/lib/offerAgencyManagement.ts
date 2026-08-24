@@ -1,6 +1,11 @@
 import { prisma } from '@/lib/prisma';
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 import { listAgencyCompaniesWithStats } from '@/lib/agencyCompany';
+import {
+  apartmentNumberForType,
+  parseSellerPropertyType,
+  sellerPropertyTypeLabel,
+} from '@/lib/crm/sellerProperty';
 
 export type OfferManagementStatus = 'SELF' | 'TRANSFER_PENDING' | 'AGENCY_MANAGED';
 
@@ -185,18 +190,26 @@ export function sellerClientToListingPrefill(client: {
   firstName?: string;
   lastName?: string;
   notes?: string | null;
+  acquisition?: { formData?: unknown } | null;
 }) {
+  const form = (client.acquisition?.formData || {}) as {
+    property?: { apartmentNumber?: string; propertyType?: string };
+  };
+  const propertyType = parseSellerPropertyType(
+    client.sellerPropertyType || form.property?.propertyType,
+  );
   return {
     transactionType: client.sellerTransactionType || 'SELL',
-    propertyType: client.sellerPropertyType || 'FLAT',
+    propertyType,
     city: client.sellerCity || 'Warszawa',
     district: client.sellerDistrict || 'OTHER',
     price: client.sellerPrice ?? 0,
     area: client.sellerArea ?? 0,
     rooms: client.sellerRooms ?? 0,
     description: [client.sellerDescription, client.notes].filter(Boolean).join('\n\n'),
+    apartmentNumber: apartmentNumberForType(propertyType, form.property?.apartmentNumber),
     titleHint: client.sellerCity
-      ? `${client.sellerPropertyType === 'HOUSE' ? 'Dom' : 'Mieszkanie'} — ${client.sellerCity}`
+      ? `${sellerPropertyTypeLabel(propertyType)} — ${client.sellerCity}`
       : undefined,
   };
 }

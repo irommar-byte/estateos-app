@@ -62,6 +62,10 @@ export default function AddOfferDocVerificationPanel({
         : ao.docVerificationStatusSkip;
 
   const kwInputClass = `${inputPremium} min-w-0 w-full font-mono text-sm uppercase tracking-[0.08em] sm:text-base`;
+  const showApartment =
+    !propertyType ||
+    propertyType === "FLAT" ||
+    /mieszkanie|flat|apartment/i.test(String(propertyType));
 
   return (
     <section
@@ -109,7 +113,25 @@ export default function AddOfferDocVerificationPanel({
             ))}
           </ul>
 
-          <div className="grid w-full grid-cols-1 gap-5">
+          <div className="grid w-full grid-cols-1 gap-5 sm:grid-cols-2">
+            {showApartment ? (
+              <div className="min-w-0">
+                <label className={labelPremium}>{ao.docVerificationApartmentLabel}</label>
+                <input
+                  type="text"
+                  inputMode="text"
+                  placeholder={ao.aptNumberPlaceholder || ao.apartmentPlaceholder}
+                  maxLength={32}
+                  className={inputPremium}
+                  value={apartmentNumber}
+                  onChange={(e) => onApartmentChange(e.target.value.slice(0, 32))}
+                />
+              </div>
+            ) : (
+              <p className="text-[11px] leading-relaxed text-zinc-500 sm:col-span-2">
+                {ao.docVerificationApartmentHintNonFlat}
+              </p>
+            )}
             <div className="min-w-0">
               <label className={labelPremium}>{ao.docVerificationKwLabel}</label>
               <input

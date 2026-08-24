@@ -393,10 +393,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           : enrichedUserFinal;
 
     const amenityPatches = await readOfferAmenityPatches(offerId).catch(() => ({}));
+    const moneyRecord = moneyOffer as Record<string, unknown> & { apartmentNumber?: unknown };
+    const { apartmentNumber: storedApartmentNumber, ...publicMoneyOffer } = moneyRecord;
+    const viewerCanSeeUnit = Boolean(
+      currentUser &&
+        (Number(currentUser.id) === Number(offerRow.userId) ||
+          String(currentUser.role || '').toUpperCase() === 'ADMIN'),
+    );
 
     return NextResponse.json(
       enrichOfferPriceDiscountFields({
-      ...moneyOffer,
+      ...publicMoneyOffer,
       user: userWithAvatar,
       sellerDisplayName,
       sellerPersonName,
@@ -424,7 +431,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       conditionLabel: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'pl'),
       conditionLabelEn: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'en'),
       description: cleanDescription,
-      apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || '',
+      apartmentNumber: viewerCanSeeUnit
+        ? String(
+            storedApartmentNumber ||
+              (legalOffer as { apartmentNumber?: string | null }).apartmentNumber ||
+              verification.apartmentNumber ||
+              '',
+          )
+        : '',
       landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',
       ...legal,
       yearBuilt,
