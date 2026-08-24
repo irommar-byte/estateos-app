@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Svg, {
   Circle,
   Defs,
@@ -192,6 +193,194 @@ function EngravedLine({
   );
 }
 
+const MONTHS_NOM_PL = [
+  'Styczeń',
+  'Luty',
+  'Marzec',
+  'Kwiecień',
+  'Maj',
+  'Czerwiec',
+  'Lipiec',
+  'Sierpień',
+  'Wrzesień',
+  'Październik',
+  'Listopad',
+  'Grudzień',
+] as const;
+
+const DOW_SHORT = ['P', 'W', 'Ś', 'C', 'P', 'S', 'N'] as const;
+
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function buildMonthGrid(year: number, monthIndex: number) {
+  // Monday-first weeks
+  const first = new Date(year, monthIndex, 1);
+  const startDow = (first.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const cells: Array<{ day: number; inMonth: boolean } | null> = [];
+  for (let i = 0; i < startDow; i += 1) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d += 1) cells.push({ day: d, inMonth: true });
+  while (cells.length % 7 !== 0) cells.push(null);
+  while (cells.length < 42) cells.push(null);
+  // Keep at most 6 weeks; trim trailing empty week if unused
+  if (cells.slice(35).every((c) => c == null)) return cells.slice(0, 35);
+  return cells;
+}
+
+function EngravedMiniMonthCalendar({
+  today,
+  isDark,
+  gold,
+  width = 118,
+}: {
+  today: Date;
+  isDark: boolean;
+  gold: boolean;
+  width?: number;
+}) {
+  const [cursor, setCursor] = useState(() => startOfMonth(today));
+
+  useEffect(() => {
+    setCursor(startOfMonth(today));
+  }, [today]);
+
+  const cells = useMemo(
+    () => buildMonthGrid(cursor.getFullYear(), cursor.getMonth()),
+    [cursor],
+  );
+
+  const ink = gold
+    ? isDark
+      ? 'rgba(62, 44, 10, 0.88)'
+      : 'rgba(55, 38, 8, 0.78)'
+    : isDark
+      ? 'rgba(40,40,44,0.8)'
+      : 'rgba(50,50,54,0.72)';
+  const mute = gold
+    ? isDark
+      ? 'rgba(120, 90, 28, 0.45)'
+      : 'rgba(100, 75, 20, 0.4)'
+    : 'rgba(120,120,128,0.45)';
+  const todayFill = gold
+    ? isDark
+      ? 'rgba(201, 162, 39, 0.28)'
+      : 'rgba(201, 162, 39, 0.32)'
+    : 'rgba(52,199,89,0.22)';
+  const todayRing = gold
+    ? isDark
+      ? 'rgba(245, 223, 166, 0.55)'
+      : 'rgba(120, 86, 18, 0.45)'
+    : 'rgba(52,199,89,0.55)';
+  const arrow = gold
+    ? isDark
+      ? 'rgba(201, 162, 39, 0.85)'
+      : 'rgba(107, 76, 16, 0.75)'
+    : '#8E8E93';
+
+  const cell = Math.floor((width - 4) / 7);
+  const isViewingTodayMonth =
+    cursor.getFullYear() === today.getFullYear() && cursor.getMonth() === today.getMonth();
+
+  const shiftMonth = (delta: number) => {
+    setCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  };
+
+  const type = {
+    ...(APPLE_TYPE ? { fontFamily: APPLE_TYPE } : null),
+    fontWeight: '700' as const,
+    fontVariant: ['tabular-nums' as const],
+  };
+
+  return (
+    <View style={[styles.miniCal, { width }]}>
+      <View style={styles.miniCalHeader}>
+        <Pressable
+          onPress={() => shiftMonth(-1)}
+          hitSlop={8}
+          style={styles.miniCalArrow}
+          accessibilityLabel="Poprzedni miesiąc"
+        >
+          <Ionicons name="chevron-back" size={12} color={arrow} />
+        </Pressable>
+        <Text
+          numberOfLines={1}
+          style={[
+            type,
+            styles.miniCalTitle,
+            {
+              color: ink,
+              textShadowColor: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(40,28,6,0.28)',
+              textShadowOffset: { width: 0.4, height: 0.9 },
+              textShadowRadius: 1.6,
+            },
+          ]}
+        >
+          {MONTHS_NOM_PL[cursor.getMonth()]} {cursor.getFullYear()}
+        </Text>
+        <Pressable
+          onPress={() => shiftMonth(1)}
+          hitSlop={8}
+          style={styles.miniCalArrow}
+          accessibilityLabel="Następny miesiąc"
+        >
+          <Ionicons name="chevron-forward" size={12} color={arrow} />
+        </Pressable>
+      </View>
+
+      <View style={styles.miniCalDowRow}>
+        {DOW_SHORT.map((label, i) => (
+          <Text key={`${label}-${i}`} style={[type, { width: cell, color: mute, fontSize: 8, textAlign: 'center' }]}>
+            {label}
+          </Text>
+        ))}
+      </View>
+
+      <View style={styles.miniCalGrid}>
+        {cells.map((cellData, index) => {
+          if (!cellData) {
+            return <View key={`e-${index}`} style={{ width: cell, height: cell - 1 }} />;
+          }
+          const isToday = isViewingTodayMonth && cellData.day === today.getDate();
+          return (
+            <View
+              key={`d-${index}`}
+              style={[
+                styles.miniCalCell,
+                {
+                  width: cell,
+                  height: cell - 1,
+                  borderRadius: (cell - 1) / 2,
+                  backgroundColor: isToday ? todayFill : 'transparent',
+                  borderWidth: isToday ? StyleSheet.hairlineWidth * 2 : 0,
+                  borderColor: isToday ? todayRing : 'transparent',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  type,
+                  {
+                    fontSize: 9,
+                    color: isToday ? (isDark ? '#F5DFA6' : '#4F3808') : ink,
+                    textShadowColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(40,28,6,0.22)',
+                    textShadowOffset: { width: 0.3, height: 0.7 },
+                    textShadowRadius: 1.2,
+                    fontWeight: isToday ? '800' : '700',
+                  },
+                ]}
+              >
+                {cellData.day}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function EngravedDateBeside({
   date,
   isDark,
@@ -206,10 +395,10 @@ function EngravedDateBeside({
   gleam: Animated.Value;
 }) {
   const parts = useMemo(() => formatEngravedParts(date), [date]);
-  const daySize = height >= 160 ? 26 : 22;
-  const monthSize = height >= 160 ? 17 : 15;
-  const weekSize = height >= 160 ? 14 : 13;
-  const yearSize = height >= 160 ? 15 : 13;
+  const daySize = height >= 160 ? 22 : 19;
+  const monthSize = height >= 160 ? 14 : 13;
+  const weekSize = height >= 160 ? 12 : 11;
+  const yearSize = height >= 160 ? 13 : 12;
 
   const shine = gleam.interpolate({
     inputRange: [0, 0.4, 0.55, 1],
@@ -221,13 +410,11 @@ function EngravedDateBeside({
       style={[
         styles.dateCarve,
         {
-          minHeight: height * 0.72,
-          justifyContent: 'center',
           opacity: shine,
         },
       ]}
     >
-      <EngravedLine text={parts.weekday} size={weekSize} isDark={isDark} gold={gold} letterSpacing={0.9} />
+      <EngravedLine text={parts.weekday} size={weekSize} isDark={isDark} gold={gold} letterSpacing={0.7} />
       <View style={styles.dateHairline}>
         <View
           style={[
@@ -247,12 +434,12 @@ function EngravedDateBeside({
         size={daySize}
         isDark={isDark}
         gold={gold}
-        letterSpacing={1.4}
+        letterSpacing={1.2}
         emphasis="hero"
       />
-      <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.6} />
+      <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.5} />
       <View style={styles.dateGapSm} />
-      <EngravedLine text={parts.year} size={yearSize} isDark={isDark} gold={gold} letterSpacing={2} />
+      <EngravedLine text={parts.year} size={yearSize} isDark={isDark} gold={gold} letterSpacing={1.8} />
     </Animated.View>
   );
 }
@@ -699,11 +886,14 @@ function AnalogAppleClock({
     return <View style={[styles.wrapper, { width: size, height: size }]}>{dial}</View>;
   }
 
-  // One rigid assembly — clock + engraving scroll together without micro-jitter.
+  // One rigid assembly — clock + engraved date + mini month calendar.
   return (
     <View collapsable={false} style={styles.assembly}>
       {dial}
-      <EngravedDateBeside date={time} isDark={isDark} gold={gold || red} height={size} gleam={gleam} />
+      <View style={[styles.sideStack, { maxHeight: size + 4 }]}>
+        <EngravedDateBeside date={time} isDark={isDark} gold={gold || red} height={size} gleam={gleam} />
+        <EngravedMiniMonthCalendar today={time} isDark={isDark} gold={gold || red} width={112} />
+      </View>
     </View>
   );
 }
@@ -722,8 +912,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
-    gap: 14,
-    marginVertical: 8,
+    gap: 12,
+    marginVertical: 6,
+  },
+  sideStack: {
+    justifyContent: 'center',
+    gap: 6,
+    maxWidth: 124,
   },
   outerRing: {
     alignItems: 'center',
@@ -746,20 +941,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,248,220,0.38)',
   },
   dateCarve: {
-    maxWidth: 156,
-    paddingLeft: 4,
-    paddingVertical: 4,
+    maxWidth: 124,
+    paddingLeft: 2,
+    paddingVertical: 0,
   },
-  dateGap: { height: 8 },
-  dateGapSm: { height: 7 },
+  dateGap: { height: 6 },
+  dateGapSm: { height: 4 },
   dateHairline: {
-    height: 10,
+    height: 7,
     justifyContent: 'center',
-    paddingRight: 8,
+    paddingRight: 6,
   },
   dateHairlineFill: {
     height: StyleSheet.hairlineWidth * 2,
-    width: '72%',
+    width: '68%',
     borderRadius: 1,
     opacity: 0.9,
   },
@@ -770,5 +965,40 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
+  },
+  miniCal: {
+    alignSelf: 'flex-start',
+    paddingTop: 2,
+  },
+  miniCalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+    gap: 2,
+  },
+  miniCalArrow: {
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniCalTitle: {
+    flex: 1,
+    fontSize: 9,
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+  miniCalDowRow: {
+    flexDirection: 'row',
+    marginBottom: 1,
+  },
+  miniCalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  miniCalCell: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
