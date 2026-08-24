@@ -381,6 +381,9 @@ export default function Navbar() {
             {user && mobileChrome.wallet ? <PublicationWalletNavButton /> : null}
             {user && mobileChrome.messages ? <ContactMessagesNavButton /> : null}
             {user && mobileChrome.bell ? <NotificationCenter /> : null}
+            {user ? (
+              <NavbarProfileChip user={user.user ? { ...user, ...user.user } : user} />
+            ) : null}
             <button
               type="button"
               onClick={() => setIsOpen((open) => !open)}

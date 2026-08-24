@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Car, Crown, Home, ImageOff, Loader2, Pencil, Sparkles, LayoutDashboard } from "lucide-react";
+import { Car, Crown, Home, ImageOff, Loader2, Pencil, Sparkles } from "lucide-react";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import EosButton from "@/components/ui/EosButton";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
@@ -302,15 +302,7 @@ export default function AccountListingsPage() {
             Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
           </p>
           {isAgent ? (
-            <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:items-stretch sm:justify-start">
-              <a
-                href="/crm"
-                className="eos-mgmt-panel-btn group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full px-7 py-3.5 text-[11px] font-black uppercase tracking-[0.18em] text-white"
-              >
-                <span className="eos-mgmt-panel-btn__sheen" aria-hidden />
-                <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
-                <span className="relative z-10">Panel zarządzania</span>
-              </a>
+            <div className="mt-6 flex justify-center sm:justify-start">
               <EstateOsDeskCrmButton href="/moje-konto/crm?from=desk" />
             </div>
           ) : null}

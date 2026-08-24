@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Gauge, MapPin } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
@@ -24,7 +24,8 @@ type CarListing = {
 const MAX_FEATURED = 6;
 
 export default function FeaturedCarsGallery() {
-  const { dict, locale } = useLocale();
+  const { dict } = useLocale();
+  const reduceMotion = useReducedMotion();
   const [cars, setCars] = useState<CarListing[]>([]);
 
   useEffect(() => {
@@ -87,24 +88,28 @@ export default function FeaturedCarsGallery() {
             return (
               <motion.article
                 key={car.id}
-                initial={{ opacity: 0, y: 24 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.65, delay: index * 0.12, ease: [0.16, 1, 0.3, 1] }}
+                viewport={{ once: true, margin: "-40px", amount: 0.15 }}
+                transition={{ duration: reduceMotion ? 0 : 0.4, delay: reduceMotion ? 0 : Math.min(index, 3) * 0.05, ease: [0.16, 1, 0.3, 1] }}
               >
                 <GoldFeaturedFrame>
                 <Link
                   href={`/cars/${car.id}`}
                   className="eos-media-chrome eos-lux-media-card group relative block aspect-[4/5] overflow-hidden bg-[var(--eos-card)]"
                 >
-                  <div
-                    className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
-                    style={{ backgroundImage: `url(${carImageSrc(car.imageUrl)})` }}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={carImageSrc(car.imageUrl)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/55 to-black/15" />
                   <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
 
-                  <div className="absolute left-5 top-5 rounded-full border border-amber-200/70 bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black backdrop-blur-xl shadow-[0_0_18px_rgba(212,175,55,0.45)] eos-luxury-media-text">
+                  <div className="absolute left-5 top-5 rounded-full border border-amber-200/70 bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_18px_rgba(212,175,55,0.45)] eos-luxury-media-text">
                     {dict.homePremium.carsFeaturedBadge}
                   </div>
 
@@ -120,7 +125,7 @@ export default function FeaturedCarsGallery() {
                       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/90">
                         <span className="eos-luxury-media-text text-sm font-bold text-white">
                           {Number(car.pricePln) > 0
-                            ? formatCarPrice(Number(car.pricePln), locale)
+                            ? formatCarPrice(Number(car.pricePln))
                             : dict.homePremium.priceOnRequest}
                         </span>
                         {car.year ? (
@@ -129,7 +134,7 @@ export default function FeaturedCarsGallery() {
                         {Number(car.mileageKm) > 0 ? (
                           <span className="eos-luxury-media-text inline-flex items-center gap-1 text-white/80">
                             <Gauge className="size-3.5" aria-hidden />
-                            {formatMileage(Number(car.mileageKm), locale)}
+                            {formatMileage(Number(car.mileageKm))}
                           </span>
                         ) : null}
                       </div>

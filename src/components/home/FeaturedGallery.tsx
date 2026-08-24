@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
@@ -68,6 +68,7 @@ function parsePrice(price: Offer["price"]) {
 export default function FeaturedGallery() {
   const { dict, locale } = useLocale();
   const { formatOffer } = useFormatOfferPrice();
+  const reduceMotion = useReducedMotion();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [negotiatingOfferIds, setNegotiatingOfferIds] = useState<Set<number>>(() => new Set());
 
@@ -163,19 +164,23 @@ export default function FeaturedGallery() {
             return (
               <motion.article
                 key={offer.id}
-                initial={{ opacity: 0, y: 24 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.65, delay: index * 0.12, ease: [0.16, 1, 0.3, 1] }}
+                viewport={{ once: true, margin: "-40px", amount: 0.15 }}
+                transition={{ duration: reduceMotion ? 0 : 0.4, delay: reduceMotion ? 0 : Math.min(index, 3) * 0.05, ease: [0.16, 1, 0.3, 1] }}
               >
                 <GoldFeaturedFrame>
                 <Link
                   href={`/oferta/${offer.id}`}
                   className="eos-media-chrome eos-lux-media-card group relative block aspect-[4/5] overflow-hidden bg-[var(--eos-card)]"
                 >
-                  <div
-                    className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
-                    style={{ backgroundImage: `url(${firstImage(offer, index)})` }}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={firstImage(offer, index)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/55 to-black/15" />
                   <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
@@ -183,7 +188,7 @@ export default function FeaturedGallery() {
                   <div className="absolute left-5 top-5 z-20 inline-flex items-center rounded-full border border-amber-200/70 bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_18px_rgba(212,175,55,0.45)]">
                     {dict.homePremium.carsFeaturedBadge}
                   </div>
-                  <div className="absolute left-5 top-[3.35rem] rounded-full border border-white/25 bg-black/65 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.35)] eos-luxury-media-text">
+                  <div className="absolute left-5 top-[3.35rem] rounded-full border border-white/25 bg-black/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-[0_4px_20px_rgba(0,0,0,0.35)] eos-luxury-media-text">
                     {isRent ? dict.map.forRent : dict.map.forSale}
                   </div>
                   {showNewBadge ? (
@@ -211,7 +216,7 @@ export default function FeaturedGallery() {
                     }}
                   />
                   {hasActiveDealRoom && (
-                    <div className="featured-deal-room-badge absolute right-5 top-5 z-20 inline-flex items-center gap-1.5 rounded-full border border-orange-300/70 bg-orange-500 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_22px_rgba(249,115,22,0.45)] backdrop-blur-xl">
+                    <div className="featured-deal-room-badge absolute right-5 top-5 z-20 inline-flex items-center gap-1.5 rounded-full border border-orange-300/70 bg-orange-500 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_22px_rgba(249,115,22,0.45)]">
                       <Briefcase className="size-3" />
                       {dict.homePremium.dealRoom}
                     </div>

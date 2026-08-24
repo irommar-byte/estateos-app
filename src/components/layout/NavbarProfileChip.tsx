@@ -59,12 +59,13 @@ export default function NavbarProfileChip({ user }: Props) {
       type="button"
       onClick={() => router.push("/moje-konto")}
       aria-label={`Profil: ${label}, ${roleLabel}${isPro ? ", Pro" : ""}`}
-      className={`eos-nav-identity group relative flex h-[42px] shrink-0 items-center gap-2 overflow-hidden rounded-full py-0.5 pl-0.5 pr-3 text-left transition-all ${
+      title={label}
+      className={`eos-nav-identity group relative flex h-[42px] shrink-0 items-center overflow-hidden rounded-full py-0.5 pl-0.5 text-left transition-all gap-0 pr-0.5 xl:gap-2 xl:pr-3 ${
         isPro ? "eos-nav-identity--pro" : "eos-nav-identity--standard"
       }`}
     >
-      <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-70" />
-      {isPro ? <span className="eos-nav-identity__sheen" aria-hidden /> : null}
+      <span className="pointer-events-none absolute inset-x-3 top-0 hidden h-px bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-70 xl:block" />
+      {isPro ? <span className="eos-nav-identity__sheen hidden xl:block" aria-hidden /> : null}
 
       <span
         className={`relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border ${
@@ -80,7 +81,7 @@ export default function NavbarProfileChip({ user }: Props) {
         <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border border-black/40 bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.95)]" />
       </span>
 
-      <span className="min-w-0 pr-0.5">
+      <span className="hidden min-w-0 pr-0.5 xl:block">
         <span
           className={`eos-nav-identity__name block whitespace-nowrap text-[11px] font-semibold leading-none tracking-tight ${
             isPro ? "text-amber-50" : "text-white"
