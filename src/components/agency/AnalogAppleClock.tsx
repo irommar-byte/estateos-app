@@ -81,6 +81,7 @@ function formatEngravedParts(date: Date) {
 /**
  * Luxury engraved metal lettering — bold SF, no italic.
  * Depth via soft textShadow + one highlight lip (stable, no jitter stack).
+ * `tone: 'ruby'` matches the watch second hand for the day numeral.
  */
 function EngravedLine({
   text,
@@ -89,6 +90,7 @@ function EngravedLine({
   gold,
   letterSpacing = 0.4,
   emphasis = 'normal',
+  tone = 'metal',
 }: {
   text: string;
   size: number;
@@ -96,40 +98,58 @@ function EngravedLine({
   gold: boolean;
   letterSpacing?: number;
   emphasis?: 'normal' | 'hero';
+  tone?: 'metal' | 'ruby';
 }) {
-  const fill = gold
+  const ruby = tone === 'ruby';
+  const fill = ruby
     ? isDark
-      ? emphasis === 'hero'
-        ? 'rgba(58, 40, 8, 0.94)'
-        : 'rgba(68, 48, 12, 0.9)'
-      : emphasis === 'hero'
-        ? 'rgba(48, 34, 6, 0.86)'
-        : 'rgba(58, 42, 10, 0.8)'
-    : isDark
-      ? 'rgba(28,28,32,0.86)'
-      : 'rgba(42,42,46,0.78)';
+      ? '#E11D2E'
+      : '#C41E2A'
+    : gold
+      ? isDark
+        ? emphasis === 'hero'
+          ? 'rgba(58, 40, 8, 0.94)'
+          : 'rgba(68, 48, 12, 0.9)'
+        : emphasis === 'hero'
+          ? 'rgba(48, 34, 6, 0.86)'
+          : 'rgba(58, 42, 10, 0.8)'
+      : isDark
+        ? 'rgba(28,28,32,0.86)'
+        : 'rgba(42,42,46,0.78)';
 
-  const lip = gold
+  const lip = ruby
     ? isDark
-      ? 'rgba(255, 240, 190, 0.38)'
-      : 'rgba(255, 250, 230, 0.55)'
-    : isDark
-      ? 'rgba(255,255,255,0.28)'
-      : 'rgba(255,255,255,0.48)';
+      ? 'rgba(255, 170, 160, 0.55)'
+      : 'rgba(255, 200, 190, 0.65)'
+    : gold
+      ? isDark
+        ? 'rgba(255, 240, 190, 0.42)'
+        : 'rgba(255, 250, 230, 0.58)'
+      : isDark
+        ? 'rgba(255,255,255,0.28)'
+        : 'rgba(255,255,255,0.48)';
 
-  const shadowColor = gold
+  const shadowColor = ruby
     ? isDark
-      ? 'rgba(0, 0, 0, 0.72)'
-      : 'rgba(40, 28, 6, 0.45)'
-    : 'rgba(0,0,0,0.4)';
+      ? 'rgba(80, 0, 8, 0.85)'
+      : 'rgba(90, 10, 16, 0.5)'
+    : gold
+      ? isDark
+        ? 'rgba(0, 0, 0, 0.75)'
+        : 'rgba(40, 28, 6, 0.48)'
+      : 'rgba(0,0,0,0.4)';
 
-  const ambientGlow = gold
+  const ambientGlow = ruby
     ? isDark
-      ? 'rgba(201, 162, 39, 0.22)'
-      : 'rgba(201, 162, 39, 0.18)'
-    : 'rgba(0,0,0,0.08)';
+      ? 'rgba(255, 59, 48, 0.35)'
+      : 'rgba(255, 59, 48, 0.22)'
+    : gold
+      ? isDark
+        ? 'rgba(201, 162, 39, 0.28)'
+        : 'rgba(201, 162, 39, 0.2)'
+      : 'rgba(0,0,0,0.08)';
 
-  const weight = emphasis === 'hero' ? ('800' as const) : ('700' as const);
+  const weight = emphasis === 'hero' || ruby ? ('800' as const) : ('700' as const);
 
   const base = {
     ...(APPLE_TYPE ? { fontFamily: APPLE_TYPE } : null),
@@ -141,7 +161,6 @@ function EngravedLine({
 
   return (
     <View style={styles.engraveWrap}>
-      {/* Soft gold ambient under the carve */}
       <Text
         pointerEvents="none"
         style={[
@@ -149,31 +168,29 @@ function EngravedLine({
           styles.engraveLayer,
           {
             color: ambientGlow,
-            top: 1.8,
-            left: 0.6,
+            top: 2,
+            left: 0.7,
             textShadowColor: ambientGlow,
             textShadowOffset: { width: 0, height: 0 },
-            textShadowRadius: emphasis === 'hero' ? 8 : 5,
+            textShadowRadius: ruby || emphasis === 'hero' ? 10 : 5,
           },
         ]}
       >
         {text}
       </Text>
-      {/* Deep carved body */}
       <Text
         style={[
           base,
           {
             color: fill,
             textShadowColor: shadowColor,
-            textShadowOffset: { width: 0.6, height: 1.4 },
-            textShadowRadius: emphasis === 'hero' ? 3.5 : 2.4,
+            textShadowOffset: { width: 0.7, height: ruby ? 1.8 : 1.4 },
+            textShadowRadius: ruby || emphasis === 'hero' ? 4.2 : 2.4,
           },
         ]}
       >
         {text}
       </Text>
-      {/* Upper metal lip catching light */}
       <Text
         pointerEvents="none"
         style={[
@@ -181,9 +198,9 @@ function EngravedLine({
           styles.engraveLayer,
           {
             color: lip,
-            top: -0.55,
-            left: -0.35,
-            opacity: 0.9,
+            top: -0.6,
+            left: -0.4,
+            opacity: 0.92,
           },
         ]}
       >
@@ -253,30 +270,24 @@ function EngravedMiniMonthCalendar({
 
   const ink = gold
     ? isDark
-      ? 'rgba(62, 44, 10, 0.88)'
-      : 'rgba(55, 38, 8, 0.78)'
+      ? 'rgba(58, 40, 8, 0.9)'
+      : 'rgba(50, 34, 6, 0.8)'
     : isDark
       ? 'rgba(40,40,44,0.8)'
       : 'rgba(50,50,54,0.72)';
   const mute = gold
     ? isDark
-      ? 'rgba(120, 90, 28, 0.45)'
-      : 'rgba(100, 75, 20, 0.4)'
+      ? 'rgba(120, 90, 28, 0.5)'
+      : 'rgba(100, 75, 20, 0.42)'
     : 'rgba(120,120,128,0.45)';
-  const todayFill = gold
-    ? isDark
-      ? 'rgba(201, 162, 39, 0.28)'
-      : 'rgba(201, 162, 39, 0.32)'
-    : 'rgba(52,199,89,0.22)';
-  const todayRing = gold
-    ? isDark
-      ? 'rgba(245, 223, 166, 0.55)'
-      : 'rgba(120, 86, 18, 0.45)'
-    : 'rgba(52,199,89,0.55)';
+  /** Today marker — ruby like the second hand */
+  const todayFill = isDark ? 'rgba(255, 59, 48, 0.22)' : 'rgba(255, 59, 48, 0.18)';
+  const todayRing = isDark ? 'rgba(255, 120, 110, 0.7)' : 'rgba(196, 30, 42, 0.55)';
+  const todayInk = isDark ? '#FF6B5C' : '#C41E2A';
   const arrow = gold
     ? isDark
-      ? 'rgba(201, 162, 39, 0.85)'
-      : 'rgba(107, 76, 16, 0.75)'
+      ? 'rgba(201, 162, 39, 0.9)'
+      : 'rgba(107, 76, 16, 0.78)'
     : '#8E8E93';
 
   const cell = Math.floor((width - 4) / 7);
@@ -311,9 +322,9 @@ function EngravedMiniMonthCalendar({
             styles.miniCalTitle,
             {
               color: ink,
-              textShadowColor: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(40,28,6,0.28)',
-              textShadowOffset: { width: 0.4, height: 0.9 },
-              textShadowRadius: 1.6,
+              textShadowColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(40,28,6,0.32)',
+              textShadowOffset: { width: 0.45, height: 1.1 },
+              textShadowRadius: 2,
             },
           ]}
         >
@@ -331,7 +342,21 @@ function EngravedMiniMonthCalendar({
 
       <View style={styles.miniCalDowRow}>
         {DOW_SHORT.map((label, i) => (
-          <Text key={`${label}-${i}`} style={[type, { width: cell, color: mute, fontSize: 8, textAlign: 'center' }]}>
+          <Text
+            key={`${label}-${i}`}
+            style={[
+              type,
+              {
+                width: cell,
+                color: mute,
+                fontSize: 8,
+                textAlign: 'center',
+                textShadowColor: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(40,28,6,0.15)',
+                textShadowOffset: { width: 0.2, height: 0.5 },
+                textShadowRadius: 0.8,
+              },
+            ]}
+          >
             {label}
           </Text>
         ))}
@@ -353,8 +378,13 @@ function EngravedMiniMonthCalendar({
                   height: cell - 1,
                   borderRadius: (cell - 1) / 2,
                   backgroundColor: isToday ? todayFill : 'transparent',
-                  borderWidth: isToday ? StyleSheet.hairlineWidth * 2 : 0,
+                  borderWidth: isToday ? 1.5 : 0,
                   borderColor: isToday ? todayRing : 'transparent',
+                  shadowColor: isToday ? '#FF3B30' : 'transparent',
+                  shadowOffset: { width: 0, height: isToday ? 1 : 0 },
+                  shadowOpacity: isToday ? 0.45 : 0,
+                  shadowRadius: isToday ? 3 : 0,
+                  elevation: isToday ? 2 : 0,
                 },
               ]}
             >
@@ -363,10 +393,16 @@ function EngravedMiniMonthCalendar({
                   type,
                   {
                     fontSize: 9,
-                    color: isToday ? (isDark ? '#F5DFA6' : '#4F3808') : ink,
-                    textShadowColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(40,28,6,0.22)',
-                    textShadowOffset: { width: 0.3, height: 0.7 },
-                    textShadowRadius: 1.2,
+                    color: isToday ? todayInk : ink,
+                    textShadowColor: isToday
+                      ? isDark
+                        ? 'rgba(80,0,8,0.75)'
+                        : 'rgba(120,20,24,0.4)'
+                      : isDark
+                        ? 'rgba(0,0,0,0.5)'
+                        : 'rgba(40,28,6,0.25)',
+                    textShadowOffset: { width: 0.35, height: isToday ? 1 : 0.75 },
+                    textShadowRadius: isToday ? 2 : 1.2,
                     fontWeight: isToday ? '800' : '700',
                   },
                 ]}
@@ -436,6 +472,7 @@ function EngravedDateBeside({
         gold={gold}
         letterSpacing={1.2}
         emphasis="hero"
+        tone="ruby"
       />
       <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.5} />
       <View style={styles.dateGapSm} />
@@ -890,7 +927,7 @@ function AnalogAppleClock({
   return (
     <View collapsable={false} style={styles.assembly}>
       {dial}
-      <View style={[styles.sideStack, { maxHeight: size + 4 }]}>
+      <View style={styles.sideStack}>
         <EngravedDateBeside date={time} isDark={isDark} gold={gold || red} height={size} gleam={gleam} />
         <EngravedMiniMonthCalendar today={time} isDark={isDark} gold={gold || red} width={112} />
       </View>
