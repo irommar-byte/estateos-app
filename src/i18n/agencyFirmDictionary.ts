@@ -13,6 +13,7 @@ export type AgencyFirmDictionary = {
   approve: string;
   reject: string;
   administrator: string;
+  manager: string;
   agent: string;
   lastLogin: string;
   offers: string;
@@ -60,6 +61,14 @@ export type AgencyFirmDictionary = {
   creditsInPool: string;
   connectionError: string;
   operationFailed: string;
+  promoteToManager: string;
+  demoteToAgent: string;
+  offerActivationQueueTitle: string;
+  offerActivationQueueSubtitle: string;
+  offerActivationQueueEmpty: string;
+  activateOffer: string;
+  rejectOfferNotePlaceholder: string;
+  managerPanelHint: string;
   agentTitles: Record<string, string>;
   partnerPlan: {
     activePackage: string;
@@ -115,6 +124,7 @@ const pl: AgencyFirmDictionary = {
   approve: 'Zatwierdź',
   reject: 'Odrzuć',
   administrator: 'Administrator',
+  manager: 'Kierownik',
   agent: 'Agent',
   lastLogin: 'Ostatnie logowanie',
   offers: 'Oferty',
@@ -166,6 +176,15 @@ const pl: AgencyFirmDictionary = {
   creditsInPool: 'Kredyty w puli',
   connectionError: 'Błąd połączenia.',
   operationFailed: 'Operacja nie powiodła się.',
+  promoteToManager: 'Awansuj na kierownika',
+  demoteToAgent: 'Cofnij do agenta',
+  offerActivationQueueTitle: 'Kolejka aktywacji ofert',
+  offerActivationQueueSubtitle: 'Oferty wysłane przez agentów — akceptacja bez moderacji platformy',
+  offerActivationQueueEmpty: 'Brak ofert oczekujących na akceptację.',
+  activateOffer: 'Aktywuj',
+  rejectOfferNotePlaceholder: 'Opcjonalna notatka dla agenta…',
+  managerPanelHint:
+    'Jako kierownik możesz akceptować oferty zespołu. Pełne zarządzanie biurem jest dostępne dla administratora.',
   agentTitles: {
     DORADCA: 'Doradca',
     AGENT: 'Agent',
@@ -242,6 +261,7 @@ const en: AgencyFirmDictionary = {
   approve: 'Approve',
   reject: 'Decline',
   administrator: 'Administrator',
+  manager: 'Manager',
   agent: 'Agent',
   lastLogin: 'Last login',
   offers: 'Listings',
@@ -292,6 +312,15 @@ const en: AgencyFirmDictionary = {
   creditsInPool: 'Pool credits',
   connectionError: 'Connection error.',
   operationFailed: 'Operation failed.',
+  promoteToManager: 'Promote to manager',
+  demoteToAgent: 'Demote to agent',
+  offerActivationQueueTitle: 'Listing activation queue',
+  offerActivationQueueSubtitle: 'Listings submitted by agents — approve without platform moderation',
+  offerActivationQueueEmpty: 'No listings awaiting approval.',
+  activateOffer: 'Activate',
+  rejectOfferNotePlaceholder: 'Optional note for the agent…',
+  managerPanelHint:
+    'As a manager you can approve team listings. Full office management is available to administrators.',
   agentTitles: {
     DORADCA: 'Advisor',
     AGENT: 'Agent',

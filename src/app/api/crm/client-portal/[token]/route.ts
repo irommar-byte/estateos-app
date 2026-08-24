@@ -161,6 +161,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           city: true,
           district: true,
           status: true,
+          officeReviewStatus: true,
           managementStatus: true,
           images: true,
           promotedUntil: true,
@@ -315,7 +316,11 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             city: client.linkedOffer.city,
             district: client.linkedOffer.district,
             status: client.linkedOffer.status,
-            statusLabel: listingStatusLabel(client.linkedOffer.status),
+            statusLabel: listingStatusLabel(
+              client.linkedOffer.status,
+              client.linkedOffer.officeReviewStatus,
+            ),
+            officeReviewStatus: client.linkedOffer.officeReviewStatus,
             managementStatus: client.linkedOffer.managementStatus,
             imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(client.linkedOffer)),
             promotedUntil: client.linkedOffer.promotedUntil

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
 import { buildPhoneLookupVariants, normalizePhoneE164 } from '@/lib/phoneE164';
+import { findPeselCollision } from '@/lib/crm/clientDuplicate';
+import { parsePesel } from '@/lib/pesel';
 
 function isValidEmail(raw: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
@@ -27,9 +29,13 @@ export async function GET(req: Request) {
     .toLowerCase();
   const phoneRaw = normalizePhoneE164(url.searchParams.get('phone'));
   const phoneVariants = phoneRaw ? buildPhoneLookupVariants(phoneRaw) : [];
+  const peselRaw = String(url.searchParams.get('pesel') || '').trim();
+  const peselValid = peselRaw ? Boolean(parsePesel(peselRaw)) : null;
+  const peselCollision =
+    peselValid === true ? await findPeselCollision({ pesel: peselRaw }) : { exists: false, message: null };
 
-  if (!emailRaw && !phoneRaw) {
-    return NextResponse.json({ success: true, matches: [] });
+  if (!emailRaw && !phoneRaw && !peselRaw) {
+    return NextResponse.json({ success: true, matches: [], peselCollision: null });
   }
 
   if (emailRaw && !isValidEmail(emailRaw)) {
@@ -37,6 +43,20 @@ export async function GET(req: Request) {
       success: true,
       emailValid: false,
       phoneValid: phoneRaw ? true : null,
+      peselValid,
+      peselCollision: peselCollision.exists ? { exists: true, message: peselCollision.message } : null,
+      matches: [],
+    });
+  }
+
+  // Phone/email lookup never returns PESEL. PESEL collision is a separate boolean warning only.
+  if (!emailRaw && !phoneRaw) {
+    return NextResponse.json({
+      success: true,
+      emailValid: null,
+      phoneValid: null,
+      peselValid,
+      peselCollision: peselCollision.exists ? { exists: true, message: peselCollision.message } : null,
       matches: [],
     });
   }
@@ -46,7 +66,12 @@ export async function GET(req: Request) {
   if (phoneVariants.length) or.push({ phone: { in: phoneVariants } });
 
   const quick = url.searchParams.get('quick') === '1';
-  const where = { agencyUserId, OR: or };
+  const where = { agencyUserId, status: 'ACTIVE' as const, OR: or };
+
+  const peselPayload = {
+    peselValid,
+    peselCollision: peselCollision.exists ? { exists: true, message: peselCollision.message } : null,
+  };
 
   if (quick) {
     const rows = await prisma.agencyClient.findMany({
@@ -70,6 +95,7 @@ export async function GET(req: Request) {
       success: true,
       emailValid: emailRaw ? true : null,
       phoneValid: phoneRaw ? true : null,
+      ...peselPayload,
       matches: rows.map((c) => ({
         id: c.id,
         status: c.status,
@@ -126,6 +152,7 @@ export async function GET(req: Request) {
     success: true,
     emailValid: emailRaw ? true : null,
     phoneValid: phoneRaw ? true : null,
+    ...peselPayload,
     matches: rows.map((c) => ({
       id: c.id,
       status: c.status,

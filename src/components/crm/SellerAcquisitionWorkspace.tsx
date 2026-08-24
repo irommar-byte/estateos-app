@@ -43,6 +43,12 @@ import {
   parseSellerPropertyType,
   sellerPropertyTypeLabel,
 } from "@/lib/crm/sellerProperty";
+import {
+  canSubmitOfferForOfficeActivation,
+  officeOfferStatusChipClass,
+  resolveOfficeOfferUiStatus,
+  type LinkedOfferSnapshot,
+} from "@/lib/crm/officeOfferStatusUi";
 
 const OFFER_CITIES = [
   "Warszawa",
@@ -72,6 +78,8 @@ type AcquisitionResponse = {
   defaultForm: AcquisitionFormData;
   portalUrl: string | null;
   documentUrl?: string | null;
+  linkedOfferId?: number | null;
+  linkedOffer?: LinkedOfferSnapshot | null;
 };
 
 const fieldClass =
@@ -204,6 +212,9 @@ export default function SellerAcquisitionWorkspace({
   const [signerName, setSignerName] = useState(`${client.firstName} ${client.lastName}`.trim());
   const [signerEmail, setSignerEmail] = useState(client.email || "");
   const [signatureData, setSignatureData] = useState("");
+  const [linkedOffer, setLinkedOffer] = useState<LinkedOfferSnapshot | null>(null);
+  const [canManageOfficeOffers, setCanManageOfficeOffers] = useState(false);
+  const [offerActionBusy, setOfferActionBusy] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -220,6 +231,7 @@ export default function SellerAcquisitionWorkspace({
         setPortalUrl(data.portalUrl);
         setDocumentUrl(data.documentUrl || (data.portalUrl ? `${data.portalUrl}/dokument` : null));
         setTemplateConfirmed(Boolean(data.acquisition?.approvedTemplateConfirmed));
+        setLinkedOffer(data.linkedOffer ?? (data.linkedOfferId ? { id: data.linkedOfferId } : null));
       })
       .catch((error) => active && setNotice(error instanceof Error ? error.message : "Błąd"))
       .finally(() => active && setLoading(false));
@@ -228,7 +240,61 @@ export default function SellerAcquisitionWorkspace({
     };
   }, [client.id]);
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/agency-company/offers/office-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "capability", offerId: 1 }),
+    })
+      .then(async (response) => {
+        const json = await response.json().catch(() => ({}));
+        if (!active || !response.ok) return;
+        setCanManageOfficeOffers(Boolean(json?.capability?.ok));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const refreshLinkedOffer = async () => {
+    const response = await fetch(`/api/crm/clients/${client.id}/acquisition`, { cache: "no-store" });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return;
+    const data = json as AcquisitionResponse;
+    setLinkedOffer(data.linkedOffer ?? (data.linkedOfferId ? { id: data.linkedOfferId } : null));
+  };
+
+  const submitOfferActivation = async () => {
+    if (!linkedOffer?.id) return;
+    setOfferActionBusy("submit");
+    setNotice("");
+    try {
+      const response = await fetch("/api/agency-company/offers/office-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "submit", offerId: linkedOffer.id }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.error || "Nie udało się wysłać oferty do aktywacji.");
+      await refreshLinkedOffer();
+      onUpdated?.();
+      setNotice(
+        canManageOfficeOffers
+          ? "Oferta została aktywowana."
+          : "Oferta trafiła do kolejki akceptacji kierownika biura.",
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Błąd aktywacji oferty.");
+    } finally {
+      setOfferActionBusy("");
+    }
+  };
+
   const signed = record?.status === "SIGNED";
+  const offerUiStatus = resolveOfficeOfferUiStatus(linkedOffer);
+  const canSubmitOffer = canSubmitOfferForOfficeActivation(linkedOffer);
   const checkedDocuments = useMemo(
     () => ACQUISITION_DOCUMENTS.filter((item) => form?.documents?.[item.id]).length,
     [form?.documents],
@@ -869,12 +935,61 @@ export default function SellerAcquisitionWorkspace({
                 </button>
               </>
             ) : (
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
-                <p className="flex items-center gap-2 font-black text-emerald-700"><BadgeCheck className="size-5" /> Oferta pozyskana — umowa zamknięta</p>
-                <p className="mt-2 text-sm text-[var(--eos-text)]">{record.signerName} · {record.signedAt ? new Date(record.signedAt).toLocaleString("pl-PL") : ""}</p>
-                <p className="mt-1 text-sm text-[var(--eos-muted)]">Szkic ogłoszenia nie jest publiczny. Od tej pory umowa jest tylko do podglądu.</p>
-                <p className="mt-1 break-all text-[10px] text-[var(--eos-muted)]">SHA-256: {record.documentHash}</p>
-                <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-[var(--eos-muted)]"><Mail className="size-3.5" /> {record.copyEmailSentAt ? "Kopia wysłana e-mailem" : "Kopia e-mail wymaga ponownej wysyłki"}</p>
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
+                  <p className="flex items-center gap-2 font-black text-emerald-700"><BadgeCheck className="size-5" /> Oferta pozyskana — umowa zamknięta</p>
+                  <p className="mt-2 text-sm text-[var(--eos-text)]">{record.signerName} · {record.signedAt ? new Date(record.signedAt).toLocaleString("pl-PL") : ""}</p>
+                  <p className="mt-1 text-sm text-[var(--eos-muted)]">Szkic ogłoszenia nie jest publiczny. Od tej pory umowa jest tylko do podglądu.</p>
+                  <p className="mt-1 break-all text-[10px] text-[var(--eos-muted)]">SHA-256: {record.documentHash}</p>
+                  <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-[var(--eos-muted)]"><Mail className="size-3.5" /> {record.copyEmailSentAt ? "Kopia wysłana e-mailem" : "Kopia e-mail wymaga ponownej wysyłki"}</p>
+                </div>
+
+                {linkedOffer ? (
+                  <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">Aktywacja ogłoszenia</p>
+                        <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">
+                          {linkedOffer.title?.trim() || `Szkic oferty #${linkedOffer.id}`}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                          Publikacja jest osobnym krokiem — umowa pozostaje tylko do odczytu.
+                        </p>
+                      </div>
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${officeOfferStatusChipClass(offerUiStatus.key)}`}
+                      >
+                        {offerUiStatus.label}
+                      </span>
+                    </div>
+
+                    {canSubmitOffer ? (
+                      <button
+                        type="button"
+                        disabled={Boolean(offerActionBusy)}
+                        onClick={() => void submitOfferActivation()}
+                        className={`${eosBtn("home")} mt-4`}
+                      >
+                        {offerActionBusy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                        {canManageOfficeOffers ? "Aktywuj ofertę" : "Wyślij do aktywacji"}
+                      </button>
+                    ) : offerUiStatus.key === "review" ? (
+                      <p className="mt-4 text-sm font-semibold text-amber-700">
+                        {canManageOfficeOffers
+                          ? "Oferta czeka w kolejce biura — możesz ją zaakceptować w panelu biura."
+                          : "Oferta czeka na akceptację kierownika biura."}
+                      </p>
+                    ) : offerUiStatus.key === "active" ? (
+                      <Link href={`/oferta/${linkedOffer.id}`} target="_blank" className={`${eosBtn("secondary")} mt-4`}>
+                        <ExternalLink className="size-4" /> Otwórz aktywne ogłoszenie
+                      </Link>
+                    ) : offerUiStatus.key === "rejected" ? (
+                      <p className="mt-4 text-sm text-[var(--eos-muted)]">
+                        Kierownik poprosił o poprawki przed aktywacją. Po korekcie wyślij ponownie.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

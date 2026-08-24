@@ -163,12 +163,29 @@ export async function GET(req: Request, ctx: RouteCtx) {
     acquisition.formData.meeting.startsAt = fallbackForm.meeting.startsAt;
     if (fallbackForm.meeting.location) acquisition.formData.meeting.location = fallbackForm.meeting.location;
   }
+  const linkedOfferRaw = client.linkedOfferId
+    ? await prisma.offer.findFirst({
+        where: { id: client.linkedOfferId, userId: agencyUserId },
+      })
+    : null;
+  const linkedOffer = linkedOfferRaw
+    ? {
+        id: linkedOfferRaw.id,
+        title: linkedOfferRaw.title,
+        status: linkedOfferRaw.status,
+        officeReviewStatus:
+          (linkedOfferRaw as { officeReviewStatus?: string | null }).officeReviewStatus ?? null,
+      }
+    : null;
+
   return NextResponse.json({
     success: true,
     acquisition,
     defaultForm: fallbackForm,
     portalUrl: client.portalToken ? `/klient/${client.portalToken}` : null,
     documentUrl: client.portalToken ? `/klient/${client.portalToken}/dokument` : null,
+    linkedOfferId: client.linkedOfferId,
+    linkedOffer,
   });
 }
 

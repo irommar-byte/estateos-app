@@ -108,6 +108,7 @@ type PortalData = {
     district: string | null;
     status: string;
     statusLabel?: string;
+    officeReviewStatus?: string | null;
     managementStatus: string | null;
     imageUrl: string;
     promotedUntil?: string | null;
@@ -562,6 +563,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                     Zobacz publiczną stronę ogłoszenia <ExternalLink className="size-3.5" />
                   </Link>
                 </>
+              ) : portal.listing.officeReviewStatus === "OFFICE_REVIEW" ||
+                portal.listing.statusLabel === "Oferta weryfikowana przez biuro" ? (
+                <p className="text-xs text-[var(--eos-muted)]">
+                  Oferta jest weryfikowana przez biuro. Po akceptacji kierownika zobaczysz publikację tutaj.
+                </p>
               ) : (
                 <p className="text-xs text-[var(--eos-muted)]">
                   Szkic jest u agenta. Nie jest jeszcze publiczny — zobaczysz publikację i wystawienia w ścieżce poniżej.
