@@ -7,6 +7,7 @@ import { ArrowUpRight, Gauge, MapPin } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import GoldFeaturedFrame from "@/components/ui/GoldFeaturedFrame";
+import { fetchHomeCatalogJson } from "@/lib/homeCatalogCache";
 
 type CarListing = {
   id: number;
@@ -31,8 +32,7 @@ export default function FeaturedCarsGallery() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/cars", { cache: "no-store" })
-      .then((res) => res.json())
+    fetchHomeCatalogJson<CarListing[]>("/api/cars")
       .then((json) => {
         if (cancelled || !Array.isArray(json)) return;
         const featured = json.filter((car: CarListing) => car?.featured === true);

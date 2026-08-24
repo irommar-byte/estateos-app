@@ -12,6 +12,7 @@ import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import GoldFeaturedFrame from "@/components/ui/GoldFeaturedFrame";
+import { fetchHomeCatalogJson } from "@/lib/homeCatalogCache";
 
 type Offer = {
   id: number;
@@ -75,8 +76,7 @@ export default function FeaturedGallery() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/offers", { cache: "no-store" })
-      .then((res) => res.json())
+    fetchHomeCatalogJson<Offer[]>("/api/offers")
       .then((json) => {
         if (!cancelled && Array.isArray(json)) {
           const featuredOnly = json.filter((offer: Offer) => offer?.featured === true);
