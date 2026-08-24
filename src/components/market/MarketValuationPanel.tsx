@@ -39,6 +39,51 @@ function ppsm(n: number) {
   return `${Math.round(n).toLocaleString("pl-PL")} zł/m²`;
 }
 
+function PriceCompare({ result, listingPrice }: { result: ValuationResult; listingPrice?: number | null }) {
+  const clientPrice = (result.listingPrice && result.listingPrice > 0 ? result.listingPrice : listingPrice) || null;
+  const recommended = result.estimated.recommendedAsk;
+  if (!clientPrice || !recommended) return null;
+  const max = Math.max(clientPrice, recommended, result.estimated.high);
+  const width = (n: number) => `${Math.max(8, Math.min(100, Math.round((n / max) * 100)))}%`;
+  const delta = clientPrice - recommended;
+  const pct = recommended > 0 ? (delta / recommended) * 100 : 0;
+  const absPct = Math.abs(pct).toFixed(1).replace(".", ",");
+  let caption: string;
+  if (Math.abs(pct) < 1.5) {
+    caption = "Cena klienta jest zbliżona do rekomendacji z transakcji.";
+  } else if (delta < 0) {
+    caption = `Klient wycenia o ${pln(Math.abs(delta))} (${absPct}%) poniżej rekomendacji z aktów.`;
+  } else {
+    caption = `Klient wycenia o ${pln(Math.abs(delta))} (${absPct}%) powyżej rekomendacji z aktów.`;
+  }
+  return (
+    <div className="eos-inset-well space-y-3 rounded-2xl px-4 py-4">
+      <p className="eos-portal-label">Porównanie ceny</p>
+      <div>
+        <div className="mb-1 flex items-baseline justify-between gap-3">
+          <span className="text-xs text-[var(--eos-muted)]">Cena zaproponowana przez klienta</span>
+          <span className="text-sm font-black tabular-nums text-[var(--eos-text)]">{pln(clientPrice)}</span>
+        </div>
+        <div className="h-3 overflow-hidden rounded-full bg-[var(--eos-input)]">
+          <div className="h-full rounded-full bg-[#0071e3]" style={{ width: width(clientPrice) }} />
+        </div>
+      </div>
+      <div>
+        <div className="mb-1 flex items-baseline justify-between gap-3">
+          <span className="text-xs text-[var(--eos-muted)]">Rekomendacja z transakcji RCN</span>
+          <span className="text-sm font-black tabular-nums text-emerald-600">{pln(recommended)}</span>
+        </div>
+        <div className="h-3 overflow-hidden rounded-full bg-[var(--eos-input)]">
+          <div className="h-full rounded-full bg-emerald-500" style={{ width: width(recommended) }} />
+        </div>
+      </div>
+      <p className="text-[12px] leading-relaxed text-[var(--eos-muted)]">
+        Zakres rynkowy: {pln(result.estimated.low)} – {pln(result.estimated.high)}. {caption}
+      </p>
+    </div>
+  );
+}
+
 function ScoreBadge({ score }: { score: PriceScore }) {
   const color =
     score.tone === "good"
@@ -347,6 +392,7 @@ export default function MarketValuationPanel({
               </div>
             </div>
             {result.vsListing ? <ScoreBadge score={result.vsListing} /> : null}
+            <PriceCompare result={result} listingPrice={listingPrice} />
             {result.comps.length ? (
               <div className="eos-inset-well rounded-2xl px-3 py-2">
                 <p className="eos-portal-label mb-1 px-1 pt-1">Porównywalne transakcje</p>

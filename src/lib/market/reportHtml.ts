@@ -9,6 +9,69 @@ function esc(s: string) {
     .replace(/"/g, '&quot;');
 }
 
+function barRow(params: {
+  label: string;
+  amount: number;
+  fill: string;
+  max: number;
+  accent?: boolean;
+}) {
+  const pct = params.max > 0 ? Math.max(8, Math.min(100, Math.round((params.amount / params.max) * 100))) : 8;
+  const rest = 100 - pct;
+  return `<tr>
+    <td style="padding:10px 0 4px;border:0">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <tr>
+          <td style="font-size:12px;color:#6b6b70;padding:0 0 6px;border:0">${esc(params.label)}</td>
+          <td align="right" style="font-size:14px;font-weight:800;letter-spacing:-0.02em;color:${params.accent ? '#0f766e' : '#111'};padding:0 0 6px;border:0;white-space:nowrap">${formatPln(params.amount)}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="border:0;padding:0">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef0f3;border-radius:999px">
+              <tr>
+                <td width="${pct}%" style="background:${params.fill};height:12px;border-radius:999px;font-size:0;line-height:0">&nbsp;</td>
+                ${rest > 0 ? `<td width="${rest}%" style="font-size:0;line-height:0">&nbsp;</td>` : ''}
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+}
+
+export function buildPriceCompareChartHtml(result: ValuationResult) {
+  const clientPrice = result.listingPrice && result.listingPrice > 0 ? result.listingPrice : null;
+  const recommended = result.estimated.recommendedAsk;
+  if (!clientPrice || !recommended) return '';
+
+  const max = Math.max(clientPrice, recommended, result.estimated.high);
+  const delta = clientPrice - recommended;
+  const pct = recommended > 0 ? (delta / recommended) * 100 : 0;
+  const absPct = Math.abs(pct).toFixed(1).replace('.', ',');
+  const absPln = formatPln(Math.abs(delta));
+  let caption: string;
+  if (Math.abs(pct) < 1.5) {
+    caption = 'Cena zaproponowana przez klienta jest zbliżona do rekomendacji z realnych transakcji.';
+  } else if (delta < 0) {
+    caption = `Klient wycenia nieruchomość o ${absPln} (${absPct}%) poniżej rekomendacji z transakcji RCN.`;
+  } else {
+    caption = `Klient wycenia nieruchomość o ${absPln} (${absPct}%) powyżej rekomendacji z transakcji RCN.`;
+  }
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0 8px;border-collapse:collapse">
+    <tr><td style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#6b6b70;font-weight:700;padding:0 0 8px;border:0">Porównanie ceny</td></tr>
+    ${barRow({ label: 'Cena zaproponowana przez klienta', amount: clientPrice, fill: '#0071e3', max })}
+    ${barRow({ label: 'Rekomendacja z transakcji RCN', amount: recommended, fill: '#10b981', max, accent: true })}
+    <tr>
+      <td style="padding:14px 0 0;border:0;font-size:12px;color:#6b6b70;line-height:1.5">
+        Zakres rynkowy z aktów: <strong style="color:#111">${formatPln(result.estimated.low)} – ${formatPln(result.estimated.high)}</strong>.
+        ${esc(caption)}
+      </td>
+    </tr>
+  </table>`;
+}
+
 export function buildMarketReportHtml(result: ValuationResult, opts: { recipientName?: string | null }) {
   const s = result.subject;
   const loc = [s.city, s.district, s.address].filter(Boolean).join(' · ');
@@ -60,6 +123,7 @@ export function buildMarketReportHtml(result: ValuationResult, opts: { recipient
     <p class="muted">Rekomendowana cena ofertowa: <strong>${formatPln(result.estimated.recommendedAsk)}</strong>.
       Podstawa: ${result.stats.count} ${result.stats.basis === 'comps' ? 'porównywalnych transakcji' : result.stats.basis === 'district' ? 'aktów z dzielnicy' : 'aktów z miasta'}
       z ${result.stats.windowMonths} mies. mediana ${formatPpsm(result.stats.medianPpsm)}, średnia ${formatPpsm(result.stats.meanPpsm)}.</p>
+    ${buildPriceCompareChartHtml(result)}
     ${
       score
         ? `<p class="score">EstateOS™ Price Score ${score.score}/100 — ${esc(score.label)}<br/><span class="muted">${esc(score.detail)}</span></p>`

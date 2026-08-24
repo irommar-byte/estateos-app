@@ -21,6 +21,9 @@ import {
 import {
   ACQUISITION_DOCUMENTS,
   ACQUISITION_STEPS,
+  applyAgreementType,
+  isOpenEndedCooperation,
+  publicAssetUrl,
   type AcquisitionFormData,
   type AcquisitionRecord,
 } from "@/lib/acquisitionWorkflow";
@@ -30,7 +33,7 @@ import NumberStepper from "@/components/crm/NumberStepper";
 import CommissionRateSlider from "@/components/crm/CommissionRateSlider";
 import MarketValuationPanel from "@/components/market/MarketValuationPanel";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
-import { COMMISSION_RATE_DEFAULT } from "@/lib/leadTransferShared";
+import { COMMISSION_RATE_DEFAULT, storeCommissionPercent } from "@/lib/leadTransferShared";
 import { PROPERTY_AMENITIES } from "@/lib/crm/clientJourney";
 import { getDistrictsForCity } from "@/lib/location/locationCatalog";
 import SellerPropertyTypeOptions from "@/components/crm/SellerPropertyTypeOptions";
@@ -68,6 +71,7 @@ type AcquisitionResponse = {
   acquisition: (AcquisitionRecord & { approvedTemplateConfirmed?: boolean }) | null;
   defaultForm: AcquisitionFormData;
   portalUrl: string | null;
+  documentUrl?: string | null;
 };
 
 const fieldClass =
@@ -194,6 +198,7 @@ export default function SellerAcquisitionWorkspace({
   const [form, setForm] = useState<AcquisitionFormData | null>(null);
   const [step, setStep] = useState(1);
   const [portalUrl, setPortalUrl] = useState<string | null>(null);
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [templateConfirmed, setTemplateConfirmed] = useState(false);
   const [signerName, setSignerName] = useState(`${client.firstName} ${client.lastName}`.trim());
@@ -213,6 +218,7 @@ export default function SellerAcquisitionWorkspace({
         setForm(data.acquisition?.formData || data.defaultForm);
         setStep(data.acquisition?.currentStep || 1);
         setPortalUrl(data.portalUrl);
+        setDocumentUrl(data.documentUrl || (data.portalUrl ? `${data.portalUrl}/dokument` : null));
         setTemplateConfirmed(Boolean(data.acquisition?.approvedTemplateConfirmed));
       })
       .catch((error) => active && setNotice(error instanceof Error ? error.message : "Błąd"))
@@ -333,7 +339,7 @@ export default function SellerAcquisitionWorkspace({
       setStep(name === "sign" ? 7 : 6);
       setNotice(
         name === "prepare_terms"
-          ? "Warunki zostały utrwalone. Możesz wysłać podgląd klientowi."
+          ? "Warunki gotowe. Sprawdź podgląd poniżej, zanim wyślesz klientowi."
           : name === "send_preview"
             ? json.emailSent
               ? "Podgląd i lista dokumentów zostały wysłane klientowi."
@@ -686,12 +692,28 @@ export default function SellerAcquisitionWorkspace({
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block">
                 <span className="eos-portal-label">Rodzaj umowy</span>
-                <select value={form.cooperation.agreementType} onChange={(event) => updateSection("cooperation", { agreementType: event.target.value as "EXCLUSIVE" | "OPEN" })} className={fieldClass}>
+                <select
+                  value={form.cooperation.agreementType}
+                  onChange={(event) =>
+                    updateSection(
+                      "cooperation",
+                      applyAgreementType(form.cooperation, event.target.value as "EXCLUSIVE" | "OPEN"),
+                    )
+                  }
+                  className={fieldClass}
+                >
                   <option value="EXCLUSIVE">Na wyłączność</option>
                   <option value="OPEN">Otwarta</option>
                 </select>
               </label>
-              <NumberStepper label="Okres współpracy" value={form.cooperation.durationMonths} onChange={(value) => updateSection("cooperation", { durationMonths: value })} step={1} min={1} suffix="mies." disabled={signed} />
+              {isOpenEndedCooperation(form.cooperation) ? (
+                <label className="block">
+                  <span className="eos-portal-label">Okres współpracy</span>
+                  <div className={`${fieldClass} flex items-center font-semibold`}>Czas nieokreślony</div>
+                </label>
+              ) : (
+                <NumberStepper label="Okres współpracy" value={form.cooperation.durationMonths} onChange={(value) => updateSection("cooperation", { durationMonths: value })} step={1} min={1} suffix="mies." disabled={signed} />
+              )}
               <NumberStepper label="Okres wypowiedzenia" value={form.cooperation.noticeDays} onChange={(value) => updateSection("cooperation", { noticeDays: value })} step={5} min={0} suffix="dni" disabled={signed} />
               <label className="block">
                 <span className="eos-portal-label">Sposób naliczenia prowizji</span>
@@ -704,7 +726,7 @@ export default function SellerAcquisitionWorkspace({
                 <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-[var(--eos-border)] p-4">
                   <CommissionRateSlider
                     value={Number(String(form.cooperation.commissionValue).replace(",", ".")) || COMMISSION_RATE_DEFAULT}
-                    onChange={(value) => updateSection("cooperation", { commissionValue: String(value) })}
+                    onChange={(value) => updateSection("cooperation", { commissionValue: storeCommissionPercent(value) })}
                     offerPrice={Number(String(form.strategy.expectedPrice || "").replace(/\s/g, "").replace(",", ".")) || 0}
                   />
                 </div>
@@ -745,9 +767,23 @@ export default function SellerAcquisitionWorkspace({
             </div>
 
             {record?.agreementSnapshot ? (
-              <pre className="max-h-[30rem] overflow-y-auto whitespace-pre-wrap rounded-2xl border border-[var(--eos-border)] bg-white p-5 text-xs leading-relaxed text-slate-800 shadow-inner">
-                {record.agreementSnapshot}
-              </pre>
+              <div>
+                <p className="mb-2 text-sm font-black text-[var(--eos-text)]">Podgląd warunków — sprawdź przed wysłaniem</p>
+                <pre className="max-h-[30rem] overflow-y-auto whitespace-pre-wrap rounded-2xl border border-[var(--eos-border)] bg-white p-5 text-xs leading-relaxed text-slate-800 shadow-inner">
+                  {record.agreementSnapshot}
+                </pre>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={Boolean(busy) || signed} onClick={() => void action("prepare_terms")} className={eosBtn("secondary")}>
+                    {busy === "prepare_terms" ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
+                    Odśwież warunki
+                  </button>
+                  {documentUrl ? (
+                    <Link href={documentUrl} target="_blank" className={eosBtn("secondary")}>
+                      <ExternalLink className="size-4" /> Otwórz dokument
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-[var(--eos-border)] p-6 text-center">
                 <FileCheck2 className="mx-auto size-8 text-emerald-500/60" />
@@ -772,7 +808,7 @@ export default function SellerAcquisitionWorkspace({
                   {form.paperContracts.map((file) => (
                     <a
                       key={file.url}
-                      href={file.url}
+                      href={publicAssetUrl(file.url) || file.url}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center justify-between eos-inset-well rounded-xl px-3 py-2 text-sm font-semibold text-emerald-700"

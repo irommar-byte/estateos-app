@@ -287,6 +287,7 @@ export async function valueProperty(
   const result: ValuationResult = {
     ok: true,
     subject,
+    listingPrice: listingPrice && listingPrice > 0 ? roundMoney(listingPrice) : null,
     estimated: {
       low: Math.min(low, mid),
       mid,

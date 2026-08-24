@@ -31,12 +31,19 @@ export const COMMISSION_RATE_STEP = 0.1;
 export const COMMISSION_RATE_DEFAULT = 2.5;
 
 export function snapCommissionRate(raw: number): number {
+  if (!Number.isFinite(raw)) return COMMISSION_RATE_DEFAULT;
   const stepped = Math.round(raw / COMMISSION_RATE_STEP) * COMMISSION_RATE_STEP;
-  return Math.min(COMMISSION_RATE_MAX, Math.max(COMMISSION_RATE_MIN, stepped));
+  const clamped = Math.min(COMMISSION_RATE_MAX, Math.max(COMMISSION_RATE_MIN, stepped));
+  // toFixed kills IEEE leftovers like 2.8000000000000003
+  return Number(clamped.toFixed(1));
+}
+
+export function storeCommissionPercent(raw: number): string {
+  return snapCommissionRate(raw).toFixed(1);
 }
 
 export function formatCommissionRate(value: number): string {
-  return `${value.toFixed(1).replace('.', ',')}%`;
+  return `${snapCommissionRate(value).toFixed(1).replace('.', ',')}%`;
 }
 
 export function commissionAmountStep(price: number): number {

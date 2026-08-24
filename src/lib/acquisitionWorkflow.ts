@@ -1,3 +1,18 @@
+import { COMMISSION_RATE_DEFAULT, snapCommissionRate } from "@/lib/leadTransferShared";
+
+export function publicAssetUrl(url: string): string {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const origin = (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    "https://estateos.pl"
+  ).replace(/\/+$/, "");
+  return raw.startsWith("/") ? `${origin}${raw}` : `${origin}/${raw}`;
+}
+
 export type AcquisitionStatus =
   | "PREPARATION"
   | "IN_MEETING"
@@ -208,7 +223,7 @@ export function createDefaultAcquisitionForm(
       durationMonths: "6",
       noticeDays: "30",
       commissionType: "PERCENT",
-      commissionValue: "",
+      commissionValue: COMMISSION_RATE_DEFAULT.toFixed(1),
       commissionVatIncluded: true,
       commissionDue: "W dniu zawarcia umowy sprzedaży",
       additionalCosts: "Brak dodatkowych kosztów bez uprzedniej zgody klienta.",
@@ -223,6 +238,67 @@ export function createDefaultAcquisitionForm(
   };
 }
 
+export function persistCommissionPercent(raw: unknown): string {
+  const trimmed = String(raw ?? "").trim().replace("%", "").replace(",", ".");
+  if (!trimmed || trimmed === "—" || trimmed === "-") {
+    return COMMISSION_RATE_DEFAULT.toFixed(1);
+  }
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return COMMISSION_RATE_DEFAULT.toFixed(1);
+  return snapCommissionRate(n).toFixed(1);
+}
+
+export function formatCommissionPercentLabel(raw: unknown): string {
+  return persistCommissionPercent(raw).replace(".", ",");
+}
+
+export function isOpenEndedCooperation(
+  cooperation: Pick<AcquisitionFormData["cooperation"], "agreementType" | "durationMonths">,
+): boolean {
+  if (cooperation.agreementType === "OPEN") return true;
+  const months = Number(String(cooperation.durationMonths || "").replace(",", "."));
+  return Number.isFinite(months) && months <= 0;
+}
+
+export function formatCooperationDuration(
+  cooperation: Pick<AcquisitionFormData["cooperation"], "agreementType" | "durationMonths">,
+): string {
+  if (isOpenEndedCooperation(cooperation)) return "czas nieokreślony";
+  const months = String(cooperation.durationMonths || "").trim();
+  return months ? `${months} miesięcy` : "czas nieokreślony";
+}
+
+export function applyAgreementType(
+  cooperation: AcquisitionFormData["cooperation"],
+  agreementType: "EXCLUSIVE" | "OPEN",
+): AcquisitionFormData["cooperation"] {
+  if (agreementType === "OPEN") {
+    return { ...cooperation, agreementType: "OPEN", durationMonths: "0" };
+  }
+  const months = Number(String(cooperation.durationMonths || "").replace(",", "."));
+  return {
+    ...cooperation,
+    agreementType: "EXCLUSIVE",
+    durationMonths: Number.isFinite(months) && months > 0 ? String(Math.round(months)) : "6",
+  };
+}
+
+function normalizeCooperation(
+  incoming: Partial<AcquisitionFormData["cooperation"]> | undefined,
+  fallback: AcquisitionFormData["cooperation"],
+): AcquisitionFormData["cooperation"] {
+  const cooperation = { ...fallback, ...(incoming || {}) };
+  const typed = applyAgreementType(
+    cooperation,
+    cooperation.agreementType === "OPEN" ? "OPEN" : "EXCLUSIVE",
+  );
+  if (typed.commissionType !== "FIXED") {
+    typed.commissionType = "PERCENT";
+    typed.commissionValue = persistCommissionPercent(typed.commissionValue);
+  }
+  return typed;
+}
+
 export function normalizeAcquisitionForm(
   raw: unknown,
   fallback: AcquisitionFormData,
@@ -235,7 +311,7 @@ export function normalizeAcquisitionForm(
     ownership: { ...fallback.ownership, ...(incoming.ownership || {}) },
     property: { ...fallback.property, ...(incoming.property || {}) },
     strategy: { ...fallback.strategy, ...(incoming.strategy || {}) },
-    cooperation: { ...fallback.cooperation, ...(incoming.cooperation || {}) },
+    cooperation: normalizeCooperation(incoming.cooperation, fallback.cooperation),
     documents: { ...fallback.documents, ...(incoming.documents || {}) },
     paperContracts: Array.isArray(incoming.paperContracts) ? incoming.paperContracts : fallback.paperContracts || [],
     notes: incoming.notes ?? fallback.notes,
@@ -257,12 +333,13 @@ export function buildAcquisitionAgreementText(params: {
   clientName: string;
   clientEmail?: string | null;
   clientPhone?: string | null;
+  clientPesel?: string | null;
   form: AcquisitionFormData;
 }): string {
   const { form } = params;
   const commission =
     form.cooperation.commissionType === "PERCENT"
-      ? `${form.cooperation.commissionValue || "—"}% ${form.cooperation.commissionVatIncluded ? "brutto" : "netto + VAT"}`
+      ? `${formatCommissionPercentLabel(form.cooperation.commissionValue)}% ${form.cooperation.commissionVatIncluded ? "brutto" : "netto + VAT"}`
       : `${form.cooperation.commissionValue || "—"} PLN ${form.cooperation.commissionVatIncluded ? "brutto" : "netto + VAT"}`;
 
   return [
@@ -275,6 +352,7 @@ export function buildAcquisitionAgreementText(params: {
     line("Agent prowadzący", params.agentName),
     line("Kontakt agenta", [params.agentEmail, params.agentPhone].filter(Boolean).join(" · ")),
     line("Klient", params.clientName),
+    line("PESEL", params.clientPesel),
     line("Kontakt klienta", [params.clientEmail, params.clientPhone].filter(Boolean).join(" · ")),
     "",
     "2. NIERUCHOMOŚĆ I OŚWIADCZENIA KLIENTA",
@@ -305,7 +383,7 @@ export function buildAcquisitionAgreementText(params: {
     "",
     "4. WARUNKI WSPÓŁPRACY",
     line("Rodzaj umowy", form.cooperation.agreementType === "EXCLUSIVE" ? "Na wyłączność" : "Otwarta"),
-    line("Okres", `${form.cooperation.durationMonths || "—"} miesięcy`),
+    line("Okres", formatCooperationDuration(form.cooperation)),
     line("Wypowiedzenie", `${form.cooperation.noticeDays || "—"} dni`),
     line("Wynagrodzenie pośrednika", commission),
     line("Termin płatności wynagrodzenia", form.cooperation.commissionDue),
@@ -326,7 +404,7 @@ export function buildAcquisitionAgreementText(params: {
     "",
     "8. ZAŁĄCZNIKI",
     form.paperContracts?.length
-      ? form.paperContracts.map((file) => `- ${file.name} (${file.url})`).join("\n")
+      ? form.paperContracts.map((file) => `- ${file.name} (${publicAssetUrl(file.url)})`).join("\n")
       : "Brak skanu podpisanej ręcznie umowy.",
     "",
     "9. POTWIERDZENIE",
