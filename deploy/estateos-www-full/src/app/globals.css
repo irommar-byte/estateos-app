@@ -2190,13 +2190,13 @@ html.light nav.fixed {
 .premium-hero-cta-secondary {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
-  background-color: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.14) !important;
   border: 1px solid rgba(255, 255, 255, 0.38) !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.14) inset,
     0 12px 28px rgba(0, 0, 0, 0.35) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .premium-hero-cta-secondary:hover {
@@ -2226,28 +2226,38 @@ html.light nav.fixed {
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
-/* Mobile: hero może rosnąć z treścią (2 karty Home+Cars) — bez przycinania CTA */
+/* Mobile: hero rośnie z treścią — bez overlap / przycinania CTA */
 @media (max-width: 767px) {
   .premium-hero-stage {
-    min-height: 100svh;
+    min-height: unset;
     height: auto;
     overflow-x: hidden;
     overflow-y: visible;
   }
 
+  .premium-hero-stage .hero-wordmark {
+    font-size: clamp(2.6rem, 13vw, 4.75rem) !important;
+    line-height: 0.88 !important;
+  }
+
   .premium-hero-stage .hero-audience-grid {
     margin-top: 0.85rem !important;
+    gap: 0.75rem !important;
   }
 
   .premium-hero-stage .hero-agency-strip {
     margin-top: 0.25rem;
   }
+
+  .premium-hero-stage .hero-audience-card {
+    min-width: 0;
+  }
 }
 
 @media (max-height: 860px) {
   .premium-hero-stage .hero-wordmark {
-    font-size: clamp(4.25rem, 20vw, 11rem) !important;
-    line-height: 0.82 !important;
+    font-size: clamp(3.25rem, 12vw, 7.5rem) !important;
+    line-height: 0.86 !important;
   }
 
   .premium-hero-stage .hero-eyebrow {
@@ -2293,7 +2303,7 @@ html.light nav.fixed {
   }
 
   .premium-hero-stage .hero-wordmark {
-    font-size: clamp(3.5rem, 16vw, 8rem) !important;
+    font-size: clamp(2.75rem, 11vw, 5.5rem) !important;
   }
 
   .premium-hero-stage .hero-audience-bullets li:nth-child(n + 4) {
@@ -2312,28 +2322,81 @@ html.light nav.fixed {
     0 0 1px rgba(0, 0, 0, 1);
 }
 
-/* Szklany panel hero / landing */
+/* Szklany panel hero / landing — lżejszy blur (desktop), solidny panel (mobile) */
 .eos-hero-glass {
   border: 1px solid rgba(255, 255, 255, 0.22);
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(255, 255, 255, 0.1) 100%);
+    linear-gradient(135deg, rgba(18, 20, 24, 0.72) 0%, rgba(10, 12, 16, 0.78) 52%, rgba(14, 16, 20, 0.74) 100%);
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  transform: translateZ(0);
+}
+
+.hero-bg-orb {
+  border-radius: 50%;
+  filter: none;
+  pointer-events: none;
+}
+
+.hero-bg-orb--home {
+  background: radial-gradient(closest-side, rgba(16, 185, 129, 0.22), transparent 72%);
+}
+
+.hero-bg-orb--car {
+  background: radial-gradient(closest-side, rgba(56, 189, 248, 0.16), transparent 70%);
+}
+
+@media (max-width: 767px) {
+  .eos-hero-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(12, 14, 18, 0.92);
+  }
+
+  .premium-hero-cta-secondary {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .hero-bg-orb {
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .featured-deal-room-badge,
+  .offer-new-badge {
+    animation: none !important;
+  }
+}
+
+/* Below-fold: mniej pracy przy scrollu */
+.premium-home-shell .premium-home-surface {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 520px;
 }
 
 /* Szklany podpis na kartach ofert — zawsze ciemny na zdjęciu (fix jasnego motywu) */
 .eos-offer-caption-glass {
   border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(8, 8, 10, 0.58);
+  background: rgba(8, 8, 10, 0.72);
   box-shadow:
     0 14px 40px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+
+@media (max-width: 767px) {
+  .eos-offer-caption-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(8, 8, 10, 0.88);
+  }
 }
 
 html.light .theme-aware-dashboard .eos-offer-caption-glass,
@@ -6671,20 +6734,18 @@ html:not(.light) .eos-mgmt-panel-btn {
 .eos-agent-crm-cta__halo {
   pointer-events: none;
   position: absolute;
-  inset: -6px;
+  inset: -8px;
   z-index: 0;
-  border-radius: 1.65rem;
-  opacity: 0.55;
-  background: conic-gradient(
-    from 210deg,
-    rgba(212, 175, 55, 0) 0deg,
-    rgba(245, 230, 168, 0.55) 80deg,
-    rgba(212, 175, 55, 0.35) 160deg,
-    rgba(245, 230, 168, 0.5) 240deg,
-    rgba(212, 175, 55, 0) 360deg
+  border-radius: 1.7rem;
+  opacity: 0;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(245, 230, 168, 0.55) 0%,
+    rgba(212, 175, 55, 0.28) 42%,
+    rgba(212, 175, 55, 0) 72%
   );
-  filter: blur(8px);
-  animation: eos-crm-cta-halo-spin 8s linear infinite;
+  filter: blur(10px);
+  animation: eos-crm-cta-halo-flash 7.5s ease-in-out infinite;
 }
 .eos-agent-crm-cta__plate {
   position: relative;
@@ -6881,7 +6942,7 @@ html:not(.light) .eos-mgmt-panel-btn {
     transparent 68%
   );
   transform: translateX(-130%);
-  animation: eos-crm-cta-sheen 3.8s ease-in-out infinite;
+  animation: eos-crm-cta-sheen 6.8s ease-in-out infinite;
 }
 .eos-agent-crm-cta__spark {
   pointer-events: none;
@@ -6947,6 +7008,11 @@ html:not(.light) .eos-mgmt-panel-btn {
 .eos-agent-crm-cta:hover .eos-agent-crm-cta__engraved {
   transform: scale(1.02);
 }
+.eos-agent-crm-cta:hover .eos-agent-crm-cta__halo {
+  animation: none;
+  opacity: 0.38;
+  transform: scale(1);
+}
 .eos-agent-crm-cta:hover .eos-agent-crm-cta__glow {
   opacity: 0.85;
 }
@@ -6957,13 +7023,34 @@ html:not(.light) .eos-mgmt-panel-btn {
   0%, 100% { box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35), 0 1px 0 rgba(255, 255, 255, 0.45) inset, 0 -2px 8px rgba(0, 0, 0, 0.45) inset, 0 0 28px rgba(212, 175, 55, 0.22), 0 20px 44px rgba(61, 46, 10, 0.35); }
   50% { box-shadow: 0 0 0 1px rgba(245, 230, 168, 0.45), 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 -2px 8px rgba(0, 0, 0, 0.45) inset, 0 0 42px rgba(212, 175, 55, 0.42), 0 22px 48px rgba(61, 46, 10, 0.38); }
 }
-@keyframes eos-crm-cta-halo-spin {
-  to { transform: rotate(360deg); }
+/* Delikatny błysk od czasu do czasu — bez obrotowego światła */
+@keyframes eos-crm-cta-halo-flash {
+  0%, 62%, 100% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  68% {
+    opacity: 0.55;
+    transform: scale(1.02);
+  }
+  74% {
+    opacity: 0.12;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 0.42;
+    transform: scale(1.015);
+  }
+  88%, 100% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 @keyframes eos-crm-cta-sheen {
-  0%, 42% { transform: translateX(-130%); }
-  58% { transform: translateX(130%); }
-  100% { transform: translateX(130%); }
+  0%, 72% { transform: translateX(-130%); opacity: 0; }
+  78% { opacity: 0.85; }
+  88% { transform: translateX(130%); opacity: 0.35; }
+  100% { transform: translateX(130%); opacity: 0; }
 }
 @keyframes eos-crm-cta-glow-pulse {
   0%, 100% { opacity: 0.28; transform: scale(1); }
