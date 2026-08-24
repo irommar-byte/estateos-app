@@ -15,6 +15,7 @@ export type AgencyClientListItem = {
   lastName: string;
   email: string | null;
   phone: string | null;
+  pesel?: string | null;
   matchCount: number;
   topMatchScore: number | null;
   sellerCity: string | null;

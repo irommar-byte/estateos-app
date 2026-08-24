@@ -46,6 +46,7 @@ export type ValuationResult = {
     ppsm: number;
     recommendedAsk: number;
   };
+  listingPrice?: number | null;
   stats: {
     medianPpsm: number;
     meanPpsm: number;

@@ -474,13 +474,24 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               <pre className="eos-inset-well max-h-[24rem] overflow-y-auto whitespace-pre-wrap rounded-2xl p-5 text-xs leading-relaxed text-slate-800">
                 {portal.acquisition.agreementSnapshot}
               </pre>
+              {token ? (
+                <a
+                  href={`/klient/${token}/dokument`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700"
+                >
+                  Otwórz dokument w przeglądarce
+                  <ExternalLink className="size-3.5" />
+                </a>
+              ) : null}
               {(portal.acquisition.formData.paperContracts || []).length > 0 ? (
                 <div className="mt-3 space-y-2">
                   <p className="text-sm font-black text-[var(--eos-text)]">Podpisana umowa (skan)</p>
                   {portal.acquisition.formData.paperContracts.map((file) => (
                     <a
                       key={file.url}
-                      href={file.url}
+                      href={file.url.startsWith("http") ? file.url : `https://estateos.pl${file.url.startsWith("/") ? file.url : `/${file.url}`}`}
                       target="_blank"
                       rel="noreferrer"
                       className="eos-inset-well flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold text-emerald-700"

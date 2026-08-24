@@ -29,6 +29,10 @@ export function buildPortalUrl(token: string): string {
   return `${base.replace(/\/$/, '')}/klient/${token}`;
 }
 
+export function buildPortalDocumentUrl(token: string): string {
+  return `${buildPortalUrl(token)}/dokument`;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

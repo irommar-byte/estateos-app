@@ -74,6 +74,7 @@ import {
   type AgencyClientMatch,
 } from '../services/agencyClientService';
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
+import { storeCommissionPercent } from '../types/leadTransfer';
 import { formatClientFeedbackForAgent } from '../utils/clientPortalFeedback';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import {
@@ -790,11 +791,16 @@ export default function AgencyClientDetailScreen() {
           `Umowa zamknięta. Szkicu nie utworzono automatycznie: ${res.offerError}.`,
         );
       }
+    } else if (name === 'prepare_terms') {
+      Alert.alert(
+        'Warunki gotowe',
+        'Sprawdź podgląd poniżej. Dopiero potem wyślij klientowi — dostanie link do dokumentu w przeglądarce, nie załącznik HTML.',
+      );
     } else if (name === 'send_preview') {
       Alert.alert(
         'Podgląd wysłany',
         res.emailSent
-          ? 'Klient dostał e-mail z warunkami i linkiem do panelu.'
+          ? 'Klient dostał e-mail z linkiem do dokumentu i panelu — bez załącznika HTML.'
           : 'Warunki zapisane. Jeśli klient ma e-mail, wyślij wizytówkę z panelu.',
       );
     }
@@ -1275,6 +1281,14 @@ export default function AgencyClientDetailScreen() {
                             {client.email || 'Brak e-maila'}
                           </Text>
                         </Pressable>
+                        {client.pesel ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Ionicons name="card-outline" size={14} color={colors.secondary} />
+                            <Text style={{ color: colors.secondary, fontSize: 13, fontWeight: '600' }}>
+                              PESEL {client.pesel}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     </View>
                   </View>
@@ -1719,7 +1733,6 @@ export default function AgencyClientDetailScreen() {
                   {/* Step 5: Współpraca */}
                   {step === 5 ? (
                     <>
-                      {stepper('cooperation', 'durationMonths', 'OKRES UMOWY (MIESIĄCE)')}
                       <MultiSelectChipGroup
                         label="RODZAJ UMOWY"
                         options={['Na wyłączność', 'Otwarta']}
@@ -1729,6 +1742,12 @@ export default function AgencyClientDetailScreen() {
                             current
                               ? setSection(current, 'cooperation', {
                                   agreementType: opt === 'Otwarta' ? 'OPEN' : 'EXCLUSIVE',
+                                  durationMonths:
+                                    opt === 'Otwarta'
+                                      ? '0'
+                                      : Number(current.cooperation.durationMonths) > 0
+                                        ? String(current.cooperation.durationMonths)
+                                        : '6',
                                 })
                               : current,
                           )
@@ -1736,6 +1755,18 @@ export default function AgencyClientDetailScreen() {
                         isDark={isDark}
                         disabled={signed}
                       />
+                      {form.cooperation.agreementType === 'OPEN' || Number(form.cooperation.durationMonths) <= 0 ? (
+                        <View style={{ marginBottom: 12 }}>
+                          <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>
+                            OKRES UMOWY
+                          </Text>
+                          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 6 }}>
+                            Czas nieokreślony
+                          </Text>
+                        </View>
+                      ) : (
+                        stepper('cooperation', 'durationMonths', 'OKRES UMOWY (MIESIĄCE)')
+                      )}
                       {stepper('cooperation', 'noticeDays', 'WYPOWIEDZENIE (DNI)')}
                       <Pressable
                         disabled={signed}
@@ -1765,7 +1796,7 @@ export default function AgencyClientDetailScreen() {
                           setForm((current) =>
                             current
                               ? setSection(current, 'cooperation', {
-                                  commissionValue: String(value),
+                                  commissionValue: storeCommissionPercent(value),
                                   commissionType: 'PERCENT',
                                 })
                               : current
@@ -1787,8 +1818,30 @@ export default function AgencyClientDetailScreen() {
                         onPress={() => void runAction('prepare_terms')}
                         style={styles.primary}
                       >
-                        <Text style={styles.primaryText}>{busy === 'prepare_terms' ? 'Przygotowuję…' : 'Przygotuj warunki'}</Text>
+                        <Text style={styles.primaryText}>{busy === 'prepare_terms' ? 'Przygotowuję…' : record?.agreementSnapshot ? 'Odśwież warunki' : 'Przygotuj warunki'}</Text>
                       </Pressable>
+                      {record?.agreementSnapshot ? (
+                        <View
+                          style={{
+                            marginTop: 12,
+                            maxHeight: 360,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 16,
+                            backgroundColor: colors.card,
+                            padding: 14,
+                          }}
+                        >
+                          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13, marginBottom: 8 }}>
+                            Podgląd warunków — sprawdź przed wysłaniem
+                          </Text>
+                          <ScrollView nestedScrollEnabled>
+                            <Text style={{ color: colors.text, fontSize: 12, lineHeight: 18 }}>
+                              {record.agreementSnapshot}
+                            </Text>
+                          </ScrollView>
+                        </View>
+                      ) : null}
                       <Pressable
                         disabled={signed || Boolean(busy) || !record?.agreementSnapshot}
                         onPress={() => void runAction('send_preview')}

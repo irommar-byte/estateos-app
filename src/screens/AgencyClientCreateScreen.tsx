@@ -48,6 +48,7 @@ import SellerPropertyTypePicker, {
   sellerPropertyTypeLabel,
   type SellerPropertyTypeId,
 } from '../components/agency/SellerPropertyTypePicker';
+import { parsePesel } from '../lib/pesel';
 
 const DRAFT_KEY = '@eos_agency_client_create_draft';
 
@@ -80,6 +81,7 @@ export default function AgencyClientCreateScreen() {
     lastName: '',
     email: '',
     phone: '',
+    pesel: '',
     sellerCity: '',
     sellerPrice: '',
     buyerCity: 'Warszawa',
@@ -230,6 +232,7 @@ export default function AgencyClientCreateScreen() {
       if (!form.firstName.trim() || !form.lastName.trim()) return false;
       if (form.email.trim() && !isValidEmail(form.email.trim())) return false;
       if (form.phone.replace(/\D/g, '').length > 0 && form.phone.replace(/\D/g, '').length < 9) return false;
+      if (form.pesel.trim() && !parsePesel(form.pesel)) return false;
       return true;
     }
     if (type === 'SELLER' && wizardStep === 3) {
@@ -248,6 +251,10 @@ export default function AgencyClientCreateScreen() {
     if (!canGoNext()) {
       if (wizardStep === 2 && form.email.trim() && !isValidEmail(form.email.trim())) {
         Alert.alert('E-mail', 'Wpisz poprawny adres e-mail.');
+        return;
+      }
+      if (wizardStep === 2 && form.pesel.trim() && !parsePesel(form.pesel)) {
+        Alert.alert('PESEL', 'Wpisz poprawny numer PESEL albo zostaw pole puste.');
         return;
       }
       if (wizardStep === 2) {
@@ -460,6 +467,7 @@ export default function AgencyClientCreateScreen() {
         lastName: capitalizeWords(form.lastName),
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
+        pesel: form.pesel.trim() || null,
         notes: form.internalNotes.trim() || null,
         forceCreate,
         ...(type === 'SELLER'
@@ -654,6 +662,44 @@ export default function AgencyClientCreateScreen() {
               <>
                 {field('firstName', 'IMIĘ')}
                 {field('lastName', 'NAZWISKO')}
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                    PESEL (OPCJONALNIE)
+                  </Text>
+                  <TextInput
+                    value={form.pesel}
+                    onChangeText={(value) =>
+                      setForm((current) => ({ ...current, pesel: value.replace(/[^\d]/g, '').slice(0, 11) }))
+                    }
+                    keyboardType="number-pad"
+                    maxLength={11}
+                    placeholder="11 cyfr"
+                    placeholderTextColor={colors.secondary}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: colors.input,
+                        color: colors.text,
+                        borderColor:
+                          form.pesel.length > 0 && !parsePesel(form.pesel) ? '#FF3B30' : colors.border,
+                      },
+                    ]}
+                  />
+                  {form.pesel.length > 0 ? (
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: parsePesel(form.pesel) ? '#34C759' : '#FF3B30',
+                      }}
+                    >
+                      {parsePesel(form.pesel)
+                        ? `PESEL poprawny · ${parsePesel(form.pesel)?.gender === 'M' ? 'Mężczyzna' : 'Kobieta'} · ${parsePesel(form.pesel)?.birthDate}`
+                        : 'PESEL niepoprawny'}
+                    </Text>
+                  ) : null}
+                </View>
                 <View style={{ marginBottom: 12 }}>
                   <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>E-MAIL</Text>
                   <TextInput
@@ -961,6 +1007,9 @@ export default function AgencyClientCreateScreen() {
                   {form.firstName} {form.lastName} · {type === 'SELLER' ? 'Sprzedający' : 'Kupujący'}
                 </Text>
                 <Text style={{ color: colors.secondary, fontSize: 13 }}>{form.email || '—'} · {form.phone || '—'}</Text>
+                {form.pesel ? (
+                  <Text style={{ color: colors.secondary, fontSize: 13 }}>PESEL {form.pesel}</Text>
+                ) : null}
                 {type === 'SELLER' ? (
                   <>
                     <Text style={{ color: colors.secondary, fontSize: 13 }}>{address.address || '—'}</Text>

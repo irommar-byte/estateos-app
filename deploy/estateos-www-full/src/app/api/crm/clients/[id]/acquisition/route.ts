@@ -8,6 +8,7 @@ import {
   createDefaultAcquisitionForm,
   isAcquisitionLocked,
   normalizeAcquisitionForm,
+  publicAssetUrl,
   type AcquisitionFormData,
 } from "@/lib/acquisitionWorkflow";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
@@ -16,6 +17,10 @@ import { createOfferFromAcquisitionRecord } from "@/lib/crm/acquisitionOffer";
 import { parseSellerPropertyType } from "@/lib/crm/sellerProperty";
 import { sendNotification } from "@/lib/core/notification.core";
 import { crmAgentPushData } from "@/lib/crm/agentPush";
+import {
+  acquisitionClientLinks,
+  buildAcquisitionClientEmailHtml,
+} from "@/lib/crm/acquisitionDocument";
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -25,6 +30,10 @@ function escapeHtml(value: unknown): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function portalLinks(client: { portalToken?: string | null }) {
+  return acquisitionClientLinks(client.portalToken);
 }
 
 function shapeAcquisition(record: any, fallbackForm: AcquisitionFormData) {
@@ -77,25 +86,9 @@ function buildSnapshot(client: Awaited<ReturnType<typeof loadContext>>, form: Ac
     clientName: `${client.firstName} ${client.lastName}`.trim(),
     clientEmail: client.email,
     clientPhone: client.phone,
+    clientPesel: client.pesel,
     form,
   });
-}
-
-function documentHtml(params: {
-  agreement: string;
-  signatureData?: string | null;
-  signerName?: string | null;
-  signedAt?: Date | null;
-  hash?: string | null;
-}) {
-  return `<!doctype html>
-<html lang="pl"><head><meta charset="utf-8"><title>Umowa i karta pozyskania</title>
-<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:820px;margin:40px auto;padding:0 24px;color:#171717;line-height:1.55}pre{white-space:pre-wrap;font:inherit}.sign{margin-top:36px;padding-top:24px;border-top:1px solid #ddd}.sign img{display:block;max-width:360px;max-height:150px;border:1px solid #ddd;border-radius:12px}.audit{font-size:12px;color:#666;word-break:break-all}</style>
-</head><body><pre>${escapeHtml(params.agreement)}</pre>
-<section class="sign"><h2>Podpis klienta</h2>
-${params.signatureData ? `<img src="${params.signatureData}" alt="Podpis klienta">` : ""}
-<p><strong>${escapeHtml(params.signerName || "—")}</strong><br>${params.signedAt ? escapeHtml(params.signedAt.toLocaleString("pl-PL")) : "—"}</p>
-<p class="audit">SHA-256: ${escapeHtml(params.hash || "—")}</p></section></body></html>`;
 }
 
 async function syncMeetingActivity(params: {
@@ -175,6 +168,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     acquisition,
     defaultForm: fallbackForm,
     portalUrl: client.portalToken ? `/klient/${client.portalToken}` : null,
+    documentUrl: client.portalToken ? `/klient/${client.portalToken}/dokument` : null,
   });
 }
 
@@ -284,21 +278,25 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     let emailSent = false;
     if (action === "send_preview" && client.email) {
-      const portalUrl = `${(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://estateos.pl").replace(/\/+$/, "")}/klient/${client.portalToken}`;
+      const links = portalLinks(client);
       emailSent = await sendTransactionalEmail({
         to: client.email,
         subject: `Warunki współpracy do zapoznania · ${client.agencyUser.companyName || "EstateOS"}`,
-        html: `<div style="font-family:-apple-system,sans-serif;padding:24px"><h2>Przygotowanie do spotkania</h2><p>Dzień dobry ${escapeHtml(client.firstName)},</p><p>Agent przygotował umowę i warunki współpracy. Szczegóły oraz listę rzeczy na spotkanie znajdziesz w panelu klienta.</p><p><a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#07130e;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">Otwórz panel klienta</a></p></div>`,
-        attachments: [{
-          filename: `warunki-wspolpracy-${clientId}.html`,
-          content: documentHtml({ agreement }),
-          contentType: "text/html; charset=utf-8",
-        }],
+        html: buildAcquisitionClientEmailHtml({
+          firstName: client.firstName,
+          title: "Przygotowanie do spotkania",
+          intro:
+            "Agent przygotował umowę i warunki współpracy. Otwórz dokument w przeglądarce — szczegóły i listę rzeczy na spotkanie znajdziesz też w panelu klienta.",
+          portalUrl: links.portalUrl,
+          documentUrl: links.documentUrl,
+          documentLabel: "Otwórz warunki współpracy",
+        }),
       });
     }
     return NextResponse.json({
       success: true,
       emailSent,
+      documentUrl: client.portalToken ? `/klient/${client.portalToken}/dokument` : null,
       acquisition: shapeAcquisition(updated, form),
     });
   }
@@ -352,22 +350,27 @@ export async function POST(req: Request, ctx: RouteCtx) {
       },
     });
 
-    const htmlDocument = documentHtml({
-      agreement,
-      signatureData,
-      signerName,
-      signedAt,
-      hash: documentHash,
-    });
+    const links = portalLinks(client);
+    const paperLinks = (form.paperContracts || [])
+      .map((file) => {
+        const href = publicAssetUrl(file.url);
+        if (!href) return "";
+        return `<p><a href="${href}" style="color:#0f766e">${escapeHtml(file.name)}</a></p>`;
+      })
+      .filter(Boolean)
+      .join("");
     const emailSent = await sendTransactionalEmail({
       to: signerEmail,
       subject: `Podpisana umowa i karta nieruchomości · ${client.agencyUser.companyName || "EstateOS"}`,
-      html: `<div style="font-family:-apple-system,sans-serif;padding:24px"><h2>Dokument został podpisany</h2><p>Dzień dobry ${escapeHtml(client.firstName)},</p><p>W załączniku znajduje się utrwalona kopia dokumentu podpisanego ${escapeHtml(signedAt.toLocaleString("pl-PL"))}.</p><p style="font-size:12px;color:#6b7280;word-break:break-all">SHA-256: ${documentHash}</p></div>`,
-      attachments: [{
-        filename: `podpisana-umowa-${clientId}.html`,
-        content: htmlDocument,
-        contentType: "text/html; charset=utf-8",
-      }],
+      html: buildAcquisitionClientEmailHtml({
+        firstName: client.firstName,
+        title: "Dokument został podpisany",
+        intro: `Umowa została utrwalona ${signedAt.toLocaleString("pl-PL")}. Otwórz ją w przeglądarce — to publiczny link EstateOS, nie załącznik z poczty.`,
+        portalUrl: links.portalUrl,
+        documentUrl: links.documentUrl,
+        documentLabel: "Otwórz podpisaną umowę",
+        extraHtml: `${paperLinks}<p style="font-size:12px;color:#6b7280;word-break:break-all">SHA-256: ${escapeHtml(documentHash)}</p>`,
+      }),
     });
     if (emailSent) {
       await prisma.agencyClientAcquisition.update({
@@ -411,6 +414,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       emailSent,
       offerId,
       offerError,
+      documentUrl: client.portalToken ? `/klient/${client.portalToken}/dokument` : null,
       acquisition: shapeAcquisition(finalRecord, form),
     });
   }
