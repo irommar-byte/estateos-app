@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
 import { numberFormatLocale } from "@/i18n/config";
 import type { Locale } from "@/i18n/config";
+import { fetchHomeCatalogJson } from "@/lib/homeCatalogCache";
 
 type LiveStats = {
   metrics?: {
@@ -29,8 +30,7 @@ export default function HomeLiveStrip() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/home/live-stats", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
+    fetchHomeCatalogJson<LiveStats>("/api/home/live-stats", undefined, 45_000)
       .then((json) => {
         if (!cancelled) setData(json);
       })

@@ -2226,18 +2226,18 @@ html.light nav.fixed {
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
-/* Mobile: hero rośnie z treścią — bez overlap / przycinania CTA */
+/* Mobile: hero rośnie z treścią — duże logo zostaje, bez przycinania CTA */
 @media (max-width: 767px) {
   .premium-hero-stage {
-    min-height: unset;
+    min-height: 100svh;
     height: auto;
     overflow-x: hidden;
     overflow-y: visible;
   }
 
   .premium-hero-stage .hero-wordmark {
-    font-size: clamp(2.6rem, 13vw, 4.75rem) !important;
-    line-height: 0.88 !important;
+    font-size: clamp(3.5rem, 20vw, 14rem) !important;
+    line-height: 0.82 !important;
   }
 
   .premium-hero-stage .hero-audience-grid {
@@ -2256,8 +2256,8 @@ html.light nav.fixed {
 
 @media (max-height: 860px) {
   .premium-hero-stage .hero-wordmark {
-    font-size: clamp(3.25rem, 12vw, 7.5rem) !important;
-    line-height: 0.86 !important;
+    font-size: clamp(4rem, 18vw, 12rem) !important;
+    line-height: 0.82 !important;
   }
 
   .premium-hero-stage .hero-eyebrow {
@@ -2303,7 +2303,7 @@ html.light nav.fixed {
   }
 
   .premium-hero-stage .hero-wordmark {
-    font-size: clamp(2.75rem, 11vw, 5.5rem) !important;
+    font-size: clamp(3.25rem, 15vw, 9rem) !important;
   }
 
   .premium-hero-stage .hero-audience-bullets li:nth-child(n + 4) {
@@ -2322,48 +2322,116 @@ html.light nav.fixed {
     0 0 1px rgba(0, 0, 0, 1);
 }
 
-/* Szklany panel hero / landing — lżejszy blur (desktop), solidny panel (mobile) */
+/* Szklane kafle hero — luksus osobno na ciemnym i jasnym motywie */
 .eos-hero-glass {
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
   background:
-    linear-gradient(135deg, rgba(18, 20, 24, 0.72) 0%, rgba(10, 12, 16, 0.78) 52%, rgba(14, 16, 20, 0.74) 100%);
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.08) 46%,
+      rgba(12, 14, 18, 0.42) 100%
+    );
   box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+    0 22px 56px rgba(0, 0, 0, 0.48),
+    0 1px 0 rgba(255, 255, 255, 0.32) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(22px) saturate(165%);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
   transform: translateZ(0);
 }
 
-.hero-bg-orb {
-  border-radius: 50%;
-  filter: none;
-  pointer-events: none;
+.eos-hero-glass h2,
+.eos-hero-glass li,
+.eos-hero-glass p {
+  color: inherit;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
 }
 
-.hero-bg-orb--home {
-  background: radial-gradient(closest-side, rgba(16, 185, 129, 0.22), transparent 72%);
+html:not(.light) .eos-hero-glass {
+  background:
+    linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.06) 42%,
+      rgba(8, 10, 14, 0.55) 100%
+    );
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.26) inset,
+    0 0 40px rgba(16, 185, 129, 0.06);
 }
 
-.hero-bg-orb--car {
-  background: radial-gradient(closest-side, rgba(56, 189, 248, 0.16), transparent 70%);
+html.light .eos-hero-glass {
+  color: #f8fafc;
+  background:
+    linear-gradient(
+      150deg,
+      rgba(255, 252, 245, 0.34) 0%,
+      rgba(255, 255, 255, 0.16) 40%,
+      rgba(28, 25, 22, 0.38) 100%
+    );
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 22px 54px rgba(26, 27, 30, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 0 0 1px rgba(196, 163, 90, 0.18),
+    0 0 36px rgba(196, 163, 90, 0.12);
+}
+
+.hero-audience-grid > .hero-audience-card:first-child {
+  box-shadow:
+    0 22px 56px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 0 28px rgba(16, 185, 129, 0.2);
+}
+
+.hero-audience-grid > .hero-audience-card:last-child {
+  box-shadow:
+    0 22px 56px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 0 28px rgba(56, 189, 248, 0.18);
+}
+
+html.light .hero-audience-grid > .hero-audience-card:first-child {
+  box-shadow:
+    0 22px 54px rgba(26, 27, 30, 0.26),
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 0 0 1px rgba(196, 163, 90, 0.16),
+    0 0 30px rgba(16, 185, 129, 0.16);
+}
+
+html.light .hero-audience-grid > .hero-audience-card:last-child {
+  box-shadow:
+    0 22px 54px rgba(26, 27, 30, 0.26),
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 0 0 1px rgba(196, 163, 90, 0.16),
+    0 0 30px rgba(56, 189, 248, 0.14);
 }
 
 @media (max-width: 767px) {
   .eos-hero-glass {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: rgba(12, 14, 18, 0.92);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    background:
+      linear-gradient(
+        150deg,
+        rgba(255, 255, 255, 0.14) 0%,
+        rgba(10, 12, 16, 0.72) 100%
+      );
   }
 
-  .premium-hero-cta-secondary {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-
-  .hero-bg-orb {
-    opacity: 0.85;
+  html.light .eos-hero-glass {
+    background:
+      linear-gradient(
+        150deg,
+        rgba(255, 252, 245, 0.28) 0%,
+        rgba(20, 18, 14, 0.55) 100%
+      );
   }
 }
 
