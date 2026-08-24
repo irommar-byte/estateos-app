@@ -15,7 +15,11 @@ type PortalRect = {
   borderRadius: string;
 };
 
-export default function EstateOsDeskCrmButton() {
+export default function EstateOsDeskCrmButton({
+  href = "/moje-konto/crm?from=desk",
+}: {
+  href?: string;
+}) {
   const router = useRouter();
   const btnRef = useRef<HTMLButtonElement>(null);
   const timersRef = useRef<number[]>([]);
@@ -48,15 +52,15 @@ export default function EstateOsDeskCrmButton() {
 
   const handleScatterComplete = useCallback(() => {
     setExiting(true);
-    schedule(() => router.push('/crm'), 380);
+    schedule(() => router.push(href), 380);
     schedule(resetPortal, 980);
-  }, [resetPortal, router, schedule]);
+  }, [href, resetPortal, router, schedule]);
 
   const handleClick = useCallback(() => {
     if (launching) return;
     const el = btnRef.current;
     if (!el) {
-      router.push('/crm');
+      router.push(href);
       return;
     }
 
@@ -87,7 +91,7 @@ export default function EstateOsDeskCrmButton() {
 
     // Rozlatujące się zębatki
     schedule(() => setGearPhase('scatter'), 1900);
-  }, [clearTimers, launching, router, schedule]);
+  }, [clearTimers, href, launching, router, schedule]);
 
   return (
     <>

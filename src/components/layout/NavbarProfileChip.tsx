@@ -1,7 +1,9 @@
 "use client";
 
-import { User } from "lucide-react";
+import { Crown, User } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/contexts/LocaleContext";
+import { isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 
 function formatProfileChipLabel(user: {
   name?: string | null;
@@ -11,40 +13,96 @@ function formatProfileChipLabel(user: {
   const first = String(user.firstName || "").trim();
   const last = String(user.lastName || "").trim();
   if (first && last) return `${first} ${last}`;
+  if (first) return first;
   const full = String(user.name || "").trim();
   if (full) return full;
   return "Profil";
 }
 
+export type NavbarProfileUser = {
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  role?: string | null;
+  planType?: string | null;
+  plan?: string | null;
+  isPro?: boolean | null;
+  officePro?: boolean | null;
+  hasMarketPro?: boolean | null;
+  image?: string | null;
+  avatar?: string | null;
+};
+
 type Props = {
-  user: {
-    name?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-  };
+  user: NavbarProfileUser;
 };
 
 export default function NavbarProfileChip({ user }: Props) {
   const router = useRouter();
+  const { locale } = useLocale();
   const label = formatProfileChipLabel(user);
+  const isAgent = isAgentOrAgencySeller(user);
+  const isPro = Boolean(user.isPro || user.hasMarketPro || user.officePro);
+  const avatarSrc = String(user.image || user.avatar || "").trim();
+  const roleLabel = isAgent
+    ? locale === "uk"
+      ? "Агент"
+      : "Agent"
+    : locale === "en"
+      ? "User"
+      : locale === "uk"
+        ? "Користувач"
+        : "Użytkownik";
 
   return (
     <button
       type="button"
       onClick={() => router.push("/moje-konto")}
-      aria-label={`Profil: ${label}`}
-      className="group relative flex h-10 max-w-[72px] shrink flex-col items-center justify-center gap-0.5 overflow-hidden rounded-full border border-emerald-500/25 bg-black/55 px-1.5 py-1 text-emerald-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] transition-all hover:border-emerald-400/45 hover:bg-black/70 xl:max-w-[96px] xl:px-2.5"
+      aria-label={`Profil: ${label}, ${roleLabel}${isPro ? ", Pro" : ""}`}
+      className={`eos-nav-identity group relative flex h-[42px] shrink-0 items-center gap-2 overflow-hidden rounded-full py-0.5 pl-0.5 pr-3 text-left transition-all ${
+        isPro ? "eos-nav-identity--pro" : "eos-nav-identity--standard"
+      }`}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent opacity-80" />
-      <div className="relative flex items-center gap-1">
-        <span className="relative flex h-2 w-2 items-center justify-center">
-          <span className="absolute inset-0 rounded-full bg-emerald-400/80 blur-[3px] opacity-80" />
-          <span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)]" />
+      <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-70" />
+      {isPro ? <span className="eos-nav-identity__sheen" aria-hidden /> : null}
+
+      <span
+        className={`relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border ${
+          isPro ? "border-amber-400/50 bg-[#1a1408]" : "border-emerald-400/35 bg-black/50"
+        }`}
+      >
+        {avatarSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <User size={14} className={isPro ? "text-amber-200" : "text-emerald-300"} aria-hidden />
+        )}
+        <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border border-black/40 bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.95)]" />
+      </span>
+
+      <span className="min-w-0 pr-0.5">
+        <span
+          className={`eos-nav-identity__name block whitespace-nowrap text-[11px] font-semibold leading-none tracking-tight ${
+            isPro ? "text-amber-50" : "text-white"
+          }`}
+        >
+          {label}
         </span>
-        <User size={13} className="shrink-0 text-emerald-400" aria-hidden />
-      </div>
-      <span className="max-w-full truncate text-[8px] font-bold normal-case leading-none tracking-[0.02em] text-emerald-100/90 sm:text-[9px]">
-        {label}
+        <span className="mt-1 flex items-center gap-1.5">
+          <span
+            className={`eos-nav-identity__role text-[8px] font-black uppercase tracking-[0.16em] ${
+              isPro ? "text-amber-200/80" : "text-emerald-200/75"
+            }`}
+          >
+            {roleLabel}
+          </span>
+          {isPro ? (
+            <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-400/45 bg-gradient-to-r from-amber-500/25 to-yellow-600/20 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-amber-100 shadow-[0_0_10px_rgba(212,175,55,0.35)]">
+              <Crown size={8} className="text-amber-300" aria-hidden />
+              Pro
+            </span>
+          ) : null}
+        </span>
       </span>
     </button>
   );

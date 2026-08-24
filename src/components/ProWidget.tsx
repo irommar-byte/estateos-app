@@ -1,7 +1,7 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Globe, TrendingUp, Newspaper, UserPlus, HandCoins, CheckCircle2, Zap, Activity, LineChart, ChevronLeft, ChevronRight, PenTool, X, type LucideIcon } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { motion } from "framer-motion";
+import { Globe, TrendingUp, Newspaper, UserPlus, HandCoins, CheckCircle2, Zap, Activity, LineChart, ChevronLeft, ChevronRight, PenTool, CalendarClock, DoorOpen, MapPin, Presentation, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useLocale } from "@/contexts/LocaleContext";
 import {
@@ -18,6 +18,7 @@ import PricePulseWidget from "@/components/market/PricePulseWidget";
 import { buildInvestorProBarPalette, buildInvestorProPeriodStatus } from "@/lib/investorProMembership";
 import { isPlusCreditActive } from "@/lib/offerListingLimits";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
+import type { UpcomingScheduleEvent } from "@/lib/crm/upcomingScheduleShared";
 
 type ProOfferRow = { id: number; title: string; city?: string; district?: string };
 
@@ -39,6 +40,21 @@ const EVENT_ICONS: Record<PulseEventIcon, LucideIcon> = {
 };
 
 const PULSE_POLL_MS = 60_000;
+
+function warsawDayKey(value: Date | string): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Warsaw" });
+}
+
+function todayIso(): string {
+  return warsawDayKey(new Date());
+}
+
+function scheduleKindIcon(kind: UpcomingScheduleEvent["kind"]) {
+  if (kind === "presentation") return Presentation;
+  if (kind === "acquisition") return CalendarClock;
+  return DoorOpen;
+}
 
 // --- EFEKT TABLICY DWORCOWEJ (SCRAMBLE TEXT) ---
 const ScrambleText = ({ text }: { text: string }) => {
@@ -174,8 +190,9 @@ export default function ProWidget({
   // Kalendarz State
   const [monthOffset, setMonthOffset] = useState(0);
   const [notes, setNotes] = useState<any[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(todayIso);
   const [noteText, setNoteText] = useState("");
+  const [scheduleEvents, setScheduleEvents] = useState<UpcomingScheduleEvent[]>([]);
 
   const displayDate = new Date();
   displayDate.setMonth(displayDate.getMonth() + monthOffset);
@@ -254,6 +271,30 @@ export default function ProWidget({
     fetchNotes();
   }, [currentMonth, currentYear]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/pro-widget/schedule", { cache: "no-store", credentials: "include" });
+        const data = await res.json().catch(() => null);
+        if (!cancelled && Array.isArray(data?.events)) setScheduleEvents(data.events);
+      } catch {
+        /* keep last */
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    const existing = notes.find((n) => n.date === selectedDate);
+    setNoteText(existing ? existing.text : "");
+  }, [selectedDate, notes]);
+
   const handleSaveNote = async () => {
     if(!selectedDate) return;
     try {
@@ -269,17 +310,34 @@ export default function ProWidget({
           if (data.deleted) return filtered;
           return [...filtered, data.note];
         });
-        setSelectedDate(null);
       }
     } catch(e) { alert(pw.noteSaveError); }
   };
 
-  const openNoteModal = (day: number) => {
-    const dStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const existing = notes.find(n => n.date === dStr);
-    setNoteText(existing ? existing.text : "");
-    setSelectedDate(dStr);
+  const selectDay = (day: number) => {
+    setSelectedDate(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
   };
+
+  const eventDays = useMemo(() => {
+    const set = new Set<string>();
+    for (const ev of scheduleEvents) set.add(warsawDayKey(ev.startsAt));
+    return set;
+  }, [scheduleEvents]);
+
+  const dayEvents = useMemo(
+    () => scheduleEvents.filter((ev) => warsawDayKey(ev.startsAt) === selectedDate),
+    [scheduleEvents, selectedDate],
+  );
+
+  const selectedDateLabel = useMemo(() => {
+    const [y, m, d] = selectedDate.split("-").map(Number);
+    if (!y || !m || !d) return selectedDate;
+    return new Date(y, m - 1, d).toLocaleDateString(dateTag, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+  }, [selectedDate, dateTag]);
 
   return (
     <div className="mb-12">
@@ -387,33 +445,102 @@ export default function ProWidget({
         </div>
 
         {/* KOLUMNA 2: KALENDARZ */}
-        <div className="eos-pro-panel eos-pro-panel-inset relative flex flex-col rounded-3xl p-6 lg:flex-1">
-            <div className="mb-6 flex items-center justify-between">
+        <div className="eos-pro-panel eos-pro-panel-inset relative flex flex-col rounded-3xl p-5 lg:flex-1 lg:p-6">
+            <div className="mb-3 flex shrink-0 items-center justify-between">
                 <button onClick={() => setMonthOffset(p => p - 1)} className="eos-pro-subtle rounded-full p-1.5 transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"><ChevronLeft size={16}/></button>
                 <h3 className="eos-pro-muted text-[10px] font-black uppercase tracking-[0.3em] md:text-[11px]">{months[currentMonth]} {currentYear}</h3>
                 <button onClick={() => setMonthOffset(p => p + 1)} className="eos-pro-subtle rounded-full p-1.5 transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"><ChevronRight size={16}/></button>
             </div>
-            <div className="grid flex-1 grid-cols-7 content-start gap-x-1 gap-y-2 text-center">
+            <div className="grid shrink-0 grid-cols-7 content-start gap-x-1 gap-y-1.5 text-center">
                 {pw.weekdays.map((d, i) => (
-                   <div key={d} className={`mb-3 text-[8px] font-black uppercase tracking-widest md:text-[9px] ${i >= 5 ? 'text-red-500/80' : 'eos-pro-subtle'}`}>{d}</div>
+                   <div key={d} className={`mb-1 text-[8px] font-black uppercase tracking-widest md:text-[9px] ${i >= 5 ? 'text-red-500/80' : 'eos-pro-subtle'}`}>{d}</div>
                 ))}
                 {days.map((day, i) => {
                     const isWeekend = i % 7 === 5 || i % 7 === 6;
                     const isToday = isCurrentMonthView && day === today.getDate();
                     const dStr = day ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
                     const hasNote = dStr && notes.some(n => n.date === dStr);
+                    const hasEvent = dStr ? eventDays.has(dStr) : false;
+                    const isSelected = dStr === selectedDate;
 
                     return (
-                        <div key={i} onClick={() => day && openNoteModal(day)} className={`relative flex h-8 flex-col items-center justify-center rounded-xl text-[11px] font-black transition-all duration-300 md:h-10 md:text-xs
-                            ${isToday ? 'z-10 border border-[var(--eos-border-strong)] bg-[var(--eos-input)] text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)]' : 
+                        <div key={i} onClick={() => day && selectDay(day)} className={`relative flex h-8 flex-col items-center justify-center rounded-xl text-[11px] font-black transition-all duration-300 md:h-9 md:text-xs
+                            ${isSelected ? 'z-10 border border-emerald-500/45 bg-emerald-500/15 text-[var(--eos-text)] shadow-[0_0_16px_rgba(16,185,129,0.18)]' :
+                              isToday ? 'z-10 border border-[var(--eos-border-strong)] bg-[var(--eos-input)] text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)]' : 
                               isWeekend ? 'text-red-500/70' : 'eos-pro-muted'}
                             ${!day ? 'opacity-0' : 'cursor-pointer border border-transparent hover:border-[var(--eos-border)] hover:bg-[var(--eos-input)]'}
                         `}>
                             {day}
-                            {hasNote && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></div>}
+                            {(hasNote || hasEvent) && (
+                              <div className="absolute bottom-0.5 flex items-center gap-0.5">
+                                {hasEvent ? <div className="h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.8)]" /> : null}
+                                {hasNote ? <div className="h-1 w-1 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]" /> : null}
+                              </div>
+                            )}
                         </div>
                     );
                 })}
+            </div>
+
+            <div className="mt-4 flex min-h-[168px] flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-emerald-500">{selectedDateLabel}</p>
+              <div className="custom-scrollbar mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto">
+                {dayEvents.length === 0 ? (
+                  <p className="text-[11px] font-semibold leading-snug text-[var(--eos-muted)]">
+                    {dict.crm.pulseSchedule.empty}
+                  </p>
+                ) : (
+                  dayEvents.map((ev) => {
+                    const Icon = scheduleKindIcon(ev.kind);
+                    const time = new Date(ev.startsAt).toLocaleTimeString(dateTag, { hour: "2-digit", minute: "2-digit" });
+                    const inner = (
+                      <>
+                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)]">
+                          <Icon size={12} className="text-emerald-500" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] font-black text-[var(--eos-text)]">{ev.title}</p>
+                          <p className="truncate text-[10px] text-[var(--eos-muted)]">
+                            {time}{ev.subtitle ? ` · ${ev.subtitle}` : ""}
+                          </p>
+                          {ev.location ? (
+                            <p className="mt-0.5 flex items-center gap-1 truncate text-[9px] text-[var(--eos-subtle)]">
+                              <MapPin size={9} /> {ev.location}
+                            </p>
+                          ) : null}
+                        </div>
+                      </>
+                    );
+                    return ev.href ? (
+                      <Link key={ev.id} href={ev.href} className="flex items-start gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-2 py-1.5 transition hover:border-emerald-500/35">
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div key={ev.id} className="flex items-start gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-2 py-1.5">
+                        {inner}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="mt-2 shrink-0 border-t border-[var(--eos-border)] pt-2">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                  <PenTool size={10} /> {pw.noteTitle}
+                </div>
+                <textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder={pw.notePlaceholder}
+                  className="custom-scrollbar h-16 w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-2 text-[11px] font-medium text-[var(--eos-text)] placeholder:text-[var(--eos-subtle)] focus:border-emerald-500/50 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveNote}
+                  className="mt-1.5 w-full rounded-lg border border-[var(--eos-border-strong)] bg-[var(--eos-card)] py-1.5 text-[8px] font-black uppercase tracking-widest text-[var(--eos-text)] transition hover:bg-[var(--eos-border)]"
+                >
+                  {pw.noteSaveCloud}
+                </button>
+              </div>
             </div>
         </div>
 
@@ -490,36 +617,6 @@ export default function ProWidget({
               })}
           </motion.div>
       </div>
-
-      {/* POPUP NOTATKI */}
-      <AnimatePresence>
-        {selectedDate && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="eos-modal-backdrop fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 pt-10 pb-10 sm:pt-20 sm:pb-20">
-             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="eos-modal-surface eos-modal-shell eos-themed-modal my-auto w-full max-w-md rounded-[2rem] border p-6 md:p-8">
-                <div className="mb-6 flex items-center justify-between">
-                   <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]"><PenTool size={16} className="eos-pro-muted"/></div>
-                      <div>
-                         <h3 className="text-sm font-black uppercase tracking-widest text-[var(--eos-text)]">{pw.noteTitle}</h3>
-                         <p className="text-[10px] font-bold tracking-widest text-emerald-600 dark:text-emerald-500">{selectedDate}</p>
-                      </div>
-                   </div>
-                   <button onClick={() => setSelectedDate(null)} className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] p-2 transition-colors hover:bg-[var(--eos-border)] eos-pro-muted"><X size={16}/></button>
-                </div>
-                <textarea 
-                   autoFocus
-                   value={noteText}
-                   onChange={e => setNoteText(e.target.value)}
-                   placeholder={pw.notePlaceholder}
-                   className="custom-scrollbar h-32 w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-xs font-medium text-[var(--eos-text)] shadow-inner transition-all placeholder:text-[var(--eos-subtle)] focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-                />
-                <button onClick={handleSaveNote} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--eos-border-strong)] bg-[var(--eos-input)] py-4 text-[10px] font-black uppercase tracking-widest text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-all hover:bg-[var(--eos-border)]">
-                   {pw.noteSaveCloud}
-                </button>
-             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
     </div>
     </div>

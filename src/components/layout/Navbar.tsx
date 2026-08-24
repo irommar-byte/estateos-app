@@ -37,6 +37,12 @@ type CurrentUser = {
   id?: string | number;
   role?: string;
   plan?: string;
+  planType?: string;
+  isPro?: boolean;
+  officePro?: boolean;
+  hasMarketPro?: boolean;
+  image?: string | null;
+  avatar?: string | null;
   name?: string | null;
   firstName?: string | null;
   lastName?: string | null;
@@ -45,6 +51,10 @@ type CurrentUser = {
     name?: string | null;
     firstName?: string | null;
     lastName?: string | null;
+    role?: string;
+    planType?: string;
+    isPro?: boolean;
+    image?: string | null;
   };
 };
 
@@ -325,7 +335,7 @@ export default function Navbar() {
             {user ? (
               <div className="ml-0.5 flex min-w-0 items-center gap-1.5 xl:gap-2">
                 <DiscoveryNavWhisper variant="nav" />
-                <NavbarProfileChip user={user} />
+                <NavbarProfileChip user={user.user ? { ...user, ...user.user } : user} />
                 {isAdmin && (
                   <button
                     type="button"

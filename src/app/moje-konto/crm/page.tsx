@@ -722,14 +722,16 @@ export default function CRMDashboard() {
 
       await Promise.all([fetchData(uData.id), fetchRadarData()]);
 
-      if (uData.isPro && !sessionStorage.getItem('pro_booted')) {
+      const fromDesk = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('from') === 'desk';
+      const alreadyBooted = typeof window !== 'undefined' && Boolean(sessionStorage.getItem('pro_booted'));
+      if (uData.isPro && (!alreadyBooted || fromDesk)) {
         setIsBooting(true);
         sessionStorage.setItem('pro_booted', 'true');
         const rawName = uData.firstName || uData.name || (uData.email ? uData.email.split('@')[0] : 'Inwestorze');
         const bootGreetings = dict.crm.boot.greetings;
         const randGreet = bootGreetings[Math.floor(Math.random() * bootGreetings.length)].replace("{name}", rawName);
         setGreeting(randGreet);
-        setTimeout(() => setIsBooting(false), 3000);
+        setTimeout(() => setIsBooting(false), alreadyBooted ? 1600 : 3000);
       }
       
     } catch(err) {
@@ -1153,16 +1155,6 @@ export default function CRMDashboard() {
           </div>
         ) : null}
 
-        <CrmDayBrief
-          personName={personName}
-          onAddClient={() => {
-            handleTabSwitch('klienci' as CrmTab);
-            window.setTimeout(() => window.dispatchEvent(new Event('crm-open-add-client')), 50);
-          }}
-          onOpenClients={() => handleTabSwitch('klienci' as CrmTab)}
-          onOpenPlanning={() => handleTabSwitch('planowanie' as CrmTab)}
-        />
-
         {isPremium ? (
           <ProWidget
             currentUser={currentUser}
@@ -1181,6 +1173,16 @@ export default function CRMDashboard() {
             />
           </div>
         )}
+
+        <CrmDayBrief
+          personName={personName}
+          onAddClient={() => {
+            handleTabSwitch('klienci' as CrmTab);
+            window.setTimeout(() => window.dispatchEvent(new Event('crm-open-add-client')), 50);
+          }}
+          onOpenClients={() => handleTabSwitch('klienci' as CrmTab)}
+          onOpenPlanning={() => handleTabSwitch('planowanie' as CrmTab)}
+        />
 
         <div className="eos-crm-stage">
         <CrmSectionTabBar

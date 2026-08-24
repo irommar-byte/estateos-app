@@ -5,24 +5,29 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Activity, X } from "lucide-react";
 import { formatPpsm, formatSignedPct } from "@/lib/market/format";
 import type {
-  PricePulseDirection,
   PricePulsePayload,
   PricePulseTone,
+  PricePulseTrendKey,
   PricePulseWindow,
 } from "@/lib/market/types";
 
 type Locale = string;
 type WindowKey = "d7" | "d30" | "d90";
+type TrendKey = PricePulseTrendKey;
 
 const COPY = {
   pl: {
     title: "Puls cenowy",
-    hint: "Nowe oferty vs ceny z aktów",
+    hint: "Ceny z aktów notarialnych",
     live: "Live",
     empty: "Za mało transakcji, żeby narysować puls.",
     days7: "7 dni",
     days30: "1 miesiąc",
     days90: "3 miesiące",
+    day: "Dzień",
+    week: "Tydzień",
+    month: "Miesiąc",
+    year: "Rok",
     vsDeeds: "Oferty vs akty",
     listings: "Ceny ofertowe",
     deeds: "Ceny z aktów",
@@ -31,18 +36,26 @@ const COPY = {
     districts: "Dzielnice — ile oferty odbiegają od aktów",
     close: "Zamknij",
     city: "Warszawa · mieszkania na sprzedaż",
-    tap: "Dotknij, aby zobaczyć trend",
+    tap: "Dotknij, aby zobaczyć szczegóły",
     heroListing: "Zmiana ofert · 30 dni",
     heroVsDeeds: "Oferty vs akty",
+    heroDeed: "Zmiana cen transakcyjnych",
+    boughtUp: "Nieruchomości kupowane drożej",
+    boughtDown: "Nieruchomości kupowane taniej",
+    boughtFlat: "Ceny transakcyjne stabilne",
   },
   en: {
     title: "Price pulse",
-    hint: "New listings vs deed prices",
+    hint: "Notarized deed prices",
     live: "Live",
     empty: "Not enough deals to draw the pulse yet.",
     days7: "7 days",
     days30: "1 month",
     days90: "3 months",
+    day: "Day",
+    week: "Week",
+    month: "Month",
+    year: "Year",
     vsDeeds: "Listings vs deeds",
     listings: "Asking prices",
     deeds: "Deed prices",
@@ -51,29 +64,41 @@ const COPY = {
     districts: "Districts — listings vs deeds",
     close: "Close",
     city: "Warsaw · flats for sale",
-    tap: "Tap to see the trend",
+    tap: "Tap for details",
     heroListing: "Listing change · 30 days",
     heroVsDeeds: "Listings vs deeds",
+    heroDeed: "Transaction price change",
+    boughtUp: "Homes are selling for more",
+    boughtDown: "Homes are selling for less",
+    boughtFlat: "Transaction prices are stable",
   },
   uk: {
     title: "Пульс цін",
-    hint: "Нові оголошення vs акти",
+    hint: "Ціни з актів",
     live: "Live",
     empty: "Замало угод, щоб намалювати пульс.",
     days7: "7 днів",
     days30: "1 місяць",
     days90: "3 місяці",
+    day: "День",
+    week: "Тиждень",
+    month: "Місяць",
+    year: "Рік",
     vsDeeds: "Оголошення vs акти",
     listings: "Ціни оголошень",
     deeds: "Ціни з актів",
     listingChange: "Зміна оголошень",
     deedChange: "Зміна актів",
-    districts: "Райони — наскільки оголошення відхиляються від актів",
+    districts: "Райони — наскільки оголошення відхиляють від актів",
     close: "Закрити",
     city: "Варшава · квартири на продаж",
-    tap: "Натисніть, щоб побачити тренд",
+    tap: "Натисніть, щоб побачити деталі",
     heroListing: "Зміна оголошень · 30 днів",
     heroVsDeeds: "Оголошення vs акти",
+    heroDeed: "Зміна цін угод",
+    boughtUp: "Нерухомість купують дорожче",
+    boughtDown: "Нерухомість купують дешевше",
+    boughtFlat: "Ціни угод стабільні",
   },
 } as const;
 
@@ -116,21 +141,6 @@ function RollingPct({ value, className }: { value: string; className?: string })
   );
 }
 
-const ECG_BEAT =
-  "M0 22 H16 L20 18 22 22 H30 L34 7 38 36 42 4 46 26 50 22 H66 C74 22 76 13 84 13 C92 13 94 22 102 22 H120";
-
-function EcgTrace({ color }: { color: string }) {
-  const cycle = [0, 120, 240, 360].map((offset) => ECG_BEAT.replace("M0", `M${offset}`)).join(" ");
-  return (
-    <div className="eos-ecg-track relative mt-3 h-[72px] rounded-2xl">
-      <svg viewBox="0 0 480 44" preserveAspectRatio="none" className="eos-ecg-wave absolute inset-y-0 left-0 h-full">
-        <path d={cycle} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-      </svg>
-      <div className="eos-ecg-scan" />
-    </div>
-  );
-}
-
 function toneClass(tone: PricePulseTone) {
   if (tone === "up") return "text-rose-400";
   if (tone === "down") return "text-emerald-400";
@@ -160,30 +170,14 @@ function narrative(locale: Locale, data: PricePulsePayload, win: PricePulseWindo
   return `Oferty mieszkań, które wchodzą na rynek w Warszawie, są ${gap} względem cen z aktów notarialnych. ${trend} Zmiana w tym oknie: ${listingMove}.`;
 }
 
-function directionLabel(locale: Locale, direction: PricePulseDirection) {
-  if (locale === "en") {
-    if (direction === "falling") return "Listings falling";
-    if (direction === "rising") return "Listings rising";
-    return "Listings stable";
-  }
-  if (locale === "uk" || locale === "ru") {
-    if (direction === "falling") return "Оголошення падають";
-    if (direction === "rising") return "Оголошення зростають";
-    return "Оголошення стабільні";
-  }
-  if (direction === "falling") return "Oferty schodzą";
-  if (direction === "rising") return "Oferty rosną";
-  return "Oferty stabilne";
-}
-
-function sparklinePath(values: Array<number | null>, width: number, height: number, pad = 4) {
+function trendPath(values: Array<number | null>, width: number, height: number, pad = 6) {
   const pts = values
     .map((value, index) => ({ index, value }))
     .filter((row): row is { index: number; value: number } => row.value != null && Number.isFinite(row.value));
   if (pts.length < 2) return { line: "", area: "", last: null as { x: number; y: number } | null };
   const ys = pts.map((p) => p.value);
-  const min = Math.min(...ys, 0);
-  const max = Math.max(...ys, 0);
+  const min = Math.min(...ys);
+  const max = Math.max(...ys);
   const span = max - min || 1;
   const n = Math.max(values.length - 1, 1);
   const xy = values.map((value, index) => {
@@ -249,6 +243,7 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
   const [data, setData] = useState<PricePulsePayload | null>(null);
   const [open, setOpen] = useState(false);
   const [windowKey, setWindowKey] = useState<WindowKey>("d30");
+  const [trendKey, setTrendKey] = useState<TrendKey>("month");
 
   const load = useCallback(async () => {
     try {
@@ -267,7 +262,11 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
   }, [load]);
 
   const win = data?.windows[windowKey] ?? null;
-  const spark = useMemo(() => sparklinePath(data?.sparkline || [], 320, 72), [data]);
+  const trend = data?.trends?.[trendKey] ?? null;
+  const chart = useMemo(
+    () => trendPath((trend?.points || []).map((p) => p.ppsm), 320, 78),
+    [trend],
+  );
   const dual = useMemo(() => {
     const series = data?.series || [];
     const take = windowKey === "d7" ? 14 : windowKey === "d30" ? 30 : 90;
@@ -280,54 +279,86 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
     );
   }, [data, windowKey]);
 
-  const listingMove = data?.windows.d30.listingChangePct ?? data?.windows.d7.listingChangePct ?? null;
-  const heroPct = listingMove ?? data?.vsDeedsPct ?? 0;
+  const heroPct = trend?.changePct ?? data?.windows.d30.deedChangePct ?? data?.vsDeedsPct ?? 0;
   const pct = formatSignedPct(heroPct);
-  const heroCaption = listingMove != null ? copy.heroListing : copy.heroVsDeeds;
-  const tone = data?.tone ?? "flat";
-  const waveColor = tone === "up" ? "#fb7185" : "#34d399";
+  const trendTone = toneOfChange(trend?.changePct ?? null);
+  const waveColor = trendTone === "up" ? "#fb7185" : trendTone === "down" ? "#34d399" : "#94a3b8";
+  const boughtLabel =
+    trendTone === "up" ? copy.boughtUp : trendTone === "down" ? copy.boughtDown : copy.boughtFlat;
+  const periodCaption =
+    trendKey === "day" ? copy.day : trendKey === "week" ? copy.week : trendKey === "year" ? copy.year : copy.month;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="eos-pro-panel eos-pro-panel-inset eos-price-pulse-well group relative w-full overflow-hidden rounded-3xl p-4 text-left"
-      >
+      <div className="eos-pro-panel eos-pro-panel-inset eos-price-pulse-well group relative w-full overflow-hidden rounded-3xl p-4 text-left">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent" />
-        <div className="relative z-10 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2">
-              <Activity size={15} className="eos-ecg-icon shrink-0" strokeWidth={2.2} />
-              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
-                {copy.title}
+        <button type="button" onClick={() => setOpen(true)} className="relative z-10 w-full text-left">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="mb-1 flex items-center gap-2">
+                <Activity size={15} className="eos-ecg-icon shrink-0" strokeWidth={2.2} />
+                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
+                  {copy.title}
+                </p>
+                <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5">
+                  <span className="eos-ecg-icon h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[7px] font-black uppercase tracking-widest text-emerald-500">{copy.live}</span>
+                </span>
+              </div>
+              <p className="truncate text-[10px] font-semibold text-[var(--eos-subtle)]">
+                {copy.heroDeed} · {periodCaption}
               </p>
-              <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5">
-                <span className="eos-ecg-icon h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-[7px] font-black uppercase tracking-widest text-emerald-500">{copy.live}</span>
-              </span>
             </div>
-            <p className="truncate text-[10px] font-semibold text-[var(--eos-subtle)]">{heroCaption}</p>
+            <RollingPct className={`text-2xl font-black tracking-tight md:text-3xl ${toneClass(trendTone)}`} value={data ? pct : "0,0%"} />
           </div>
-          <RollingPct className={`text-2xl font-black tracking-tight md:text-3xl ${toneClass(tone)}`} value={data ? pct : "0,0%"} />
-        </div>
 
-        <div className="relative mt-1">
-          {spark.line ? (
-            <svg viewBox="0 0 320 72" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 mt-3 h-[72px] w-full opacity-25">
-              <path d={spark.line} fill="none" stroke={waveColor} strokeWidth="1.4" />
-            </svg>
-          ) : null}
-          <EcgTrace color={waveColor} />
+          <div className="relative mt-2 h-[78px]">
+            {chart.area ? (
+              <svg viewBox="0 0 320 78" preserveAspectRatio="none" className="h-full w-full">
+                <defs>
+                  <linearGradient id="eos-deed-trend-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={waveColor} stopOpacity="0.28" />
+                    <stop offset="100%" stopColor={waveColor} stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={chart.area} fill="url(#eos-deed-trend-fill)" />
+                <path d={chart.line} fill="none" stroke={waveColor} strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" />
+                {chart.last ? (
+                  <circle cx={chart.last.x} cy={chart.last.y} r="3.2" fill={waveColor} />
+                ) : null}
+              </svg>
+            ) : (
+              <p className="flex h-full items-center text-[11px] font-semibold text-[var(--eos-muted)]">{copy.empty}</p>
+            )}
+          </div>
+        </button>
+
+        <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
+          {(["day", "week", "month", "year"] as TrendKey[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTrendKey(key)}
+              className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] transition ${
+                trendKey === key
+                  ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+                  : "border border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+              }`}
+            >
+              {copy[key]}
+            </button>
+          ))}
         </div>
 
         <div className="relative z-10 mt-2 flex items-center justify-between gap-2">
-          <p className="text-[10px] font-bold text-[var(--eos-muted)]">
-            {data ? directionLabel(locale, data.direction) : copy.tap}
+          <p className={`text-[10px] font-bold ${toneClass(trendTone)}`}>
+            {data ? boughtLabel : copy.tap}
           </p>
-          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-subtle)]">{copy.tap}</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-subtle)]">
+            {trend?.currentPpsm ? formatPpsm(trend.currentPpsm) : copy.tap}
+          </p>
         </div>
-      </button>
+      </div>
 
       <AnimatePresence>
         {open && (
@@ -364,9 +395,9 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
-                      {heroCaption}
+                      {copy.heroDeed} · {periodCaption}
                     </p>
-                    <RollingPct className={`mt-1 text-4xl font-black ${toneClass(tone)}`} value={pct} />
+                    <RollingPct className={`mt-1 text-4xl font-black ${toneClass(trendTone)}`} value={pct} />
                   </div>
                   <p className="max-w-[58%] text-right text-[11px] font-semibold leading-snug text-[var(--eos-muted)]">
                     {data && win ? narrative(locale, data, win) : copy.empty}
@@ -374,13 +405,13 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
                 </div>
                 <svg viewBox="0 0 640 160" className="mt-4 h-36 w-full">
                   <path d={dual.b} fill="none" stroke="rgba(212,175,106,0.9)" strokeWidth="2.2" />
-                  <path d={dual.a} fill="none" stroke={tone === "up" ? "#fb7185" : "#34d399"} strokeWidth="2.4" />
+                  <path d={dual.a} fill="none" stroke={waveColor} strokeWidth="2.4" />
                 </svg>
                 <div className="mt-2 flex gap-4 text-[10px] font-bold text-[var(--eos-muted)]">
                   <span className="flex items-center gap-1.5">
                     <span
                       className="h-1.5 w-4 rounded-full"
-                      style={{ background: tone === "up" ? "#fb7185" : "#34d399" }}
+                      style={{ background: waveColor }}
                     />
                     {copy.listings}
                   </span>

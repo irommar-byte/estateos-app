@@ -112,6 +112,22 @@ export type PricePulseDistrict = {
   listingCount: number;
 };
 
+export type PricePulseTrendKey = 'day' | 'week' | 'month' | 'year';
+
+export type PricePulseTrendPoint = {
+  key: string;
+  ppsm: number | null;
+};
+
+export type PricePulseTrend = {
+  key: PricePulseTrendKey;
+  changePct: number | null;
+  currentPpsm: number | null;
+  previousPpsm: number | null;
+  count: number;
+  points: PricePulseTrendPoint[];
+};
+
 export type PricePulsePayload = {
   ok: true;
   city: string;
@@ -127,6 +143,12 @@ export type PricePulsePayload = {
     d7: PricePulseWindow;
     d30: PricePulseWindow;
     d90: PricePulseWindow;
+  };
+  trends: {
+    day: PricePulseTrend;
+    week: PricePulseTrend;
+    month: PricePulseTrend;
+    year: PricePulseTrend;
   };
   series: PricePulsePoint[];
   sparkline: Array<number | null>;

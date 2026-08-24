@@ -301,17 +301,19 @@ export default function AccountListingsPage() {
           <p className="mx-auto mt-3 max-w-2xl text-sm text-[var(--eos-muted)] sm:mx-0">
             Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
           </p>
-          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:items-stretch sm:justify-start">
-            <a
-              href="/moje-konto/crm?tab=my_offers"
-              className="eos-mgmt-panel-btn group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full px-7 py-3.5 text-[11px] font-black uppercase tracking-[0.18em] text-white"
-            >
-              <span className="eos-mgmt-panel-btn__sheen" aria-hidden />
-              <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
-              <span className="relative z-10">Panel zarządzania</span>
-            </a>
-            {isAgent ? <EstateOsDeskCrmButton /> : null}
-          </div>
+          {isAgent ? (
+            <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:items-stretch sm:justify-start">
+              <a
+                href="/crm"
+                className="eos-mgmt-panel-btn group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full px-7 py-3.5 text-[11px] font-black uppercase tracking-[0.18em] text-white"
+              >
+                <span className="eos-mgmt-panel-btn__sheen" aria-hidden />
+                <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
+                <span className="relative z-10">Panel zarządzania</span>
+              </a>
+              <EstateOsDeskCrmButton href="/moje-konto/crm?from=desk" />
+            </div>
+          ) : null}
         </header>
 
         <section className="relative mb-8 overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-7 text-center shadow-[var(--eos-shadow-soft)] sm:p-10">

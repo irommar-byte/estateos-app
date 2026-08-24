@@ -3261,6 +3261,73 @@ html:not(.light) .eos-nav-admin:hover {
   box-shadow: 0 10px 28px rgba(16, 185, 129, 0.4) !important;
 }
 
+.eos-nav-identity--standard {
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  background: linear-gradient(180deg, rgba(12, 18, 16, 0.92), rgba(6, 10, 9, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.28);
+}
+.eos-nav-identity--standard:hover {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: linear-gradient(180deg, rgba(16, 24, 21, 0.96), rgba(8, 12, 11, 0.98));
+}
+.eos-nav-identity--pro {
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  background: linear-gradient(180deg, #3a2d16 0%, #16110a 58%, #0c0a07 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 179, 0.28),
+    0 0 0 1px rgba(212, 175, 55, 0.12),
+    0 10px 28px rgba(180, 130, 30, 0.28);
+}
+.eos-nav-identity--pro:hover {
+  border-color: rgba(245, 208, 108, 0.75);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 179, 0.38),
+    0 0 0 1px rgba(245, 208, 108, 0.18),
+    0 14px 34px rgba(212, 175, 55, 0.38);
+}
+.eos-nav-identity__sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    rgba(255, 236, 179, 0.22) 48%,
+    transparent 64%
+  );
+  transform: translateX(-130%);
+  animation: eos-nav-identity-sheen 4.2s ease-in-out infinite;
+}
+@keyframes eos-nav-identity-sheen {
+  0%, 58% { transform: translateX(-130%); }
+  78% { transform: translateX(130%); }
+  100% { transform: translateX(130%); }
+}
+html.light .eos-nav-identity--standard {
+  border-color: rgba(5, 150, 105, 0.28);
+  background: linear-gradient(180deg, #ffffff, #f3f6f4);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+html.light .eos-nav-identity--standard .eos-nav-identity__name {
+  color: #0f172a;
+}
+html.light .eos-nav-identity--standard .eos-nav-identity__role {
+  color: #047857;
+}
+html.light .eos-nav-identity--pro {
+  border-color: rgba(180, 130, 30, 0.45);
+  background: linear-gradient(180deg, #fff8e8, #f4e6c4 55%, #ead7a2);
+  box-shadow: 0 10px 24px rgba(180, 130, 30, 0.18);
+}
+html.light .eos-nav-identity--pro .eos-nav-identity__name {
+  color: #3a2d16;
+}
+html.light .eos-nav-identity--pro .eos-nav-identity__role {
+  color: #8a6914;
+}
+
 html.light .eos-nav-link {
   color: var(--eos-subtle) !important;
 }
