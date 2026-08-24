@@ -30,6 +30,7 @@ export type AcquisitionFormData = {
     lat: string;
     lng: string;
     propertyType: string;
+    apartmentNumber: string;
     area: string;
     rooms: string;
     floor: string;
@@ -172,6 +173,7 @@ export function createDefaultAcquisitionForm(
       lat: "",
       lng: "",
       propertyType: "Mieszkanie",
+      apartmentNumber: "",
       area: client?.sellerArea ? String(client.sellerArea) : "",
       rooms: client?.sellerRooms ? String(client.sellerRooms) : "",
       floor: "",
@@ -280,6 +282,7 @@ export function buildAcquisitionAgreementText(params: {
     line("Miasto", form.property.city),
     line("Dzielnica", form.property.district),
     line("Rodzaj", form.property.propertyType),
+    line("Numer mieszkania (CRM)", form.property.apartmentNumber),
     line("Powierzchnia", form.property.area ? `${form.property.area} m²` : ""),
     line("Liczba pokoi", form.property.rooms),
     line("Przyległości", form.property.amenities),

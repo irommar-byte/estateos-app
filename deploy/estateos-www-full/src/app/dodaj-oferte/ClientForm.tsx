@@ -281,6 +281,7 @@ export default function ClientForm({
     rooms?: number;
     description?: string;
     titleHint?: string;
+    apartmentNumber?: string;
   } | null;
 }) {
   const { dict, locale } = useLocale();
@@ -420,6 +421,7 @@ export default function ClientForm({
       rooms: crmSellerPrefill.rooms ? String(crmSellerPrefill.rooms) : prev.rooms,
       description: crmSellerPrefill.description || prev.description,
       title: crmSellerPrefill.titleHint || prev.title,
+      apartmentNumber: crmSellerPrefill.apartmentNumber || prev.apartmentNumber,
     }));
   }, [crmSellerPrefill]);
 
@@ -1563,6 +1565,8 @@ export default function ClientForm({
     if (agencyClientId) {
       payload.agencyClientId = agencyClientId;
     }
+    payload.apartmentNumber =
+      data.propertyType === "FLAT" ? String(data.apartmentNumber || "").trim().slice(0, 32) : "";
     return { payload, finalDesc };
   };
 

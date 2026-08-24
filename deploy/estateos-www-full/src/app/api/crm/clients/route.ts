@@ -17,6 +17,10 @@ import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
 import { seedAcquisitionForm } from '@/lib/crm/acquisitionOffer';
 import { findDuplicateAgencyClients } from '@/lib/crm/clientDuplicate';
+import {
+  apartmentNumberForType,
+  parseSellerPropertyType,
+} from '@/lib/crm/sellerProperty';
 
 function normalizePhone(raw: unknown): string | null {
   const input = String(raw || '').trim();
@@ -138,6 +142,7 @@ export async function POST(req: Request) {
         ? {
             sellerCity: body.sellerCity ? String(body.sellerCity).trim() : null,
             sellerDistrict: body.sellerDistrict ? String(body.sellerDistrict).trim() : null,
+            sellerPropertyType: parseSellerPropertyType(body.sellerPropertyType),
             sellerPrice:
               body.sellerPrice != null && Number.isFinite(Number(body.sellerPrice))
                 ? Number(body.sellerPrice)
@@ -248,6 +253,8 @@ export async function POST(req: Request) {
           lat: Number.isFinite(lat) ? lat : null,
           lng: Number.isFinite(lng) ? lng : null,
           prepItems,
+          sellerPropertyType: client.sellerPropertyType,
+          apartmentNumber: apartmentNumberForType(client.sellerPropertyType, body.apartmentNumber),
         }),
       },
     }).catch(() => {});

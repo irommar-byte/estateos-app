@@ -44,6 +44,10 @@ import {
   formatPolishDateTime,
   parseMeetingLocal,
 } from '../lib/polishText';
+import SellerPropertyTypePicker, {
+  sellerPropertyTypeLabel,
+  type SellerPropertyTypeId,
+} from '../components/agency/SellerPropertyTypePicker';
 
 const DRAFT_KEY = '@eos_agency_client_create_draft';
 
@@ -84,6 +88,8 @@ export default function AgencyClientCreateScreen() {
     internalNotes: '',
     listingUrl: '',
     meetingAt: '',
+    sellerPropertyType: 'FLAT' as SellerPropertyTypeId,
+    apartmentNumber: '',
   });
   const [address, setAddress] = useState<AcquisitionAddressValue>({
     address: '',
@@ -207,7 +213,7 @@ export default function AgencyClientCreateScreen() {
       };
     }
     if (type === 'SELLER' && wizardStep === 3) {
-      return { title: 'Adres nieruchomości', subtitle: 'Mapa satelitarna, pinezka i Street View jak przy dodawaniu ogłoszenia.' };
+      return { title: 'Adres nieruchomości', subtitle: 'Typ, mapa satelitarna i — przy mieszkaniu — numer lokalu tylko do CRM.' };
     }
     if (type === 'SELLER' && wizardStep === 4) {
       return { title: 'Umówienie spotkania', subtitle: 'Termin, lista przygotowań i komentarz do maila. Notatka wewnętrzna zostaje tylko u Ciebie.' };
@@ -460,6 +466,8 @@ export default function AgencyClientCreateScreen() {
           ? {
               sellerCity: address.city || form.sellerCity || null,
               sellerDistrict: address.district || null,
+              sellerPropertyType: form.sellerPropertyType,
+              apartmentNumber: form.sellerPropertyType === 'FLAT' ? form.apartmentNumber.trim() : '',
               sellerPrice: form.sellerPrice ? parseGroupedNumber(form.sellerPrice) : null,
               listingUrl: form.listingUrl.trim() || null,
               prepItems,
@@ -714,6 +722,53 @@ export default function AgencyClientCreateScreen() {
 
             {type === 'SELLER' && wizardStep === 3 ? (
               <>
+                <SellerPropertyTypePicker
+                  value={form.sellerPropertyType}
+                  onChange={(sellerPropertyType) =>
+                    setForm((current) => ({
+                      ...current,
+                      sellerPropertyType,
+                      apartmentNumber: sellerPropertyType === 'FLAT' ? current.apartmentNumber : '',
+                    }))
+                  }
+                  isDark={isDark}
+                />
+                {form.sellerPropertyType === 'FLAT' ? (
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                      NUMER MIESZKANIA
+                    </Text>
+                    <TextInput
+                      value={form.apartmentNumber}
+                      onChangeText={(value) =>
+                        setForm((current) => ({ ...current, apartmentNumber: value.slice(0, 32) }))
+                      }
+                      placeholder="np. 12"
+                      placeholderTextColor={colors.secondary}
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: colors.input,
+                          color: colors.text,
+                          borderColor: colors.border,
+                          marginTop: 6,
+                        },
+                      ]}
+                    />
+                    <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6, lineHeight: 15 }}>
+                      Widoczny tylko dla Ciebie i klienta w CRM — nie publikujemy go na ogłoszeniu.
+                    </Text>
+                  </View>
+                ) : null}
+                <AcquisitionAddressMapField
+                  token={token}
+                  value={address}
+                  onChange={(next) => {
+                    setAddress(next);
+                    setForm((current) => ({ ...current, sellerCity: next.city || current.sellerCity }));
+                  }}
+                  isDark={isDark}
+                />
                 <View
                   style={[
                     styles.priceCard,
@@ -749,15 +804,6 @@ export default function AgencyClientCreateScreen() {
                     To pole jest widoczne na karcie klienta i w pozyskaniu — nie chowa się w tłumie pozostałych danych.
                   </Text>
                 </View>
-                <AcquisitionAddressMapField
-                  token={token}
-                  value={address}
-                  onChange={(next) => {
-                    setAddress(next);
-                    setForm((current) => ({ ...current, sellerCity: next.city || current.sellerCity }));
-                  }}
-                  isDark={isDark}
-                />
               </>
             ) : null}
 
@@ -918,6 +964,12 @@ export default function AgencyClientCreateScreen() {
                 {type === 'SELLER' ? (
                   <>
                     <Text style={{ color: colors.secondary, fontSize: 13 }}>{address.address || '—'}</Text>
+                    <Text style={{ color: colors.secondary, fontSize: 13 }}>
+                      {sellerPropertyTypeLabel(form.sellerPropertyType)}
+                      {form.sellerPropertyType === 'FLAT' && form.apartmentNumber.trim()
+                        ? ` · m. ${form.apartmentNumber.trim()}`
+                        : ''}
+                    </Text>
                     {form.sellerPrice ? (
                       <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>
                         Cena oczekiwana: {form.sellerPrice} zł

@@ -32,6 +32,11 @@ import AcquisitionAddressMapField from '../components/agency/AcquisitionAddressM
 import AcquisitionRoomScanner, { type RoomItem } from '../components/agency/AcquisitionRoomScanner';
 import AcquisitionKwField from '../components/agency/AcquisitionKwField';
 import MultiSelectChipGroup from '../components/agency/MultiSelectChipGroup';
+import SellerPropertyTypePicker, {
+  sellerPropertyTypeLabel,
+  type SellerPropertyTypeId,
+} from '../components/agency/SellerPropertyTypePicker';
+import ContactMessageAttachment from '../components/messaging/ContactMessageAttachment';
 import AgencyClientRadarSurvey, {
   clientRadarFiltersFromUnknown,
   clientRadarSurveyHint,
@@ -71,6 +76,11 @@ import {
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
 import { formatClientFeedbackForAgent } from '../utils/clientPortalFeedback';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
+import {
+  cleanAttachmentOnlyMessage,
+  formatContactAttachmentName,
+  normalizeContactMediaUrl,
+} from '../utils/contactAttachment';
 import { API_URL } from '../config/network';
 import type { WholePropertyScan } from '../types/roomScan';
 import MarketValuationCard from '../components/market/MarketValuationCard';
@@ -87,6 +97,17 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const STEPS = ACQUISITION_GUIDE_STEPS.map((item) => ({ id: item.id, title: item.title }));
 const ERROR_RED = '#FF3B30';
+
+function portalAttachmentSummary(attachment: { mimeType?: string; name?: string } | undefined) {
+  if (!attachment) return 'Brak wiadomości';
+  const mime = String(attachment.mimeType || '').toLowerCase();
+  const name = String(attachment.name || '').toLowerCase();
+  if (mime.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(name)) return 'Nagranie audio';
+  if (mime.startsWith('image/')) return 'Zdjęcie';
+  if (mime.startsWith('video/')) return 'Wideo';
+  if (mime === 'application/pdf' || name.endsWith('.pdf')) return 'Dokument PDF';
+  return 'Załącznik';
+}
 
 const ROOM_OPTIONS = ['', ...Array.from({ length: 10 }, (_, i) => String(i + 1))].map((value) => ({
   value,
@@ -340,6 +361,13 @@ export default function AgencyClientDetailScreen() {
   const [planImages, setPlanImages] = useState<string[]>([]);
   const [wholePropertyScan, setWholePropertyScan] = useState<WholePropertyScan | null>(null);
   const [chatDraft, setChatDraft] = useState('');
+  const [pendingChatFile, setPendingChatFile] = useState<{ uri: string; name: string; mimeType: string } | null>(null);
+  const [chatFocused, setChatFocused] = useState(false);
+  const [chatExpanded, setChatExpanded] = useState(false);
+  const [radarExpanded, setRadarExpanded] = useState(false);
+  const [presentationExpanded, setPresentationExpanded] = useState(false);
+  const chatScrollRef = useRef<ScrollView | null>(null);
+  const chatPinnedToEndRef = useRef(true);
   const [presentationAt, setPresentationAt] = useState('');
   const [presentationOfferId, setPresentationOfferId] = useState('');
 
@@ -931,6 +959,46 @@ export default function AgencyClientDetailScreen() {
     .filter((item) => Boolean(item.notifiedAt || item.sharedAt))
     .sort((a, b) => b.score - a.score);
   const showRadarSurvey = Boolean(client && (client.type === 'BUYER' || sellerRadarSearching));
+  const portalMessages = client?.messages || [];
+  const latestPortalMessage = portalMessages[portalMessages.length - 1];
+  const latestPortalText = latestPortalMessage
+    ? cleanAttachmentOnlyMessage(latestPortalMessage.content, latestPortalMessage.attachments)
+    : '';
+  const chatSummary = latestPortalMessage
+    ? `Ostatnia: ${latestPortalText || portalAttachmentSummary(latestPortalMessage.attachments?.[0])}`
+    : 'Brak wiadomości — napisz pierwszy';
+  const radarSummary = [
+    buyerFilters.city || null,
+    buyerFilters.selectedDistricts.length
+      ? `${buyerFilters.selectedDistricts.length} ${buyerFilters.selectedDistricts.length === 1 ? 'dzielnica' : 'dzielnice'}`
+      : null,
+    `${buyerFilters.matchThreshold}% próg`,
+    pendingMatches.length ? `${pendingMatches.length} do wysłania` : 'brak nowych',
+    sentMatches.length ? `${sentMatches.length} wysłanych` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const reactedMatches = sentMatches.filter((item) => Boolean(formatClientFeedbackForAgent(item.clientFeedback)));
+  const presentationStatusLabel = client?.presentation
+    ? client.presentation.status === 'pending'
+      ? 'oczekuje na potwierdzenie'
+      : 'potwierdzona'
+    : 'brak terminu';
+  const meetingStatusLabel = client?.meeting
+    ? client.meeting.status === 'pending'
+      ? 'spotkanie oczekuje'
+      : 'spotkanie potwierdzone'
+    : null;
+  const presentationSummary = [
+    `${sentMatches.length} wysłanych`,
+    `${reactedMatches.length} z opinią`,
+    pendingMatches.length ? `${pendingMatches.length} do wysłania` : null,
+    `Prezentacja: ${presentationStatusLabel}`,
+    meetingStatusLabel,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const clientInitials = `${(client?.firstName || '').trim().charAt(0)}${(client?.lastName || '').trim().charAt(0)}`.toUpperCase() || 'K';
 
   const saveBuyerRadar = async (enabled: boolean, filters = buyerFilters) => {
     if (!token) return false;
@@ -1098,7 +1166,8 @@ export default function AgencyClientDetailScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView
-          scrollEnabled={!isSigning}
+          scrollEnabled={!isSigning && !chatFocused}
+          nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 240 }}
@@ -1108,40 +1177,132 @@ export default function AgencyClientDetailScreen() {
           ) : (
             <>
               {/* Client Info Banner */}
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
-                    {client.type === 'SELLER' ? 'SPRZEDAJĄCY' : 'KUPUJĄCY'}
-                  </Text>
-                  {client.portalUrl ? (
-                    <Pressable
-                      onPress={() =>
-                        Linking.openURL(
-                          client.portalUrl!.startsWith('http') ? client.portalUrl! : `https://estateos.pl${client.portalUrl}`
-                        )
-                      }
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden', padding: 0 },
+                ]}
+              >
+                <LinearGradient
+                  colors={
+                    isDark
+                      ? ['rgba(52,199,89,0.22)', 'rgba(52,199,89,0.06)', colors.card]
+                      : ['rgba(52,199,89,0.18)', 'rgba(52,199,89,0.05)', '#FFFFFF']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ padding: 16 }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                    <View
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 18,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(52,199,89,0.2)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(52,199,89,0.35)',
+                      }}
                     >
-                      <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 12 }}>Panel klienta ↗</Text>
+                      <Text style={{ color: colors.accent, fontSize: 20, fontWeight: '900', letterSpacing: 0.4 }}>
+                        {clientInitials}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <View
+                          style={{
+                            alignSelf: 'flex-start',
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 999,
+                            backgroundColor: 'rgba(52,199,89,0.16)',
+                          }}
+                        >
+                          <Text style={{ color: colors.accent, fontSize: 10, fontWeight: '900', letterSpacing: 0.8 }}>
+                            {client.type === 'SELLER' ? 'SPRZEDAJĄCY' : 'KUPUJĄCY'}
+                          </Text>
+                        </View>
+                        {client.portalUrl ? (
+                          <Pressable
+                            onPress={() =>
+                              Linking.openURL(
+                                client.portalUrl!.startsWith('http')
+                                  ? client.portalUrl!
+                                  : `https://estateos.pl${client.portalUrl}`
+                              )
+                            }
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 999,
+                              backgroundColor: colors.card,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                            }}
+                          >
+                            <Ionicons name="open-outline" size={13} color="#007AFF" />
+                            <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 11 }}>Panel</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                      <Text style={{ color: colors.text, fontSize: 22, fontWeight: '900', marginTop: 6 }} numberOfLines={1}>
+                        {client.firstName} {client.lastName}
+                      </Text>
+                      <View style={{ marginTop: 8, gap: 6 }}>
+                        {client.phone ? (
+                          <Pressable
+                            onPress={() => Linking.openURL(`tel:${client.phone}`)}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                          >
+                            <Ionicons name="call-outline" size={14} color={colors.secondary} />
+                            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>
+                              {formatPhoneNumber(client.phone)}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        <Pressable
+                          onPress={() => (client.email ? Linking.openURL(`mailto:${client.email}`) : undefined)}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                        >
+                          <Ionicons name="mail-outline" size={14} color={colors.secondary} />
+                          <Text style={{ color: colors.secondary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                            {client.email || 'Brak e-maila'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+                    <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>WYSŁANE</Text>
+                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>{sentMatches.length}</Text>
+                    </View>
+                    <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>Z OPINIĄ</Text>
+                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>{reactedMatches.length}</Text>
+                    </View>
+                    <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>CZAT</Text>
+                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>{portalMessages.length}</Text>
+                    </View>
+                  </View>
+
+                  {client.nextStep ? (
+                    <Pressable onPress={runNextStep} style={[styles.primary, { marginTop: 14, minHeight: 52, height: undefined, paddingVertical: 10 }]}>
+                      <Text style={styles.primaryText}>{client.nextStep.label}</Text>
+                      <Text style={{ color: '#052e16', fontSize: 11, marginTop: 3, opacity: 0.8, textAlign: 'center' }} numberOfLines={2}>
+                        {client.nextStep.hint}
+                      </Text>
                     </Pressable>
                   ) : null}
-                </View>
-                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 4 }}>
-                  {client.firstName} {client.lastName}
-                </Text>
-                <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}>
-                  {formatPhoneNumber(client.phone || '')} • {client.email || 'Brak e-maila'}
-                </Text>
-                {client.nextStep ? (
-                  <Pressable
-                    onPress={runNextStep}
-                    style={[styles.primary, { marginTop: 12 }]}
-                  >
-                    <Text style={styles.primaryText}>{client.nextStep.label}</Text>
-                    <Text style={{ color: '#052e16', fontSize: 11, marginTop: 4, opacity: 0.8 }} numberOfLines={2}>
-                      {client.nextStep.hint}
-                    </Text>
-                  </Pressable>
-                ) : null}
+                </LinearGradient>
               </View>
 
               {/* Acquisition Card (For Sellers) */}
@@ -1233,6 +1394,37 @@ export default function AgencyClientDetailScreen() {
                         isDark={isDark}
                         disabled={signed}
                       />
+                      {String(form.property.propertyType || 'Mieszkanie') === 'Mieszkanie' ||
+                      String(form.property.propertyType || '') === 'FLAT' ? (
+                        <View style={{ marginBottom: 12 }}>
+                          <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                            NUMER MIESZKANIA (CRM)
+                          </Text>
+                          <TextInput
+                            editable={!signed}
+                            value={String(form.property.apartmentNumber || '')}
+                            onChangeText={(next) =>
+                              setForm((c) => (c ? setSection(c, 'property', { apartmentNumber: next.slice(0, 32) }) : c))
+                            }
+                            placeholder="np. 12"
+                            placeholderTextColor={colors.secondary}
+                            style={{
+                              marginTop: 4,
+                              backgroundColor: colors.input,
+                              color: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              borderRadius: 12,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              fontSize: 15,
+                            }}
+                          />
+                          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6, lineHeight: 15 }}>
+                            Tylko agent i klient — nie publikujemy na ogłoszeniu.
+                          </Text>
+                        </View>
+                      ) : null}
 
                       {/* Mortgage Switch & Field */}
                       <View style={{ marginVertical: 12 }}>
@@ -1306,6 +1498,51 @@ export default function AgencyClientDetailScreen() {
                   {/* Step 3: Nieruchomość */}
                   {step === 3 ? (
                     <>
+                      <SellerPropertyTypePicker
+                        value={String(form.property.propertyType || 'Mieszkanie')}
+                        onChange={(id: SellerPropertyTypeId) =>
+                          setForm((current) =>
+                            current
+                              ? setSection(current, 'property', {
+                                  propertyType: sellerPropertyTypeLabel(id),
+                                  apartmentNumber: id === 'FLAT' ? String(current.property.apartmentNumber || '') : '',
+                                })
+                              : current,
+                          )
+                        }
+                        isDark={isDark}
+                        disabled={signed}
+                      />
+                      {sellerPropertyTypeLabel(form.property.propertyType) === 'Mieszkanie' ? (
+                        <View style={{ marginBottom: 12 }}>
+                          <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                            NUMER MIESZKANIA (CRM)
+                          </Text>
+                          <TextInput
+                            editable={!signed}
+                            value={String(form.property.apartmentNumber || '')}
+                            onChangeText={(next) =>
+                              setForm((c) => (c ? setSection(c, 'property', { apartmentNumber: next.slice(0, 32) }) : c))
+                            }
+                            placeholder="np. 12"
+                            placeholderTextColor={colors.secondary}
+                            style={{
+                              marginTop: 4,
+                              backgroundColor: colors.input,
+                              color: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              borderRadius: 12,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              fontSize: 15,
+                            }}
+                          />
+                          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6, lineHeight: 15 }}>
+                            Widoczny tylko dla prowadzącego agenta i klienta — nie trafia na ogłoszenie.
+                          </Text>
+                        </View>
+                      ) : null}
                       <AcquisitionAddressMapField
                         token={token}
                         value={{
@@ -1335,17 +1572,6 @@ export default function AgencyClientDetailScreen() {
                         isDark={isDark}
                         disabled={signed}
                         errorKeys={errorKeys}
-                      />
-
-                      <MultiSelectChipGroup
-                        label="RODZAJ NIERUCHOMOŚCI"
-                        options={['Mieszkanie', 'Dom', 'Działka', 'Lokal']}
-                        selected={[String(form.property.propertyType || 'Mieszkanie')]}
-                        onToggle={(opt) =>
-                          setForm((current) => (current ? setSection(current, 'property', { propertyType: opt }) : current))
-                        }
-                        isDark={isDark}
-                        disabled={signed}
                       />
 
                       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
@@ -1675,10 +1901,95 @@ export default function AgencyClientDetailScreen() {
               ) : null}
 
 
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
-                  WSPÓŁPRACA Z KLIENTEM
-                </Text>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden', padding: 0 },
+                ]}
+              >
+                <Pressable
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setPresentationExpanded((current) => !current);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: presentationExpanded }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: 16,
+                    borderBottomWidth: presentationExpanded ? StyleSheet.hairlineWidth : 0,
+                    borderBottomColor: colors.border,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(52,199,89,0.14)',
+                    }}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color={colors.accent} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                      {client.type === 'BUYER' ? 'PREZENTACJA' : 'WSPÓŁPRACA'} · {sentMatches.length} WYSŁANYCH
+                    </Text>
+                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900', marginTop: 2 }} numberOfLines={1}>
+                      {client.type === 'BUYER' ? 'Prezentacja oferty' : 'Współpraca z klientem'}
+                    </Text>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '600', marginTop: 3 }} numberOfLines={2}>
+                      {presentationSummary}
+                    </Text>
+                    {!presentationExpanded ? (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        <View style={[styles.miniStat, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                          <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>WYSŁANE</Text>
+                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>{sentMatches.length}</Text>
+                        </View>
+                        <View style={[styles.miniStat, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                          <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>ZROBIONE</Text>
+                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>{reactedMatches.length}</Text>
+                        </View>
+                        <View style={[styles.miniStat, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                          <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>DO WYSŁANIA</Text>
+                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>{pendingMatches.length}</Text>
+                        </View>
+                        <View style={[styles.miniStat, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                          <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>TERMIN</Text>
+                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>
+                            {client.presentation
+                              ? client.presentation.status === 'pending'
+                                ? 'Czeka'
+                                : 'OK'
+                              : 'Brak'}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.input,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Ionicons name={presentationExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.text} />
+                  </View>
+                </Pressable>
+
+                {presentationExpanded ? (
+                <View style={{ padding: 16, paddingTop: 12 }}>
                 {client.meeting ? (
                   <View style={{ marginTop: 10 }}>
                     <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>SPOTKANIE</Text>
@@ -1810,103 +2121,272 @@ export default function AgencyClientDetailScreen() {
                   </Pressable>
                 </View>
                 ) : null}
+                </View>
+                ) : null}
 
-                <View style={{ marginTop: 16 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>WIADOMOŚCI</Text>
-                  <View style={{ maxHeight: 220, marginTop: 8 }}>
+              </View>
+
+              <View
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    overflow: 'hidden',
+                    padding: 0,
+                  },
+                ]}
+              >
+                <Pressable
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setChatExpanded((current) => !current);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: chatExpanded }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    paddingHorizontal: 16,
+                    paddingTop: 16,
+                    paddingBottom: 12,
+                    borderBottomWidth: chatExpanded ? StyleSheet.hairlineWidth : 0,
+                    borderBottomColor: colors.border,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(52,199,89,0.14)',
+                    }}
+                  >
+                    <Ionicons name="chatbubble-ellipses" size={20} color={colors.accent} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                      LIVE CHAT · {portalMessages.length}
+                    </Text>
+                    <Text style={{ color: colors.text, fontSize: 16, marginTop: 2, fontWeight: '900' }} numberOfLines={1}>
+                      {client.firstName} {client.lastName}
+                    </Text>
+                    <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3, fontWeight: '600' }} numberOfLines={1}>
+                      {chatSummary}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.input,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Ionicons name={chatExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.text} />
+                  </View>
+                </Pressable>
+
+                {chatExpanded ? (
+                  <>
+                  <ScrollView
+                  ref={chatScrollRef}
+                  nestedScrollEnabled
+                  directionalLockEnabled
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                  bounces={false}
+                  style={styles.chatThread}
+                  contentContainerStyle={[
+                    styles.chatThreadContent,
+                    { justifyContent: (client.messages || []).length ? 'flex-start' : 'center' },
+                  ]}
+                  onTouchStart={() => setChatFocused(true)}
+                  onTouchEnd={() => setChatFocused(false)}
+                  onTouchCancel={() => setChatFocused(false)}
+                  onScrollBeginDrag={() => setChatFocused(true)}
+                  onScrollEndDrag={() => setChatFocused(false)}
+                  onMomentumScrollEnd={() => setChatFocused(false)}
+                  onScroll={(event) => {
+                    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                    chatPinnedToEndRef.current =
+                      contentOffset.y + layoutMeasurement.height >= contentSize.height - 48;
+                  }}
+                  scrollEventThrottle={16}
+                  onContentSizeChange={() => {
+                    if (chatPinnedToEndRef.current) {
+                      chatScrollRef.current?.scrollToEnd({ animated: true });
+                    }
+                  }}
+                >
                     {(client.messages || []).length === 0 ? (
-                      <Text style={{ color: colors.secondary, fontSize: 12 }}>Brak wiadomości — napisz pierwszy.</Text>
+                      <Text style={{ color: colors.secondary, fontSize: 13, textAlign: 'center', lineHeight: 18 }}>
+                        Brak wiadomości. Napisz pierwszy — klient zobaczy to w Live Chat.
+                      </Text>
                     ) : (
-                      (client.messages || []).slice(-12).map((msg) => (
-                        <View
+                      portalMessages.map((msg) => {
+                        const attachments = (msg.attachments || [])
+                          .map((attachment) => {
+                            const url = normalizeContactMediaUrl(attachment.url);
+                            if (!url) return null;
+                            return {
+                              ...attachment,
+                              url,
+                              name: formatContactAttachmentName(attachment.name),
+                            };
+                          })
+                          .filter((attachment): attachment is NonNullable<typeof attachment> => Boolean(attachment));
+                        const visibleContent = cleanAttachmentOnlyMessage(msg.content, attachments);
+                        return (
+                          <View
                           key={msg.id}
                           style={{
                             alignSelf: msg.fromMe ? 'flex-end' : 'flex-start',
                             backgroundColor: msg.fromMe ? 'rgba(52,199,89,0.16)' : colors.input,
-                            borderRadius: 12,
-                            padding: 10,
-                            marginBottom: 6,
-                            maxWidth: '88%',
+                            borderRadius: 16,
+                            borderBottomRightRadius: msg.fromMe ? 6 : 16,
+                            borderBottomLeftRadius: msg.fromMe ? 16 : 6,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            marginBottom: 8,
+                            maxWidth: '86%',
                           }}
                         >
-                          <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800' }}>
-                            {msg.fromMe ? 'Ty' : client.firstName}
-                          </Text>
-                          {msg.content ? (
-                            <Text style={{ color: colors.text, fontSize: 13, marginTop: 2 }}>{msg.content}</Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                            <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800' }}>
+                              {msg.fromMe ? 'Ty' : client.firstName}
+                            </Text>
+                            <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '600' }}>
+                              {new Date(msg.createdAt).toLocaleString('pl-PL', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </Text>
+                          </View>
+                          {visibleContent ? (
+                            <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
+                              {visibleContent}
+                            </Text>
                           ) : null}
-                          {(msg.attachments || []).map((att) => (
-                            <Pressable key={att.url} onPress={() => Linking.openURL(att.url.startsWith('http') ? att.url : `https://estateos.pl${att.url}`)}>
-                              <Text style={{ color: '#007AFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>📎 {att.name}</Text>
-                            </Pressable>
+                          {attachments.map((attachment) => (
+                            <ContactMessageAttachment
+                              key={attachment.url}
+                              attachment={attachment}
+                              isMe={msg.fromMe}
+                              isDark={isDark}
+                            />
                           ))}
-                        </View>
-                      ))
+                          </View>
+                        );
+                      })
                     )}
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                    <TextInput
-                      value={chatDraft}
-                      onChangeText={setChatDraft}
-                      placeholder="Wiadomość do klienta…"
-                      placeholderTextColor={colors.secondary}
-                      style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
-                    />
-                    <Pressable
-                      onPress={async () => {
-                        if (!token) return;
-                        const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
-                        if (picked.canceled || !picked.assets?.[0]) return;
-                        const file = picked.assets[0];
-                        setBusy('attach');
-                        const uploaded = await uploadClientPortalAttachment(token, clientId, {
-                          uri: file.uri,
-                          name: file.name || 'zalacznik',
-                          mimeType: file.mimeType || 'application/octet-stream',
-                        });
+                </ScrollView>
+
+                <View style={[styles.chatComposer, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+                  {pendingChatFile ? (
+                    <View
+                      style={{
+                        marginBottom: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 12,
+                        backgroundColor: colors.input,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Ionicons name="attach-outline" size={16} color={colors.accent} />
+                      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+                        {formatContactAttachmentName(pendingChatFile.name)}
+                      </Text>
+                      <Pressable onPress={() => setPendingChatFile(null)} hitSlop={8}>
+                        <Ionicons name="close-circle" size={18} color={colors.secondary} />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    value={chatDraft}
+                    onChangeText={setChatDraft}
+                    placeholder="Wiadomość do klienta…"
+                    placeholderTextColor={colors.secondary}
+                    style={[styles.input, { flex: 1, backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                  />
+                  <Pressable
+                    onPress={async () => {
+                      const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+                      if (picked.canceled || !picked.assets?.[0]) return;
+                      const file = picked.assets[0];
+                      setPendingChatFile({
+                        uri: file.uri,
+                        name: file.name || 'zalacznik',
+                        mimeType: file.mimeType || 'application/octet-stream',
+                      });
+                    }}
+                    style={[styles.iconBtn, { backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }]}
+                  >
+                    <Ionicons name="attach-outline" size={20} color={colors.text} />
+                  </Pressable>
+                  <Pressable
+                    disabled={busy === 'chat' || (!chatDraft.trim() && !pendingChatFile)}
+                    onPress={async () => {
+                      if (!token || busy === 'chat') return;
+                      if (!chatDraft.trim() && !pendingChatFile) return;
+                      setBusy('chat');
+                      let attachments: Array<{ url: string; name: string; mimeType: string; size: number }> = [];
+                      if (pendingChatFile) {
+                        const uploaded = await uploadClientPortalAttachment(token, clientId, pendingChatFile);
                         if (!uploaded.ok) {
                           setBusy('');
                           Alert.alert('Załącznik', uploaded.message);
                           return;
                         }
-                        const res = await postAgencyClientAction(token, clientId, {
-                          action: 'send_portal_message',
-                          content: chatDraft.trim(),
-                          attachments: [uploaded.attachment],
-                        });
-                        setBusy('');
-                        if (!res.ok) Alert.alert('Wiadomość', res.message);
-                        else {
-                          setChatDraft('');
-                          void load();
-                        }
-                      }}
-                      style={[styles.iconBtn, { backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }]}
-                    >
-                      <Ionicons name="attach-outline" size={20} color={colors.text} />
-                    </Pressable>
-                    <Pressable
-                      disabled={busy === 'chat' || !chatDraft.trim()}
-                      onPress={async () => {
-                        if (!token || !chatDraft.trim()) return;
-                        setBusy('chat');
-                        const res = await postAgencyClientAction(token, clientId, {
-                          action: 'send_portal_message',
-                          content: chatDraft.trim(),
-                        });
-                        setBusy('');
-                        if (!res.ok) Alert.alert('Wiadomość', res.message);
-                        else {
-                          setChatDraft('');
-                          void load();
-                        }
-                      }}
-                      style={[styles.iconBtn, { backgroundColor: colors.accent }]}
-                    >
+                        attachments = [uploaded.attachment];
+                      }
+                      const res = await postAgencyClientAction(token, clientId, {
+                        action: 'send_portal_message',
+                        content: chatDraft.trim(),
+                        attachments,
+                      });
+                      setBusy('');
+                      if (!res.ok) Alert.alert('Wiadomość', res.message);
+                      else {
+                        setChatDraft('');
+                        setPendingChatFile(null);
+                        void load();
+                      }
+                    }}
+                    style={[
+                      styles.sendBtn,
+                      {
+                        backgroundColor: colors.accent,
+                        opacity: busy === 'chat' || (!chatDraft.trim() && !pendingChatFile) ? 0.45 : 1,
+                      },
+                    ]}
+                  >
+                    {busy === 'chat' ? (
+                      <ActivityIndicator color="#000" size="small" />
+                    ) : (
                       <Ionicons name="send" size={18} color="#000" />
-                    </Pressable>
+                    )}
+                  </Pressable>
                   </View>
-                </View>
+                  </View>
+                  </>
+                ) : null}
               </View>
 
               {/* Offer Creation / Link Section for Sellers */}
@@ -1973,12 +2453,78 @@ export default function AgencyClientDetailScreen() {
               ) : null}
 
               {/* Dedicated Seller Buyer Radar Section */}
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900', flex: 1, paddingRight: 12 }}>
-                    {client.type === 'BUYER' ? 'Radar dopasowań' : 'Radar zakupowy'}
-                  </Text>
-                  <Pressable
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden', padding: 0 },
+                ]}
+              >
+                <Pressable
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setRadarExpanded((current) => !current);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: radarExpanded }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: 16,
+                    borderBottomWidth: radarExpanded ? StyleSheet.hairlineWidth : 0,
+                    borderBottomColor: colors.border,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(52,199,89,0.14)',
+                    }}
+                  >
+                    <Ionicons name="radio-outline" size={21} color={colors.accent} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
+                      RADAR · {matches.length} DOPASOWAŃ
+                    </Text>
+                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900', marginTop: 2 }} numberOfLines={1}>
+                      {client.type === 'BUYER'
+                        ? `Radar dopasowań · ${client.firstName}`
+                        : `Radar zakupowy · ${client.firstName}`}
+                    </Text>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '600', marginTop: 3 }} numberOfLines={1}>
+                      {radarSummary}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.input,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Ionicons name={radarExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.text} />
+                  </View>
+                </Pressable>
+
+                {radarExpanded ? (
+                  <View style={{ padding: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
+                        Parametry, automatyczne dopasowania i wysyłka ofert do klienta.
+                      </Text>
+                    </View>
+                    <Pressable
                     onPress={async () => {
                       if (!token) return;
                       setBusy('matches');
@@ -1987,15 +2533,20 @@ export default function AgencyClientDetailScreen() {
                       if (!res.ok) Alert.alert('Radar', res.message);
                       else void load();
                     }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.input,
+                    }}
                   >
-                    <Text style={{ color: colors.accent, fontWeight: '800' }}>
+                    <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
                       {busy === 'matches' ? '…' : 'Odśwież'}
                     </Text>
                   </Pressable>
-                </View>
-                <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
-                  Te same parametry co w radarze. Po zapisie widać, które oferty wysłać klientowi.
-                </Text>
+                  </View>
 
                 {client.type === 'SELLER' && (
                   <Pressable
@@ -2128,6 +2679,8 @@ export default function AgencyClientDetailScreen() {
                     </>
                   )}
                 </View>
+                  </View>
+                ) : null}
               </View>
             </>
           )}
@@ -2146,14 +2699,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
   },
-  navBtn: { width: 44, height: 36, justifyContent: 'center' },
-  navTitle: { fontSize: 17, fontWeight: '800' },
+  navBtn: { width: 44, height: 36, justifyContent: 'center', alignItems: 'center' },
+  navTitle: { flex: 1, fontSize: 17, fontWeight: '800', textAlign: 'center' },
   card: {
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     marginBottom: 16,
+  },
+  statChip: {
+    minWidth: 78,
+    flexGrow: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  miniStat: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    minWidth: 64,
+  },
+  chatThread: {
+    height: 268,
+    overflow: 'hidden',
+  },
+  chatThreadContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexGrow: 1,
+  },
+  chatComposer: {
+    zIndex: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
   },
   input: {
     height: 44,
@@ -2166,6 +2751,13 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },

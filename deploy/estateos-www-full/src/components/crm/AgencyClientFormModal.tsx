@@ -29,6 +29,11 @@ import AgencyClientCriteriaEditor, {
 import AddressSuggestInput from "@/components/crm/AddressSuggestInput";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 import { CLIENT_PREP_ITEMS } from "@/lib/crm/clientJourney";
+import SellerPropertyTypeOptions from "@/components/crm/SellerPropertyTypeOptions";
+import {
+  apartmentNumberForType,
+  type SellerPropertyTypeId,
+} from "@/lib/crm/sellerProperty";
 
 type LookupMatch = {
   id: number;
@@ -141,6 +146,8 @@ export default function AgencyClientFormModal({
     notes: "",
     sellerCity: "",
     sellerPrice: "",
+    sellerPropertyType: "FLAT" as SellerPropertyTypeId,
+    apartmentNumber: "",
   });
 
   const [emailStatus, setEmailStatus] = useState<FieldStatus>("idle");
@@ -179,6 +186,8 @@ export default function AgencyClientFormModal({
       notes: "",
       sellerCity: "",
       sellerPrice: "",
+      sellerPropertyType: "FLAT",
+      apartmentNumber: "",
     });
     void (async () => {
       try {
@@ -310,6 +319,8 @@ export default function AgencyClientFormModal({
             ? {
               sellerCity: form.sellerCity || null,
               sellerDistrict: addressMeta.city || null,
+              sellerPropertyType: form.sellerPropertyType,
+              apartmentNumber: apartmentNumberForType(form.sellerPropertyType, form.apartmentNumber),
               sellerPrice: form.sellerPrice
                 ? Number(String(form.sellerPrice).replace(/\s/g, "").replace(",", "."))
                 : null,
@@ -677,6 +688,35 @@ export default function AgencyClientFormModal({
 
                 {step === 3 && type === "SELLER" ? (
                   <div className="space-y-4">
+                    <SellerPropertyTypeOptions
+                      value={form.sellerPropertyType}
+                      onChange={(sellerPropertyType) =>
+                        setForm((f) => ({
+                          ...f,
+                          sellerPropertyType,
+                          apartmentNumber:
+                            sellerPropertyType === "FLAT" ? f.apartmentNumber : "",
+                        }))
+                      }
+                    />
+                    {form.sellerPropertyType === "FLAT" ? (
+                      <label className="block min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                          Numer mieszkania
+                        </span>
+                        <input
+                          value={form.apartmentNumber}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, apartmentNumber: e.target.value.slice(0, 32) }))
+                          }
+                          placeholder="np. 12"
+                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
+                        />
+                        <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--eos-muted)]">
+                          Widoczny tylko dla agenta i klienta w CRM — nie publikujemy go na ogłoszeniu.
+                        </p>
+                      </label>
+                    ) : null}
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="sm:col-span-2">
                         <AddressSuggestInput

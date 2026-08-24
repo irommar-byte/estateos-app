@@ -47,7 +47,10 @@ export function shapePublicListOffer(
   const user = (withLegal as { user?: unknown }).user;
   const sellerDisplayName = user ? resolveSellerDisplayName(user) : '';
   const sellerPersonName = user ? resolveSellerPersonName(user) : null;
-  const { user: _u, ...rest } = withLegal as Record<string, unknown> & { user?: unknown };
+  const { user: _u, apartmentNumber: _privateApt, ...rest } = withLegal as Record<string, unknown> & {
+    user?: unknown;
+    apartmentNumber?: unknown;
+  };
   const elite = resolveEliteBadges({ user });
   const badges = {
     ...elite,
@@ -81,7 +84,7 @@ export function shapePublicListOffer(
     conditionLabelEn: formatOfferCondition(rest.condition, 'en'),
     imageUrl: resolveOfferPrimaryImage(rest),
     description: stripInternalOfferDescriptionMarkers(cleanDescription),
-    apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
+    apartmentNumber: '',
     landRegistryNumber: verification.landRegistryNumber || '',
     ...legal,
     badges,

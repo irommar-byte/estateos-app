@@ -101,6 +101,7 @@ export default async function AddOfferPage({
           type: 'SELLER',
           status: 'ACTIVE',
         },
+        include: { acquisition: { select: { formData: true } } },
       });
       if (client) {
         agencyClientId = client.id;

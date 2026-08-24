@@ -13,6 +13,7 @@ import {
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { resolveSellerPersonName } from "@/lib/sellerDisplay";
 import { createOfferFromAcquisitionRecord } from "@/lib/crm/acquisitionOffer";
+import { parseSellerPropertyType } from "@/lib/crm/sellerProperty";
 import { sendNotification } from "@/lib/core/notification.core";
 import { crmAgentPushData } from "@/lib/crm/agentPush";
 
@@ -237,6 +238,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       ...(Number.isFinite(sellerArea) && sellerArea > 0 ? { sellerArea } : {}),
       ...(Number.isFinite(sellerRooms) && sellerRooms > 0 ? { sellerRooms: Math.round(sellerRooms) } : {}),
       ...(Number.isFinite(sellerPrice) && sellerPrice > 0 ? { sellerPrice } : {}),
+      sellerPropertyType: parseSellerPropertyType(formData.property.propertyType),
     },
   }).catch(() => {});
 
