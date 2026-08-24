@@ -11,6 +11,7 @@ import DiscoveryPulse from "@/components/home/DiscoveryPulse";
 import RadarLiveCounter from "@/components/home/RadarLiveCounter";
 import WebNotificationPrompt from "@/components/layout/WebNotificationPrompt";
 import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
+import CrmLaunchProvider from "@/components/account/CrmLaunchProvider";
 import CampaignAttributionBoundary from "@/components/marketing/CampaignAttributionBoundary";
 import EstateOsStructuredData from "@/components/marketing/EstateOsStructuredData";
 import SkipToContent from "@/components/layout/SkipToContent";
@@ -123,6 +124,7 @@ export default async function RootLayout({
                     <EcosystemThemeBridge />
                     <EcosystemAmbientBackground />
                     <FavoritesProvider>
+                    <CrmLaunchProvider>
                     <SkipToContent />
                     <CampaignAttributionBoundary />
                     <Tracker />
@@ -138,6 +140,7 @@ export default async function RootLayout({
                     <div id="main-content" tabIndex={-1} className="relative z-10 outline-none">
                       {children}
                     </div>
+                    </CrmLaunchProvider>
                     </FavoritesProvider>
                   </EcosystemProvider>
                 </UserModeProvider>

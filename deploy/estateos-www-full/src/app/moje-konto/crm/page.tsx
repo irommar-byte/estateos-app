@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
 import OpenHouseProCard from "@/components/openHouse/OpenHouseProCard";
+import { useCrmLaunchOptional } from "@/components/account/CrmLaunchProvider";
 import ReviewsModal from "@/components/ReviewsModal";
 import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
 import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
@@ -283,6 +284,9 @@ export default function CRMDashboard() {
   const [isReviewsModalOpen, setIsReviewsModalOpen] = useState(false);
   const [isBooting, setIsBooting] = useState(false);
   const [greeting, setGreeting] = useState("");
+  const crmLaunch = useCrmLaunchOptional();
+  const deskLaunching = Boolean(crmLaunch?.isLaunching);
+  const bootRepeatRef = useRef(false);
   
   const [loading, setLoading] = useState(true);
 
@@ -677,6 +681,19 @@ export default function CRMDashboard() {
       }
       
       const uData = await refreshCurrentUserFromBackend();
+
+      const fromDesk = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('from') === 'desk';
+      const alreadyBooted = typeof window !== 'undefined' && Boolean(sessionStorage.getItem('pro_booted'));
+      if (uData.isPro && (!alreadyBooted || fromDesk || crmLaunch?.isLaunching)) {
+        bootRepeatRef.current = alreadyBooted && !fromDesk && !crmLaunch?.isLaunching;
+        setIsBooting(true);
+        sessionStorage.setItem('pro_booted', 'true');
+        const rawName = uData.firstName || uData.name || (uData.email ? uData.email.split('@')[0] : 'Inwestorze');
+        const bootGreetings = dict.crm.boot.greetings;
+        const randGreet = bootGreetings[Math.floor(Math.random() * bootGreetings.length)].replace("{name}", rawName);
+        setGreeting(randGreet);
+      }
+
       await fetchRadarCatalog();
       setRadarDisplayFilters(await loadRadarFiltersForUser(uData));
 
@@ -721,18 +738,6 @@ export default function CRMDashboard() {
       }
 
       await Promise.all([fetchData(uData.id), fetchRadarData()]);
-
-      const fromDesk = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('from') === 'desk';
-      const alreadyBooted = typeof window !== 'undefined' && Boolean(sessionStorage.getItem('pro_booted'));
-      if (uData.isPro && (!alreadyBooted || fromDesk)) {
-        setIsBooting(true);
-        sessionStorage.setItem('pro_booted', 'true');
-        const rawName = uData.firstName || uData.name || (uData.email ? uData.email.split('@')[0] : 'Inwestorze');
-        const bootGreetings = dict.crm.boot.greetings;
-        const randGreet = bootGreetings[Math.floor(Math.random() * bootGreetings.length)].replace("{name}", rawName);
-        setGreeting(randGreet);
-        setTimeout(() => setIsBooting(false), alreadyBooted ? 1600 : 3000);
-      }
       
     } catch(err) {
        console.error(err);
@@ -868,9 +873,23 @@ export default function CRMDashboard() {
     [c.tabClients, c.tabMyOffers, c.tabFavorites, c.tabPlanning, c.tabDeals, isAgencyWorkspace],
   );
 
-  if (loading) return <div className="min-h-screen bg-[var(--eos-bg)] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
+  useEffect(() => {
+    if (!crmLaunch?.isLaunching) return;
+    if (isBooting) {
+      const id = window.requestAnimationFrame(() => crmLaunch.notifyReady());
+      return () => window.cancelAnimationFrame(id);
+    }
+    if (!loading) crmLaunch.notifyReady();
+  }, [crmLaunch, isBooting, loading]);
 
-  
+  useEffect(() => {
+    if (!isBooting) return;
+    if (deskLaunching) return;
+    const ms = bootRepeatRef.current ? 1800 : 2800;
+    const t = window.setTimeout(() => setIsBooting(false), ms);
+    return () => window.clearTimeout(t);
+  }, [isBooting, deskLaunching]);
+
   if (isBooting) {
     return (
         <div className="fixed inset-0 z-[999999] bg-[var(--eos-bg)] flex flex-col items-center justify-center font-sans overflow-hidden">
@@ -904,6 +923,15 @@ export default function CRMDashboard() {
               
            </motion.div>
         </div>
+    );
+  }
+
+  if (loading) {
+    if (deskLaunching) return null;
+    return (
+      <div className="min-h-screen bg-[var(--eos-bg)] flex items-center justify-center">
+        <Loader2 className="animate-spin text-emerald-500" />
+      </div>
     );
   }
 
