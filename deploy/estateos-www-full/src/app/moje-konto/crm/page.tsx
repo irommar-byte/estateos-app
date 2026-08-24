@@ -27,6 +27,13 @@ import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisp
 import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
 import CrmSectionTabBar, { type CrmSectionTabId } from "@/components/crm/CrmSectionTabBar";
 import CrmMyOffersBoard from "@/components/crm/CrmMyOffersBoard";
+import {
+  classifyListingSection,
+  groupListingsBySection,
+  isOfferAwaitingReview,
+  sortListingsInSection,
+  type ListingSection,
+} from "@/lib/offers/listingSections";
 import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
 import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
@@ -450,7 +457,7 @@ export default function CRMDashboard() {
   }, [crmData]);
 
   const [activeTab, setActiveTab] = useState<CrmTab>("radar");
-  const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
+  const [offerSectionFilter, setOfferSectionFilter] = useState<ListingSection>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
   const [pinnedDealIds, setPinnedDealIds] = useState<number[]>([]);
@@ -715,14 +722,16 @@ export default function CRMDashboard() {
 
       await Promise.all([fetchData(uData.id), fetchRadarData()]);
 
-      if (uData.isPro && !sessionStorage.getItem('pro_booted')) {
+      const fromDesk = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('from') === 'desk';
+      const alreadyBooted = typeof window !== 'undefined' && Boolean(sessionStorage.getItem('pro_booted'));
+      if (uData.isPro && (!alreadyBooted || fromDesk)) {
         setIsBooting(true);
         sessionStorage.setItem('pro_booted', 'true');
         const rawName = uData.firstName || uData.name || (uData.email ? uData.email.split('@')[0] : 'Inwestorze');
         const bootGreetings = dict.crm.boot.greetings;
         const randGreet = bootGreetings[Math.floor(Math.random() * bootGreetings.length)].replace("{name}", rawName);
         setGreeting(randGreet);
-        setTimeout(() => setIsBooting(false), 3000);
+        setTimeout(() => setIsBooting(false), alreadyBooted ? 1600 : 3000);
       }
       
     } catch(err) {
@@ -1042,50 +1051,12 @@ export default function CRMDashboard() {
     ? (crmData.offers || [])
     : favoriteOffers;
 
-  const isOfferAwaitingReview = (offer: any): boolean => {
-    const status = String(offer?.status || '').toUpperCase();
-    if (['PENDING', 'PENDING_APPROVAL', 'IN_REVIEW'].includes(status)) return true;
-    if (offer?.awaitingModeration || offer?.pendingPublicationKind) return true;
-    if (String(offer?.legalCheckStatus || '').toUpperCase() === 'PENDING') return true;
-    return false;
-  };
+  const classifyOfferSection = classifyListingSection;
 
-  const classifyOfferSection = (offer: any): 'ACTIVE' | 'PENDING' | 'COMPLETED' => {
-    const now = new Date();
-    const status = String(offer?.status || '').toUpperCase();
-    const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : Number.NaN;
-    const isExpired = Number.isFinite(expiresAtMs) && expiresAtMs < now.getTime();
-    const isCompleted = isExpired || ['ARCHIVED', 'SOLD', 'REJECTED', 'EXPIRED', 'INACTIVE', 'PAUSED', 'CANCELLED'].includes(status);
-    if (isOfferAwaitingReview(offer)) return 'PENDING';
-    if (isCompleted) return 'COMPLETED';
-    return 'ACTIVE';
-  };
+  const sortOffersBySection = (offers: any[], section: ListingSection) =>
+    sortListingsInSection(offers, section);
 
-  const sortOffersBySection = (offers: any[]) => {
-    const withTs = (offer: any) => {
-      const createdAtMs = offer?.createdAt ? new Date(offer.createdAt).getTime() : 0;
-      const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : 0;
-      return { createdAtMs, expiresAtMs };
-    };
-
-    return [...offers].sort((a: any, b: any) => {
-      const sectionA = classifyOfferSection(a);
-      const sectionB = classifyOfferSection(b);
-      const tsA = withTs(a);
-      const tsB = withTs(b);
-
-      if (sectionA === 'COMPLETED' && sectionB === 'COMPLETED') {
-        return tsB.expiresAtMs - tsA.expiresAtMs;
-      }
-      return tsB.createdAtMs - tsA.createdAtMs;
-    });
-  };
-
-  const offersBySection = {
-    ACTIVE: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'ACTIVE')),
-    PENDING: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'PENDING')),
-    COMPLETED: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'COMPLETED')),
-  };
+  const offersBySection = groupListingsBySection(baseOffersForView, classifyOfferSection);
 
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: CrmTab[] = isAgencyWorkspace
@@ -1172,15 +1143,17 @@ export default function CRMDashboard() {
           onPasskeyRefresh={refreshCurrentUserFromBackend}
         />
 
-        <CrmDayBrief
-          personName={personName}
-          onAddClient={() => {
-            handleTabSwitch('klienci' as CrmTab);
-            window.setTimeout(() => window.dispatchEvent(new Event('crm-open-add-client')), 50);
-          }}
-          onOpenClients={() => handleTabSwitch('klienci' as CrmTab)}
-          onOpenPlanning={() => handleTabSwitch('planowanie' as CrmTab)}
-        />
+        {isAgencyWorkspace ? (
+          <div className="mb-4 flex justify-end">
+            <Link
+              href="/crm"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)] transition hover:border-amber-500/40 hover:text-[var(--eos-text)]"
+            >
+              Open in EstateOS™ Desk
+              <ExternalLink className="size-3.5" aria-hidden />
+            </Link>
+          </div>
+        ) : null}
 
         {isPremium ? (
           <ProWidget
@@ -1200,6 +1173,16 @@ export default function CRMDashboard() {
             />
           </div>
         )}
+
+        <CrmDayBrief
+          personName={personName}
+          onAddClient={() => {
+            handleTabSwitch('klienci' as CrmTab);
+            window.setTimeout(() => window.dispatchEvent(new Event('crm-open-add-client')), 50);
+          }}
+          onOpenClients={() => handleTabSwitch('klienci' as CrmTab)}
+          onOpenPlanning={() => handleTabSwitch('planowanie' as CrmTab)}
+        />
 
         <div className="eos-crm-stage">
         <CrmSectionTabBar
@@ -1331,10 +1314,17 @@ export default function CRMDashboard() {
               {activeTab === "planowanie" && c.tabPlanning}
               {activeTab === "transakcje" && c.tabDeals}
             </p>
-            <h2 className="mb-2 text-2xl font-black tracking-tight text-[var(--eos-text)] sm:text-3xl">
+            <h2
+              className={
+                activeTab === "klienci"
+                  ? "eos-crm-clients-hero-title mb-2"
+                  : "mb-2 text-2xl font-black tracking-tight text-[var(--eos-text)] sm:text-3xl"
+              }
+            >
               {activeTab === "klienci" && (
                 <>
-                  {c.clientsTitle} <span className="text-emerald-600">{c.clientsTitleHighlight}</span>
+                  {c.clientsTitle}{" "}
+                  <span className="eos-crm-clients-hero-title__accent">{c.clientsTitleHighlight}</span>
                 </>
               )}
               {activeTab === "radar" && (
@@ -1590,6 +1580,7 @@ export default function CRMDashboard() {
         {(activeTab === 'offers' || activeTab === 'my_offers') && (
           <CrmMyOffersBoard
             offers={offersVisibleInSection}
+            offersBySection={isListingsTab ? offersBySection : undefined}
             bids={crmData?.bids || []}
             sectionFilter={offerSectionFilter}
             onSectionFilter={setOfferSectionFilter}

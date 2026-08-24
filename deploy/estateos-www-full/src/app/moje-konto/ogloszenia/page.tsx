@@ -8,6 +8,13 @@ import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import EosButton from "@/components/ui/EosButton";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { isAgentOrAgencySeller } from "@/lib/sellerDisplay";
+import EstateOsDeskCrmButton from "@/components/account/EstateOsDeskCrmButton";
+import {
+  groupListingsBySection,
+  LISTING_SECTION_LABELS,
+  LISTING_SECTION_ORDER,
+  type ListingSection,
+} from "@/lib/offers/listingSections";
 
 type HomeListing = {
   id: number;
@@ -20,6 +27,11 @@ type HomeListing = {
   imageUrl?: string | null;
   featured?: boolean | null;
   promotedUntil?: string | null;
+  expiresAt?: string | null;
+  createdAt?: string | null;
+  awaitingModeration?: boolean | null;
+  pendingPublicationKind?: string | null;
+  legalCheckStatus?: string | null;
 };
 
 type CarListing = {
@@ -168,6 +180,7 @@ export default function AccountListingsPage() {
   }, [loadHomeListings, loadCarListings]);
 
   const activeItems = useMemo(() => (vertical === "home" ? homeListings : carListings), [vertical, homeListings, carListings]);
+  const homeGrouped = useMemo(() => groupListingsBySection(homeListings), [homeListings]);
   const loading = vertical === "home" ? loadingHome : loadingCars;
 
   const handleDeleteCar = async (carId: number) => {
@@ -206,6 +219,72 @@ export default function AccountListingsPage() {
     }
   };
 
+  const renderHomeOffer = (offer: HomeListing) => {
+    const cover = listingCoverUrl(offer);
+    const title = offer.title || `Oferta #${offer.id}`;
+    return (
+      <article key={`home-${offer.id}`} className={listingCardClass("home")}>
+        <div className="flex flex-col sm:flex-row">
+          <Link href={`/oferta/${offer.id}`} className="block sm:contents">
+            <ListingThumb src={cover} alt={title} brand="home" />
+          </Link>
+          <div className="flex min-w-0 flex-1 flex-col p-6 sm:p-7">
+            <Link href={`/oferta/${offer.id}`} className="block">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
+                EstateOS™Home
+              </p>
+              <h2 className="mt-3 text-xl font-semibold tracking-tight text-[var(--eos-text)] sm:text-2xl">
+                {title}
+              </h2>
+              <p className="mt-2 text-sm text-[var(--eos-muted)]">
+                {[offer.city, offer.district].filter(Boolean).join(" · ") || "Lokalizacja"}
+              </p>
+              <p className="mt-4 text-2xl font-semibold tracking-tight">{formatPrice(offer.pricePln ?? null)}</p>
+              {offer.featured ? (
+                <p className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
+                  <Crown className="size-3.5" aria-hidden />
+                  Wyróżnione do{" "}
+                  {offer.promotedUntil ? new Date(offer.promotedUntil).toLocaleDateString("pl-PL") : "—"}
+                </p>
+              ) : null}
+            </Link>
+            <div className="mt-6 flex flex-wrap gap-2.5 border-t border-[var(--eos-border)] pt-5">
+              <EosButton href={`/edytuj-oferte/${offer.id}`} variant="home" size="sm">
+                <Pencil className="size-3.5" aria-hidden />
+                Edytuj
+              </EosButton>
+              <PromoteListingButton
+                endpoint={`/api/offers/${offer.id}/promote`}
+                onPromoted={() => void loadHomeListings()}
+                disabled={Boolean(offer.featured)}
+              />
+              <EosButton
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={() => void handleArchiveHome(offer.id)}
+                disabled={archivingHomeId === offer.id}
+              >
+                {archivingHomeId === offer.id ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                {archivingHomeId === offer.id ? "Kończenie..." : "Zakończ"}
+              </EosButton>
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  };
+
+  const sectionNavLabel = (key: ListingSection, count: number) => {
+    if (key === "ACTIVE") return `Aktywne (${count})`;
+    if (key === "PENDING") return `Oczekujące (${count})`;
+    return `Zakończone (${count})`;
+  };
+
+  const scrollToListingSection = (key: ListingSection) => {
+    document.getElementById(`ogloszenia-section-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const listingCardClass = (brand: "home" | "car") =>
     `group relative overflow-hidden rounded-[1.75rem] border bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)] transition duration-300 ${
       brand === "home"
@@ -222,24 +301,19 @@ export default function AccountListingsPage() {
           <p className="mx-auto mt-3 max-w-2xl text-sm text-[var(--eos-muted)] sm:mx-0">
             Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
           </p>
-          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:items-stretch sm:justify-start">
-            <a
-              href="/moje-konto/crm?tab=my_offers"
-              className="eos-mgmt-panel-btn group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full px-7 py-3.5 text-[11px] font-black uppercase tracking-[0.18em] text-white"
-            >
-              <span className="eos-mgmt-panel-btn__sheen" aria-hidden />
-              <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
-              <span className="relative z-10">Panel zarządzania</span>
-            </a>
-            {isAgent ? (
-              <a href="/moje-konto/crm" className="eos-agent-crm-cta min-w-[16.5rem]">
-                <span className="eos-agent-crm-cta__plate">
-                  <span className="eos-agent-crm-cta__glow" aria-hidden />
-                  <span className="eos-agent-crm-cta__engraved">EstateOS™ CRM</span>
-                </span>
+          {isAgent ? (
+            <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:items-stretch sm:justify-start">
+              <a
+                href="/crm"
+                className="eos-mgmt-panel-btn group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full px-7 py-3.5 text-[11px] font-black uppercase tracking-[0.18em] text-white"
+              >
+                <span className="eos-mgmt-panel-btn__sheen" aria-hidden />
+                <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
+                <span className="relative z-10">Panel zarządzania</span>
               </a>
-            ) : null}
-          </div>
+              <EstateOsDeskCrmButton href="/moje-konto/crm?from=desk" />
+            </div>
+          ) : null}
         </header>
 
         <section className="relative mb-8 overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-7 text-center shadow-[var(--eos-shadow-soft)] sm:p-10">
@@ -321,7 +395,23 @@ export default function AccountListingsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5">
-            <div className="flex justify-center sm:justify-end">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              {vertical === "home" ? (
+                <div className="flex flex-wrap gap-2">
+                  {LISTING_SECTION_ORDER.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => scrollToListingSection(key)}
+                      className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)] transition hover:border-emerald-400/45 hover:text-[var(--eos-text)]"
+                    >
+                      {sectionNavLabel(key, homeGrouped[key].length)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div />
+              )}
               <EosButton
                 href={vertical === "home" ? "/dodaj-oferte" : "/cars/dodaj"}
                 variant={vertical === "home" ? "home" : "car"}
@@ -330,63 +420,42 @@ export default function AccountListingsPage() {
                 Dodaj kolejną ofertę
               </EosButton>
             </div>
-            {vertical === "home"
-              ? (homeListings as HomeListing[]).map((offer) => {
-                  const cover = listingCoverUrl(offer);
-                  const title = offer.title || `Oferta #${offer.id}`;
+            {vertical === "home" ? (
+              <div className="space-y-10">
+                {LISTING_SECTION_ORDER.map((key) => {
+                  const sectionOffers = homeGrouped[key];
+                  if (sectionOffers.length === 0 && key !== "ACTIVE") return null;
                   return (
-                    <article key={`home-${offer.id}`} className={listingCardClass("home")}>
-                      <div className="flex flex-col sm:flex-row">
-                        <Link href={`/oferta/${offer.id}`} className="block sm:contents">
-                          <ListingThumb src={cover} alt={title} brand="home" />
-                        </Link>
-                        <div className="flex min-w-0 flex-1 flex-col p-6 sm:p-7">
-                          <Link href={`/oferta/${offer.id}`} className="block">
-                            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
-                              EstateOS™Home
-                            </p>
-                            <h2 className="mt-3 text-xl font-semibold tracking-tight text-[var(--eos-text)] sm:text-2xl">
-                              {title}
-                            </h2>
-                            <p className="mt-2 text-sm text-[var(--eos-muted)]">
-                              {[offer.city, offer.district].filter(Boolean).join(" · ") || "Lokalizacja"}
-                            </p>
-                            <p className="mt-4 text-2xl font-semibold tracking-tight">{formatPrice(offer.pricePln ?? null)}</p>
-                            {offer.featured ? (
-                              <p className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
-                                <Crown className="size-3.5" aria-hidden />
-                                Wyróżnione do{" "}
-                                {offer.promotedUntil ? new Date(offer.promotedUntil).toLocaleDateString("pl-PL") : "—"}
-                              </p>
-                            ) : null}
-                          </Link>
-                          <div className="mt-6 flex flex-wrap gap-2.5 border-t border-[var(--eos-border)] pt-5">
-                            <EosButton href={`/edytuj-oferte/${offer.id}`} variant="home" size="sm">
-                              <Pencil className="size-3.5" aria-hidden />
-                              Edytuj
-                            </EosButton>
-                            <PromoteListingButton
-                              endpoint={`/api/offers/${offer.id}/promote`}
-                              onPromoted={() => void loadHomeListings()}
-                              disabled={Boolean(offer.featured)}
-                            />
-                            <EosButton
-                              type="button"
-                              variant="danger"
-                              size="sm"
-                              onClick={() => void handleArchiveHome(offer.id)}
-                              disabled={archivingHomeId === offer.id}
-                            >
-                              {archivingHomeId === offer.id ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                              {archivingHomeId === offer.id ? "Kończenie..." : "Zakończ"}
-                            </EosButton>
-                          </div>
-                        </div>
+                    <section
+                      key={key}
+                      id={`ogloszenia-section-${key}`}
+                      className="scroll-mt-32 space-y-4"
+                      aria-labelledby={`ogloszenia-section-title-${key}`}
+                    >
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-muted)]">
+                          {LISTING_SECTION_LABELS[key]}
+                        </p>
+                        <h2
+                          id={`ogloszenia-section-title-${key}`}
+                          className="mt-1 text-xl font-semibold tracking-tight"
+                        >
+                          {sectionNavLabel(key, sectionOffers.length)}
+                        </h2>
                       </div>
-                    </article>
+                      {sectionOffers.length === 0 ? (
+                        <p className="rounded-[1.25rem] border border-dashed border-[var(--eos-border)] px-5 py-8 text-center text-sm text-[var(--eos-muted)]">
+                          Brak ogłoszeń w tej grupie.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-5">{sectionOffers.map(renderHomeOffer)}</div>
+                      )}
+                    </section>
                   );
-                })
-              : (carListings as CarListing[]).map((car) => {
+                })}
+              </div>
+            ) : (
+              (carListings as CarListing[]).map((car) => {
                   const cover = listingCoverUrl(car);
                   return (
                     <article key={`car-${car.id}`} className={listingCardClass("car")}>
@@ -439,7 +508,8 @@ export default function AccountListingsPage() {
                       </div>
                     </article>
                   );
-                })}
+                })
+            )}
           </div>
         )}
       </div>

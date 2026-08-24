@@ -17,12 +17,14 @@ import type {
   PricePulsePayload,
   PricePulsePoint,
   PricePulseTone,
+  PricePulseTrend,
   PricePulseWindow,
 } from '@/lib/market/types';
 import { resolveWarsawDistrict } from '@/lib/market/warsawDistricts';
 
 const CACHE_MS = 60_000;
 const LOOKBACK_DAYS = 180;
+const TREND_LOOKBACK_DAYS = 800;
 const SERIES_DAYS = 90;
 const ROLLING_DAYS = 7;
 const MIN_WINDOW_LISTINGS = 4;
@@ -106,6 +108,91 @@ function rollingMedian(map: Map<string, number[]>, days: string[], index: number
   return median(collect(map, slice));
 }
 
+function isoWeekKey(isoDay: string): string {
+  const [y, m, d] = isoDay.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+function bucketSeries(
+  byDay: Map<string, number[]>,
+  days: string[],
+  bucketOf: (day: string) => string,
+  take: number,
+  minSamples: number,
+): { key: string; ppsm: number | null; count: number }[] {
+  const buckets = new Map<string, number[]>();
+  const order: string[] = [];
+  for (const day of days) {
+    const key = bucketOf(day);
+    const values = byDay.get(day);
+    if (!values?.length) continue;
+    let list = buckets.get(key);
+    if (!list) {
+      list = [];
+      buckets.set(key, list);
+      order.push(key);
+    }
+    list.push(...values);
+  }
+  const sliced = order.slice(-take);
+  return sliced.map((key) => {
+    const values = buckets.get(key) || [];
+    const ppsm = values.length >= minSamples ? median(values) : null;
+    return { key, ppsm: ppsm != null ? Math.round(ppsm) : null, count: values.length };
+  });
+}
+
+function windowDeedChange(byDay: Map<string, number[]>, days: string[], size: number, minSamples: number) {
+  const currentDays = days.slice(-size);
+  const previousDays = days.slice(Math.max(0, days.length - size * 2), days.length - size);
+  const current = collect(byDay, currentDays);
+  const previous = collect(byDay, previousDays);
+  const nowMed = current.length >= minSamples ? median(current) : null;
+  const prevMed = previous.length >= minSamples ? median(previous) : null;
+  return {
+    changePct: roundOrNull(pctChange(nowMed, prevMed)),
+    currentPpsm: nowMed != null ? Math.round(nowMed) : null,
+    previousPpsm: prevMed != null ? Math.round(prevMed) : null,
+    count: current.length,
+  };
+}
+
+function buildTrend(
+  key: PricePulseTrend['key'],
+  byDay: Map<string, number[]>,
+  days: string[],
+  bucketOf: (day: string) => string,
+  take: number,
+  minSamples: number,
+  windowDays: number,
+): PricePulseTrend {
+  const points = bucketSeries(byDay, days, bucketOf, take, minSamples).map((row) => ({
+    key: row.key,
+    ppsm: row.ppsm,
+  }));
+  const windowed = windowDeedChange(byDay, days, windowDays, minSamples);
+  let changePct = windowed.changePct;
+  if (changePct == null) {
+    const numbered = points.filter((p) => p.ppsm != null);
+    if (numbered.length >= 2) {
+      changePct = roundOrNull(pctChange(numbered[numbered.length - 1].ppsm, numbered[0].ppsm));
+    }
+  }
+  return {
+    key,
+    changePct,
+    currentPpsm: windowed.currentPpsm ?? points[points.length - 1]?.ppsm ?? null,
+    previousPpsm: windowed.previousPpsm,
+    count: windowed.count,
+    points,
+  };
+}
+
 function windowStats(
   listings: Map<string, number[]>,
   deeds: Map<string, number[]>,
@@ -143,9 +230,10 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
   const today = dayKey(new Date());
   const seriesDays = enumerateDays(today, SERIES_DAYS);
   const lookbackDays = enumerateDays(today, LOOKBACK_DAYS);
+  const trendDays = enumerateDays(today, TREND_LOOKBACK_DAYS);
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000);
 
-  const [txns, offers, areaStats] = await Promise.all([
+  const [txns, offers, areaStats, trendTxns] = await Promise.all([
     prisma.marketTransaction.findMany({
       where: {
         city: WARSAW_CITY,
@@ -187,6 +275,16 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
       },
       select: { district: true, medianPpsm: true },
     }),
+    prisma.marketTransaction.findMany({
+      where: {
+        city: WARSAW_CITY,
+        kind: MARKET_KIND_LOCAL,
+        qualityOk: true,
+        deedAt: { gte: new Date(Date.now() - TREND_LOOKBACK_DAYS * 86400000) },
+        pricePerM2: { not: null },
+      },
+      select: { deedAt: true, pricePerM2: true },
+    }),
   ]);
 
   const listingsByDay = new Map<string, number[]>();
@@ -217,6 +315,21 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     if (district) pushPpsm(listingsByDistrict, district, ppsm);
   }
 
+  const trendByDay = new Map<string, number[]>();
+  for (const row of trendTxns) {
+    if (!row.deedAt || row.pricePerM2 == null) continue;
+    const ppsm = Number(row.pricePerM2);
+    if (!Number.isFinite(ppsm) || ppsm < QUALITY_MIN_PPSM || ppsm > QUALITY_MAX_PPSM) continue;
+    pushPpsm(trendByDay, dayKey(row.deedAt), ppsm);
+  }
+
+  const trends = {
+    day: buildTrend('day', trendByDay, trendDays, (day) => day, 21, 2, 1),
+    week: buildTrend('week', trendByDay, trendDays, isoWeekKey, 12, 4, 7),
+    month: buildTrend('month', trendByDay, trendDays, (day) => day.slice(0, 7), 12, 8, 30),
+    year: buildTrend('year', trendByDay, trendDays, (day) => day.slice(0, 7), 24, 8, 365),
+  };
+
   const series: PricePulsePoint[] = seriesDays.map((date, index) => {
     const listingPpsm = rollingMedian(listingsByDay, seriesDays, index, ROLLING_DAYS);
     const deedPpsm = rollingMedian(deedsByDay, seriesDays, index, ROLLING_DAYS);
@@ -246,8 +359,9 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
   const vsDeedsPct = d30.vsDeedsPct ?? d7.vsDeedsPct;
   const listingPpsm = d30.listingPpsm ?? d7.listingPpsm;
   const deedPpsm = d30.deedPpsm ?? d7.deedPpsm;
-  const tone = toneOf(d30.listingChangePct ?? d7.listingChangePct);
-  const direction = directionOf(d30.listingChangePct ?? d7.listingChangePct);
+  const deedTrendPct = trends.month.changePct ?? trends.week.changePct ?? d30.deedChangePct;
+  const tone = toneOf(deedTrendPct ?? d30.listingChangePct ?? d7.listingChangePct);
+  const direction = directionOf(deedTrendPct ?? d30.listingChangePct ?? d7.listingChangePct);
 
   const deedByDistrict = new Map<string, number>();
   let cityDeed: number | null = null;
@@ -294,6 +408,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     tone,
     direction,
     windows: { d7, d30, d90 },
+    trends,
     series,
     sparkline,
     districts: districts.slice(0, 12),
