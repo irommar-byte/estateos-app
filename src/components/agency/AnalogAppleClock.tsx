@@ -63,59 +63,128 @@ function truncateBrand(raw: string | null | undefined, max = 16): string {
   return `${t.slice(0, max - 1).trim().toUpperCase()}…`;
 }
 
+function capitalizePl(word: string) {
+  if (!word) return word;
+  return word.charAt(0).toLocaleUpperCase('pl-PL') + word.slice(1);
+}
+
 function formatEngravedParts(date: Date) {
   return {
-    weekday: WEEKDAYS_PL[date.getDay()],
+    weekday: capitalizePl(WEEKDAYS_PL[date.getDay()]),
     dayNum: String(date.getDate()),
-    monthWord: MONTHS_PL[date.getMonth()],
+    monthWord: capitalizePl(MONTHS_PL[date.getMonth()]),
     year: String(date.getFullYear()),
   };
 }
 
-/** Soft metal engraving — bold Apple system type, no italic, no jitter layers. */
+/**
+ * Luxury engraved metal lettering — bold SF, no italic.
+ * Depth via soft textShadow + one highlight lip (stable, no jitter stack).
+ */
 function EngravedLine({
   text,
   size,
   isDark,
   gold,
   letterSpacing = 0.4,
+  emphasis = 'normal',
 }: {
   text: string;
   size: number;
   isDark: boolean;
   gold: boolean;
   letterSpacing?: number;
+  emphasis?: 'normal' | 'hero';
 }) {
-  const color = gold
+  const fill = gold
     ? isDark
-      ? 'rgba(72, 52, 14, 0.88)'
-      : 'rgba(62, 44, 10, 0.78)'
+      ? emphasis === 'hero'
+        ? 'rgba(58, 40, 8, 0.94)'
+        : 'rgba(68, 48, 12, 0.9)'
+      : emphasis === 'hero'
+        ? 'rgba(48, 34, 6, 0.86)'
+        : 'rgba(58, 42, 10, 0.8)'
     : isDark
-      ? 'rgba(40,40,44,0.78)'
-      : 'rgba(50,50,54,0.72)';
-  const highlight = gold
+      ? 'rgba(28,28,32,0.86)'
+      : 'rgba(42,42,46,0.78)';
+
+  const lip = gold
     ? isDark
-      ? 'rgba(255, 236, 180, 0.28)'
-      : 'rgba(255, 248, 220, 0.45)'
+      ? 'rgba(255, 240, 190, 0.38)'
+      : 'rgba(255, 250, 230, 0.55)'
     : isDark
-      ? 'rgba(255,255,255,0.22)'
-      : 'rgba(255,255,255,0.4)';
+      ? 'rgba(255,255,255,0.28)'
+      : 'rgba(255,255,255,0.48)';
+
+  const shadowColor = gold
+    ? isDark
+      ? 'rgba(0, 0, 0, 0.72)'
+      : 'rgba(40, 28, 6, 0.45)'
+    : 'rgba(0,0,0,0.4)';
+
+  const ambientGlow = gold
+    ? isDark
+      ? 'rgba(201, 162, 39, 0.22)'
+      : 'rgba(201, 162, 39, 0.18)'
+    : 'rgba(0,0,0,0.08)';
+
+  const weight = emphasis === 'hero' ? ('800' as const) : ('700' as const);
 
   const base = {
     ...(APPLE_TYPE ? { fontFamily: APPLE_TYPE } : null),
     fontSize: size,
-    fontWeight: '700' as const,
+    fontWeight: weight,
     letterSpacing,
     fontVariant: ['tabular-nums' as const],
   };
 
   return (
-    <View>
-      <Text style={[base, { color }]}>{text}</Text>
-      {/* Single soft highlight lip — no multi-offset jitter */}
+    <View style={styles.engraveWrap}>
+      {/* Soft gold ambient under the carve */}
       <Text
         pointerEvents="none"
-        style={[base, styles.engraveLayer, { color: highlight, top: -0.5, left: -0.35 }]}
+        style={[
+          base,
+          styles.engraveLayer,
+          {
+            color: ambientGlow,
+            top: 1.8,
+            left: 0.6,
+            textShadowColor: ambientGlow,
+            textShadowOffset: { width: 0, height: 0 },
+            textShadowRadius: emphasis === 'hero' ? 8 : 5,
+          },
+        ]}
+      >
+        {text}
+      </Text>
+      {/* Deep carved body */}
+      <Text
+        style={[
+          base,
+          {
+            color: fill,
+            textShadowColor: shadowColor,
+            textShadowOffset: { width: 0.6, height: 1.4 },
+            textShadowRadius: emphasis === 'hero' ? 3.5 : 2.4,
+          },
+        ]}
+      >
+        {text}
+      </Text>
+      {/* Upper metal lip catching light */}
+      <Text
+        pointerEvents="none"
+        style={[
+          base,
+          styles.engraveLayer,
+          {
+            color: lip,
+            top: -0.55,
+            left: -0.35,
+            opacity: 0.9,
+          },
+        ]}
       >
         {text}
       </Text>
@@ -137,15 +206,14 @@ function EngravedDateBeside({
   gleam: Animated.Value;
 }) {
   const parts = useMemo(() => formatEngravedParts(date), [date]);
-  const daySize = height >= 160 ? 22 : 19;
-  const monthSize = height >= 160 ? 16 : 14;
-  const weekSize = height >= 160 ? 13 : 12;
+  const daySize = height >= 160 ? 26 : 22;
+  const monthSize = height >= 160 ? 17 : 15;
+  const weekSize = height >= 160 ? 14 : 13;
   const yearSize = height >= 160 ? 15 : 13;
 
-  // Soft shared gleam with the dial — no harsh translate jitter on the lettering.
   const shine = gleam.interpolate({
     inputRange: [0, 0.4, 0.55, 1],
-    outputRange: [0.94, 1, 0.97, 0.94],
+    outputRange: [0.96, 1, 0.98, 0.96],
   });
 
   return (
@@ -159,12 +227,32 @@ function EngravedDateBeside({
         },
       ]}
     >
-      <EngravedLine text={parts.weekday} size={weekSize} isDark={isDark} gold={gold} letterSpacing={0.8} />
-      <View style={styles.dateGap} />
-      <EngravedLine text={parts.dayNum} size={daySize} isDark={isDark} gold={gold} letterSpacing={1.2} />
-      <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.5} />
+      <EngravedLine text={parts.weekday} size={weekSize} isDark={isDark} gold={gold} letterSpacing={0.9} />
+      <View style={styles.dateHairline}>
+        <View
+          style={[
+            styles.dateHairlineFill,
+            {
+              backgroundColor: gold
+                ? isDark
+                  ? 'rgba(201,162,39,0.35)'
+                  : 'rgba(120,86,18,0.28)'
+                : 'rgba(0,0,0,0.15)',
+            },
+          ]}
+        />
+      </View>
+      <EngravedLine
+        text={parts.dayNum}
+        size={daySize}
+        isDark={isDark}
+        gold={gold}
+        letterSpacing={1.4}
+        emphasis="hero"
+      />
+      <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.6} />
       <View style={styles.dateGapSm} />
-      <EngravedLine text={parts.year} size={yearSize} isDark={isDark} gold={gold} letterSpacing={1.6} />
+      <EngravedLine text={parts.year} size={yearSize} isDark={isDark} gold={gold} letterSpacing={2} />
     </Animated.View>
   );
 }
@@ -658,12 +746,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,248,220,0.38)',
   },
   dateCarve: {
-    maxWidth: 148,
-    paddingLeft: 2,
-    // No border, no background plate — pure engraving into the gold panel.
+    maxWidth: 156,
+    paddingLeft: 4,
+    paddingVertical: 4,
   },
   dateGap: { height: 8 },
-  dateGapSm: { height: 6 },
+  dateGapSm: { height: 7 },
+  dateHairline: {
+    height: 10,
+    justifyContent: 'center',
+    paddingRight: 8,
+  },
+  dateHairlineFill: {
+    height: StyleSheet.hairlineWidth * 2,
+    width: '72%',
+    borderRadius: 1,
+    opacity: 0.9,
+  },
+  engraveWrap: {
+    position: 'relative',
+  },
   engraveLayer: {
     position: 'absolute',
     left: 0,
