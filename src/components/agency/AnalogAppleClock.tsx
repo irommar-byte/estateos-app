@@ -80,7 +80,7 @@ function formatEngravedParts(date: Date) {
 
 /**
  * Luxury engraved metal lettering — bold SF, no italic.
- * Depth via soft textShadow + one highlight lip (stable, no jitter stack).
+ * Hero day: raised polished metal with sun-flare gleam (not flat titanium).
  */
 function EngravedLine({
   text,
@@ -89,6 +89,7 @@ function EngravedLine({
   gold,
   letterSpacing = 0.4,
   emphasis = 'normal',
+  gleam,
 }: {
   text: string;
   size: number;
@@ -96,31 +97,34 @@ function EngravedLine({
   gold: boolean;
   letterSpacing?: number;
   emphasis?: 'normal' | 'hero';
+  gleam?: Animated.Value;
 }) {
-  // Hero day numeral: titanium / graphite metal, not ruby.
+  const hero = emphasis === 'hero';
+
+  // Raised polished brass / deep gold carve — strong emboss + specular lip.
   const fill = gold
     ? isDark
-      ? emphasis === 'hero'
-        ? 'rgba(18, 16, 14, 0.96)'
+      ? hero
+        ? 'rgba(42, 30, 8, 0.96)'
         : 'rgba(68, 48, 12, 0.9)'
-      : emphasis === 'hero'
-        ? 'rgba(28, 26, 24, 0.9)'
+      : hero
+        ? 'rgba(48, 34, 8, 0.92)'
         : 'rgba(58, 42, 10, 0.8)'
     : isDark
-      ? emphasis === 'hero'
-        ? 'rgba(12,12,14,0.95)'
+      ? hero
+        ? 'rgba(22,22,26,0.96)'
         : 'rgba(28,28,32,0.86)'
-      : emphasis === 'hero'
-        ? 'rgba(22,22,24,0.9)'
+      : hero
+        ? 'rgba(28,28,32,0.9)'
         : 'rgba(42,42,46,0.78)';
 
   const lip = gold
     ? isDark
-      ? emphasis === 'hero'
-        ? 'rgba(210, 205, 195, 0.4)'
+      ? hero
+        ? 'rgba(255, 248, 220, 0.78)'
         : 'rgba(255, 240, 190, 0.42)'
-      : emphasis === 'hero'
-        ? 'rgba(255, 255, 255, 0.55)'
+      : hero
+        ? 'rgba(255, 255, 255, 0.88)'
         : 'rgba(255, 250, 230, 0.58)'
     : isDark
       ? 'rgba(255,255,255,0.28)'
@@ -128,25 +132,25 @@ function EngravedLine({
 
   const shadowColor = gold
     ? isDark
-      ? emphasis === 'hero'
-        ? 'rgba(0, 0, 0, 0.88)'
+      ? hero
+        ? 'rgba(0, 0, 0, 0.95)'
         : 'rgba(0, 0, 0, 0.75)'
-      : emphasis === 'hero'
-        ? 'rgba(0, 0, 0, 0.4)'
+      : hero
+        ? 'rgba(30, 20, 4, 0.55)'
         : 'rgba(40, 28, 6, 0.48)'
     : 'rgba(0,0,0,0.4)';
 
   const ambientGlow = gold
     ? isDark
-      ? emphasis === 'hero'
-        ? 'rgba(140, 135, 125, 0.2)'
+      ? hero
+        ? 'rgba(255, 214, 120, 0.38)'
         : 'rgba(201, 162, 39, 0.28)'
-      : emphasis === 'hero'
-        ? 'rgba(80, 75, 70, 0.12)'
+      : hero
+        ? 'rgba(201, 162, 39, 0.32)'
         : 'rgba(201, 162, 39, 0.2)'
     : 'rgba(0,0,0,0.08)';
 
-  const weight = emphasis === 'hero' ? ('800' as const) : ('700' as const);
+  const weight = hero ? ('800' as const) : ('700' as const);
 
   const base = {
     ...(APPLE_TYPE ? { fontFamily: APPLE_TYPE } : null),
@@ -155,6 +159,13 @@ function EngravedLine({
     letterSpacing,
     fontVariant: ['tabular-nums' as const],
   };
+
+  const flareOpacity = gleam
+    ? gleam.interpolate({
+        inputRange: [0, 0.35, 0.5, 0.7, 1],
+        outputRange: [0.35, 0.95, 1, 0.7, 0.35],
+      })
+    : 1;
 
   return (
     <View style={styles.engraveWrap}>
@@ -165,11 +176,11 @@ function EngravedLine({
           styles.engraveLayer,
           {
             color: ambientGlow,
-            top: 2,
-            left: 0.7,
+            top: hero ? 2.6 : 2,
+            left: hero ? 1 : 0.7,
             textShadowColor: ambientGlow,
             textShadowOffset: { width: 0, height: 0 },
-            textShadowRadius: emphasis === 'hero' ? 8 : 5,
+            textShadowRadius: hero ? 12 : 5,
           },
         ]}
       >
@@ -181,8 +192,8 @@ function EngravedLine({
           {
             color: fill,
             textShadowColor: shadowColor,
-            textShadowOffset: { width: 0.7, height: emphasis === 'hero' ? 1.8 : 1.4 },
-            textShadowRadius: emphasis === 'hero' ? 4 : 2.4,
+            textShadowOffset: { width: hero ? 1.1 : 0.7, height: hero ? 2.6 : 1.4 },
+            textShadowRadius: hero ? 5.5 : 2.4,
           },
         ]}
       >
@@ -195,16 +206,98 @@ function EngravedLine({
           styles.engraveLayer,
           {
             color: lip,
-            top: -0.6,
-            left: -0.4,
-            opacity: 0.92,
+            top: hero ? -1.1 : -0.6,
+            left: hero ? -0.75 : -0.4,
+            opacity: hero ? 0.98 : 0.92,
+            textShadowColor: hero
+              ? isDark
+                ? 'rgba(255, 248, 210, 0.55)'
+                : 'rgba(255, 255, 255, 0.7)'
+              : 'transparent',
+            textShadowOffset: { width: -0.4, height: -0.6 },
+            textShadowRadius: hero ? 3.5 : 0,
           },
         ]}
       >
         {text}
       </Text>
+      {hero ? (
+        <Animated.Text
+          pointerEvents="none"
+          style={[
+            base,
+            styles.engraveLayer,
+            {
+              color: isDark ? 'rgba(255, 250, 230, 0.55)' : 'rgba(255, 255, 255, 0.72)',
+              top: -1.4,
+              left: -1,
+              opacity: flareOpacity,
+              textShadowColor: isDark ? 'rgba(255, 230, 150, 0.85)' : 'rgba(255, 250, 220, 0.95)',
+              textShadowOffset: { width: 0, height: 0 },
+              textShadowRadius: 8,
+            },
+          ]}
+        >
+          {text}
+        </Animated.Text>
+      ) : null}
     </View>
   );
+}
+
+/** Catholic Easter (Gregorian computus) — Poland uses this calendar. */
+function easterSunday(year: number): Date {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function addDays(d: Date, n: number) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+const FIXED_PL_HOLIDAYS: Array<{ m: number; d: number; name: string }> = [
+  { m: 0, d: 1, name: 'Nowy Rok' },
+  { m: 0, d: 6, name: 'Święto Trzech Króli' },
+  { m: 4, d: 1, name: 'Święto Pracy' },
+  { m: 4, d: 3, name: 'Święto Konstytucji 3 Maja' },
+  { m: 7, d: 15, name: 'Wniebowzięcie NMP' },
+  { m: 10, d: 1, name: 'Wszystkich Świętych' },
+  { m: 10, d: 11, name: 'Narodowe Święto Niepodległości' },
+  { m: 11, d: 25, name: 'Boże Narodzenie' },
+  { m: 11, d: 26, name: 'Drugi dzień Bożego Narodzenia' },
+];
+
+function polishHolidayName(year: number, monthIndex: number, day: number): string | null {
+  for (const h of FIXED_PL_HOLIDAYS) {
+    if (h.m === monthIndex && h.d === day) return h.name;
+  }
+  const easter = easterSunday(year);
+  const movable: Array<{ date: Date; name: string }> = [
+    { date: easter, name: 'Niedziela Wielkanocna' },
+    { date: addDays(easter, 1), name: 'Poniedziałek Wielkanocny' },
+    { date: addDays(easter, 60), name: 'Boże Ciało' },
+  ];
+  for (const h of movable) {
+    if (h.date.getFullYear() === year && h.date.getMonth() === monthIndex && h.date.getDate() === day) {
+      return h.name;
+    }
+  }
+  return null;
 }
 
 const MONTHS_NOM_PL = [
@@ -229,36 +322,83 @@ function startOfMonth(d: Date) {
 }
 
 function buildMonthGrid(year: number, monthIndex: number) {
-  // Monday-first weeks
+  // Monday-first weeks — always 6 rows so month flips never resize the plate.
   const first = new Date(year, monthIndex, 1);
   const startDow = (first.getDay() + 6) % 7;
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
   const cells: Array<{ day: number; inMonth: boolean } | null> = [];
   for (let i = 0; i < startDow; i += 1) cells.push(null);
   for (let d = 1; d <= daysInMonth; d += 1) cells.push({ day: d, inMonth: true });
-  while (cells.length % 7 !== 0) cells.push(null);
   while (cells.length < 42) cells.push(null);
-  // Keep at most 6 weeks; trim trailing empty week if unused
-  if (cells.slice(35).every((c) => c == null)) return cells.slice(0, 35);
   return cells;
 }
+
+const MONTH_RETURN_MS = 20_000;
 
 function EngravedMiniMonthCalendar({
   today,
   isDark,
   gold,
-  width = 118,
+  width = 132,
 }: {
   today: Date;
   isDark: boolean;
   gold: boolean;
   width?: number;
 }) {
+  const todayMonthKey = `${today.getFullYear()}-${today.getMonth()}`;
+  const todayMonth = useMemo(() => startOfMonth(today), [todayMonthKey]);
   const [cursor, setCursor] = useState(() => startOfMonth(today));
+  const [holidayTip, setHolidayTip] = useState<string | null>(null);
+  const returnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const panelOpacity = useRef(new Animated.Value(1)).current;
+  const tipOpacity = useRef(new Animated.Value(0)).current;
+  const userBrowsing = useRef(false);
 
+  const clearReturnTimer = () => {
+    if (returnTimer.current) {
+      clearTimeout(returnTimer.current);
+      returnTimer.current = null;
+    }
+  };
+
+  const animateToTodayMonth = () => {
+    Animated.timing(panelOpacity, {
+      toValue: 0.22,
+      duration: 420,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) return;
+      setCursor(startOfMonth(new Date()));
+      userBrowsing.current = false;
+      setHolidayTip(null);
+      Animated.timing(panelOpacity, {
+        toValue: 1,
+        duration: 560,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const scheduleReturnToToday = () => {
+    clearReturnTimer();
+    userBrowsing.current = true;
+    returnTimer.current = setTimeout(() => {
+      returnTimer.current = null;
+      animateToTodayMonth();
+    }, MONTH_RETURN_MS);
+  };
+
+  useEffect(() => () => clearReturnTimer(), []);
+
+  // Only snap back when the real calendar day rolls over — never every second tick.
   useEffect(() => {
-    setCursor(startOfMonth(today));
-  }, [today]);
+    if (!userBrowsing.current) {
+      setCursor(todayMonth);
+    }
+  }, [todayMonth]);
 
   const cells = useMemo(
     () => buildMonthGrid(cursor.getFullYear(), cursor.getMonth()),
@@ -267,42 +407,67 @@ function EngravedMiniMonthCalendar({
 
   const ink = gold
     ? isDark
-      ? 'rgba(58, 40, 8, 0.9)'
-      : 'rgba(50, 34, 6, 0.8)'
+      ? 'rgba(58, 40, 8, 0.92)'
+      : 'rgba(50, 34, 6, 0.82)'
     : isDark
       ? 'rgba(40,40,44,0.8)'
       : 'rgba(50,50,54,0.72)';
   const mute = gold
     ? isDark
-      ? 'rgba(120, 90, 28, 0.5)'
-      : 'rgba(100, 75, 20, 0.42)'
+      ? 'rgba(120, 90, 28, 0.52)'
+      : 'rgba(100, 75, 20, 0.44)'
     : 'rgba(120,120,128,0.45)';
-  /** Today marker — titanium gold ring; Sundays use ruby numerals */
   const todayFill = gold
     ? isDark
-      ? 'rgba(201, 162, 39, 0.26)'
-      : 'rgba(201, 162, 39, 0.3)'
+      ? 'rgba(201, 162, 39, 0.28)'
+      : 'rgba(201, 162, 39, 0.32)'
     : 'rgba(52,199,89,0.2)';
   const todayRing = gold
     ? isDark
-      ? 'rgba(245, 223, 166, 0.65)'
-      : 'rgba(120, 86, 18, 0.5)'
+      ? 'rgba(245, 223, 166, 0.72)'
+      : 'rgba(120, 86, 18, 0.55)'
     : 'rgba(52,199,89,0.55)';
   const todayInk = gold ? (isDark ? '#F5DFA6' : '#3F2B05') : isDark ? '#FFFFFF' : '#000000';
-  const sundayInk = isDark ? '#FF6B5C' : '#C41E2A';
-  const sundayDow = isDark ? 'rgba(255, 107, 92, 0.85)' : 'rgba(196, 30, 42, 0.8)';
+  const festInk = isDark ? '#FF6B5C' : '#C41E2A';
+  const festDow = isDark ? 'rgba(255, 107, 92, 0.88)' : 'rgba(196, 30, 42, 0.82)';
   const arrow = gold
     ? isDark
-      ? 'rgba(201, 162, 39, 0.9)'
-      : 'rgba(107, 76, 16, 0.78)'
+      ? 'rgba(201, 162, 39, 0.92)'
+      : 'rgba(107, 76, 16, 0.8)'
     : '#8E8E93';
-
-  const cell = Math.floor((width - 4) / 7);
+  const cell = Math.floor(width / 7);
+  const rowH = cell - 1;
+  const gridH = rowH * 6;
+  const tipSlotH = 26;
   const isViewingTodayMonth =
     cursor.getFullYear() === today.getFullYear() && cursor.getMonth() === today.getMonth();
 
   const shiftMonth = (delta: number) => {
     setCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+    tipOpacity.setValue(0);
+    setHolidayTip(null);
+    scheduleReturnToToday();
+  };
+
+  const showTip = (name: string | null) => {
+    if (!name) {
+      Animated.timing(tipOpacity, {
+        toValue: 0,
+        duration: 160,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setHolidayTip(null);
+      });
+      return;
+    }
+    setHolidayTip(name);
+    tipOpacity.setValue(0);
+    Animated.timing(tipOpacity, {
+      toValue: 1,
+      duration: 180,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
   };
 
   const type = {
@@ -311,121 +476,224 @@ function EngravedMiniMonthCalendar({
     fontVariant: ['tabular-nums' as const],
   };
 
-  return (
-    <View style={[styles.miniCal, { width }]}>
-      <View style={styles.miniCalHeader}>
-        <Pressable
-          onPress={() => shiftMonth(-1)}
-          hitSlop={8}
-          style={styles.miniCalArrow}
-          accessibilityLabel="Poprzedni miesiąc"
-        >
-          <Ionicons name="chevron-back" size={12} color={arrow} />
-        </Pressable>
-        <Text
-          numberOfLines={1}
-          style={[
-            type,
-            styles.miniCalTitle,
-            {
-              color: ink,
-              textShadowColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(40,28,6,0.32)',
-              textShadowOffset: { width: 0.45, height: 1.1 },
-              textShadowRadius: 2,
-            },
-          ]}
-        >
-          {MONTHS_NOM_PL[cursor.getMonth()]} {cursor.getFullYear()}
-        </Text>
-        <Pressable
-          onPress={() => shiftMonth(1)}
-          hitSlop={8}
-          style={styles.miniCalArrow}
-          accessibilityLabel="Następny miesiąc"
-        >
-          <Ionicons name="chevron-forward" size={12} color={arrow} />
-        </Pressable>
-      </View>
+  const engravedNum = (festive: boolean, todayMark: boolean) => ({
+    fontSize: 9,
+    color: todayMark ? todayInk : festive ? festInk : ink,
+    textShadowColor: festive
+      ? isDark
+        ? 'rgba(40,0,4,0.7)'
+        : 'rgba(90,12,16,0.35)'
+      : isDark
+        ? 'rgba(0,0,0,0.72)'
+        : 'rgba(40,28,6,0.4)',
+    textShadowOffset: { width: 0.55, height: 1.05 },
+    textShadowRadius: todayMark ? 2.4 : 1.5,
+    fontWeight: todayMark ? ('800' as const) : ('700' as const),
+  });
 
-      <View style={styles.miniCalDowRow}>
-        {DOW_SHORT.map((label, i) => {
-          const isSundayCol = i === 6; // Monday-first grid → last column is Sunday
-          return (
+  return (
+    <Animated.View style={[styles.miniCal, { width, opacity: panelOpacity }]}>
+      <View style={styles.miniCalBody}>
+        <View style={styles.miniCalHeader}>
+          <Pressable
+            onPress={() => shiftMonth(-1)}
+            hitSlop={8}
+            style={styles.miniCalArrow}
+            accessibilityLabel="Poprzedni miesiąc"
+          >
+            <Ionicons name="chevron-back" size={12} color={arrow} />
+          </Pressable>
+          <View style={styles.miniCalTitleWrap}>
             <Text
-              key={`${label}-${i}`}
+              numberOfLines={1}
+              pointerEvents="none"
               style={[
                 type,
+                styles.miniCalTitle,
+                styles.miniCalTitleDepth,
                 {
-                  width: cell,
-                  color: isSundayCol ? sundayDow : mute,
-                  fontSize: 8,
-                  textAlign: 'center',
-                  textShadowColor: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(40,28,6,0.15)',
-                  textShadowOffset: { width: 0.2, height: 0.5 },
-                  textShadowRadius: 0.8,
+                  color: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(40,28,6,0.28)',
                 },
               ]}
             >
-              {label}
+              {MONTHS_NOM_PL[cursor.getMonth()]}
             </Text>
-          );
-        })}
-      </View>
-
-      <View style={styles.miniCalGrid}>
-        {cells.map((cellData, index) => {
-          if (!cellData) {
-            return <View key={`e-${index}`} style={{ width: cell, height: cell - 1 }} />;
-          }
-          const isToday = isViewingTodayMonth && cellData.day === today.getDate();
-          const isSunday = index % 7 === 6;
-          const dayColor = isToday ? todayInk : isSunday ? sundayInk : ink;
-          return (
-            <View
-              key={`d-${index}`}
+            <Text
+              numberOfLines={1}
               style={[
-                styles.miniCalCell,
+                type,
+                styles.miniCalTitle,
                 {
-                  width: cell,
-                  height: cell - 1,
-                  borderRadius: (cell - 1) / 2,
-                  backgroundColor: isToday ? todayFill : 'transparent',
-                  borderWidth: isToday ? 1.5 : 0,
-                  borderColor: isToday ? todayRing : 'transparent',
-                  shadowColor: isToday ? '#C9A227' : 'transparent',
-                  shadowOffset: { width: 0, height: isToday ? 1 : 0 },
-                  shadowOpacity: isToday ? 0.4 : 0,
-                  shadowRadius: isToday ? 3 : 0,
-                  elevation: isToday ? 2 : 0,
+                  color: ink,
+                  textShadowColor: isDark ? 'rgba(255, 240, 180, 0.28)' : 'rgba(255,255,255,0.55)',
+                  textShadowOffset: { width: -0.35, height: -0.55 },
+                  textShadowRadius: 1.2,
                 },
               ]}
             >
+              {MONTHS_NOM_PL[cursor.getMonth()]}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => shiftMonth(1)}
+            hitSlop={8}
+            style={styles.miniCalArrow}
+            accessibilityLabel="Następny miesiąc"
+          >
+            <Ionicons name="chevron-forward" size={12} color={arrow} />
+          </Pressable>
+        </View>
+
+        <View style={styles.miniCalDowRow}>
+          {DOW_SHORT.map((label, i) => {
+            const isSundayCol = i === 6;
+            return (
               <Text
+                key={`${label}-${i}`}
                 style={[
                   type,
                   {
-                    fontSize: 9,
-                    color: dayColor,
-                    textShadowColor: isSunday
-                      ? isDark
-                        ? 'rgba(80,0,8,0.55)'
-                        : 'rgba(120,20,24,0.28)'
-                      : isDark
-                        ? 'rgba(0,0,0,0.5)'
-                        : 'rgba(40,28,6,0.25)',
-                    textShadowOffset: { width: 0.35, height: 0.75 },
-                    textShadowRadius: isToday ? 2 : 1.2,
-                    fontWeight: isToday ? '800' : '700',
+                    width: cell,
+                    color: isSundayCol ? festDow : mute,
+                    fontSize: 8,
+                    textAlign: 'center',
+                    textShadowColor: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(40,28,6,0.22)',
+                    textShadowOffset: { width: 0.3, height: 0.65 },
+                    textShadowRadius: 1,
                   },
                 ]}
               >
-                {cellData.day}
+                {label}
               </Text>
-            </View>
-          );
-        })}
+            );
+          })}
+        </View>
+
+        <View style={[styles.miniCalGrid, { height: gridH }]}>
+          {cells.map((cellData, index) => {
+            if (!cellData) {
+              return <View key={`e-${index}`} style={{ width: cell, height: rowH }} />;
+            }
+            const holiday = polishHolidayName(cursor.getFullYear(), cursor.getMonth(), cellData.day);
+            const isToday = isViewingTodayMonth && cellData.day === today.getDate();
+            const isSunday = index % 7 === 6;
+            const isFestive = isSunday || Boolean(holiday);
+            return (
+              <Pressable
+                key={`d-${index}`}
+                accessibilityLabel={holiday ? `${cellData.day}, ${holiday}` : `${cellData.day}`}
+                onHoverIn={() => {
+                  if (holiday) showTip(holiday);
+                }}
+                onHoverOut={() => showTip(null)}
+                onPress={() => {
+                  if (holiday) {
+                    showTip(holidayTip === holiday ? null : holiday);
+                  } else {
+                    showTip(null);
+                  }
+                }}
+                style={[
+                  styles.miniCalCell,
+                  {
+                    width: cell,
+                    height: rowH,
+                    borderRadius: rowH / 2,
+                    backgroundColor: isToday
+                      ? todayFill
+                      : holiday && !isToday
+                        ? isDark
+                          ? 'rgba(196, 30, 42, 0.14)'
+                          : 'rgba(196, 30, 42, 0.09)'
+                        : 'transparent',
+                    borderWidth: isToday ? 1.5 : 0,
+                    borderColor: isToday ? todayRing : 'transparent',
+                    shadowColor: isToday ? '#C9A227' : 'transparent',
+                    shadowOffset: { width: 0, height: isToday ? 1 : 0 },
+                    shadowOpacity: isToday ? 0.4 : 0,
+                    shadowRadius: isToday ? 3 : 0,
+                    elevation: isToday ? 2 : 0,
+                  },
+                ]}
+              >
+                <View style={styles.miniCalDayCarve}>
+                  <Text
+                    pointerEvents="none"
+                    style={[
+                      type,
+                      styles.miniCalDayDepth,
+                      engravedNum(isFestive, isToday),
+                      {
+                        color: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(40,28,6,0.22)',
+                        textShadowRadius: 0,
+                      },
+                    ]}
+                  >
+                    {cellData.day}
+                  </Text>
+                  <Text style={[type, engravedNum(isFestive, isToday)]}>{cellData.day}</Text>
+                  <Text
+                    pointerEvents="none"
+                    style={[
+                      type,
+                      styles.miniCalDayLip,
+                      engravedNum(isFestive, isToday),
+                      {
+                        color: isDark
+                          ? isFestive
+                            ? 'rgba(255, 180, 170, 0.35)'
+                            : 'rgba(255, 236, 180, 0.32)'
+                          : 'rgba(255,255,255,0.55)',
+                        textShadowRadius: 0,
+                      },
+                    ]}
+                  >
+                    {cellData.day}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
-    </View>
+
+      <View style={[styles.miniCalTipSlot, { height: tipSlotH }]}>
+        <Animated.View pointerEvents="none" style={[styles.miniCalTip, { opacity: tipOpacity }]}>
+          {holidayTip ? (
+            <>
+              <Text
+                numberOfLines={2}
+                pointerEvents="none"
+                style={[
+                  type,
+                  styles.miniCalTipDepth,
+                  {
+                    color: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(40,28,6,0.25)',
+                  },
+                ]}
+              >
+                {holidayTip}
+              </Text>
+              <Text
+                numberOfLines={2}
+                style={[
+                  type,
+                  styles.miniCalTipText,
+                  {
+                    color: ink,
+                    textShadowColor: isDark ? 'rgba(255, 240, 180, 0.22)' : 'rgba(255,255,255,0.5)',
+                    textShadowOffset: { width: -0.3, height: -0.45 },
+                    textShadowRadius: 1,
+                  },
+                ]}
+              >
+                {holidayTip}
+              </Text>
+            </>
+          ) : null}
+        </Animated.View>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -484,6 +752,7 @@ function EngravedDateBeside({
         gold={gold}
         letterSpacing={1.2}
         emphasis="hero"
+        gleam={gleam}
       />
       <EngravedLine text={parts.monthWord} size={monthSize} isDark={isDark} gold={gold} letterSpacing={0.5} />
       <View style={styles.dateGapSm} />
@@ -940,7 +1209,7 @@ function AnalogAppleClock({
       {dial}
       <View style={styles.sideStack}>
         <EngravedDateBeside date={time} isDark={isDark} gold={gold || red} height={size} gleam={gleam} />
-        <EngravedMiniMonthCalendar today={time} isDark={isDark} gold={gold || red} width={112} />
+        <EngravedMiniMonthCalendar today={time} isDark={isDark} gold={gold || red} width={132} />
       </View>
     </View>
   );
@@ -966,7 +1235,7 @@ const styles = StyleSheet.create({
   sideStack: {
     justifyContent: 'center',
     gap: 6,
-    maxWidth: 124,
+    maxWidth: 138,
   },
   outerRing: {
     alignItems: 'center',
@@ -989,7 +1258,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,248,220,0.38)',
   },
   dateCarve: {
-    maxWidth: 124,
+    maxWidth: 138,
     paddingLeft: 2,
     paddingVertical: 0,
   },
@@ -1018,28 +1287,43 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingTop: 2,
   },
+  miniCalBody: {
+    paddingTop: 0,
+    paddingHorizontal: 0,
+  },
   miniCalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    marginBottom: 3,
     gap: 2,
   },
   miniCalArrow: {
-    width: 18,
-    height: 18,
+    width: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  miniCalTitle: {
+  miniCalTitleWrap: {
     flex: 1,
-    fontSize: 9,
+    position: 'relative',
+    height: 14,
+    justifyContent: 'center',
+  },
+  miniCalTitle: {
+    fontSize: 10,
     textAlign: 'center',
-    letterSpacing: 0.2,
+    letterSpacing: 0.15,
+  },
+  miniCalTitleDepth: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 1.1,
   },
   miniCalDowRow: {
     flexDirection: 'row',
-    marginBottom: 1,
+    marginBottom: 2,
   },
   miniCalGrid: {
     flexDirection: 'row',
@@ -1048,5 +1332,47 @@ const styles = StyleSheet.create({
   miniCalCell: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  miniCalDayCarve: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniCalDayDepth: {
+    position: 'absolute',
+    top: 1.05,
+    left: 0.55,
+  },
+  miniCalDayLip: {
+    position: 'absolute',
+    top: -0.55,
+    left: -0.4,
+  },
+  miniCalTipSlot: {
+    marginTop: 3,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  miniCalTip: {
+    position: 'relative',
+    paddingHorizontal: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  miniCalTipText: {
+    fontSize: 8.5,
+    lineHeight: 11,
+    letterSpacing: 0.15,
+    textAlign: 'center',
+  },
+  miniCalTipDepth: {
+    position: 'absolute',
+    left: 2,
+    right: 2,
+    top: 1,
+    fontSize: 8.5,
+    lineHeight: 11,
+    letterSpacing: 0.15,
+    textAlign: 'center',
   },
 });
