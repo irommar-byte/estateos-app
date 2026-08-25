@@ -93,9 +93,23 @@ import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDispl
 import EditOfferLocationEditor, { type EditOfferLocationState } from './EditOffer/EditOfferLocationEditor';
 import { generateListingDescriptionWithGpt } from '../services/offerDescriptionAiService';
 import { submitOwnerLegalVerification } from '../services/legalVerificationService';
+import {
+  OFFER_MEDIA_MAX_IMAGES,
+  OFFER_MEDIA_UPLOAD_CAP_MB,
+  canAcceptDraftImage,
+  estimateBytesForDraftImage,
+  formatMediaCapacityAlert,
+} from '../utils/offerMediaCapacity';
+import {
+  deleteOfferMediaImmediate,
+  fetchOfferMediaUsage,
+  uploadOfferImageImmediate,
+  type OfferMediaUsage,
+} from '../utils/offerMediaImmediateUpload';
 
 const { width } = Dimensions.get('window');
-const MAX_IMAGES = 15;
+const MAX_IMAGES = OFFER_MEDIA_MAX_IMAGES;
+const MAX_MEDIA_MB = OFFER_MEDIA_UPLOAD_CAP_MB;
 const EDIT_GALLERY_COLUMNS = 3;
 const EDIT_GALLERY_GAP = 8;
 const HEATING_OPTIONS = [
@@ -142,14 +156,57 @@ type EditableImage = {
   isRemote: boolean;
   /** Względna ścieżka serwerowa (np. `/uploads/abc.jpg`) — wysyłana w payloadzie. */
   serverPath?: string;
+  /** Szacunek / zmierzony rozmiar (po kompresji) — do paska MB. */
+  byteSize?: number;
+  /** Lokalny klucz slotu podczas uploadu (zanim dostaniemy serverPath). */
+  uploadKey?: string;
 };
 
-const editableImageKey = (img: EditableImage) => img.serverPath || img.uri;
+const editableImageKey = (img: EditableImage) => img.uploadKey || img.serverPath || img.uri;
 
 const getEditGalleryPosition = (index: number, tileSize: number) => ({
   x: (index % EDIT_GALLERY_COLUMNS) * (tileSize + EDIT_GALLERY_GAP),
   y: Math.floor(index / EDIT_GALLERY_COLUMNS) * (tileSize + EDIT_GALLERY_GAP),
 });
+
+function EditCapacityBar({
+  label,
+  current,
+  max,
+  suffix,
+  freeLabel,
+  isDark,
+}: {
+  label: string;
+  current: number;
+  max: number;
+  suffix: string;
+  freeLabel?: string;
+  isDark: boolean;
+}) {
+  const ratio = max > 0 ? Math.min(1, Math.max(0, current / max)) : 0;
+  const isDanger = ratio >= 0.9;
+  const fill = isDanger ? '#ef4444' : '#10B981';
+  return (
+    <View style={styles.capacityContainer}>
+      <View style={styles.capacityHeader}>
+        <Text style={[styles.capacityLabel, { color: '#8E8E93' }]}>{label}</Text>
+        <Text style={[styles.capacityValue, { color: isDanger ? '#ef4444' : isDark ? '#FFF' : '#000' }]}>
+          {suffix === 'MB' ? current.toFixed(1) : Math.round(current)} / {max} {suffix}
+          {freeLabel ? ` · ${freeLabel}` : ''}
+        </Text>
+      </View>
+      <View
+        style={[
+          styles.capacityTrack,
+          { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' },
+        ]}
+      >
+        <View style={[styles.capacityFill, { width: `${ratio * 100}%`, backgroundColor: fill }]} />
+      </View>
+    </View>
+  );
+}
 
 function DraggableEditSquare({
   img,
@@ -157,6 +214,7 @@ function DraggableEditSquare({
   total,
   tileSize,
   coverLabel,
+  progress = 100,
   onDragStart,
   onDragEnd,
   onHoverSwap,
@@ -168,6 +226,7 @@ function DraggableEditSquare({
   total: number;
   tileSize: number;
   coverLabel: string;
+  progress?: number;
   onDragStart: () => void;
   onDragEnd: () => void;
   onHoverSwap: (key: string, targetIndex: number) => void;
@@ -306,10 +365,23 @@ function DraggableEditSquare({
           <Text style={styles.mainPhotoText}>{coverLabel}</Text>
         </View>
       ) : null}
-      <Pressable style={styles.deleteImageBtn} onPress={() => onRemove(index)} hitSlop={8}>
+      {progress < 100 ? (
+        <View style={styles.uploadOverlay}>
+          <Text style={styles.uploadText}>{Math.max(0, Math.min(99, Math.round(progress)))}%</Text>
+          <View style={styles.miniProgressTrack}>
+            <View style={[styles.miniProgressFill, { width: `${Math.max(0, Math.min(100, progress))}%` }]} />
+          </View>
+        </View>
+      ) : null}
+      <Pressable
+        style={styles.deleteImageBtn}
+        onPress={() => onRemove(index)}
+        hitSlop={8}
+        disabled={progress < 100}
+      >
         <Ionicons name="close" size={14} color="#FFF" />
       </Pressable>
-      {onMarkAsPlan ? (
+      {onMarkAsPlan && progress >= 100 ? (
         <Pressable
           style={styles.planImageBtn}
           onPress={() => onMarkAsPlan(index)}
@@ -397,6 +469,11 @@ export default function EditOfferScreen({ route }: any) {
   // --- ZMIENNE FORMULARZA ---
   const [images, setImages] = useState<EditableImage[]>([]);
   const [originalImageKeys, setOriginalImageKeys] = useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [mediaUsage, setMediaUsage] = useState<OfferMediaUsage | null>(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const imagesRef = useRef<EditableImage[]>([]);
+  imagesRef.current = images;
   const [floorPlanPreview, setFloorPlanPreview] = useState<string | null>(null);
   const [floorPlanLocalUri, setFloorPlanLocalUri] = useState<string | null>(null);
   const [floorPlan3dLocalUri, setFloorPlan3dLocalUri] = useState<string | null>(null);
@@ -601,6 +678,11 @@ export default function EditOfferScreen({ route }: any) {
             }));
             setImages(mapped);
             setOriginalImageKeys(mapped.map((i: EditableImage) => i.serverPath || i.uri));
+            if (token?.trim()) {
+              void fetchOfferMediaUsage({ offerId: Number(offerId), token: token.trim() }).then((usage) => {
+                if (usage) setMediaUsage(usage);
+              });
+            }
           }
 
           const floorPlanRaw = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
@@ -887,29 +969,141 @@ export default function EditOfferScreen({ route }: any) {
   }, [navigation, isDirty, saving, dirtySummary]);
 
   // -------- ZARZĄDZANIE ZDJĘCIAMI --------
+  const applyMediaUsage = useCallback((usage?: OfferMediaUsage | null) => {
+    if (usage) setMediaUsage(usage);
+  }, []);
+
+  const refreshMediaUsage = useCallback(async () => {
+    if (!token?.trim() || !offerId) return;
+    const usage = await fetchOfferMediaUsage({
+      offerId: Number(offerId),
+      token: token.trim(),
+    });
+    applyMediaUsage(usage);
+  }, [applyMediaUsage, offerId, token]);
+
   const pickImage = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const currentCount = images.length;
+    if (!token?.trim()) {
+      Alert.alert(t('offer.edit.alerts.sessionTitle'), t('offer.edit.alerts.sessionLogin'));
+      return;
+    }
+    if (mediaBusy) return;
+
+    const currentCount = imagesRef.current.length;
     if (currentCount >= MAX_IMAGES) {
       Alert.alert(t('offer.edit.alerts.photoLimitTitle'), t('offer.edit.alerts.photoLimitMax', { max: MAX_IMAGES }));
       return;
     }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 0.8,
+      selectionLimit: Math.max(1, MAX_IMAGES - currentCount),
     });
-    if (!result.canceled && result.assets?.length) {
-      const slotsLeft = MAX_IMAGES - currentCount;
-      const newItems: EditableImage[] = result.assets.slice(0, slotsLeft).map((asset) => ({
-        uri: asset.uri,
-        isRemote: false,
-      }));
-      enqueueLayoutSpring();
-      setImages((prev) => [...prev, ...newItems]);
-      if (result.assets.length > slotsLeft) {
-        Alert.alert(t('offer.edit.alerts.photoLimitTitle'), t('offer.edit.alerts.photoLimitPartial', { count: slotsLeft, max: MAX_IMAGES }));
+    if (result.canceled || !result.assets?.length) return;
+
+    const slotsLeft = MAX_IMAGES - currentCount;
+    const assets = result.assets.slice(0, slotsLeft);
+    if (result.assets.length > slotsLeft) {
+      Alert.alert(
+        t('offer.edit.alerts.photoLimitTitle'),
+        t('offer.edit.alerts.photoLimitPartial', { count: slotsLeft, max: MAX_IMAGES }),
+      );
+    }
+
+    setMediaBusy(true);
+    try {
+      for (const asset of assets) {
+        const snapshot = imagesRef.current;
+        const sizeMap: Record<string, number> = {};
+        for (const img of snapshot) {
+          const key = img.serverPath || img.uploadKey || img.uri;
+          if (img.byteSize && img.byteSize > 0) sizeMap[key] = img.byteSize;
+        }
+        const measured = await estimateBytesForDraftImage(asset.uri, asset.fileSize ?? null);
+        const accept = canAcceptDraftImage({
+          currentUris: snapshot.map((img) => img.serverPath || img.uploadKey || img.uri),
+          sizes: sizeMap,
+          newEstimatedBytes: measured,
+          pickerReportedBytes: asset.fileSize ?? null,
+          newUri: asset.uri,
+        });
+        // Serwerowy limit folderu jest źródłem prawdy — lokalny szacunek tylko ostrzega.
+        if (!accept.ok && mediaUsage && mediaUsage.freeBytes < measured * 0.5) {
+          Alert.alert(t('offer.edit.alerts.storageTitle'), formatMediaCapacityAlert(accept.reason));
+          break;
+        }
+        if (mediaUsage && mediaUsage.freeBytes <= 32 * 1024) {
+          Alert.alert(
+            t('offer.edit.alerts.storageTitle'),
+            t('offer.edit.alerts.storageFull', { limit: MAX_MEDIA_MB }),
+          );
+          break;
+        }
+
+        const uploadKey = `local:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const pending: EditableImage = {
+          uri: asset.uri,
+          isRemote: false,
+          uploadKey,
+          byteSize: measured,
+        };
+        enqueueLayoutSpring();
+        setImages((prev) => [...prev, pending]);
+        setUploadProgress((prev) => ({ ...prev, [uploadKey]: 0 }));
+
+        try {
+          const uploaded = await uploadOfferImageImmediate({
+            offerId: Number(offerId),
+            token: token.trim(),
+            localUri: asset.uri,
+            onProgress: (pct) => {
+              setUploadProgress((prev) => ({ ...prev, [uploadKey]: pct }));
+            },
+          });
+
+          setImages((prev) =>
+            prev.map((img) =>
+              img.uploadKey === uploadKey
+                ? {
+                    uri: uploaded.url,
+                    isRemote: true,
+                    serverPath: uploaded.path,
+                    byteSize: uploaded.localBytes || measured,
+                  }
+                : img,
+            ),
+          );
+          setOriginalImageKeys((prev) => {
+            const next = [...prev];
+            if (!next.includes(uploaded.path)) next.push(uploaded.path);
+            return next;
+          });
+          setUploadProgress((prev) => {
+            const next = { ...prev };
+            delete next[uploadKey];
+            return next;
+          });
+          applyMediaUsage(uploaded.usage || null);
+          if (!uploaded.usage) await refreshMediaUsage();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (err: any) {
+          setImages((prev) => prev.filter((img) => img.uploadKey !== uploadKey));
+          setUploadProgress((prev) => {
+            const next = { ...prev };
+            delete next[uploadKey];
+            return next;
+          });
+          const message = String(err?.message || t('offer.edit.alerts.uploadFailed'));
+          Alert.alert(t('offer.edit.alerts.errorTitle'), message);
+          await refreshMediaUsage();
+          break;
+        }
       }
+    } finally {
+      setMediaBusy(false);
     }
   };
 
@@ -979,14 +1173,60 @@ export default function EditOfferScreen({ route }: any) {
     setFloorPlanCleared(true);
   };
 
-  const removeImage = (indexToRemove: number) => {
+  const removeImage = (indexToRemove: number, options?: { hardDelete?: boolean }) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    enqueueLayoutSpring();
+    const hardDelete = options?.hardDelete !== false;
     const source = dragSnapshot ?? images;
-    const next = source.filter((_, index) => index !== indexToRemove);
+    const target = source[indexToRemove];
+    if (!target) return;
+
+    const progressKey = target.uploadKey || target.serverPath || target.uri;
+    if ((uploadProgress[progressKey] ?? 100) < 100) return;
+
+    const nextLocal = source.filter((_, index) => index !== indexToRemove);
+    enqueueLayoutSpring();
     setDragSnapshot(null);
     dragSnapshotRef.current = null;
-    setImages(next);
+    setImages(nextLocal);
+
+    const serverPath = target.serverPath || (target.isRemote ? toServerPath(target.uri) : null);
+    if (!hardDelete || !serverPath || !token?.trim()) {
+      return;
+    }
+
+    setMediaBusy(true);
+    void deleteOfferMediaImmediate({
+      offerId: Number(offerId),
+      token: token.trim(),
+      urls: [serverPath],
+    })
+      .then((result) => {
+        applyMediaUsage(result);
+        setOriginalImageKeys((prev) => prev.filter((key) => key !== serverPath));
+        const serverSet = new Set(result.images || []);
+        setImages((prev) =>
+          prev.filter((img) => {
+            if (!img.isRemote || !img.serverPath) return true;
+            return serverSet.has(img.serverPath);
+          }),
+        );
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      })
+      .catch((err: any) => {
+        setImages((prev) => {
+          if (prev.some((img) => (img.serverPath || img.uri) === (target.serverPath || target.uri))) {
+            return prev;
+          }
+          const copy = [...prev];
+          copy.splice(Math.min(indexToRemove, copy.length), 0, target);
+          return copy;
+        });
+        Alert.alert(
+          t('offer.edit.alerts.errorTitle'),
+          String(err?.message || t('offer.edit.alerts.deleteFailed')),
+        );
+      })
+      .finally(() => setMediaBusy(false));
   };
 
   const markImageAsPlan = (index: number) => {
@@ -1003,7 +1243,7 @@ export default function EditOfferScreen({ route }: any) {
     } else {
       setExtraFloorPlanUrls((prev) => [...prev, img.uri]);
     }
-    removeImage(index);
+    removeImage(index, { hardDelete: false });
   };
 
   const handleGalleryDragStart = useCallback(() => {
@@ -1899,6 +2139,15 @@ export default function EditOfferScreen({ route }: any) {
   const displayGalleryImages = dragSnapshot ?? images;
   const galleryGridHeight =
     Math.ceil((displayGalleryImages.length + 1) / EDIT_GALLERY_COLUMNS) * (TILE + EDIT_GALLERY_GAP);
+  const estimatedUsedBytes = displayGalleryImages.reduce(
+    (sum, img) => sum + (typeof img.byteSize === 'number' && img.byteSize > 0 ? img.byteSize : 0),
+    0,
+  );
+  const usedBytes = mediaUsage?.usedBytes ?? estimatedUsedBytes;
+  const limitBytes = mediaUsage?.limitBytes ?? MAX_MEDIA_MB * 1024 * 1024;
+  const freeBytes = mediaUsage?.freeBytes ?? Math.max(0, limitBytes - usedBytes);
+  const usedMb = usedBytes / (1024 * 1024);
+  const freeMb = freeBytes / (1024 * 1024);
   let currentScanMeta: RoomScanDraftAssets['scanMeta'] | null = null;
   try {
     currentScanMeta = floorPlanScanMetaLocal
@@ -2066,6 +2315,24 @@ export default function EditOfferScreen({ route }: any) {
             </Text>
           </View>
 
+          <View style={{ marginBottom: 10, gap: 10 }}>
+            <EditCapacityBar
+              label={t('offer.edit.gallery.capacityPhotos')}
+              current={displayGalleryImages.length}
+              max={MAX_IMAGES}
+              suffix={t('offer.edit.gallery.capacityPhotosSuffix')}
+              isDark={isDark}
+            />
+            <EditCapacityBar
+              label={t('offer.edit.gallery.capacityDisk')}
+              current={usedMb}
+              max={mediaUsage?.limitMb ?? MAX_MEDIA_MB}
+              suffix="MB"
+              freeLabel={t('offer.edit.gallery.capacityFree', { free: freeMb.toFixed(1) })}
+              isDark={isDark}
+            />
+          </View>
+
           {/* Animowana wskazówka — fade-out po pierwszym układaniu */}
           {!galleryHintDismissed && images.length >= 2 && (
             <View style={styles.galleryHint}>
@@ -2096,12 +2363,20 @@ export default function EditOfferScreen({ route }: any) {
                     backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
                     left: getEditGalleryPosition(displayGalleryImages.length, TILE).x,
                     top: getEditGalleryPosition(displayGalleryImages.length, TILE).y,
+                    opacity: mediaBusy ? 0.55 : 1,
                   },
                 ]}
                 onPress={pickImage}
+                disabled={mediaBusy}
               >
-                <Ionicons name="camera" size={26} color={primaryColor} />
-                <Text style={[styles.addImageText, { color: primaryColor }]}>{t('offer.edit.gallery.add')}</Text>
+                {mediaBusy ? (
+                  <ActivityIndicator color={primaryColor} />
+                ) : (
+                  <>
+                    <Ionicons name="camera" size={26} color={primaryColor} />
+                    <Text style={[styles.addImageText, { color: primaryColor }]}>{t('offer.edit.gallery.add')}</Text>
+                  </>
+                )}
               </Pressable>
 
               {displayGalleryImages.map((img, index) => (
@@ -2112,6 +2387,7 @@ export default function EditOfferScreen({ route }: any) {
                   total={displayGalleryImages.length}
                   tileSize={TILE}
                   coverLabel={t('offer.edit.gallery.cover')}
+                  progress={uploadProgress[img.uploadKey || img.serverPath || img.uri] ?? 100}
                   onDragStart={handleGalleryDragStart}
                   onDragEnd={handleGalleryDragEnd}
                   onHoverSwap={handleGalleryHoverSwap}
@@ -3944,6 +4220,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  uploadText: { color: '#FFF', fontSize: 13, fontWeight: '800', marginBottom: 6 },
+  miniProgressTrack: {
+    width: '70%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  miniProgressFill: { height: '100%', backgroundColor: '#10B981' },
+  capacityContainer: { width: '100%' },
+  capacityHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  capacityLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  capacityValue: { fontSize: 12, fontWeight: '700' },
+  capacityTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
+  capacityFill: { height: '100%', borderRadius: 3 },
   planImageBtn: {
     position: 'absolute',
     left: 4,

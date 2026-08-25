@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getWebFormData } from '@/lib/requestFormData';
+import path from 'path';
 import {
   MAX_OFFER_FILE_BYTES,
+  MAX_OFFER_MEDIA_FOLDER_BYTES,
+  OFFER_UPLOAD_BASE_FS,
   acquireOfferUploadLock,
+  getOfferFolderSizeBytes,
   releaseOfferUploadLock,
   saveDealroomParticipantWatermarkedImage,
   saveOfferBinaryAttachment,
@@ -13,6 +17,21 @@ import {
 } from '@/lib/upload/offerMediaUpload';
 import { resolveUploaderUserId } from '@/lib/upload/resolveUploader';
 import { prisma } from '@/lib/prisma';
+
+async function offerFolderQuota(offerId: number) {
+  const usedBytes = await getOfferFolderSizeBytes(
+    path.join(OFFER_UPLOAD_BASE_FS, String(offerId)),
+  );
+  const limitBytes = MAX_OFFER_MEDIA_FOLDER_BYTES;
+  return {
+    usedBytes,
+    limitBytes,
+    freeBytes: Math.max(0, limitBytes - usedBytes),
+    usedMb: Number((usedBytes / (1024 * 1024)).toFixed(2)),
+    freeMb: Number((Math.max(0, limitBytes - usedBytes) / (1024 * 1024)).toFixed(2)),
+    limitMb: Math.round(limitBytes / (1024 * 1024)),
+  };
+}
 
 /**
  * Kompatybilność API mobilnego — takie samo krycie jak `/api/upload`
@@ -250,11 +269,13 @@ export async function POST(req: Request) {
         );
       }
 
+      const quota = await offerFolderQuota(offerIdNum);
       return NextResponse.json({
         success: true,
         url: img.url,
         path: img.url,
         backendRegistered: true,
+        ...quota,
       });
     } finally {
       releaseOfferUploadLock(offerIdNum);

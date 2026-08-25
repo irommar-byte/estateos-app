@@ -491,8 +491,12 @@ export const offer = {
       hint: 'Pierwsze zdjęcie to okładka. Przeciągnij za kropki, aby zmienić kolejność.',
       add: 'Dodaj',
       cover: 'Główne',
+      capacityPhotos: 'Liczba zdjęć',
+      capacityPhotosSuffix: 'szt.',
+      capacityDisk: 'Miejsce na serwerze',
+      capacityFree: 'wolne {{free}} MB',
       footer:
-        'Pierwsze zdjęcie pokazujemy w wynikach Radaru i jako okładkę oferty publicznej. Przeciągnij za kropki, aż dopasujesz idealny pierwszy kadr.',
+        'Dodane zdjęcie od razu ląduje na serwerze (pasek postępu). Usunięcie zwalnia miejsce w limicie 20 MB — wtedy możesz dodać kolejne.',
     },
     floorPlan: {
       sectionTitle: 'PLAN NIERUCHOMOŚCI',
@@ -652,6 +656,11 @@ export const offer = {
       photoLimitTitle: 'Limit zdjęć',
       photoLimitMax: 'Możesz dodać maksymalnie {{max}} zdjęć.',
       photoLimitPartial: 'Dodano tylko {{count}} zdjęć (maksymalnie {{max}}).',
+      storageTitle: 'Limit miejsca',
+      storageFull:
+        'Folder tej oferty jest pełny (limit {{limit}} MB). Usuń zdjęcie, żeby zwolnić miejsce na nowe.',
+      uploadFailed: 'Nie udało się wysłać zdjęcia na serwer.',
+      deleteFailed: 'Nie udało się usunąć zdjęcia z serwera.',
       sessionLogin: 'Zaloguj się ponownie, aby zapisać zmiany.',
       sessionUserId: 'Brak identyfikatora użytkownika — nie można zapisać oferty.',
       validationTitle: 'Walidacja',

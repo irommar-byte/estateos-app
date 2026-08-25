@@ -491,8 +491,12 @@ export const offer = {
       hint: 'The first photo is the cover. Drag by the dots to reorder.',
       add: 'Add',
       cover: 'Cover',
+      capacityPhotos: 'Photo count',
+      capacityPhotosSuffix: 'pcs',
+      capacityDisk: 'Server storage',
+      capacityFree: '{{free}} MB free',
       footer:
-        'We show the first photo in Radar results and as the public listing cover. Drag by the dots until the first frame is perfect.',
+        'New photos upload immediately (progress bar). Deleting frees space in the 20 MB folder limit so you can add another.',
     },
     floorPlan: {
       sectionTitle: 'FLOOR PLAN',
@@ -650,6 +654,11 @@ export const offer = {
       photoLimitTitle: 'Photo limit',
       photoLimitMax: 'You can add at most {{max}} photos.',
       photoLimitPartial: 'Only {{count}} photos were added (maximum {{max}}).',
+      storageTitle: 'Storage limit',
+      storageFull:
+        'This listing folder is full ({{limit}} MB limit). Delete a photo to free space for a new one.',
+      uploadFailed: 'Could not upload the photo to the server.',
+      deleteFailed: 'Could not delete the photo from the server.',
       sessionLogin: 'Sign in again to save changes.',
       sessionUserId: 'Missing user ID — cannot save listing.',
       validationTitle: 'Validation',

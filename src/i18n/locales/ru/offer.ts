@@ -488,8 +488,12 @@ export const offer = {
       hint: 'Первое фото - обложка. Используйте стрелки ← → для изменения порядка или звездочку, чтобы установить основной.',
       add: 'Добавлять',
       cover: 'Крышка',
+      capacityPhotos: 'Количество фото',
+      capacityPhotosSuffix: 'шт.',
+      capacityDisk: 'Место на сервере',
+      capacityFree: 'свободно {{free}} МБ',
       footer:
-        'We show the first photo in Radar results and as the public listing cover. Reorder until the first frame is perfect.',
+        'Новое фото сразу загружается на сервер (полоса прогресса). Удаление освобождает место в лимите 20 МБ.',
     },
     floorPlan: {
       sectionTitle: 'ПЛАН ЭТАЖА',
@@ -643,6 +647,11 @@ export const offer = {
       photoLimitTitle: 'Лимит фотографий',
       photoLimitMax: 'Вы можете добавить не более {{max}} фотографий.',
       photoLimitPartial: 'Было добавлено всего {{count}} фотографий (максимум {{max}}).',
+      storageTitle: 'Лимит места',
+      storageFull:
+        'Папка этого объявления заполнена (лимит {{limit}} МБ). Удалите фото, чтобы освободить место.',
+      uploadFailed: 'Не удалось загрузить фото на сервер.',
+      deleteFailed: 'Не удалось удалить фото с сервера.',
       sessionLogin: 'Войдите еще раз, чтобы сохранить изменения.',
       sessionUserId: 'Отсутствует идентификатор пользователя — невозможно сохранить список.',
       validationTitle: 'Валидация',
