@@ -1,3 +1,5 @@
+import { probeHdrFromBytes } from '@/lib/upload/hdrBinaryProbe';
+
 export type HdrDetectionResult = {
   isHdr: boolean;
   confidence: 'high' | 'medium' | 'low';
@@ -12,44 +14,7 @@ export type HdrDetectionResult = {
   masterMime?: string;
 };
 
-const HDR_ICC_RE = /hdr|pq|hlg|rec\.?2020|2100|smpte2084|arib-std-b67|bt2020|display\s*p3/i;
-const ULTRA_HDR_MARKERS = [
-  'urn:iso:std:iso:ts:21496',
-  'GContainer:Directory',
-  'hdrgm',
-  'HDRGainMap',
-  'Container:Directory',
-  'apple:singleimage:hdr',
-];
-
-function scanBinaryMarkers(buffer: Buffer): string[] {
-  const signals: string[] = [];
-  if (!buffer || buffer.length < 64) return signals;
-
-  const sampleLen = Math.min(buffer.length, 256 * 1024);
-  const sample = buffer.subarray(0, sampleLen);
-
-  const ascii = sample.toString('latin1');
-  for (const marker of ULTRA_HDR_MARKERS) {
-    if (ascii.includes(marker)) signals.push(`binary:${marker}`);
-  }
-
-  if (/gain.?map/i.test(ascii)) signals.push('binary:gain-map-text');
-  if (/tmap|auxiliary/i.test(ascii) && ascii.includes('ftyp')) {
-    signals.push('binary:heif-auxiliary');
-  }
-
-  // ISO BMFF box scan for Apple HDR auxiliary (tmap, mime brnd hvc1+grid)
-  for (let i = 0; i + 8 < sample.length; i++) {
-    const boxType = sample.subarray(i + 4, i + 8).toString('ascii');
-    if (boxType === 'tmap' || boxType === 'grid') {
-      signals.push(`bmff:${boxType}`);
-      break;
-    }
-  }
-
-  return signals;
-}
+const HDR_ICC_RE = /smpte2084|bt\.?2100|rec\.?2100|\bpq\b|hlg|arib-std-b67/i;
 
 function inferTransfer(iccSample: string, space: string): HdrDetectionResult['transferCharacteristics'] {
   if (/smpte2084|pq|bt2100.?pq/i.test(iccSample)) return 'pq';
@@ -59,28 +24,18 @@ function inferTransfer(iccSample: string, space: string): HdrDetectionResult['tr
 }
 
 function evaluateHdr(signals: string[]): boolean {
-  const strong = signals.some(
+  return signals.some(
     (s) =>
-      s.startsWith('colorspace:rec') ||
+      s === 'colorspace:rec2100' ||
       s === 'icc-hdr-profile' ||
-      s === 'heif-multi-image' ||
-      s === 'heif-wide-gamut' ||
-      s === 'jpeg-high-bit-depth' ||
       s.startsWith('binary:urn:iso:std:iso:ts:21496') ||
-      s.startsWith('binary:GContainer') ||
       s.startsWith('binary:HDRGainMap') ||
+      s.startsWith('binary:hdrgm') ||
       s.startsWith('binary:apple:singleimage:hdr') ||
-      s.startsWith('bmff:tmap'),
+      s.startsWith('binary:GainMapHdr') ||
+      s.startsWith('bmff:tmap') ||
+      s.includes('gain-map'),
   );
-  if (strong) return true;
-
-  const gainMap = signals.some(
-    (s) => s.startsWith('binary:gain-map') || s.startsWith('binary:hdrgm') || s.includes('gain-map'),
-  );
-  const wideGamut = signals.some(
-    (s) => s === 'heif-wide-gamut' || s === 'display-p3-high-depth' || s.startsWith('colorspace:'),
-  );
-  return gainMap && wideGamut;
 }
 
 /**
@@ -91,9 +46,10 @@ export async function detectHdrImage(
   buffer: Buffer,
   mimeHint?: string | null,
 ): Promise<HdrDetectionResult> {
-  const signals: string[] = [...scanBinaryMarkers(buffer)];
+  const probe = probeHdrFromBytes(buffer);
+  const signals: string[] = [...probe.signals];
   let transfer: HdrDetectionResult['transferCharacteristics'] = 'unknown';
-  let hasGainMap = signals.some((s) => s.includes('gain') || s.includes('GContainer') || s.includes('21496'));
+  let hasGainMap = probe.hasGainMap;
 
   try {
     const sharp = (await import('sharp')).default;

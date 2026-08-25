@@ -35,6 +35,8 @@ import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/off
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
 import AddOfferDocVerificationPanel from '@/components/offer/AddOfferDocVerificationPanel';
 import { OfferAdaptiveImage } from '@/components/offer/OfferAdaptiveImage';
+import { OfferHdrBadge } from '@/components/offer/OfferHdrBadge';
+import { probeHdrFromBlob } from '@/lib/upload/hdrBinaryProbe';
 import type { OfferImageMetaPublic } from '@/lib/upload/offerImageMeta';
 import { HEATING_DICT_KEYS } from '@/i18n/addOfferDictionary';
 import { isValidLandRegistryNumber, normalizeLandRegistryInput } from '@/lib/landRegistryInput';
@@ -78,6 +80,7 @@ type UploadingTile = {
   previewUrl: string;
   progress: number;
   error?: string;
+  isHdr?: boolean;
 };
 
 function formatMb(bytes: number) {
@@ -220,7 +223,7 @@ const SortablePhoto = ({
         <button
           type="button"
           onClick={() => onMarkAsPlan(url)}
-          className="absolute left-2 top-2 z-20 rounded-full border border-cyan-400/40 bg-black/80 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-200 hover:bg-cyan-500 hover:text-black"
+          className="absolute left-2 bottom-10 z-20 rounded-full border border-cyan-400/40 bg-black/80 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-200 hover:bg-cyan-500 hover:text-black"
         >
           Plan
         </button>
@@ -427,6 +430,14 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       progress: 8,
     }));
     setUploadingTiles((prev) => [...prev, ...started]);
+    void Promise.all(
+      selected.map(async (file, i) => {
+        const tile = started[i];
+        const isHdr = await probeHdrFromBlob(file);
+        if (!isHdr) return;
+        setUploadingTiles((prev) => prev.map((item) => (item.id === tile.id ? { ...item, isHdr: true } : item)));
+      }),
+    );
     try {
       const newUrls: string[] = [];
       for (let i = 0; i < selected.length; i++) {
@@ -441,6 +452,17 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           });
           if (d.url) {
             newUrls.push(d.url);
+            if (d.isHdr) {
+              setImageMeta((prev) => ({
+                ...prev,
+                [d.url as string]: {
+                  isHdr: true,
+                  sdrUrl: d.url as string,
+                  masterUrl: null,
+                  hdrDisplayUrl: d.url as string,
+                },
+              }));
+            }
           }
         } catch (err) {
           setUploadingTiles((prev) =>
@@ -1261,6 +1283,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                 {uploadingTiles.map((tile) => (
                   <div key={tile.id} className="relative w-28 h-28 md:w-36 md:h-36 overflow-hidden rounded-2xl border-2 border-emerald-500/40 bg-[#0a0a0a]">
                     <img src={tile.previewUrl} alt="" className="h-full w-full object-cover opacity-40" />
+                    {tile.isHdr ? <OfferHdrBadge compact /> : null}
                     <div className="absolute inset-0 pointer-events-none flex items-end">
                       <div className="w-full bg-emerald-500/75 transition-all duration-200" style={{ height: `${Math.max(8, tile.progress)}%` }} />
                     </div>

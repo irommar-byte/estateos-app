@@ -30,6 +30,10 @@ async function main() {
     .toBuffer();
   const wideResult = await detectHdrImage(widePng, 'image/png');
   console.log('Rec2020 PNG isHdr:', wideResult.isHdr, 'signals:', wideResult.signals.join(', '));
+  if (wideResult.isHdr) {
+    console.error('FAIL: Rec.2020 / Display P3 without gain map must not be HDR');
+    process.exit(1);
+  }
 
   const sdrOut = await generateSdrWebp({ buffer: widePng, tileWatermark: false, maxEdge: 128 });
   if (!sdrOut.buffer.length) {
