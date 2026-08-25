@@ -1,6 +1,6 @@
+import path from 'path';
 import { NextResponse } from 'next/server';
 import { getWebFormData } from '@/lib/requestFormData';
-import path from 'path';
 import {
   MAX_OFFER_FILE_BYTES,
   MAX_OFFER_MEDIA_FOLDER_BYTES,
@@ -275,6 +275,8 @@ export async function POST(req: Request) {
         url: img.url,
         path: img.url,
         backendRegistered: true,
+        isHdr: img.isHdr === true,
+        masterUrl: img.masterUrl || null,
         ...quota,
       });
     } finally {

@@ -1,16 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { OFFER_UPLOAD_BASE_FS, OFFER_UPLOAD_PUBLIC_PREFIX } from '@/lib/upload/offerMediaUpload';
+import { readOfferImageMeta, stemFromPublicUrlForDelete } from '@/lib/upload/offerImageMeta';
 
-const MASTER_SUFFIXES = ['.heic', '.heif', '.jpg', '.jpeg', '.png', '.webp'] as const;
+const MASTER_SUFFIXES = ['.heic', '.heif', '.jpg', '.jpeg', '.png'] as const;
 
 function offerDirFs(offerId: number): string {
   return path.resolve(path.join(OFFER_UPLOAD_BASE_FS, String(offerId)));
-}
-
-function stemFromPublicUrl(publicUrl: string): string {
-  const base = publicUrl.split('/').pop() || '';
-  return base.replace(/\.[^.]+$/, '');
 }
 
 /** Validates public URL belongs to offer and returns safe absolute FS path inside offer folder. */
@@ -31,7 +27,9 @@ export function resolveOfferImageFsPath(offerId: number, publicUrl: string): str
   return abs;
 }
 
-async function safeUnlink(filePath: string): Promise<'deleted' | 'missing'> {
+async function safeUnlink(
+  filePath: string,
+): Promise<'deleted' | 'missing' | 'skipped'> {
   try {
     await fs.unlink(filePath);
     return 'deleted';
@@ -43,7 +41,7 @@ async function safeUnlink(filePath: string): Promise<'deleted' | 'missing'> {
 }
 
 /**
- * Usuwa SDR/WebP, ewentualny HDR master i sidecar JSON dla jednego zdjęcia oferty.
+ * Usuwa SDR/WebP, HDR master i sidecar JSON dla jednego zdjęcia oferty.
  * Bezpieczne gdy pliki już nie istnieją; odrzuca URL spoza folderu oferty.
  */
 export async function deleteOfferImageArtifacts(
@@ -61,17 +59,29 @@ export async function deleteOfferImageArtifacts(
 
   const deleted: string[] = [];
   const missing: string[] = [];
-  const track = (result: 'deleted' | 'missing', p: string) => {
+
+  const track = (result: 'deleted' | 'missing' | 'skipped', p: string) => {
     if (result === 'deleted') deleted.push(p);
-    else missing.push(p);
+    else if (result === 'missing') missing.push(p);
   };
+
+  const meta = await readOfferImageMeta(offerId, publicSdrUrl);
 
   track(await safeUnlink(sdrPath), sdrPath);
 
-  const stem = stemFromPublicUrl(publicSdrUrl);
+  const masterCandidates = new Set<string>();
+  if (meta?.masterUrl) {
+    const masterPath = resolveOfferImageFsPath(offerId, meta.masterUrl);
+    if (masterPath) masterCandidates.add(masterPath);
+  }
+
+  const stem = stemFromPublicUrlForDelete(publicSdrUrl);
   const dir = offerDirFs(offerId);
   for (const ext of MASTER_SUFFIXES) {
-    const masterPath = path.join(dir, `${stem}-master${ext}`);
+    masterCandidates.add(path.join(dir, `${stem}-master${ext}`));
+  }
+
+  for (const masterPath of masterCandidates) {
     if (masterPath === sdrPath) continue;
     if (masterPath !== dir && !masterPath.startsWith(`${dir}${path.sep}`)) continue;
     track(await safeUnlink(masterPath), masterPath);
@@ -91,10 +101,10 @@ export async function deleteRemovedOfferImages(
   previousUrls: string[],
   nextUrls: string[],
 ): Promise<void> {
-  const keep = new Set(nextUrls.map((u) => String(u).trim()).filter(Boolean));
+  const next = new Set(nextUrls.map((u) => String(u).trim()).filter(Boolean));
   for (const url of previousUrls) {
     const trimmed = String(url).trim();
-    if (!trimmed || keep.has(trimmed)) continue;
+    if (!trimmed || next.has(trimmed)) continue;
     try {
       await deleteOfferImageArtifacts(offerId, trimmed);
     } catch {
