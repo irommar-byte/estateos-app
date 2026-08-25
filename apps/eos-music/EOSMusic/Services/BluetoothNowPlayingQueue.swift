@@ -10,6 +10,8 @@ import Foundation
 ///    i/lub czyta wyłącznie pierwszy element.
 /// 2. Wstawienie kontenera playlisty do `nowPlayingIdentifiers`.
 /// 3. `beginUpdates` / zerowanie tablicy przy każdej zmianie utworu.
+/// 4. Zagnieżdżenie utworów pod folderem — zegary NBT czytają **korzeń** drzewa.
+///    1 kontener w root = next/prev wokół tytułu. Apple Music / HDD = płaska lista utworów.
 enum BluetoothNowPlayingQueue {
     static let maxIdentifiers = 120
     static let defaultMaxBrowseItems = 100
@@ -72,5 +74,17 @@ enum BluetoothNowPlayingQueue {
 
     static func identifiersChanged(previous: [String], next: [String]) -> Bool {
         previous != next
+    }
+
+    /// Korzeń drzewa browse dla aktywnej kolejki: zawsze płaska lista utworów.
+    /// Nested folder w root zostawia na NBT tylko next/prev (jak radio Bluetooth).
+    static func activeQueueRootChildCount(trackCount: Int, maxItems: Int) -> Int {
+        childCount(
+            requested: trackCount,
+            isActiveQueueTracks: true,
+            limitsEnforced: true,
+            enforcedCount: 1,
+            maxItems: maxItems
+        )
     }
 }

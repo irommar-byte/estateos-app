@@ -133,7 +133,7 @@
 		<string>audio</string>
 	</array>
 	<key>UIBrowsableContentSupportsSectionedBrowsing</key>
-	<true/>
+	<false/>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>

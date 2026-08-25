@@ -61,4 +61,14 @@ final class BluetoothNowPlayingQueueTests: XCTestCase {
         XCTAssertFalse(BluetoothNowPlayingQueue.identifiersChanged(previous: a, next: a))
         XCTAssertTrue(BluetoothNowPlayingQueue.identifiersChanged(previous: a, next: ["eos-q-0"]))
     }
+
+    func testActiveQueueRootShowsAllTracksDespiteNBTCountOfOne() {
+        let count = BluetoothNowPlayingQueue.activeQueueRootChildCount(trackCount: 18, maxItems: 100)
+        XCTAssertEqual(count, 18)
+    }
+
+    func testActiveQueueRootRespectsHardCap() {
+        let count = BluetoothNowPlayingQueue.activeQueueRootChildCount(trackCount: 200, maxItems: 100)
+        XCTAssertEqual(count, 100)
+    }
 }
