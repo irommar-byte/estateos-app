@@ -2382,7 +2382,7 @@ export default function EditOfferScreen({ route }: any) {
           )}
 
           {/* ====== GALERIA ZDJĘĆ ====== */}
-          <View style={styles.sectionHeaderContainer}>
+          <View style={[styles.sectionHeaderContainer, { alignItems: 'center' }]}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sectionTitle, styles.sectionTitleInHeader]}>
                 {t('offer.edit.gallery.sectionTitle')}
@@ -2422,26 +2422,6 @@ export default function EditOfferScreen({ route }: any) {
               isDark={isDark}
             />
           </View>
-
-          <Pressable
-            onPress={replaceGalleryFromScratch}
-            disabled={mediaBusy || purgingGallery}
-            style={[
-              styles.replaceGalleryBtn,
-              {
-                borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFF',
-                opacity: mediaBusy || purgingGallery ? 0.55 : 1,
-              },
-            ]}
-          >
-            {purgingGallery ? (
-              <ActivityIndicator color="#EF4444" />
-            ) : (
-              <Ionicons name="refresh" size={16} color="#EF4444" />
-            )}
-            <Text style={styles.replaceGalleryText}>{t('offer.edit.gallery.replace')}</Text>
-          </Pressable>
 
           {/* Animowana wskazówka — fade-out po pierwszym układaniu */}
           {!galleryHintDismissed && images.length >= 2 && (
@@ -2525,22 +2505,6 @@ export default function EditOfferScreen({ route }: any) {
           <Text style={styles.sectionFooter}>
             {t('offer.edit.gallery.footer')}
           </Text>
-
-          <View style={[styles.premiumGroup, { backgroundColor: cardBg, marginTop: 8 }]}>
-            <View style={styles.inputRowPremium}>
-              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.gallery.videoUrl')}</Text>
-              <TextInput
-                style={[styles.inputRightPremium, { color: txtColor, flex: 1 }]}
-                value={videoUrl}
-                onChangeText={setVideoUrl}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                placeholder="https://"
-                placeholderTextColor={subColor}
-              />
-            </View>
-          </View>
 
           <View style={styles.sectionHeaderContainer}>
             <Text style={[styles.sectionTitle, styles.sectionTitleInHeader]}>
@@ -4422,23 +4386,6 @@ const styles = StyleSheet.create({
   capacityValue: { fontSize: 12, fontWeight: '700' },
   capacityTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
   capacityFill: { height: '100%', borderRadius: 3 },
-  replaceGalleryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 4,
-    marginBottom: 8,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  replaceGalleryText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#EF4444',
-    letterSpacing: 0.2,
-  },
   planImageBtn: {
     position: 'absolute',
     left: 4,
