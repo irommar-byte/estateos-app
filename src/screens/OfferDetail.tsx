@@ -85,6 +85,7 @@ import ProfileReputationBlock from '../components/ProfileReputationBlock';
 import ProfileWriteMessageButton from '../components/messaging/ProfileWriteMessageButton';
 import { openDirectContactChat } from '../utils/openDirectContact';
 import { API_URL } from '../config/network';
+import { preferHdrDisplayUri, type OfferHdrMetaEntry } from '../utils/offerHdrDisplay';
 import { findWebOfferById } from '../utils/webOffersFallback';
 import { useMoneyContext } from '../money/useMoneyContext';
 import {
@@ -478,12 +479,34 @@ export default function OfferDetail({ route, navigation }: any) {
       });
   }, [offer?.id, isOwner, token, isSamplePreview]);
 
+  useEffect(() => {
+    const offerIdNum = Number(offer?.id || 0);
+    if (!Number.isFinite(offerIdNum) || offerIdNum <= 0) {
+      setOfferImageHdrMeta({});
+      return;
+    }
+    let cancelled = false;
+    void fetch(`${API_URL}/api/public/offers/${offerIdNum}/images-meta`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled) return;
+        setOfferImageHdrMeta((json?.images || {}) as Record<string, OfferHdrMetaEntry>);
+      })
+      .catch(() => {
+        if (!cancelled) setOfferImageHdrMeta({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.id]);
+
   // --- STAN GALERII PEŁNOEKRANOWEJ ---
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
   const [galleryCurrentIndex, setGalleryCurrentIndex] = useState(0);
   const [galleryPreviewIndex, setGalleryPreviewIndex] = useState(0);
   const [galleryQueueNonce, setGalleryQueueNonce] = useState(0);
+  const [offerImageHdrMeta, setOfferImageHdrMeta] = useState<Record<string, OfferHdrMetaEntry>>({});
   const [isLocationPreviewOpen, setIsLocationPreviewOpen] = useState(false);
   const [dealId, setDealId] = useState<number | null>(null);
   const [isBidModalOpen, setIsBidModalOpen] = useState(false);
@@ -607,14 +630,18 @@ export default function OfferDetail({ route, navigation }: any) {
   const animatedHeartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
   const handleEdit = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('EditOffer', { offerId: offer.id }); };
 
-  let realImages: string[] = [];
-  if (offer?.images) {
+  const realImages = useMemo(() => {
+    if (!offer?.images) return [] as string[];
     try {
       const parsedImages = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
-      realImages = parsedImages.map((img: string) => img.startsWith('/uploads') ? `${API_URL}${img}` : img);
-    } catch (e) {}
-  }
-  const imagesToShow = (realImages && realImages.length > 0) ? realImages : ['https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=1200&auto=format&fit=crop'];
+      return (Array.isArray(parsedImages) ? parsedImages : []).map((img: string) =>
+        preferHdrDisplayUri(String(img), offerImageHdrMeta),
+      );
+    } catch {
+      return [] as string[];
+    }
+  }, [offer?.images, offerImageHdrMeta]);
+  const imagesToShow = realImages.length > 0 ? realImages : ['https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=1200&auto=format&fit=crop'];
   const lightboxImages = useMemo(() => imagesToShow, [imagesToShow]);
 
   const listingPrice = useMemo(() => resolveOfferListingPrice(offer, rate), [offer, rate]);

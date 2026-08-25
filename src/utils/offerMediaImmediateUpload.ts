@@ -1,11 +1,11 @@
 import { Platform } from 'react-native';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { API_URL } from '../config/network';
 import {
   OFFER_MEDIA_UPLOAD_CAP_BYTES,
   OFFER_MEDIA_UPLOAD_CAP_MB,
   estimateBytesForDraftImage,
 } from './offerMediaCapacity';
+import { offerPhotoUploadParts } from './offerPhotoUpload';
 
 export type OfferMediaUsage = {
   usedBytes: number;
@@ -41,22 +41,16 @@ function parseUploadErrorPayload(text: string): string {
   return raw.length > 280 ? `${raw.slice(0, 280)}…` : raw;
 }
 
-async function prepareJpegForUpload(localUri: string): Promise<{ uri: string; filename: string; mime: string }> {
-  let uri = localUri;
-  let filename = localUri.split('/').pop() || `image_${Date.now()}.jpg`;
-  const lower = localUri.toLowerCase();
-  const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif');
-  if (isHeic) {
-    const converted = await ImageManipulator.manipulateAsync(localUri, [], {
-      format: ImageManipulator.SaveFormat.JPEG,
-      compress: 0.88,
-    });
-    uri = converted.uri;
-    filename = filename.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
-  } else if (!filename.match(/\.(jpg|jpeg|png|webp)$/i)) {
-    filename = `${filename}.jpg`;
-  }
-  return { uri, filename, mime: 'image/jpeg' };
+function prepareOriginalForUpload(params: {
+  localUri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+}): { uri: string; filename: string; mime: string } {
+  return offerPhotoUploadParts({
+    uri: params.localUri,
+    mimeType: params.mimeType,
+    fileName: params.fileName,
+  });
 }
 
 /**
@@ -67,12 +61,14 @@ export function uploadOfferImageImmediate(options: {
   offerId: number;
   token: string;
   localUri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
   onProgress?: (percent: number) => void;
 }): Promise<ImmediateUploadResult> {
-  const { offerId, token, localUri, onProgress } = options;
+  const { offerId, token, localUri, mimeType, fileName, onProgress } = options;
 
   return (async () => {
-    const prepared = await prepareJpegForUpload(localUri);
+    const prepared = prepareOriginalForUpload({ localUri, mimeType, fileName });
     const localBytes = await estimateBytesForDraftImage(prepared.uri, null);
 
     return await new Promise<ImmediateUploadResult>((resolve, reject) => {

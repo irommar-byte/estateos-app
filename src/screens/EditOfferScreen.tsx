@@ -107,6 +107,7 @@ import {
   uploadOfferImageImmediate,
   type OfferMediaUsage,
 } from '../utils/offerMediaImmediateUpload';
+import { OFFER_PHOTO_LIBRARY_OPTIONS, offerPhotoUploadParts } from '../utils/offerPhotoUpload';
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = OFFER_MEDIA_MAX_IMAGES;
@@ -1019,9 +1020,8 @@ export default function EditOfferScreen({ route }: any) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      ...OFFER_PHOTO_LIBRARY_OPTIONS,
       allowsMultipleSelection: true,
-      quality: 0.8,
       selectionLimit: Math.max(1, MAX_IMAGES - currentCount),
     });
     if (result.canceled || !result.assets?.length) return;
@@ -1081,6 +1081,8 @@ export default function EditOfferScreen({ route }: any) {
             offerId: Number(offerId),
             token: token.trim(),
             localUri: asset.uri,
+            mimeType: asset.mimeType,
+            fileName: asset.fileName,
             onProgress: (pct) => {
               setUploadProgress((prev) => ({ ...prev, [uploadKey]: pct }));
             },
@@ -1760,26 +1762,10 @@ export default function EditOfferScreen({ route }: any) {
 
       for (let i = 0; i < localImages.length; i += 1) {
         const img = localImages[i];
-        let localUri = img.uri;
-        let filename = localUri.split('/').pop() || `image_${Date.now()}_${i}.jpg`;
-        const mimeType = 'image/jpeg';
-
-        const lower = localUri.toLowerCase();
-        const isHeicLike = lower.endsWith('.heic') || lower.endsWith('.heif');
-        if (isHeicLike) {
-          const converted = await ImageManipulator.manipulateAsync(localUri, [], {
-            format: ImageManipulator.SaveFormat.JPEG,
-            compress: 0.88,
-          });
-          localUri = converted.uri;
-          filename = filename.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
-        } else if (!filename.match(/\.(jpg|jpeg|png|webp)$/i)) {
-          filename = `${filename}.jpg`;
-        }
-
+        const prepared = offerPhotoUploadParts({ uri: img.uri });
         const formData = new FormData();
         formData.append('offerId', String(offerId));
-        formData.append('file', { uri: localUri, name: filename, type: mimeType } as any);
+        formData.append('file', { uri: prepared.uri, name: prepared.filename, type: prepared.mime } as any);
         const uploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },

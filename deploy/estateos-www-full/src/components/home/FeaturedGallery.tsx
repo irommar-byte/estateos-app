@@ -13,6 +13,8 @@ import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import GoldFeaturedFrame from "@/components/ui/GoldFeaturedFrame";
 import { fetchHomeCatalogJson } from "@/lib/homeCatalogCache";
+import { OfferAdaptiveImage } from "@/components/offer/OfferAdaptiveImage";
+import { useOfferImageMeta } from "@/hooks/useOfferImageMeta";
 
 type Offer = {
   id: number;
@@ -59,6 +61,21 @@ function firstImage(offer: Offer, index: number) {
     }
   }
   return FALLBACK_IMAGE;
+}
+
+function FeaturedOfferCover({ offer, index }: { offer: Offer; index: number }) {
+  const { meta } = useOfferImageMeta(offer.id);
+  const src = firstImage(offer, index);
+  return (
+    <OfferAdaptiveImage
+      sdrSrc={src}
+      meta={meta[src] || null}
+      className="absolute inset-0 h-full w-full"
+      imgClassName="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+      alt=""
+      loading="lazy"
+    />
+  );
 }
 
 function parsePrice(price: Offer["price"]) {
@@ -174,14 +191,7 @@ export default function FeaturedGallery() {
                   href={`/oferta/${offer.id}`}
                   className="eos-media-chrome eos-lux-media-card group relative block aspect-[4/5] overflow-hidden bg-[var(--eos-card)]"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={firstImage(offer, index)}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                  />
+                  <FeaturedOfferCover offer={offer} index={index} />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/55 to-black/15" />
                   <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
 

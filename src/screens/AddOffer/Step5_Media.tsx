@@ -24,6 +24,7 @@ import {
   canAcceptDraftImage,
   formatMediaCapacityAlert,
 } from '../../utils/offerMediaCapacity';
+import { OFFER_PHOTO_LIBRARY_OPTIONS } from '../../utils/offerPhotoUpload';
 import { t, useI18n } from '../../i18n';
 import PropertyRoomScanWorkspace from '../../components/roomScan/PropertyRoomScanWorkspace';
 import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
@@ -365,10 +366,9 @@ export default function Step5_Media({ theme }: { theme: any }) {
 
       const slotsLeft = Math.max(1, MAX_IMAGES - draftImages.length);
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        ...OFFER_PHOTO_LIBRARY_OPTIONS,
         allowsMultipleSelection: true,
         selectionLimit: slotsLeft,
-        quality: 0.8,
       });
       if (result.canceled || !result.assets?.length) return;
 

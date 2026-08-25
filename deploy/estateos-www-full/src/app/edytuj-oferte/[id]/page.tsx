@@ -34,6 +34,8 @@ import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/o
 import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
 import AddOfferDocVerificationPanel from '@/components/offer/AddOfferDocVerificationPanel';
+import { OfferAdaptiveImage } from '@/components/offer/OfferAdaptiveImage';
+import type { OfferImageMetaPublic } from '@/lib/upload/offerImageMeta';
 import { HEATING_DICT_KEYS } from '@/i18n/addOfferDictionary';
 import { isValidLandRegistryNumber, normalizeLandRegistryInput } from '@/lib/landRegistryInput';
 import dynamic from 'next/dynamic';
@@ -168,21 +170,29 @@ const SortablePhoto = ({
   onRemove,
   onMarkAsPlan,
   isMain,
-  isHdr,
+  meta,
   progress,
 }: {
   url: string;
   onRemove: (url: string) => void;
   onMarkAsPlan?: (url: string) => void;
   isMain: boolean;
-  isHdr?: boolean;
+  meta?: OfferImageMetaPublic | null;
   progress?: number;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: url });
   const uploading = typeof progress === 'number' && progress < 100;
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 group transition-all ${isMain ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]' : 'border-[#222] bg-[#0a0a0a] hover:border-emerald-500/50'}`}>
-      <img src={url} className={`w-full h-full object-cover saturate-[1.2] transition-all duration-700 ${uploading ? 'opacity-50' : isMain ? 'opacity-100 scale-110' : 'opacity-60 group-hover:opacity-100 group-hover:scale-105'}`} alt="Foto" />
+      <OfferAdaptiveImage
+        sdrSrc={url}
+        meta={meta || null}
+        showHdrBadge
+        badgeCompact
+        className="h-full w-full"
+        imgClassName={`h-full w-full object-cover transition-transform duration-700 ${isMain ? 'scale-110' : 'group-hover:scale-105'}`}
+        alt="Foto"
+      />
       {uploading ? (
         <>
           <div className="absolute inset-0 z-20 pointer-events-none flex items-end">
@@ -193,11 +203,6 @@ const SortablePhoto = ({
           </div>
           <span className="absolute inset-0 z-30 flex items-center justify-center text-xs font-black text-white drop-shadow-md pointer-events-none">{progress}%</span>
         </>
-      ) : null}
-      {isHdr ? (
-        <span className="absolute left-2 top-2 z-20 rounded-md border border-amber-200/30 bg-black/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-100">
-          HDR
-        </span>
       ) : null}
       <div
         {...attributes}
@@ -264,7 +269,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
   const [intelPatches, setIntelPatches] = useState<IntelligenceAmenityPatchMap>({});
   const [imagesList, setImagesList] = useState<string[]>([]);
-  const [hdrImages, setHdrImages] = useState<Record<string, boolean>>({});
+  const [imageMeta, setImageMeta] = useState<Record<string, OfferImageMetaPublic>>({});
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
   const [floorPlanExtraUrls, setFloorPlanExtraUrls] = useState<string[]>([]);
   const [floorPlanUploading, setFloorPlanUploading] = useState(false);
@@ -278,6 +283,18 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [authError, setAuthError] = useState("");
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
+
+  const refreshImageMeta = async (id = offerId) => {
+    if (!id) return;
+    try {
+      const metaRes = await fetch(`/api/offers/${id}/images-meta`, { credentials: 'include' });
+      if (!metaRes.ok) return;
+      const metaJson = await metaRes.json();
+      setImageMeta((metaJson.images || {}) as Record<string, OfferImageMetaPublic>);
+    } catch {
+      /* brak metadanych HDR */
+    }
+  };
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
 
@@ -378,11 +395,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           const metaRes = await fetch(`/api/offers/${offerId}/images-meta`, { credentials: 'include' });
           if (metaRes.ok) {
             const metaJson = await metaRes.json();
-            const map: Record<string, boolean> = {};
-            for (const [url, entry] of Object.entries(metaJson.images || {})) {
-              if ((entry as { isHdr?: boolean }).isHdr) map[url] = true;
-            }
-            setHdrImages(map);
+            setImageMeta((metaJson.images || {}) as Record<string, OfferImageMetaPublic>);
           }
         } catch {
           /* brak metadanych HDR */
@@ -428,9 +441,6 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           });
           if (d.url) {
             newUrls.push(d.url);
-            if (d.isHdr) {
-              setHdrImages((prev) => ({ ...prev, [d.url as string]: true }));
-            }
           }
         } catch (err) {
           setUploadingTiles((prev) =>
@@ -452,6 +462,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         updateData({ images: merged.join(','), imageUrl: merged[0] });
       }
       await refreshQuota();
+      await refreshImageMeta();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Upload zdjęć nie powiódł się.');
@@ -466,7 +477,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     const n = imagesList.filter((u) => u !== url);
     setImagesList(n);
     updateData({ images: n.join(','), imageUrl: n[0] || '' });
-    setHdrImages((prev) => {
+    setImageMeta((prev) => {
       const next = { ...prev };
       delete next[url];
       return next;
@@ -499,7 +510,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Nie udało się wyczyścić galerii.');
       setImagesList([]);
-      setHdrImages({});
+      setImageMeta({});
       setUploadingTiles([]);
       updateData({ images: '', imageUrl: '' });
       await refreshQuota();
@@ -1244,7 +1255,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                     onRemove={handleRemoveImage}
                     onMarkAsPlan={handleMarkAsPlan}
                     isMain={idx === 0}
-                    isHdr={Boolean(hdrImages[url])}
+                    meta={imageMeta[url] || null}
                   />
                 ))}
                 {uploadingTiles.map((tile) => (

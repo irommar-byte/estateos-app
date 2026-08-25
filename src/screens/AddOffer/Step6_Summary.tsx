@@ -71,6 +71,8 @@ import {
   validateAgentCommissionPercent,
 } from '../../lib/agentCommission';
 import { API_URL } from '../../config/network';
+import { offerPhotoUploadParts } from '../../utils/offerPhotoUpload';
+import { offerPhotoUploadParts } from '../../utils/offerPhotoUpload';
 import { parseRentAdditionalFeeForApi } from '../../lib/rentAdditionalFees';
 import { formatOfferConditionLabel } from '../../utils/offerFieldLabels';
 
@@ -756,24 +758,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       // 2. WGRYWANIE ZDJĘĆ
       if (createdOfferId && draft.images && draft.images.length > 0) {
         for (let i = 0; i < draft.images.length; i++) {
-          let localUri = draft.images[i];
-          let filename = localUri.split('/').pop() || `image_${i}.jpg`;
-          let type = 'image/jpeg';
-
-          if (localUri.toLowerCase().endsWith('.heic') || localUri.toLowerCase().endsWith('.heif')) {
-            setUploadProgressText(t('addOffer.step6.publish.convertingPhoto', { current: i + 1 }));
-            const manipResult = await ImageManipulator.manipulateAsync(
-              localUri, [], { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
-            );
-            localUri = manipResult.uri;
-            filename = filename.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
-          }
-
+          const prepared = offerPhotoUploadParts({ uri: draft.images[i] });
           setUploadProgressText(t('addOffer.step6.publish.uploadingPhoto', { current: i + 1, total: draft.images.length }));
 
           const formData = new FormData();
           formData.append('offerId', String(createdOfferId));
-          formData.append('file', { uri: localUri, name: filename, type } as any);
+          formData.append('file', { uri: prepared.uri, name: prepared.filename, type: prepared.mime } as any);
 
           const uploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
             method: 'POST',
