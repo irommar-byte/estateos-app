@@ -211,3 +211,38 @@ export async function deleteOfferMediaImmediate(options: {
     maxImages: Number(json.maxImages) || 20,
   };
 }
+
+export async function purgeOfferGalleryImmediate(options: {
+  offerId: number;
+  token: string;
+}): Promise<OfferMediaUsage> {
+  const res = await fetch(`${API_URL}/api/offers/${options.offerId}/gallery`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${options.token}`,
+    },
+    body: JSON.stringify({ confirm: true }),
+  });
+  const text = await res.text().catch(() => '');
+  let json: any = {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = { _raw: text };
+  }
+  if (!res.ok || json?.success === false) {
+    throw new Error(parseUploadErrorPayload(text || JSON.stringify(json)));
+  }
+  return {
+    usedBytes: Number(json.usedBytes) || 0,
+    freeBytes: Number(json.remainingBytes ?? json.freeBytes) || 0,
+    limitBytes: Number(json.maxBytes ?? json.limitBytes) || OFFER_MEDIA_UPLOAD_CAP_BYTES,
+    usedMb: Number(((Number(json.usedBytes) || 0) / (1024 * 1024)).toFixed(2)),
+    freeMb: Number(((Number(json.remainingBytes ?? json.freeBytes) || 0) / (1024 * 1024)).toFixed(2)),
+    limitMb: Math.round((Number(json.maxBytes ?? json.limitBytes) || OFFER_MEDIA_UPLOAD_CAP_BYTES) / (1024 * 1024)),
+    imageCount: Number(json.usedImages ?? json.imageCount) || 0,
+    maxImages: Number(json.maxImages) || 20,
+  };
+}

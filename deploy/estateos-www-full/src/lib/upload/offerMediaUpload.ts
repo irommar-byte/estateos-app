@@ -1,6 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { detectHdrImage, masterExtensionForMime, masterMimeFromExtension } from '@/lib/upload/hdrDetection';
+import { generateSdrWebp } from '@/lib/upload/hdrSdrPipeline';
+import {
+  hdrMetaFromDetection,
+  saveOfferImageMeta,
+} from '@/lib/upload/offerImageMeta';
 import { prisma } from '@/lib/prisma';
 
 export const OFFER_UPLOAD_BASE_FS =
@@ -220,7 +226,7 @@ export async function saveOfferGalleryOrFloorplan(params: {
   /** Domyślnie true; import OtoDom wyłącza kafelkowy znak wodny EstateOS. */
   tileWatermark?: boolean;
 }): Promise<
-  | { ok: true; url: string }
+  | { ok: true; url: string; isHdr?: boolean; masterUrl?: string | null }
   | { ok: false; status: number; error: string }
 > {
   const mime = normalizeMime(
@@ -228,33 +234,56 @@ export async function saveOfferGalleryOrFloorplan(params: {
     params.originalFileName || ''
   );
 
+  let inputBuffer = params.fileBuffer;
+  let inputMime = mime;
+
   if (!ALLOWED_MIME_TYPES.includes(mime as (typeof ALLOWED_MIME_TYPES)[number])) {
     if (mime === 'image/heic' || mime === 'image/heif') {
+      const hdrProbe = await detectHdrImage(params.fileBuffer, mime);
       const converted = await tryConvertHeifToJpeg(params.fileBuffer);
-      if (!converted) {
+      if (!converted && !hdrProbe.isHdr) {
         return {
           ok: false,
           status: 415,
           error: 'Format HEIC/HEIF nie jest obsługiwany na tym serwerze.',
         };
       }
-      return saveOfferGalleryOrFloorplan({
-        ...params,
-        fileBuffer: converted,
-        mimeTypeDeclared: 'image/jpeg',
-        byteLengthInput: converted.length,
-      });
+      if (hdrProbe.isHdr) {
+        inputBuffer = params.fileBuffer;
+        inputMime = mime;
+      } else if (converted) {
+        return saveOfferGalleryOrFloorplan({
+          ...params,
+          fileBuffer: converted,
+          mimeTypeDeclared: 'image/jpeg',
+          byteLengthInput: converted.length,
+        });
+      } else {
+        return {
+          ok: false,
+          status: 415,
+          error: 'Format HEIC/HEIF nie jest obsługiwany na tym serwerze.',
+        };
+      }
+    } else {
+      return { ok: false, status: 415, error: 'Niedozwolony format pliku.' };
     }
-    return { ok: false, status: 415, error: 'Niedozwolony format pliku.' };
   }
 
   if (params.byteLengthInput > MAX_OFFER_FILE_BYTES) {
     return { ok: false, status: 413, error: 'Plik jest za duży.' };
   }
 
-  if (!isValidImageMagic(params.fileBuffer, mime)) {
-    return { ok: false, status: 400, error: 'Plik uszkodzony lub nie jest obrazem.' };
+  if (!isValidImageMagic(inputBuffer, inputMime === 'image/heif' ? 'image/heic' : inputMime)) {
+    const sniffed = sniffImageMimeFromMagic(inputBuffer);
+    if (!sniffed || !ALLOWED_MIME_TYPES.includes(sniffed as (typeof ALLOWED_MIME_TYPES)[number])) {
+      if (sniffed !== 'image/heic') {
+        return { ok: false, status: 400, error: 'Plik uszkodzony lub nie jest obrazem.' };
+      }
+    }
   }
+
+  const hdrDetection = await detectHdrImage(inputBuffer, inputMime);
 
   const offerCheck = await prisma.offer.findUnique({
     where: { id: params.offerId },
@@ -271,12 +300,16 @@ export async function saveOfferGalleryOrFloorplan(params: {
   });
   if (!offer) return { ok: false, status: 404, error: 'Oferta usunięta.' };
 
-  const fallbackExt = MIME_TO_EXT[mime] || '.jpg';
-  const { buffer: finalBuffer, ext: finalExt } = await processOfferImageWebp(
-    params.fileBuffer,
-    fallbackExt,
-    { tileWatermark: params.tileWatermark !== false },
-  );
+  const fallbackExt =
+    inputMime === 'image/heic' || inputMime === 'image/heif'
+      ? '.heic'
+      : MIME_TO_EXT[inputMime] || MIME_TO_EXT[mime] || '.jpg';
+
+  let pipelineBuffer = inputBuffer;
+  if (inputMime === 'image/heic' || inputMime === 'image/heif') {
+    const converted = await tryConvertHeifToJpeg(inputBuffer);
+    if (converted) pipelineBuffer = converted;
+  }
 
   const offerDir = path.join(OFFER_UPLOAD_BASE_FS, String(params.offerId));
   try {
@@ -285,8 +318,28 @@ export async function saveOfferGalleryOrFloorplan(params: {
     await fs.mkdir(offerDir, { recursive: true });
   }
 
-  const currentSize = await getOfferFolderSizeBytes(offerDir);
-  if (currentSize + finalBuffer.length > MAX_OFFER_MEDIA_FOLDER_BYTES) {
+  let masterUrl: string | null = null;
+  const fileStem = crypto.randomUUID();
+
+  const { buffer: finalBuffer, ext: finalExt } = hdrDetection.isHdr
+    ? await generateSdrWebp({
+        buffer: pipelineBuffer,
+        tileWatermark: params.tileWatermark !== false,
+      })
+    : await processOfferImageWebp(pipelineBuffer, fallbackExt === '.heic' ? '.jpg' : fallbackExt, {
+        tileWatermark: params.tileWatermark !== false,
+      });
+
+  const { getOfferPhotoQuotaBytes, pruneUnreferencedOfferPhotos } = await import(
+    '@/lib/upload/offerGalleryMaintenance'
+  );
+  let currentSize = await getOfferPhotoQuotaBytes(params.offerId);
+  const masterBytes = hdrDetection.isHdr ? inputBuffer.length : 0;
+  if (currentSize + finalBuffer.length + masterBytes > MAX_OFFER_MEDIA_FOLDER_BYTES) {
+    await pruneUnreferencedOfferPhotos(params.offerId);
+    currentSize = await getOfferPhotoQuotaBytes(params.offerId);
+  }
+  if (currentSize + finalBuffer.length + masterBytes > MAX_OFFER_MEDIA_FOLDER_BYTES) {
     return {
       ok: false,
       status: 400,
@@ -302,18 +355,38 @@ export async function saveOfferGalleryOrFloorplan(params: {
     existingImages = [];
   }
 
-  if (
-    !params.isFloorPlan &&
-    existingImages.length >= MAX_IMAGES_PER_OFFER
-  ) {
+  if (!params.isFloorPlan && existingImages.length >= MAX_IMAGES_PER_OFFER) {
     return { ok: false, status: 400, error: 'Osiągnięto limit zdjęć.' };
   }
 
-  const fileName = crypto.randomUUID() + finalExt;
+  if (hdrDetection.isHdr) {
+    const masterExt = masterExtensionForMime(inputMime, fallbackExt);
+    const masterName = `${fileStem}-master${masterExt}`;
+    const masterPath = path.join(offerDir, masterName);
+    await fs.writeFile(masterPath, inputBuffer);
+    masterUrl = `${OFFER_UPLOAD_PUBLIC_PREFIX}/${params.offerId}/${masterName}`;
+  }
+
+  const fileName = `${fileStem}${finalExt}`;
   const filePath = path.join(offerDir, fileName);
   await fs.writeFile(filePath, finalBuffer);
 
   const publicUrl = `${OFFER_UPLOAD_PUBLIC_PREFIX}/${params.offerId}/${fileName}`;
+
+  if (hdrDetection.isHdr || masterUrl) {
+    const masterExt = masterUrl ? masterUrl.slice(masterUrl.lastIndexOf('.')) : '';
+    await saveOfferImageMeta(
+      params.offerId,
+      publicUrl,
+      hdrMetaFromDetection(
+        {
+          ...hdrDetection,
+          masterMime: hdrDetection.masterMime || masterMimeFromExtension(masterExt),
+        },
+        masterUrl,
+      ),
+    );
+  }
 
   if (params.isFloorPlan) {
     await prisma.offer.update({
@@ -328,7 +401,7 @@ export async function saveOfferGalleryOrFloorplan(params: {
     });
   }
 
-  return { ok: true, url: publicUrl };
+  return { ok: true, url: publicUrl, isHdr: hdrDetection.isHdr, masterUrl };
 }
 
 const FLOOR_PLAN_3D_MAX_BYTES = 40 * 1024 * 1024;

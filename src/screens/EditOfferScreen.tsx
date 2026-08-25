@@ -103,6 +103,7 @@ import {
 import {
   deleteOfferMediaImmediate,
   fetchOfferMediaUsage,
+  purgeOfferGalleryImmediate,
   uploadOfferImageImmediate,
   type OfferMediaUsage,
 } from '../utils/offerMediaImmediateUpload';
@@ -366,12 +367,24 @@ function DraggableEditSquare({
         </View>
       ) : null}
       {progress < 100 ? (
-        <View style={styles.uploadOverlay}>
-          <Text style={styles.uploadText}>{Math.max(0, Math.min(99, Math.round(progress)))}%</Text>
-          <View style={styles.miniProgressTrack}>
-            <View style={[styles.miniProgressFill, { width: `${Math.max(0, Math.min(100, progress))}%` }]} />
+        <>
+          <View style={styles.uploadOverlay} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { justifyContent: 'flex-end' }]}>
+            <View
+              style={{
+                width: '100%',
+                height: `${Math.max(8, progress)}%`,
+                backgroundColor: 'rgba(16,185,129,0.82)',
+              }}
+            />
           </View>
-        </View>
+          <View style={styles.uploadProgressHud} pointerEvents="none">
+            <Text style={styles.uploadText}>{Math.max(0, Math.min(99, Math.round(progress)))}%</Text>
+            <View style={styles.miniProgressTrack}>
+              <View style={[styles.miniProgressFill, { width: `${Math.max(0, Math.min(100, progress))}%` }]} />
+            </View>
+          </View>
+        </>
       ) : null}
       <Pressable
         style={styles.deleteImageBtn}
@@ -505,6 +518,9 @@ export default function EditOfferScreen({ route }: any) {
   const [editFxRate, setEditFxRate] = useState(4.32);
   const [editFxDate, setEditFxDate] = useState('');
   const [adminFee, setAdminFee] = useState('');
+  const [deposit, setDeposit] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [purgingGallery, setPurgingGallery] = useState(false);
   /**
    * Procent prowizji agenta (string z TextInput — akceptuje `.` i `,`).
    * '' = brak (kupujący widzi ofertę bez pigułki prowizji).
@@ -739,6 +755,8 @@ export default function EditOfferScreen({ route }: any) {
             isTwoLevel: isTrue(offer.isTwoLevel),
             isFurnished: isTrue(offer.isFurnished),
           });
+          setDeposit(offer.deposit != null && offer.deposit !== '' ? String(Math.round(Number(offer.deposit) || 0)) : '');
+          setVideoUrl(String(offer.videoUrl || ''));
           const patches = offer.intelligenceAmenityPatches && typeof offer.intelligenceAmenityPatches === 'object'
             ? offer.intelligenceAmenityPatches
             : {};
@@ -857,6 +875,8 @@ export default function EditOfferScreen({ route }: any) {
       const currentFeePln = adminFeePlnFromInput(adminFee, priceCurrency, editFxRate) || 0;
       if (originalFeePln !== currentFeePln) diffs.push('adminFee');
     }
+    if (!sameNumber(deposit, originalData.deposit)) diffs.push('deposit');
+    if (!sameText(videoUrl, originalData.videoUrl)) diffs.push('videoUrl');
     // Prowizja — porównujemy SPARSOWANE liczby, żeby '2,5' vs '2.5' vs 2.5 dawały
     // ten sam diff (bez fałszywych „dirty"). null vs null = brak zmian.
     {
@@ -914,6 +934,8 @@ export default function EditOfferScreen({ route }: any) {
     description,
     price,
     adminFee,
+    deposit,
+    videoUrl,
     priceCurrency,
     editFxRate,
     agentCommissionPercent,
@@ -1229,6 +1251,44 @@ export default function EditOfferScreen({ route }: any) {
       .finally(() => setMediaBusy(false));
   };
 
+  const replaceGalleryFromScratch = () => {
+    if (!offerId || !token?.trim() || purgingGallery || mediaBusy) return;
+    Alert.alert(
+      t('offer.edit.gallery.replaceTitle'),
+      t('offer.edit.gallery.replaceConfirm'),
+      [
+        { text: t('offer.edit.alerts.resetCancel'), style: 'cancel' },
+        {
+          text: t('offer.edit.gallery.replaceAction'),
+          style: 'destructive',
+          onPress: async () => {
+            setPurgingGallery(true);
+            setMediaBusy(true);
+            try {
+              const usage = await purgeOfferGalleryImmediate({
+                offerId: Number(offerId),
+                token: token.trim(),
+              });
+              applyMediaUsage(usage);
+              enqueueLayoutSpring();
+              setImages([]);
+              setOriginalImageKeys([]);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (err: any) {
+              Alert.alert(
+                t('offer.edit.gallery.replaceTitle'),
+                String(err?.message || t('offer.edit.gallery.replaceFailed')),
+              );
+            } finally {
+              setPurgingGallery(false);
+              setMediaBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const markImageAsPlan = (index: number) => {
     const source = dragSnapshot ?? images;
     const img = source[index];
@@ -1310,6 +1370,12 @@ export default function EditOfferScreen({ route }: any) {
     const feePln = parseAdminFeePln(originalData.adminFee);
     const feeDisplay = adminFeeInputFromPln(feePln, listingCur, editFxRate);
     setAdminFee(feeDisplay > 0 ? String(feeDisplay) : '');
+    setDeposit(
+      originalData.deposit != null && originalData.deposit !== ''
+        ? String(Math.round(Number(originalData.deposit) || 0))
+        : '',
+    );
+    setVideoUrl(String(originalData.videoUrl || ''));
     {
       const cp = extractAgentCommissionPercent(originalData);
       if (cp === null) {
@@ -1558,6 +1624,13 @@ export default function EditOfferScreen({ route }: any) {
       priceCurrency: priceFields.priceCurrency,
       pricePln: priceFields.pricePln,
       adminFee: adminFeePlnFromInput(adminFee, priceCurrency, fxSnap.rate),
+      deposit:
+        String(originalData?.transactionType || '').toUpperCase() === 'RENT'
+          ? deposit
+            ? Number(String(deposit).replace(/\D/g, ''))
+            : null
+          : originalData?.deposit ?? null,
+      videoUrl: videoUrl.trim() || null,
       condition,
       isExactLocation: isExactLocationBool,
       is_exact_location: isExactLocationBool,
@@ -1892,6 +1965,8 @@ export default function EditOfferScreen({ route }: any) {
         priceAmount: effectivePayload.priceAmount ?? effectivePayload.price,
         priceCurrency: effectivePayload.priceCurrency,
         adminFee: effectivePayload.adminFee,
+        deposit: effectivePayload.deposit,
+        videoUrl: effectivePayload.videoUrl,
         agentCommissionPercent:
           isAgentUser && resolvedCommission !== undefined
             ? resolvedCommission
@@ -2148,6 +2223,7 @@ export default function EditOfferScreen({ route }: any) {
   const freeBytes = mediaUsage?.freeBytes ?? Math.max(0, limitBytes - usedBytes);
   const usedMb = usedBytes / (1024 * 1024);
   const freeMb = freeBytes / (1024 * 1024);
+  const isRentListing = String(originalData?.transactionType || '').toUpperCase() === 'RENT';
   let currentScanMeta: RoomScanDraftAssets['scanMeta'] | null = null;
   try {
     currentScanMeta = floorPlanScanMetaLocal
@@ -2307,12 +2383,26 @@ export default function EditOfferScreen({ route }: any) {
 
           {/* ====== GALERIA ZDJĘĆ ====== */}
           <View style={styles.sectionHeaderContainer}>
-            <Text style={[styles.sectionTitle, styles.sectionTitleInHeader]}>
-              {t('offer.edit.gallery.sectionTitle')}
-            </Text>
-            <Text style={styles.sectionSubtitle}>
-              {t('offer.edit.gallery.counter', { current: images.length, max: MAX_IMAGES })}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sectionTitle, styles.sectionTitleInHeader]}>
+                {t('offer.edit.gallery.sectionTitle')}
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {t('offer.edit.gallery.counter', { current: images.length, max: MAX_IMAGES })}
+              </Text>
+            </View>
+            <Pressable
+              onPress={replaceGalleryFromScratch}
+              disabled={purgingGallery || mediaBusy}
+              style={[styles.galleryReplaceBtn, (purgingGallery || mediaBusy) && { opacity: 0.45 }]}
+            >
+              {purgingGallery ? (
+                <ActivityIndicator size="small" color="#D97706" />
+              ) : (
+                <Ionicons name="refresh" size={14} color="#D97706" />
+              )}
+              <Text style={styles.galleryReplaceText}>{t('offer.edit.gallery.replace')}</Text>
+            </Pressable>
           </View>
 
           <View style={{ marginBottom: 10, gap: 10 }}>
@@ -2332,6 +2422,26 @@ export default function EditOfferScreen({ route }: any) {
               isDark={isDark}
             />
           </View>
+
+          <Pressable
+            onPress={replaceGalleryFromScratch}
+            disabled={mediaBusy || purgingGallery}
+            style={[
+              styles.replaceGalleryBtn,
+              {
+                borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFF',
+                opacity: mediaBusy || purgingGallery ? 0.55 : 1,
+              },
+            ]}
+          >
+            {purgingGallery ? (
+              <ActivityIndicator color="#EF4444" />
+            ) : (
+              <Ionicons name="refresh" size={16} color="#EF4444" />
+            )}
+            <Text style={styles.replaceGalleryText}>{t('offer.edit.gallery.replace')}</Text>
+          </Pressable>
 
           {/* Animowana wskazówka — fade-out po pierwszym układaniu */}
           {!galleryHintDismissed && images.length >= 2 && (
@@ -2397,9 +2507,40 @@ export default function EditOfferScreen({ route }: any) {
               ))}
             </View>
           </View>
+          <View style={[styles.premiumGroup, { backgroundColor: cardBg, marginTop: 10, ...cardShadow }]}>
+            <View style={styles.inputRowPremium}>
+              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.gallery.videoUrl')}</Text>
+              <TextInput
+                style={[styles.inputRightPremium, { color: txtColor, flex: 1 }]}
+                value={videoUrl}
+                onChangeText={setVideoUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder="https://"
+                placeholderTextColor={subColor}
+              />
+            </View>
+          </View>
           <Text style={styles.sectionFooter}>
             {t('offer.edit.gallery.footer')}
           </Text>
+
+          <View style={[styles.premiumGroup, { backgroundColor: cardBg, marginTop: 8 }]}>
+            <View style={styles.inputRowPremium}>
+              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.gallery.videoUrl')}</Text>
+              <TextInput
+                style={[styles.inputRightPremium, { color: txtColor, flex: 1 }]}
+                value={videoUrl}
+                onChangeText={setVideoUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder="https://"
+                placeholderTextColor={subColor}
+              />
+            </View>
+          </View>
 
           <View style={styles.sectionHeaderContainer}>
             <Text style={[styles.sectionTitle, styles.sectionTitleInHeader]}>
@@ -2869,6 +3010,23 @@ export default function EditOfferScreen({ route }: any) {
               />
               <Text style={styles.inputSuffix}>{t('offer.edit.price.adminFeeSuffix', { currency: priceCurrency })}</Text>
             </View>
+            {isRentListing ? (
+              <>
+                <View style={[styles.divider, { backgroundColor: borderColor }]} />
+                <View style={styles.inputRowPremium}>
+                  <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.price.deposit')}</Text>
+                  <TextInput
+                    style={[styles.inputRightPremium, { color: txtColor }]}
+                    value={deposit}
+                    onChangeText={(next) => setDeposit(next.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={subColor}
+                  />
+                  <Text style={styles.inputSuffix}>{priceCurrency}</Text>
+                </View>
+              </>
+            ) : null}
           </View>
           <Text style={styles.sectionFooter}>{t('offer.edit.price.footer')}</Text>
 
@@ -3898,6 +4056,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,149,0,0.18)',
   },
   dirtyResetText: { fontSize: 11.5, fontWeight: '800', color: '#FF9500', letterSpacing: 0.4 },
+  galleryReplaceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '48%',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(217,119,6,0.12)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(217,119,6,0.35)',
+  },
+  galleryReplaceText: {
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#D97706',
+    letterSpacing: 0.2,
+  },
 
   /* ===== GALLERY HINT ===== */
   galleryHint: {
@@ -4222,10 +4399,13 @@ const styles = StyleSheet.create({
   },
   uploadOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.62)',
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    borderRadius: 12,
+  },
+  uploadProgressHud: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 12,
   },
   uploadText: { color: '#FFF', fontSize: 13, fontWeight: '800', marginBottom: 6 },
   miniProgressTrack: {
@@ -4242,6 +4422,23 @@ const styles = StyleSheet.create({
   capacityValue: { fontSize: 12, fontWeight: '700' },
   capacityTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
   capacityFill: { height: '100%', borderRadius: 3 },
+  replaceGalleryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  replaceGalleryText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#EF4444',
+    letterSpacing: 0.2,
+  },
   planImageBtn: {
     position: 'absolute',
     left: 4,

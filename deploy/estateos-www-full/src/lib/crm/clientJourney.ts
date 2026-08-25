@@ -1,3 +1,8 @@
+import {
+  cleanAttachmentOnlyMessage,
+  formatContactAttachmentName,
+} from '@/lib/contactAttachmentShared';
+
 export const CLIENT_PREP_ITEMS = [
   { id: 'photo_ready', label: 'Przygotować mieszkanie do sesji zdjęciowej' },
   { id: 'ownership_deed', label: 'Podstawa nabycia / akt notarialny' },
@@ -180,7 +185,7 @@ export function parseAttachments(raw: unknown): PortalAttachment[] {
       if (!url) return null;
       return {
         url,
-        name: String(row.name || 'załącznik').slice(0, 180),
+        name: formatContactAttachmentName(String(row.name || 'załącznik')).slice(0, 180),
         mimeType: String(row.mimeType || 'application/octet-stream'),
         size: Number(row.size) || 0,
       };
@@ -337,27 +342,27 @@ export function buildJourneyStages(params: {
           },
           {
             id: 'visit',
-            label: 'Pozysk',
+            label: 'Umowa',
             done: params.signed,
-            hint: 'Umowa i ustalenia ze spotkania. Podpisaną kopię dostajesz na e-mail.',
+            hint: 'Umowa pośrednictwa i ustalenia ze spotkania. Podpisaną kopię dostajesz na e-mail.',
           },
           {
             id: 'offer',
-            label: 'Sprzedaż',
+            label: 'Ogłoszenie',
             done: params.hasOffer,
-            hint: 'Ogłoszenie jest aktywne. Widzisz je tutaj i na rynku.',
+            hint: 'Przygotowanie i publikacja ogłoszenia na rynku — to jeszcze nie transakcja sprzedaży.',
           },
           {
             id: 'presentation',
-            label: 'Transakcja',
+            label: 'Prezentacje',
             done: params.hasPresentation && params.presentationConfirmed,
-            hint: 'Termin u notariusza i prezentacje dla kupujących.',
+            hint: 'Pokazywanie nieruchomości kupującym. Termin prezentacji widać poniżej, gdy jest ustalony.',
           },
           {
             id: 'done',
-            label: 'Finalizacja',
+            label: 'Transakcja',
             done: Boolean(params.listingSold),
-            hint: 'Przekazanie lokalu z protokołem zdawczo-odbiorczym i kluczami.',
+            hint: 'Akt notarialny i przekazanie kluczy — dopiero przy finalizacji sprzedaży.',
           },
         ];
   const firstOpen = stages.findIndex((stage) => !stage.done);
@@ -397,13 +402,15 @@ export function parsePortalMessages(
       const meta = asMeta(row.metadata);
       const from = resolvePortalMessageFrom(meta, row.title);
       const fromAgent = from === 'agent';
+      const attachments = parseAttachments(meta.attachments);
+      const rawContent = typeof meta.content === 'string' ? meta.content : String(row.body || '');
       return {
         id: row.id,
-        content: String(meta.content || row.body || ''),
+        content: cleanAttachmentOnlyMessage(rawContent, attachments),
         createdAt: typeof row.createdAt === 'string' ? row.createdAt : row.createdAt.toISOString(),
         fromAgent,
         fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
-        attachments: parseAttachments(meta.attachments),
+        attachments,
       };
     });
 }

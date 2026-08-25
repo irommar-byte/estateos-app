@@ -128,8 +128,8 @@ export function listingStatusLabel(
       return 'Sprzedana';
     case 'ARCHIVED':
       return 'Zarchiwizowana';
-    case 'REJECTED':
-      return 'Odrzucona';
+    case 'IN_DEAL':
+      return 'W negocjacjach';
     default:
       return status ? String(status) : 'W przygotowaniu';
   }

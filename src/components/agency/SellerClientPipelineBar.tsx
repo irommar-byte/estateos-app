@@ -13,10 +13,10 @@ const STAGE_ICONS: Record<SellerPipelineStageId, keyof typeof Ionicons.glyphMap>
 
 const SHORT_LABELS: Record<SellerPipelineStageId, string> = {
   meeting: 'Spotkanie',
-  acquisition: 'Pozysk',
-  sale: 'Sprzedaż',
-  transaction: 'Transakcja',
-  finalization: 'Finalizacja',
+  acquisition: 'Umowa',
+  sale: 'Ogłoszenie',
+  transaction: 'Prezentacje',
+  finalization: 'Transakcja',
 };
 
 const DOT = 22;

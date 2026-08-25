@@ -597,6 +597,18 @@ export type Dictionary = {
     saving: string;
     saved: string;
     backToCrm: string;
+    videoUrlLabel: string;
+    videoUrlHint: string;
+    galleryUsed: string;
+    gallerySpace: string;
+    galleryReplace: string;
+    galleryReplaceConfirm: string;
+    jumpKey: string;
+    jumpDetails: string;
+    jumpLocation: string;
+    jumpGallery: string;
+    jumpPlan: string;
+    jumpDesc: string;
   };
   pricing: {
     eyebrow: string;
@@ -1193,7 +1205,7 @@ const pl: Dictionary = {
     accountEyebrow: "Moje konto EstateOS™",
     userIdLabel: "ID użytkownika",
     tabRadar: "Radar inwestycji",
-    tabClients: "Klienci",
+    tabClients: "Moi klienci",
     tabMyOffers: "Moje ogłoszenia",
     tabFavorites: "Ulubione",
     tabPlanning: "Planowanie",
@@ -1239,7 +1251,7 @@ const pl: Dictionary = {
     myOffersTitle: "Moje",
     myOffersTitleHighlight: "ogłoszenia",
     myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
-    clientsTitle: "Twoi",
+    clientsTitle: "Moi",
     clientsTitleHighlight: "klienci",
     clientsDesc:
       "Profesjonalne CRM dla biura — kupujący spoza bazy, dopasowania ofert, powiadomienia w Twoim imieniu i pełna historia współpracy.",
@@ -1379,6 +1391,19 @@ const pl: Dictionary = {
     saving: "Zapisywanie...",
     saved: "Zapisano!",
     backToCrm: "Wróć do panelu",
+    videoUrlLabel: "Film (YouTube / Vimeo / link)",
+    videoUrlHint: "Opcjonalny link do wideo nieruchomości.",
+    galleryUsed: "{used} / {max} zdjęć",
+    gallerySpace: "{used} / {max} MB",
+    galleryReplace: "Dodaj zdjęcia od nowa",
+    galleryReplaceConfirm:
+      "To trwale usunie wszystkie zdjęcia tej oferty z serwera. Rzut i model 3D zostaną. Kontynuować?",
+    jumpKey: "Kluczowe",
+    jumpDetails: "Szczegóły",
+    jumpLocation: "Lokalizacja",
+    jumpGallery: "Galeria",
+    jumpPlan: "Plan",
+    jumpDesc: "Opis",
   },
   pricing: {
     eyebrow: "Wybierz swój poziom",
@@ -2183,6 +2208,19 @@ const en: Dictionary = {
     saving: "Saving...",
     saved: "Saved!",
     backToCrm: "Back to dashboard",
+    videoUrlLabel: "Video (YouTube / Vimeo / link)",
+    videoUrlHint: "Optional link to a property video.",
+    galleryUsed: "{used} / {max} photos",
+    gallerySpace: "{used} / {max} MB",
+    galleryReplace: "Start photos from scratch",
+    galleryReplaceConfirm:
+      "This permanently deletes all listing photos from the server. The floor plan and 3D model stay. Continue?",
+    jumpKey: "Key",
+    jumpDetails: "Details",
+    jumpLocation: "Location",
+    jumpGallery: "Gallery",
+    jumpPlan: "Plan",
+    jumpDesc: "Description",
   },
   pricing: {
     eyebrow: "Choose your level",

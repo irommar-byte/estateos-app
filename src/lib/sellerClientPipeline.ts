@@ -17,10 +17,10 @@ export type SellerPipelineStage = {
 
 export const SELLER_PIPELINE_LABELS: Record<SellerPipelineStageId, string> = {
   meeting: 'Umówienie spotkania',
-  acquisition: 'Pozysk',
-  sale: 'Sprzedaż',
-  transaction: 'Transakcja',
-  finalization: 'Finalizacja',
+  acquisition: 'Umowa',
+  sale: 'Ogłoszenie',
+  transaction: 'Prezentacje',
+  finalization: 'Transakcja',
 };
 
 export type SellerPipelineInput = {
@@ -92,10 +92,12 @@ export function sellerPipelineFromClientDetail(
     acquisition?.status === 'SIGNED' || Boolean(acquisition?.signedAt);
 
   const normalizedOfferStatus = String(offerStatus || '').toUpperCase();
-  const offerActive =
+  const offerPrepared =
+    Boolean(client.linkedOfferId) ||
     normalizedOfferStatus === 'ACTIVE' ||
     normalizedOfferStatus === 'PUBLISHED' ||
-    (Boolean(client.linkedOfferId) && !['DRAFT', 'PENDING', 'INACTIVE'].includes(normalizedOfferStatus));
+    normalizedOfferStatus === 'PENDING' ||
+    normalizedOfferStatus === 'IN_DEAL';
 
   const activities = (client as AgencyClientDetail & { activities?: Array<{ kind: string; title: string | null; body: string | null }> })
     .activities || [];
@@ -105,9 +107,10 @@ export function sellerPipelineFromClientDetail(
   return computeSellerPipeline({
     meetingConfirmed,
     acquisitionSigned,
-    offerActive,
-    notaryScheduled: activityHintsNotary(activities) || presentationConfirmed,
+    offerActive: offerPrepared,
+    notaryScheduled: presentationConfirmed,
     handoverComplete:
+      activityHintsNotary(activities) ||
       activityHintsHandover(activities) ||
       normalizedOfferStatus === 'SOLD' ||
       normalizedOfferStatus === 'ARCHIVED',
