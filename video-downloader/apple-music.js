@@ -1122,7 +1122,111 @@ async function downloadAppleMusicViaYtDlp(track, destPath, onProgress) {
   fs.renameSync(srcPath, destPath);
 }
 
+
+export function isPipedMusicStream(jobOrUrl) {
+  if (!jobOrUrl) return false;
+  if (typeof jobOrUrl === "string") return jobOrUrl === "eos:yt-dlp";
+  return jobOrUrl.pipeStream === true || jobOrUrl.streamUrl === "eos:yt-dlp";
+}
+
+/** Progressive MP3 for tap-to-play. AVPlayer reads as the encoder produces bytes. */
+export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
+  const track = trackMeta || (await buildAppleMusicInfo(appleUrl));
+  const queries = youtubeSearchQueries(track);
+  if (!queries.length) throw new Error("Brak tytułu utworu do streamu.");
+  if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
+  if (!ffmpegStatic) throw new Error("Brak ffmpeg do streamu MP3.");
+
+  let lastErr;
+  for (const query of queries) {
+    try {
+      await new Promise((resolve, reject) => {
+        const ytdlp = spawn(
+          YT_DLP_PATH,
+          [
+            "--no-playlist",
+            "--no-warnings",
+            "--socket-timeout",
+            "15",
+            "--retries",
+            "2",
+            ...ytDlpPlayerArgs(),
+            "-f",
+            "bestaudio[ext=m4a]/bestaudio/best",
+            "-o",
+            "-",
+            `ytsearch1:${query}`,
+          ],
+          { stdio: ["ignore", "pipe", "pipe"] }
+        );
+        const ffmpeg = spawn(
+          ffmpegStatic,
+          [
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-vn",
+            "-acodec",
+            "libmp3lame",
+            "-ab",
+            "192k",
+            "-f",
+            "mp3",
+            "pipe:1",
+          ],
+          { stdio: ["pipe", "pipe", "pipe"] }
+        );
+        ytdlp.stdout.pipe(ffmpeg.stdin);
+        ytdlp.stderr.on("data", () => {});
+        ffmpeg.stderr.on("data", () => {});
+        const fail = (err) => {
+          try { ytdlp.kill("SIGKILL"); } catch {}
+          try { ffmpeg.kill("SIGKILL"); } catch {}
+          reject(err);
+        };
+        ytdlp.once("error", fail);
+        ffmpeg.once("error", fail);
+        ytdlp.once("close", (code) => {
+          if (code && code !== 0 && !res.writableEnded) {
+            fail(new Error(`yt-dlp stream zakończył się kodem ${code}.`));
+          }
+        });
+        ffmpeg.once("close", (code) => {
+          if (code && code !== 0 && !res.writableEnded) {
+            fail(new Error(`ffmpeg stream zakończył się kodem ${code}.`));
+            return;
+          }
+          resolve();
+        });
+        res.on("close", () => {
+          try { ytdlp.kill("SIGKILL"); } catch {}
+          try { ffmpeg.kill("SIGKILL"); } catch {}
+        });
+        if (!res.headersSent) {
+          res.status(200);
+          res.set({
+            "Content-Type": "audio/mpeg",
+            "Cache-Control": "no-cache",
+            "Connection": "close",
+          });
+        }
+        ffmpeg.stdout.pipe(res);
+      });
+      lastErr = null;
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn("yt-dlp pipe:", query, err?.message || err);
+    }
+  }
+  throw lastErr || new Error("Nie udało się otworzyć streamu audio.");
+}
+
 export function resolvedAudioContentType(url) {
+
   try {
     const parsed = new URL(String(url || ""));
     const mime = parsed.searchParams.get("mime");

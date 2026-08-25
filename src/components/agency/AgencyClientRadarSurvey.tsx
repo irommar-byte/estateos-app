@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { METRO_STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../../constants/locationEcosystem';
@@ -159,6 +159,11 @@ export default function AgencyClientRadarSurvey({
   const pricePresets = value.transactionType === 'RENT' ? PRICE_PRESETS_RENT : PRICE_PRESETS_SELL;
   const intel = thresholdLabel(value.matchThreshold);
   const hint = clientRadarSurveyHint(value);
+  const [expandedGroups, setExpandedGroups] = useState({
+    location: false,
+    budget: false,
+    requirements: false,
+  });
 
   const currentLocks = locks || DEFAULT_INTELLIGENCE_LOCKS;
   const toggleLock = (key: IntelligenceLockKey) => {
@@ -183,6 +188,35 @@ export default function AgencyClientRadarSurvey({
   const patch = (partial: Partial<ClientRadarFilters>) => {
     onChange({ ...value, ...partial, pushNotifications: false });
   };
+
+  const toggleGroup = (key: keyof typeof expandedGroups) => {
+    setExpandedGroups((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const sectionHeader = (
+    key: keyof typeof expandedGroups,
+    label: string,
+    summary: string,
+    icon: React.ComponentProps<typeof Ionicons>['name'],
+  ) => (
+    <Pressable
+      onPress={() => toggleGroup(key)}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: expandedGroups[key] }}
+      style={styles.sectionHeader}
+    >
+      <View style={[styles.sectionIcon, { backgroundColor: `${colors.accent}18` }]}>
+        <Ionicons name={icon} size={18} color={colors.accent} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>{label}</Text>
+        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+          {summary}
+        </Text>
+      </View>
+      <Ionicons name={expandedGroups[key] ? 'chevron-up' : 'chevron-down'} size={18} color={colors.secondary} />
+    </Pressable>
+  );
 
   const chip = (active: boolean, label: string, onPress: () => void, key?: string) => (
     <Pressable
@@ -263,45 +297,66 @@ export default function AgencyClientRadarSurvey({
       </View>
 
       <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
-      <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>MIASTO I DZIELNICE</Text>
-      <View style={styles.rowWrap}>
-        {METRO_STRICT_CITIES.map((city) =>
-          chip(value.city === city, city, () => patch({ city, selectedDistricts: [] }), city),
-        )}
-      </View>
-
-      {districts.length ? (
-        <>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={[styles.label, { color: colors.secondary }]}>DZIELNICE · {value.city}</Text>
-            {lockBtn('districts', 'dzielnice')}
-          </View>
+      {sectionHeader(
+        'location',
+        'Lokalizacja',
+        `${value.city} · ${
+          value.selectedDistricts.length
+            ? `${value.selectedDistricts.length} wybranych dzielnic`
+            : 'wybierz dzielnice'
+        }`,
+        'location-outline',
+      )}
+      {expandedGroups.location ? (
+        <View style={styles.sectionBody}>
+          <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>MIASTO</Text>
           <View style={styles.rowWrap}>
-            {districts.map((district) => {
-              const active = value.selectedDistricts.includes(district);
-              return chip(
-                active,
-                district,
-                () =>
-                  patch({
-                    selectedDistricts: active
-                      ? value.selectedDistricts.filter((item) => item !== district)
-                      : [...value.selectedDistricts, district],
-                  }),
-                district,
-              );
-            })}
+            {METRO_STRICT_CITIES.map((city) =>
+              chip(value.city === city, city, () => patch({ city, selectedDistricts: [] }), city),
+            )}
           </View>
-        </>
+
+          {districts.length ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 28 }}>
+                <Text style={[styles.label, { color: colors.secondary, flex: 1 }]}>DZIELNICE · {value.city}</Text>
+                {lockBtn('districts', 'dzielnice')}
+              </View>
+              <View style={styles.rowWrap}>
+                {districts.map((district) => {
+                  const active = value.selectedDistricts.includes(district);
+                  return chip(
+                    active,
+                    district,
+                    () =>
+                      patch({
+                        selectedDistricts: active
+                          ? value.selectedDistricts.filter((item) => item !== district)
+                          : [...value.selectedDistricts, district],
+                      }),
+                    district,
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+        </View>
       ) : null}
       </View>
 
       <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
+      {sectionHeader(
+        'budget',
+        'Budżet i parametry',
+        `${value.maxPrice.toLocaleString('pl-PL')} zł · od ${value.minArea || 0} m² · ${
+          value.minYear > 1900 ? `od ${value.minYear}` : 'dowolny rok'
+        }`,
+        'options-outline',
+      )}
+      {expandedGroups.budget ? (
+        <View style={styles.sectionBody}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>BUDŻET, METRAŻ, ROK</Text>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[styles.label, { color: colors.secondary, marginTop: 8 }]}>MAKS. BUDŻET</Text>
+        <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>MAKS. BUDŻET</Text>
         {lockBtn('maxPrice', 'budżet')}
       </View>
       <View style={styles.rowWrap}>
@@ -343,12 +398,20 @@ export default function AgencyClientRadarSurvey({
           chip(value.minYear === year, String(year), () => patch({ minYear: year }), `y-${year}`),
         )}
       </View>
+        </View>
+      ) : null}
       </View>
 
       <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[styles.label, { color: colors.secondary, marginTop: 0 }]}>OBOWIĄZKOWE 100%</Text>
-      </View>
+      {sectionHeader(
+        'requirements',
+        'Wymagania obowiązkowe',
+        AMENITIES.filter((item) => Boolean(value[item.key])).map((item) => item.label).join(', ') ||
+          'Brak wymagań obowiązkowych',
+        'shield-checkmark-outline',
+      )}
+      {expandedGroups.requirements ? (
+        <View style={styles.sectionBody}>
       <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
         Zaznacz tylko to, bez czego klient nie kupi. Balkon na 100% odcina mieszkania bez balkonu. Kłódka: asystent nie dopisze tego z reakcji.
       </Text>
@@ -363,6 +426,8 @@ export default function AgencyClientRadarSurvey({
           );
         })}
       </View>
+        </View>
+      ) : null}
       </View>
 
       {hint ? (
@@ -380,14 +445,36 @@ const styles = StyleSheet.create({
   wrap: {
     borderWidth: 1,
     borderRadius: 18,
-    padding: 14,
-    marginTop: 12,
+    padding: 16,
+    marginTop: 14,
   },
   section: {
     marginTop: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
-    padding: 12,
+    overflow: 'hidden',
+  },
+  sectionHeader: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+  },
+  sectionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionBody: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(120,120,128,0.2)',
+    paddingHorizontal: 13,
+    paddingTop: 12,
+    paddingBottom: 14,
   },
   label: {
     fontSize: 10,
@@ -399,13 +486,16 @@ const styles = StyleSheet.create({
   rowWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
   },
   chip: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: 'center',
   },
   segment: {
     flexDirection: 'row',

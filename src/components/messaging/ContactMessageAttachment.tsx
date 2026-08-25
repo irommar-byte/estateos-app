@@ -20,6 +20,7 @@ import { downloadContactAttachment } from '../../utils/contactAttachmentDownload
 import {
   ContactAttachmentMeta,
   contactAttachmentKind,
+  formatContactAttachmentName,
   formatContactBytes,
 } from '../../utils/contactAttachment';
 import { getChatTheme } from './chatTheme';
@@ -43,6 +44,13 @@ function pdfBoxSize(compact: boolean) {
   return { width, height };
 }
 
+function formatAudioTime(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 export default function ContactMessageAttachment({
   attachment,
   isMe,
@@ -52,7 +60,10 @@ export default function ContactMessageAttachment({
 }: Props) {
   const { colors } = getChatTheme(isDark);
   const kind = contactAttachmentKind(attachment);
+  const displayName = formatContactAttachmentName(attachment.name);
   const [playing, setPlaying] = useState(false);
+  const [audioPosition, setAudioPosition] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [pdfModalUri, setPdfModalUri] = useState<string | null>(null);
@@ -78,7 +89,7 @@ export default function ContactMessageAttachment({
     try {
       await downloadContactAttachment({
         url: attachment.url,
-        name: attachment.name,
+        name: displayName,
         mimeType: attachment.mimeType,
         labels: {
           failedTitle: downloadLabels?.failedTitle,
@@ -107,7 +118,14 @@ export default function ContactMessageAttachment({
         { uri: attachment.url },
         { shouldPlay: true },
         (status) => {
-          if ('didJustFinish' in status && status.didJustFinish) setPlaying(false);
+          if (!status.isLoaded) return;
+          setAudioPosition(status.positionMillis || 0);
+          setAudioDuration(status.durationMillis || 0);
+          setPlaying(status.isPlaying);
+          if (status.didJustFinish) {
+            setPlaying(false);
+            setAudioPosition(0);
+          }
         },
       );
       soundRef.current = sound;
@@ -123,6 +141,7 @@ export default function ContactMessageAttachment({
   const imageWidth = compact ? 128 : 248;
   const imageHeight = compact ? 96 : 186;
   const downloadBtnLabel = downloadLabels?.button || 'Pobierz';
+  const audioProgress = audioDuration > 0 ? Math.min(1, audioPosition / audioDuration) : 0;
 
   const DownloadChip = ({ light = false }: { light?: boolean }) => (
     <Pressable
@@ -162,7 +181,7 @@ export default function ContactMessageAttachment({
           />
           {!compact ? (
             <Text style={[styles.imageCaption, { color: metaColor }]} numberOfLines={1}>
-              {attachment.name}
+              {displayName}
               {attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
             </Text>
           ) : null}
@@ -190,7 +209,7 @@ export default function ContactMessageAttachment({
         <FileText size={14} color={isMe ? '#000' : '#FF3B30'} />
         <View style={styles.fileInfo}>
           <Text style={[styles.fileName, { color: titleColor }]} numberOfLines={1}>
-            {attachment.name}
+            {displayName}
           </Text>
           <Text style={[styles.fileMeta, { color: metaColor }]}>
             PDF{attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
@@ -211,7 +230,7 @@ export default function ContactMessageAttachment({
             url={attachment.url}
             width={pdfW}
             height={pdfH}
-            fileName={attachment.name}
+            fileName={displayName}
           />
           {pdfCard}
         </Pressable>
@@ -219,7 +238,7 @@ export default function ContactMessageAttachment({
           <View style={[styles.fullPdfModal, { backgroundColor: colors.background }]}>
             <View style={styles.fullPdfHeader}>
               <Text style={[styles.fileName, { color: colors.textBase, flex: 1 }]} numberOfLines={1}>
-                {attachment.name}
+                {displayName}
               </Text>
               <DownloadChip />
               <Pressable onPress={() => setPreviewOpen(false)} hitSlop={8} style={{ marginLeft: 4 }}>
@@ -263,7 +282,7 @@ export default function ContactMessageAttachment({
         <View style={styles.videoFooter}>
           {!compact ? (
             <Text style={[styles.imageCaption, { color: metaColor, flex: 1 }]} numberOfLines={1}>
-              {attachment.name}
+              {displayName}
               {attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
             </Text>
           ) : <View style={{ flex: 1 }} />}
@@ -292,35 +311,53 @@ export default function ContactMessageAttachment({
 
   if (kind === 'audio') {
     return (
-      <View style={[styles.fileCard, isMe ? styles.fileCardMe : styles.fileCardThem, compact && styles.fileCardCompact]}>
-        <View style={[styles.iconBox, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(52,199,89,0.18)' }]}>
-          <Music size={16} color={isMe ? '#000' : colors.primary} />
+      <View style={[styles.audioCard, isMe ? styles.fileCardMe : styles.fileCardThem, compact && styles.fileCardCompact]}>
+        <View style={styles.audioHeader}>
+          <View style={[styles.iconBox, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(52,199,89,0.18)' }]}>
+            <Music size={17} color={isMe ? '#000' : colors.primary} />
+          </View>
+          <View style={styles.fileInfo}>
+            <Text style={[styles.fileName, { color: titleColor }]}>Nagranie audio</Text>
+            <Text style={[styles.audioName, { color: metaColor }]} numberOfLines={1}>
+              {displayName}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => void handleDownload()}
+            disabled={downloading}
+            style={[styles.playBtn, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(52,199,89,0.2)' }]}
+            accessibilityLabel="Pobierz nagranie"
+          >
+            {downloading ? (
+              <ActivityIndicator size="small" color={isMe ? '#000' : colors.primary} />
+            ) : (
+              <Download size={14} color={isMe ? '#000' : colors.primary} />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => void toggleAudio()}
+            style={[styles.playBtn, { backgroundColor: isMe ? 'rgba(0,0,0,0.15)' : colors.primary }]}
+            accessibilityLabel={playing ? 'Wstrzymaj nagranie' : 'Odtwórz nagranie'}
+          >
+            {playing ? <Pause size={14} color={isMe ? '#000' : '#fff'} /> : <Play size={14} color={isMe ? '#000' : '#fff'} />}
+          </Pressable>
         </View>
-        <View style={styles.fileInfo}>
-          <Text style={[styles.fileName, { color: titleColor }]} numberOfLines={1}>
-            {attachment.name}
-          </Text>
+        <View style={[styles.audioTrack, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(52,199,89,0.12)' }]}>
+          <View
+            style={[
+              styles.audioTrackFill,
+              { width: `${Math.round(audioProgress * 100)}%`, backgroundColor: isMe ? '#111' : colors.primary },
+            ]}
+          />
+        </View>
+        <View style={styles.audioMetaRow}>
           <Text style={[styles.fileMeta, { color: metaColor }]}>
-            Audio{attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
+            {formatAudioTime(audioPosition)} / {audioDuration > 0 ? formatAudioTime(audioDuration) : '—:—'}
           </Text>
+          {attachment.size > 0 ? (
+            <Text style={[styles.fileMeta, { color: metaColor }]}>{formatContactBytes(attachment.size)}</Text>
+          ) : null}
         </View>
-        <Pressable
-          onPress={() => void handleDownload()}
-          disabled={downloading}
-          style={[styles.playBtn, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(52,199,89,0.2)', marginRight: 6 }]}
-        >
-          {downloading ? (
-            <ActivityIndicator size="small" color={isMe ? '#000' : colors.primary} />
-          ) : (
-            <Download size={14} color={isMe ? '#000' : colors.primary} />
-          )}
-        </Pressable>
-        <Pressable
-          onPress={() => void toggleAudio()}
-          style={[styles.playBtn, { backgroundColor: isMe ? 'rgba(0,0,0,0.15)' : colors.primary }]}
-        >
-          {playing ? <Pause size={14} color={isMe ? '#000' : '#fff'} /> : <Play size={14} color={isMe ? '#000' : '#fff'} />}
-        </Pressable>
       </View>
     );
   }
@@ -333,7 +370,7 @@ export default function ContactMessageAttachment({
         </View>
         <View style={styles.fileInfo}>
           <Text style={[styles.fileName, { color: titleColor }]} numberOfLines={1}>
-            {attachment.name}
+            {displayName}
           </Text>
           <Text style={[styles.fileMeta, { color: metaColor }]}>
             Plik{attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
@@ -405,6 +442,39 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minWidth: 220,
     maxWidth: 280,
+  },
+  audioCard: {
+    marginTop: 6,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    minWidth: 240,
+    maxWidth: 300,
+  },
+  audioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  audioName: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  audioTrack: {
+    height: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 10,
+  },
+  audioTrackFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  audioMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 5,
   },
   fileCardCompact: {
     minWidth: 0,

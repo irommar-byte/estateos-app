@@ -12,6 +12,47 @@ export type ContactAttachmentMeta = {
   size: number;
 };
 
+function safelyDecodeAttachmentName(value: string): string {
+  let decoded = value;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  return decoded;
+}
+
+export function formatContactAttachmentName(raw: string | null | undefined, fallback = 'Załącznik'): string {
+  const source = String(raw || '').trim();
+  if (!source) return fallback;
+  const withoutQuery = source.split(/[?#]/, 1)[0] || source;
+  const basename = withoutQuery.split(/[\\/]/).pop() || withoutQuery;
+  const decoded = safelyDecodeAttachmentName(basename)
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return decoded || fallback;
+}
+
+export function cleanAttachmentOnlyMessage(
+  content: string | null | undefined,
+  attachments: ContactAttachmentMeta[] | null | undefined,
+): string {
+  const text = String(content || '').trim();
+  if (!text || !attachments?.length) return text;
+  const normalizedText = safelyDecodeAttachmentName(text.replace(/^📎\s*/, '')).trim().toLocaleLowerCase('pl-PL');
+  const duplicatesAttachmentName = attachments.some((attachment) => {
+    const rawName = String(attachment.name || '').trim().toLocaleLowerCase('pl-PL');
+    const displayName = formatContactAttachmentName(attachment.name).toLocaleLowerCase('pl-PL');
+    return normalizedText === rawName || normalizedText === displayName;
+  });
+  return duplicatesAttachmentName ? '' : text;
+}
+
 export function normalizeContactMediaUrl(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const s = String(raw).trim();
@@ -26,7 +67,7 @@ function parseContactAttachmentMeta(raw: unknown): ContactAttachmentMeta | null 
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const url = normalizeContactMediaUrl(String(o.url || '').trim());
-  const name = String(o.name || 'Załącznik').trim();
+  const name = formatContactAttachmentName(String(o.name || 'Załącznik'));
   const mimeType = String(o.mimeType || 'application/octet-stream').trim();
   const size = Number(o.size);
   if (!url) return null;
@@ -69,7 +110,7 @@ export function parseContactMessageParts(msg: {
 
   const url = normalizeContactMediaUrl(String(msg.attachment || '').trim());
   if (url) {
-    const name = url.split('/').pop() || 'Załącznik';
+    const name = formatContactAttachmentName(url.split('/').pop() || 'Załącznik');
     return {
       text: content.replace(/\[\[CONTACT_ATTACHMENT\]\][\s\S]*/, '').trim(),
       attachment: { url, name, mimeType: guessMimeFromName(name), size: 0 },

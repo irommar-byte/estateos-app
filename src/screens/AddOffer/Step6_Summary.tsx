@@ -72,7 +72,6 @@ import {
 } from '../../lib/agentCommission';
 import { API_URL } from '../../config/network';
 import { offerPhotoUploadParts } from '../../utils/offerPhotoUpload';
-import { offerPhotoUploadParts } from '../../utils/offerPhotoUpload';
 import { parseRentAdditionalFeeForApi } from '../../lib/rentAdditionalFees';
 import { formatOfferConditionLabel } from '../../utils/offerFieldLabels';
 

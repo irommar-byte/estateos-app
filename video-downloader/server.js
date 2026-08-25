@@ -106,6 +106,8 @@ import {
   buildAppleMusicFilename,
   resolveAppleMusicDownloadUrl,
   invalidateAppleMusicDownloadCache,
+  pipeAppleMusicAudio,
+  isPipedMusicStream,
 } from "./apple-music.js";
 import {
   fetchSpotifyPlaylist,
@@ -2651,6 +2653,7 @@ function friendlyAppleMusicError(err) {
 
 async function refreshMusicStreamUrl(job) {
   if (!job?.url || job.kind !== "music") return false;
+  if (isPipedMusicStream(job)) return false;
   try {
     invalidateAppleMusicDownloadCache(job.url);
     const next = await resolveAppleMusicDownloadUrl(job.url, { forceRefresh: true });
@@ -5483,6 +5486,9 @@ app.post("/api/music/play", async (req, res) => {
       reused: !!result.reused,
       ready: !!result.ready,
       token: result.token || undefined,
+      persistent: !!result.persistent,
+      onServer: !!result.onServer,
+      mode: result.mode || undefined,
     });
   } catch (err) {
     const status = Number(err?.status) || 500;
@@ -5596,6 +5602,15 @@ app.get("/api/music/stream/:jobId", async (req, res) => {
   if (job.file && fs.existsSync(job.file)) {
     return serveAudioFile(req, res, job.file);
   }
+  if (isPipedMusicStream(job) && job.status === "done") {
+    try {
+      return await pipeAppleMusicAudio(job.url, res, { trackMeta: job.trackMeta });
+    } catch (err) {
+      console.error("music stream pipe:", err?.message || err);
+      if (!res.headersSent) return res.status(502).send("Błąd streamu audio.");
+      return;
+    }
+  }
   if (job.mode === "stream-proxy" && job.streamUrl && job.status === "done") {
     try {
       // APLMate often serves application/octet-stream — AVPlayer needs audio/mpeg.
@@ -5633,6 +5648,14 @@ app.head("/api/music/stream/:jobId", async (req, res) => {
       "Content-Length": String(stat.size),
       "Content-Type": "audio/mpeg",
       "Accept-Ranges": "bytes",
+    });
+    return res.end();
+  }
+  if (isPipedMusicStream(job) && job.status === "done") {
+    res.status(200);
+    res.set({
+      "Content-Type": "audio/mpeg",
+      "Cache-Control": "no-cache",
     });
     return res.end();
   }
@@ -6319,19 +6342,25 @@ app.get("/api/job/:jobId", (req, res) => {
     if (restoredMusic) job = restoredMusic;
   }
   if (!job) return res.status(404).json({ error: "Zadanie nie istnieje." });
+  const fileOnDisk = !!(job.file && fs.existsSync(job.file));
   const ready =
     musicJobReady(job) ||
     movieJobReady(job) ||
-    !!(job.file && fs.existsSync(job.file)) ||
+    fileOnDisk ||
     (job.mode === "stream-proxy" && job.status === "done" && !!job.streamUrl) ||
     job.status === "done";
   // CDA: partial preview jest „ready”, ale NIE fullReady — inaczej TV nigdy nie przełączy na pełny film.
   const cdaPending = !!job.cdaFullPending;
   const fullReady = cdaPending ? !!job.fullReady : (!!job.fullReady || ready);
+  const progress = cdaPending
+    ? (job.progress ?? 35)
+    : job.persisting
+      ? (job.progress ?? 0)
+      : (ready ? 100 : (job.progress ?? 0));
   res.json({
     jobId: job.id,
-    status: job.status || (ready ? "done" : "starting"),
-    progress: cdaPending ? (job.progress ?? 35) : (ready ? 100 : (job.progress ?? 0)),
+    status: job.persisting ? "downloading" : (job.status || (ready ? "done" : "starting")),
+    progress,
     name: job.name || job.movieTitle || "",
     error: job.error || null,
     purpose: job.purpose || "download",
@@ -6343,7 +6372,10 @@ app.get("/api/job/:jobId", (req, res) => {
     fullReady,
     cdaFullPending: cdaPending,
     downloadPath: ready ? `/api/file/${job.id}` : null,
-    reused: !!job.persistent && ready,
+    reused: !!(job.file && fs.existsSync(job.file)),
+    mode: job.file && fs.existsSync(job.file) ? "file" : (job.mode || null),
+    persistent: !!(job.file && fs.existsSync(job.file)),
+    onServer: !!(job.file && fs.existsSync(job.file)),
   });
 });
 
