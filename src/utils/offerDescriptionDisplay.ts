@@ -1,22 +1,9 @@
+import { toEditorialForEditor } from './listingDescriptionFormat';
+
 const IMPORT_MARKER_RE = /<!--\s*estateos-(?:otodom|olx|nieruchomosci-online):\d+\s*-->/gi;
 const VERIFY_COMMENT_RE = /<!--\s*ESTATEOS_VERIFY:[\s\S]*?-->/gi;
 const IMPORT_FOOTER_RE = /<p>\s*<small>\s*Import OtoDom[\s\S]*?<\/small>\s*<\/p>/gi;
 const HTML_TAG_RE = /<\s*\/?[a-z][a-z0-9]*\b/i;
-
-function stripHtmlToPlain(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+\n/g, '\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
 
 /** Opis oferty do wyświetlenia i edycji (bez surowego HTML). */
 export function formatOfferDescriptionForDisplay(input: unknown): string {
@@ -32,7 +19,7 @@ export function formatOfferDescriptionForDisplay(input: unknown): string {
     .trim();
 
   if (HTML_TAG_RE.test(raw)) {
-    return stripHtmlToPlain(raw).replace(/\n{3,}/g, '\n\n').trim();
+    return toEditorialForEditor(raw);
   }
 
   return raw.replace(/\n{3,}/g, '\n\n').trim();

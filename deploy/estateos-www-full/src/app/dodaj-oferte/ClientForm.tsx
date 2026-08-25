@@ -12,7 +12,7 @@ import { Home,
   Building2, Rows, Castle, Briefcase, Map as MapIcon, MapPin, 
   Sparkles, Loader2, CheckCircle, Crown, Key, Upload, Trash2, 
   LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check,
-  Navigation, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck, LocateFixed
+  Navigation, ShieldCheck, LocateFixed
 } from "lucide-react";
 
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
@@ -25,6 +25,9 @@ import AddOfferPublishSummary from '@/components/offers/AddOfferPublishSummary';
 import ContactVerificationPanel from '@/components/ContactVerificationPanel';
 import SiriMagicButton from '@/components/ui/SiriMagicButton';
 import LuxurySegmentSwitch from '@/components/ui/LuxurySegmentSwitch';
+import ListingDescriptionEditor from '@/components/offer/ListingDescriptionEditor';
+import { editorialToHtml } from '@/lib/listingDescriptionFormat';
+import { descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { OfferHdrBadge } from '@/components/offer/OfferHdrBadge';
 import { probeHdrFromBlob } from '@/lib/upload/hdrBinaryProbe';
 import { typewriterReveal } from '@/lib/typewriterReveal';
@@ -152,15 +155,6 @@ import {
 
 function buildHeatingTypes(ao: AddOfferDictionary) {
   return HEATING_DICT_KEYS.map((key) => ao[key]);
-}
-
-function plainTextToEditorHtml(text: string): string {
-  const paragraphs = String(text || "")
-    .trim()
-    .split(/\n\s*\n/)
-    .filter(Boolean);
-  if (paragraphs.length === 0) return "";
-  return paragraphs.map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
 }
 
 function buildDescriptionDraftFromForm(
@@ -356,7 +350,6 @@ export default function ClientForm({
   const lastGeocodedAddressRef = useRef<string>("");
   const geocodeRequestSeqRef = useRef(0);
   const suppressBlurGeocodeRef = useRef(false);
-  const editorRef = useRef<HTMLDivElement>(null);
   const agentCommissionInputRef = useRef<HTMLDivElement>(null);
   const landRegistryInputRef = useRef<HTMLInputElement>(null);
   const draftHydratedRef = useRef(false);
@@ -832,11 +825,6 @@ export default function ClientForm({
     e.target.value = '';
   };
 
-  const execCommand = (command: string) => {
-    if (typeof document === 'undefined') return;
-    document.execCommand(command, false);
-  };
-
   const runGenerateAI = async () => {
     const hasBasics =
       String(data.propertyType || "").trim() ||
@@ -866,14 +854,12 @@ export default function ClientForm({
       if (!res.ok || !payload?.success || !String(payload?.description || "").trim()) {
         throw new Error(String(payload?.error || ao.aiGenFailed));
       }
-      const plain = String(payload.description).trim();
+      const editorial = String(payload.description).trim();
       typewriterCancelRef.current?.();
       const controller = typewriterReveal(
-        plain,
+        editorial,
         (partial) => {
-          const html = plainTextToEditorHtml(partial);
-          updateData({ description: html });
-          if (editorRef.current) editorRef.current.innerHTML = html;
+          updateData({ description: editorialToHtml(partial) });
         },
         {
           chunk: 4,
@@ -1563,7 +1549,7 @@ export default function ClientForm({
 
   const buildOfferPayload = () => {
     const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
-    const finalDesc = editorRef.current?.innerHTML || data.description || '';
+    const finalDesc = descriptionForStorageFromEdit(data.description || '');
     const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
     const payload: Record<string, unknown> = {
       ...data,
@@ -2385,25 +2371,13 @@ export default function ClientForm({
 
                   <div>
                     <label className={labelPremium}>{ao.exclusiveDescLabel}</label>
-                  
-                  {/* Edytor Premium */}
-                  <div className="mt-3 rounded-[2rem] border border-white/10 bg-white/5 overflow-hidden focus-within:border-[#10b981] transition-colors shadow-inner">
-                    <div className="flex items-center gap-2 p-3 border-b border-white/10 bg-black/40">
-                      <button onClick={() => execCommand('bold')} className="p-2 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"><Bold size={16}/></button>
-                      <button onClick={() => execCommand('italic')} className="p-2 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"><Italic size={16}/></button>
-                      <button onClick={() => execCommand('underline')} className="p-2 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"><Underline size={16}/></button>
-                      <div className="w-px h-4 bg-white/10 mx-2"></div>
-                      <button onClick={() => execCommand('formatBlock')} onMouseDown={(e) => { e.preventDefault(); document.execCommand('formatBlock', false, 'H3'); }} className="p-2 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"><Heading size={16}/></button>
+                    <div className="mt-3">
+                      <ListingDescriptionEditor
+                        value={String(data.description || '')}
+                        onChange={(html) => updateData({ description: html })}
+                        placeholder={ao.descriptionPlaceholderAttr}
+                      />
                     </div>
-                    <div 
-                      ref={editorRef}
-                      contentEditable
-                      className="w-full h-64 p-6 outline-none text-[#f5f5f7] leading-relaxed overflow-y-auto"
-                      style={{ minHeight: '16rem' }}
-                      onInput={(e) => updateData({ description: e.currentTarget.innerHTML })}
-                      data-placeholder={ao.descriptionPlaceholderAttr}
-                    ></div>
-                  </div>
                   </div>
                 </div>
                 

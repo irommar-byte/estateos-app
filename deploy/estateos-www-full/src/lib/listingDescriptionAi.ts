@@ -183,16 +183,16 @@ function localeInstructions(locale: 'pl' | 'en' | 'ru'): string {
   if (locale === 'en') {
     return `Write the entire description in English.
 Tone: professional real-estate agency ("We present…"), warm and credible.
-Do NOT output HTML — plain text with paragraphs separated by blank lines.`;
+Do NOT output HTML. Use the editorial plain-text format described below.`;
   }
   if (locale === 'ru') {
     return `Napisz cały opis po rosyjsku.
 Ton: profesjonalne biuro nieruchomości, ciepły i wiarygodny.
-Bez HTML — zwykły tekst z akapitami oddzielonymi pustą linią.`;
+Bez HTML — użyj formatu redakcyjnego opisanego poniżej.`;
   }
   return `Napisz cały opis po polsku.
 Ton: profesjonalne biuro nieruchomości ("Prezentujemy Państwu…"), ciepły i wiarygodny — NIE język właściciela ("sprzedajemy", "mamy do sprzedania", "bez pośredników").
-Bez HTML — zwykły tekst z akapitami oddzielonymi pustą linią.`;
+Bez HTML — użyj formatu redakcyjnego opisanego poniżej.`;
 }
 
 function buildSystemPrompt(locale: 'pl' | 'en' | 'ru'): string {
@@ -200,15 +200,24 @@ function buildSystemPrompt(locale: 'pl' | 'en' | 'ru'): string {
 
 ${localeInstructions(locale)}
 
+FORMAT REDAKCYJNY (zwykły tekst):
+- Akapity oddzielone pustą linią.
+- Krótki nagłówek sekcji w osobnej linii, bez CAPS lock (np. Atuty, Okolica).
+- Lista atutów: każda linia zaczyna się od "• ".
+- Potwierdzone udogodnienia: linia zaczyna się od "✓ ".
+- Elegancki podział sekcji: linia z samych "—" (sześć znaków).
+- Wyróżnienie frazy: **pogrubienie** (maks. 4–6 na cały opis).
+- Podkreślenie rzadko: __tekst__.
+- 1–2 subtelne emotikony są dozwolone (🌿 ✨ 🏡), nie więcej i nie na początku każdego akapitu.
+
 ZASADY:
 - Opis ma być narracją marketingową: styl życia, atmosfera, układ, okolica — NIE sucha lista parametrów.
-- Parametry z JSON możesz wpleść naturalnie (1–2 zdania), ale główna treść to opis doświadczenia mieszkania i okolicy.
+- Parametry z JSON możesz wpleść naturalnie (1–2 zdania), a konkretne atuty zebrać w listę z "• " lub "✓ ".
 - Wykorzystaj kontekst okolicy (POI, reverse geocode) — komunikacja, sklepy, zieleń, infrastruktura rodzinna.
 - Nie wymyślaj konkretnych metrów/minut dojścia, chyba że wynikają wprost z POI (wtedy ostrożnie: "w pobliżu", "w zasięgu spaceru").
 - Nie podawaj dokładnego adresu ulicy, gdy locationPrecision = approximate_circle.
 - Nie powtarzaj tytułu oferty w pierwszym zdaniu dosłownie.
-- Długość: ok. 900–1600 znaków (4–7 akapitów).
-- Bez emoji, bez nagłówków CAPS, bez list punktowanych parametrów.
+- Długość: ok. 900–1600 znaków.
 - Jeśli podano existingDescription lub userNotes — wykorzystaj je jako bazę (przepisz / rozwiń / ujednolić styl). Nie ignoruj faktów z notatek.
 - NIGDY nie podawaj ceny oferty (ceny sprzedaży / czynszu głównego), kaucji ani prowizji w zł/€ — cena główna jest poza opisem.
 - WYJĄTEK: jeśli w userNotes sprzedawca podał ceny przyległości (garaż, komórka, parking, dodatkowe pomieszczenie, opłaty za media poza czynszem) — możesz je naturalnie zawrzeć.
@@ -258,7 +267,7 @@ export async function generateListingDescriptionWithGpt(
     model,
     system,
     user,
-    maxOutputTokens: 900,
+    maxOutputTokens: 1200,
     logPrefix: 'listing-description-ai',
   });
   if (!text || text.length < 120) {

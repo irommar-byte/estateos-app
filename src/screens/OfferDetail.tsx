@@ -69,6 +69,7 @@ import {
 } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { getBestUserAvatarUrl } from '../utils/userAvatar';
+import OfferDescriptionRichText from '../components/OfferDescriptionRichText';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
 import { requestInvestorProUpsell } from '../services/investorProUpsell';
@@ -2135,7 +2136,10 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
 
           <Text style={[styles.sectionTitle, { marginTop: 28 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
-          <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
+          <OfferDescriptionRichText
+            value={formatOfferDescriptionForDisplay(offer?.description) || t('offer.detail.noDescription')}
+            isDark={isDark}
+          />
 
           {Number.isFinite(parseOfferNumeric(offer?.lat)) &&
           Number.isFinite(parseOfferNumeric(offer?.lng)) &&

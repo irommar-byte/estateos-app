@@ -31,6 +31,8 @@ import PropertyRoomScanWorkspace from '../../components/roomScan/PropertyRoomSca
 import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
 import MagicalAiDescribeButton from '../../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../../components/HdrPreviewBadge';
+import DescriptionFormatBar from '../../components/DescriptionFormatBar';
+import { insertEditorialMark } from '../../utils/listingDescriptionFormat';
 import type { PropertyRoomScan, WholePropertyScan } from '../../types/roomScan';
 import { useAuthStore } from '../../store/useAuthStore';
 import { generateListingDescriptionWithGpt } from '../../services/offerDescriptionAiService';
@@ -345,6 +347,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const [dragSnapshot, setDragSnapshot] = useState<string[] | null>(null);
   const dragSnapshotRef = useRef<string[] | null>(null);
   const [proPhotoSessionOpen, setProPhotoSessionOpen] = useState(false);
+  const [descSelection, setDescSelection] = useState({ start: 0, end: 0 });
 
   const draftImages = Array.isArray(draft.images) ? draft.images : [];
   const displayImages = dragSnapshot ?? draftImages;
@@ -913,13 +916,23 @@ export default function Step5_Media({ theme }: { theme: any }) {
                 shadowRadius: 10,
               }}
             >
+              <DescriptionFormatBar
+                isDark={isDark}
+                disabled={isDescriptionBusy}
+                onInsert={(kind) => {
+                  const next = insertEditorialMark(draft.description || '', descSelection, kind);
+                  updateDraft({ description: next.text });
+                  setDescSelection({ start: next.start, end: next.end });
+                }}
+              />
               <TextInput
                 multiline
-                style={{ fontSize: 15, fontWeight: '500', lineHeight: 24, color: theme.text, textAlignVertical: 'top' }}
+                style={{ fontSize: 16, fontWeight: '300', lineHeight: 26, letterSpacing: 0.2, color: theme.text, textAlignVertical: 'top' }}
                 placeholder={translate('addOffer.step5.ai.descriptionPlaceholder')}
                 placeholderTextColor={theme.subtitle}
                 value={draft.description}
                 onChangeText={(text) => updateDraft({ description: text })}
+                onSelectionChange={(e) => setDescSelection(e.nativeEvent.selection)}
                 editable={!isDescriptionBusy}
                 maxLength={ADD_OFFER_DESC_MAX}
               />

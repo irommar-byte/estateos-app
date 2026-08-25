@@ -31,6 +31,8 @@ import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../components/HdrPreviewBadge';
+import DescriptionFormatBar from '../components/DescriptionFormatBar';
+import { insertEditorialMark } from '../utils/listingDescriptionFormat';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
@@ -507,6 +509,7 @@ export default function EditOfferScreen({ route }: any) {
   const [propertyRoomScans, setPropertyRoomScans] = useState<PropertyRoomScan[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [descSelection, setDescSelection] = useState({ start: 0, end: 0 });
   const [area, setArea] = useState('');
   const [plotArea, setPlotArea] = useState('');
   const [rooms, setRooms] = useState('');
@@ -2668,6 +2671,15 @@ export default function EditOfferScreen({ route }: any) {
                   },
                 ]}
               />
+              <DescriptionFormatBar
+                isDark={isDark}
+                disabled={isGeneratingDescription}
+                onInsert={(kind) => {
+                  const next = insertEditorialMark(description, descSelection, kind);
+                  setDescription(next.text);
+                  setDescSelection({ start: next.start, end: next.end });
+                }}
+              />
               <TextInput
                 style={[
                   styles.textAreaPremium,
@@ -2675,10 +2687,14 @@ export default function EditOfferScreen({ route }: any) {
                     color: txtColor,
                     backgroundColor: isDark ? '#141416' : '#F7F8FA',
                     borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)',
+                    fontWeight: '300',
+                    letterSpacing: 0.2,
+                    lineHeight: 26,
                   },
                 ]}
                 value={description}
                 onChangeText={setDescription}
+                onSelectionChange={(e) => setDescSelection(e.nativeEvent.selection)}
                 placeholder={t('offer.edit.mainInfo.descriptionPlaceholder')}
                 placeholderTextColor={subColor}
                 multiline
