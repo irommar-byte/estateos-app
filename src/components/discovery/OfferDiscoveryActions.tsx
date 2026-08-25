@@ -84,6 +84,7 @@ export default function OfferDiscoveryActions({
 }: Props) {
   const { record, lastAction, isBusy } = useDiscoveryActions();
   const [reasonOpen, setReasonOpen] = useState(false);
+  const [reasonNote, setReasonNote] = useState("");
   const [burst, setBurst] = useState<{ type: Exclude<DiscoveryUiAction, "OPEN">; nonce: number } | null>(
     null,
   );
@@ -103,6 +104,7 @@ export default function OfferDiscoveryActions({
   const commit = async (
     eventType: Exclude<DiscoveryUiAction, "OPEN">,
     reasonCode?: string,
+    note?: string,
   ) => {
     if (!Number.isFinite(id) || id <= 0 || isBusy(id)) return;
     setReasonOpen(false);
@@ -110,10 +112,12 @@ export default function OfferDiscoveryActions({
       offerId: id,
       eventType,
       reasonCode,
+      reasonNote: (note ?? reasonNote).trim() || undefined,
       source,
       onRequireAuth,
     });
     if (!result.ok) return;
+    setReasonNote("");
     setBurst({ type: eventType, nonce: Date.now() });
   };
 
@@ -146,6 +150,14 @@ export default function OfferDiscoveryActions({
           <X size={14} />
         </button>
       </div>
+      <textarea
+        value={reasonNote}
+        onChange={(e) => setReasonNote(e.target.value)}
+        maxLength={280}
+        rows={2}
+        placeholder="Albo napisz swoimi słowami: za drogo, nie ta dzielnica…"
+        className="eos-discovery-reasons__note"
+      />
       <div className="eos-discovery-reasons__grid">
         {DISLIKE_REASONS.map((r) => (
           <button
@@ -153,7 +165,7 @@ export default function OfferDiscoveryActions({
             type="button"
             disabled={isBusy(id)}
             className="eos-discovery-reasons__chip"
-            onClick={() => void commit("DISLIKE", r.code)}
+            onClick={() => void commit("DISLIKE", r.code, reasonNote)}
           >
             {r.label}
           </button>
@@ -162,7 +174,7 @@ export default function OfferDiscoveryActions({
           type="button"
           disabled={isBusy(id)}
           className="eos-discovery-reasons__chip eos-discovery-reasons__chip--skip"
-          onClick={() => void commit("DISLIKE")}
+          onClick={() => void commit("DISLIKE", undefined, reasonNote)}
         >
           Pomiń
         </button>

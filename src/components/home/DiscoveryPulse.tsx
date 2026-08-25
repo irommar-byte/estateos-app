@@ -45,6 +45,7 @@ import {
   writeMilestones,
   type SessionStorageLike,
 } from "@/lib/discovery/intelligenceSession";
+import { FALLBACK_DISCOVERY_PULSE } from "@/lib/discovery/fallbackPulse";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isPublicListingPath } from "@/lib/publicListingPath";
@@ -57,8 +58,19 @@ type PulsePayload = {
   contradictionIndex: number;
   directionLine: string;
   suggestion: string;
+  summaryLine?: string;
   evidenceHint?: string | null;
   decisionCount?: number;
+  lastNotes?: string[];
+  knows?: {
+    city?: string | null;
+    district?: string | null;
+    budgetPln?: number | null;
+    areaM2?: number | null;
+    transaction?: string | null;
+    dislikeReasons?: string[];
+    lastNotes?: string[];
+  };
   primaryCta: { label: string; href: string };
   secondaryCta: { label: string; href: string };
 };
@@ -434,10 +446,13 @@ export default function DiscoveryPulse() {
           setPulse(null);
           return;
         }
-        if (!res.ok) return;
+        if (!res.ok) {
+          setAuth("user");
+          setPulse((prev) => prev ?? FALLBACK_DISCOVERY_PULSE);
+          return;
+        }
         const data = await res.json();
-        const next = data?.pulse as PulsePayload | undefined;
-        if (!next) return;
+        const next = (data?.pulse as PulsePayload | undefined) || FALLBACK_DISCOVERY_PULSE;
 
         const prev = prevProgressRef.current;
         const prevContra = prevContradictionRef.current;
@@ -468,7 +483,8 @@ export default function DiscoveryPulse() {
         setPulse(next);
         setAuth("user");
       } catch {
-        // no-op
+        setAuth((prev) => (prev === "guest" ? prev : "user"));
+        setPulse((prev) => prev ?? FALLBACK_DISCOVERY_PULSE);
       }
     },
     [nudgeOrb, skipOnListing],
@@ -551,28 +567,26 @@ export default function DiscoveryPulse() {
     };
   }, [auth, pulse, expanded, intelligenceEnabled, nudgeOrb]);
 
-  if (
-    skipOnListing ||
-    !intelligenceHydrated ||
-    !intelligenceEnabled ||
-    auth === "guest" ||
-    auth === "unknown" ||
-    !pulse
-  ) {
+  if (skipOnListing || !intelligenceHydrated || !intelligenceEnabled || auth === "guest") {
+    return null;
+  }
+  if (auth === "unknown" && !pulse) {
     return null;
   }
 
-  const progress = Math.max(0, Math.min(100, pulse.progress || 0));
+  const pulseView = pulse ?? FALLBACK_DISCOVERY_PULSE;
+
+  const progress = Math.max(0, Math.min(100, pulseView.progress || 0));
   const displayProgress = Math.max(0, Math.min(100, progress + fillBoost * 8));
   const mood = resolveIntelligenceMood({
-    progress: pulse.progress,
-    confidence: pulse.confidence,
-    contradictionIndex: pulse.contradictionIndex,
+    progress: pulseView.progress,
+    confidence: pulseView.confidence,
+    contradictionIndex: pulseView.contradictionIndex,
     spectacle,
   });
   const colors = MOOD_PALETTE[mood];
   const ringClass = MOOD_RING_CLASS[mood];
-  const activeStage = resolveStageKey(pulse.stage, progress);
+  const activeStage = resolveStageKey(pulseView.stage, progress);
   const activeStageIndex = STAGE_ORDER.indexOf(activeStage);
   const stageLabels: Record<StageKey, string> = {
     EXPLORE: dict.intelligence.stageExplore,
@@ -722,15 +736,27 @@ export default function DiscoveryPulse() {
               id="eos-intel-pulse-title"
               className="relative text-[17px] font-semibold leading-[1.25] tracking-[-0.022em] text-white"
             >
-              {pulse.directionLine}
+              {pulseView.directionLine}
             </h2>
             <p className="relative mt-2 text-[13px] leading-relaxed text-white/58">
-              {pulse.suggestion}
+              {pulseView.suggestion}
             </p>
 
-            {pulse.evidenceHint ? (
-              <p className="relative mt-3 text-[11px] font-medium tracking-wide text-white/38">
-                {pulse.evidenceHint}
+            {pulseView.summaryLine ? (
+              <p className="relative mt-3 text-[12px] leading-snug text-white/70">
+                {pulseView.summaryLine}
+              </p>
+            ) : null}
+
+            {pulseView.evidenceHint ? (
+              <p className="relative mt-2 text-[11px] font-medium tracking-wide text-white/38">
+                {pulseView.evidenceHint}
+              </p>
+            ) : null}
+
+            {(pulseView.knows?.lastNotes?.length || pulseView.lastNotes?.length) ? (
+              <p className="relative mt-2 text-[11px] italic leading-snug text-white/45">
+                „{(pulseView.knows?.lastNotes || pulseView.lastNotes || [])[0]}”
               </p>
             ) : null}
 
@@ -760,19 +786,19 @@ export default function DiscoveryPulse() {
 
             <div className="relative mt-5 flex flex-col items-stretch gap-1.5">
               <Link
-                href={pulse.primaryCta.href}
+                href={pulseView.primaryCta.href}
                 className="eos-btn eos-btn--primary eos-btn--block !normal-case !tracking-wide !text-[13px] !font-semibold"
                 onClick={onCtaClick}
               >
-                {pulse.primaryCta.label}
+                {pulseView.primaryCta.label}
               </Link>
-              {pulse.secondaryCta?.href ? (
+              {pulseView.secondaryCta?.href ? (
                 <Link
-                  href={pulse.secondaryCta.href}
+                  href={pulseView.secondaryCta.href}
                   className="rounded-full px-3 py-2.5 text-center text-[12px] font-medium tracking-wide text-white/50 transition hover:bg-white/[0.04] hover:text-white/85"
                   onClick={onCtaClick}
                 >
-                  {pulse.secondaryCta.label}
+                  {pulseView.secondaryCta.label}
                 </Link>
               ) : null}
             </div>

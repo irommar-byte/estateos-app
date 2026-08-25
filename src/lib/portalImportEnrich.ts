@@ -12,12 +12,25 @@ import {
   pickDistrictFromPlaceName,
 } from '@/lib/location/locationCatalog';
 import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
+import {
+  buildForwardGeocodeSearchText,
+  mapboxForwardGeocodeUrl,
+  pickBestGeocodeFeature,
+} from '@/lib/mapboxGeocodeClient';
 import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
 
 /** Gdy OtoDom poda tylko dzielnicę (np. Służew), dopasuj miasto strict z katalogu. */
 export function inferCityFromLocationHints(...hints: (string | null | undefined)[]): string {
   const blob = hints.filter(Boolean).join(' ');
   if (!blob.trim()) return '';
+  const blobNorm = normalizeText(blob);
+
+  for (const strictCity of getStrictCities()) {
+    const norm = normalizeText(strictCity);
+    if (norm.length >= 4 && blobNorm.includes(norm)) {
+      return strictCity;
+    }
+  }
 
   for (const strictCity of getStrictCities()) {
     if (pickDistrictFromPlaceName(strictCity, blob)) {
@@ -52,25 +65,69 @@ export function inferCityFromImportSlug(url: string, title: string): string {
   return '';
 }
 
-async function reconcileImportCityWithPin(
-  draft: Pick<OtodomImportDraft, 'lat' | 'lng'>,
+/**
+ * Listing text (Warszawa in title) beats a leftover form city (Białystok).
+ * On pin vs city conflict, the pin is the listing's actual place unless the title names another city.
+ */
+export function pickImportedListingCity(params: {
+  draftCity?: string | null;
+  hintedCity?: string | null;
+  pinCity?: string | null;
+}): string {
+  const draft = canonicalizeCity(params.draftCity);
+  const hinted = canonicalizeCity(params.hintedCity);
+  const pin = canonicalizeCity(params.pinCity);
+
+  if (hinted && isStrictCity(hinted)) return hinted;
+  if (pin && isStrictCity(pin) && draft && isStrictCity(draft) && !locationNamesEquivalent(draft, pin)) {
+    return pin;
+  }
+  if (!draft || isNonCityLabel(draft)) return pin || hinted || draft;
+  if (pin && !isStrictCity(draft) && !locationNamesEquivalent(draft, pin)) {
+    return canonicalizeCity(pin);
+  }
+  return draft || pin || hinted || '';
+}
+
+export function listingCityFromDraftText(
+  draft: Pick<OtodomImportDraft, 'title' | 'street' | 'descriptionText' | 'externalUrl'>,
+): string {
+  return (
+    inferCityFromLocationHints(draft.title, draft.street, draft.descriptionText, draft.externalUrl) ||
+    inferCityFromImportSlug(draft.externalUrl || '', draft.title)
+  );
+}
+
+async function forwardGeocodeStreetInCity(
+  street: string,
   city: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const token = String(process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '').trim();
+  if (!token || !street.trim() || !city.trim()) return null;
+  const query = buildForwardGeocodeSearchText(street.trim(), city.trim());
+  const url = mapboxForwardGeocodeUrl(query, token, { limit: 5, autocomplete: false, cityHint: city });
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const features = Array.isArray(payload?.features) ? payload.features : [];
+    const best = pickBestGeocodeFeature(features, query, city);
+    const center = Array.isArray(best?.center) ? best.center : null;
+    const lng = Number(center?.[0]);
+    const lat = Number(center?.[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+}
+
+async function resolvePinCity(
+  draft: Pick<OtodomImportDraft, 'lat' | 'lng'>,
 ): Promise<string> {
-  if (draft.lat == null || draft.lng == null) return city;
-
+  if (draft.lat == null || draft.lng == null) return '';
   const feature = await fetchMapboxReverseFeature(draft.lat, draft.lng);
-  const pinCity = inferCityFromMapboxFeature(feature);
-  if (!pinCity) return city;
-
-  if (!city || isNonCityLabel(city)) {
-    return canonicalizeCity(pinCity);
-  }
-
-  if (!isStrictCity(city) && !locationNamesEquivalent(city, pinCity)) {
-    return canonicalizeCity(pinCity);
-  }
-
-  return city;
+  return canonicalizeCity(inferCityFromMapboxFeature(feature));
 }
 
 export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft, 'district' | 'neighborhood' | 'title' | 'externalUrl' | 'street'>): string {
@@ -90,39 +147,38 @@ export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft
 }
 
 export async function enrichOtodomImportDraft(draft: OtodomImportDraft): Promise<OtodomImportDraft> {
-  let city = canonicalizeCity(draft.city);
+  const hintedCity = listingCityFromDraftText(draft);
+  const pinCity = await resolvePinCity(draft);
+  let city = pickImportedListingCity({
+    draftCity: draft.city,
+    hintedCity,
+    pinCity,
+  });
+  let lat = draft.lat;
+  let lng = draft.lng;
+
+  const pinDisagrees =
+    Boolean(city) &&
+    Boolean(pinCity) &&
+    !locationNamesEquivalent(city, pinCity);
+
+  if (city && (pinDisagrees || lat == null || lng == null) && draft.street) {
+    const moved = await forwardGeocodeStreetInCity(draft.street, city);
+    if (moved) {
+      lat = moved.lat;
+      lng = moved.lng;
+    }
+  }
+
   let district = String(draft.district || draft.neighborhood || '').trim();
-
-  if (!city) {
-    city = inferCityFromLocationHints(
-      draft.district,
-      draft.neighborhood,
-      draft.title,
-      draft.externalUrl,
-    );
-  }
-
-  if (!city) {
-    city = inferCityFromImportSlug(draft.externalUrl, draft.title);
-  }
-
-  if (!city && draft.lat != null && draft.lng != null) {
-    const feature = await fetchMapboxReverseFeature(draft.lat, draft.lng);
-    city = inferCityFromMapboxFeature(feature);
-  }
-
-  if (city && !district) {
-    district = inferDistrictForCity(city, draft);
-  }
-
-  city = await reconcileImportCityWithPin(draft, canonicalizeCity(city));
-
-  if (city && !district) {
-    district = inferDistrictForCity(city, draft);
+  if (city && (!district || pinDisagrees)) {
+    district = inferDistrictForCity(city, { ...draft, lat, lng }) || district;
   }
 
   return normalizeImportDraftHeating({
     ...draft,
+    lat,
+    lng,
     city: canonicalizeCity(city),
     district: canonicalizeDistrict(city, district || draft.district),
   });

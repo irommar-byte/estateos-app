@@ -7723,6 +7723,23 @@ html:not(.light) .eos-car-form-cancel {
   background: transparent;
   cursor: pointer;
 }
+.eos-discovery-reasons__note {
+  width: 100%;
+  margin: 0 0 0.65rem;
+  min-height: 3.4rem;
+  resize: none;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #fff;
+  outline: none;
+}
+.eos-discovery-reasons__note::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
 .eos-discovery-reasons__grid {
   display: flex;
   flex-wrap: wrap;

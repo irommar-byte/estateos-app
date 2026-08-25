@@ -41,6 +41,8 @@ export async function GET(req: Request) {
           evidenceHint: guide.evidenceHint,
           summaryLine: guide.summaryLine,
           decisionCount: guide.decisionCount,
+          knows: guide.knows,
+          lastNotes: guide.knows.lastNotes,
           primaryCta: guide.primaryCta,
           secondaryCta: guide.secondaryCta,
           updatedAt: guide.profileUpdatedAt?.toISOString() || null,

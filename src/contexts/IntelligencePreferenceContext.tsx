@@ -18,6 +18,7 @@ type IntelligencePreferenceContextValue = {
   enabled: boolean;
   decided: boolean;
   hydrated: boolean;
+  synced: boolean;
   setEnabled: (next: boolean) => void;
   /** Marks onboarding as resolved and optionally enables. */
   decide: (enable: boolean) => void;
@@ -69,10 +70,11 @@ export function IntelligencePreferenceProvider({ children }: { children: ReactNo
   const [enabled, setEnabledState] = useState(false);
   const [decided, setDecided] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [synced, setSynced] = useState(false);
 
   useEffect(() => {
     const savedEnabled = readBool(ENABLED_KEY);
-    const savedDecided = readBool(DECIDED_KEY) === true || savedEnabled !== null;
+    const savedDecided = readBool(DECIDED_KEY) === true;
     setEnabledState(savedEnabled === true);
     setDecided(savedDecided);
     setHydrated(true);
@@ -81,14 +83,24 @@ export function IntelligencePreferenceProvider({ children }: { children: ReactNo
     void (async () => {
       try {
         const res = await fetch(API_PATH, { credentials: "include", cache: "no-store" });
-        if (cancelled || res.status === 401) return;
-        if (!res.ok) return;
+        if (cancelled) return;
+        if (res.status === 401) {
+          setSynced(true);
+          return;
+        }
+        if (!res.ok) {
+          setSynced(true);
+          return;
+        }
         const data = (await res.json()) as {
           success?: boolean;
           enabled?: boolean;
           decided?: boolean;
         };
-        if (!data?.success || cancelled) return;
+        if (!data?.success || cancelled) {
+          setSynced(true);
+          return;
+        }
         const nextEnabled = data.enabled === true;
         const nextDecided = data.decided === true;
         setEnabledState(nextEnabled);
@@ -96,6 +108,8 @@ export function IntelligencePreferenceProvider({ children }: { children: ReactNo
         persistLocal(nextEnabled, nextDecided);
       } catch {
         /* keep localStorage */
+      } finally {
+        if (!cancelled) setSynced(true);
       }
     })();
 
@@ -119,8 +133,8 @@ export function IntelligencePreferenceProvider({ children }: { children: ReactNo
   }, []);
 
   const value = useMemo(
-    () => ({ enabled, decided, hydrated, setEnabled, decide }),
-    [enabled, decided, hydrated, setEnabled, decide],
+    () => ({ enabled, decided, hydrated, synced, setEnabled, decide }),
+    [enabled, decided, hydrated, synced, setEnabled, decide],
   );
 
   return (

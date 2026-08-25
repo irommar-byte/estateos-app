@@ -41,6 +41,15 @@ export type EstateOsGuideContext = {
     visitOutcome: string | null;
     updatedAt: Date;
   }>;
+  knows: {
+    city: string | null;
+    district: string | null;
+    budgetPln: number | null;
+    areaM2: number | null;
+    transaction: 'SELL' | 'RENT' | 'MIXED' | null;
+    dislikeReasons: string[];
+    lastNotes: string[];
+  };
   nextStep: {
     key: string;
     title: string;
@@ -86,13 +95,19 @@ function buildCta(label: string, action: GuideActionKey, offerId?: number | null
  * Never throws for cold start; always returns a usable next step.
  */
 export async function buildEstateOsGuideContext(userId: number): Promise<EstateOsGuideContext> {
-  const [profile, tropes] = await Promise.all([
+  const [profile, tropes, noteEvents] = await Promise.all([
     prisma.discoveryProfile.findUnique({ where: { userId } }),
     prisma.discoveryTrope.findMany({
       where: { userId },
       orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }],
       take: 5,
       select: { offerId: true, status: true, priority: true, visitOutcome: true, updatedAt: true },
+    }),
+    prisma.discoveryEvent.findMany({
+      where: { userId, correctionTarget: { startsWith: 'note:' } },
+      orderBy: { at: 'desc' },
+      take: 3,
+      select: { correctionTarget: true },
     }),
   ]);
 
@@ -198,13 +213,21 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
   const blend = Math.min(1, Math.max(0, confidence * 0.72 + Math.min(0.28, decisionCount * 0.014)));
   const stageProgress = band.floor + (band.ceiling - band.floor) * blend;
 
+  const lastNotes = noteEvents
+    .map((row) => String(row.correctionTarget || '').replace(/^note:/, '').trim())
+    .filter(Boolean);
+
   const evidenceBits: string[] = [];
   if (topCity) evidenceBits.push(topCity);
+  if (brief.topDistricts[0]?.key) evidenceBits.push(brief.topDistricts[0].key);
   if (brief.topPropertyTypes[0]?.key) {
     evidenceBits.push(
       discoveryPropertyTypeLabel(brief.topPropertyTypes[0].key) ||
         discoveryDisplayLabel(brief.topPropertyTypes[0].key),
     );
+  }
+  if (brief.preferredBudgetPln) {
+    evidenceBits.push(`~${brief.preferredBudgetPln.toLocaleString('pl-PL')} zł`);
   }
   const evidenceHint = evidenceBits.length ? evidenceBits.join(' · ') : null;
 
@@ -220,6 +243,18 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
     evidenceHint,
     decisionCount,
     tropes,
+    knows: {
+      city: topCity,
+      district: brief.topDistricts[0]?.key || null,
+      budgetPln: brief.preferredBudgetPln,
+      areaM2: brief.preferredAreaM2,
+      transaction: brief.preferredTransaction,
+      dislikeReasons: brief.dislikeReasons
+        .map((row) => row.key)
+        .filter((key) => !key.startsWith('__'))
+        .slice(0, 3),
+      lastNotes,
+    },
     nextStep,
     primaryCta,
     secondaryCta,
