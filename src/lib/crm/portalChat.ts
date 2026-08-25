@@ -4,7 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/core/notification.core';
 import { contactThreadPair } from '@/lib/contactThreadPair';
 import { sendContactThreadMessage } from '@/lib/contactSendMessage';
-import { parseContactMessageParts } from '@/lib/contactAttachmentShared';
+import {
+  cleanAttachmentOnlyMessage,
+  contactAttachmentPreviewLabel,
+  formatContactAttachmentName,
+  parseContactMessageParts,
+} from '@/lib/contactAttachmentShared';
 import {
   CONTACT_UPLOAD_BASE_FS,
   CONTACT_UPLOAD_PUBLIC_PREFIX,
@@ -99,13 +104,14 @@ export async function listPortalChat(clientId: number, viewer: 'client' | 'agent
     });
     if (representedByLegacyActivity) continue;
 
+    const attachments = parts.attachment ? [parts.attachment] : [];
     merged.push({
       id: -contact.id,
-      content: parts.text,
+      content: cleanAttachmentOnlyMessage(parts.text, attachments),
       createdAt: contact.createdAt.toISOString(),
       fromAgent,
       fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
-      attachments: parts.attachment ? [parts.attachment] : [],
+      attachments,
     });
   }
 
@@ -179,7 +185,7 @@ export async function savePortalAttachment(params: {
     };
   }
 
-  const originalName = String(params.originalFilename || 'zalacznik').trim() || 'zalacznik';
+  const originalName = formatContactAttachmentName(params.originalFilename, 'zalacznik');
   if (!isAllowedContactAttachment(params.mimeType, originalName)) {
     return { ok: false, status: 415, error: 'Niedozwolony typ pliku.' };
   }
@@ -225,7 +231,7 @@ export async function sendPortalChat(params: {
     return { ok: false as const, status: 400, error: 'Wpisz treść wiadomości albo dodaj załącznik.' };
   }
 
-  const body = content || attachments.map((item) => item.name).join(', ');
+  const body = content || attachments.map((item) => contactAttachmentPreviewLabel(item)).join(', ');
   const metadata = {
     from: params.from,
     content,
@@ -251,7 +257,7 @@ export async function sendPortalChat(params: {
       const contactResult = await sendContactThreadMessage({
         threadId: thread.id,
         userId: senderId,
-        content: content || (attachments[0] ? `📎 ${attachments[0].name}` : ''),
+        content: content || (attachments[0] ? contactAttachmentPreviewLabel(attachments[0]) : ''),
         attachment: attachments[0] || null,
         mirrorToClientPortal: false,
       });

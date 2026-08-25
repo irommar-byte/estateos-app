@@ -16,6 +16,56 @@ export type ContactThreadAttachmentRow = ContactAttachmentMeta & {
   createdAt: string;
 };
 
+function safelyDecodeAttachmentName(value: string): string {
+  let decoded = value;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  return decoded;
+}
+
+export function formatContactAttachmentName(raw: string | null | undefined, fallback = 'Załącznik'): string {
+  const source = String(raw || '').trim();
+  if (!source) return fallback;
+  const withoutQuery = source.split(/[?#]/, 1)[0] || source;
+  const basename = withoutQuery.split(/[\\/]/).pop() || withoutQuery;
+  const decoded = safelyDecodeAttachmentName(basename)
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return decoded || fallback;
+}
+
+export function contactAttachmentPreviewLabel(meta: ContactAttachmentMeta): string {
+  const kind = contactAttachmentKind(meta);
+  if (kind === 'audio') return '🎵 Nagranie audio';
+  if (kind === 'image') return '🖼 Zdjęcie';
+  if (kind === 'video') return '🎬 Wideo';
+  if (kind === 'pdf') return '📄 Dokument PDF';
+  return '📎 Załącznik';
+}
+
+export function cleanAttachmentOnlyMessage(
+  content: string | null | undefined,
+  attachments: ContactAttachmentMeta[] | null | undefined,
+): string {
+  const text = String(content || '').trim();
+  if (!text || !attachments?.length) return text;
+  const normalizedText = safelyDecodeAttachmentName(text.replace(/^📎\s*/, '')).trim().toLocaleLowerCase('pl-PL');
+  const duplicatesAttachmentName = attachments.some((attachment) => {
+    const rawName = String(attachment.name || '').trim().toLocaleLowerCase('pl-PL');
+    const displayName = formatContactAttachmentName(attachment.name).toLocaleLowerCase('pl-PL');
+    return normalizedText === rawName || normalizedText === displayName;
+  });
+  return duplicatesAttachmentName ? '' : text;
+}
+
 const ALLOWED_EXT = new Set([
   'jpg',
   'jpeg',
@@ -98,7 +148,7 @@ export function parseContactAttachmentMeta(raw: unknown): ContactAttachmentMeta 
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const url = String(o.url || '').trim();
-  const name = String(o.name || 'Załącznik').trim();
+  const name = formatContactAttachmentName(String(o.name || 'Załącznik'));
   const mimeType = String(o.mimeType || 'application/octet-stream').trim();
   const size = Number(o.size);
   if (!url) return null;

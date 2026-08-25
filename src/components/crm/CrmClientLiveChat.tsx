@@ -4,7 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MessageSquare, Paperclip, Plus, Radio, Send, X } from "lucide-react";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
-import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAttachmentShared";
+import {
+  cleanAttachmentOnlyMessage,
+  formatContactAttachmentName,
+  formatContactBytes,
+  type ContactAttachmentMeta,
+} from "@/lib/contactAttachmentShared";
 import SendPlaneButton from "@/components/ui/SendPlaneButton";
 
 type PortalMessage = {
@@ -182,8 +187,10 @@ export default function CrmClientLiveChat({
                     </p>
                   </div>
                 ) : (
-                  messages.map((message) => (
-                    <div
+                  messages.map((message) => {
+                    const visibleContent = cleanAttachmentOnlyMessage(message.content, message.attachments);
+                    return (
+                      <div
                       key={message.id}
                       className={`max-w-[86%] rounded-2xl px-3 py-2.5 text-sm ${
                         message.fromMe
@@ -204,12 +211,13 @@ export default function CrmClientLiveChat({
                           })}
                         </time>
                       </div>
-                      {message.content ? <p className="mt-1 whitespace-pre-wrap leading-relaxed">{message.content}</p> : null}
+                      {visibleContent ? <p className="mt-1 whitespace-pre-wrap leading-relaxed">{visibleContent}</p> : null}
                       {(message.attachments || []).map((attachment) => (
                         <ContactAttachmentBubble key={attachment.url} attachment={attachment} isMe={message.fromMe} />
                       ))}
-                    </div>
-                  ))
+                      </div>
+                    );
+                  })
                 )}
                 {peerTyping ? (
                   <div className="mr-auto inline-flex items-center gap-1 rounded-full bg-[var(--eos-input)] px-3 py-2">
@@ -224,7 +232,7 @@ export default function CrmClientLiveChat({
                 <div className="eos-inset-well mx-4 mb-2 flex items-center gap-3 rounded-2xl px-4 py-2.5">
                   <Paperclip className="size-4 shrink-0 text-emerald-500" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold">{pendingFile.name}</p>
+                    <p className="truncate text-xs font-semibold">{formatContactAttachmentName(pendingFile.name)}</p>
                     <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
                   </div>
                   <button type="button" onClick={() => setPendingFile(null)} className="rounded-full p-1.5 text-[var(--eos-muted)]">
