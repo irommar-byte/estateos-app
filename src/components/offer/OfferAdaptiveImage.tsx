@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties, ImgHTMLAttributes } from 'react';
+import { useEffect, useState, type CSSProperties, type ImgHTMLAttributes } from 'react';
 import type { OfferImageMetaPublic } from '@/lib/upload/offerImageMeta';
 import { useHdrDisplayCapability } from '@/hooks/useHdrDisplayCapability';
 import { OfferHdrBadge } from '@/components/offer/OfferHdrBadge';
@@ -27,8 +27,9 @@ function masterMimeType(meta?: OfferImageMetaPublic | null): string | undefined 
 }
 
 /**
- * Adaptacyjne wyświetlanie: HDR master gdy urządzenie/przeglądarka wspiera, inaczej SDR fallback.
- * Używa <picture> + media queries — bez pseudo-HDR przez CSS filter.
+ * Adaptacyjne wyświetlanie: na Safari/iOS `<img src={master HEIC}>` (gain map / HDR),
+ * w pozostałych przeglądarkach SDR WebP. Nie używamy <picture>+source, bo Safari
+ * często zostaje przy fallbacku i nie rozświetla świateł.
  */
 export function OfferAdaptiveImage({
   sdrSrc,
@@ -46,46 +47,28 @@ export function OfferAdaptiveImage({
 }: Props) {
   const { hdrCapable, heicInPicture, ready } = useHdrDisplayCapability();
   const isHdr = Boolean(meta?.isHdr);
-  const masterUrl = meta?.hdrDisplayUrl || meta?.masterUrl;
+  const masterUrl = meta?.hdrDisplayUrl || meta?.masterUrl || '';
   const masterType = masterMimeType(meta);
   const masterIsHeic = masterType === 'image/heic' || masterType === 'image/heif';
-
   const canUseMaster =
-    ready && isHdr && masterUrl && hdrCapable && (!masterIsHeic || heicInPicture);
+    ready && isHdr && Boolean(masterUrl) && hdrCapable && (!masterIsHeic || heicInPicture);
 
-  if (isHdr && masterUrl) {
-    return (
-      <span className={`relative block ${className}`.trim()}>
-        <picture>
-          {canUseMaster ? (
-            <source
-              srcSet={masterUrl}
-              type={masterType}
-              media="(dynamic-range: high), (color-gamut: p3), (color-gamut: rec2020)"
-            />
-          ) : null}
-          <img
-            src={sdrSrc}
-            alt={alt}
-            className={imgClassName}
-            draggable={draggable}
-            loading={loading}
-            fetchPriority={fetchPriority}
-            width={meta?.width}
-            height={meta?.height}
-            onClick={onClick}
-            style={style}
-          />
-        </picture>
-        {showHdrBadge && isHdr ? <OfferHdrBadge compact={badgeCompact} /> : null}
-      </span>
-    );
-  }
+  const preferred = canUseMaster ? masterUrl : sdrSrc;
+  const [src, setSrc] = useState(sdrSrc);
+
+  useEffect(() => {
+    setSrc(preferred || sdrSrc);
+  }, [preferred, sdrSrc]);
+
+  const imgStyle: CSSProperties = {
+    ...style,
+    dynamicRangeLimit: 'no-limit',
+  } as CSSProperties;
 
   return (
     <span className={`relative block ${className}`.trim()}>
       <img
-        src={sdrSrc}
+        src={src}
         alt={alt}
         className={imgClassName}
         draggable={draggable}
@@ -94,7 +77,10 @@ export function OfferAdaptiveImage({
         width={meta?.width}
         height={meta?.height}
         onClick={onClick}
-        style={style}
+        onError={() => {
+          if (src !== sdrSrc) setSrc(sdrSrc);
+        }}
+        style={imgStyle}
       />
       {showHdrBadge && isHdr ? <OfferHdrBadge compact={badgeCompact} /> : null}
     </span>

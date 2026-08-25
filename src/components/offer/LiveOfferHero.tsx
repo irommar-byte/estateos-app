@@ -118,7 +118,7 @@ function HeroLayer({
   const isOut = role === "out";
   const isSolo = role === "solo";
 
-  const dimClass = dimmed ? (isSolo ? "opacity-60 blur-xl" : "opacity-55 blur-md") : isSolo ? "opacity-90" : "";
+  const dimClass = dimmed ? (isSolo ? "blur-xl" : "blur-md") : "";
 
   const imageBlock = (
     <OfferAdaptiveImage
@@ -162,13 +162,13 @@ function HeroLayer({
       animate={
         isOut
           ? {
-              opacity: dimmed ? 0.55 : [1, 1, 0.38, 0],
+              opacity: dimmed ? 1 : [1, 1, 0.38, 0],
               scale: [1.22, 1.3, 1.24],
               x: ["0%", "-12%"],
               y: ["0%", "-1%", "0.4%"],
             }
           : {
-              opacity: dimmed ? 0.55 : [0, 0.18, 0.88, 1],
+              opacity: dimmed ? 1 : [0, 0.18, 0.88, 1],
               scale: [1.28, 1.26, 1.22],
               x: ["12%", "0%"],
               y: ["0.4%", "0%"],
