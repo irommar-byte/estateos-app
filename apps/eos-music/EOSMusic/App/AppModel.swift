@@ -97,6 +97,8 @@ final class AppModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var toastDismissTask: Task<Void, Never>?
+    private var libraryRefreshDebounceTask: Task<Void, Never>?
+    private var plusPayloads: [String: MusicTrackPayload] = [:]
     /// Single-flight / stale-guard for overlapping library refreshes.
     private var workspaceRefreshGeneration = 0
 
@@ -398,6 +400,16 @@ final class AppModel: ObservableObject {
         applyLibrarySnapshot(library, hadCache: hadLocal)
     }
 
+    func scheduleDebouncedLibraryRefresh() {
+        libraryRefreshDebounceTask?.cancel()
+        libraryRefreshDebounceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled, let self else { return }
+            try? await self.refreshMusicLibrary()
+            await self.refreshServerAssets()
+        }
+    }
+
     func refreshFavorites() async throws {
         favoriteItems = try await api.fetchFavorites()
     }
@@ -428,27 +440,43 @@ final class AppModel: ObservableObject {
         musicTracks.contains { $0.url == url }
     }
 
+    /// Apple Music–style “+”: enqueue immediately (animation + queue), persist in the background.
+    func queuePlus(_ track: MusicTrackPayload, preferredFolderId: String? = nil) {
+        if isOnServer(track.url) { return }
+        plusPayloads[track.url] = track
+        let folderHint = preferredFolderId
+            ?? musicTracks.first(where: { $0.url == track.url })?.folderId
+        downloads.enqueueServerAcquire(
+            url: track.url,
+            title: track.title,
+            folderId: folderHint,
+            api: api,
+            resolveFolderId: { [weak self] url in
+                guard let self else { return nil }
+                if let existing = self.musicTracks.first(where: { $0.url == url }) {
+                    return existing.folderId
+                }
+                let folderId = try await self.ensurePrimaryLibraryFolderId()
+                let payload = self.plusPayloads[url] ?? track
+                try await self.addTrackToFolder(
+                    folderId: folderId,
+                    track: payload,
+                    enrich: false,
+                    refreshLibrary: false,
+                    queueServerCopy: false
+                )
+                self.scheduleDebouncedLibraryRefresh()
+                return folderId
+            },
+            onLibraryChanged: { [weak self] in
+                self?.scheduleDebouncedLibraryRefresh()
+            }
+        )
+    }
+
     /// Apple Music–style “+”: adds to primary library playlist and warms durable server asset.
     func addToLibrary(_ track: MusicTrackPayload) async throws {
-        if let existing = musicTracks.first(where: { $0.url == track.url }) {
-            guard !isOnServer(track.url) else { return }
-            downloads.ensureOnServer(
-                url: track.url,
-                folderId: existing.folderId,
-                api: api,
-                onLibraryChanged: { [weak self] in
-                    try? await self?.refreshMusicLibrary()
-                    await self?.refreshServerAssets()
-                },
-                onReady: { [weak self] in
-                    await self?.presentToast(.savedOnServer(trackTitle: track.title))
-                }
-            )
-            return
-        }
-        let folderId = try await ensurePrimaryLibraryFolderId()
-        try await addTrackToFolder(folderId: folderId, track: track)
-        presentToast(.addedToLibrary(trackTitle: track.title))
+        queuePlus(track)
     }
 
     /// Cloud action: transfer an already-server-backed track to this device.
@@ -534,13 +562,23 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func addTrackToFolder(folderId: String, track: MusicTrackPayload, announcePlaylistName: String? = nil) async throws {
-        let prepared = try await prepareLibraryPayload(track)
+    func addTrackToFolder(
+        folderId: String,
+        track: MusicTrackPayload,
+        announcePlaylistName: String? = nil,
+        enrich: Bool = true,
+        refreshLibrary: Bool = true,
+        queueServerCopy: Bool = true
+    ) async throws {
+        let prepared = enrich ? (try await prepareLibraryPayload(track)) : track
         _ = try await api.addTrackToFolder(folderId: folderId, track: prepared)
-        try await refreshMusicLibrary()
+        if refreshLibrary {
+            try await refreshMusicLibrary()
+        }
         if let announcePlaylistName {
             presentToast(.addedToPlaylist(trackTitle: track.title, playlist: announcePlaylistName))
         }
+        guard queueServerCopy else { return }
         downloads.ensureOnServer(
             url: track.url,
             folderId: folderId,
@@ -681,7 +719,13 @@ final class AppModel: ObservableObject {
     }
 
     func downloadJobId(for url: String) -> String? {
-        musicTracks.first { $0.url == url }?.durableJobId
+        if let id = musicTracks.first(where: { $0.url == url })?.durableJobId {
+            return id
+        }
+        if let id = serverAssets.first(where: { $0.url == url })?.assetId, !id.isEmpty {
+            return id
+        }
+        return downloadedLibraryTracks.first(where: { $0.url == url })?.durableJobId
     }
 
     func minimizePlayer() {
@@ -722,8 +766,7 @@ final class AppModel: ObservableObject {
         }
 
         let enriched = queueTracks.map { track -> MusicPlaybackTrack in
-            let jobId = track.durableJobId
-                ?? musicTracks.first(where: { $0.url == track.url })?.durableJobId
+            let jobId = track.durableJobId ?? downloadJobId(for: track.url)
             return MusicPlaybackTrack(from: track, downloadJobId: jobId)
         }
         // Prefer the exact tapped URL even if offline filtering reshuffled indices.
@@ -744,7 +787,7 @@ final class AppModel: ObservableObject {
             queue: enriched,
             startIndex: resolvedStart,
             folderId: folder?.id,
-            folderName: folder?.name ?? (isOfflinePlaybackActive ? "Pobrane" : nil)
+            folderName: folder?.name ?? (isOfflinePlaybackActive ? "Pobrane" : "EOS Music")
         )
         let needsExternalResolver = !externalSourceIds.isEmpty
         await playback.play(
@@ -792,7 +835,7 @@ final class AppModel: ObservableObject {
             }
         }
         let queue = queueItems.map { MusicPlaybackTrack(from: $0) }
-        let session = MusicPlaybackSession(queue: queue, startIndex: start, folderId: nil, folderName: nil)
+        let session = MusicPlaybackSession(queue: queue, startIndex: start, folderId: nil, folderName: "EOS Music")
         await playback.play(
             session: session,
             api: api,

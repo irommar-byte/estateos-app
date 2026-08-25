@@ -221,7 +221,9 @@ extension MusicPlaybackTrack {
         thumbnail: String? = nil,
         duration: Double? = nil,
         artistId: String? = nil,
-        albumId: String? = nil
+        albumId: String? = nil,
+        downloadJobId: String? = nil,
+        serverAssetId: String? = nil
     ) -> MusicPlaybackTrack {
         MusicPlaybackTrack(
             id: id,
@@ -234,8 +236,8 @@ extension MusicPlaybackTrack {
             artistId: pick(artistId) ?? self.artistId,
             albumId: pick(albumId) ?? self.albumId,
             folderId: folderId,
-            downloadJobId: downloadJobId,
-            serverAssetId: serverAssetId,
+            downloadJobId: pick(downloadJobId) ?? self.downloadJobId,
+            serverAssetId: pick(serverAssetId) ?? self.serverAssetId,
             playbackFileURL: playbackFileURL,
             externalRelativePath: externalRelativePath,
             webDAVPath: webDAVPath,

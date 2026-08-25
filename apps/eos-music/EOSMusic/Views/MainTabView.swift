@@ -67,6 +67,9 @@ struct MainTabView: View {
                     .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
             }
             .tint(EOSTheme.accent)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                MiniPlayerDock()
+            }
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         // Offline sync lives in EOSMusicApp (configureOfflineMode + onChange); picker writes both.

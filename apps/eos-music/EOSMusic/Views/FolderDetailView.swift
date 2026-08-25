@@ -35,7 +35,10 @@ struct FolderDetailView: View {
     private var pendingCount: Int {
         tracks.filter { track in
             guard !app.isOfflineAvailable(track.url) else { return false }
-            let state = app.downloads.uiState(for: track.url, isDownloaded: track.isDownloaded)
+            let state = app.downloads.uiState(
+                for: track.url,
+                isOnServer: app.isOnServer(track.url) || track.isOnServer
+            )
             return state == .idle || state.isFailed
         }.count
     }

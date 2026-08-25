@@ -140,7 +140,7 @@ final class MusicAPIClient {
 
     func streamURLRequest(jobId: String, token: String) -> URLRequest {
         let encoded = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
-        let path = "/api/music/stream/\(jobId)?token=\(encoded)&t=\(Int(Date().timeIntervalSince1970))"
+        let path = "/api/music/stream/\(jobId)?token=\(encoded)"
         return makeRequest(method: "GET", path: path, authorized: true)
     }
 
@@ -214,7 +214,10 @@ final class MusicAPIClient {
                         ready: match.ready,
                         status: match.status,
                         progress: match.progress,
-                        token: nil
+                        token: nil,
+                        persistent: match.ready,
+                        onServer: match.ready,
+                        mode: nil
                     )
                 }
             }
@@ -266,7 +269,7 @@ final class MusicAPIClient {
         jobId: String,
         timeoutSeconds: Int = 180,
         onProgress: ((Double, String) -> Void)? = nil
-    ) async throws {
+    ) async throws -> JobStatusResponse {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
         var poll = 0
         while Date() < deadline {
@@ -287,9 +290,8 @@ final class MusicAPIClient {
             }
             let pct = max(0, min(100, job.progress ?? 0))
             onProgress?(pct, job.status)
-            if job.ready == true || job.status == "done" { return }
+            if job.ready == true || job.status == "done" { return job }
             poll += 1
-            // Fast polls while APLMate resolves / early stream opens.
             let ns: UInt64 = poll < 40 ? 200_000_000 : poll < 80 ? 400_000_000 : 1_000_000_000
             try await Task.sleep(nanoseconds: ns)
         }
@@ -305,7 +307,6 @@ final class MusicAPIClient {
         var components = URLComponents(string: base + "/api/music/stream/\(jobId)")!
         components.queryItems = [
             URLQueryItem(name: "token", value: token),
-            URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
         ]
         return components.url!
     }
@@ -408,7 +409,10 @@ final class MusicAPIClient {
                         ready: match.ready,
                         status: match.status,
                         progress: match.progress,
-                        token: nil
+                        token: nil,
+                        persistent: match.ready,
+                        onServer: match.ready,
+                        mode: nil
                     )
                 }
             }
@@ -588,6 +592,8 @@ final class MusicAPIClient {
             req.timeoutInterval = 90
         } else if path.hasPrefix("/api/cda-hd/") || path.hasPrefix("/api/films/") || path.hasPrefix("/api/search") {
             req.timeoutInterval = 60
+        } else if path.hasPrefix("/api/music/play-token") {
+            req.timeoutInterval = 8
         } else if path.hasPrefix("/api/music/play") {
             // Fast acknowledgement only; preparation continues under /api/job/:jobId.
             req.timeoutInterval = 20

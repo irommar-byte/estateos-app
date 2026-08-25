@@ -103,7 +103,6 @@ struct TrackStorageActionButton: View {
     var size: CGFloat = 20
     var frameSize: CGFloat = 34
 
-    @State private var isQueuingServerCopy = false
     @State private var errorMessage: String?
 
     private var state: TrackDownloadUIState {
@@ -118,24 +117,18 @@ struct TrackStorageActionButton: View {
             switch state {
             case .idle, .failed:
                 Button {
-                    Task { await ensureServerCopy() }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    app.queuePlus(track, preferredFolderId: folderId)
                 } label: {
-                    Group {
-                        if isQueuingServerCopy {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: size, weight: .semibold))
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(EOSTheme.accent)
-                        }
-                    }
-                    .frame(width: frameSize, height: frameSize)
-                    .contentShape(Rectangle())
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: size, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(EOSTheme.accent)
+                        .frame(width: frameSize, height: frameSize)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(isQueuingServerCopy || app.isOfflinePlaybackActive)
+                .disabled(app.isOfflinePlaybackActive)
                 .accessibilityLabel("Dodaj na serwer EOS")
 
             case .onServer, .acquiringServer, .downloading, .done:
@@ -166,18 +159,6 @@ struct TrackStorageActionButton: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
-        }
-    }
-
-    private func ensureServerCopy() async {
-        guard !app.isOnServer(track.url) else { return }
-        isQueuingServerCopy = true
-        defer { isQueuingServerCopy = false }
-        do {
-            try await app.addToLibrary(track)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 

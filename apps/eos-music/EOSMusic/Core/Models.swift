@@ -204,6 +204,16 @@ struct JobStatusResponse: Codable {
     let url: String?
     let name: String?
     let phase: String?
+    let persistent: Bool?
+    let onServer: Bool?
+    let mode: String?
+
+    var isDurableServerCopy: Bool {
+        if onServer == true || persistent == true { return true }
+        if mode == "file" { return true }
+        if mode == "stream-proxy" { return false }
+        return false
+    }
 }
 
 struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
@@ -264,6 +274,17 @@ struct DownloadStartResponse: Codable {
     let status: String?
     let progress: Double?
     let token: String?
+    let persistent: Bool?
+    let onServer: Bool?
+    let mode: String?
+
+    /// Durable MP3 on the EOS server — not a live preview stream.
+    var isDurableServerCopy: Bool {
+        if onServer == true || persistent == true { return true }
+        if mode == "file" { return true }
+        if mode == "stream-proxy" { return false }
+        return false
+    }
 }
 
 struct MusicAssetItem: Codable, Identifiable, Hashable {

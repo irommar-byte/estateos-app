@@ -16,7 +16,7 @@ actor DownloadCoordinator {
         let continuation: CheckedContinuation<Void, Error>
     }
 
-    private let maxServerAcquire = 2
+    private let maxServerAcquire = 3
     private let maxDeviceTransfers = 2
 
     private var fifo: [Waiter] = []

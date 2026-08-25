@@ -39,33 +39,9 @@ struct MiniPlayerTabInset: ViewModifier {
     private var isVisible: Bool { showsVideo || showsMusic }
 
     func body(content: Content) -> some View {
-        // Parent `safeAreaInset` (mini-player) positions the bar. Nested Lists inside
-        // NavigationStack often ignore that inset — they read `miniPlayerClearance` via
-        // `.eosScrollClearance()`. Don't also contentMargin here or root screens double-pad.
         let base = content
             .environment(\.miniPlayerClearance, isVisible ? EOSLayout.miniPlayerScrollClearance : 0)
             .environment(\.eosScrollActive, scrollActive)
-            .safeAreaInset(edge: .bottom, spacing: 6) {
-                if isVisible {
-                    Group {
-                        if showsVideo {
-                            VideoMiniPlayerBar()
-                        } else {
-                            MiniPlayerBar()
-                        }
-                    }
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 2)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: .bottom).combined(with: .opacity),
-                                removal: .move(edge: .bottom).combined(with: .opacity)
-                            )
-                        )
-                }
-            }
-            .animation(EOSMotion.playerSheet, value: isVisible)
-            .animation(EOSMotion.playerSheet, value: app.isFullPlayerPresented)
 
         if #available(iOS 18.0, *) {
             base.onScrollPhaseChange { _, phase in
@@ -75,6 +51,35 @@ struct MiniPlayerTabInset: ViewModifier {
         } else {
             base
         }
+    }
+}
+
+/// One dock above the tab bar — not inside NavigationStack, so sides/shadows are not clipped.
+struct MiniPlayerDock: View {
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var video: VideoAppModel
+
+    private var showsVideo: Bool {
+        video.engine.currentItem != nil && !video.isPlayerPresented
+    }
+
+    private var showsMusic: Bool {
+        !showsVideo && app.playback.engine != nil && !app.isFullPlayerPresented
+    }
+
+    var body: some View {
+        Group {
+            if showsVideo {
+                VideoMiniPlayerBar()
+            } else if showsMusic {
+                MiniPlayerBar()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .animation(EOSMotion.playerSheet, value: showsVideo || showsMusic)
+        .animation(EOSMotion.playerSheet, value: app.isFullPlayerPresented)
     }
 }
 
@@ -242,17 +247,12 @@ private struct MiniPlayerContent: View {
     @ObservedObject var engine: MusicPlaybackEngine
     @ObservedObject private var statusFlags: PlaybackStatusFlags
     @EnvironmentObject private var app: AppModel
-    @EnvironmentObject private var ui: UIPreferences
     @Environment(\.colorScheme) private var colorScheme
     @State private var showQueueSheet = false
 
     init(engine: MusicPlaybackEngine) {
         self.engine = engine
         self._statusFlags = ObservedObject(wrappedValue: engine.statusFlags)
-    }
-
-    private var showsIslandBars: Bool {
-        ui.playerVisualPreset != .off
     }
 
     var body: some View {
@@ -299,20 +299,6 @@ private struct MiniPlayerContent: View {
                     }
                 }
                 .buttonStyle(EOSPressableStyle())
-
-                // Hide island bars while buffering/loading — they read as “…” dots and steal space from titles.
-                if showsIslandBars
-                    && engine.isPlaying
-                    && !engine.isLoading
-                    && !statusFlags.isBuffering
-                    && !statusFlags.activity.phase.showsSpinner
-                {
-                    DynamicIslandMusicBars(
-                        visualizer: engine.visualizer,
-                        isPlaying: true,
-                        compact: true
-                    )
-                }
 
                 if !track.isExternal {
                     TrackStorageActionButton(

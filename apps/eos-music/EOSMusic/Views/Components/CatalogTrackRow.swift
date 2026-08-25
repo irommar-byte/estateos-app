@@ -7,7 +7,6 @@ struct CatalogTrackRow: View {
     let index: Int
     let queue: [SearchResultItem]
     @State private var showAddToPlaylist = false
-    @State private var isAddingToLibrary = false
     @State private var sharePayload: SharePayload?
     @State private var rowError: String?
 
@@ -65,11 +64,11 @@ struct CatalogTrackRow: View {
             if app.isOnServer(item.url) {
                 Label("Na serwerze EOS", systemImage: "checkmark.icloud.fill")
             } else {
-                Button {
-                    Task { await addToLibrary() }
-                } label: {
-                    Label("Dodaj na serwer EOS", systemImage: "plus")
-                }
+            Button {
+                app.queuePlus(item.payload)
+            } label: {
+                Label("Dodaj na serwer EOS", systemImage: "plus")
+            }
             }
 
             Button {
@@ -112,18 +111,6 @@ struct CatalogTrackRow: View {
             return "\(item.title) — \(artist)"
         }
         return item.title
-    }
-
-    private func addToLibrary() async {
-        guard !app.isOnServer(item.url) else { return }
-        isAddingToLibrary = true
-        defer { isAddingToLibrary = false }
-        do {
-            try await app.addToLibrary(item.payload)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } catch {
-            rowError = error.localizedDescription
-        }
     }
 }
 

@@ -85,7 +85,7 @@ struct BreathingSourceBadge: View {
                 Image(systemName: origin.systemImage)
                 Text(compact ? origin.compactTitle : origin.title)
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .fixedSize(horizontal: !compact, vertical: false)
             }
             .font(compact ? .caption2.weight(.bold) : .caption.weight(.bold))
             .foregroundStyle(.white)

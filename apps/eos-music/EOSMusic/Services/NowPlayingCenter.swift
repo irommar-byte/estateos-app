@@ -117,14 +117,15 @@ final class NowPlayingCenter {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
 
         info[MPMediaItemPropertyTitle] = resolvedText(supplemental?.title, fallback: track.title)
-        info[MPMediaItemPropertyMediaType] = MPMediaType.music.rawValue
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPMediaItemPropertyMediaType] = NSNumber(value: MPMediaType.music.rawValue)
+        info[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? 1.0 : 0.0)
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: elapsed)
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = NSNumber(value: 1.0)
+        info[MPNowPlayingInfoPropertyMediaType] = NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue)
 
-        if let collectionTitle, !collectionTitle.isEmpty {
-            info[MPMediaItemPropertyAlbumTitle] = collectionTitle
+        let playlistTitle = collectionTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let playlistTitle, !playlistTitle.isEmpty {
+            info[MPMediaItemPropertyAlbumTitle] = playlistTitle
             // NBT/iDrive pokazuje albumTitle jako nazwę playlisty w widoku BT.
             info[MPMediaItemPropertyAlbumArtist] = "EOS Music"
         } else if let album = resolvedText(supplemental?.album, fallback: track.album) {
@@ -146,20 +147,26 @@ final class NowPlayingCenter {
             info.removeValue(forKey: MPMediaItemPropertyArtist)
         }
         if duration > 0 {
-            info[MPMediaItemPropertyPlaybackDuration] = duration
+            info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: duration)
         }
-        info[MPMediaItemPropertyPersistentID] = BluetoothMediaBrowser.stablePersistentID(track.id)
+        let persistentSeed: String
+        if let externalContentIdentifier, !externalContentIdentifier.isEmpty {
+            persistentSeed = externalContentIdentifier
+        } else {
+            persistentSeed = track.id
+        }
+        info[MPMediaItemPropertyPersistentID] = BluetoothMediaBrowser.stablePersistentID(persistentSeed)
         if let collectionPersistentSeed, !collectionPersistentSeed.isEmpty {
             info[MPMediaItemPropertyAlbumPersistentID] = BluetoothMediaBrowser.stablePersistentID(collectionPersistentSeed)
         }
         if queueCount > 1 {
-            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = queueIndex
-            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = queueCount
-            // NBT HUD / iDrive przewijają playlistę pokrętłem po tych polach (jak Apple Music).
-            info[MPMediaItemPropertyAlbumTrackNumber] = queueIndex + 1
-            info[MPMediaItemPropertyAlbumTrackCount] = queueCount
-            info[MPNowPlayingInfoPropertyChapterNumber] = queueIndex + 1
-            info[MPNowPlayingInfoPropertyChapterCount] = queueCount
+            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = NSNumber(value: queueIndex)
+            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = NSNumber(value: queueCount)
+            // NBT HUD / iDrive: numer utworu musi zgadzać się z indeksem w nowPlayingIdentifiers.
+            info[MPMediaItemPropertyAlbumTrackNumber] = NSNumber(value: queueIndex + 1)
+            info[MPMediaItemPropertyAlbumTrackCount] = NSNumber(value: queueCount)
+            info[MPNowPlayingInfoPropertyChapterNumber] = NSNumber(value: queueIndex + 1)
+            info[MPNowPlayingInfoPropertyChapterCount] = NSNumber(value: queueCount)
         } else {
             info.removeValue(forKey: MPNowPlayingInfoPropertyPlaybackQueueIndex)
             info.removeValue(forKey: MPNowPlayingInfoPropertyPlaybackQueueCount)
@@ -184,7 +191,9 @@ final class NowPlayingCenter {
             info.removeValue(forKey: MPMediaItemPropertyArtwork)
         }
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        center.playbackState = isPlaying ? .playing : .paused
         lastElapsedPublish = elapsed
         lastPlayingPublish = isPlaying
         lastDurationPublish = duration
@@ -208,7 +217,11 @@ final class NowPlayingCenter {
                 guard lastTrackID == trackID else { return }
                 var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
                 info[MPMediaItemPropertyArtwork] = artwork
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                let center = MPNowPlayingInfoCenter.default()
+                center.nowPlayingInfo = info
+                if let playing = lastPlayingPublish {
+                    center.playbackState = playing ? .playing : .paused
+                }
             } catch {
                 // brak okładki — zostaw metadane bez artwork
             }
@@ -239,7 +252,9 @@ final class NowPlayingCenter {
         center.pauseCommand.removeTarget(nil)
         center.togglePlayPauseCommand.removeTarget(nil)
         center.changePlaybackPositionCommand.removeTarget(nil)
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        let nowPlaying = MPNowPlayingInfoCenter.default()
+        nowPlaying.nowPlayingInfo = nil
+        nowPlaying.playbackState = .stopped
         isActive = false
     }
 }
