@@ -172,7 +172,7 @@ export async function enrichOtodomImportDraft(draft: OtodomImportDraft): Promise
 
   let district = String(draft.district || draft.neighborhood || '').trim();
   if (city && (!district || pinDisagrees)) {
-    district = inferDistrictForCity(city, { ...draft, lat, lng }) || district;
+    district = inferDistrictForCity(city, draft) || district;
   }
 
   return normalizeImportDraftHeating({
