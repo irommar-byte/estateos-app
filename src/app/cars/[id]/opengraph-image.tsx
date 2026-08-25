@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { OG_CARD_VERSION } from '@/lib/buildShareOgJpeg';
+import { carOgImagePath } from '@/lib/ogCardVersion';
 
 export const runtime = 'nodejs';
 export const alt = 'Ogłoszenie auta — EstateOS™Car';
@@ -11,5 +11,5 @@ type Props = { params: Promise<{ id: string }> };
 /** Legacy path — przekieruj na szybki JPEG z cache. */
 export default async function CarOpenGraphImage({ params }: Props) {
   const { id } = await params;
-  redirect(`/api/og/car/${id}?${OG_CARD_VERSION}`);
+  redirect(carOgImagePath(Number(id)));
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import { findCarById } from "@/lib/carsStorage";
-import { OG_CARD_VERSION } from '@/lib/ogCardVersion';
+import { carOgImagePath } from '@/lib/ogCardVersion';
 
 function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://estateos.pl").replace(
@@ -73,7 +73,7 @@ export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | nu
   const photoUrl = images[0] || "";
   const origin = resolvePublicAppOrigin();
   const canonicalUrl = `${origin}/cars/${carId}`;
-  const imageUrl = `${origin}/api/og/car/${carId}?${OG_CARD_VERSION}`;
+  const imageUrl = `${origin}${carOgImagePath(carId)}`;
 
   return {
     id: carId,

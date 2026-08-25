@@ -14,7 +14,7 @@ import {
 } from '@/lib/sellerDisplay';
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { formatPublicOfferLocation } from '@/lib/publicOfferLocation';
-import { OG_CARD_VERSION } from '@/lib/ogCardVersion';
+import { offerOgImagePath } from '@/lib/ogCardVersion';
 
 export function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://estateos.pl').replace(
@@ -226,7 +226,7 @@ export async function loadOfferShareCard(
     ogDescription,
     canonicalUrl,
     imageUrl: primary,
-    socialImageUrl: `${resolvePublicAppOrigin()}/api/og/offer/${offerId}?${OG_CARD_VERSION}`,
+    socialImageUrl: `${resolvePublicAppOrigin()}${offerOgImagePath(offerId)}`,
     images: images.length ? images : primary ? [primary] : [],
     priceLabel,
     isRent,

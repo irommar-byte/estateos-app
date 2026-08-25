@@ -4,7 +4,7 @@ import { serveCarOgJpeg } from '@/lib/serveShareOg';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type Params = { params: Promise<{ id: string }> };
+type Params = { params: Promise<{ id: string; file: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   const { id } = await params;

@@ -3,9 +3,9 @@ import path from 'path';
 import sharp from 'sharp';
 import { loadOfferShareCard } from '@/lib/offerShareLanding';
 import { loadCarShareMeta } from '@/lib/carShareLanding';
-import { OG_CARD_VERSION } from '@/lib/ogCardVersion';
+import { OG_CARD_VERSION, carOgImagePath, offerOgImagePath } from '@/lib/ogCardVersion';
 
-export { OG_CARD_VERSION };
+export { OG_CARD_VERSION, carOgImagePath, offerOgImagePath };
 
 function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://estateos.pl').replace(
@@ -241,11 +241,11 @@ async function writeCache(filePath: string, buf: Buffer): Promise<void> {
 }
 
 export function offerOgPublicUrl(offerId: number): string {
-  return `${resolvePublicAppOrigin()}/api/og/offer/${offerId}?${OG_CARD_VERSION}`;
+  return `${resolvePublicAppOrigin()}${offerOgImagePath(offerId)}`;
 }
 
 export function carOgPublicUrl(carId: number): string {
-  return `${resolvePublicAppOrigin()}/api/og/car/${carId}?${OG_CARD_VERSION}`;
+  return `${resolvePublicAppOrigin()}${carOgImagePath(carId)}`;
 }
 
 export async function getOfferOgJpeg(offerId: number): Promise<Buffer | null> {
