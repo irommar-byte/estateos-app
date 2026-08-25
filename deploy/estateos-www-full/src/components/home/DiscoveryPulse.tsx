@@ -47,6 +47,7 @@ import {
 } from "@/lib/discovery/intelligenceSession";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 import { useLocale } from "@/contexts/LocaleContext";
+import { isPublicListingPath } from "@/lib/publicListingPath";
 
 type PulsePayload = {
   stage?: string;
@@ -243,6 +244,8 @@ function StageStepper({
 }
 
 export default function DiscoveryPulse() {
+  const pathname = usePathname();
+  const skipOnListing = isPublicListingPath(pathname);
   const reduceMotion = useReducedMotion();
   const { dict } = useLocale();
   const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
@@ -423,6 +426,7 @@ export default function DiscoveryPulse() {
 
   const load = useCallback(
     async (silent = false) => {
+      if (skipOnListing) return;
       try {
         const res = await fetch("/api/discovery/pulse", { credentials: "include", cache: "no-store" });
         if (res.status === 401) {
@@ -467,10 +471,11 @@ export default function DiscoveryPulse() {
         // no-op
       }
     },
-    [nudgeOrb],
+    [nudgeOrb, skipOnListing],
   );
 
   useEffect(() => {
+    if (skipOnListing) return;
     void load();
     wakeOil();
     return () => {
@@ -547,6 +552,7 @@ export default function DiscoveryPulse() {
   }, [auth, pulse, expanded, intelligenceEnabled, nudgeOrb]);
 
   if (
+    skipOnListing ||
     !intelligenceHydrated ||
     !intelligenceEnabled ||
     auth === "guest" ||

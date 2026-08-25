@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useLocale } from "@/contexts/LocaleContext";
+import { isPublicListingPath } from "@/lib/publicListingPath";
 import { getPresentationFlowDictionary } from "@/i18n/presentationFlowDictionary";
 import type { PendingPresentationPayload } from "@/lib/appointments/presentationFlowPending";
 import { PRESENTATION_FLOW_OPEN_EVENT } from "@/lib/presentationFlowEvents";
@@ -14,6 +16,7 @@ import PresentationReviewModal from "./PresentationReviewModal";
  */
 export default function PresentationFlowOrchestrator() {
   const { locale } = useLocale();
+  const pathname = usePathname();
   const t = getPresentationFlowDictionary(locale);
 
   const [pending, setPending] = useState<PendingPresentationPayload | null>(null);
@@ -34,13 +37,14 @@ export default function PresentationFlowOrchestrator() {
   }, []);
 
   useEffect(() => {
+    if (isPublicListingPath(pathname)) return;
     const timer = setTimeout(refresh, 2500);
     const interval = setInterval(refresh, 60_000);
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [refresh]);
+  }, [pathname, refresh]);
 
   useEffect(() => {
     const onOpenRequest = () => {

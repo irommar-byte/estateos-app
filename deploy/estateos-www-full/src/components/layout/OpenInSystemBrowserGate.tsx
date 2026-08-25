@@ -5,18 +5,14 @@ import { ExternalLink, X } from "lucide-react";
 import {
   detectInAppBrowser,
   dismissIabBanner,
-  hasAttemptedIabEscape,
   isIabBannerDismissed,
   openInSystemBrowser,
 } from "@/lib/inAppBrowser";
 
 /**
  * Facebook / Instagram open links in a limited in-app browser.
- * Auto-tries Chrome (Android) / Safari (iOS) once, then shows a sticky CTA.
- *
- * Na wizytówkach share (`/o/:id`, `/cars/:id`) NIE robimy auto-escape —
- * lm.facebook.com kończył na pustym „Ładowanie…”, a sama wizytówka ma działać
- * w IAB. Banner CTA zostaje (użytkownik może otworzyć Safari/Chrome).
+ * Never auto-navigate (x-safari-https / Chrome intent wysyłały ludzi
+ * w pusty ekran albo poza ofertę). Zostaje tylko ręczny CTA.
  */
 export default function OpenInSystemBrowserGate() {
   const ctx = useMemo(() => detectInAppBrowser(), []);
@@ -24,19 +20,9 @@ export default function OpenInSystemBrowserGate() {
 
   useEffect(() => {
     if (!ctx.isSocialInAppBrowser) return;
-
-    const path = typeof window !== 'undefined' ? window.location.pathname : '';
-    const isShareLanding = /^\/o\/\d+\/?$/.test(path) || /^\/cars\/\d+\/?$/.test(path);
-
-    if (!isShareLanding && !hasAttemptedIabEscape()) {
-      openInSystemBrowser(window.location.href);
-    }
-
-    if (!isIabBannerDismissed()) {
-      // Give the escape attempt a moment; if we are still here, show the banner.
-      const t = window.setTimeout(() => setVisible(true), isShareLanding ? 200 : 900);
-      return () => window.clearTimeout(t);
-    }
+    if (isIabBannerDismissed()) return;
+    const t = window.setTimeout(() => setVisible(true), 280);
+    return () => window.clearTimeout(t);
   }, [ctx.isSocialInAppBrowser]);
 
   if (!ctx.isSocialInAppBrowser || !visible) return null;
