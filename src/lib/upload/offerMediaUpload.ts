@@ -330,22 +330,21 @@ export async function saveOfferGalleryOrFloorplan(params: {
         tileWatermark: params.tileWatermark !== false,
       });
 
-  const currentSize = await getOfferFolderSizeBytes(offerDir);
+  const { getOfferPhotoQuotaBytes, pruneUnreferencedOfferPhotos } = await import(
+    '@/lib/upload/offerGalleryMaintenance'
+  );
+  let currentSize = await getOfferPhotoQuotaBytes(params.offerId);
   const masterBytes = hdrDetection.isHdr ? inputBuffer.length : 0;
+  if (currentSize + finalBuffer.length + masterBytes > MAX_OFFER_MEDIA_FOLDER_BYTES) {
+    await pruneUnreferencedOfferPhotos(params.offerId);
+    currentSize = await getOfferPhotoQuotaBytes(params.offerId);
+  }
   if (currentSize + finalBuffer.length + masterBytes > MAX_OFFER_MEDIA_FOLDER_BYTES) {
     return {
       ok: false,
       status: 400,
       error: 'Brak miejsca dla tej oferty (limit folderu).',
     };
-  }
-
-  if (hdrDetection.isHdr) {
-    const masterExt = masterExtensionForMime(inputMime, fallbackExt);
-    const masterName = `${fileStem}-master${masterExt}`;
-    const masterPath = path.join(offerDir, masterName);
-    await fs.writeFile(masterPath, inputBuffer);
-    masterUrl = `${OFFER_UPLOAD_PUBLIC_PREFIX}/${params.offerId}/${masterName}`;
   }
 
   let existingImages: string[] = [];
@@ -356,11 +355,16 @@ export async function saveOfferGalleryOrFloorplan(params: {
     existingImages = [];
   }
 
-  if (
-    !params.isFloorPlan &&
-    existingImages.length >= MAX_IMAGES_PER_OFFER
-  ) {
+  if (!params.isFloorPlan && existingImages.length >= MAX_IMAGES_PER_OFFER) {
     return { ok: false, status: 400, error: 'Osiągnięto limit zdjęć.' };
+  }
+
+  if (hdrDetection.isHdr) {
+    const masterExt = masterExtensionForMime(inputMime, fallbackExt);
+    const masterName = `${fileStem}-master${masterExt}`;
+    const masterPath = path.join(offerDir, masterName);
+    await fs.writeFile(masterPath, inputBuffer);
+    masterUrl = `${OFFER_UPLOAD_PUBLIC_PREFIX}/${params.offerId}/${masterName}`;
   }
 
   const fileName = `${fileStem}${finalExt}`;

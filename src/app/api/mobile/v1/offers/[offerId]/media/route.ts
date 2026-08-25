@@ -1,21 +1,16 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import path from 'path';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
-import {
-  MAX_IMAGES_PER_OFFER,
-  MAX_OFFER_MEDIA_FOLDER_BYTES,
-  OFFER_UPLOAD_BASE_FS,
-  getOfferFolderSizeBytes,
-} from '@/lib/upload/offerMediaUpload';
+import { MAX_IMAGES_PER_OFFER } from '@/lib/upload/offerMediaUpload';
 import {
   deleteOfferImageArtifacts,
   deleteRemovedOfferImages,
   parseOfferImagesField,
 } from '@/lib/upload/deleteOfferImageArtifacts';
+import { getOfferMediaQuota } from '@/lib/upload/offerGalleryMaintenance';
 
 type RouteContext = {
   params: Promise<{ offerId: string }> | { offerId: string };
@@ -49,17 +44,20 @@ async function assertOfferEditor(offerId: number, userId: number) {
   return { ok: true as const, offer };
 }
 
-function folderStats(usedBytes: number) {
-  const limitBytes = MAX_OFFER_MEDIA_FOLDER_BYTES;
-  const freeBytes = Math.max(0, limitBytes - usedBytes);
+function folderStats(quota: {
+  usedBytes: number;
+  maxBytes: number;
+  remainingBytes: number;
+  maxImages: number;
+}) {
   return {
-    usedBytes,
-    limitBytes,
-    freeBytes,
-    usedMb: Number((usedBytes / (1024 * 1024)).toFixed(2)),
-    freeMb: Number((freeBytes / (1024 * 1024)).toFixed(2)),
-    limitMb: Math.round(limitBytes / (1024 * 1024)),
-    maxImages: MAX_IMAGES_PER_OFFER,
+    usedBytes: quota.usedBytes,
+    limitBytes: quota.maxBytes,
+    freeBytes: quota.remainingBytes,
+    usedMb: Number((quota.usedBytes / (1024 * 1024)).toFixed(2)),
+    freeMb: Number((quota.remainingBytes / (1024 * 1024)).toFixed(2)),
+    limitMb: Math.round(quota.maxBytes / (1024 * 1024)),
+    maxImages: quota.maxImages || MAX_IMAGES_PER_OFFER,
   };
 }
 
@@ -81,14 +79,13 @@ export async function GET(req: Request, context: RouteContext) {
     return NextResponse.json({ success: false, error: access.error }, { status: access.status });
   }
 
-  const offerDir = path.join(OFFER_UPLOAD_BASE_FS, String(offerId));
-  const usedBytes = await getOfferFolderSizeBytes(offerDir);
   const images = parseOfferImagesField(access.offer.images);
+  const quota = await getOfferMediaQuota(offerId);
 
   return NextResponse.json({
     success: true,
     imageCount: images.length,
-    ...folderStats(usedBytes),
+    ...folderStats(quota),
   });
 }
 
@@ -149,13 +146,12 @@ export async function POST(req: Request, context: RouteContext) {
     data: { images: JSON.stringify(next) },
   });
 
-  const offerDir = path.join(OFFER_UPLOAD_BASE_FS, String(offerId));
-  const usedBytes = await getOfferFolderSizeBytes(offerDir);
+  const quota = await getOfferMediaQuota(offerId);
 
   return NextResponse.json({
     success: true,
     images: next,
     imageCount: next.length,
-    ...folderStats(usedBytes),
+    ...folderStats(quota),
   });
 }

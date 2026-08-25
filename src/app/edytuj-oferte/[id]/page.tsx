@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Building2, Layers,
   CheckCircle, BedDouble, Calendar, Box, Sparkles, Map, LayoutGrid, Flame, DoorOpen, Castle, Briefcase,
+  Film, Key, RotateCcw,
 } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -59,6 +60,87 @@ const formatNum = (val: string) => val.replace(/\D/g, "").replace(/\B(?=(\d{3})+
 
 /** Zgodne z limitem w `/api/upload`. */
 const OFFER_MAX_IMAGES = 20;
+const OFFER_MAX_FOLDER_MB = 20;
+
+type MediaQuota = {
+  usedBytes: number;
+  maxBytes: number;
+  remainingBytes: number;
+  usedImages: number;
+  maxImages: number;
+  remainingImages: number;
+};
+
+type UploadingTile = {
+  id: string;
+  previewUrl: string;
+  progress: number;
+  error?: string;
+};
+
+function formatMb(bytes: number) {
+  return (Math.max(0, bytes) / (1024 * 1024)).toFixed(1).replace('.', ',');
+}
+
+function uploadFileWithProgress(
+  url: string,
+  formData: FormData,
+  onProgress: (pct: number) => void,
+): Promise<{ url?: string; isHdr?: boolean; error?: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+    };
+    xhr.onload = () => {
+      let json: { url?: string; isHdr?: boolean; error?: string; message?: string } = {};
+      try {
+        json = JSON.parse(xhr.responseText || '{}');
+      } catch {
+        reject(new Error('Niepoprawna odpowiedź serwera.'));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
+        resolve(json);
+        return;
+      }
+      reject(new Error(json.error || json.message || `Upload nie powiódł się (${xhr.status}).`));
+    };
+    xhr.onerror = () => reject(new Error('Błąd sieci podczas wgrywania zdjęcia.'));
+    xhr.send(formData);
+  });
+}
+
+function QuotaBar({
+  used,
+  max,
+  label,
+}: {
+  used: number;
+  max: number;
+  label: string;
+}) {
+  const pct = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
+  const tight = pct >= 90;
+  return (
+    <div className="flex-1 min-w-[160px]">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+        <span className={`text-[10px] font-black tabular-nums ${tight ? 'text-amber-400' : 'text-emerald-400'}`}>{pct}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-black/40 border border-white/10">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${tight ? 'bg-amber-400' : 'bg-emerald-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function isPolishLocality(countryCode: unknown) {
   return String(countryCode || 'PL').trim().toUpperCase() === 'PL';
@@ -87,17 +169,31 @@ const SortablePhoto = ({
   onMarkAsPlan,
   isMain,
   isHdr,
+  progress,
 }: {
   url: string;
   onRemove: (url: string) => void;
   onMarkAsPlan?: (url: string) => void;
   isMain: boolean;
   isHdr?: boolean;
+  progress?: number;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: url });
+  const uploading = typeof progress === 'number' && progress < 100;
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 group transition-all ${isMain ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]' : 'border-[#222] bg-[#0a0a0a] hover:border-emerald-500/50'}`}>
-      <img src={url} className={`w-full h-full object-cover saturate-[1.2] transition-all duration-700 ${isMain ? 'opacity-100 scale-110' : 'opacity-60 group-hover:opacity-100 group-hover:scale-105'}`} alt="Foto" />
+      <img src={url} className={`w-full h-full object-cover saturate-[1.2] transition-all duration-700 ${uploading ? 'opacity-50' : isMain ? 'opacity-100 scale-110' : 'opacity-60 group-hover:opacity-100 group-hover:scale-105'}`} alt="Foto" />
+      {uploading ? (
+        <>
+          <div className="absolute inset-0 z-20 pointer-events-none flex items-end">
+            <div className="w-full bg-emerald-500/70 transition-all duration-200" style={{ height: `${Math.max(6, progress || 0)}%` }} />
+          </div>
+          <div className="absolute inset-x-0 bottom-0 z-30 h-1.5 bg-black/50">
+            <div className="h-full bg-emerald-400 transition-all duration-200" style={{ width: `${progress || 0}%` }} />
+          </div>
+          <span className="absolute inset-0 z-30 flex items-center justify-center text-xs font-black text-white drop-shadow-md pointer-events-none">{progress}%</span>
+        </>
+      ) : null}
       {isHdr ? (
         <span className="absolute left-2 top-2 z-20 rounded-md border border-amber-200/30 bg-black/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-100">
           HDR
@@ -173,6 +269,9 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [floorPlanExtraUrls, setFloorPlanExtraUrls] = useState<string[]>([]);
   const [floorPlanUploading, setFloorPlanUploading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadingTiles, setUploadingTiles] = useState<UploadingTile[]>([]);
+  const [mediaQuota, setMediaQuota] = useState<MediaQuota | null>(null);
+  const [isPurgingGallery, setIsPurgingGallery] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -181,6 +280,27 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
+
+  const refreshQuota = async (id = offerId) => {
+    if (!id) return null;
+    try {
+      const res = await fetch(`/api/offers/${id}/media-quota`, { credentials: 'include' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return null;
+      const next: MediaQuota = {
+        usedBytes: Number(json.usedBytes) || 0,
+        maxBytes: Number(json.maxBytes) || OFFER_MAX_FOLDER_MB * 1024 * 1024,
+        remainingBytes: Number(json.remainingBytes) || 0,
+        usedImages: Number(json.usedImages) || 0,
+        maxImages: Number(json.maxImages) || OFFER_MAX_IMAGES,
+        remainingImages: Number(json.remainingImages) || 0,
+      };
+      setMediaQuota(next);
+      return next;
+    } catch {
+      return null;
+    }
+  };
 
   useEffect(() => { params.then(p => setOfferId(p.id)); }, [params]);
 
@@ -244,6 +364,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           localityCountryCode: offer.localityCountryCode || 'PL',
           legalCheckStatus: offer.legalCheckStatus || 'NONE',
           isLegalSafeVerified: Boolean(offer.isLegalSafeVerified),
+          deposit: offer.deposit != null && offer.deposit !== '' ? String(Math.round(Number(offer.deposit) || 0)) : '',
+          videoUrl: offer.videoUrl || '',
         });
         setSelectedAmenities(readAmenitySelectionFromOffer(offer));
         setIntelPatches(parseAmenityPatchMap(offer.intelligenceAmenityPatches));
@@ -268,6 +390,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         const fp = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
         setFloorPlanUrl(fp || null);
         setFloorPlanExtraUrls(parseFloorPlanExtraUrls(offer.floorPlanExtraUrls).filter((url) => url !== fp));
+        await refreshQuota(offerId);
         setIsLoading(false);
       } catch (e) { setAuthError("Błąd serwera."); setIsLoading(false); }
     };
@@ -277,40 +400,65 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !offerId) return;
+    const remainingSlots = Math.max(0, OFFER_MAX_IMAGES - imagesList.length - uploadingTiles.length);
+    if (remainingSlots <= 0) {
+      alert(`Możesz dodać maksymalnie ${OFFER_MAX_IMAGES} zdjęć.`);
+      e.target.value = '';
+      return;
+    }
+    const selected = Array.from(files).slice(0, remainingSlots);
     setIsUploading(true);
+    const started: UploadingTile[] = selected.map((file) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+      previewUrl: URL.createObjectURL(file),
+      progress: 8,
+    }));
+    setUploadingTiles((prev) => [...prev, ...started]);
     try {
       const newUrls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const f = files.item(i);
-        if (!f) continue;
+      for (let i = 0; i < selected.length; i++) {
+        const file = selected[i];
+        const tile = started[i];
         const formData = new FormData();
         formData.append('offerId', offerId);
-        formData.append('file', f);
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || err.message || 'Upload się nie powiódł');
-        }
-        const d = await res.json();
-        if (d.url) {
-          newUrls.push(d.url);
-          if (d.isHdr) {
-            setHdrImages((prev) => ({ ...prev, [d.url]: true }));
+        formData.append('file', file);
+        try {
+          const d = await uploadFileWithProgress('/api/upload', formData, (pct) => {
+            setUploadingTiles((prev) => prev.map((item) => (item.id === tile.id ? { ...item, progress: pct } : item)));
+          });
+          if (d.url) {
+            newUrls.push(d.url);
+            if (d.isHdr) {
+              setHdrImages((prev) => ({ ...prev, [d.url as string]: true }));
+            }
           }
+        } catch (err) {
+          setUploadingTiles((prev) =>
+            prev.map((item) =>
+              item.id === tile.id
+                ? { ...item, error: err instanceof Error ? err.message : 'Upload nie powiódł się.', progress: 0 }
+                : item,
+            ),
+          );
+          throw err;
+        } finally {
+          URL.revokeObjectURL(tile.previewUrl);
+          setUploadingTiles((prev) => prev.filter((item) => item.id !== tile.id));
         }
       }
-      const merged = [...imagesList, ...newUrls].slice(0, OFFER_MAX_IMAGES);
-      setImagesList(merged);
-      updateData({ images: merged.join(','), imageUrl: merged[0] });
+      if (newUrls.length) {
+        const merged = [...imagesList, ...newUrls].slice(0, OFFER_MAX_IMAGES);
+        setImagesList(merged);
+        updateData({ images: merged.join(','), imageUrl: merged[0] });
+      }
+      await refreshQuota();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Upload zdjęć nie powiódł się.');
+      await refreshQuota();
     } finally {
       setIsUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -333,6 +481,32 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       });
     } catch {
       /* best-effort — PATCH diff też usuwa przy zapisie */
+    }
+    await refreshQuota();
+  };
+
+  const handleReplaceGallery = async () => {
+    if (!offerId || isPurgingGallery) return;
+    if (!window.confirm(eo.galleryReplaceConfirm)) return;
+    setIsPurgingGallery(true);
+    try {
+      const res = await fetch(`/api/offers/${offerId}/gallery`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Nie udało się wyczyścić galerii.');
+      setImagesList([]);
+      setHdrImages({});
+      setUploadingTiles([]);
+      updateData({ images: '', imageUrl: '' });
+      await refreshQuota();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Nie udało się wyczyścić galerii.');
+    } finally {
+      setIsPurgingGallery(false);
     }
   };
 
@@ -444,6 +618,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       floor: data.floor,
       totalFloors: data.totalFloors ? Number(data.totalFloors) : null,
       adminFee: data.adminFee ? Number(String(data.adminFee).replace(/\D/g, '')) : null,
+      deposit:
+        data.transactionType === 'RENT'
+          ? (data.deposit ? Number(String(data.deposit).replace(/\D/g, '')) : null)
+          : null,
+      videoUrl: String(data.videoUrl || '').trim() || null,
       street: storedStreet.street,
       buildingNumber: storedStreet.buildingNumber,
       isExactLocation: exactLocation,
@@ -552,14 +731,33 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
       <div className="max-w-5xl mx-auto px-4 md:px-6 mt-12 space-y-12">
         
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16 relative">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8 relative">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full pointer-events-none"></div>
           <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 relative z-10 drop-shadow-2xl">Edytuj <span className="text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 via-emerald-500 to-teal-700">Ofertę</span></h1>
           <p className="text-zinc-500 text-xs md:text-sm font-bold tracking-[0.2em] uppercase relative z-10">Zarządzaj ogłoszeniem <span className="text-white/40 ml-2">#{offerId}</span></p>
         </motion.div>
 
+        <div className="sticky top-[4.5rem] z-40 -mx-1 mb-4 flex flex-wrap gap-2 rounded-[1.6rem] border border-white/10 bg-[#050505]/85 p-2 backdrop-blur-xl md:top-[5.5rem]">
+          {[
+            { href: '#edit-key', label: eo.jumpKey },
+            { href: '#edit-details', label: eo.jumpDetails },
+            { href: '#edit-location', label: eo.jumpLocation },
+            { href: '#edit-gallery', label: eo.jumpGallery },
+            { href: '#edit-plan', label: eo.jumpPlan },
+            { href: '#edit-desc', label: eo.jumpDesc },
+          ].map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-400 transition-all hover:border-emerald-500/40 hover:text-emerald-300"
+            >
+              {item.label}
+            </a>
+          ))}
+        </div>
+
         {/* --- DANE PODSTAWOWE --- */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className={glassPanel}>
+        <motion.div id="edit-key" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className={`${glassPanel} scroll-mt-28`}>
           <div className="flex items-center gap-4 mb-10 border-b border-white/5 pb-6">
             <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-emerald-500/20 to-emerald-900/20 flex items-center justify-center border border-emerald-500/30 shadow-[inset_0_0_20px_rgba(16,185,129,0.2)]"><Building2 className="text-emerald-400" size={24} /></div>
             <div>
@@ -720,7 +918,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         </motion.div>
 
         {/* --- SZCZEGÓŁY --- */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className={glassPanel}>
+        <motion.div id="edit-details" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className={`${glassPanel} scroll-mt-28`}>
            <div className="flex items-center gap-4 mb-10 border-b border-white/5 pb-6">
             <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-blue-500/20 to-blue-900/20 flex items-center justify-center border border-blue-500/30 shadow-[inset_0_0_20px_rgba(59,130,246,0.2)]"><Layers className="text-blue-400" size={24} /></div>
             <div>
@@ -826,6 +1024,21 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             </p>
           </div>
 
+          {data.transactionType === 'RENT' ? (
+            <div className="mt-8">
+              <label className={labelPremium}>{ao.depositLabel}</label>
+              <div className={inputWrapper}>
+                <Key className={iconGlow} size={18} />
+                <input
+                  value={formatNum(data.deposit || '')}
+                  onChange={(e) => updateData({ deposit: e.target.value.replace(/\D/g, '') })}
+                  className={inputPremium}
+                  placeholder="np. 5000"
+                />
+              </div>
+            </div>
+          ) : null}
+
           <div>
             <label className={labelPremium}>{ao.amenitiesPremiumLabel}</label>
             <div className="flex flex-wrap gap-3 mt-4">
@@ -872,7 +1085,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           </div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className={glassPanel}>
+        <motion.div id="edit-location" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className={`${glassPanel} scroll-mt-28`}>
           <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-6">
             <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-emerald-500/20 to-cyan-900/20 flex items-center justify-center border border-emerald-500/30">
               <MapPin className="text-emerald-400" size={24} />
@@ -984,13 +1197,41 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         ) : null}
 
         {/* --- MULTIMEDIA --- */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className={glassPanel}>
-          <div className="flex items-center gap-4 mb-10 border-b border-white/5 pb-6">
-            <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-purple-500/20 to-purple-900/20 flex items-center justify-center border border-purple-500/30 shadow-[inset_0_0_20px_rgba(168,85,247,0.2)]"><ImageIcon className="text-purple-400" size={24} /></div>
-            <div>
-              <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">Galeria</h2>
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Przeciągnij by ułożyć</p>
+        <motion.div id="edit-gallery" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className={`${glassPanel} scroll-mt-28`}>
+          <div className="flex flex-col gap-6 mb-10 border-b border-white/5 pb-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-purple-500/20 to-purple-900/20 flex items-center justify-center border border-purple-500/30 shadow-[inset_0_0_20px_rgba(168,85,247,0.2)]"><ImageIcon className="text-purple-400" size={24} /></div>
+              <div>
+                <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">Galeria</h2>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Przeciągnij by ułożyć</p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={handleReplaceGallery}
+              disabled={isPurgingGallery || isUploading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200 transition-all hover:bg-amber-500 hover:text-black disabled:opacity-50"
+            >
+              {isPurgingGallery ? <Loader2 className="animate-spin" size={14} /> : <RotateCcw size={14} />}
+              {eo.galleryReplace}
+            </button>
+          </div>
+
+          <div className="mb-8 flex flex-col gap-4 md:flex-row">
+            <QuotaBar
+              used={mediaQuota?.usedImages ?? imagesList.length}
+              max={mediaQuota?.maxImages ?? OFFER_MAX_IMAGES}
+              label={eo.galleryUsed
+                .replace('{used}', String(mediaQuota?.usedImages ?? imagesList.length))
+                .replace('{max}', String(mediaQuota?.maxImages ?? OFFER_MAX_IMAGES))}
+            />
+            <QuotaBar
+              used={mediaQuota?.usedBytes ?? 0}
+              max={mediaQuota?.maxBytes ?? OFFER_MAX_FOLDER_MB * 1024 * 1024}
+              label={eo.gallerySpace
+                .replace('{used}', formatMb(mediaQuota?.usedBytes ?? 0))
+                .replace('{max}', formatMb(mediaQuota?.maxBytes ?? OFFER_MAX_FOLDER_MB * 1024 * 1024))}
+            />
           </div>
           
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1006,8 +1247,22 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                     isHdr={Boolean(hdrImages[url])}
                   />
                 ))}
+                {uploadingTiles.map((tile) => (
+                  <div key={tile.id} className="relative w-28 h-28 md:w-36 md:h-36 overflow-hidden rounded-2xl border-2 border-emerald-500/40 bg-[#0a0a0a]">
+                    <img src={tile.previewUrl} alt="" className="h-full w-full object-cover opacity-40" />
+                    <div className="absolute inset-0 pointer-events-none flex items-end">
+                      <div className="w-full bg-emerald-500/75 transition-all duration-200" style={{ height: `${Math.max(8, tile.progress)}%` }} />
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
+                      <div className="h-full bg-emerald-400 transition-all duration-200" style={{ width: `${tile.progress}%` }} />
+                    </div>
+                    <span className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
+                      {tile.error ? 'Błąd' : `${tile.progress}%`}
+                    </span>
+                  </div>
+                ))}
                 
-                {imagesList.length < OFFER_MAX_IMAGES && (
+                {imagesList.length + uploadingTiles.length < OFFER_MAX_IMAGES && (
                   <label className="w-28 h-28 md:w-36 md:h-36 rounded-2xl border-2 border-dashed border-[#222] hover:border-emerald-500/60 bg-[#0a0a0a]/50 hover:bg-[#111] flex flex-col items-center justify-center cursor-pointer transition-all duration-500 group shadow-inner">
                     {isUploading ? <Loader2 className="animate-spin text-emerald-500" size={28} /> : <><ImageIcon className="text-zinc-600 group-hover:text-emerald-400 transition-colors duration-500 mb-3" size={32} /><span className="text-[10px] uppercase font-black text-zinc-600 group-hover:text-emerald-400 tracking-widest">Dodaj</span></>}
                     <input type="file" multiple accept="image/*" onChange={handleUpload} className="hidden" />
@@ -1016,9 +1271,23 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               </div>
             </SortableContext>
           </DndContext>
+
+          <div className="mt-4">
+            <label className={labelPremium}>{eo.videoUrlLabel}</label>
+            <div className={inputWrapper}>
+              <Film className={iconGlow} size={20} />
+              <input
+                value={data.videoUrl || ''}
+                onChange={(e) => updateData({ videoUrl: e.target.value })}
+                className={inputPremium}
+                placeholder="https://youtube.com/watch?v=…"
+              />
+            </div>
+            <p className="mt-2 text-[10px] uppercase tracking-widest text-zinc-500">{eo.videoUrlHint}</p>
+          </div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className={glassPanel}>
+        <motion.div id="edit-plan" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className={`${glassPanel} scroll-mt-28`}>
           <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-6">
             <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-cyan-500/20 to-cyan-900/20 flex items-center justify-center border border-cyan-500/30">
               <Map size={24} className="text-cyan-400" />
@@ -1086,7 +1355,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         </motion.div>
 
         {/* --- OPIS --- */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className={glassPanel}>
+        <motion.div id="edit-desc" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className={`${glassPanel} scroll-mt-28`}>
            <div className="flex items-center gap-4 mb-10 border-b border-white/5 pb-6">
             <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-orange-500/20 to-orange-900/20 flex items-center justify-center border border-orange-500/30 shadow-[inset_0_0_20px_rgba(249,115,22,0.2)]"><Layers className="text-orange-400" size={24} /></div>
             <div>

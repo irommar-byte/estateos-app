@@ -93,6 +93,8 @@ const OFFER_WEB_PUT_SELECT = {
   heating: true,
   isFurnished: true,
   transactionType: true,
+  deposit: true,
+  videoUrl: true,
   street: true,
   buildingNumber: true,
   lat: true,

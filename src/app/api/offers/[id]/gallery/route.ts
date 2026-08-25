@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveUploaderUserId } from '@/lib/upload/resolveUploader';
-import { deleteOfferImageArtifacts } from '@/lib/upload/deleteOfferImageArtifacts';
 import {
   actorMayManageOfferMedia,
-  getOfferMediaQuota,
-  removeOfferImageUrlFromRecord,
+  purgeOfferGallery,
 } from '@/lib/upload/offerGalleryMaintenance';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Usuwa pliki SDR + HDR master + sidecar meta i zdejmuje URL z `offer.images`. */
+/** Po potwierdzeniu kasuje wszystkie zdjęcia galerii oferty (pliki + wpis w bazie). */
 export async function DELETE(req: Request, ctx: Ctx) {
   const userId = await resolveUploaderUserId(req);
   if (!userId) {
@@ -19,8 +17,21 @@ export async function DELETE(req: Request, ctx: Ctx) {
 
   const { id } = await ctx.params;
   const offerId = Number(id);
-  if (!Number.isFinite(offerId)) {
+  if (!Number.isFinite(offerId) || offerId <= 0) {
     return NextResponse.json({ error: 'Nieprawidłowe ID oferty.' }, { status: 400 });
+  }
+
+  let body: { confirm?: boolean } = {};
+  try {
+    body = await req.json();
+  } catch {
+    body = {};
+  }
+  if (body.confirm !== true) {
+    return NextResponse.json(
+      { error: 'Potwierdź usunięcie wszystkich zdjęć (confirm: true).' },
+      { status: 400 },
+    );
   }
 
   const offer = await prisma.offer.findUnique({
@@ -34,25 +45,6 @@ export async function DELETE(req: Request, ctx: Ctx) {
     return NextResponse.json({ error: 'Brak uprawnień.' }, { status: 403 });
   }
 
-  let body: { url?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Nieprawidłowe body.' }, { status: 400 });
-  }
-
-  const url = String(body.url || '').trim();
-  if (!url) {
-    return NextResponse.json({ error: 'Brak URL zdjęcia.' }, { status: 400 });
-  }
-
-  try {
-    const result = await deleteOfferImageArtifacts(offerId, url);
-    const images = await removeOfferImageUrlFromRecord(offerId, url);
-    const quota = await getOfferMediaQuota(offerId);
-    return NextResponse.json({ success: true, images, ...result, ...quota });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Usunięcie nie powiodło się.';
-    return NextResponse.json({ error: message }, { status: 400 });
-  }
+  const quota = await purgeOfferGallery(offerId);
+  return NextResponse.json({ success: true, ...quota });
 }

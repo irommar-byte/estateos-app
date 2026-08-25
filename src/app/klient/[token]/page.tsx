@@ -454,7 +454,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             <div>
               <p className="eos-portal-label eos-portal-label--ok flex items-center gap-2">
                 <BriefcaseBusiness className="size-4" />
-                Pozysk
+                Umowa
               </p>
               <h2 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Umowa i ustalenia</h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
