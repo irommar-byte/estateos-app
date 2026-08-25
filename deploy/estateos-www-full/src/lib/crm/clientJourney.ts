@@ -1,8 +1,3 @@
-import {
-  cleanAttachmentOnlyMessage,
-  formatContactAttachmentName,
-} from '@/lib/contactAttachmentShared';
-
 export const CLIENT_PREP_ITEMS = [
   { id: 'photo_ready', label: 'Przygotować mieszkanie do sesji zdjęciowej' },
   { id: 'ownership_deed', label: 'Podstawa nabycia / akt notarialny' },
@@ -185,7 +180,7 @@ export function parseAttachments(raw: unknown): PortalAttachment[] {
       if (!url) return null;
       return {
         url,
-        name: formatContactAttachmentName(String(row.name || 'załącznik')).slice(0, 180),
+        name: String(row.name || 'załącznik').slice(0, 180),
         mimeType: String(row.mimeType || 'application/octet-stream'),
         size: Number(row.size) || 0,
       };
@@ -402,15 +397,13 @@ export function parsePortalMessages(
       const meta = asMeta(row.metadata);
       const from = resolvePortalMessageFrom(meta, row.title);
       const fromAgent = from === 'agent';
-      const attachments = parseAttachments(meta.attachments);
-      const rawContent = typeof meta.content === 'string' ? meta.content : String(row.body || '');
       return {
         id: row.id,
-        content: cleanAttachmentOnlyMessage(rawContent, attachments),
+        content: String(meta.content || row.body || ''),
         createdAt: typeof row.createdAt === 'string' ? row.createdAt : row.createdAt.toISOString(),
         fromAgent,
         fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
-        attachments,
+        attachments: parseAttachments(meta.attachments),
       };
     });
 }
