@@ -41,6 +41,10 @@ import {
   resolvePersistedLocalityFields,
   resolvePersistedLocalityFieldsAsync,
 } from '@/lib/offerLocalityCountry';
+import {
+  deleteRemovedOfferImages,
+  parseOfferImagesField,
+} from '@/lib/upload/deleteOfferImageArtifacts';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
@@ -868,6 +872,17 @@ export async function updateOffer(body: any) {
       }),
       ...(agentCommissionPercent !== undefined && { agentCommissionPercent })
     };
+
+  if (body.images !== undefined) {
+    const prevImages = parseOfferImagesField(existing.images);
+    const nextImages = parseOfferImagesField(body.images);
+    const keepAlive = new Set(nextImages);
+    const floorPlanKeep = String(
+      body.floorPlanUrl !== undefined ? body.floorPlanUrl || '' : existing.floorPlanUrl || '',
+    ).trim();
+    if (floorPlanKeep) keepAlive.add(floorPlanKeep);
+    await deleteRemovedOfferImages(Number(id), prevImages, [...keepAlive]);
+  }
 
   let updatedOffer: any;
   try {
