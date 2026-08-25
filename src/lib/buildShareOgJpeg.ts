@@ -3,9 +3,9 @@ import path from 'path';
 import sharp from 'sharp';
 import { loadOfferShareCard } from '@/lib/offerShareLanding';
 import { loadCarShareMeta } from '@/lib/carShareLanding';
+import { OG_CARD_VERSION } from '@/lib/ogCardVersion';
 
-/** Bump when layout/copy of OG card changes — busts FB + disk cache. */
-export const OG_CARD_VERSION = 'v6';
+export { OG_CARD_VERSION };
 
 function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://estateos.pl').replace(
@@ -130,18 +130,18 @@ const CAR_THEME: OverlayTheme = {
 };
 
 function buildChipRow(chips: string[], theme: OverlayTheme): string {
-  const usable = chips.map((c) => truncate(c, 28)).filter(Boolean).slice(0, 4);
+  const usable = chips.map((c) => truncate(c, 22)).filter(Boolean).slice(0, 4);
   if (!usable.length) return '';
-  let x = 64;
-  const y = 508;
+  let x = 56;
+  const y = 558;
   const parts: string[] = [];
   for (const label of usable) {
-    const w = Math.min(280, Math.max(88, 18 + label.length * 11));
+    const w = Math.min(220, Math.max(76, 16 + label.length * 9.4));
     if (x + w > 820) break;
     parts.push(`
-  <rect x="${x}" y="${y}" width="${w}" height="34" rx="8" fill="${theme.chipFill}" stroke="${theme.chipStroke}" stroke-width="1.2"/>
-  <text x="${x + w / 2}" y="${y + 23}" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="${theme.chipText}">${escapeXml(label)}</text>`);
-    x += w + 12;
+  <rect x="${x}" y="${y}" width="${w}" height="28" rx="14" fill="rgba(8,10,12,0.42)" stroke="${theme.accentLine}" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="${x + w / 2}" y="${y + 19}" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="13" font-weight="400" letter-spacing="0.8" fill="#f7f1e8">${escapeXml(label)}</text>`);
+    x += w + 10;
   }
   return parts.join('');
 }
@@ -154,7 +154,7 @@ function buildOverlaySvg(params: {
   price: string;
 }): Buffer {
   const theme = params.theme;
-  const title = escapeXml(truncate(params.title, 52));
+  const title = escapeXml(truncate(params.title, 44));
   const location = escapeXml(truncate(params.location, 48));
   const price = escapeXml(truncate(params.price, 22));
   const brand = escapeXml(theme.brand);
@@ -164,45 +164,35 @@ function buildOverlaySvg(params: {
 <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="wash" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0a0a0a" stop-opacity="0.12"/>
-      <stop offset="42%" stop-color="#0a0a0a" stop-opacity="0.05"/>
-      <stop offset="78%" stop-color="#0a0a0a" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#0a0a0a" stop-opacity="0.62"/>
+      <stop offset="0%" stop-color="#05070a" stop-opacity="0.18"/>
+      <stop offset="48%" stop-color="#05070a" stop-opacity="0.04"/>
+      <stop offset="72%" stop-color="#05070a" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#05070a" stop-opacity="0.72"/>
     </linearGradient>
-    <linearGradient id="panelGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fffdf9" stop-opacity="0.98"/>
-      <stop offset="100%" stop-color="#f7f1e8" stop-opacity="0.97"/>
-    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
   </defs>
 
-  <!-- Outer frame -->
-  <rect x="22" y="22" width="1156" height="586" rx="4" fill="none" stroke="${theme.accentLine}" stroke-opacity="0.55" stroke-width="1.5"/>
-  <rect x="30" y="30" width="1140" height="570" rx="2" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
-
   <rect width="1200" height="630" fill="url(#wash)"/>
+  <rect x="28" y="28" width="1144" height="574" rx="2" fill="none" stroke="${theme.accentLine}" stroke-opacity="0.42" stroke-width="1"/>
+  <rect x="34" y="34" width="1132" height="562" rx="1" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="0.8"/>
 
-  <!-- Top brand ribbon -->
-  <rect x="48" y="48" width="320" height="52" rx="4" fill="rgba(10,10,10,0.55)"/>
-  <rect x="48" y="48" width="4" height="52" fill="${theme.accentLine}"/>
-  <text x="68" y="80" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="18" font-weight="700" letter-spacing="4.5" fill="#f5f0e6">${brand}</text>
+  <rect x="48" y="46" width="268" height="40" rx="20" fill="rgba(8,10,12,0.38)" stroke="${theme.accentLine}" stroke-opacity="0.45" stroke-width="1"/>
+  <rect x="60" y="58" width="2" height="16" rx="1" fill="${theme.accentLine}"/>
+  <text x="74" y="72" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="15" font-weight="400" letter-spacing="5.2" fill="#f4efe6" filter="url(#soft)">${brand}</text>
 
-  <!-- Bottom editorial panel -->
-  <rect x="40" y="378" width="1120" height="212" rx="6" fill="url(#panelGrad)"/>
-  <rect x="40" y="378" width="1120" height="3" fill="${theme.accentLine}"/>
-  <rect x="40" y="381" width="1120" height="1" fill="${theme.accent}" fill-opacity="0.15"/>
-
-  <text x="64" y="418" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="3.8" fill="${theme.accentSoft}">${escapeXml(theme.eyebrow)}</text>
-  <text x="64" y="462" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#14110e">${title}</text>
-  <text x="64" y="496" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="20" font-weight="600" fill="#5c5348">${location}</text>
+  <text x="56" y="478" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="12" font-weight="400" letter-spacing="4.4" fill="${theme.accentLine}" filter="url(#soft)">${escapeXml(theme.eyebrow)}</text>
+  <text x="56" y="516" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="32" font-weight="400" letter-spacing="0.4" fill="#fffdf8" filter="url(#soft)">${title}</text>
+  <text x="56" y="544" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="16" font-weight="400" letter-spacing="0.6" fill="#e8e0d2" filter="url(#soft)">${location}</text>
   ${chipsSvg}
-  <text x="64" y="572" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="14" font-weight="600" letter-spacing="1.2" fill="#8a7f70">estateos.pl</text>
+  <text x="56" y="598" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="12" font-weight="400" letter-spacing="2.4" fill="#d8cbb6">estateos.pl</text>
 
   ${
     price
-      ? `<rect x="852" y="430" width="284" height="118" rx="6" fill="${theme.priceFill}" stroke="${theme.priceStroke}" stroke-width="2"/>
-  <rect x="860" y="438" width="268" height="102" rx="3" fill="none" stroke="${theme.priceStroke}" stroke-opacity="0.35" stroke-width="1"/>
-  <text x="994" y="474" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="3" fill="${theme.priceLabel}">CENA</text>
-  <text x="994" y="522" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="${theme.priceValue}">${price}</text>`
+      ? `<text x="1144" y="500" text-anchor="end" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="11" font-weight="400" letter-spacing="4.8" fill="${theme.accentLine}" filter="url(#soft)">CENA</text>
+  <text x="1144" y="546" text-anchor="end" font-family="DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif" font-size="36" font-weight="400" letter-spacing="0.6" fill="#fffdf8" filter="url(#soft)">${price}</text>
+  <line x1="980" y1="562" x2="1144" y2="562" stroke="${theme.accentLine}" stroke-width="1" stroke-opacity="0.85"/>`
       : ''
   }
 </svg>`;

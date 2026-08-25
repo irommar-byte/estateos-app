@@ -31,7 +31,8 @@ import {
   type IntelligenceAmenityPatchMap,
 } from '@/lib/intelligenceAmenityBrain';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
-import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
+import { descriptionHtmlForEditor, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
+import ListingDescriptionEditor from '@/components/offer/ListingDescriptionEditor';
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
 import AddOfferDocVerificationPanel from '@/components/offer/AddOfferDocVerificationPanel';
 import { OfferAdaptiveImage } from '@/components/offer/OfferAdaptiveImage';
@@ -365,7 +366,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           plotArea: String(offer.plotArea || ''),
           district: offer.district || "",
           address: offer.street || offer.address || "",
-          description: descriptionForEditForm(offer.description),
+          description: descriptionHtmlForEditor(offer.description),
           ...resolveStreetFieldsForForm({
             street: offer.street,
             address: offer.address,
@@ -1397,7 +1398,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Treść ogłoszenia</p>
             </div>
           </div>
-          <textarea value={data.description || ''} onChange={e => updateData({ description: e.target.value })} className={`${inputPremium} min-h-[250px] resize-y leading-relaxed pl-5`} placeholder="Opisz wszystkie atuty swojej nieruchomości. Dobry opis to klucz do sukcesu..." />
+          <ListingDescriptionEditor
+            value={String(data.description || '')}
+            onChange={(html) => updateData({ description: html })}
+            placeholder="Opisz atuty nieruchomości — listy, ptaszki i podkreślenia pomogą kupującemu czytać ofertę."
+          />
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }} className={glassPanel}>

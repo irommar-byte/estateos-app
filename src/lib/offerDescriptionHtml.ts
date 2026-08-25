@@ -1,3 +1,5 @@
+import { editorialToHtml, htmlToEditorial, parseListingDescription } from '@/lib/listingDescriptionFormat';
+
 const ALLOWED_TAGS = new Set([
   'p',
   'br',
@@ -13,6 +15,7 @@ const ALLOWED_TAGS = new Set([
   'h3',
   'a',
   'span',
+  'hr',
 ]);
 
 const IMPORT_MARKER_RE = /<!--\s*estateos-(?:otodom|olx|nieruchomosci-online):\d+\s*-->/gi;
@@ -27,16 +30,7 @@ export function stripInternalOfferDescriptionMarkers(html: string): string {
 }
 
 export function stripHtmlToPlain(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+\n/g, '\n')
+  return htmlToEditorial(html)
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
@@ -48,7 +42,14 @@ export function shouldRenderOfferDescriptionAsHtml(value: string): boolean {
 }
 
 export function descriptionForEditForm(raw: unknown): string {
-  return stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(raw ?? '')));
+  return htmlToEditorial(stripInternalOfferDescriptionMarkers(String(raw ?? '')));
+}
+
+export function descriptionHtmlForEditor(raw: unknown): string {
+  const stripped = stripInternalOfferDescriptionMarkers(String(raw ?? ''));
+  if (!stripped.trim()) return '';
+  if (shouldRenderOfferDescriptionAsHtml(stripped)) return sanitizeOfferDescriptionHtml(stripped);
+  return sanitizeOfferDescriptionHtml(editorialToHtml(stripped));
 }
 
 /** Czysty tekst oferty do kart CRM / radaru — bez znaczników importu i HTML. */
@@ -62,7 +63,7 @@ export function descriptionForStorageFromEdit(raw: unknown): string {
   const value = String(raw ?? '').trim();
   if (!value) return '';
   if (shouldRenderOfferDescriptionAsHtml(value)) return sanitizeOfferDescriptionHtml(value);
-  return value;
+  return sanitizeOfferDescriptionHtml(editorialToHtml(value));
 }
 
 /** Prosta sanityzacja HTML opisu oferty przed renderem na stronie. */
@@ -77,10 +78,10 @@ export function sanitizeOfferDescriptionHtml(raw: string): string {
     .replace(/\son\w+='[^']*'/gi, '')
     .replace(/javascript:/gi, '');
 
-  html = html.replace(/<\s*(\/?)\s*([a-z0-9]+)([^>]*)>/gi, (full, slash, tagName, attrs) => {
+  html = html.replace(/<\s*(\/?)\s*([a-z0-9]+)([^>]*)>/gi, (_full, slash, tagName, attrs) => {
     const tag = String(tagName || '').toLowerCase();
     if (!ALLOWED_TAGS.has(tag)) {
-      return slash ? '' : '';
+      return '';
     }
     if (tag === 'a') {
       const hrefMatch = String(attrs || '').match(/\shref\s*=\s*("([^"]*)"|'([^']*)')/i);
@@ -88,8 +89,22 @@ export function sanitizeOfferDescriptionHtml(raw: string): string {
       if (!/^https?:\/\//i.test(href)) return '';
       return `<a href="${href.replace(/"/g, '&quot;')}" rel="nofollow noopener noreferrer" target="_blank">`;
     }
+    if (tag === 'li' && !slash) {
+      const isCheck = /data-kind\s*=\s*(['"]?)check\1/i.test(String(attrs || ''));
+      return isCheck ? '<li data-kind="check">' : '<li>';
+    }
+    if (tag === 'hr') return slash ? '' : '<hr>';
     return `<${slash ? '/' : ''}${tag}>`;
   });
 
   return html.trim();
 }
+
+export function listingDescriptionToSafeHtml(raw: unknown): string {
+  const stripped = stripInternalOfferDescriptionMarkers(String(raw ?? ''));
+  if (!stripped.trim()) return '';
+  if (shouldRenderOfferDescriptionAsHtml(stripped)) return sanitizeOfferDescriptionHtml(stripped);
+  return sanitizeOfferDescriptionHtml(editorialToHtml(stripped));
+}
+
+export { parseListingDescription, editorialToHtml };
