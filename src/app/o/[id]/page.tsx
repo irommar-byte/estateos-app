@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { notFound } from 'next/navigation';
-import OfferShareLanding from '@/components/offer/OfferShareLanding';
-import { buildAppleItunesAppMeta } from '@/lib/estateosAppLinks';
+import SingleOfferPage from '@/app/oferta/[id]/page';
 import { loadOfferShareCard, resolvePublicAppOrigin } from '@/lib/offerShareLanding';
 
 type PageProps = {
@@ -51,10 +49,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       images: [card.socialImageUrl],
     },
     robots: { index: true, follow: true },
-    other: {
-      'apple-itunes-app': buildAppleItunesAppMeta(card.canonicalUrl),
-      'mobile-web-app-capable': 'yes',
-    },
     appleWebApp: {
       capable: true,
       title: 'EstateOS™',
@@ -71,17 +65,5 @@ export const viewport: Viewport = {
   colorScheme: 'light dark',
 };
 
-export default async function OfferSharePage({ params, searchParams }: PageProps) {
-  const { id } = await params;
-  const sp = await searchParams;
-  const offerId = Number(id);
-  if (!Number.isFinite(offerId) || offerId <= 0) notFound();
-
-  const card = await loadOfferShareCard(offerId, {
-    portalToken: sp.portal ?? null,
-    agentUserId: sp.agent ?? null,
-  });
-  if (!card) notFound();
-
-  return <OfferShareLanding card={card} />;
-}
+/** Ten sam URL co karta Facebook — od razu pełna oferta, bez drugiej strony i skoków IAB. */
+export default SingleOfferPage;

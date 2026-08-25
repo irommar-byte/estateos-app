@@ -1599,28 +1599,38 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
   
   useEffect(() => {
     const fetchUserAndOffer = async () => {
-      let userData: any = null;
-      try {
-        const userRes = await fetch('/api/user/profile');
-        if (userRes.ok) {
-          userData = await userRes.json();
-          if (userData?.email) setCurrentUser(userData);
-        }
-      } catch (e) {}
-
       const id = resolvedParams.id;
       if (!id) {
         setLoadState("error");
         return;
       }
+
+      fetch(`/api/offers/${id}/view`, {
+        method: 'POST',
+        headers: { 'x-client-source': 'web' }
+      }).catch(() => {});
+
+      const [userResult, offerResult] = await Promise.allSettled([
+        fetch('/api/user/profile'),
+        fetch(`/api/offers/${id}${offerQuery}`),
+      ]);
+
+      if (userResult.status === 'fulfilled' && userResult.value.ok) {
+        try {
+          const userData = await userResult.value.json();
+          if (userData?.email) setCurrentUser(userData);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (offerResult.status !== 'fulfilled') {
+        setLoadState("error");
+        return;
+      }
       try {
-        fetch(`/api/offers/${id}/view`, {
-          method: 'POST',
-          headers: { 'x-client-source': 'web' }
-        }).catch(() => {});
-        const res = await fetch(`/api/offers/${id}${offerQuery}`);
-        if (res.ok) {
-          const data = await res.json();
+        if (offerResult.value.ok) {
+          const data = await offerResult.value.json();
           setOffer(data);
           setLoadState("ready");
         } else {
@@ -1689,7 +1699,7 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
         </p>
         <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row">
           <Link
-            href={`/o/${resolvedParams.id}${offerQuery}`}
+            href={`/o/${resolvedParams.id}/karta${offerQuery}`}
             className="eos-lux-btn eos-lux-btn--primary min-h-[48px] min-w-[200px] px-8 text-[13px]"
           >
             Wizytówka oferty

@@ -37,8 +37,6 @@ import {
   resolvePlotAreaForPersistence,
 } from '@/lib/offerPlotAreaValidate';
 import {
-  inferCountryFromCoordinates,
-  resolvePersistedLocalityFields,
   resolvePersistedLocalityFieldsAsync,
 } from '@/lib/offerLocalityCountry';
 import {
@@ -252,41 +250,6 @@ export async function ensureOfferLocalityCountryColumns() {
     await prisma.$executeRawUnsafe(
       `UPDATE \`Offer\` SET \`localityCountryCode\` = 'PL' WHERE \`localityCountryCode\` IS NULL OR TRIM(\`localityCountryCode\`) = ''`
     );
-
-    const batch = await prisma.$queryRaw<
-      Array<{
-        id: number;
-        city: string | null;
-        lat: number | null;
-        lng: number | null;
-        localityCountry: string | null;
-        localityCountryCode: string | null;
-      }>
-    >`SELECT id, city, lat, lng, localityCountry, localityCountryCode FROM Offer`;
-    for (const row of batch) {
-      let resolved = resolvePersistedLocalityFields({
-        localityCountry: row.localityCountry,
-        localityCountryCode: row.localityCountryCode,
-        city: row.city,
-        lat: row.lat,
-        lng: row.lng,
-      });
-      if (!resolved.localityCountryCode && row.lat != null && row.lng != null) {
-        resolved = await inferCountryFromCoordinates(row.lat, row.lng);
-      }
-      if (
-        resolved.localityCountryCode !== String(row.localityCountryCode || '').trim().toUpperCase() ||
-        resolved.localityCountry !== String(row.localityCountry || '').trim()
-      ) {
-        await prisma.$executeRawUnsafe(
-          'UPDATE `Offer` SET `localityCountry` = ?, `localityCountryCode` = ? WHERE `id` = ?',
-          resolved.localityCountry,
-          resolved.localityCountryCode,
-          row.id,
-        );
-      }
-    }
-
     offerLocalityColumnsEnsured = true;
   })();
 

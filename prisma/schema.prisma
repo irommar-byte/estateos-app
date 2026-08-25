@@ -260,6 +260,8 @@ model Offer {
 
   @@index([userId], map: "Offer_userId_fkey")
   @@index([originalOwnerUserId])
+  @@index([status, createdAt], map: "Offer_status_createdAt_idx")
+  @@index([status, lat, lng], map: "Offer_status_lat_lng_idx")
   @@index([legalCheckStatus, legalCheckSubmittedAt])
   @@index([officeReviewStatus, officeSubmittedAt])
   @@index([officeReviewedById])

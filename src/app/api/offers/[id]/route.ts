@@ -169,32 +169,11 @@ async function resolveCurrentUser() {
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await ensureOfferLegalColumns();
-    await ensureOfferMoneyColumns();
-    await ensureOfferExtendedAmenityColumns();
-    await ensureOfferLocalityCountryColumns();
-    await ensureOfferPriceHistorySchema();
     const resolvedParams = await params;
     const offerId = Number(resolvedParams.id);
     const reqUrl = new URL(req.url);
     const portalToken = reqUrl.searchParams.get('portal');
     const agentUserId = reqUrl.searchParams.get('agent');
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS OfferViewLog (
-        id BIGINT NOT NULL AUTO_INCREMENT,
-        offerId INT NOT NULL,
-        visitorKey VARCHAR(128) NOT NULL,
-        source VARCHAR(16) NOT NULL DEFAULT 'web',
-        ip VARCHAR(64) NULL,
-        userAgent VARCHAR(255) NULL,
-        hits INT NOT NULL DEFAULT 1,
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        lastSeenAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        UNIQUE KEY OfferViewLog_offerId_visitorKey_key (offerId, visitorKey),
-        KEY OfferViewLog_offerId_lastSeenAt_idx (offerId, lastSeenAt)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
 
     const offer = await prisma.offer.findUnique({
       where: { id: Number(resolvedParams.id) },
