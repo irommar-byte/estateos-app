@@ -1,10 +1,22 @@
 import { DISCOVERY_DNA } from './dna';
+import { parseTasteNote } from './parseTasteNote';
 import {
   createDiscoveryProfileSnapshot,
   deriveProfileConfidence,
   estimateContradictionIndex,
 } from './engine';
 import type { DiscoveryCandidate, DiscoveryIncomingEvent, DiscoveryProfileSnapshot, TasteVector } from './types';
+
+function resolveCorrectionSpec(raw: string | null | undefined): string | null {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  if (value.startsWith('note:')) {
+    return parseTasteNote(value.slice(5)).correctionTarget;
+  }
+  if (value.startsWith('nlp:')) return value.slice(4);
+  if (/^(city|district|propertyType|transactionType):/i.test(value)) return value;
+  return null;
+}
 
 function bump(map: Record<string, number>, key: string, delta: number) {
   const clean = String(key || '').trim();
@@ -99,8 +111,12 @@ export function updateDiscoveryProfileFromEvent(input: {
     taste.semantic.count += 1;
   }
 
-  if (event.eventType === 'DISCOVERY_CORRECTION' && event.correctionTarget) {
-    const [dimension, ...keyParts] = event.correctionTarget.split(':');
+  const correctionSpec =
+    event.eventType === 'DISCOVERY_CORRECTION' || event.eventType === 'DISCOVERY_DISLIKE'
+      ? resolveCorrectionSpec(event.correctionTarget)
+      : null;
+  if (correctionSpec) {
+    const [dimension, ...keyParts] = correctionSpec.split(':');
     const key = keyParts.join(':');
     const mapByDimension: Record<string, Record<string, number>> = {
       city: taste.affinity.city,

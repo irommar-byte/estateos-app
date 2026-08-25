@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { shouldAutoPromptPasskeyOnLaunch } from '../utils/passkeyBootstrap';
 import { useI18n } from '../i18n';
+import { useLaunchPromptSlot } from '../hooks/useLaunchPromptSlot';
 
 type Props = {
   /** Splash zakończony i sesja odtworzona z dysku. */
@@ -29,25 +30,30 @@ export default function PasskeyLaunchPrompt({ ready, onUsePassword }: Props) {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
 
-  const [visible, setVisible] = useState(false);
+  const [eligible, setEligible] = useState(false);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const autoStarted = useRef(false);
   const dismissed = useRef(false);
 
   useEffect(() => {
-    if (!ready || token) return;
+    if (!ready || token) {
+      setEligible(false);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       const { shouldPrompt, email: savedEmail } = await shouldAutoPromptPasskeyOnLaunch();
-      if (cancelled || !shouldPrompt || dismissed.current) return;
+      if (cancelled || dismissed.current) return;
       setEmail(savedEmail);
-      setVisible(true);
+      setEligible(shouldPrompt);
     })();
     return () => {
       cancelled = true;
     };
   }, [ready, token]);
+
+  const canShow = useLaunchPromptSlot('passkey', eligible && !token);
 
   const runPasskey = useCallback(async () => {
     if (loading) return;
@@ -57,7 +63,7 @@ export default function PasskeyLaunchPrompt({ ready, onUsePassword }: Props) {
       const ok = await loginWithPasskey(email || null);
       if (ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setVisible(false);
+        setEligible(false);
       }
     } finally {
       setLoading(false);
@@ -65,18 +71,21 @@ export default function PasskeyLaunchPrompt({ ready, onUsePassword }: Props) {
   }, [email, loading, loginWithPasskey]);
 
   useEffect(() => {
-    if (!visible || token || autoStarted.current) return;
+    if (!canShow || token || autoStarted.current) return;
     autoStarted.current = true;
     const timer = setTimeout(() => {
       void runPasskey();
     }, 500);
     return () => clearTimeout(timer);
-  }, [visible, token, runPasskey]);
+  }, [canShow, token, runPasskey]);
 
-  if (!visible || token) return null;
+  if (!canShow || token) return null;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+    <Modal visible transparent animationType="fade" onRequestClose={() => {
+      dismissed.current = true;
+      setEligible(false);
+    }}>
       <BlurView intensity={55} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
         <View style={styles.backdrop}>
           <View style={[styles.card, isDark && styles.cardDark]}>
@@ -110,7 +119,7 @@ export default function PasskeyLaunchPrompt({ ready, onUsePassword }: Props) {
               onPress={() => {
                 dismissed.current = true;
                 Haptics.selectionAsync();
-                setVisible(false);
+                setEligible(false);
                 setTimeout(() => {
                   onUsePassword?.(email);
                 }, 220);

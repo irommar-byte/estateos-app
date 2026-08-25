@@ -58,11 +58,10 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
-      {/* Intelligence brain — Homes (float/inline) + Cars (float on market). */}
-      {showIntelligence && surface === 'market' ? (
+      {showIntelligence ? (
         <IntelligencePulseTape
           navigation={navigation}
-          surface="market"
+          surface={surface}
           layout="float"
         />
       ) : null}

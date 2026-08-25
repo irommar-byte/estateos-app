@@ -9,6 +9,8 @@ import { useLocale } from "@/contexts/LocaleContext";
 import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
 
 const SESSION_SOFT_DISMISS_KEY = "eos_intel_enable_soft_dismiss_v1";
+const SNOOZE_KEY = "eos_intel_enable_snooze_until_v1";
+const SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
 
 function readSoftDismissed(): boolean {
   try {
@@ -26,17 +28,35 @@ function writeSoftDismissed() {
   }
 }
 
+function readSnoozed(now = Date.now()): boolean {
+  try {
+    const until = Number(window.localStorage.getItem(SNOOZE_KEY) || "");
+    return Number.isFinite(until) && until > now;
+  } catch {
+    return false;
+  }
+}
+
+function writeSnooze(ms = SNOOZE_MS) {
+  try {
+    window.localStorage.setItem(SNOOZE_KEY, String(Date.now() + ms));
+  } catch {
+    /* quiet */
+  }
+}
+
 /**
  * iOS-style first-login proposal to turn on EstateOS™ Intelligence.
  */
 export default function IntelligenceEnableSheet() {
   const reduceMotion = useReducedMotion();
   const { dict } = useLocale();
-  const { enabled, decided, hydrated, decide } = useIntelligencePreference();
+  const { enabled, decided, hydrated, synced, decide } = useIntelligencePreference();
   const [mounted, setMounted] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [visible, setVisible] = useState(false);
   const [softDismissed, setSoftDismissed] = useState(false);
+  const [snoozed, setSnoozed] = useState(false);
   const titleId = useId();
   const bodyId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -52,6 +72,7 @@ export default function IntelligenceEnableSheet() {
 
   useEffect(() => {
     setSoftDismissed(readSoftDismissed());
+    setSnoozed(readSnoozed());
   }, []);
 
   useEffect(() => {
@@ -81,7 +102,7 @@ export default function IntelligenceEnableSheet() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || !loggedIn || decided || enabled || softDismissed) {
+    if (!hydrated || !synced || !loggedIn || decided || enabled || softDismissed || snoozed) {
       setVisible(false);
       return;
     }
@@ -90,7 +111,7 @@ export default function IntelligenceEnableSheet() {
       void playIntelligenceChime("suggest");
     }, 1600);
     return () => window.clearTimeout(t);
-  }, [hydrated, loggedIn, decided, enabled, softDismissed]);
+  }, [hydrated, synced, loggedIn, decided, enabled, softDismissed, snoozed]);
 
   useEffect(() => {
     if (!visible) return;
@@ -131,7 +152,8 @@ export default function IntelligenceEnableSheet() {
   };
 
   const handleLater = () => {
-    decide(false);
+    writeSnooze();
+    setSnoozed(true);
     setVisible(false);
   };
 

@@ -6,15 +6,16 @@ import {
   shouldOfferAppRatingPrompt,
   subscribeAppRatingPromptEvaluation,
 } from '../services/appRatingPrompt';
+import { useLaunchPromptSlot } from '../hooks/useLaunchPromptSlot';
 
 export default function AppRatingPromptHost() {
-  const [visible, setVisible] = useState(false);
+  const [eligible, setEligible] = useState(false);
 
   const evaluate = useCallback(async () => {
-    if (visible) return;
+    if (eligible) return;
     const ok = await shouldOfferAppRatingPrompt();
-    if (ok) setVisible(true);
-  }, [visible]);
+    if (ok) setEligible(true);
+  }, [eligible]);
 
   useEffect(() => {
     void bootstrapAppRatingSession().then(() => evaluate());
@@ -30,7 +31,14 @@ export default function AppRatingPromptHost() {
     };
   }, [evaluate]);
 
-  if (!visible) return null;
+  const canShow = useLaunchPromptSlot('rating', eligible);
 
-  return <AppRatingPromptModal visible onClose={() => setVisible(false)} />;
+  if (!canShow) return null;
+
+  return (
+    <AppRatingPromptModal
+      visible
+      onClose={() => setEligible(false)}
+    />
+  );
 }

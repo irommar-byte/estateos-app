@@ -98,9 +98,7 @@ import CurrencySegmentControl from '../components/CurrencySegmentControl';
 import AdvancedFilterSegment from '../components/AdvancedFilterSegment';
 import PolandScopeNote from '../components/PolandScopeNote';
 import JellyReveal from '../components/JellyReveal';
-import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
 import { useDiscoveryMapIntelligence } from '../hooks/useDiscoveryMapIntelligence';
-import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 import { useEcosystemStore } from '../store/useEcosystemStore';
 import { useFavoritesFavorStore } from '../store/useFavoritesFavorStore';
 import RadarOfferGallery, {
@@ -1106,8 +1104,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return 'GALLERY';
   });
   const [galleryTransactionFilter, setGalleryTransactionFilter] = useState<GalleryTransactionFilter>('SELL');
-  const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
-  const intelligenceHydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const mapIntelTx =
     galleryTransactionFilter === 'RENT'
       ? 'RENT'
@@ -5387,11 +5383,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       {(showOnlyFavorites || radarBrowseMode !== 'GALLERY') && !showAreaPicker && (
       <View style={styles.offersPreviewContainer} pointerEvents="box-none">
-        {tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled ? (
-          <View style={styles.intelOrbDock} pointerEvents="box-none">
-            <IntelligencePulseTape navigation={navigation} surface="explore" layout="inline" />
-          </View>
-        ) : null}
+        {/* Intelligence orb lives in MarketExploreShell so it stays on market, explore, cars. */}
         {/* Pasek „Dlaczego widzę te oferty?" — glass-pill w stylu Apple.
             Renderowany ZAWSZE (poza loading) — gdy są oferty, pokazuje tryb
             z parametrami. Gdy brak ofert, ta sama karta zmienia ton (severity
@@ -7134,13 +7126,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 20,
     elevation: 20,
-  },
-  intelOrbDock: {
-    alignSelf: 'flex-end',
-    alignItems: 'flex-end',
-    paddingRight: 2,
-    marginBottom: 2,
-    zIndex: 22,
   },
   offerReasonRow: {
     paddingHorizontal: 20,

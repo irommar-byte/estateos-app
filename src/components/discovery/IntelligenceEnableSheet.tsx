@@ -16,9 +16,13 @@ import { useIntelligencePreferenceStore } from '../../store/useIntelligencePrefe
 import { useIsDarkTheme } from '../../store/useThemeStore';
 import { DISCOVERY_COLORS } from './discoveryMotion';
 import { useI18n } from '../../i18n';
+import { useLaunchPromptSlot } from '../../hooks/useLaunchPromptSlot';
+import { isIntelligenceEnablePromptSnoozed } from '../../services/intelligencePreferenceService';
 
 /**
  * First-login proposal to turn on EstateOS™ Intelligence — PL / EN / RU.
+ * Waits for remote preference sync and a launch-prompt slot so splash/passkey/rating
+ * cannot bury it forever.
  */
 export default function IntelligenceEnableSheet() {
   const { t } = useI18n();
@@ -27,20 +31,44 @@ export default function IntelligenceEnableSheet() {
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const decided = useIntelligencePreferenceStore((s) => s.decided);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
+  const synced = useIntelligencePreferenceStore((s) => s.synced);
   const setEnabled = useIntelligencePreferenceStore((s) => s.setEnabled);
+  const snoozeEnablePrompt = useIntelligencePreferenceStore((s) => s.snoozeEnablePrompt);
+  const [sessionDismissed, setSessionDismissed] = useState(false);
+  const [snoozed, setSnoozed] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    void isIntelligenceEnablePromptSnoozed().then((next) => {
+      if (alive) setSnoozed(next);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const eligible =
+    hydrated &&
+    synced &&
+    Boolean(token) &&
+    !decided &&
+    !enabled &&
+    !sessionDismissed &&
+    !snoozed;
+  const canShow = useLaunchPromptSlot('intelligence', eligible);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!hydrated || !token || decided || enabled) {
+    if (!canShow) {
       setVisible(false);
       return;
     }
     const timer = setTimeout(() => {
       setVisible(true);
       void playIntelligenceChime('suggest');
-    }, 1600);
+    }, 480);
     return () => clearTimeout(timer);
-  }, [hydrated, token, decided, enabled]);
+  }, [canShow]);
 
   const handleEnable = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -50,7 +78,14 @@ export default function IntelligenceEnableSheet() {
 
   const handleLater = () => {
     void Haptics.selectionAsync();
-    void setEnabled(token, false);
+    void snoozeEnablePrompt();
+    setSnoozed(true);
+    setVisible(false);
+  };
+
+  const handleBackdrop = () => {
+    void Haptics.selectionAsync();
+    setSessionDismissed(true);
     setVisible(false);
   };
 
@@ -79,11 +114,11 @@ export default function IntelligenceEnableSheet() {
   const featureIconColor = isDark ? '#BAE6FD' : '#0284C7';
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleLater}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleBackdrop}>
       <View style={styles.root}>
         <Pressable
           style={[styles.backdrop, { backgroundColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(15,23,42,0.35)' }]}
-          onPress={handleLater}
+          onPress={handleBackdrop}
           accessibilityLabel={t('discovery.enable.laterA11y')}
         />
         <BlurView

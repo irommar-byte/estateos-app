@@ -3,7 +3,10 @@ import { API_URL } from '../config/network';
 
 const ENABLED_KEY = 'estateos_intelligence_enabled';
 const DECIDED_KEY = 'estateos_intelligence_decided_v1';
+const SNOOZE_KEY = 'estateos_intelligence_enable_snooze_until_v1';
 const API_PATH = `${API_URL}/api/discovery/intelligence-preference`;
+
+export const INTELLIGENCE_ENABLE_SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
 
 export type IntelligencePreference = {
   enabled: boolean;
@@ -28,11 +31,41 @@ export async function readLocalIntelligencePreference(): Promise<IntelligencePre
     const enabledRaw = map[ENABLED_KEY];
     const decidedRaw = map[DECIDED_KEY];
     const enabled = enabledRaw === '1';
-    const decided = decidedRaw === '1' || enabledRaw === '1' || enabledRaw === '0';
+    // Only an explicit decide (profile toggle / enable CTA) counts — never infer from enabled=0
+    // after a "later" tap, or the enable sheet never returns.
+    const decided = decidedRaw === '1';
     return { enabled, decided };
   } catch {
     return { enabled: false, decided: false };
   }
+}
+
+export async function snoozeIntelligenceEnablePrompt(
+  ms = INTELLIGENCE_ENABLE_SNOOZE_MS,
+  now = Date.now(),
+): Promise<number> {
+  const until = now + ms;
+  try {
+    await AsyncStorage.setItem(SNOOZE_KEY, String(until));
+  } catch {
+    /* quiet */
+  }
+  return until;
+}
+
+export async function isIntelligenceEnablePromptSnoozed(now = Date.now()): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(SNOOZE_KEY);
+    const until = Number(raw);
+    return Number.isFinite(until) && until > now;
+  } catch {
+    return false;
+  }
+}
+
+export function isSnoozeTimestampActive(raw: string | null | undefined, now = Date.now()): boolean {
+  const until = Number(raw);
+  return Number.isFinite(until) && until > now;
 }
 
 export async function fetchIntelligencePreference(

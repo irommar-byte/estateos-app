@@ -8,6 +8,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -64,8 +65,9 @@ import { navigateDiscoveryHref } from '../../lib/discovery/navigateDiscoveryHref
 import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState';
 import { useI18n } from '../../i18n';
 import { useIsDarkTheme } from '../../store/useThemeStore';
-import { postDiscoveryTasteEvent } from '../../services/discoveryService';
+import { postDiscoveryTasteEvent, FALLBACK_DISCOVERY_PULSE } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
+import { noteCorrectionTarget, parseTasteNote } from '../../lib/discovery/parseTasteNote';
 
 type Props = {
   navigation: any;
@@ -513,6 +515,7 @@ export default function IntelligencePulseTape({
   const [pendingDislike, setPendingDislike] = useState<{ offerId: number; source?: string } | null>(
     null,
   );
+  const [dislikeNote, setDislikeNote] = useState('');
   const [presentReason, setPresentReason] = useState<PresentReason | null>(null);
   const [orbNotice, setOrbNotice] = useState<Exclude<PresentReason, 'manual'> | null>(null);
   const [spectacle, setSpectacle] = useState(false);
@@ -745,6 +748,7 @@ export default function IntelligencePulseTape({
       clearHide();
       closingRef.current = false;
       setPendingDislike(detail);
+      setDislikeNote('');
       setPresentReason(null);
       setSheetMode('dislike_prompt');
       runGenieIn();
@@ -753,7 +757,7 @@ export default function IntelligencePulseTape({
   );
 
   const submitDislikeFeedback = useCallback(
-    async (reasonCode?: string) => {
+    async (reasonCode?: string, noteText?: string) => {
       if (!pendingDislike) return;
       if (!token) {
         navigation?.navigate?.('Login');
@@ -763,11 +767,16 @@ export default function IntelligencePulseTape({
       if (!reduceMotionRef.current) {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+      const note = String(noteText ?? dislikeNote ?? '').trim();
+      const parsed = note ? parseTasteNote(note) : null;
+      const resolvedReason = reasonCode || parsed?.reasonCode || undefined;
       const result = await postDiscoveryTasteEvent({
         token,
         offerId: pendingDislike.offerId,
         eventType: 'DISLIKE',
-        reasonCode,
+        reasonCode: resolvedReason,
+        reasonNote: note || null,
+        correctionTarget: note ? noteCorrectionTarget(note) : parsed?.correctionTarget || null,
         source: pendingDislike.source || 'mobile_catalog_for_you',
       });
       if (result.authRequired) {
@@ -781,10 +790,11 @@ export default function IntelligencePulseTape({
           eventType: 'DISLIKE',
         });
       }
+      setDislikeNote('');
       setSheetMode('thanks');
       scheduleHide(1500);
     },
-    [navigation, pendingDislike, runGenieOut, scheduleHide, token],
+    [dislikeNote, navigation, pendingDislike, runGenieOut, scheduleHide, token],
   );
 
   const onPulseChange = useCallback(
@@ -820,7 +830,8 @@ export default function IntelligencePulseTape({
     [nudgeOrb],
   );
 
-  const { pulse, ready } = useDiscoveryPulse({ onPulseChange });
+  const { pulse: livePulse, ready } = useDiscoveryPulse({ onPulseChange });
+  const pulse = livePulse ?? (ready ? FALLBACK_DISCOVERY_PULSE : null);
 
   /** Boot peek: one quiet hello when the direction is already meaningful. */
   useEffect(() => {
@@ -1258,13 +1269,25 @@ export default function IntelligencePulseTape({
                       </ApplePressable>
                     </View>
                     <Text style={[styles.dislikeLead, { color: sheetMuted }]}>{t('discovery.dislike.lead')}</Text>
+                    <TextInput
+                      value={dislikeNote}
+                      onChangeText={setDislikeNote}
+                      placeholder={t('discovery.dislike.notePlaceholder')}
+                      placeholderTextColor={sheetMuted}
+                      multiline
+                      maxLength={280}
+                      style={[
+                        styles.dislikeNote,
+                        { color: sheetText, borderColor: sheetBorder, backgroundColor: chipBg },
+                      ]}
+                    />
                     <View style={styles.dislikeChips}>
                       {dislikeReasons.map((reason) => (
                         <ApplePressable
                           key={reason.code}
                           haptic="light"
                           style={[styles.dislikeChip, { backgroundColor: chipBg, borderColor: sheetBorder }]}
-                          onPress={() => void submitDislikeFeedback(reason.code)}
+                          onPress={() => void submitDislikeFeedback(reason.code, dislikeNote)}
                         >
                           <Text style={[styles.dislikeChipText, { color: sheetText }]}>{reason.label}</Text>
                         </ApplePressable>
@@ -1273,7 +1296,7 @@ export default function IntelligencePulseTape({
                     <ApplePressable
                       style={styles.dislikeSkip}
                       haptic="none"
-                      onPress={() => void submitDislikeFeedback()}
+                      onPress={() => void submitDislikeFeedback(undefined, dislikeNote)}
                     >
                       <Text style={[styles.dislikeSkipText, { color: sheetMuted }]}>{t('discovery.dislike.skip')}</Text>
                     </ApplePressable>
@@ -1321,6 +1344,21 @@ export default function IntelligencePulseTape({
                     <Text style={[styles.direction, { color: sheetText }]} numberOfLines={2}>
                       {pulse.directionLine || pulse.suggestion}
                     </Text>
+                    {pulse.summaryLine ? (
+                      <Text style={[styles.knowsLine, { color: sheetMuted }]} numberOfLines={3}>
+                        {pulse.summaryLine}
+                      </Text>
+                    ) : null}
+                    {pulse.evidenceHint ? (
+                      <Text style={[styles.evidenceHint, { color: colors.accent }]} numberOfLines={2}>
+                        {pulse.evidenceHint}
+                      </Text>
+                    ) : null}
+                    {(pulse.knows?.lastNotes?.[0] || pulse.lastNotes?.[0]) ? (
+                      <Text style={[styles.lastNote, { color: sheetMuted }]} numberOfLines={2}>
+                        „{pulse.knows?.lastNotes?.[0] || pulse.lastNotes?.[0]}”
+                      </Text>
+                    ) : null}
 
                     <View style={styles.progressTrack}>
                       <Animated.View
@@ -1882,6 +1920,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginTop: 12,
+  },
+  dislikeNote: {
+    marginTop: 12,
+    minHeight: 72,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  knowsLine: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  evidenceHint: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  lastNote: {
+    marginTop: 6,
+    fontSize: 12,
+    fontStyle: 'italic',
+    lineHeight: 17,
   },
   dislikeChips: {
     flexDirection: 'row',

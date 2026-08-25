@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { noteCorrectionTarget, parseTasteNote } from './parseTasteNote';
 import {
   DISCOVERY_DISLIKE_REASONS,
   DISCOVERY_EVENT_TYPES,
@@ -58,9 +59,17 @@ export function parseDiscoveryIncomingEvent(raw: unknown): { ok: true; event: Di
   const source = boundedString(body.source || 'mobile_discovery', 32) || 'mobile_discovery';
   const sessionId = body.sessionId == null ? null : boundedString(body.sessionId, 64);
   const idempotencyKey = body.idempotencyKey == null ? null : boundedString(body.idempotencyKey, 96);
-  const reasonCode = body.reasonCode == null ? null : String(body.reasonCode).trim().toUpperCase();
+  const reasonNote = boundedString(body.reasonNote ?? body.note, 280);
+  const parsedNote = reasonNote ? parseTasteNote(reasonNote) : null;
+  let reasonCode = body.reasonCode == null ? null : String(body.reasonCode).trim().toUpperCase();
+  if (!reasonCode && parsedNote?.reasonCode) reasonCode = parsedNote.reasonCode;
   const visitOutcome = body.visitOutcome == null ? null : String(body.visitOutcome).trim().toUpperCase();
-  const correctionTarget = body.correctionTarget == null ? null : boundedString(body.correctionTarget, 128);
+  let correctionTarget = body.correctionTarget == null ? null : boundedString(body.correctionTarget, 128);
+  if (!correctionTarget && reasonNote && (eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_CORRECTION')) {
+    correctionTarget = boundedString(noteCorrectionTarget(reasonNote), 128);
+  } else if (!correctionTarget && parsedNote?.correctionTarget) {
+    correctionTarget = parsedNote.correctionTarget.slice(0, 128);
+  }
   const score = body.score == null ? null : optionalNonNegativeInt(body.score);
 
   if (!eventType) return { ok: false, error: 'Niepoprawne eventType' };

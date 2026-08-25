@@ -14,6 +14,7 @@ type RecordOptions = {
   offerId: number | string;
   eventType: DiscoveryUiAction;
   reasonCode?: string;
+  reasonNote?: string;
   source?: string;
   onRequireAuth?: () => void;
 };
@@ -62,6 +63,7 @@ export function useDiscoveryActions() {
           eventType: opts.eventType,
           offerId: id,
           reasonCode: opts.reasonCode || undefined,
+          reasonNote: opts.reasonNote || undefined,
           source: opts.source || "web_offer_card",
           idempotencyKey,
         }),

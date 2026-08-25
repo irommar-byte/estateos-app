@@ -336,6 +336,16 @@ export type DiscoveryPulseCta = {
   action?: string;
 };
 
+export type DiscoveryPulseKnows = {
+  city?: string | null;
+  district?: string | null;
+  budgetPln?: number | null;
+  areaM2?: number | null;
+  transaction?: string | null;
+  dislikeReasons?: string[];
+  lastNotes?: string[];
+};
+
 export type DiscoveryPulsePayload = {
   stage?: string;
   stageLabel: string;
@@ -344,11 +354,37 @@ export type DiscoveryPulsePayload = {
   contradictionIndex: number;
   directionLine: string;
   summaryLine?: string;
+  evidenceHint?: string | null;
   suggestion: string;
   decisionCount?: number;
+  lastNotes?: string[];
+  knows?: DiscoveryPulseKnows | null;
   primaryCta?: DiscoveryPulseCta | null;
   secondaryCta?: DiscoveryPulseCta | null;
   updatedAt?: string | null;
+};
+
+export const FALLBACK_DISCOVERY_PULSE: DiscoveryPulsePayload = {
+  stage: 'EXPLORE',
+  stageLabel: 'Odkrywanie',
+  progress: 4,
+  confidence: 0,
+  contradictionIndex: 0,
+  directionLine: 'Zacznij oceniać oferty — tu zbudujemy Twój kierunek.',
+  suggestion: 'Każdy kciuk i każda notatka uczy mózg, czego szukasz.',
+  summaryLine: 'Za mało swipe’ów do pełnego profilu',
+  evidenceHint: null,
+  decisionCount: 0,
+  lastNotes: [],
+  knows: {
+    city: null,
+    district: null,
+    budgetPln: null,
+    areaM2: null,
+    transaction: null,
+    dislikeReasons: [],
+    lastNotes: [],
+  },
 };
 
 export async function fetchDiscoveryPulse(token: string | null): Promise<DiscoveryPulsePayload | null> {
@@ -364,6 +400,12 @@ export async function fetchDiscoveryPulse(token: string | null): Promise<Discove
       pulse?: DiscoveryPulsePayload;
     } | null;
     if (!json?.success || !json.pulse) return null;
+    const knows = json.pulse.knows && typeof json.pulse.knows === 'object' ? json.pulse.knows : null;
+    const lastNotes = Array.isArray(json.pulse.lastNotes)
+      ? json.pulse.lastNotes.map((item) => String(item || '').trim()).filter(Boolean)
+      : Array.isArray(knows?.lastNotes)
+        ? knows.lastNotes.map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
     return {
       stage: json.pulse.stage,
       stageLabel: String(json.pulse.stageLabel || 'Odkrywanie'),
@@ -372,8 +414,11 @@ export async function fetchDiscoveryPulse(token: string | null): Promise<Discove
       contradictionIndex: Number(json.pulse.contradictionIndex) || 0,
       directionLine: String(json.pulse.directionLine || ''),
       summaryLine: json.pulse.summaryLine ? String(json.pulse.summaryLine) : undefined,
+      evidenceHint: json.pulse.evidenceHint ? String(json.pulse.evidenceHint) : undefined,
       suggestion: String(json.pulse.suggestion || ''),
       decisionCount: Number(json.pulse.decisionCount) || 0,
+      lastNotes,
+      knows,
       primaryCta: json.pulse.primaryCta || null,
       secondaryCta: json.pulse.secondaryCta || null,
       updatedAt: json.pulse.updatedAt ?? null,
@@ -671,6 +716,8 @@ export async function postDiscoveryTasteEvent(params: {
   offerId: number;
   eventType: DiscoveryTasteAction;
   reasonCode?: string | null;
+  reasonNote?: string | null;
+  correctionTarget?: string | null;
   source?: string;
 }): Promise<{ ok: boolean; authRequired?: boolean }> {
   if (!params.token) return { ok: false, authRequired: true };
@@ -688,17 +735,23 @@ export async function postDiscoveryTasteEvent(params: {
     sessionId: null,
     idempotencyKey,
     reasonCode: normalizeDislikeReason(params.reasonCode) ?? null,
+    correctionTarget: params.correctionTarget ? String(params.correctionTarget).slice(0, 128) : null,
     source: 'mobile_discovery',
     platform: normalizeDiscoveryPlatform(Platform.OS),
     at: new Date().toISOString(),
   };
   const source = String(params.source || 'mobile_offer_card').slice(0, 32);
+  const reasonNote = String(params.reasonNote || '').trim().slice(0, 280);
 
   try {
     const response = await fetch(`${API_URL}/api/mobile/v1/discovery/events`, {
       method: 'POST',
       headers: headers(params.token),
-      body: JSON.stringify({ ...payload, source }),
+      body: JSON.stringify({
+        ...payload,
+        source,
+        ...(reasonNote ? { reasonNote } : {}),
+      }),
     });
     if (response.status === 401) return { ok: false, authRequired: true };
     if (!response.ok) {

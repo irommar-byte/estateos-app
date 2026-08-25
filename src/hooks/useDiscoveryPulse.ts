@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { subscribeDiscoveryUpdated } from '../lib/discovery/clientEvents';
-import { fetchDiscoveryPulse, type DiscoveryPulsePayload } from '../services/discoveryService';
+import { fetchDiscoveryPulse, FALLBACK_DISCOVERY_PULSE, type DiscoveryPulsePayload } from '../services/discoveryService';
 import { useAuthStore } from '../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 
@@ -34,11 +34,7 @@ export function useDiscoveryPulse(opts?: {
         prevRef.current = null;
         return;
       }
-      const next = await fetchDiscoveryPulse(token);
-      if (!next) {
-        setPulse(null);
-        return;
-      }
+      const next = (await fetchDiscoveryPulse(token)) || FALLBACK_DISCOVERY_PULSE;
       const previous = prevRef.current;
       onPulseChange?.({ previous, next, silent });
       prevRef.current = next;

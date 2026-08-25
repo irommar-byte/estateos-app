@@ -47,6 +47,7 @@ export const discovery = {
   dislike: {
     title: 'What doesn’t fit?',
     lead: 'One word is enough — the next listings will be closer.',
+    notePlaceholder: 'Or write it yourself: too expensive, wrong district, no balcony…',
     skip: 'Skip — we still learn',
     skipShort: 'Skip',
     price: 'Price',

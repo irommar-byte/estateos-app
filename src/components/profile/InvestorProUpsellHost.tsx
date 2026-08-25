@@ -19,6 +19,7 @@ import {
   subscribeInvestorProUpsell,
   type InvestorProUpsellReason,
 } from '../../services/investorProUpsell';
+import { useLaunchPromptSlot } from '../../hooks/useLaunchPromptSlot';
 
 export default function InvestorProUpsellHost() {
   const { t } = useI18n();
@@ -33,6 +34,7 @@ export default function InvestorProUpsellHost() {
   const [buying, setBuying] = useState(false);
 
   const hasPro = hasActiveInvestorProMembership(user);
+  const canShow = useLaunchPromptSlot('upsell', Boolean(reason) && !hasPro);
 
   useEffect(() => {
     return subscribeInvestorProUpsell((request) => {
@@ -124,7 +126,7 @@ export default function InvestorProUpsellHost() {
     }
   }, [buying, refreshUser, t, token]);
 
-  if (!reason || hasPro) return null;
+  if (!canShow || !reason) return null;
 
   return (
     <InvestorProUpsellModal
