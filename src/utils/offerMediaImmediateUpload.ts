@@ -22,6 +22,8 @@ export type ImmediateUploadResult = {
   url: string;
   path: string;
   localBytes: number;
+  isHdr?: boolean;
+  masterUrl?: string | null;
   usage?: OfferMediaUsage;
 };
 
@@ -126,6 +128,8 @@ export function uploadOfferImageImmediate(options: {
           url: path.startsWith('http') ? path : `${API_URL}${path}`,
           path: path.startsWith('http') ? path.replace(API_URL, '') : path,
           localBytes,
+          isHdr: json?.isHdr === true,
+          masterUrl: json?.masterUrl || null,
           usage,
         });
       };

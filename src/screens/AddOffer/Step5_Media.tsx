@@ -25,10 +25,12 @@ import {
   formatMediaCapacityAlert,
 } from '../../utils/offerMediaCapacity';
 import { OFFER_PHOTO_LIBRARY_OPTIONS } from '../../utils/offerPhotoUpload';
+import { probeHdrFromUrl } from '../../utils/hdrBinaryProbe';
 import { t, useI18n } from '../../i18n';
 import PropertyRoomScanWorkspace from '../../components/roomScan/PropertyRoomScanWorkspace';
 import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
 import MagicalAiDescribeButton from '../../components/MagicalAiDescribeButton';
+import HdrPreviewBadge from '../../components/HdrPreviewBadge';
 import type { PropertyRoomScan, WholePropertyScan } from '../../types/roomScan';
 import { useAuthStore } from '../../store/useAuthStore';
 import { generateListingDescriptionWithGpt } from '../../services/offerDescriptionAiService';
@@ -42,6 +44,15 @@ const MAX_MB = OFFER_MEDIA_UPLOAD_CAP_MB;
 function countUnknownImageSizes(uris: string[], sizes: Record<string, number> | undefined): number {
   const map = sizes || {};
   return uris.reduce((acc, uri) => acc + (typeof map[uri] === 'number' && map[uri] > 0 ? 0 : 1), 0);
+}
+
+function pruneHdrFlags(uris: string[], flags: Record<string, boolean> | undefined): Record<string, boolean> {
+  const src = flags || {};
+  const next: Record<string, boolean> = {};
+  for (const uri of uris) {
+    if (src[uri]) next[uri] = true;
+  }
+  return next;
 }
 
 function uniqueImages(uris: string[]): string[] {
@@ -124,6 +135,7 @@ const DraggableSquare = ({
   theme,
   progress = 100,
   squareSize,
+  isHdr = false,
 }: any) => {
   const pos = useRef(new Animated.ValueXY(getPositionForSize(index, squareSize))).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -277,6 +289,8 @@ const DraggableSquare = ({
         </View>
       )}
 
+      {isHdr ? <HdrPreviewBadge /> : null}
+
       {/* Przycisk usuwania działa bezpiecznie dzięki ograniczeniom PanRespondera */}
       <Pressable onPress={() => onRemove(index)} style={styles.squareRemoveBtn} hitSlop={10}>
         <Ionicons name="close" size={16} color="#fff" />
@@ -299,6 +313,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
         const { draft: d } = useOfferStore.getState();
         const dedupedImages = uniqueImages(d.images || []);
         const cleaned = pruneImageByteSizes(dedupedImages, d.imageByteSizes || {});
+        const hdrFlags = pruneHdrFlags(dedupedImages, d.imageHdrFlags || {});
         const prev = d.imageByteSizes || {};
         const sameSizes =
           Object.keys(cleaned).length === Object.keys(prev).length &&
@@ -307,8 +322,12 @@ export default function Step5_Media({ theme }: { theme: any }) {
           Array.isArray(d.images) &&
           d.images.length === dedupedImages.length &&
           d.images.every((v: string, i: number) => v === dedupedImages[i]);
-        if (!sameSizes || !sameImages) {
-          updateDraft({ images: dedupedImages, imageByteSizes: cleaned });
+        const prevHdr = d.imageHdrFlags || {};
+        const sameHdr =
+          Object.keys(hdrFlags).length === Object.keys(prevHdr).length &&
+          Object.keys(hdrFlags).every((k) => hdrFlags[k] === prevHdr[k]);
+        if (!sameSizes || !sameImages || !sameHdr) {
+          updateDraft({ images: dedupedImages, imageByteSizes: cleaned, imageHdrFlags: hdrFlags });
         }
       }, 0);
       return () => clearTimeout(id);
@@ -377,7 +396,8 @@ export default function Step5_Media({ theme }: { theme: any }) {
       let nextImages = uniqueImages([...draftImages]);
       /** Zawsze start od oczyszczonej mapy — usuwa zombie wpisy blokujące miejsce. */
       let nextSizes = pruneImageByteSizes(nextImages, { ...(draft.imageByteSizes || {}) });
-      updateDraft({ imageByteSizes: nextSizes });
+      let nextHdr = pruneHdrFlags(nextImages, { ...(draft.imageHdrFlags || {}) });
+      updateDraft({ imageByteSizes: nextSizes, imageHdrFlags: nextHdr });
 
       let runningBytes = sumEstimatedUploadBytes(nextImages, nextSizes);
 
@@ -401,13 +421,21 @@ export default function Step5_Media({ theme }: { theme: any }) {
         if (!nextImages.includes(asset.uri)) nextImages.push(asset.uri);
         nextSizes[asset.uri] = measured;
         nextSizes = pruneImageByteSizes(nextImages, nextSizes);
+        if (await probeHdrFromUrl(asset.uri)) {
+          nextHdr[asset.uri] = true;
+        }
+        nextHdr = pruneHdrFlags(nextImages, nextHdr);
         runningBytes = sumEstimatedUploadBytes(nextImages, nextSizes);
         setUploadProgress((prev) => ({ ...prev, [asset.uri]: 0 }));
         startFakeUploadProgress(asset.uri);
       }
 
       if (nextImages.length > draftImages.length) {
-        updateDraft({ images: uniqueImages(nextImages), imageByteSizes: nextSizes });
+        updateDraft({
+          images: uniqueImages(nextImages),
+          imageByteSizes: nextSizes,
+          imageHdrFlags: pruneHdrFlags(nextImages, nextHdr),
+        });
       }
     } catch (err: any) {
       Alert.alert(
@@ -429,9 +457,10 @@ export default function Step5_Media({ theme }: { theme: any }) {
     const filtered = uniqueImages(displayImages.filter((_: string, i: number) => i !== indexToRemove));
     const mergedSizes = { ...(draft.imageByteSizes || {}) };
     const nextSizes = pruneImageByteSizes(filtered, mergedSizes);
+    const nextHdr = pruneHdrFlags(filtered, draft.imageHdrFlags || {});
 
     setDragSnapshot(null);
-    updateDraft({ images: filtered, imageByteSizes: nextSizes });
+    updateDraft({ images: filtered, imageByteSizes: nextSizes, imageHdrFlags: nextHdr });
   };
 
   const handleDragStart = useCallback(() => {
@@ -447,7 +476,11 @@ export default function Step5_Media({ theme }: { theme: any }) {
     if (snap != null) {
       const { draft: d } = useOfferStore.getState();
       const nextSizes = pruneImageByteSizes(snap, d.imageByteSizes || {});
-      updateDraft({ images: snap, imageByteSizes: nextSizes });
+      updateDraft({
+        images: snap,
+        imageByteSizes: nextSizes,
+        imageHdrFlags: pruneHdrFlags(snap, d.imageHdrFlags || {}),
+      });
     }
     dragSnapshotRef.current = null;
     setDragSnapshot(null);
@@ -685,6 +718,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
                   theme={theme}
                   progress={uploadProgress[uri] ?? 100}
                   squareSize={squareSize}
+                  isHdr={Boolean(draft.imageHdrFlags?.[uri])}
                 />
               ))}
             </View>

@@ -30,6 +30,7 @@ import type { PropertyRoomScan, RoomScanDraftAssets, WholePropertyScan } from '.
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
+import HdrPreviewBadge from '../components/HdrPreviewBadge';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
@@ -108,6 +109,7 @@ import {
   type OfferMediaUsage,
 } from '../utils/offerMediaImmediateUpload';
 import { OFFER_PHOTO_LIBRARY_OPTIONS, offerPhotoUploadParts } from '../utils/offerPhotoUpload';
+import { probeHdrFromUrl } from '../utils/hdrBinaryProbe';
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = OFFER_MEDIA_MAX_IMAGES;
@@ -162,6 +164,8 @@ type EditableImage = {
   byteSize?: number;
   /** Lokalny klucz slotu podczas uploadu (zanim dostaniemy serverPath). */
   uploadKey?: string;
+  /** True jeśli plik ma gain map / Apple HDR i ma się rozświetlać. */
+  isHdr?: boolean;
 };
 
 const editableImageKey = (img: EditableImage) => img.uploadKey || img.serverPath || img.uri;
@@ -362,7 +366,7 @@ function DraggableEditSquare({
         </View>
       </View>
       {index === 0 ? (
-        <View style={styles.mainPhotoBadge}>
+        <View style={[styles.mainPhotoBadge, img.isHdr ? { top: 28 } : null]}>
           <Ionicons name="star" size={9} color="#FFD60A" />
           <Text style={styles.mainPhotoText}>{coverLabel}</Text>
         </View>
@@ -387,6 +391,7 @@ function DraggableEditSquare({
           </View>
         </>
       ) : null}
+      {img.isHdr ? <HdrPreviewBadge /> : null}
       <Pressable
         style={styles.deleteImageBtn}
         onPress={() => onRemove(index)}
@@ -695,6 +700,29 @@ export default function EditOfferScreen({ route }: any) {
             }));
             setImages(mapped);
             setOriginalImageKeys(mapped.map((i: EditableImage) => i.serverPath || i.uri));
+            void fetch(`${API_URL}/api/public/offers/${offerId}/images-meta`)
+              .then((res) => (res.ok ? res.json() : null))
+              .then((json) => {
+                const meta = (json?.images || {}) as Record<string, { isHdr?: boolean; sdrUrl?: string }>;
+                if (!meta || !Object.keys(meta).length) return;
+                setImages((prev) =>
+                  prev.map((item) => {
+                    const path = item.serverPath || toServerPath(item.uri);
+                    const hit =
+                      meta[path]?.isHdr ||
+                      meta[item.uri]?.isHdr ||
+                      Object.values(meta).some(
+                        (entry) =>
+                          entry?.isHdr &&
+                          (entry.sdrUrl === path ||
+                            entry.sdrUrl === item.uri ||
+                            String(entry.sdrUrl || '').endsWith(path)),
+                      );
+                    return hit ? { ...item, isHdr: true } : item;
+                  }),
+                );
+              })
+              .catch(() => {});
             if (token?.trim()) {
               void fetchOfferMediaUsage({ offerId: Number(offerId), token: token.trim() }).then((usage) => {
                 if (usage) setMediaUsage(usage);
@@ -1075,6 +1103,12 @@ export default function EditOfferScreen({ route }: any) {
         enqueueLayoutSpring();
         setImages((prev) => [...prev, pending]);
         setUploadProgress((prev) => ({ ...prev, [uploadKey]: 0 }));
+        void probeHdrFromUrl(asset.uri).then((isHdr) => {
+          if (!isHdr) return;
+          setImages((prev) =>
+            prev.map((img) => (img.uploadKey === uploadKey ? { ...img, isHdr: true } : img)),
+          );
+        });
 
         try {
           const uploaded = await uploadOfferImageImmediate({
@@ -1096,6 +1130,7 @@ export default function EditOfferScreen({ route }: any) {
                     isRemote: true,
                     serverPath: uploaded.path,
                     byteSize: uploaded.localBytes || measured,
+                    isHdr: uploaded.isHdr === true || img.isHdr,
                   }
                 : img,
             ),

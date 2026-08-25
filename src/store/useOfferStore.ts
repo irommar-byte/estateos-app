@@ -84,6 +84,8 @@ const initialDraft = {
   images: [],
   /** Rozmiary plików (bajty) wg URI — suma MB i limit bez „znikania” po nawigacji */
   imageByteSizes: {} as Record<string, number>,
+  /** Lokalne URI z prawdziwym gain map / Apple HDR — badge na kafelku. */
+  imageHdrFlags: {} as Record<string, boolean>,
   videoUrl: '',
   floorPlanUrl: '',
   floorPlan: null as string | null,
@@ -137,7 +139,7 @@ export const useOfferStore = create<OfferStore>((set) => ({
     set({
       currentStep: 0,
       needsFreshAddOfferEntry: true,
-      draft: { ...initialDraft, images: [], imageByteSizes: {} },
+      draft: { ...initialDraft, images: [], imageByteSizes: {}, imageHdrFlags: {} },
     }),
   clearFreshAddOfferEntry: () =>
     set((state) => (state.needsFreshAddOfferEntry ? { needsFreshAddOfferEntry: false } : state)),

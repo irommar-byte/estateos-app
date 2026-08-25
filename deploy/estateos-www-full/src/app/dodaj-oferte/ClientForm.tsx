@@ -25,6 +25,8 @@ import AddOfferPublishSummary from '@/components/offers/AddOfferPublishSummary';
 import ContactVerificationPanel from '@/components/ContactVerificationPanel';
 import SiriMagicButton from '@/components/ui/SiriMagicButton';
 import LuxurySegmentSwitch from '@/components/ui/LuxurySegmentSwitch';
+import { OfferHdrBadge } from '@/components/offer/OfferHdrBadge';
+import { probeHdrFromBlob } from '@/lib/upload/hdrBinaryProbe';
 import { typewriterReveal } from '@/lib/typewriterReveal';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
@@ -212,7 +214,7 @@ type DistrictCatalogResponse = {
   strictCityDistricts: Record<string, string[]>;
 };
 
-const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
+const SortableItem = ({ id, img, idx, onRemove, progressObj, isHdr }: any) => {
   const { dict } = useLocale();
   const ao = dict.addOffer;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -231,6 +233,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
   return (
     <div ref={setNodeRef} style={style} className="w-32 h-32 relative rounded-2xl overflow-hidden group border border-white/10 hover:border-[#10b981]/50 transition-all z-50 shadow-lg bg-black/40 flex-shrink-0">
       <img src={img} className={`w-full h-full object-cover pointer-events-none transition-all ${isUploading ? 'opacity-40 blur-[2px]' : ''}`} alt={ao.thumbAlt} />
+      {isHdr ? <OfferHdrBadge compact /> : null}
 
       {/* Nakładka z kropeczkami (Uchwyt Drag & Drop) */}
       <div {...attributes} {...listeners} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing z-20">
@@ -313,6 +316,7 @@ export default function ClientForm({
   const [imagesList, setImagesList] = useState<string[]>([]);
   const [uploadStats, setUploadStats] = useState<{[key: string]: {progress: number, error: boolean, sizeMB: number}}>({});
   const [filesMap, setFilesMap] = useState<{[key: string]: File}>({}); 
+  const [hdrFlags, setHdrFlags] = useState<Record<string, boolean>>({}); 
   const [totalSizeMB, setTotalSizeMB] = useState(0);
   const [floorPlan, setFloorPlan] = useState<string | null>(null);
   const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
@@ -786,12 +790,34 @@ export default function ClientForm({
     setUploadStats((prev) => ({ ...prev, ...nextStats }));
     setImagesList((prev) => [...prev, ...nextUrls]);
     e.target.value = '';
+
+    void Promise.all(
+      nextUrls.map(async (url, index) => {
+        const file = files[index];
+        if (!file) return;
+        const isHdr = await probeHdrFromBlob(file);
+        if (!isHdr) return;
+        setHdrFlags((prev) => ({ ...prev, [url]: true }));
+      }),
+    );
   };
 
   const handleRemoveImage = (idx: number) => {
     setImagesList((prev) => {
       const toRemove = prev[idx];
       if (toRemove?.startsWith('blob:')) URL.revokeObjectURL(toRemove);
+      if (toRemove) {
+        setHdrFlags((flags) => {
+          const next = { ...flags };
+          delete next[toRemove];
+          return next;
+        });
+        setFilesMap((map) => {
+          const next = { ...map };
+          delete next[toRemove];
+          return next;
+        });
+      }
       const next = prev.filter((_, i) => i !== idx);
       return next;
     });
@@ -2304,7 +2330,7 @@ export default function ClientForm({
                   
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { const { active, over } = e; if (active.id !== over?.id && over) { setImagesList((items) => arrayMove(items, items.indexOf(active.id as string), items.indexOf(over.id as string))); } }}>
                     <SortableContext items={imagesList} strategy={rectSortingStrategy}>
-                      {imagesList.map((img, idx) => <SortableItem key={img} id={img} img={img} idx={idx} onRemove={handleRemoveImage} progressObj={uploadStats[img]} />)}
+                      {imagesList.map((img, idx) => <SortableItem key={img} id={img} img={img} idx={idx} onRemove={handleRemoveImage} progressObj={uploadStats[img]} isHdr={Boolean(hdrFlags[img])} />)}
                     </SortableContext>
                   </DndContext>
                 </div>
