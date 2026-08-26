@@ -1,10 +1,33 @@
 import type { OfferShareCard } from '@/lib/offerShareLanding';
 
 export function truncateOfferShareDescription(text: string | null | undefined, max = 420): string {
-  const plain = String(text || '').trim();
+  const plain = String(text || '').replace(/\s+/g, ' ').trim();
   if (!plain) return '';
   if (plain.length <= max) return plain;
-  return `${plain.slice(0, max - 1).trimEnd()}…`;
+
+  const window = plain.slice(0, max + 1);
+  let sentenceEnd = -1;
+  for (let i = 0; i < window.length; i += 1) {
+    const ch = window[i];
+    if (ch !== '.' && ch !== '!' && ch !== '?' && ch !== '…') continue;
+    const next = window[i + 1];
+    if (next == null || next === ' ') sentenceEnd = i;
+  }
+  if (sentenceEnd >= Math.floor(max * 0.42)) {
+    return window.slice(0, sentenceEnd + 1).trim();
+  }
+
+  const hard = plain.slice(0, Math.max(8, max - 1));
+  const lastSpace = hard.lastIndexOf(' ');
+  const cut = (lastSpace > 24 ? hard.slice(0, lastSpace) : hard).replace(/[,:;–—-]+$/g, '').trimEnd();
+  return `${cut}…`;
+}
+
+export function formatOfferShareFloor(floor: number | string | null | undefined): string | null {
+  if (floor == null || String(floor).trim() === '') return null;
+  const n = Number(floor);
+  if (Number.isFinite(n) && n === 0) return 'Parter';
+  return String(floor);
 }
 
 export function buildOfferShareQrSrc(url: string, size = 240): string {
@@ -28,16 +51,17 @@ export function offerSharePrintFilename(card: OfferShareCard): string {
 const PRINT_BODY_CLASS = 'offer-share-printing';
 const PDF_CAPTURE_CLASS = 'offer-share-pdf-capturing';
 
-export function printOfferShareBrochure(): void {
+export async function printOfferShareBrochure(): Promise<void> {
+  const root = document.getElementById('offer-share-print-brochure');
   document.body.classList.add(PRINT_BODY_CLASS);
   const cleanup = () => {
     document.body.classList.remove(PRINT_BODY_CLASS);
     window.removeEventListener('afterprint', cleanup);
   };
   window.addEventListener('afterprint', cleanup);
-  requestAnimationFrame(() => {
-    window.print();
-  });
+  if (root) await waitForImages(root);
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+  window.print();
 }
 
 function waitForImages(root: HTMLElement, timeoutMs = 10000): Promise<void> {

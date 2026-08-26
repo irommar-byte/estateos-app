@@ -88,6 +88,8 @@ export type OfferSharePublisher = {
   averageRating: number | null;
   reviewCount: number;
   profileHref: string;
+  /** Absolute URL of the public agent/office profile (QR on the print card). */
+  profileUrl: string;
 };
 
 export type OfferShareCard = {
@@ -245,6 +247,7 @@ export async function loadOfferShareCard(
       averageRating: reviewCount > 0 && avgRaw != null ? Number(avgRaw) : null,
       reviewCount,
       profileHref: `/profil/${uid}`,
+      profileUrl: `${resolvePublicAppOrigin()}/profil/${uid}`,
     };
   }
 
@@ -287,6 +290,8 @@ export async function loadOfferShareCard(
     heating: String(row.heating || '').trim() || null,
     amenities: amenityLabels(row),
     gallery: images.filter((url) => url && url !== primary).slice(0, 3),
-    mapImageUrl: hasCoords ? `/api/map/static?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}` : null,
+    mapImageUrl: hasCoords
+      ? `/api/map/static?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}&v=2`
+      : null,
   };
 }

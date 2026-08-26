@@ -4339,31 +4339,46 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 }
 
 .offer-share-print-spec-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2mm;
-  margin-top: 3.5mm;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 2.2mm;
+  margin-top: 4mm;
 }
 
-.offer-share-print-spec-grid div {
-  padding: 2mm 2.2mm;
-  border: 1px solid rgba(184, 146, 46, 0.28);
-  border-radius: 2mm;
-  background: rgba(255, 255, 255, 0.55);
+.offer-share-print-spec {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 20mm;
+  min-width: 0;
+  padding: 3mm 1.6mm 2.8mm;
+  text-align: center;
+  border-radius: 2.2mm;
+  border: 0.35mm solid rgba(184, 146, 46, 0.42);
+  background: linear-gradient(180deg, #fffdf8 0%, #f4ead4 100%);
+  box-shadow: inset 0 0 0 0.7mm rgba(255, 255, 255, 0.65);
 }
 
-.offer-share-print-spec-grid label {
+.offer-share-print-spec-label {
   display: block;
-  margin-bottom: 0.6mm;
+  margin: 0 0 1.4mm;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 6pt;
-  letter-spacing: 0.12em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #8a6d1f;
 }
 
-.offer-share-print-spec-grid strong {
-  font-size: 9pt;
+.offer-share-print-spec-value {
+  font-size: 12.5pt;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
   color: #1a1916;
 }
 
@@ -4405,12 +4420,8 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .offer-share-print-description-body {
   margin: 0;
   font-size: 8.8pt;
-  line-height: 1.42;
+  line-height: 1.45;
   color: #3d3a32;
-  display: -webkit-box;
-  -webkit-line-clamp: 8;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .offer-share-print-map {
@@ -4423,7 +4434,7 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .offer-share-print-map img,
 .offer-share-print-map-fallback {
   width: 100%;
-  height: 52mm;
+  height: 58mm;
   object-fit: cover;
   display: block;
 }

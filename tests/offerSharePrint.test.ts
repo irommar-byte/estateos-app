@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildOfferShareMapSrc,
   buildOfferShareQrSrc,
+  formatOfferShareFloor,
   offerSharePrintFilename,
   truncateOfferShareDescription,
 } from '../src/lib/offerSharePrint';
@@ -27,8 +28,19 @@ test('PDF filename is a stable slug', () => {
   );
 });
 
-test('description is truncated with an ellipsis', () => {
+test('short description stays intact', () => {
   assert.equal(truncateOfferShareDescription('Krótki opis', 40), 'Krótki opis');
-  assert.equal(truncateOfferShareDescription('x'.repeat(80), 20).length, 20);
-  assert.match(truncateOfferShareDescription('x'.repeat(80), 20), /…$/);
+});
+
+test('description stops on a complete sentence instead of mid-word', () => {
+  const text =
+    'Zapraszamy do oferty. Mieszkanie zapewnia doskonałe doświetlenie przez cały dzień. Dalej jest jeszcze więcej tekstu który nie powinien się urwać.';
+  const out = truncateOfferShareDescription(text, 90);
+  assert.equal(out, 'Zapraszamy do oferty. Mieszkanie zapewnia doskonałe doświetlenie przez cały dzień.');
+  assert.doesNotMatch(out, /…$/);
+});
+
+test('floor zero prints as Parter', () => {
+  assert.equal(formatOfferShareFloor(0), 'Parter');
+  assert.equal(formatOfferShareFloor(3), '3');
 });

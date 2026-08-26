@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { OfferShareCard } from '@/lib/offerShareLanding';
 import {
   buildOfferShareQrSrc,
+  formatOfferShareFloor,
   truncateOfferShareDescription,
 } from '@/lib/offerSharePrint';
 
@@ -25,7 +26,8 @@ function AgentPrintCard({ card }: { card: OfferShareCard }) {
       ? 'Agent nieruchomości'
       : 'Kontakt do wystawcy';
   const initial = (primary.charAt(0) || 'E').toUpperCase();
-  const qrSrc = buildOfferShareQrSrc(card.canonicalUrl, 220);
+  const agentProfileUrl = publisher.profileUrl || card.canonicalUrl;
+  const qrSrc = buildOfferShareQrSrc(agentProfileUrl, 220);
 
   return (
     <section className="offer-share-agent-print-card" aria-label="Wizytówka agenta">
@@ -54,8 +56,8 @@ function AgentPrintCard({ card }: { card: OfferShareCard }) {
         </div>
         <div className="offer-share-agent-print-qr-col">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qrSrc} alt="Kod QR oferty" className="offer-share-agent-print-qr" />
-          <p className="offer-share-agent-print-qr-label">Zeskanuj ofertę</p>
+          <img src={qrSrc} alt="Kod QR wizytówki agenta" className="offer-share-agent-print-qr" />
+          <p className="offer-share-agent-print-qr-label">Wizytówka agenta</p>
         </div>
         <div className="offer-share-agent-print-brand">
           <span className="offer-share-agent-print-badge">EstateOS™</span>
@@ -88,7 +90,7 @@ function PrintMapPanel({ card }: { card: OfferShareCard }) {
         </div>
       )}
       <p className="offer-share-print-map-caption">
-        {showImage ? 'Okolica z pinezką lokalizacji' : 'Lokalizacja oferty'}
+        {showImage ? 'Okolica · komunikacja i usługi' : 'Lokalizacja oferty'}
       </p>
     </div>
   );
@@ -97,7 +99,7 @@ function PrintMapPanel({ card }: { card: OfferShareCard }) {
 export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochureProps) {
   const [mounted, setMounted] = useState(false);
   const hero = card.imageUrl || card.images[0] || '';
-  const description = truncateOfferShareDescription(card.description, 520);
+  const description = truncateOfferShareDescription(card.description, 480);
   const qrSrc = buildOfferShareQrSrc(card.canonicalUrl, 240);
 
   useEffect(() => {
@@ -106,10 +108,11 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
 
   if (!mounted) return null;
 
+  const floorLabel = formatOfferShareFloor(card.floor);
   const specs: Array<{ label: string; value: string }> = [
     card.area != null ? { label: 'Metraż', value: `${card.area} m²` } : null,
     card.rooms != null ? { label: 'Pokoje', value: String(card.rooms) } : null,
-    card.floor != null ? { label: 'Piętro', value: String(card.floor) } : null,
+    floorLabel ? { label: 'Piętro', value: floorLabel } : null,
     card.yearBuilt != null ? { label: 'Rok budowy', value: String(card.yearBuilt) } : null,
     card.heating ? { label: 'Ogrzewanie', value: card.heating } : null,
   ].filter((item): item is { label: string; value: string } => Boolean(item));
@@ -150,9 +153,9 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
             {specs.length ? (
               <div className="offer-share-print-spec-grid">
                 {specs.map((spec) => (
-                  <div key={spec.label}>
-                    <label>{spec.label}</label>
-                    <strong>{spec.value}</strong>
+                  <div key={spec.label} className="offer-share-print-spec">
+                    <span className="offer-share-print-spec-label">{spec.label}</span>
+                    <strong className="offer-share-print-spec-value">{spec.value}</strong>
                   </div>
                 ))}
               </div>

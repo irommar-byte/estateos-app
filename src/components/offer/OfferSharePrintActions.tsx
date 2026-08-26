@@ -30,9 +30,16 @@ export default function OfferSharePrintActions({ card }: OfferSharePrintActionsP
     };
   }, []);
 
-  const onPrint = useCallback(() => {
+  const onPrint = useCallback(async () => {
     setError(null);
-    printOfferShareBrochure();
+    setPdfBusy(true);
+    try {
+      await printOfferShareBrochure();
+    } catch {
+      setError('Nie udało się przygotować wydruku. Spróbuj ponownie.');
+    } finally {
+      setPdfBusy(false);
+    }
   }, []);
 
   const onPdf = useCallback(async () => {
@@ -57,7 +64,12 @@ export default function OfferSharePrintActions({ card }: OfferSharePrintActionsP
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <button type="button" onClick={onPrint} className={eosBtn('secondary', { block: true })}>
+        <button
+          type="button"
+          onClick={() => void onPrint()}
+          disabled={pdfBusy}
+          className={eosBtn('secondary', { block: true })}
+        >
           <Printer size={14} />
           Wydrukuj
         </button>
