@@ -125,7 +125,10 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
             <strong>EstateOS™</strong>
             <span>Karta nieruchomości</span>
           </div>
-          <span className="offer-share-print-ref">#{card.id}</span>
+          <span className="offer-share-print-ref">
+            <span className="offer-share-print-ref-label">Oferta</span>
+            <strong className="offer-share-print-ref-value">#{card.id}</strong>
+          </span>
         </header>
 
         <div className="offer-share-print-hero">
@@ -164,7 +167,9 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
             {card.amenities.length ? (
               <div className="offer-share-print-amenities">
                 {card.amenities.map((item) => (
-                  <span key={item}>{item}</span>
+                  <span key={item} className="offer-share-print-amenity">
+                    {item}
+                  </span>
                 ))}
               </div>
             ) : null}

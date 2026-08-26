@@ -4216,16 +4216,61 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 }
 
 .offer-share-print-ref {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 7pt;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 22mm;
+  padding: 1.6mm 3.2mm 1.8mm;
+  text-align: center;
+  border-radius: 2.4mm;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, #fbf7ec 0%, #e7d8b6 48%, #f2e6ce 100%);
+  border: 0.32mm solid rgba(138, 109, 31, 0.4);
+  box-shadow:
+    0 3px 7px rgba(62, 44, 12, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 -2px 4px rgba(110, 80, 20, 0.18) inset;
+}
+
+.offer-share-print-ref-label,
+.offer-share-print-spec-label {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 6pt;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  padding-left: 0.16em;
   text-transform: uppercase;
-  color: #8a6d1f;
-  border: 1px solid rgba(184, 146, 46, 0.45);
-  border-radius: 999px;
-  padding: 1mm 3mm;
-  background: rgba(184, 146, 46, 0.08);
+  color: #6a5418;
+  text-shadow:
+    0 0.6px 0 rgba(255, 255, 255, 0.82),
+    0 -0.4px 0.35px rgba(70, 50, 15, 0.28);
+}
+
+.offer-share-print-ref-value,
+.offer-share-print-spec-value {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.4mm 0 0;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 11pt;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: #2c2412;
+  text-shadow:
+    0 0.7px 0 rgba(255, 255, 255, 0.88),
+    0 -0.45px 0.4px rgba(55, 40, 10, 0.3);
 }
 
 .offer-share-print-hero {
@@ -4352,53 +4397,64 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 20mm;
+  min-height: 21mm;
   min-width: 0;
-  padding: 3mm 1.6mm 2.8mm;
+  padding: 3.2mm 1.4mm 3mm;
   text-align: center;
-  border-radius: 2.2mm;
-  border: 0.35mm solid rgba(184, 146, 46, 0.42);
-  background: linear-gradient(180deg, #fffdf8 0%, #f4ead4 100%);
-  box-shadow: inset 0 0 0 0.7mm rgba(255, 255, 255, 0.65);
+  border-radius: 2.6mm;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, #fbf7ec 0%, #e7d8b6 48%, #f2e6ce 100%);
+  border: 0.32mm solid rgba(138, 109, 31, 0.4);
+  box-shadow:
+    0 3px 7px rgba(62, 44, 12, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 -2px 4px rgba(110, 80, 20, 0.18) inset;
 }
 
 .offer-share-print-spec-label {
-  display: block;
-  margin: 0 0 1.4mm;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 6pt;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #8a6d1f;
+  margin-bottom: 1.6mm;
 }
 
 .offer-share-print-spec-value {
-  font-size: 12.5pt;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-  color: #1a1916;
+  margin: 0;
+  font-size: 13pt;
 }
 
 .offer-share-print-amenities {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.4mm;
-  margin-top: 3mm;
+  justify-content: flex-start;
+  gap: 1.8mm;
+  margin-top: 3.2mm;
 }
 
-.offer-share-print-amenities span {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 7pt;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 1mm 2.2mm;
+.offer-share-print-amenity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 7.2mm;
+  padding: 1.3mm 3.2mm 1.4mm;
+  text-align: center;
   border-radius: 999px;
-  border: 1px solid rgba(184, 146, 46, 0.32);
-  background: rgba(184, 146, 46, 0.08);
-  color: #5c4a1a;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 7.5pt;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: #3d3012;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 46%),
+    linear-gradient(180deg, #faf6eb 0%, #e8d9b8 52%, #f1e5cc 100%);
+  border: 0.3mm solid rgba(138, 109, 31, 0.38);
+  box-shadow:
+    0 2px 5px rgba(62, 44, 12, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 -1.5px 3px rgba(110, 80, 20, 0.16) inset;
+  text-shadow:
+    0 0.6px 0 rgba(255, 255, 255, 0.85),
+    0 -0.4px 0.3px rgba(70, 50, 15, 0.26);
 }
 
 .offer-share-print-description {
