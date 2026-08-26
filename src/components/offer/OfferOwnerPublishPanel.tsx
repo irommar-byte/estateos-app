@@ -6,6 +6,7 @@ import { ExternalLink, Facebook, Pencil, Share2 } from "lucide-react";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import { useLocale } from "@/contexts/LocaleContext";
 import { getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
+import { offerCardPreviewPath, offerSharePath } from "@/lib/publicListingPath";
 
 const DEFAULT_ORIGIN = "https://estateos.pl";
 
@@ -26,9 +27,11 @@ export default function OfferOwnerPublishPanel({
   const copy = getOfferModalsDictionary(locale).ownerPublish;
 
   const shareUrl = useMemo(() => {
-    const base = `${resolveOrigin()}/o/${offerId}`;
-    if (presentingAgentId) return `${base}?agent=${presentingAgentId}`;
-    return base;
+    return `${resolveOrigin()}${offerSharePath(offerId, { presentingAgentId })}`;
+  }, [offerId, presentingAgentId]);
+
+  const previewHref = useMemo(() => {
+    return offerCardPreviewPath(offerId, { presentingAgentId });
   }, [offerId, presentingAgentId]);
 
   const facebookHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
@@ -56,7 +59,7 @@ export default function OfferOwnerPublishPanel({
           {copy.facebook}
         </a>
         <a
-          href={shareUrl}
+          href={previewHref}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 py-3.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/85 transition hover:bg-white/10 hover:text-white"
