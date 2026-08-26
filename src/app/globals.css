@@ -4165,12 +4165,27 @@ html.light .eos-modal-panel {
   z-index: -1;
 }
 
+body.offer-share-pdf-capturing #offer-share-print-portal,
+#offer-share-print-portal.offer-share-pdf-capturing {
+  opacity: 1 !important;
+  z-index: 1 !important;
+}
+
 .offer-share-print-brochure {
-  width: 196mm;
-  margin: 0 auto;
-  background: #fff;
-  color: #141416;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  max-height: 297mm;
+  margin: 0;
+  padding: 8mm 9mm 7mm;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f7f3ea;
+  color: #1a1916;
+  font-family: 'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia, serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
 .offer-share-print-header {
@@ -4179,52 +4194,74 @@ html.light .eos-modal-panel {
   justify-content: space-between;
   gap: 4mm;
   padding-bottom: 3mm;
-  margin-bottom: 2mm;
-  border-bottom: 1px solid #ddd;
+  margin-bottom: 3mm;
+  border-bottom: 0.35mm solid #d4c08a;
 }
 
 .offer-share-print-brand-left {
   display: flex;
   align-items: baseline;
-  gap: 2mm;
+  gap: 2.5mm;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 7pt;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #5c5c66;
+  color: #6b624c;
 }
 
 .offer-share-print-brand-left strong {
-  font-size: 8pt;
-  color: #141416;
+  font-size: 9pt;
+  letter-spacing: 0.22em;
+  color: #1a1916;
 }
 
 .offer-share-print-ref {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #8a6d1f;
-  border: 1px solid rgba(184, 146, 46, 0.35);
+  border: 1px solid rgba(184, 146, 46, 0.45);
   border-radius: 999px;
-  padding: 1mm 2.5mm;
+  padding: 1mm 3mm;
+  background: rgba(184, 146, 46, 0.08);
+}
+
+.offer-share-print-hero {
+  position: relative;
+  height: 88mm;
+  overflow: hidden;
+  border-radius: 2.5mm;
+  background: #e8e0d0;
 }
 
 .offer-share-print-hero img {
   width: 100%;
-  height: 34mm;
+  height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: 2mm;
 }
 
 .offer-share-print-hero-placeholder {
-  height: 34mm;
+  height: 100%;
   display: grid;
   place-items: center;
-  background: #ececea;
-  color: #8a8a96;
-  font-size: 9pt;
-  border-radius: 2mm;
+  background: linear-gradient(135deg, #ece4d4, #d8cbb0);
+  color: #6b624c;
+  font-size: 10pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.offer-share-print-hero-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14mm 7mm 5mm;
+  background: linear-gradient(180deg, transparent 0%, rgba(18, 16, 12, 0.78) 100%);
+  color: #f7f3ea;
 }
 
 .offer-share-print-body {
@@ -4235,113 +4272,224 @@ html.light .eos-modal-panel {
   display: flex;
   flex-wrap: wrap;
   gap: 2mm;
-  margin-bottom: 2mm;
+  margin-bottom: 1.5mm;
 }
 
 .offer-share-print-badges span {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 1mm 2mm;
+  padding: 1mm 2.4mm;
   border-radius: 999px;
-  border: 1px solid #ddd;
-  background: #f5f5f3;
+  border: 1px solid rgba(244, 230, 192, 0.45);
+  background: rgba(255, 255, 255, 0.12);
+  color: #f7f3ea;
 }
 
 .offer-share-print-brochure h1 {
-  margin: 0 0 1mm;
-  font-size: 15pt;
-  line-height: 1.15;
-  font-weight: 800;
+  margin: 0 0 1.5mm;
+  font-size: 16pt;
+  line-height: 1.18;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .offer-share-print-location {
-  margin: 0 0 2mm;
+  margin: 0 0 1.5mm;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 9pt;
-  color: #5c5c66;
+  color: #6b624c;
 }
 
 .offer-share-print-summary {
-  margin: 0 0 1mm;
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 8.5pt;
-  color: #5c5c66;
+  color: #6b624c;
 }
 
 .offer-share-print-price {
-  margin: 2mm 0 0;
-  font-size: 17pt;
-  font-weight: 800;
-  color: #8a6d1f;
+  margin: 0;
+  font-size: 20pt;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #f4e6c0;
+}
+
+.offer-share-print-main {
+  display: grid;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 5mm;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 4.5mm;
+}
+
+.offer-share-print-copy {
+  min-width: 0;
+}
+
+.offer-share-print-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
 }
 
 .offer-share-print-spec-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.5mm;
-  margin-top: 2.5mm;
+  gap: 2mm;
+  margin-top: 3.5mm;
 }
 
 .offer-share-print-spec-grid div {
-  padding: 1.5mm 2mm;
-  border: 1px solid #e5e5ea;
+  padding: 2mm 2.2mm;
+  border: 1px solid rgba(184, 146, 46, 0.28);
   border-radius: 2mm;
-  background: #fafaf8;
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .offer-share-print-spec-grid label {
   display: block;
-  margin-bottom: 0.5mm;
+  margin-bottom: 0.6mm;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 6pt;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #8a8a96;
+  color: #8a6d1f;
 }
 
 .offer-share-print-spec-grid strong {
-  font-size: 8pt;
-  color: #141416;
+  font-size: 9pt;
+  color: #1a1916;
+}
+
+.offer-share-print-amenities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4mm;
+  margin-top: 3mm;
+}
+
+.offer-share-print-amenities span {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 7pt;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1mm 2.2mm;
+  border-radius: 999px;
+  border: 1px solid rgba(184, 146, 46, 0.32);
+  background: rgba(184, 146, 46, 0.08);
+  color: #5c4a1a;
 }
 
 .offer-share-print-description {
-  margin-top: 2.5mm;
-  padding-top: 2mm;
-  border-top: 1px solid #e5e5ea;
+  margin-top: 3.5mm;
+  padding-top: 2.5mm;
+  border-top: 0.25mm solid rgba(184, 146, 46, 0.35);
 }
 
 .offer-share-print-section-title {
-  margin: 0 0 1mm;
+  margin: 0 0 1.4mm;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 7pt;
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #8a8a96;
+  color: #8a6d1f;
 }
 
 .offer-share-print-description-body {
   margin: 0;
-  font-size: 8.5pt;
-  line-height: 1.35;
-  color: #3d3d46;
+  font-size: 8.8pt;
+  line-height: 1.42;
+  color: #3d3a32;
   display: -webkit-box;
-  -webkit-line-clamp: 9;
+  -webkit-line-clamp: 8;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.offer-share-print-map {
+  overflow: hidden;
+  border-radius: 2.5mm;
+  border: 1px solid rgba(184, 146, 46, 0.28);
+  background: #efe6d4;
+}
+
+.offer-share-print-map img,
+.offer-share-print-map-fallback {
+  width: 100%;
+  height: 52mm;
+  object-fit: cover;
+  display: block;
+}
+
+.offer-share-print-map-fallback {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: 1mm;
+  color: #6b624c;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.offer-share-print-map-fallback p {
+  margin: 0;
+  font-size: 7pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.offer-share-print-map-fallback strong {
+  font-size: 11pt;
+  color: #1a1916;
+}
+
+.offer-share-print-map-caption {
+  margin: 0;
+  padding: 1.6mm 2.5mm 2mm;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 6.5pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a6d1f;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.offer-share-print-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5mm;
+}
+
+.offer-share-print-gallery img {
+  width: 100%;
+  height: 22mm;
+  object-fit: cover;
+  display: block;
+  border-radius: 1.6mm;
 }
 
 .offer-share-print-qr-row {
   display: flex;
   align-items: flex-start;
   gap: 3mm;
-  margin-top: 3mm;
-  padding-top: 2mm;
-  border-top: 1px solid #e5e5ea;
+  margin-top: auto;
+  padding: 2.5mm;
+  border: 1px solid rgba(184, 146, 46, 0.28);
+  border-radius: 2mm;
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .offer-share-print-qr {
   width: 22mm;
   height: 22mm;
-  border: 1px solid rgba(20, 20, 22, 0.12);
+  flex: 0 0 auto;
+  border: 1px solid rgba(20, 20, 22, 0.1);
   border-radius: 2mm;
   background: #fff;
 }
@@ -4368,6 +4516,21 @@ html.light .eos-modal-panel {
   line-height: 1.35;
   color: #6b6b76;
   word-break: break-all;
+}
+
+.offer-share-print-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4mm;
+  margin-top: 3mm;
+  padding-top: 2.4mm;
+  border-top: 0.35mm solid #d4c08a;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 7pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a6d1f;
 }
 
 .offer-share-agent-print-card {
@@ -4532,14 +4695,20 @@ html.light .eos-modal-panel {
   }
 
   body.offer-share-printing {
-    background: #fff !important;
+    background: #f7f3ea !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
+  body.offer-share-printing .offer-share-print-brochure {
+    width: 210mm;
+    min-height: 297mm;
+    max-height: 297mm;
+  }
+
   @page {
     size: A4 portrait;
-    margin: 7mm;
+    margin: 0;
   }
 }
 
