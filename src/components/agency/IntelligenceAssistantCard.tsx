@@ -156,6 +156,20 @@ export default function IntelligenceAssistantCard({
   const [smartAdd, setSmartAdd] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
   const [sendNote, setSendNote] = useState<string | null>(null);
+  const [huntBusy, setHuntBusy] = useState<'preview' | 'import' | null>(null);
+  const [huntNote, setHuntNote] = useState<string | null>(null);
+  const [huntHits, setHuntHits] = useState<
+    Array<{
+      url: string;
+      title: string;
+      price: number | null;
+      area: number | null;
+      rooms: number | null;
+      city: string | null;
+      street: string | null;
+      alreadyImported?: boolean;
+    }>
+  >([]);
 
   useEffect(() => {
     setDraft(value || DEFAULT_INTELLIGENCE_SETTINGS);
@@ -273,6 +287,43 @@ export default function IntelligenceAssistantCard({
       setSendNote('Nie udało się wysłać.');
     } finally {
       setSendingNow(false);
+    }
+  };
+
+  const runPortalHunt = async (mode: 'preview' | 'import') => {
+    setHuntBusy(mode);
+    setHuntNote(
+      mode === 'preview'
+        ? 'Szukam na Nieruchomości-Online według ankiety…'
+        : 'Importuję z portalu i podaję mózgowi…',
+    );
+    try {
+      const res = await postAgencyClientAction(token, clientId, {
+        action: 'portal_hunt',
+        mode,
+        send: mode === 'import',
+      });
+      if (!res.ok) {
+        setHuntNote(res.message || 'Nie udało się przeszukać portalu.');
+        return;
+      }
+      const hits = Array.isArray((res as { hits?: unknown[] }).hits)
+        ? ((res as { hits: typeof huntHits }).hits || []).slice(0, 8)
+        : [];
+      setHuntHits(hits);
+      setHuntNote(String((res as { message?: string }).message || 'Gotowe.'));
+      const nextPick = (res as { pick?: IntelligencePickPreview }).pick;
+      if (nextPick) setPick(nextPick);
+      if (mode === 'import') {
+        const preview = await postAgencyClientAction(token, clientId, { action: 'intelligence_preview' });
+        if (preview.ok && (preview as { pick?: IntelligencePickPreview }).pick) {
+          setPick((preview as { pick: IntelligencePickPreview }).pick);
+        }
+      }
+    } catch {
+      setHuntNote('Nie udało się przeszukać Nieruchomości-Online.');
+    } finally {
+      setHuntBusy(null);
     }
   };
 
@@ -422,9 +473,61 @@ export default function IntelligenceAssistantCard({
               {sendingNow ? 'Wysyłam…' : 'Wyślij teraz'}
             </Text>
           </Pressable>
+          <Pressable
+            disabled={busy || sendingNow || huntBusy != null}
+            onPress={() => void runPortalHunt('preview')}
+            style={[
+              styles.save,
+              {
+                backgroundColor: colors.input,
+                borderWidth: 1,
+                borderColor: colors.border,
+                opacity: busy || sendingNow || huntBusy != null ? 0.5 : 1,
+              },
+            ]}
+          >
+            <Text style={{ color: colors.text, fontWeight: '900', fontSize: 12, textAlign: 'center' }}>
+              {huntBusy === 'preview' ? 'Szukam…' : 'Szukaj na N-O'}
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={busy || sendingNow || huntBusy != null}
+            onPress={() => void runPortalHunt('import')}
+            style={[
+              styles.save,
+              {
+                backgroundColor: colors.input,
+                borderWidth: 1,
+                borderColor: colors.border,
+                opacity: busy || sendingNow || huntBusy != null ? 0.5 : 1,
+              },
+            ]}
+          >
+            <Text style={{ color: colors.text, fontWeight: '900', fontSize: 12, textAlign: 'center' }}>
+              {huntBusy === 'import' ? 'Importuję…' : 'Importuj i wyślij'}
+            </Text>
+          </Pressable>
           {sendNote ? (
             <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 8 }}>{sendNote}</Text>
           ) : null}
+          {huntNote ? (
+            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 8 }}>{huntNote}</Text>
+          ) : null}
+          {huntHits.map((hit) => (
+            <Text key={hit.url} style={{ color: colors.text, fontSize: 11, marginTop: 6, lineHeight: 15 }}>
+              • {hit.title}
+              {'\n'}
+              {[
+                hit.city,
+                hit.street,
+                hit.price != null ? `${hit.price.toLocaleString('pl-PL')} zł` : null,
+                hit.area != null ? `${hit.area} m²` : null,
+                hit.alreadyImported ? 'już w EstateOS' : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          ))}
         </View>
       </View>
     </LinearGradient>
