@@ -8,14 +8,14 @@ export async function GET(req: Request) {
   try {
     const q = new URL(req.url).searchParams.get('q')?.trim() || '';
     if (!q) {
-      return NextResponse.json({ success: true, results: [] });
+      return NextResponse.json({ success: true, results: [], sections: [], tookMs: 0 });
     }
 
     const viewerUserId = await getAuthedUserIdFromRequest(req);
-    const results = await runSpotlightSearch(q, viewerUserId);
+    const payload = await runSpotlightSearch(q, viewerUserId);
 
     return NextResponse.json(
-      { success: true, results },
+      { success: true, ...payload },
       {
         headers: {
           'Cache-Control': 'private, no-store, max-age=0',
@@ -24,6 +24,6 @@ export async function GET(req: Request) {
     );
   } catch (error) {
     console.error('[SPOTLIGHT SEARCH]', error);
-    return NextResponse.json({ success: false, results: [] }, { status: 500 });
+    return NextResponse.json({ success: false, results: [], sections: [], tookMs: 0 }, { status: 500 });
   }
 }
