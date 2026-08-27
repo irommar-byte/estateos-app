@@ -160,6 +160,7 @@ export function resolveImportSmartAdd(params: {
     hasParking: portalFeaturesIncludeAmenity(features, 'hasParking'),
     hasGarden: portalFeaturesIncludeAmenity(features, 'hasGarden'),
     isFurnished: portalFeaturesIncludeAmenity(features, 'isFurnished'),
+    isDuplex: portalFeaturesIncludeAmenity(features, 'isDuplex'),
   };
   const patches: IntelligenceAmenityPatchMap = {};
   if (params.enabled) {
@@ -227,6 +228,7 @@ export async function draftToOfferCreateBody(
     hasParking: smart.amenities.hasParking,
     hasGarden: smart.amenities.hasGarden,
     isFurnished: smart.amenities.isFurnished,
+    isDuplex: smart.amenities.isDuplex,
     heating: sanitizeImportHeating(draft.heating, draft.heatingCode),
     status: 'PENDING',
     images: '[]',

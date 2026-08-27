@@ -690,7 +690,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
   const amenityFieldForId = (id: OfferAmenityId): IntelligenceAmenityField | null => {
     const field = OFFER_AMENITY_DEFS.find((item) => item.id === id)?.field;
-    return field && field !== 'isDuplex' ? (field as IntelligenceAmenityField) : null;
+    return field ? (field as IntelligenceAmenityField) : null;
   };
 
   const syncIntelPatch = async (field: IntelligenceAmenityField, turningOff: boolean) => {

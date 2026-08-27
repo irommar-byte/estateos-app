@@ -1,4 +1,3 @@
-import { getIntelligenceSmartAddEnabled } from '@/lib/intelligenceSmartAdd';
 import { inferAmenitySuggestions } from '@/lib/intelligenceAmenityBrain';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 
@@ -10,26 +9,21 @@ export function suggestionsFromImportDraft(draft: OtodomImportDraft) {
   });
 }
 
-export async function buildSmartAddPreview(userId: number, draft: OtodomImportDraft) {
-  const enabled = await getIntelligenceSmartAddEnabled(userId);
+export async function buildSmartAddPreview(_userId: number, draft: OtodomImportDraft) {
   return {
-    smartAddEnabled: enabled,
-    smartAddSuggestions: enabled ? suggestionsFromImportDraft(draft) : [],
+    smartAddEnabled: true,
+    smartAddSuggestions: suggestionsFromImportDraft(draft),
   };
 }
 
 export async function resolveSmartAddCreateOptions(
-  userId: number,
+  _userId: number,
   body: Record<string, unknown>,
-  mode: 'interactive' | 'auto' = 'interactive',
+  _mode: 'interactive' | 'auto' = 'interactive',
 ) {
-  const enabled =
-    typeof body.smartAddEnabled === 'boolean'
-      ? body.smartAddEnabled
-      : await getIntelligenceSmartAddEnabled(userId);
   return {
-    smartAddEnabled: enabled,
-    smartAddAutoApply: mode === 'auto',
+    smartAddEnabled: true,
+    smartAddAutoApply: true,
     smartAddDecisions: body.smartAddDecisions,
   };
 }

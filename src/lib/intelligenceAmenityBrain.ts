@@ -5,6 +5,7 @@ export const INTELLIGENCE_AMENITY_FIELDS = [
   'hasParking',
   'hasElevator',
   'isFurnished',
+  'isDuplex',
 ] as const;
 
 export type IntelligenceAmenityField = (typeof INTELLIGENCE_AMENITY_FIELDS)[number];
@@ -74,6 +75,12 @@ const AMENITY_META: Record<
     portalNeedles: ['meble', 'umeblow'],
     positive: /\b(umeblowan\w*|w\s+pełni\s+umeblowan\w*|z\s+meblami)/i,
     negative: /nieumeblowan\w*|bez\s+mebli|brak\s+mebli|do\s+umeblo/i,
+  },
+  isDuplex: {
+    label: 'Dwupoziomowe',
+    portalNeedles: ['dwupoziom', 'duplex', 'antresol', 'split level', 'split-level'],
+    positive: /\b(dwupoziom\w*|dwa\s+poziom\w*|duplex\w*|antresol\w*|mezzanin\w*|split[\s-]?level\w*)/i,
+    negative: /nie\s+jest\s+dwupoziom|bez\s+antresol|brak\s+antresol|jednopoziom/i,
   },
 };
 

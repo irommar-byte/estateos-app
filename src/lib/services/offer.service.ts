@@ -44,6 +44,12 @@ import {
   parseOfferImagesField,
 } from '@/lib/upload/deleteOfferImageArtifacts';
 
+function resolveDuplexFlag(body: Record<string, unknown>): boolean {
+  if (body.isDuplex !== undefined) return !!body.isDuplex;
+  if (body.isTwoLevel !== undefined) return !!body.isTwoLevel;
+  return false;
+}
+
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
   readonly statusCode = 400;
@@ -424,7 +430,7 @@ export async function createOffer(body: any) {
       hasParking: !!body.hasParking,
       hasGarden: !!body.hasGarden,
       hasAirConditioning: !!body.hasAirConditioning,
-      isDuplex: !!body.isDuplex,
+      isDuplex: resolveDuplexFlag(body as Record<string, unknown>),
       isFurnished: !!body.isFurnished,
       heating: body.heating ? String(body.heating).trim() : null,
 
@@ -784,7 +790,9 @@ export async function updateOffer(body: any) {
       ...(body.hasParking !== undefined && { hasParking: !!body.hasParking }),
       ...(body.hasGarden !== undefined && { hasGarden: !!body.hasGarden }),
       ...(body.hasAirConditioning !== undefined && { hasAirConditioning: !!body.hasAirConditioning }),
-      ...(body.isDuplex !== undefined && { isDuplex: !!body.isDuplex }),
+      ...(body.isDuplex !== undefined || body.isTwoLevel !== undefined
+        ? { isDuplex: resolveDuplexFlag(body as Record<string, unknown>) }
+        : {}),
       ...(body.isFurnished !== undefined && { isFurnished: !!body.isFurnished }),
       ...(body.heating !== undefined && {
         heating: body.heating ? String(body.heating).trim() : null

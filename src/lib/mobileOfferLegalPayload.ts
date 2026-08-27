@@ -30,6 +30,7 @@ export function enrichOfferWithLegalAliases(offer: Record<string, unknown>) {
 
   return enrichOfferMoneyFields({
     ...offer,
+    isTwoLevel: !!(offer.isDuplex ?? offer.isTwoLevel),
     description,
     legalCheckStatus: legal.legalCheckStatus,
     legal_check_status: legal.legal_check_status,

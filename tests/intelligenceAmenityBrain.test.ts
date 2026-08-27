@@ -40,6 +40,26 @@ test('piwnica and komórka map to storage, garden and parking have their own quo
   assert.ok(quotesForAmenity(text, 'hasGarden').some((quote) => /Ogródek/i.test(quote)));
 });
 
+test('duplex and furnished are inferred from description', () => {
+  const text = 'Mieszkanie dwupoziomowe z antresolą, w pełni umeblowane.';
+  assert.equal(descriptionImpliesAmenity(text, 'isDuplex'), true);
+  assert.equal(descriptionImpliesAmenity(text, 'isFurnished'), true);
+  const suggestions = inferAmenitySuggestions({
+    features: [],
+    description: text,
+  });
+  const fields = suggestions.map((item) => item.field);
+  assert.ok(fields.includes('isDuplex'));
+  assert.ok(fields.includes('isFurnished'));
+});
+
+test('jednopoziomowe does not suggest duplex', () => {
+  assert.equal(
+    descriptionImpliesAmenity('Przestronne mieszkanie jednopoziomowe bez antresoli.', 'isDuplex'),
+    false,
+  );
+});
+
 test('already checked portal features are not suggested again', () => {
   assert.equal(portalFeaturesIncludeAmenity(['loggia'], 'hasBalcony'), true);
   assert.equal(portalFeaturesIncludeAmenity(['taras'], 'hasBalcony'), true);
