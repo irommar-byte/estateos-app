@@ -232,10 +232,65 @@ export function toEditorialForEditor(raw: unknown): string {
   return text.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+export type EditorialMarkKind =
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'heading'
+  | 'bullet'
+  | 'check'
+  | 'separator'
+  | 'emoji';
+
+export const DESCRIPTION_EMOJI_PRESETS = [
+  '🏠',
+  '🌳',
+  '🚗',
+  '✅',
+  '📍',
+  '☀️',
+  '🛗',
+  '🅿️',
+  '✨',
+  '💎',
+  '🌿',
+  '🏡',
+] as const;
+
+function lineBreakBefore(value: string, index: number): string {
+  if (index <= 0) return '';
+  return value[index - 1] === '\n' ? '' : '\n';
+}
+
+function toggleInlineWrap(
+  value: string,
+  start: number,
+  end: number,
+  wrap: string,
+  placeholder: string,
+): { text: string; start: number; end: number } {
+  const selected = value.slice(start, end);
+  const inner = selected || placeholder;
+  if (
+    selected &&
+    selected.startsWith(wrap) &&
+    selected.endsWith(wrap) &&
+    selected.length >= wrap.length * 2
+  ) {
+    const unwrapped = selected.slice(wrap.length, -wrap.length);
+    const next = `${value.slice(0, start)}${unwrapped}${value.slice(end)}`;
+    return { text: next, start, end: start + unwrapped.length };
+  }
+  const insert = `${wrap}${inner}${wrap}`;
+  const next = `${value.slice(0, start)}${insert}${value.slice(end)}`;
+  return { text: next, start: start + wrap.length, end: start + wrap.length + inner.length };
+}
+
 export function insertEditorialMark(
   text: string,
   selection: { start: number; end: number },
-  kind: 'bullet' | 'check' | 'separator' | 'bold' | 'underline',
+  kind: EditorialMarkKind,
+  emoji?: string,
 ): { text: string; start: number; end: number } {
   const value = String(text || '');
   const start = Math.max(0, selection.start);
@@ -243,22 +298,44 @@ export function insertEditorialMark(
   const selected = value.slice(start, end);
 
   if (kind === 'separator') {
-    const insert = `${start > 0 ? '\n' : ''}——————\n`;
+    const prefix = lineBreakBefore(value, start);
+    const insert = `${prefix}——————\n`;
     const next = `${value.slice(0, start)}${insert}${value.slice(end)}`;
     const caret = start + insert.length;
     return { text: next, start: caret, end: caret };
   }
-  if (kind === 'bold' || kind === 'underline') {
-    const wrap = kind === 'bold' ? '**' : '__';
-    const inner = selected || (kind === 'bold' ? 'wyróżnienie' : 'podkreślenie');
-    const insert = `${wrap}${inner}${wrap}`;
-    const next = `${value.slice(0, start)}${insert}${value.slice(end)}`;
-    return { text: next, start: start + wrap.length, end: start + wrap.length + inner.length };
+
+  if (kind === 'bold') {
+    return toggleInlineWrap(value, start, end, '**', 'wyróżnienie');
   }
+  if (kind === 'italic') {
+    return toggleInlineWrap(value, start, end, '*', 'akcent');
+  }
+  if (kind === 'underline') {
+    return toggleInlineWrap(value, start, end, '__', 'podkreślenie');
+  }
+
+  if (kind === 'heading') {
+    const label = selected.trim() || 'Atuty lokalu';
+    const prefix = start > 0 && value[start - 1] !== '\n' ? '\n\n' : start > 0 ? '\n' : '';
+    const insert = `${prefix}${label}\n`;
+    const next = `${value.slice(0, start)}${insert}${value.slice(end)}`;
+    const caret = start + insert.length;
+    return { text: next, start: caret, end: caret };
+  }
+
+  if (kind === 'emoji') {
+    const glyph = String(emoji || '✨');
+    const insert = selected ? `${glyph} ${selected}` : `${glyph} `;
+    const next = `${value.slice(0, start)}${insert}${value.slice(end)}`;
+    const caret = start + insert.length;
+    return { text: next, start: caret, end: caret };
+  }
+
   const prefix = kind === 'check' ? '✓ ' : '• ';
   const inner = selected || '';
-  const needsBreak = start > 0 && value[start - 1] !== '\n';
-  const insert = `${needsBreak ? '\n' : ''}${prefix}${inner}`;
+  const linePrefix = lineBreakBefore(value, start);
+  const insert = `${linePrefix}${prefix}${inner}`;
   const next = `${value.slice(0, start)}${insert}${value.slice(end)}`;
   const caret = start + insert.length;
   return { text: next, start: caret, end: caret };

@@ -201,14 +201,21 @@ function buildSystemPrompt(locale: 'pl' | 'en' | 'ru'): string {
 ${localeInstructions(locale)}
 
 FORMAT REDAKCYJNY (zwykły tekst):
+- Obowiązkowa struktura sekcji (każda sekcja = nagłówek w osobnej linii, potem treść):
+  1) Akapit wprowadzający (2–3 zdania lifestyle, bez nagłówka)
+  2) Nagłówek: Atuty lokalu → lista z "• " (3–6 punktów)
+  3) (opcjonalnie) linia "——————"
+  4) Nagłówek: Okolica i komunikacja → lista z "• " lub krótki akapit + 2–3 punkty
+  5) (opcjonalnie) Nagłówek: Dla kogo → 2–3 punkty z "✓ " dla potwierdzonych cech
+  6) Krótkie zaproszenie do kontaktu (1–2 zdania)
 - Akapity oddzielone pustą linią.
-- Krótki nagłówek sekcji w osobnej linii, bez CAPS lock (np. Atuty, Okolica).
+- Nagłówki sekcji: krótkie, Title Case (np. Atuty lokalu, Okolica i komunikacja) — bez CAPS lock.
 - Lista atutów: każda linia zaczyna się od "• ".
 - Potwierdzone udogodnienia: linia zaczyna się od "✓ ".
 - Elegancki podział sekcji: linia z samych "—" (sześć znaków).
 - Wyróżnienie frazy: **pogrubienie** (maks. 4–6 na cały opis).
 - Podkreślenie rzadko: __tekst__.
-- 1–2 subtelne emotikony są dozwolone (🌿 ✨ 🏡), nie więcej i nie na początku każdego akapitu.
+- 1–2 subtelne emotikony w całym opisie (🌿 ✨ 🏡 📍), osadzone naturalnie w zdaniu — nie na początku każdego akapitu.
 
 ZASADY:
 - Opis ma być narracją marketingową: styl życia, atmosfera, układ, okolica — NIE sucha lista parametrów.
