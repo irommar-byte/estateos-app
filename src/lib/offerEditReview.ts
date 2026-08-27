@@ -1,6 +1,5 @@
 import { OfferStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { notifyAdminsOfferEdited } from '@/lib/adminAttentionPush';
 import { extractVerificationMeta } from '@/lib/offerVerification';
 
 export type OfferEditChange = {
@@ -209,12 +208,6 @@ export function applyOfferReapproval(params: {
   offerId: number;
   offerTitle?: string | null;
 }): { status: OfferStatus; needsReview: boolean } {
-  const wasActive = String(params.existingStatus || '').toUpperCase() === 'ACTIVE';
-  const needsReview = wasActive && !params.isAdmin && params.changes.length > 0;
-  if (needsReview) {
-    void persistPendingEditChanges(params.offerId, params.changes);
-    notifyAdminsOfferEdited(params.offerId, params.offerTitle, params.changes);
-    return { status: 'PENDING', needsReview: true };
-  }
+  // Właściciel i agent mogą edytować opublikowaną ofertę bez ponownej akceptacji Centrali.
   return { status: params.existingStatus as OfferStatus, needsReview: false };
 }
