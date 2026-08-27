@@ -32,6 +32,7 @@ import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
 import { useEcosystem, type EcosystemVertical } from "@/contexts/EcosystemContext";
 import { useNavUnreadBadge } from "@/hooks/useNavUnreadBadge";
+import EosSpotlightSearch from "@/components/search/EosSpotlightSearch";
 
 type CurrentUser = {
   id?: string | number;
@@ -314,6 +315,7 @@ export default function Navbar() {
               </span>
             </span>
           </button>
+          <EosSpotlightSearch />
         </div>
 
         <div className="relative z-10 flex min-w-0 items-center justify-center overflow-visible px-0.5">
