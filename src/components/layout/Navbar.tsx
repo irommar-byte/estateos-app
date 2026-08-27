@@ -103,8 +103,6 @@ export default function Navbar() {
   const isAdmin = user?.role === "ADMIN";
   const loggedIn = Boolean(user);
   const unread = useNavUnreadBadge(loggedIn);
-  const hamburgerBadge =
-    unread.total > 0 ? (unread.total > 99 ? "99+" : String(unread.total)) : null;
   const messagesLabel =
     locale === "en" ? "Messages" : locale === "uk" ? "Повідомлення" : "Wiadomości";
   const notificationsLabel =
@@ -272,6 +270,12 @@ export default function Navbar() {
   const manageLabelShort = dict.nav.manageCentralShort;
   const showCollapsedShortcuts =
     loggedIn && (!mobileChrome.messages || !mobileChrome.wallet || !mobileChrome.bell);
+  const hamburgerBadge =
+    showCollapsedShortcuts && unread.total > 0
+      ? unread.total > 99
+        ? "99+"
+        : String(unread.total)
+      : null;
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
