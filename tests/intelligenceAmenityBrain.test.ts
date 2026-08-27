@@ -60,6 +60,24 @@ test('jednopoziomowe does not suggest duplex', () => {
   );
 });
 
+test('parseAmenityPatchMap accepts JSON string from mysql raw query', () => {
+  const { parseAmenityPatchMap } = require('../src/lib/intelligenceAmenityBrain') as typeof import('../src/lib/intelligenceAmenityBrain');
+  const map = parseAmenityPatchMap(
+    JSON.stringify({
+      hasBalcony: {
+        field: 'hasBalcony',
+        label: 'Balkon / loggia',
+        status: 'applied',
+        quote: 'Duży balkon od salonu.',
+        quotes: ['Duży balkon od salonu.'],
+        source: 'import',
+        appliedAt: '2026-08-27T18:52:50.160Z',
+      },
+    }),
+  );
+  assert.equal(map.hasBalcony?.status, 'applied');
+});
+
 test('already checked portal features are not suggested again', () => {
   assert.equal(portalFeaturesIncludeAmenity(['loggia'], 'hasBalcony'), true);
   assert.equal(portalFeaturesIncludeAmenity(['taras'], 'hasBalcony'), true);

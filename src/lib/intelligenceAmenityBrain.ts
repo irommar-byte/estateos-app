@@ -163,11 +163,19 @@ export function parseSmartAddDecisions(raw: unknown): Partial<Record<Intelligenc
 }
 
 export function parseAmenityPatchMap(raw: unknown): IntelligenceAmenityPatchMap {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const body = raw as Record<string, unknown>;
+  let body: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+  const record = body as Record<string, unknown>;
   const out: IntelligenceAmenityPatchMap = {};
   for (const field of INTELLIGENCE_AMENITY_FIELDS) {
-    const row = body[field];
+    const row = record[field];
     if (!row || typeof row !== 'object') continue;
     const item = row as Record<string, unknown>;
     const status = item.status === 'undone' ? 'undone' : 'applied';

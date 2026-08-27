@@ -26,6 +26,7 @@ function kindLabel(kind: SpotlightResult["kind"]) {
 export default function EosSpotlightSearch({ floating = false }: Props) {
   const inputId = useId();
   const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SpotlightResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -152,7 +153,7 @@ export default function EosSpotlightSearch({ floating = false }: Props) {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={onInputKeyDown}
-                  placeholder="ID oferty, miasto, agent, biuro…"
+                  placeholder="ID, miasto, dzielnica, agent, biuro, słowo z opisu…"
                   className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-subtle)]"
                   autoComplete="off"
                   spellCheck={false}
@@ -230,14 +231,18 @@ export default function EosSpotlightSearch({ floating = false }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setHovered(true)}
+        onBlur={() => setHovered(false)}
         aria-label="Szukaj ofert, agentów i biur"
-        className={`group relative overflow-visible rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 transition-all hover:border-sky-400/35 hover:shadow-[0_8px_24px_rgba(59,130,246,0.14)] ${
+        className={`group relative overflow-visible rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 transition-all hover:border-sky-400/40 hover:shadow-[0_10px_28px_rgba(59,130,246,0.16)] ${
           floating
             ? "fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-[calc(1rem+env(safe-area-inset-left))] z-[45] shadow-[var(--eos-shadow-soft)] backdrop-blur-xl lg:hidden"
             : ""
         }`}
       >
-        <EosSpotlightLens active={open} />
+        <EosSpotlightLens active={open || loading} hovered={hovered} />
         <span className="pointer-events-none absolute -bottom-1 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-full bg-black/75 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] text-white opacity-0 transition-opacity group-hover:opacity-100 sm:block">
           Szukaj
         </span>

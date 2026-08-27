@@ -33,6 +33,10 @@ import {
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
 import { descriptionHtmlForEditor, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import ListingDescriptionEditor from '@/components/offer/ListingDescriptionEditor';
+import SiriMagicButton from '@/components/ui/SiriMagicButton';
+import { buildListingDescriptionDraftFromEdit } from '@/lib/buildListingDescriptionDraft';
+import { editorialToHtml } from '@/lib/listingDescriptionFormat';
+import { typewriterReveal } from '@/lib/typewriterReveal';
 import { parseFloorPlanExtraUrls, serializeFloorPlanExtraUrls } from '@/lib/offerFloorPlanUrls';
 import AddOfferDocVerificationPanel from '@/components/offer/AddOfferDocVerificationPanel';
 import { OfferAdaptiveImage } from '@/components/offer/OfferAdaptiveImage';
@@ -85,7 +89,8 @@ type UploadingTile = {
 };
 
 function formatMb(bytes: number) {
-  return (Math.max(0, bytes) / (1024 * 1024)).toFixed(1).replace('.', ',');
+  const mb = Math.max(0, bytes) / (1024 * 1024);
+  return mb >= 10 ? mb.toFixed(1).replace('.', ',') : mb.toFixed(2).replace('.', ',');
 }
 
 function uploadFileWithProgress(
@@ -125,10 +130,12 @@ function QuotaBar({
   used,
   max,
   label,
+  hint,
 }: {
   used: number;
   max: number;
   label: string;
+  hint?: string;
 }) {
   const pct = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
   const tight = pct >= 90;
@@ -144,6 +151,7 @@ function QuotaBar({
           style={{ width: `${pct}%` }}
         />
       </div>
+      {hint ? <p className="mt-1 text-[9px] font-medium text-zinc-500">{hint}</p> : null}
     </div>
   );
 }
@@ -235,7 +243,7 @@ const SortablePhoto = ({
 };
 
 export default function UltraPremiumEditForm({ params }: { params: Promise<{ id: string }> }) {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const ao = dict.addOffer;
   const eo = dict.editOffer;
   const { rate: fxRate } = useFxRate();
@@ -286,6 +294,9 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState("");
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerIsPro, setViewerIsPro] = useState(false);
+  const [aiDetailsNotes, setAiDetailsNotes] = useState('');
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
 
   const refreshImageMeta = async (id = offerId) => {
@@ -335,6 +346,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
         if (!auth.loggedIn || offer.error) { setAuthError(eo.noAccess); setIsLoading(false); return; }
         setViewerRole(auth.user?.role ?? null);
+        setViewerIsPro(Boolean(auth.user?.isPro || auth.user?.hasMarketPro || auth.user?.officePro));
         const isOwner = offer.user?.email === auth.user?.email;
         const isAdmin = auth.user?.role === 'ADMIN';
         if (!isOwner && !isAdmin) { setAuthError(eo.noPermission); setIsLoading(false); return; }
@@ -1087,7 +1099,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                       onClick={() => toggleAmenity(id)}
                       className={`max-w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.08em] leading-snug text-balance cursor-pointer transition-all duration-300 border ${
                         intelOn
-                          ? 'eos-intel-frame text-[var(--eos-text)]'
+                          ? 'eos-intel-frame text-[var(--eos-text)] shadow-[0_0_24px_rgba(199,125,255,0.22)]'
                           : isActive
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
                             : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:bg-[#111] hover:border-white/10'
@@ -1095,9 +1107,17 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                     >
                       {label}
                       {intelOn ? (
-                        <span className="mt-1 block text-[9px] font-bold normal-case tracking-normal text-[var(--eos-text)]/70">
-                          EstateOS™ Intelligence
-                        </span>
+                        <>
+                          <span className="mt-1 flex items-center gap-1 text-[9px] font-bold normal-case tracking-normal text-[var(--eos-text)]/80">
+                            <Sparkles size={10} className="text-violet-300" aria-hidden />
+                            EstateOS™ Intelligence
+                          </span>
+                          {patch?.quote ? (
+                            <span className="mt-1 block text-[9px] font-medium normal-case leading-snug tracking-normal text-[var(--eos-text)]/60">
+                              „{patch.quote.length > 88 ? `${patch.quote.slice(0, 88)}…` : patch.quote}”
+                            </span>
+                          ) : null}
+                        </>
                       ) : null}
                     </div>
                     {intelOn ? (
@@ -1265,6 +1285,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               label={eo.gallerySpace
                 .replace('{used}', formatMb(mediaQuota?.usedBytes ?? 0))
                 .replace('{max}', formatMb(mediaQuota?.maxBytes ?? OFFER_MAX_FOLDER_MB * 1024 * 1024))}
+              hint="Skompresowane WebP na serwerze"
             />
           </div>
           
@@ -1398,6 +1419,64 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Treść ogłoszenia</p>
             </div>
           </div>
+          {viewerIsPro ? (
+            <div className="mb-8 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 md:p-5">
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">
+                {ao.detailsNotesLabel}
+              </label>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+                <textarea
+                  value={aiDetailsNotes}
+                  onChange={(e) => setAiDetailsNotes(e.target.value)}
+                  rows={4}
+                  placeholder={ao.detailsNotesPlaceholder}
+                  className="min-h-[7rem] flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-relaxed text-[#f5f5f7] outline-none transition focus:border-[#10b981]/60"
+                />
+                <div className="flex shrink-0 items-center lg:items-end">
+                  <SiriMagicButton
+                    label={ao.magicDescribeBtn}
+                    busyLabel={ao.magicDescribing}
+                    busy={isGeneratingAI}
+                    onClick={() => {
+                      void (async () => {
+                        setIsGeneratingAI(true);
+                        try {
+                          const res = await fetch('/api/user/offers/description/generate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify(
+                              buildListingDescriptionDraftFromEdit({
+                                locale,
+                                data,
+                                selectedAmenities,
+                                userNotes: aiDetailsNotes,
+                              }),
+                            ),
+                          });
+                          const payload = await res.json().catch(() => ({}));
+                          if (!res.ok || !payload?.success || !String(payload?.description || '').trim()) {
+                            throw new Error(String(payload?.error || ao.aiGenFailed));
+                          }
+                          const editorial = String(payload.description).trim();
+                          typewriterReveal(
+                            editorial,
+                            (partial) => updateData({ description: editorialToHtml(partial) }),
+                            { chunk: 4, intervalMs: 14 },
+                          );
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : ao.aiGenFailed);
+                        } finally {
+                          setIsGeneratingAI(false);
+                        }
+                      })();
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">{ao.detailsNotesHint}</p>
+            </div>
+          ) : null}
           <ListingDescriptionEditor
             value={String(data.description || '')}
             onChange={(html) => updateData({ description: html })}

@@ -115,6 +115,7 @@ export async function runSpotlightSearch(
           { city: { contains: q } },
           { district: { contains: q } },
           { street: { contains: q } },
+          { description: { contains: q } },
         ],
       },
       orderBy: { updatedAt: 'desc' },
