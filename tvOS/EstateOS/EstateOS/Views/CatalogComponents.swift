@@ -3,7 +3,6 @@ import SwiftUI
 
 struct CarsCatalogView: View {
     let cars: [CarListing]
-    let layout: ShowroomLayoutMode
     let sectionTitle: String
     let onSelect: (CarListing) -> Void
     @EnvironmentObject private var app: AppModel
@@ -11,59 +10,34 @@ struct CarsCatalogView: View {
     private var items: [CarListing] { Array(cars.prefix(80)) }
 
     var body: some View {
-        switch layout {
-        case .rails:
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 22) {
-                    ForEach(items) { car in
-                        carButton(car, width: 360, imageHeight: 180, focusScale: 1.0)
-                    }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 2)
-            }
-            .focusSection()
-        case .tiles:
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 32)], spacing: 32) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 22) {
                 ForEach(items) { car in
-                    carButton(car, width: nil, imageHeight: 140, focusScale: 1.07)
-                        .padding(18)
+                    carButton(car)
                 }
             }
-            .padding(.vertical, 10)
-            .focusSection()
-        case .list:
-            LazyVStack(spacing: 22) {
-                ForEach(items) { car in
-                    Button {
-                        app.noteShowroomSection(sectionTitle)
-                        onSelect(car)
-                    } label: {
-                        CarListRowView(car: car, distanceLabel: app.distanceLabel(forCity: car.city))
-                            .eosListRowFocus(accent: EOSPalette.car)
-                            .background(CarFocusSectionProbe(title: sectionTitle))
-                    }
-                    .buttonStyle(EOSPosterButtonStyle(focusScale: 1.05))
-                    .focusEffectDisabled()
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 8)
-                }
-            }
-            .padding(.vertical, 8)
-            .focusSection()
+            .padding(.vertical, 12)
+            .padding(.horizontal, 2)
         }
+        .focusSection()
     }
 
-    private func carButton(_ car: CarListing, width: CGFloat?, imageHeight: CGFloat, focusScale: CGFloat) -> some View {
+    private func carButton(_ car: CarListing) -> some View {
         Button {
             app.noteShowroomSection(sectionTitle)
             onSelect(car)
         } label: {
-            CarCardView(car: car, isFavorite: app.isFavoriteCar(car.id), distanceLabel: app.distanceLabel(forCity: car.city), imageHeight: imageHeight, compact: true)
-                .frame(width: width)
-                .background(CarFocusSectionProbe(title: sectionTitle))
+            CarCardView(
+                car: car,
+                isFavorite: app.isFavoriteCar(car.id),
+                distanceLabel: app.distanceLabel(forCity: car.city),
+                imageHeight: 180,
+                compact: true
+            )
+            .frame(width: 360)
+            .background(CarFocusSectionProbe(title: sectionTitle))
         }
-        .buttonStyle(EOSPosterButtonStyle(focusScale: focusScale))
+        .buttonStyle(EOSPosterButtonStyle(focusScale: 1.0))
         .focusEffectDisabled()
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
@@ -127,7 +101,7 @@ struct CarsRailView: View {
     @EnvironmentObject private var app: AppModel
 
     var body: some View {
-        CarsCatalogView(cars: cars, layout: .rails, sectionTitle: "Samochody", onSelect: onSelect)
+        CarsCatalogView(cars: cars, sectionTitle: "Samochody", onSelect: onSelect)
     }
 }
 
@@ -252,6 +226,7 @@ struct BrandSwitcher: View {
 }
 
 struct ShowroomHeroCard: View {
+    @Environment(\.isFocused) private var isFocused
     let title: String
     let subtitle: String
     let badge: String
@@ -259,12 +234,14 @@ struct ShowroomHeroCard: View {
     let accent: Color
     let primaryTitle: String
     let secondaryTitle: String?
+    var heroNamespace: Namespace.ID? = nil
+    var heroTransitionID: String? = nil
     let onPrimary: () -> Void
     let onSecondary: (() -> Void)?
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            EOSOfferThumbnail(url: imageURL, height: 420)
+            heroImage
                 .overlay(
                     LinearGradient(
                         colors: [
@@ -302,11 +279,13 @@ struct ShowroomHeroCard: View {
                     Button(primaryTitle, action: onPrimary)
                         .buttonStyle(EOSDetailActionButtonStyle(accent: accent))
                         .focusEffectDisabled()
+                        .accessibilityLabel("Pokaż szczegóły oferty")
 
                     if let secondaryTitle, let onSecondary {
                         Button(secondaryTitle, action: onSecondary)
                             .buttonStyle(EOSDetailChromeButtonStyle())
                             .focusEffectDisabled()
+                            .accessibilityLabel("Immersyjny przegląd ofert")
                     }
                 }
             }
@@ -319,6 +298,20 @@ struct ShowroomHeroCard: View {
         )
         .eosGlass(cornerRadius: 28, opacity: 0.18)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .scaleEffect(isFocused ? 1.04 : 1.0)
+        .animation(.easeOut(duration: 0.18), value: isFocused)
         .focusSection()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Karta showroom: \(title)")
+    }
+
+    @ViewBuilder
+    private var heroImage: some View {
+        let thumb = EOSOfferThumbnail(url: imageURL, height: 420)
+        if let heroNamespace, let heroTransitionID {
+            thumb.matchedGeometryEffect(id: heroTransitionID, in: heroNamespace)
+        } else {
+            thumb
+        }
     }
 }

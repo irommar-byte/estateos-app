@@ -23,35 +23,31 @@ enum TopShelfPresentationStyle: String, CaseIterable, Identifiable {
     }
 }
 
-enum ShowroomLayoutMode: String, CaseIterable, Identifiable {
-    case rails
-    case tiles
-    case list
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .rails: return "Taśmy"
-        case .tiles: return "Kafelki"
-        case .list: return "Lista"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .rails: return "rectangle.stack"
-        case .tiles: return "square.grid.2x2"
-        case .list: return "list.bullet"
-        }
-    }
-}
 
 enum TvPreferences {
     private static let suiteName = "group.pl.estateos.app.tvos"
     private static let topShelfStyleKey = "topShelfPresentationStyle"
+
+    private static let recentSearchesHomeKey = "recentSearchesHome"
+    private static let recentSearchesCarKey = "recentSearchesCar"
+    private static let accountAdvancedExpandedKey = "accountAdvancedExpanded"
+
+    static var recentSearchesHome: [String] {
+        get { store.stringArray(forKey: recentSearchesHomeKey) ?? [] }
+        set { store.set(Array(newValue.prefix(3)), forKey: recentSearchesHomeKey); store.synchronize() }
+    }
+
+    static var recentSearchesCar: [String] {
+        get { store.stringArray(forKey: recentSearchesCarKey) ?? [] }
+        set { store.set(Array(newValue.prefix(3)), forKey: recentSearchesCarKey); store.synchronize() }
+    }
+
+    static var accountAdvancedExpanded: Bool {
+        get { store.bool(forKey: accountAdvancedExpandedKey) }
+        set { store.set(newValue, forKey: accountAdvancedExpandedKey); store.synchronize() }
+    }
+
     private static let favoriteCarIdsKey = "favoriteCarIds"
-    private static let showroomLayoutKey = "showroomLayoutMode"
 
     static var topShelfStyle: TopShelfPresentationStyle {
         get {
@@ -83,16 +79,6 @@ enum TvPreferences {
         }
     }
 
-    static var showroomLayout: ShowroomLayoutMode {
-        get {
-            let raw = store.string(forKey: showroomLayoutKey) ?? ShowroomLayoutMode.rails.rawValue
-            return ShowroomLayoutMode(rawValue: raw) ?? .rails
-        }
-        set {
-            store.set(newValue.rawValue, forKey: showroomLayoutKey)
-            store.synchronize()
-        }
-    }
 
     private static var sharedContainerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)

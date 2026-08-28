@@ -36,8 +36,28 @@ struct SearchView: View {
             .padding(.vertical, 16)
             .eosGlass(cornerRadius: 16, opacity: 0.34)
             .focused($queryFocused)
+            .onSubmit {
+                let q = app.catalogBrand == .home ? app.searchQuery : app.carSearchQuery
+                app.recordRecentSearch(q, brand: app.catalogBrand)
+            }
 
-            Text("Filtry Home / Car ustawiasz nad listą — tu wpisz frazę.")
+            let recent = app.recentSearches(for: app.catalogBrand)
+            if !recent.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(recent.prefix(3)), id: \.self) { term in
+                            Button(term) {
+                                if app.catalogBrand == .home { app.searchQuery = term }
+                                else { app.carSearchQuery = term }
+                            }
+                            .buttonStyle(EOSMicroChipButtonStyle(selected: false, accent: EOSPalette.accent(for: app.catalogBrand)))
+                            .focusEffectDisabled()
+                        }
+                    }
+                }
+            }
+
+            Text(filterSummaryLine)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
@@ -55,6 +75,14 @@ struct SearchView: View {
                 queryFocused = true
             }
         }
+    }
+
+    private var filterSummaryLine: String {
+        let summary = app.catalogBrand == .home ? app.homeFilterSummary : app.carFilterSummary
+        if summary.isEmpty || summary == "Wszystkie" {
+            return "Aktywne filtry z Showroom: brak"
+        }
+        return "Aktywne filtry z Showroom: \(summary)"
     }
 
     private var resultCountLabel: String {
@@ -85,7 +113,7 @@ struct SearchView: View {
                         HStack(spacing: 18) {
                             EOSOfferThumbnail(
                                 url: EOSOfferMedia.primaryImageURL(for: offer),
-                                height: 96
+                                height: 120
                             )
                             .frame(width: 150)
 
@@ -112,7 +140,8 @@ struct SearchView: View {
                                 .font(.title3.weight(.bold))
                                 .foregroundStyle(EOSPalette.home)
                         }
-                        .padding(16)
+                        .padding(20)
+                        .frame(minHeight: 120)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
                         .eosFocusRing(cornerRadius: 18, accent: EOSPalette.home)
                     }
@@ -144,7 +173,7 @@ struct SearchView: View {
                         HStack(spacing: 18) {
                             EOSOfferThumbnail(
                                 url: EOSOfferMedia.imageURL(from: car.imageUrl),
-                                height: 96
+                                height: 120
                             )
                             .frame(width: 150)
 
@@ -171,7 +200,8 @@ struct SearchView: View {
                                 .font(.title3.weight(.bold))
                                 .foregroundStyle(EOSPalette.car)
                         }
-                        .padding(16)
+                        .padding(20)
+                        .frame(minHeight: 120)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
                         .eosFocusRing(cornerRadius: 18, accent: EOSPalette.car)
                     }

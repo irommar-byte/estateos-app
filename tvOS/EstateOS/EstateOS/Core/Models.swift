@@ -48,7 +48,7 @@ struct EstateLoginResponse: Codable {
     let user: EstateUser
 }
 
-struct EstateOffer: Decodable, Identifiable, Hashable {
+struct EstateOffer: Codable, Identifiable, Hashable {
     let id: Int
     let title: String
     let description: String?
@@ -248,7 +248,7 @@ struct EstateOfferDetailEnvelope: Decodable {
 
 // MARK: - Cars (EstateOS™Car)
 
-struct CarListing: Decodable, Identifiable, Hashable {
+struct CarListing: Codable, Identifiable, Hashable {
     let id: Int
     let title: String
     let description: String?
@@ -380,5 +380,69 @@ enum CatalogBrand: String, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .car: return "car.fill"
         }
+    }
+}
+
+
+// MARK: - Encodable (catalog cache)
+
+extension EstateOffer {
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encodeIfPresent(description, forKey: .description)
+        try c.encodeIfPresent(city, forKey: .city)
+        try c.encodeIfPresent(district, forKey: .district)
+        try c.encodeIfPresent(localityCountry, forKey: .localityCountry)
+        try c.encodeIfPresent(localityCountryCode, forKey: .localityCountryCode)
+        try c.encodeIfPresent(price, forKey: .price)
+        try c.encodeIfPresent(area, forKey: .area)
+        try c.encodeIfPresent(rooms, forKey: .rooms)
+        try c.encodeIfPresent(transactionType, forKey: .transactionType)
+        try c.encodeIfPresent(propertyType, forKey: .propertyType)
+        try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try c.encode(imageCandidates, forKey: .images)
+        try c.encodeIfPresent(createdAt, forKey: .createdAt)
+        try c.encode(viewsCount, forKey: .viewsCount)
+        try c.encode(favoritesCount, forKey: .favoritesCount)
+        try c.encodeIfPresent(userId, forKey: .userId)
+        try c.encodeIfPresent(listPricePln, forKey: .listPricePln)
+        try c.encodeIfPresent(previousPrice, forKey: .previousPrice)
+        try c.encodeIfPresent(priceDiscountPercent, forKey: .priceDiscountPercent)
+        try c.encode(isDiscounted, forKey: .isDiscounted)
+    }
+}
+
+extension CarListing {
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encodeIfPresent(description, forKey: .description)
+        try c.encode(make, forKey: .make)
+        try c.encode(model, forKey: .model)
+        try c.encode(year, forKey: .year)
+        try c.encode(mileageKm, forKey: .mileageKm)
+        try c.encode(fuelType, forKey: .fuelType)
+        try c.encode(transmission, forKey: .transmission)
+        try c.encode(bodyType, forKey: .bodyType)
+        try c.encodeIfPresent(exteriorColor, forKey: .exteriorColor)
+        try c.encodeIfPresent(generation, forKey: .generation)
+        try c.encodeIfPresent(enginePower, forKey: .enginePower)
+        try c.encodeIfPresent(engineCapacity, forKey: .engineCapacity)
+        try c.encodeIfPresent(trimVersion, forKey: .trimVersion)
+        try c.encodeIfPresent(doorCount, forKey: .doorCount)
+        try c.encode(pricePln, forKey: .pricePln)
+        try c.encode(city, forKey: .city)
+        try c.encodeIfPresent(localityCountry, forKey: .localityCountry)
+        try c.encodeIfPresent(localityCountryCode, forKey: .localityCountryCode)
+        try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try c.encode(imageCandidates, forKey: .images)
+        try c.encode(featured, forKey: .featured)
+        try c.encodeIfPresent(createdAt, forKey: .createdAt)
+        try c.encodeIfPresent(vinMasked, forKey: .vinMasked)
+        try c.encode(viewsCount, forKey: .viewsCount)
+        try c.encode(favoritesCount, forKey: .favoritesCount)
     }
 }

@@ -18,8 +18,6 @@ final class AppModel: ObservableObject {
     @Published var passkeyPairingCode = ""
     @Published var immersiveBrowse: ImmersiveBrowseContext?
     @Published var topShelfStyle: TopShelfPresentationStyle = TvPreferences.topShelfStyle
-    /// Rails are the only showroom layout now — luxurious, consistent, no user-facing switcher.
-    let showroomLayout: ShowroomLayoutMode = .rails
     @Published var activeShowroomSection: String = ""
     @Published var pairingStatusMessage: String?
     @Published var favoriteOfferIds: Set<Int> = []
@@ -52,10 +50,21 @@ final class AppModel: ObservableObject {
     private var pendingDeepLinkCarId: Int?
 
     func bootstrap() async {
-        defer { isBootstrapping = false }
+        defer { isBootstrapping = false; TvLaunchMetrics.recordBootstrapEnd() }
         bindLocationRefresh()
-        try? await refreshOffers()
-        try? await refreshCars()
+        if offers.isEmpty, let cached = TvCatalogCache.loadOffers() {
+            offers = cached
+            TvCatalogCache.isUsingCachedCatalog = true
+        }
+        if cars.isEmpty, let cached = TvCatalogCache.loadCars() {
+            cars = cached
+            TvCatalogCache.isUsingCachedCatalog = true
+        }
+        warmPrefetchCatalogImages()
+        async let offersTask: Void = { try? await refreshOffers() }()
+        async let carsTask: Void = { try? await refreshCars() }()
+        async let favoritesTask: Void = { await refreshFavoritesIfNeeded() }()
+        _ = await (offersTask, carsTask, favoritesTask)
 #if canImport(TVServices)
         TVTopShelfContentProvider.topShelfContentDidChange()
 #endif
@@ -82,7 +91,7 @@ final class AppModel: ObservableObject {
             await refreshFavorites()
             closeLoginSheet()
         } catch {
-            globalError = error.localizedDescription
+            globalError = TvErrorMessages.message(for: error)
         }
     }
 
@@ -169,7 +178,7 @@ final class AppModel: ObservableObject {
                     favoriteOffers.insert(offer, at: 0)
                 }
             }
-            globalError = error.localizedDescription
+            globalError = TvErrorMessages.message(for: error)
         }
     }
 
@@ -197,8 +206,16 @@ final class AppModel: ObservableObject {
         defer { isLoadingOffers = false }
         do {
             offers = try await api.fetchOffers()
+            TvCatalogCache.saveOffers(offers)
+            TvCatalogCache.isUsingCachedCatalog = false
+            warmPrefetchCatalogImages()
         } catch {
-            globalError = error.localizedDescription
+            if offers.isEmpty, let cached = TvCatalogCache.loadOffers() {
+                offers = cached
+                TvCatalogCache.isUsingCachedCatalog = true
+            } else {
+                globalError = TvErrorMessages.message(for: error)
+            }
             throw error
         }
     }
@@ -206,6 +223,41 @@ final class AppModel: ObservableObject {
     var filteredOffers: [EstateOffer] {
         api.searchOffers(query: searchQuery, source: offers)
     }
+
+    func recordRecentSearch(_ query: String, brand: CatalogBrand? = nil) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return }
+        let target = brand ?? catalogBrand
+        var list = recentSearches(for: target)
+        list.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        list.insert(trimmed, at: 0)
+        list = Array(list.prefix(3))
+        switch target {
+        case .home: TvPreferences.recentSearchesHome = list
+        case .car: TvPreferences.recentSearchesCar = list
+        }
+        objectWillChange.send()
+    }
+
+    func recentSearches(for brand: CatalogBrand) -> [String] {
+        switch brand {
+        case .home: return TvPreferences.recentSearchesHome
+        case .car: return TvPreferences.recentSearchesCar
+        }
+    }
+
+    var homeSecondaryFilterCount: Int {
+        var count = selectedHomeTransactions.count
+        if homePremium { count += 1 }
+        if homeDiscounted { count += 1 }
+        count += selectedHomePropertyTypes.count
+        return count
+    }
+
+    var carSecondaryFilterCount: Int {
+        selectedCarAttributes.count + selectedCarMakes.count
+    }
+
 
     var offersLast24Hours: [EstateOffer] {
         offers
@@ -382,8 +434,16 @@ final class AppModel: ObservableObject {
         defer { isLoadingCars = false }
         do {
             cars = try await api.fetchCars()
+            TvCatalogCache.saveCars(cars)
+            TvCatalogCache.isUsingCachedCatalog = false
+            warmPrefetchCatalogImages()
         } catch {
-            globalError = error.localizedDescription
+            if cars.isEmpty, let cached = TvCatalogCache.loadCars() {
+                cars = cached
+                TvCatalogCache.isUsingCachedCatalog = true
+            } else {
+                globalError = TvErrorMessages.message(for: error)
+            }
             throw error
         }
     }
@@ -671,6 +731,21 @@ final class AppModel: ObservableObject {
         cars.filter(\.isWithinLast24Hours).sorted { $0.sortDate > $1.sortDate }
     }
 
+    func warmPrefetchCatalogImages() {
+        var urls: [URL] = []
+        for offer in offers.prefix(6) {
+            if let u = EOSOfferMedia.primaryImageURL(for: offer) { urls.append(u) }
+        }
+        for car in cars.prefix(6) {
+            if let u = EOSOfferMedia.imageURL(from: car.imageUrl) { urls.append(u) }
+        }
+        EOSImageCache.prefetch(urls: Array(urls.prefix(12)))
+    }
+
+    private func refreshFavoritesIfNeeded() async {
+        if session != nil { await refreshFavorites() }
+    }
+
     func openCarDetail(_ car: CarListing) {
         selectedCar = car
         Task { await api.recordCarView(id: car.id) }
@@ -864,7 +939,7 @@ final class AppModel: ObservableObject {
                 loginPairingCode = response.pairCode
             }
         } catch {
-            globalError = error.localizedDescription
+            globalError = TvErrorMessages.message(for: error)
         }
     }
 

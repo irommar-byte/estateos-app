@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreImage.CIFilterBuiltins
 
 struct LoginView: View {
@@ -9,9 +10,6 @@ struct LoginView: View {
     @State private var localError: String?
     @State private var mode: LoginMode = .passkey
     @FocusState private var focusedField: Field?
-
-    private let ciContext = CIContext()
-    private let qrFilter = CIFilter.qrCodeGenerator()
 
     enum LoginMode: String, CaseIterable {
         case passkey = "Passkey (iPhone)"
@@ -40,6 +38,7 @@ struct LoginView: View {
                         .font(.callout)
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel("Błąd logowania: \(localError)")
                 }
 
                 if let status = app.pairingStatusMessage {
@@ -71,7 +70,7 @@ struct LoginView: View {
         VStack(spacing: 8) {
             Text("Logowanie EstateOS")
                 .font(.system(size: 52, weight: .bold, design: .rounded))
-            Text("Passkey przez iPhone albo login i hasło z bazy EstateOS")
+            Text("Passkey przez iPhone albo login i hasło z konta EstateOS")
                 .font(.title3)
                 .foregroundStyle(.secondary)
         }
@@ -84,11 +83,9 @@ struct LoginView: View {
                 Button(item.rawValue) {
                     mode = item
                     localError = nil
-                    if item == .password {
-                        focusedField = .login
-                    }
+                    if item == .password { focusedField = .login }
                 }
-                .buttonStyle(EOSChipButtonStyle(selected: mode == item, accent: EOSPalette.gold))
+                .buttonStyle(EOSChipButtonStyle(selected: mode == item, accent: EOSPalette.gold, icon: item == .passkey ? "faceid" : "key.fill"))
                 .focusEffectDisabled()
             }
         }
@@ -101,7 +98,7 @@ struct LoginView: View {
         HStack(alignment: .top, spacing: 24) {
             qrCard(
                 title: "Passkey / Face ID",
-                subtitle: "Zeskanuj iPhonem — logowanie biometryczne sparuje TV automatycznie",
+                subtitle: "Zeskanuj iPhonem — logowanie biometryczne sparuje Apple TV automatycznie",
                 pairingCode: app.passkeyPairingCode,
                 payload: passkeyQrPayload
             ) {
@@ -133,6 +130,7 @@ struct LoginView: View {
                 .focused($focusedField, equals: .login)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityLabel("Adres e-mail")
 
             SecureField("Hasło", text: $password)
                 .textFieldStyle(.plain)
@@ -140,30 +138,26 @@ struct LoginView: View {
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.12)))
                 .focused($focusedField, equals: .password)
+                .accessibilityLabel("Hasło")
 
             HStack(spacing: 16) {
                 Button {
                     Task { await submitPasswordLogin() }
                 } label: {
                     if isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
+                        ProgressView().frame(maxWidth: .infinity)
                     } else {
-                        Text("Zaloguj")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
+                        Text("Zaloguj").fontWeight(.semibold).frame(maxWidth: .infinity)
                     }
                 }
                 .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.home))
                 .focusEffectDisabled()
                 .focused($focusedField, equals: .submit)
 
-                Button("Anuluj") {
-                    app.closeLoginSheet()
-                }
-                .buttonStyle(EOSDetailChromeButtonStyle())
-                .focusEffectDisabled()
-                .focused($focusedField, equals: .cancel)
+                Button("Anuluj") { app.closeLoginSheet() }
+                    .buttonStyle(EOSDetailChromeButtonStyle())
+                    .focusEffectDisabled()
+                    .focused($focusedField, equals: .cancel)
             }
         }
         .padding(28)
@@ -186,7 +180,7 @@ struct LoginView: View {
             localError = error
             app.globalError = nil
         } else if app.session == nil {
-            localError = "Nie udało się zalogować."
+            localError = "Nie udało się zalogować. Sprawdź dane i spróbuj ponownie."
         }
     }
 
@@ -203,10 +197,12 @@ struct LoginView: View {
                     .interpolation(.none)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 180, height: 180)
-                    .padding(12)
+                    .frame(minWidth: 280, minHeight: 280)
+                    .frame(maxWidth: 320, maxHeight: 320)
+                    .padding(16)
                     .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .accessibilityLabel("Kod QR do logowania")
             }
 
             Text(title)
@@ -220,14 +216,26 @@ struct LoginView: View {
             Text(pairingCode.isEmpty ? "Ładowanie kodu…" : pairingCode)
                 .font(.title2.weight(.bold))
                 .monospaced()
+                .accessibilityLabel(pairingCode.isEmpty ? "Ładowanie kodu parowania" : "Kod parowania \(pairingCode)")
 
             Button("Odśwież kod") { onRefresh() }
                 .buttonStyle(EOSDetailChromeButtonStyle())
                 .focusEffectDisabled()
         }
-        .frame(width: 420)
+        .frame(width: 460)
         .padding(20)
         .eosGlass(cornerRadius: 24, opacity: 0.38)
+    }
+
+    private func qrImage(from payload: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        let context = CIContext()
+        filter.setValue(Data(payload.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
+        guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
     }
 
     private var loginQrPayload: String {
@@ -236,13 +244,5 @@ struct LoginView: View {
 
     private var passkeyQrPayload: String {
         "https://estateos.pl/passkey-login?source=tvos&pair=\(app.passkeyPairingCode)&mode=passkey"
-    }
-
-    private func qrImage(from payload: String) -> UIImage? {
-        qrFilter.setValue(Data(payload.utf8), forKey: "inputMessage")
-        guard let output = qrFilter.outputImage else { return nil }
-        let scaled = output.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
-        guard let cg = ciContext.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cg)
     }
 }

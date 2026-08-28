@@ -204,10 +204,17 @@ struct EOSBrandButtonStyle: ButtonStyle {
 struct EOSChipButtonStyle: ButtonStyle {
     var selected: Bool
     var accent: Color
+    var icon: String? = nil
     @Environment(\.isFocused) private var isFocused
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        HStack(spacing: 8) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.callout.weight(.semibold))
+            }
+            configuration.label
+        }
             .font(.callout.weight(.semibold))
             .padding(.horizontal, 22)
             .padding(.vertical, 12)
@@ -224,7 +231,9 @@ struct EOSChipButtonStyle: ButtonStyle {
                         lineWidth: isFocused ? 2 : 1
                     )
             )
-            .scaleEffect(isFocused ? 1.08 : (configuration.isPressed ? 0.98 : 1.0))
+            .scaleEffect(
+                isFocused ? 1.08 : (selected ? 1.02 : (configuration.isPressed ? 0.98 : 1.0))
+            )
             .shadow(color: .black.opacity(isFocused ? 0.32 : 0), radius: isFocused ? 14 : 0, y: isFocused ? 8 : 0)
             .animation(.easeOut(duration: 0.16), value: isFocused)
             .animation(.easeOut(duration: 0.14), value: selected)
@@ -266,14 +275,34 @@ struct EOSMicroChipButtonStyle: ButtonStyle {
 // MARK: - Cached remote images (cancellable)
 
 enum EOSImageCache {
-    private static let cache = NSCache<NSURL, UIImage>()
+    private static let cache: NSCache<NSURL, UIImage> = {
+        let c = NSCache<NSURL, UIImage>()
+        c.totalCostLimit = 200 * 1024 * 1024
+        return c
+    }()
 
     static func image(for url: URL) -> UIImage? {
         cache.object(forKey: url as NSURL)
     }
 
     static func store(_ image: UIImage, for url: URL) {
-        cache.setObject(image, forKey: url as NSURL)
+        let cost = image.jpegData(compressionQuality: 0.92)?.count ?? (Int(image.size.width * image.size.height * 4))
+        cache.setObject(image, forKey: url as NSURL, cost: Int(cost))
+    }
+
+    static func prefetch(urls: [URL]) {
+        Task.detached(priority: .utility) {
+            for url in urls.prefix(6) {
+                if image(for: url) != nil { continue }
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    guard let ui = UIImage(data: data) else { continue }
+                    store(ui, for: url)
+                } catch {
+                    continue
+                }
+            }
+        }
     }
 }
 

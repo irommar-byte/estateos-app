@@ -3,9 +3,14 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
     @State private var splashFinished = false
+    @State private var bootstrapTimedOut = false
 
     private var showHome: Bool {
         splashFinished && !app.isBootstrapping
+    }
+
+    private var showExtendedHold: Bool {
+        splashFinished && app.isBootstrapping && bootstrapTimedOut
     }
 
     var body: some View {
@@ -18,14 +23,14 @@ struct RootView: View {
             }
 
             if !splashFinished {
-                AppleSplashView {
+                AppleSplashView(bootstrapComplete: !app.isBootstrapping) {
+                    TvLaunchMetrics.recordSplashEnd()
                     splashFinished = true
                 }
                 .transition(.opacity)
                 .zIndex(2)
-            } else if app.isBootstrapping {
-                // Bootstrap still running after splash — keep branded black + logo (no spinner).
-                brandedHold
+            } else if showExtendedHold {
+                LivingHoldView()
                     .transition(.opacity)
                     .zIndex(2)
             }
@@ -33,6 +38,10 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.35), value: showHome)
         .animation(.easeOut(duration: 0.25), value: splashFinished)
         .preferredColorScheme(.dark)
+        .task {
+            try? await Task.sleep(nanoseconds: UInt64(SplashAnimationTimeline.bootstrapCapMs * 1_000_000))
+            if app.isBootstrapping { bootstrapTimedOut = true; TvLaunchMetrics.recordExtendedHold() }
+        }
         .fullScreenCover(isPresented: $app.isLoginSheetPresented) {
             LoginView()
                 .environmentObject(app)
@@ -47,7 +56,7 @@ struct RootView: View {
                     .environmentObject(app)
             }
         }
-        .alert("Error", isPresented: .constant(app.globalError != nil)) {
+        .alert("Błąd", isPresented: .constant(app.globalError != nil)) {
             Button("OK") {
                 app.globalError = nil
             }
@@ -55,16 +64,11 @@ struct RootView: View {
             Text(app.globalError ?? "")
         }
     }
-
-    private var brandedHold: some View {
-        LivingHoldView()
-    }
 }
 
-/// Branded hold between splash-finish and bootstrap-complete. Everything here breathes
-/// continuously so a slow network fetch never reads as a frozen screen.
+/// Branded hold when bootstrap exceeds the splash cap (slow network).
 private struct LivingHoldView: View {
-    private static let gold = Color(red: 212 / 255, green: 175 / 255, blue: 55 / 255)
+    private static let gold = SplashAnimationTimeline.gold
 
     @State private var breathe = false
     @State private var dotPhase = 0
@@ -92,6 +96,10 @@ private struct LivingHoldView: View {
                     .frame(maxWidth: 480)
                     .scaleEffect(breathe ? 1.02 : 0.985)
                     .shadow(color: Self.gold.opacity(breathe ? 0.3 : 0.12), radius: 26, y: 6)
+
+                Text("Łączenie z katalogiem…")
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
 
                 HStack(spacing: 10) {
                     ForEach(0..<3) { i in

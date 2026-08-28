@@ -367,6 +367,10 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   }
 
   private func fetchCarsForTopShelf() async -> [TopShelfCar]? {
+    if let data = cachedCarsData(),
+       let list = try? JSONDecoder().decode([TopShelfCar].self, from: data) {
+      return Array(list.prefix(carLimit))
+    }
     var request = URLRequest(url: carsURL)
     request.setValue("EstateOS-tvOS-TopShelf/1.0", forHTTPHeaderField: "User-Agent")
     request.timeoutInterval = 8
@@ -454,6 +458,19 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     item.displayAction = TVTopShelfAction(url: actionURL)
   }
 
+
+  private func cachedOffersData() -> Data? {
+    guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return nil }
+    let url = container.appendingPathComponent("topShelfOffers.json")
+    return try? Data(contentsOf: url)
+  }
+
+  private func cachedCarsData() -> Data? {
+    guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return nil }
+    let url = container.appendingPathComponent("topShelfCars.json")
+    return try? Data(contentsOf: url)
+  }
+
   private func fetchOffersForTopShelf() async -> [TopShelfOffer]? {
     guard let all = await fetchAllOffers() else { return nil }
     let recent = all
@@ -464,6 +481,10 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   }
 
   private func fetchAllOffers() async -> [TopShelfOffer]? {
+    if let data = cachedOffersData(),
+       let list = try? JSONDecoder().decode([TopShelfOffer].self, from: data) {
+      return list
+    }
     var request = URLRequest(url: offersURL)
     request.setValue("EstateOS-tvOS-TopShelf/1.0", forHTTPHeaderField: "User-Agent")
     request.timeoutInterval = 8
