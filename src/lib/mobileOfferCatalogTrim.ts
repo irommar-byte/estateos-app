@@ -1,10 +1,35 @@
-/** Katalog mapy — jedno zdjęcie, bez ciężkich pól (mniejszy JSON ~40%). */
+const CATALOG_STRIP_KEYS = [
+  'videoUrl',
+  'floorPlanUrl',
+  'floorPlan3dUrl',
+  'floorPlanScanMeta',
+  'description',
+  'descriptionVerificationStatus',
+  'legalVerification',
+  'legalVerificationStatus',
+  'legal_check_status',
+  'legalCheckStatus',
+  'exchangeRateUsed',
+  'exchangeRateDate',
+  'adminFee',
+  'agentCommissionPercent',
+  'deposit',
+  'street',
+  'buildingNumber',
+  'localityCountry',
+  'views',
+  'viewsCount',
+  'favoritesCount',
+  'createdAt',
+  'updatedAt',
+] as const;
+
+/** Katalog mapy — jedno zdjęcie, bez ciężkich pól (mniejszy JSON). */
 export function trimOfferForMobileCatalog<T extends Record<string, unknown>>(offer: T): T {
   const next = { ...offer } as T & { images?: unknown };
-  delete (next as Record<string, unknown>).videoUrl;
-  delete (next as Record<string, unknown>).floorPlanUrl;
-  delete (next as Record<string, unknown>).floorPlan3dUrl;
-  delete (next as Record<string, unknown>).floorPlanScanMeta;
+  for (const key of CATALOG_STRIP_KEYS) {
+    delete (next as Record<string, unknown>)[key];
+  }
 
   let images = next.images;
   if (typeof images === 'string') {
