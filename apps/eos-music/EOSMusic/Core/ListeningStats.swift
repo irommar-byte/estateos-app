@@ -218,20 +218,132 @@ enum SmartPlaylistBuilder {
     }
 }
 
+enum ListeningStatsMerger {
+    static func merge(_ local: ListenRecord, _ remote: ListenRecord) -> ListenRecord {
+        let newer = local.lastPlayedAt >= remote.lastPlayedAt ? local : remote
+        let timestamps = trimTimestamps(local.playTimestamps + remote.playTimestamps)
+        let lastPlayed = max(local.lastPlayedAt, remote.lastPlayedAt)
+        let firstPlayed = min(
+            local.firstPlayedAt > 0 ? local.firstPlayedAt : local.lastPlayedAt,
+            remote.firstPlayedAt > 0 ? remote.firstPlayedAt : remote.lastPlayedAt
+        )
+        let evening = timestamps.filter { ListeningStatsPolicy.eveningHours.contains(Calendar.current.component(.hour, from: Date(timeIntervalSince1970: $0))) }.count
+        return ListenRecord(
+            url: local.url,
+            title: newer.title,
+            artist: newer.artist ?? local.artist ?? remote.artist,
+            album: newer.album ?? local.album ?? remote.album,
+            thumbnail: newer.thumbnail ?? local.thumbnail ?? remote.thumbnail,
+            duration: newer.duration ?? local.duration ?? remote.duration,
+            folderId: newer.folderId ?? local.folderId ?? remote.folderId,
+            playCount: max(local.playCount, remote.playCount, timestamps.count),
+            lastPlayedAt: lastPlayed,
+            firstPlayedAt: firstPlayed > 0 ? firstPlayed : lastPlayed,
+            totalListenSeconds: max(local.totalListenSeconds, remote.totalListenSeconds),
+            eveningPlayCount: evening,
+            playTimestamps: timestamps
+        )
+    }
+
+    static func mergeMaps(local: [String: ListenRecord], remote: [String: ListenRecord]) -> [String: ListenRecord] {
+        var merged = local
+        for (url, remoteRecord) in remote {
+            if let localRecord = merged[url] {
+                merged[url] = merge(localRecord, remoteRecord)
+            } else {
+                merged[url] = remoteRecord
+            }
+        }
+        return merged
+    }
+
+    private static func trimTimestamps(_ stamps: [TimeInterval]) -> [TimeInterval] {
+        let now = Date().timeIntervalSince1970
+        let horizon = now - Double(ListeningStatsPolicy.timestampHorizonDays * 24 * 3600)
+        var seen = Set<TimeInterval>()
+        let filtered = stamps
+            .filter { $0 >= horizon }
+            .sorted()
+            .filter { seen.insert($0).inserted }
+        return Array(filtered.suffix(ListeningStatsPolicy.maxTimestamps))
+    }
+}
+
+struct ListeningStatsResponse: Codable {
+    let updatedAt: Double?
+    let records: [ListenRecord]
+}
+
 @MainActor
 final class ListeningStatsStore: ObservableObject {
     static let shared = ListeningStatsStore()
 
     @Published private(set) var records: [String: ListenRecord] = [:]
     private var userLogin: String?
+    private var pushTask: Task<Void, Never>?
+    private var syncTask: Task<Void, Never>?
+    var apiProvider: (() -> MusicAPIClient?)?
 
     func activate(userLogin: String?) {
         let next = userLogin?.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = (next?.isEmpty == false) ? next : nil
         if key == self.userLogin { return }
+        pushTask?.cancel()
+        syncTask?.cancel()
         persist()
         self.userLogin = key
         records = Self.load(login: key)
+    }
+
+    func syncWithServer() async {
+        guard userLogin != nil, let api = apiProvider?(), api.isAuthenticated else { return }
+        if let existing = syncTask, !existing.isCancelled {
+            await existing.value
+            return
+        }
+        let task = Task { @MainActor in
+            await self.performSync(using: api)
+        }
+        syncTask = task
+        await task.value
+    }
+
+    private func performSync(using api: MusicAPIClient) async {
+        do {
+            let remote = try await api.fetchListeningStats()
+            let remoteMap = Dictionary(uniqueKeysWithValues: remote.records.map { ($0.url, $0) })
+            let merged = ListeningStatsMerger.mergeMaps(local: records, remote: remoteMap)
+            records = merged
+            persist()
+            let pushed = try await api.syncListeningStats(records: Array(merged.values))
+            let pushedMap = Dictionary(uniqueKeysWithValues: pushed.records.map { ($0.url, $0) })
+            records = ListeningStatsMerger.mergeMaps(local: records, remote: pushedMap)
+            persist()
+        } catch {
+            EOSPerfLog.download.error("listening stats sync failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func scheduleServerPush() {
+        guard userLogin != nil, let api = apiProvider?(), api.isAuthenticated else { return }
+        pushTask?.cancel()
+        pushTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            await self.pushToServer(using: api)
+        }
+    }
+
+    private func pushToServer(using api: MusicAPIClient) async {
+        guard !records.isEmpty else { return }
+        do {
+            let response = try await api.syncListeningStats(records: Array(records.values))
+            let remoteMap = Dictionary(uniqueKeysWithValues: response.records.map { ($0.url, $0) })
+            records = ListeningStatsMerger.mergeMaps(local: records, remote: remoteMap)
+            persist()
+        } catch {
+            EOSPerfLog.download.error("listening stats push failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     var allRecords: [ListenRecord] {
@@ -282,6 +394,7 @@ final class ListeningStatsStore: ObservableObject {
         record.playTimestamps = Array(record.playTimestamps.filter { $0 >= horizon }.suffix(ListeningStatsPolicy.maxTimestamps))
         records[track.url] = record
         persist()
+        scheduleServerPush()
     }
 
     private func persist() {

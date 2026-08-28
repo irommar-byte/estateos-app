@@ -84,6 +84,10 @@ import {
   readFolderCoverFile,
 } from "./music-library.js";
 import {
+  getListeningStats,
+  syncListeningStats,
+} from "./listening-stats.js";
+import {
   signMoviesToken,
   validateLineageLogin,
   authUserFromRequest,
@@ -5259,6 +5263,27 @@ app.head("/api/movies/stream/:jobId", (req, res) => {
     "Content-Disposition": "inline",
   });
   return res.status(200).end();
+});
+
+// GET /api/music/listening-stats — smart playlist history (per account)
+app.get("/api/music/listening-stats", (req, res) => {
+  try {
+    res.json(getListeningStats(req));
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: err.message || "Nie udało się wczytać statystyk." });
+  }
+});
+
+// PUT /api/music/listening-stats — merge device stats into account store
+app.put("/api/music/listening-stats", express.json({ limit: "4mb" }), (req, res) => {
+  try {
+    const records = Array.isArray(req.body?.records) ? req.body.records : [];
+    res.json(syncListeningStats(req, records));
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: err.message || "Nie udało się zapisać statystyk." });
+  }
 });
 
 // GET /api/music/library — foldery + utwory użytkownika

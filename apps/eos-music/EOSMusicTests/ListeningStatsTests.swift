@@ -69,6 +69,18 @@ final class ListeningStatsTests: XCTestCase {
         XCTAssertEqual(entries.first?.playCount, 4)
     }
 
+    func testMergeCombinesPlayTimestamps() {
+        let local = record(url: "a", count: 2, last: 100, stamps: [100, 90])
+        let remote = record(url: "a", count: 3, last: 200, stamps: [200, 80])
+        let merged = ListeningStatsMerger.merge(local, remote)
+        XCTAssertEqual(merged.playCount, 3)
+        XCTAssertEqual(merged.lastPlayedAt, 200)
+        XCTAssertTrue(merged.playTimestamps.contains(200))
+        XCTAssertTrue(merged.playTimestamps.contains(100))
+        XCTAssertTrue(merged.playTimestamps.contains(90))
+        XCTAssertTrue(merged.playTimestamps.contains(80))
+    }
+
     private func record(
         url: String,
         count: Int,

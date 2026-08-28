@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
     private var workspaceRefreshGeneration = 0
 
     init() {
+        ListeningStatsStore.shared.apiProvider = { [weak self] in self?.api }
         onlineMovies.attach(api: api, movieDownloads: movieDownloads)
         movieDownloads.attach(api: api, onlineMovies: onlineMovies)
         serverDownloads.attach(api: api, musicDownloads: downloads, movieDownloads: movieDownloads)
@@ -189,6 +190,7 @@ final class AppModel: ObservableObject {
             Task { await refreshWorkspace(soft: true) }
             Task { await onlineMovies.refreshDownloads() }
             Task { await serverDownloads.refreshOnce() }
+            syncListeningStatsIfNeeded()
             movieDownloads.resumePersistedBatchIfNeeded()
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
@@ -207,6 +209,7 @@ final class AppModel: ObservableObject {
                 Task { await refreshWorkspace(soft: true) }
                 Task { await onlineMovies.refreshDownloads() }
                 Task { await serverDownloads.refreshOnce() }
+                syncListeningStatsIfNeeded()
                 movieDownloads.resumePersistedBatchIfNeeded()
             }
         }
@@ -225,6 +228,7 @@ final class AppModel: ObservableObject {
         serverDownloads.start()
         Task { await refreshWorkspace(soft: true) }
         await serverDownloads.refreshOnce()
+        syncListeningStatsIfNeeded()
         movieDownloads.resumePersistedBatchIfNeeded()
     }
 
@@ -239,6 +243,7 @@ final class AppModel: ObservableObject {
         Task { await refreshWorkspace(soft: true) }
         serverDownloads.start()
         await serverDownloads.refreshOnce()
+        syncListeningStatsIfNeeded()
         movieDownloads.resumePersistedBatchIfNeeded()
     }
 
@@ -310,6 +315,10 @@ final class AppModel: ObservableObject {
         LibraryCacheStore.clear()
         onlineMovies.reset()
         movieDownloads.resetForLogout()
+    }
+
+    private func syncListeningStatsIfNeeded() {
+        Task { await ListeningStatsStore.shared.syncWithServer() }
     }
 
     private func hydrateLibraryFromCacheIfNeeded() {

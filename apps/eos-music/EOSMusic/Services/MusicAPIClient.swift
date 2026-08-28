@@ -64,6 +64,15 @@ final class MusicAPIClient {
         try await request("GET", path: "/api/music/library")
     }
 
+    func fetchListeningStats() async throws -> ListeningStatsResponse {
+        try await request("GET", path: "/api/music/listening-stats")
+    }
+
+    func syncListeningStats(records: [ListenRecord]) async throws -> ListeningStatsResponse {
+        let body = SyncListeningStatsBody(records: records)
+        return try await requestJSON("PUT", path: "/api/music/listening-stats", encodable: body)
+    }
+
     func createMusicFolder(name: String) async throws -> MusicFolder {
         let response: MusicFolderCreateResponse = try await request(
             "POST",
@@ -657,6 +666,8 @@ final class MusicAPIClient {
             req.timeoutInterval = 20
         } else if path.hasPrefix("/api/music/library") || path.hasPrefix("/api/music/assets") {
             req.timeoutInterval = 45
+        } else if path.hasPrefix("/api/music/listening-stats") {
+            req.timeoutInterval = 30
         } else {
             req.timeoutInterval = 30
         }
@@ -694,4 +705,8 @@ final class MusicAPIClient {
             throw APIError.network(error)
         }
     }
+}
+
+private struct SyncListeningStatsBody: Encodable {
+    let records: [ListenRecord]
 }
