@@ -33,6 +33,23 @@ export function emptyClientOfferFeedback(): ClientOfferFeedback {
   return { sentiment: null, liked: '', disliked: '', phrases: [], note: '' };
 }
 
+const LIKE_PHRASE_SET = new Set<string>(LIKE_PHRASES);
+const DISLIKE_PHRASE_SET = new Set<string>(DISLIKE_PHRASES);
+
+export function splitFeedbackPhrases(phrases: string[]): { likedPhrases: string[]; dislikedPhrases: string[] } {
+  const likedPhrases: string[] = [];
+  const dislikedPhrases: string[] = [];
+  for (const phrase of phrases) {
+    if (LIKE_PHRASE_SET.has(phrase)) likedPhrases.push(phrase);
+    else if (DISLIKE_PHRASE_SET.has(phrase)) dislikedPhrases.push(phrase);
+  }
+  return { likedPhrases, dislikedPhrases };
+}
+
+export function mergeFeedbackPhrases(likedPhrases: string[], dislikedPhrases: string[]): string[] {
+  return [...likedPhrases, ...dislikedPhrases];
+}
+
 export function parseClientOfferFeedback(raw: unknown): ClientOfferFeedback {
   if (!raw) return emptyClientOfferFeedback();
   if (typeof raw === 'string') {

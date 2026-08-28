@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import {
   Radar,
@@ -15,16 +15,21 @@ import {
 import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
+import ClientPortalOfferSearchPanel from "@/components/portal/ClientPortalOfferSearchPanel";
+import ClientPortalUpcomingOfferSlot from "@/components/portal/ClientPortalUpcomingOfferSlot";
 import ClientPortalLiveChat from "@/components/portal/ClientPortalLiveChat";
 import ClientPortalSetupPrompt from "@/components/portal/ClientPortalSetupPrompt";
+import ClientPortalBuyerOnboarding from "@/components/portal/ClientPortalBuyerOnboarding";
 import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
+import { buyerOnboardingStorageKey, isBuyerOnboardingDismissed } from "@/lib/clientPortalPath";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
 import type { ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
 
 type SearchCriteria = {
   location: string;
+  areaLabel: string;
   minArea: string;
   maxBudget: string;
   propertyType: string;
@@ -71,6 +76,8 @@ type PortalData = {
   agencyEmail?: string | null;
   agencyAddress?: string | null;
   searchCriteria: SearchCriteria;
+  intelligenceEnabled: boolean;
+  unscoredMatchCount: number;
   canChat: boolean;
   meeting: (ScheduleSlot & { prepLabels?: string[] }) | null;
   presentation: ScheduleSlot | null;
@@ -199,6 +206,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [focusMatchId, setFocusMatchId] = useState(0);
   const [reactPrefill, setReactPrefill] = useState("");
   const [phrasePrefill, setPhrasePrefill] = useState<string | null>(null);
+  const [fromSzukam, setFromSzukam] = useState(false);
+  const [welcomeEmailSent, setWelcomeEmailSent] = useState(false);
+  const [releaseAttempted, setReleaseAttempted] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const matchesSectionRef = useRef<HTMLElement | null>(null);
+  const knownMatchIdsRef = useRef<number[]>([]);
+  const [freshMatchBanner, setFreshMatchBanner] = useState<string | null>(null);
 
   useEffect(() => {
     void params.then((p) => setToken(p.token));
@@ -210,24 +224,27 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     setFocusMatchId(Number(query.get("match") || 0));
     setReactPrefill(query.get("react") || "");
     setPhrasePrefill(query.get("phrase"));
+    setFromSzukam(query.get("from") === "szukam");
+    setWelcomeEmailSent(query.get("mail") === "1");
   }, []);
 
   useEffect(() => {
     if (token) rememberClientPortalToken(token);
+    if (token) setOnboardingDismissed(isBuyerOnboardingDismissed(token));
   }, [token]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) return;
-    setLoading(true);
+    if (!options?.silent) setLoading(true);
     try {
       const res = await fetch(`/api/crm/client-portal/${token}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Błąd ładowania");
       setPortal(json.portal);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Błąd");
+      if (!options?.silent) setError(e instanceof Error ? e.message : "Błąd");
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, [token]);
 
@@ -239,6 +256,56 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     () => sortPortalMatches(portal?.matches || []),
     [portal?.matches],
   );
+  const awaitingFirstOffer =
+    portal?.type === "BUYER" &&
+    sortedMatches.length === 0 &&
+    Boolean(portal.intelligenceEnabled || portal.unscoredMatchCount || fromSzukam);
+  const showUpcomingSlot =
+    portal?.type === "BUYER" &&
+    sortedMatches.length > 0 &&
+    Boolean(portal.unscoredMatchCount || portal.intelligenceEnabled);
+  const livePortalSync =
+    portal?.type === "BUYER" &&
+    Boolean(portal.intelligenceEnabled || portal.unscoredMatchCount || fromSzukam || showUpcomingSlot);
+
+  useEffect(() => {
+    if (!livePortalSync || !token) return;
+    const timer = window.setInterval(() => {
+      void load({ silent: true });
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [livePortalSync, token, load]);
+
+  useEffect(() => {
+    if (!portal?.matches?.length) return;
+    const ids = portal.matches.map((match) => match.id);
+    const previous = knownMatchIdsRef.current;
+    const added = ids.filter((id) => !previous.includes(id));
+    if (added.length && previous.length) {
+      const newest = sortPortalMatches(portal.matches)[0];
+      setFreshMatchBanner(newest?.offer.title || "Nowa propozycja od agenta");
+      setOpenMatchId(newest?.id ?? null);
+      window.setTimeout(() => setFreshMatchBanner(null), 8000);
+      matchesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    knownMatchIdsRef.current = ids;
+  }, [portal?.matches]);
+
+  useEffect(() => {
+    if (!token || !portal || releaseAttempted) return;
+    if (portal.type !== "BUYER") return;
+    if (portal.matches.length > 0) return;
+    if (!portal.unscoredMatchCount && !portal.intelligenceEnabled) return;
+
+    setReleaseAttempted(true);
+    void fetch(`/api/crm/client-portal/${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "release_first_match" }),
+    })
+      .then(() => load({ silent: true }))
+      .catch(() => {});
+  }, [token, portal, releaseAttempted, load]);
   const pendingMatches = sortedMatches.filter((match) => !match.clientFeedback);
   const pendingFirstId = pendingMatches[0]?.id ?? null;
   const agentUpdates = useMemo(
@@ -281,14 +348,26 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-          className="text-emerald-500"
-        >
-          <Radar size={40} />
-        </motion.div>
+      <div className="mx-auto max-w-lg px-4 py-16">
+        {fromSzukam ? (
+          <ClientPortalOfferSearchPanel compact />
+        ) : (
+          <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-center">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+              className="text-emerald-500"
+            >
+              <Radar size={40} />
+            </motion.div>
+            <p className="text-sm font-semibold text-[var(--eos-text)]">Ładujemy panel…</p>
+          </div>
+        )}
+        {fromSzukam && welcomeEmailSent ? (
+          <p className="mt-4 text-center text-xs leading-relaxed text-[var(--eos-muted)]">
+            Link do panelu leci też na Twój e-mail.
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -309,7 +388,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const greetingName = formatClientGreeting(portal.clientName);
 
   return (
-    <main className="min-h-screen bg-[var(--eos-bg)] pt-28 pb-32 text-[var(--eos-text)]">
+    <main className="client-portal-page pb-24 pt-2 text-[var(--eos-text)] sm:pb-28">
     <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
       <header className="eos-inset-frame eos-stack-card relative rounded-[2rem] p-6 sm:p-8">
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
@@ -348,62 +427,39 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </div>
         </div>
 
-        {/* Agency Office Details & Direct Actions */}
-        <div className="mt-6 grid gap-3 border-t border-[var(--eos-border)]/60 pt-6 sm:grid-cols-2 lg:grid-cols-3">
-          {portal.agentPhone && (
-            <a
-              href={`tel:${portal.agentPhone}`}
-              className="eos-inset-well flex items-center gap-3 rounded-xl p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
-            >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
-                📞
-              </div>
-              <div className="min-w-0">
-                <p className="eos-portal-label">Zadzwoń do agenta</p>
-                <p className="break-all">{portal.agentPhone}</p>
-              </div>
-            </a>
-          )}
-          {portal.agentEmail && (
-            <a
-              href={`mailto:${portal.agentEmail}`}
-              className="eos-inset-well flex items-center gap-3 rounded-xl p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
-            >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
-                ✉️
-              </div>
-              <div className="min-w-0">
-                <p className="eos-portal-label">Wyślij wiadomość</p>
-                <p className="break-all">{portal.agentEmail}</p>
-              </div>
-            </a>
-          )}
-          {(portal.agencySlug || portal.agencyWebsite) && (
-            <a
-              href={portal.agencySlug || portal.agencyWebsite!}
-              target="_blank"
-              rel="noreferrer"
-              className="eos-inset-well flex items-center gap-3 rounded-xl p-3 text-xs font-bold text-[var(--eos-text)] transition hover:border-emerald-500/50"
-            >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
-                🏢
-              </div>
-              <div className="min-w-0">
-                <p className="eos-portal-label">Profil biura EstateOS™</p>
-                <p className="break-words">{portal.agencyName}</p>
-              </div>
-            </a>
-          )}
-        </div>
         {token ? (
-          <div className="mt-4 space-y-3">
+          <div className="mt-6 space-y-3 border-t border-[var(--eos-border)]/60 pt-6">
             <ClientPortalLiveChat token={token} agentName={portal.agentName} />
-            <ClientPortalSetupPrompt token={token} />
+            <ClientPortalSetupPrompt
+              token={token}
+              deferUntilReady={fromSzukam && !onboardingDismissed}
+            />
           </div>
         ) : null}
       </header>
 
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
+
+      {portal.type === "BUYER" && fromSzukam && token ? (
+        <ClientPortalBuyerOnboarding
+          token={token}
+          agentName={portal.agentName}
+          hasPendingOffer={pendingMatches.length > 0}
+          welcomeEmailSent={welcomeEmailSent}
+          onDismiss={() => {
+            setFromSzukam(false);
+            setOnboardingDismissed(true);
+            try {
+              window.sessionStorage.setItem(buyerOnboardingStorageKey(token), "1");
+            } catch {
+              /* ignore */
+            }
+          }}
+          onShowOffers={() => {
+            matchesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
+      ) : null}
 
       {portal.meeting ? (
         <section className="eos-lux-panel rounded-[1.75rem] p-6">
@@ -662,7 +718,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             </div>
             <div className="eos-inset-well rounded-xl px-4 py-3">
               <p className="eos-portal-label">Metraż</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.minArea}</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
+                {criteria.areaLabel || criteria.minArea}
+              </p>
             </div>
           </div>
           {criteria.districts?.length ? (
@@ -710,7 +768,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "BUYER" ? (
-        <section className="space-y-3">
+        <section id="portal-matches" ref={matchesSectionRef} className="space-y-3 scroll-mt-24">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
@@ -719,46 +777,105 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               </h2>
               <p className="mt-1 text-sm text-[var(--eos-muted)]">
                 Lista jest zwinięta. Nowe oferty są na górze — rozwiń, zaznacz konkretnie i wyślij agentowi.
+                {livePortalSync ? " Panel odświeża się sam — nie musisz robić F5." : ""}
               </p>
             </div>
-            {pendingMatches.length ? (
-              <span className="eos-lux-badge">
-                {pendingMatches.length === 1
-                  ? "1 nowa do rozpatrzenia"
-                  : `${pendingMatches.length} nowe do rozpatrzenia`}
-              </span>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {livePortalSync ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-600">
+                  <span className="eos-live-dot shrink-0" aria-hidden />
+                  Live
+                </span>
+              ) : null}
+              {pendingMatches.length ? (
+                <span className="eos-lux-badge">
+                  {pendingMatches.length === 1
+                    ? "1 nowa do rozpatrzenia"
+                    : `${pendingMatches.length} nowe do rozpatrzenia`}
+                </span>
+              ) : null}
+            </div>
           </div>
+          {freshMatchBanner ? (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-[var(--eos-text)]"
+            >
+              Nowa propozycja na liście: {freshMatchBanner}
+            </motion.div>
+          ) : null}
           <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">
             Kliknij zdjęcie, żeby zobaczyć galerię. Kliknij początek opisu albo wiersz, żeby otworzyć całość do szybkiego przeglądu i odesłać reakcję.
           </p>
-          {sortedMatches.length === 0 ? (
-            <p className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center text-sm text-[var(--eos-muted)]">
-              Agent właśnie szuka dopasowań — wróć za chwilę.
-            </p>
-          ) : (
-            sortedMatches.map((m) => (
-              <ClientPortalMatchCard
-                key={m.id}
-                match={m}
-                token={token || ""}
-                saving={savingId === m.id}
-                expanded={openMatchId === m.id}
-                onToggle={() => setOpenMatchId((current) => (current === m.id ? null : m.id))}
-                prefill={
-                  m.offer.id === focusOfferId || m.id === focusMatchId
-                    ? {
-                        sentiment: SENTIMENTS.has(reactPrefill as ClientOfferSentiment)
-                          ? (reactPrefill as ClientOfferSentiment)
-                          : null,
-                        phrase: phrasePrefill,
+          <AnimatePresence mode="popLayout">
+            {sortedMatches.length === 0 ? (
+              <motion.div
+                key="portal-offer-search"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.35 }}
+              >
+                {awaitingFirstOffer ? (
+                  <ClientPortalOfferSearchPanel
+                    unscoredCount={portal.unscoredMatchCount}
+                    live={livePortalSync}
+                  />
+                ) : (
+                  <div className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center">
+                    <p className="text-sm font-semibold text-[var(--eos-text)]">Agent przygotowuje propozycje</p>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
+                      Gdy agent udostępni ofertę, zobaczysz ją tutaj i wyślesz reakcję jednym kliknięciem.
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="portal-offer-list"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: "easeOut" }}
+                className="space-y-3"
+              >
+                {showUpcomingSlot ? (
+                  <ClientPortalUpcomingOfferSlot
+                    unscoredCount={portal.unscoredMatchCount}
+                    live={livePortalSync}
+                  />
+                ) : null}
+                {sortedMatches.map((m, index) => (
+                  <motion.div
+                    key={m.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, delay: index * 0.06 }}
+                  >
+                    <ClientPortalMatchCard
+                      match={m}
+                      token={token || ""}
+                      saving={savingId === m.id}
+                      expanded={openMatchId === m.id}
+                      onToggle={() => setOpenMatchId((current) => (current === m.id ? null : m.id))}
+                      prefill={
+                        m.offer.id === focusOfferId || m.id === focusMatchId
+                          ? {
+                              sentiment: SENTIMENTS.has(reactPrefill as ClientOfferSentiment)
+                                ? (reactPrefill as ClientOfferSentiment)
+                                : null,
+                              phrase: phrasePrefill,
+                            }
+                          : undefined
                       }
-                    : undefined
-                }
-                onSubmit={(payload) => submitFeedback(m.id, payload)}
-              />
-            ))
-          )}
+                      onSubmit={(payload) => submitFeedback(m.id, payload)}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </section>
       ) : null}
     </div>

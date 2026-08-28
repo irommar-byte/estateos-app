@@ -8,7 +8,9 @@ import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/Offe
 import {
   DISLIKE_PHRASES,
   LIKE_PHRASES,
+  mergeFeedbackPhrases,
   parseClientOfferFeedback,
+  splitFeedbackPhrases,
   type ClientOfferSentiment,
 } from "@/lib/crm/clientPortalFeedback";
 
@@ -52,6 +54,10 @@ function sentimentBadge(sentiment: ClientOfferSentiment | null, hasFeedback: boo
   return { label: "Odpowiedź u agenta", className: "eos-lux-badge eos-lux-badge--info" };
 }
 
+function phraseInSet(phrase: string, set: readonly string[]) {
+  return set.includes(phrase);
+}
+
 export default function ClientPortalMatchCard({
   match,
   token,
@@ -76,30 +82,57 @@ export default function ClientPortalMatchCard({
   }) => Promise<void>;
 }) {
   const saved = useMemo(() => parseClientOfferFeedback(match.clientFeedback), [match.clientFeedback]);
+  const initialPhrases = useMemo(() => splitFeedbackPhrases(saved.phrases), [saved.phrases]);
   const [sentiment, setSentiment] = useState<ClientOfferSentiment | null>(saved.sentiment);
   const [liked, setLiked] = useState(saved.liked);
   const [disliked, setDisliked] = useState(saved.disliked);
-  const [phrases, setPhrases] = useState<string[]>(saved.phrases);
+  const [likedPhrases, setLikedPhrases] = useState<string[]>(initialPhrases.likedPhrases);
+  const [dislikedPhrases, setDislikedPhrases] = useState<string[]>(initialPhrases.dislikedPhrases);
   const [note, setNote] = useState(saved.note);
   const href = `/oferta/${match.offer.id}?portal=${encodeURIComponent(token)}`;
   const tone = scoreTone(match.score);
   const location = [match.offer.city, match.offer.district, match.offer.street].filter(Boolean).join(" · ");
+  const phrases = useMemo(() => mergeFeedbackPhrases(likedPhrases, dislikedPhrases), [likedPhrases, dislikedPhrases]);
   const canSend = Boolean(sentiment || liked.trim() || disliked.trim() || phrases.length || note.trim());
   const emailConfirmPending = Boolean(!match.clientFeedback && (prefill?.sentiment || prefill?.phrase));
   const badge = sentimentBadge(sentiment, Boolean(match.clientFeedback));
+  const showLikePanel = sentiment !== "dislike";
+  const showDislikePanel = sentiment !== "like";
 
   useEffect(() => {
     if (!prefill) return;
     if (prefill.sentiment) setSentiment(prefill.sentiment);
     if (prefill.phrase) {
-      setPhrases((current) => (current.includes(prefill.phrase!) ? current : [...current, prefill.phrase!]));
+      if (phraseInSet(prefill.phrase, LIKE_PHRASES)) {
+        setLikedPhrases((current) =>
+          current.includes(prefill.phrase!) ? current : [...current, prefill.phrase!],
+        );
+      } else if (phraseInSet(prefill.phrase, DISLIKE_PHRASES)) {
+        setDislikedPhrases((current) =>
+          current.includes(prefill.phrase!) ? current : [...current, prefill.phrase!],
+        );
+      }
     }
   }, [prefill]);
 
-  const togglePhrase = (phrase: string) => {
-    setPhrases((current) =>
+  const toggleLikedPhrase = (phrase: string) => {
+    setLikedPhrases((current) =>
       current.includes(phrase) ? current.filter((item) => item !== phrase) : [...current, phrase],
     );
+  };
+
+  const toggleDislikedPhrase = (phrase: string) => {
+    setDislikedPhrases((current) =>
+      current.includes(phrase) ? current.filter((item) => item !== phrase) : [...current, phrase],
+    );
+  };
+
+  const submitPayload = {
+    sentiment,
+    liked,
+    disliked,
+    phrases,
+    note,
   };
 
   return (
@@ -185,28 +218,29 @@ export default function ClientPortalMatchCard({
                 <SendPlaneButton
                   sending={saving}
                   disabled={saving || !canSend}
-                  onClick={() => void onSubmit({ sentiment, liked, disliked, phrases, note })}
+                  onClick={() => void onSubmit(submitPayload)}
                   className="mt-3"
                 >
                   Potwierdź i wyślij agentowi
                 </SendPlaneButton>
               </div>
             ) : null}
+
             <div className="mb-4 flex items-start gap-2.5">
               <span className="eos-live-dot mt-1.5 shrink-0" aria-hidden />
               <div>
                 <p className="eos-portal-label eos-portal-label--ok">
-                  {match.clientFeedback ? "Opinia u agenta" : "Proces przy tej ofercie"}
+                  {match.clientFeedback ? "Twoja reakcja" : "Jak oceniasz tę ofertę?"}
                 </p>
                 <p className="mt-1 text-sm leading-snug text-[var(--eos-text)]">
                   {match.clientFeedback
-                    ? "Agent ma Twoją reakcję. Możesz ją doprecyzować — to nadal ta sama nieruchomość."
-                    : "Zaznacz decyzję i tagi, potem wyślij agentowi. Jedna oferta = jedna odpowiedź."}
+                    ? "Możesz doprecyzować — agent nadal widzi tę samą nieruchomość."
+                    : "Wybierz decyzję, potem zaznacz plusy i minusy w osobnych sekcjach."}
                 </p>
               </div>
             </div>
 
-            <p className="eos-portal-label mb-2">Twoja decyzja</p>
+            <p className="eos-portal-label mb-2">Decyzja</p>
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
@@ -229,70 +263,96 @@ export default function ClientPortalMatchCard({
               ))}
             </div>
 
-            <p className="eos-portal-label eos-portal-label--ok mt-5">Co zostaje</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {LIKE_PHRASES.map((phrase) => (
-                <button
-                  key={phrase}
-                  type="button"
-                  onClick={() => togglePhrase(phrase)}
-                  className={`eos-raised-chip rounded-full px-3.5 py-2 text-[11px] ${
-                    phrases.includes(phrase) ? "eos-raised-chip--on" : ""
-                  }`}
-                >
-                  {phrase}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={liked}
-              onChange={(event) => setLiked(event.target.value)}
-              rows={2}
-              placeholder="Np. kuchnia od ogrodu, cisza, winda…"
-              className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
-            />
+            {!sentiment ? (
+              <p className="mt-4 rounded-xl border border-dashed border-[var(--eos-border)] px-3 py-2.5 text-center text-[11px] text-[var(--eos-muted)]">
+                Po wyborze decyzji pokażemy sekcje „Pasuje mi” i „Nie pasuje”.
+              </p>
+            ) : (
+              <div
+                className={`mt-4 grid gap-3 ${showLikePanel && showDislikePanel ? "lg:grid-cols-2" : "grid-cols-1"}`}
+              >
+                {showLikePanel ? (
+                  <section className="portal-feedback-panel portal-feedback-panel--yes rounded-2xl p-3.5 sm:p-4">
+                    <p className="eos-portal-label eos-portal-label--ok">Pasuje mi</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-[var(--eos-muted)]">
+                      Zaznacz plusy albo dopisz własne.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      {LIKE_PHRASES.map((phrase) => (
+                        <button
+                          key={phrase}
+                          type="button"
+                          onClick={() => toggleLikedPhrase(phrase)}
+                          className={`eos-raised-chip rounded-full px-3 py-1.5 text-[11px] ${
+                            likedPhrases.includes(phrase) ? "eos-raised-chip--on" : ""
+                          }`}
+                        >
+                          {phrase}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={liked}
+                      onChange={(event) => setLiked(event.target.value)}
+                      rows={2}
+                      placeholder="Np. kuchnia od ogrodu, cisza…"
+                      className="eos-field-inset mt-2.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[var(--eos-text)]"
+                    />
+                  </section>
+                ) : null}
 
-            <p className="eos-portal-label eos-portal-label--no mt-5">Czego nie akceptuję</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {DISLIKE_PHRASES.map((phrase) => (
-                <button
-                  key={phrase}
-                  type="button"
-                  onClick={() => togglePhrase(phrase)}
-                  className={`eos-raised-chip rounded-full px-3.5 py-2 text-[11px] ${
-                    phrases.includes(phrase) ? "eos-raised-chip--no" : ""
-                  }`}
-                >
-                  {phrase}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={disliked}
-              onChange={(event) => setDisliked(event.target.value)}
-              rows={2}
-              placeholder="Np. za mała kuchnia, brak balkonu, hałas…"
-              className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
-            />
+                {showDislikePanel ? (
+                  <section className="portal-feedback-panel portal-feedback-panel--no rounded-2xl p-3.5 sm:p-4">
+                    <p className="eos-portal-label eos-portal-label--no">Nie pasuje</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-[var(--eos-muted)]">
+                      Zaznacz minusy albo dopisz własne.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      {DISLIKE_PHRASES.map((phrase) => (
+                        <button
+                          key={phrase}
+                          type="button"
+                          onClick={() => toggleDislikedPhrase(phrase)}
+                          className={`eos-raised-chip rounded-full px-3 py-1.5 text-[11px] ${
+                            dislikedPhrases.includes(phrase) ? "eos-raised-chip--no" : ""
+                          }`}
+                        >
+                          {phrase}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={disliked}
+                      onChange={(event) => setDisliked(event.target.value)}
+                      rows={2}
+                      placeholder="Np. za mała kuchnia, hałas…"
+                      className="eos-field-inset mt-2.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[var(--eos-text)]"
+                    />
+                  </section>
+                ) : null}
+              </div>
+            )}
+
+            <label className="eos-portal-label mt-4 block">Wiadomość do agenta (opcjonalnie)</label>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
               rows={2}
-              placeholder="Krótka wiadomość do agenta (opcjonalnie)"
-              className="eos-field-inset mt-3 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
+              placeholder="Krótka notatka — np. kiedy możesz na oglądania"
+              className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
             />
 
             <SendPlaneButton
               sending={saving}
               disabled={saving || !canSend}
-              onClick={() => void onSubmit({ sentiment, liked, disliked, phrases, note })}
+              onClick={() => void onSubmit(submitPayload)}
               className="mt-4"
             >
               {match.clientFeedback ? "Zaktualizuj reakcję" : "Wyślij reakcję do agenta"}
             </SendPlaneButton>
             {!canSend ? (
               <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
-                Wybierz ocenę albo zaznacz, co zostaje / odpada — wtedy przycisk ożywa.
+                Wybierz decyzję albo uzupełnij sekcję plusów / minusów.
               </p>
             ) : null}
             {match.clientFeedbackAt ? (

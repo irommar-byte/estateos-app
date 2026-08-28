@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bell, X } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import { isBuyerIntakePath } from "@/lib/buyerIntakeShared";
 import {
   canUseWebNotifications,
   dismissWebNotificationPrompt,
@@ -17,7 +18,7 @@ export default function WebNotificationPrompt() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (window.location.pathname.startsWith("/klient/")) return;
+    if (window.location.pathname.startsWith("/klient/") || isBuyerIntakePath(window.location.pathname)) return;
     if (!canUseWebNotifications()) return;
     const permission = getWebNotificationPermission();
     if (permission === "granted" || permission === "denied") return;

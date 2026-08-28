@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { generatePortalToken } from '@/lib/agencyClientNotify';
+import { buildPhoneLookupVariants, normalizePhoneE164 } from '@/lib/phoneE164';
 import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
 import { ensureDeskSchema } from '@/lib/desk/ensureSchema';
 import { dispatchDeskWorkflow } from '@/lib/desk/workflowEngine';
@@ -26,12 +27,13 @@ export async function findExistingAgencyClient(params: {
   phone?: string | null;
 }) {
   const email = params.email?.trim().toLowerCase() || null;
-  const phone = params.phone || null;
-  if (!email && !phone) return null;
+  const phoneE164 = normalizePhoneE164(params.phone);
+  const phoneVariants = phoneE164 ? buildPhoneLookupVariants(phoneE164) : [];
+  if (!email && !phoneVariants.length) return null;
 
-  const or: Array<{ email?: string; phone?: string }> = [];
+  const or: Array<{ email?: string; phone?: { in: string[] } }> = [];
   if (email) or.push({ email });
-  if (phone) or.push({ phone });
+  if (phoneVariants.length) or.push({ phone: { in: phoneVariants } });
 
   return prisma.agencyClient.findFirst({
     where: {

@@ -11,7 +11,6 @@ import {
 import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import { activateOfferPublication } from '@/lib/offerPublication';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
-import { pickIntelligenceOffer, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import {
   isNierOnlineListingUrl,
   listingMatchesClientFilters,
@@ -210,16 +209,8 @@ async function importOneListing(params: {
   return { offerId: created.offerId, title: created.offer?.title || draft.title, reused: false };
 }
 
-export async function huntNieruchomosciOnlineForClient(params: {
-  clientId: number;
-  agencyUserId: number;
-  mode: 'preview' | 'import';
-  send?: boolean;
-  count?: number;
-  urls?: string[];
-}): Promise<{
-  success: true;
-  mode: 'preview' | 'import';
+export type ImportListingsForClientResult = {
+  success: boolean;
   portal: 'nieruchomosci-online';
   searchUrl: string;
   scanned: number;
@@ -228,11 +219,16 @@ export async function huntNieruchomosciOnlineForClient(params: {
   hits: PortalHuntHit[];
   imported: PortalHuntImported[];
   skipped: PortalHuntSkipped[];
-  sent: boolean;
-  emailSent?: boolean;
-  pick: Awaited<ReturnType<typeof pickIntelligenceOffer>>['pick'] | null;
   message: string;
-}> {
+};
+
+/** Importuje ogłoszenia z N-O do CRM i odświeża dopasowania radaru (bez wysyłki Intelligence). */
+export async function importListingsForClientFromNierOnline(params: {
+  clientId: number;
+  agencyUserId: number;
+  count?: number;
+  urls?: string[];
+}): Promise<ImportListingsForClientResult> {
   const count = Math.max(1, Math.min(Math.floor(params.count || DEFAULT_IMPORT), MAX_IMPORT));
   const client = await prisma.agencyClient.findFirst({
     where: { id: params.clientId, agencyUserId: params.agencyUserId },
@@ -253,31 +249,9 @@ export async function huntNieruchomosciOnlineForClient(params: {
 
   const searched = await searchNieruchomosciOnline(filters, { pages: 2, limit: 24 });
   const seen = new Set(searched.hits.map((hit) => hit.url));
-  const extra =
-    searched.hits.length < 8 ? await keiNierOnlineFallback(filters, seen) : [];
+  const extra = searched.hits.length < 8 ? await keiNierOnlineFallback(filters, seen) : [];
   const mergedHits = [...searched.hits, ...extra];
   const hits = await decorateHits(mergedHits);
-
-  if (params.mode === 'preview') {
-    const message = hits.length
-      ? `Znalazłem ${hits.length} ogłoszeń na Nieruchomości-Online pasujących do ankiety (przeszukane ${searched.scanned + extra.length}).`
-      : 'Brak ogłoszeń na Nieruchomości-Online dla tej ankiety. Zmień budżet, dzielnice albo metraż.';
-    return {
-      success: true,
-      mode: 'preview',
-      portal: 'nieruchomosci-online',
-      searchUrl: searched.searchUrl,
-      scanned: searched.scanned + extra.length,
-      fallbackUsed: searched.fallbackUsed || extra.length > 0,
-      criteria: filters,
-      hits,
-      imported: [],
-      skipped: [],
-      sent: false,
-      pick: null,
-      message,
-    };
-  }
 
   const queue = selectedUrls.length
     ? selectedUrls
@@ -319,16 +293,106 @@ export async function huntNieruchomosciOnlineForClient(params: {
 
   await refreshAgencyClientMatches(params.clientId);
 
+  const fresh = imported.filter((item) => !item.reused).length;
+  const message = imported.length
+    ? `Zaimportowano ${fresh} ${fresh === 1 ? 'ofertę' : 'ofert'} z Nieruchomości-Online i odświeżono radar.`
+    : skipped[0]?.reason || 'Nie udało się zaimportować ogłoszeń z Nieruchomości-Online.';
+
+  return {
+    success: imported.length > 0,
+    portal: 'nieruchomosci-online',
+    searchUrl: searched.searchUrl,
+    scanned: searched.scanned + extra.length,
+    fallbackUsed: searched.fallbackUsed || extra.length > 0,
+    criteria: filters,
+    hits,
+    imported,
+    skipped,
+    message,
+  };
+}
+
+export async function huntNieruchomosciOnlineForClient(params: {
+  clientId: number;
+  agencyUserId: number;
+  mode: 'preview' | 'import';
+  send?: boolean;
+  count?: number;
+  urls?: string[];
+}): Promise<{
+  success: true;
+  mode: 'preview' | 'import';
+  portal: 'nieruchomosci-online';
+  searchUrl: string;
+  scanned: number;
+  fallbackUsed: boolean;
+  criteria: NierOnlineSearchFilters;
+  hits: PortalHuntHit[];
+  imported: PortalHuntImported[];
+  skipped: PortalHuntSkipped[];
+  sent: boolean;
+  emailSent?: boolean;
+  pick: Awaited<ReturnType<typeof import('@/lib/crm/clientIntelligenceRun').pickIntelligenceOffer>>['pick'] | null;
+  message: string;
+}> {
+  const client = await prisma.agencyClient.findFirst({
+    where: { id: params.clientId, agencyUserId: params.agencyUserId },
+    include: { buyerPreference: true },
+  });
+  if (!client) {
+    throw new Error('Nie znaleziono klienta.');
+  }
+  if (!client.buyerPreference) {
+    throw new Error('Najpierw zapisz ankietę radaru tego klienta — po niej szukam na Nieruchomości-Online.');
+  }
+
+  const filters = filtersFromBuyerPref(client.buyerPreference);
+
+  if (params.mode === 'preview') {
+    const searched = await searchNieruchomosciOnline(filters, { pages: 2, limit: 24 });
+    const seen = new Set(searched.hits.map((hit) => hit.url));
+    const extra = searched.hits.length < 8 ? await keiNierOnlineFallback(filters, seen) : [];
+    const mergedHits = [...searched.hits, ...extra];
+    const hits = await decorateHits(mergedHits);
+    const message = hits.length
+      ? `Znalazłem ${hits.length} ogłoszeń na Nieruchomości-Online pasujących do ankiety (przeszukane ${searched.scanned + extra.length}).`
+      : 'Brak ogłoszeń na Nieruchomości-Online dla tej ankiety. Zmień budżet, dzielnice albo metraż.';
+    return {
+      success: true,
+      mode: 'preview',
+      portal: 'nieruchomosci-online',
+      searchUrl: searched.searchUrl,
+      scanned: searched.scanned + extra.length,
+      fallbackUsed: searched.fallbackUsed || extra.length > 0,
+      criteria: filters,
+      hits,
+      imported: [],
+      skipped: [],
+      sent: false,
+      pick: null,
+      message,
+    };
+  }
+
+  const supply = await importListingsForClientFromNierOnline({
+    clientId: params.clientId,
+    agencyUserId: params.agencyUserId,
+    count: params.count,
+    urls: params.urls,
+  });
+
   let sent = false;
   let emailSent: boolean | undefined;
-  let pick: Awaited<ReturnType<typeof pickIntelligenceOffer>>['pick'] | null = null;
+  let pick: Awaited<ReturnType<typeof import('@/lib/crm/clientIntelligenceRun').pickIntelligenceOffer>>['pick'] | null = null;
 
   if (params.send !== false) {
+    const { sendIntelligenceOffer } = await import('@/lib/crm/clientIntelligenceRun');
     const result = await sendIntelligenceOffer({ clientId: params.clientId, force: true });
     sent = result.sent;
     emailSent = result.emailSent;
     pick = result.pick;
   } else {
+    const { pickIntelligenceOffer } = await import('@/lib/crm/clientIntelligenceRun');
     const preview = await pickIntelligenceOffer(params.clientId, { preview: true });
     pick = preview.pick;
   }
@@ -340,42 +404,43 @@ export async function huntNieruchomosciOnlineForClient(params: {
       kind: 'PORTAL_HUNT',
       title: 'Nieruchomości-Online → mózg',
       body: [
-        `Szukane: ${filters.city}${filters.districts?.length ? ` · ${filters.districts.join(', ')}` : ''}`,
-        filters.maxPrice ? `Budżet do ${filters.maxPrice.toLocaleString('pl-PL')} zł` : null,
-        `Import: ${imported.length} (nowe ${imported.filter((item) => !item.reused).length})`,
-        sent ? 'Wysłane klientowi przez Intelligence.' : pick?.skipReason || 'Bez wysyłki.',
+        `Szukane: ${supply.criteria.city}${supply.criteria.districts?.length ? ` · ${supply.criteria.districts.join(', ')}` : ''}`,
+        supply.criteria.maxPrice ? `Budżet do ${supply.criteria.maxPrice.toLocaleString('pl-PL')} zł` : null,
+        `Import: ${supply.imported.length} (nowe ${supply.imported.filter((item) => !item.reused).length})`,
+        sent ? 'Wysłano klientowi przez Intelligence.' : pick?.skipReason || 'Bez wysyłki.',
       ]
         .filter(Boolean)
         .join('\n'),
-      offerId: imported[0]?.offerId ?? pick?.offerId ?? null,
+      offerId: supply.imported[0]?.offerId ?? pick?.offerId ?? null,
       metadata: {
         portal: 'nieruchomosci-online',
-        searchUrl: searched.searchUrl,
-        imported,
-        skipped,
+        searchUrl: supply.searchUrl,
+        imported: supply.imported,
+        skipped: supply.skipped,
         sent,
+        manual: true,
       },
     },
   });
 
-  const fresh = imported.filter((item) => !item.reused).length;
+  const fresh = supply.imported.filter((item) => !item.reused).length;
   const message = sent
     ? `Zaimportowano ${fresh} ${fresh === 1 ? 'ofertę' : 'ofert'} z Nieruchomości-Online i wysłano klientowi.`
-    : imported.length
+    : supply.imported.length
       ? `Zaimportowano ${fresh} ${fresh === 1 ? 'ofertę' : 'ofert'} z Nieruchomości-Online. ${pick?.skipReason || 'Kolejka Intelligence zaktualizowana.'}`
-      : skipped[0]?.reason || 'Nie udało się zaimportować ogłoszeń z Nieruchomości-Online.';
+      : supply.message;
 
   return {
     success: true,
     mode: 'import',
     portal: 'nieruchomosci-online',
-    searchUrl: searched.searchUrl,
-    scanned: searched.scanned + extra.length,
-    fallbackUsed: searched.fallbackUsed || extra.length > 0,
-    criteria: filters,
-    hits,
-    imported,
-    skipped,
+    searchUrl: supply.searchUrl,
+    scanned: supply.scanned,
+    fallbackUsed: supply.fallbackUsed,
+    criteria: supply.criteria,
+    hits: supply.hits,
+    imported: supply.imported,
+    skipped: supply.skipped,
     sent,
     emailSent,
     pick,

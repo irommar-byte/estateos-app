@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { usePathname } from "next/navigation";
 import { Brain, Check } from "lucide-react";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
+import { isClientPortalPath } from "@/lib/clientPortalPath";
 
 const SESSION_SOFT_DISMISS_KEY = "eos_intel_enable_soft_dismiss_v1";
 const SNOOZE_KEY = "eos_intel_enable_snooze_until_v1";
@@ -50,6 +52,7 @@ function writeSnooze(ms = SNOOZE_MS) {
  */
 export default function IntelligenceEnableSheet() {
   const reduceMotion = useReducedMotion();
+  const pathname = usePathname() || "";
   const { dict } = useLocale();
   const { enabled, decided, hydrated, synced, decide } = useIntelligencePreference();
   const [mounted, setMounted] = useState(false);
@@ -102,6 +105,10 @@ export default function IntelligenceEnableSheet() {
   }, []);
 
   useEffect(() => {
+    if (isClientPortalPath(pathname)) {
+      setVisible(false);
+      return;
+    }
     if (!hydrated || !synced || !loggedIn || decided || enabled || softDismissed || snoozed) {
       setVisible(false);
       return;
@@ -111,7 +118,7 @@ export default function IntelligenceEnableSheet() {
       void playIntelligenceChime("suggest");
     }, 1600);
     return () => window.clearTimeout(t);
-  }, [hydrated, synced, loggedIn, decided, enabled, softDismissed, snoozed]);
+  }, [hydrated, synced, loggedIn, decided, enabled, softDismissed, snoozed, pathname]);
 
   useEffect(() => {
     if (!visible) return;

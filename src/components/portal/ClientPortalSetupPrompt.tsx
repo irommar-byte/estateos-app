@@ -25,7 +25,13 @@ function base64UrlToBytes(value: string) {
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 }
 
-export default function ClientPortalSetupPrompt({ token }: { token: string }) {
+export default function ClientPortalSetupPrompt({
+  token,
+  deferUntilReady = false,
+}: {
+  token: string;
+  deferUntilReady?: boolean;
+}) {
   const [visible, setVisible] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
@@ -108,6 +114,10 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
   };
 
   useEffect(() => {
+    if (deferUntilReady) {
+      setVisible(false);
+      return;
+    }
     const installStateFrame = window.requestAnimationFrame(() => setInstalled(isStandalone()));
     let dismissedRecently = false;
     try {
@@ -150,7 +160,7 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
     };
     // Prompt jest inicjalizowany jeden raz dla danego panelu.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dismissedKey]);
+  }, [dismissedKey, deferUntilReady]);
 
   if (!visible) return null;
 

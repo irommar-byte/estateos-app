@@ -307,7 +307,7 @@ export function pickBestGeocodeFeature(
 export function mapboxForwardGeocodeUrl(
   query: string,
   token: string,
-  options?: { limit?: number; autocomplete?: boolean; cityHint?: string },
+  options?: { limit?: number; autocomplete?: boolean; cityHint?: string; types?: string },
 ): string {
   const limit = options?.limit ?? 6;
   const autocomplete = options?.autocomplete ?? true;
@@ -317,7 +317,7 @@ export function mapboxForwardGeocodeUrl(
     language: "pl",
     limit: String(limit),
     autocomplete: autocomplete ? "true" : "false",
-    types: "address,place,locality",
+    types: options?.types ?? "address,place,locality",
   });
   if (countryIso) {
     params.set("country", countryIso.toLowerCase());

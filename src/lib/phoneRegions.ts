@@ -52,3 +52,27 @@ export function buildE164FromRegion(region: PhoneRegion, localDigits: string): s
   if (!local) return '';
   return `+${region.dialCode}${local}`;
 }
+
+/** Rozbija zapis E.164 na region + cyfry lokalne (do PhoneCountryInput). */
+export function parseE164ForPhoneInput(e164: unknown): { iso2: string; localDigits: string } | null {
+  const raw = String(e164 ?? '').trim();
+  if (!raw) return null;
+  const digits = raw.startsWith('+') ? raw.slice(1).replace(/\D/g, '') : raw.replace(/\D/g, '');
+  if (!digits) return null;
+
+  const sorted = [...PHONE_REGIONS].sort((a, b) => b.dialCode.length - a.dialCode.length);
+  for (const region of sorted) {
+    if (digits.startsWith(region.dialCode)) {
+      const local = digits.slice(region.dialCode.length);
+      if (local.length > 0 && local.length <= region.localMaxDigits) {
+        return { iso2: region.iso2, localDigits: local };
+      }
+    }
+  }
+
+  if (digits.length === 9) {
+    return { iso2: 'PL', localDigits: digits };
+  }
+
+  return null;
+}

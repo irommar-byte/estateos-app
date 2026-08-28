@@ -49,6 +49,7 @@ import { FALLBACK_DISCOVERY_PULSE } from "@/lib/discovery/fallbackPulse";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isPublicListingPath } from "@/lib/publicListingPath";
+import { isBuyerFocusedShellPath } from "@/lib/clientPortalPath";
 
 type PulsePayload = {
   stage?: string;
@@ -258,6 +259,7 @@ function StageStepper({
 export default function DiscoveryPulse() {
   const pathname = usePathname();
   const skipOnListing = isPublicListingPath(pathname);
+  const skipOnBuyerIntake = isBuyerFocusedShellPath(pathname);
   const reduceMotion = useReducedMotion();
   const { dict } = useLocale();
   const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
@@ -567,7 +569,7 @@ export default function DiscoveryPulse() {
     };
   }, [auth, pulse, expanded, intelligenceEnabled, nudgeOrb]);
 
-  if (skipOnListing || !intelligenceHydrated || !intelligenceEnabled || auth === "guest") {
+  if (skipOnListing || skipOnBuyerIntake || !intelligenceHydrated || !intelligenceEnabled || auth === "guest") {
     return null;
   }
   if (auth === "unknown" && !pulse) {

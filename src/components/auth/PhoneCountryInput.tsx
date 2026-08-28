@@ -6,6 +6,7 @@ import {
   buildE164FromRegion,
   formatLocalPhoneDisplay,
   getPhoneRegion,
+  parseE164ForPhoneInput,
   type PhoneRegion,
 } from '@/lib/phoneRegions';
 
@@ -16,6 +17,8 @@ type PhoneCountryInputProps = {
   status?: 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
   onFocusChange?: (focused: boolean) => void;
   hideLabel?: boolean;
+  compact?: boolean;
+  showStatusText?: boolean;
   inputClassName?: string;
   wrapperClassName?: string;
 };
@@ -27,6 +30,8 @@ export default function PhoneCountryInput({
   status = 'idle',
   onFocusChange,
   hideLabel = false,
+  compact = false,
+  showStatusText = true,
   inputClassName = '',
   wrapperClassName = '',
 }: PhoneCountryInputProps) {
@@ -34,8 +39,19 @@ export default function PhoneCountryInput({
   const [localDigits, setLocalDigits] = useState('');
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const seededRef = useRef(false);
 
   const region = useMemo(() => getPhoneRegion(regionIso), [regionIso]);
+
+  useEffect(() => {
+    if (seededRef.current || !valueE164) return;
+    const parsed = parseE164ForPhoneInput(valueE164);
+    if (parsed) {
+      setRegionIso(parsed.iso2);
+      setLocalDigits(parsed.localDigits);
+      seededRef.current = true;
+    }
+  }, [valueE164]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -74,17 +90,19 @@ export default function PhoneCountryInput({
         </label>
       ) : null}
       <div
-        className={`flex items-stretch overflow-hidden rounded-2xl border bg-[var(--eos-input)] transition-colors ${borderClass}`}
+        className={`flex items-stretch overflow-hidden border bg-[var(--eos-input)] transition-colors ${compact ? 'rounded-xl' : 'rounded-2xl'} ${borderClass}`}
       >
         <button
           type="button"
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          className="flex shrink-0 items-center gap-2 border-r border-[var(--eos-border)] px-3 py-4 text-left hover:bg-[var(--eos-accent-soft)] disabled:opacity-50"
+          className={`flex shrink-0 items-center gap-2 border-r border-[var(--eos-border)] text-left hover:bg-[var(--eos-accent-soft)] disabled:opacity-50 ${compact ? 'px-2 py-2.5' : 'px-3 py-4'}`}
         >
-          <span className="text-xl leading-none">{region.flag}</span>
-          <span className="text-sm font-black text-[var(--eos-text)]">+{region.dialCode}</span>
-          <ChevronDown size={14} className="text-[var(--eos-muted)]" />
+          <span className={compact ? 'text-base leading-none' : 'text-xl leading-none'}>{region.flag}</span>
+          <span className={`font-black text-[var(--eos-text)] ${compact ? 'text-[12px]' : 'text-sm'}`}>
+            +{region.dialCode}
+          </span>
+          <ChevronDown size={compact ? 12 : 14} className="text-[var(--eos-muted)]" />
         </button>
         <input
           type="tel"
@@ -92,7 +110,7 @@ export default function PhoneCountryInput({
           autoComplete="tel-national"
           disabled={disabled}
           placeholder={region.iso2 === 'PL' ? '501 234 567' : 'numer krajowy'}
-          className={`po-field min-w-0 flex-1 bg-transparent px-4 py-4 text-xl font-bold text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-subtle)] ${inputClassName}`}
+          className={`po-field min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--eos-subtle)] ${compact ? 'px-3 py-2.5 text-[13px] font-semibold' : 'px-4 py-4 text-xl font-bold'} text-[var(--eos-text)] ${inputClassName}`}
           value={formatLocalPhoneDisplay(region.iso2, localDigits)}
           onFocus={() => {
             setOpen(false);
@@ -133,18 +151,18 @@ export default function PhoneCountryInput({
         </div>
       )}
 
-      {status === 'checking' && (
+      {showStatusText && status === 'checking' && (
         <p className="eos-muted-copy mt-2 text-[10px] font-bold uppercase tracking-widest">Sprawdzam numer…</p>
       )}
-      {status === 'available' && (
+      {showStatusText && status === 'available' && (
         <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500">Numer wolny w CRM</p>
       )}
-      {status === 'taken' && (
+      {showStatusText && status === 'taken' && (
         <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-amber-600">
           Numer już w bazie klientów
         </p>
       )}
-      {status === 'invalid' && (
+      {showStatusText && status === 'invalid' && (
         <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">Nieprawidłowy numer</p>
       )}
     </div>

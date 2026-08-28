@@ -164,6 +164,15 @@ const CITY_ALIASES: Record<string, string> = {
   poznan: "Poznań",
   bialystok: "Białystok",
   zamosc: "Zamość",
+  tarnow: "Tarnów",
+  rzeszow: "Rzeszów",
+  szczecin: "Szczecin",
+  bydgoszcz: "Bydgoszcz",
+  torun: "Toruń",
+  kielce: "Kielce",
+  radom: "Radom",
+  piaseczno: "Piaseczno",
+  otwock: "Otwock",
 };
 
 /** Ulice (bez numeru) → dzielnica strict-city, gdy geokoder myli sąsiednie dzielnice. */

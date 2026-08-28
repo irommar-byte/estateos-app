@@ -1212,6 +1212,7 @@ model AgencyClientBuyerPreference {
   districts         Json?
   maxPrice          Float?
   minArea           Float?
+  maxArea           Float?
   minYear           Int?
   requireBalcony    Boolean          @default(false)
   requireGarden     Boolean          @default(false)

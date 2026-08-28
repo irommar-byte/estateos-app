@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import ClientPortalShell from '@/components/portal/ClientPortalShell';
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -20,5 +21,5 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
 }
 
 export default function ClientPortalLayout({ children }: LayoutProps) {
-  return children;
+  return <ClientPortalShell>{children}</ClientPortalShell>;
 }

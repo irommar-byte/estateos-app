@@ -33,6 +33,7 @@ import { useUserMode } from "@/contexts/UserModeContext";
 import { useEcosystem, type EcosystemVertical } from "@/contexts/EcosystemContext";
 import { useNavUnreadBadge } from "@/hooks/useNavUnreadBadge";
 import EosSpotlightSearch from "@/components/search/EosSpotlightSearch";
+import { isBuyerFocusedShellPath } from "@/lib/clientPortalPath";
 
 type CurrentUser = {
   id?: string | number;
@@ -101,6 +102,7 @@ export default function Navbar() {
 
   const isOfferShareLanding = pathname?.startsWith("/o/");
   const isDeskApp = pathname?.startsWith("/crm");
+  const isBuyerIntake = isBuyerFocusedShellPath(pathname);
   const isAdmin = user?.role === "ADMIN";
   const loggedIn = Boolean(user);
   const unread = useNavUnreadBadge(loggedIn);
@@ -224,6 +226,7 @@ export default function Navbar() {
 
   if (isOfferShareLanding) return null;
   if (isDeskApp) return null;
+  if (isBuyerIntake) return null;
 
   const handleLogout = async () => {
     try {

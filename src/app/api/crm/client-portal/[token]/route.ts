@@ -6,6 +6,8 @@ import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { buyerPrefToWebRadarFilters } from '@/lib/agencyClientShape';
 import { formatRadarSummary } from '@/lib/radarCalibrationWeb';
+import { formatAgentTitle } from '@/lib/agentProfile';
+import type { AgencyClientBuyerPreference } from '@prisma/client';
 import { sendNotification } from '@/lib/core/notification.core';
 import type { AcquisitionFormData } from '@/lib/acquisitionWorkflow';
 import {
@@ -33,11 +35,12 @@ import {
   clientFeedbackHasContent,
   formatClientFeedbackForAgent,
 } from '@/lib/crm/clientPortalFeedback';
-import { applyIntelligenceLearning } from '@/lib/crm/clientIntelligenceRun';
+import { applyIntelligenceLearning, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
+import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
-function shapeSearchCriteria(pref: Parameters<typeof buyerPrefToWebRadarFilters>[0]) {
+function shapeSearchCriteria(pref: AgencyClientBuyerPreference | null) {
   if (!pref) return null;
   const filters = buyerPrefToWebRadarFilters(pref);
   const summary = formatRadarSummary(filters);
@@ -54,6 +57,47 @@ function shapeSearchCriteria(pref: Parameters<typeof buyerPrefToWebRadarFilters>
     amenities,
     calibrationMode: filters.calibrationMode,
   };
+}
+
+function mergeQualificationIntoPref(
+  pref: AgencyClientBuyerPreference,
+  qualification: Record<string, unknown> | null | undefined,
+): AgencyClientBuyerPreference {
+  if (pref.maxArea != null || pref.minArea != null) return pref;
+  const maxArea = Number(qualification?.maxArea);
+  const minArea = Number(qualification?.minArea);
+  if (!Number.isFinite(maxArea) && !Number.isFinite(minArea)) return pref;
+  return {
+    ...pref,
+    minArea: Number.isFinite(minArea) && minArea > 0 ? minArea : pref.minArea,
+    maxArea: Number.isFinite(maxArea) && maxArea > 0 ? maxArea : pref.maxArea,
+  };
+}
+
+async function resolveSearchCriteria(
+  clientId: number,
+  agencyUserId: number,
+  pref: AgencyClientBuyerPreference | null,
+) {
+  if (!pref) return null;
+  let working = pref;
+  if (working.maxArea == null && working.minArea == null) {
+    const deskCase = await prisma.deskCase.findFirst({
+      where: { clientId, agencyUserId, kind: 'BUY' },
+      orderBy: { updatedAt: 'desc' },
+      select: { metadata: true },
+    });
+    const meta =
+      deskCase?.metadata && typeof deskCase.metadata === 'object'
+        ? (deskCase.metadata as Record<string, unknown>)
+        : null;
+    const qualification =
+      meta?.qualification && typeof meta.qualification === 'object'
+        ? (meta.qualification as Record<string, unknown>)
+        : null;
+    working = mergeQualificationIntoPref(pref, qualification);
+  }
+  return shapeSearchCriteria(working);
 }
 
 async function loadJourneyActivities(clientId: number) {
@@ -224,7 +268,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 
   const agentName = resolveSellerPersonName(agent) || agent.name || 'Dedykowany Agent';
   const agentPhoto = member?.profilePhotoUrl || agent.image || null;
-  const agentTitle = member?.agentTitle ? String(member.agentTitle) : 'Dedykowany Doradca d/s Nieruchomości';
+  const agentTitle = member?.agentTitle
+    ? formatAgentTitle(member.agentTitle)
+    : 'Dedykowany Doradca d/s Nieruchomości';
   const agencyName = company?.name || agent.companyName || 'EstateOS Biuro Nieruchomości';
   const agencyLogo = company?.logoUrl || null;
   const agencySlug = company?.slug ? `/firma/${company.slug}` : null;
@@ -233,7 +279,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const agencyEmail = company?.officeEmail || agent.email || null;
   const agencyAddress = company?.address || null;
 
-  const searchCriteria = client.buyerPreference ? shapeSearchCriteria(client.buyerPreference) : null;
+  const searchCriteria = await resolveSearchCriteria(client.id, client.agencyUserId, client.buyerPreference);
   const scheduleActs = await loadJourneyActivities(client.id);
   const meeting = resolveMeeting(scheduleActs);
   const presentation = resolvePresentation(scheduleActs);
@@ -285,6 +331,16 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agencyEmail,
       agencyAddress,
       searchCriteria,
+      intelligenceEnabled: Boolean(client.intelligenceEnabled),
+      unscoredMatchCount: client.buyerPreference
+        ? await prisma.agencyClientMatch.count({
+            where: {
+              clientId: client.id,
+              notifiedAt: null,
+              score: { gte: client.buyerPreference.minMatchThreshold ?? 70 },
+            },
+          })
+        : 0,
       canChat: true,
       meeting: meeting
         ? {
@@ -443,6 +499,52 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   const clientName = `${client.firstName} ${client.lastName}`.trim();
+
+  if (action === 'release_first_match') {
+    if (client.type !== 'BUYER') {
+      return NextResponse.json({ error: 'Dostępne tylko dla kupujących.' }, { status: 400 });
+    }
+
+    const intel = await sendIntelligenceOffer({
+      clientId: client.id,
+      force: true,
+      ignoreInterval: true,
+      channel: 'manual',
+    });
+    if (intel.sent && intel.pick.offerId) {
+      return NextResponse.json({ success: true, offerId: intel.pick.offerId, via: 'intelligence' });
+    }
+
+    const topMatch = await prisma.agencyClientMatch.findFirst({
+      where: {
+        clientId: client.id,
+        notifiedAt: null,
+        score: { gte: 70 },
+      },
+      orderBy: { score: 'desc' },
+      select: { offerId: true, score: true },
+    });
+    if (!topMatch) {
+      return NextResponse.json({
+        success: false,
+        reason: intel.pick.skipReason || 'Brak dopasowań do udostępnienia.',
+      });
+    }
+
+    await notifyAgencyClientAboutOffer({
+      clientId: client.id,
+      offerId: topMatch.offerId,
+      agencyUserId: client.agencyUserId,
+      channel: 'manual',
+      matchScore: topMatch.score,
+      customMessage: `Pierwsza propozycja pod Twoje kryteria — dopasowanie ${topMatch.score}%.`,
+      intelligence: {
+        reason: `EstateOS™ Intelligence · dopasowanie ${topMatch.score}%`,
+      },
+    });
+
+    return NextResponse.json({ success: true, offerId: topMatch.offerId, via: 'match' });
+  }
 
   if (action === 'update_acquisition_checklist') {
     if (client.type !== 'SELLER' || !client.acquisition || client.acquisition.status === 'SIGNED') {

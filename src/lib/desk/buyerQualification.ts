@@ -52,6 +52,7 @@ export function buyerPrefToQualificationForm(
       selectedDistricts: districts,
       maxPrice: pref?.maxPrice ?? 0,
       minArea: pref?.minArea ?? 0,
+      maxArea: pref?.maxArea ?? extended?.maxArea ?? 0,
       minYear: pref?.minYear ?? 1900,
       requireBalcony: pref?.requireBalcony ?? false,
       requireGarden: pref?.requireGarden ?? false,

@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronLeft, Radar, Sparkles, Users } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useLocale } from "@/contexts/LocaleContext";
+import { isBuyerFocusedShellPath } from "@/lib/clientPortalPath";
 import { numberFormatLocale } from "@/i18n/config";
 import {
   getTotalRadarCount,
@@ -40,6 +41,7 @@ export default function RadarLiveCounter() {
   const reduceMotion = useReducedMotion();
   const pathname = usePathname() || "";
   const isHome = pathname === "/" || pathname === "";
+  const isBuyerIntake = isBuyerFocusedShellPath(pathname);
 
   const [displayCount, setDisplayCount] = useState(RADAR_COUNTER_BASE);
   const [expanded, setExpanded] = useState(false);
@@ -170,6 +172,7 @@ export default function RadarLiveCounter() {
     }
   };
 
+  if (isBuyerIntake) return null;
   if (!pastHero) return null;
 
   return (

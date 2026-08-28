@@ -1,4 +1,5 @@
 import type { RadarPreferenceDto } from '@/lib/radarPreferenceShape';
+import { formatBuyerArea } from '@/lib/buyerIntakeShared';
 
 /** Pola kalibracji radaru — parity z `RadarCalibrationModal` (aplikacja mobilna). */
 export type WebRadarFilters = {
@@ -9,6 +10,7 @@ export type WebRadarFilters = {
   selectedDistricts: string[];
   maxPrice: number;
   minArea: number;
+  maxArea: number;
   minYear: number;
   requireBalcony: boolean;
   requireGarden: boolean;
@@ -32,6 +34,7 @@ export function defaultWebRadarFilters(city = 'Warszawa'): WebRadarFilters {
     selectedDistricts: [],
     maxPrice: 0,
     minArea: 0,
+    maxArea: 0,
     minYear: 1900,
     requireBalcony: false,
     requireGarden: false,
@@ -131,6 +134,7 @@ export function webRadarFiltersFromPreference(
     selectedDistricts: districts,
     maxPrice: pref?.maxPrice ?? legacy?.searchMaxPrice ?? 0,
     minArea: pref?.minArea ?? legacy?.searchAreaFrom ?? 0,
+    maxArea: 0,
     minYear: pref?.minYear ?? 1900,
     requireBalcony: pref?.requireBalcony ?? amenities.includes('balkon'),
     requireGarden: pref?.requireGarden ?? amenities.includes('ogr'),
@@ -193,6 +197,7 @@ export function buildLegacyRadarUpdateBody(filters: WebRadarFilters) {
 
 export function formatRadarSummary(filters: WebRadarFilters): {
   location: string;
+  areaLabel: string;
   minArea: string;
   maxBudget: string;
   propertyType: string;
@@ -213,9 +218,15 @@ export function formatRadarSummary(filters: WebRadarFilters): {
         ? 'Kupno'
         : '—';
 
+  const min = filters.minArea > 0 ? filters.minArea : null;
+  const max = filters.maxArea > 0 ? filters.maxArea : null;
+  const formattedArea = formatBuyerArea(min, max);
+  const areaLabel = formattedArea ?? 'Dowolny metraż';
+
   return {
     location,
-    minArea: filters.minArea > 0 ? `Od ${filters.minArea} m²` : 'Dowolny metraż',
+    areaLabel,
+    minArea: areaLabel,
     maxBudget:
       filters.maxPrice > 0
         ? `Do ${new Intl.NumberFormat('pl-PL').format(filters.maxPrice)} PLN`

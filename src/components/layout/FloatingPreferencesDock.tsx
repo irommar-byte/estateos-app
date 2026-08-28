@@ -10,6 +10,7 @@ import { Settings2, ChevronLeft, ChevronRight } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { isBuyerFocusedShellPath } from "@/lib/clientPortalPath";
 
 const INTRO_SEEN_KEY = "estateos_prefs_dock_intro_seen";
 const AUTO_HIDE_MS = 3000;
@@ -18,6 +19,7 @@ export default function FloatingPreferencesDock() {
   const { dict } = useLocale();
   const pathname = usePathname() || "";
   const isHome = pathname === "/" || pathname === "";
+  const isBuyerIntake = isBuyerFocusedShellPath(pathname);
   const [open, setOpen] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -100,6 +102,7 @@ export default function FloatingPreferencesDock() {
     setOpen(true);
   };
 
+  if (isBuyerIntake) return null;
   if (isHome && !pastHero) return null;
 
   return (

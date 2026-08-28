@@ -8,6 +8,30 @@ import { appendPresentationQuery } from '@/lib/offerPresentingAgent';
 import { DISLIKE_PHRASES, LIKE_PHRASES } from '@/lib/crm/clientPortalFeedback';
 import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
+
+async function resolveClientMatchScore(params: {
+  clientId: number;
+  offerId: number;
+  matchScore?: number;
+}): Promise<number> {
+  if (Number.isFinite(params.matchScore) && Number(params.matchScore) > 0) {
+    return Math.round(Number(params.matchScore));
+  }
+
+  const existing = await prisma.agencyClientMatch.findUnique({
+    where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
+    select: { score: true },
+  });
+  if (existing && existing.score > 0) return existing.score;
+
+  await refreshAgencyClientMatches(params.clientId);
+  const refreshed = await prisma.agencyClientMatch.findUnique({
+    where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
+    select: { score: true },
+  });
+  return refreshed?.score && refreshed.score > 0 ? refreshed.score : 0;
+}
 
 function buildTransporter() {
   const smtpPort = Number(process.env.EMAIL_PORT) || 587;
@@ -343,6 +367,7 @@ export async function notifyAgencyClientAboutOffer(params: {
   channel: 'email' | 'manual';
   customMessage?: string;
   skipIfNotified?: boolean;
+  matchScore?: number;
   intelligence?: { reason: string };
 }) {
   if (params.skipIfNotified !== false) {
@@ -376,18 +401,24 @@ export async function notifyAgencyClientAboutOffer(params: {
   }
 
   const now = new Date();
+  const score = await resolveClientMatchScore({
+    clientId: params.clientId,
+    offerId: params.offerId,
+    matchScore: params.matchScore,
+  });
   await prisma.agencyClientMatch.upsert({
     where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
     create: {
       clientId: params.clientId,
       offerId: params.offerId,
-      score: 0,
+      score,
       notifiedAt: now,
       sharedAt: now,
       intelligenceSent: Boolean(params.intelligence),
       intelligenceReason: params.intelligence?.reason ?? null,
     },
     update: {
+      score: score > 0 ? score : undefined,
       notifiedAt: now,
       sharedAt: now,
       ...(params.intelligence
