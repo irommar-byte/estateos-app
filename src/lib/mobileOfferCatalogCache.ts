@@ -11,6 +11,20 @@ const globalAny = global as typeof globalThis & {
   __mobileCatalogCache?: CatalogCacheEntry;
 };
 
+export function normalizeEtag(etag: string | null | undefined): string | null {
+  if (!etag) return null;
+  const trimmed = etag.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('W/')) return trimmed.slice(2);
+  return trimmed;
+}
+
+export function etagMatches(left: string | null | undefined, right: string | null | undefined): boolean {
+  const a = normalizeEtag(left);
+  const b = normalizeEtag(right);
+  return Boolean(a && b && a === b);
+}
+
 export function buildCatalogEtag(offers: unknown[]): string {
   const digest = createHash('sha1');
   for (const offer of offers) {
@@ -33,7 +47,7 @@ export function readMobileCatalogCache(etag?: string | null): { etag: string; bo
     globalAny.__mobileCatalogCache = undefined;
     return null;
   }
-  if (etag && etag === hit.etag) return hit;
+  if (etag && etagMatches(etag, hit.etag)) return hit;
   if (!etag) return hit;
   return null;
 }
@@ -46,7 +60,7 @@ export function catalogNotModifiedResponse(etag: string): Response {
   return new Response(null, {
     status: 304,
     headers: {
-      ETag: etag,
+      'X-Catalog-ETag': etag,
       'Cache-Control': 'public, max-age=60, stale-while-revalidate=180',
       Vary: 'Accept-Encoding',
     },
@@ -58,7 +72,7 @@ export function catalogJsonResponse(body: string, etag: string): Response {
     status: 200,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      ETag: etag,
+      'X-Catalog-ETag': etag,
       'Cache-Control': 'public, max-age=60, stale-while-revalidate=180',
       Vary: 'Accept-Encoding',
     },

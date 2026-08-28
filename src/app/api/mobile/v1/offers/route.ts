@@ -41,6 +41,7 @@ import {
   buildCatalogEtag,
   catalogJsonResponse,
   catalogNotModifiedResponse,
+  etagMatches,
   readMobileCatalogCache,
   writeMobileCatalogCache,
 } from '@/lib/mobileOfferCatalogCache';
@@ -92,11 +93,11 @@ export async function GET(req: Request) {
   const catalogOnly = searchParams.get('catalog') === '1' || searchParams.get('catalog') === 'true';
   const userId = searchParams.get('userId');
   const isPublicCatalog = catalogOnly && !userId && !includeAll;
-  const ifNoneMatch = req.headers.get('if-none-match');
+  const ifNoneMatch = req.headers.get('if-none-match') || req.headers.get('x-catalog-etag');
 
   if (isPublicCatalog) {
     const cached = readMobileCatalogCache(ifNoneMatch);
-    if (cached && ifNoneMatch && ifNoneMatch === cached.etag) {
+    if (cached && ifNoneMatch && etagMatches(ifNoneMatch, cached.etag)) {
       return catalogNotModifiedResponse(cached.etag);
     }
     if (cached && !ifNoneMatch) {
@@ -162,7 +163,7 @@ export async function GET(req: Request) {
       const etag = buildCatalogEtag(normalizedOffers);
       const body = JSON.stringify({ success: true, offers: normalizedOffers });
       writeMobileCatalogCache(etag, body);
-      if (ifNoneMatch && ifNoneMatch === etag) {
+      if (ifNoneMatch && etagMatches(ifNoneMatch, etag)) {
         return catalogNotModifiedResponse(etag);
       }
       return catalogJsonResponse(body, etag);
