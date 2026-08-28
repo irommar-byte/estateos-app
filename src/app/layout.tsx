@@ -2,15 +2,11 @@ import ModeTransition from '@/components/ui/ModeTransition';
 import UpgradeModal from '@/components/ui/UpgradeModal';
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Inter, Nunito } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import OpenInSystemBrowserGate from "@/components/layout/OpenInSystemBrowserGate";
-import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock";
-import DiscoveryPulse from "@/components/home/DiscoveryPulse";
-import RadarLiveCounter from "@/components/home/RadarLiveCounter";
-import WebNotificationPrompt from "@/components/layout/WebNotificationPrompt";
-import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
+import DeferredGlobalOverlays from "@/components/layout/DeferredGlobalOverlays";
 import CrmLaunchProvider from "@/components/account/CrmLaunchProvider";
 import CampaignAttributionBoundary from "@/components/marketing/CampaignAttributionBoundary";
 import EstateOsStructuredData from "@/components/marketing/EstateOsStructuredData";
@@ -27,18 +23,10 @@ import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { EcosystemProvider } from "@/contexts/EcosystemContext";
 import EcosystemThemeBridge from "@/components/ecosystem/EcosystemThemeBridge";
 import EcosystemAmbientBackground from "@/components/ecosystem/EcosystemAmbientBackground";
-import EcosystemVerticalTransition from "@/components/ecosystem/EcosystemVerticalTransition";
-import IntelligenceEnableSheet from "@/components/discovery/IntelligenceEnableSheet";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 import { ESTATEOS_SITE_URL, ESTATEOS_TAGLINE_PL } from "@/lib/estateOsPublicFacts";
 import { FREE_LISTING_KEYWORDS } from "@/lib/seo/freeListingContent";
-const inter = Inter({ subsets: ["latin", "latin-ext"] });
-const nunito = Nunito({
-  subsets: ["latin", "latin-ext"],
-  weight: ["700", "800", "900"],
-  variable: "--font-eos-crm",
-  display: "swap",
-});
+const inter = Inter({ subsets: ["latin", "latin-ext"], display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(ESTATEOS_SITE_URL),
@@ -110,7 +98,7 @@ export default async function RootLayout({
 
   return (
     <html suppressHydrationWarning lang={locale}>
-      <body suppressHydrationWarning className={`${inter.className} ${nunito.variable}`}>
+      <body suppressHydrationWarning className={inter.className}>
         <EstateOsStructuredData />
         <ThemeInitScript />
         <ThemeProvider>
@@ -130,13 +118,7 @@ export default async function RootLayout({
                     <Tracker />
                     <Navbar />
                     <OpenInSystemBrowserGate />
-                    <EcosystemVerticalTransition />
-                    <FloatingPreferencesDock />
-                    <RadarLiveCounter />
-                    <DiscoveryPulse />
-                    <IntelligenceEnableSheet />
-                    <WebNotificationPrompt />
-                    <PresentationFlowOrchestrator />
+                    <DeferredGlobalOverlays />
                     <div id="main-content" tabIndex={-1} className="relative z-10 outline-none">
                       {children}
                     </div>

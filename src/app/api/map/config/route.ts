@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-export const dynamic = "force-dynamic";
+import { attachCacheHeaders } from "@/lib/httpCache";
 
 /** Token Mapbox dla klienta (publiczny pk.*) — runtime, także gdy jest tylko MAPBOX_TOKEN na VPS. */
 export async function GET() {
@@ -9,5 +8,5 @@ export async function GET() {
     process.env.MAPBOX_TOKEN?.trim() ||
     null;
 
-  return NextResponse.json({ mapboxToken });
+  return attachCacheHeaders(NextResponse.json({ mapboxToken }), 300, 3600);
 }

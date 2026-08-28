@@ -1,4 +1,4 @@
-import ClientForm from './ClientForm';
+import nextDynamic from 'next/dynamic';
 import { decryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -30,6 +30,14 @@ export const metadata: Metadata = {
   alternates: { canonical: `${ESTATEOS_SITE_URL}/dodaj-oferte` },
   robots: { index: true, follow: true },
 };
+
+const ClientForm = nextDynamic(() => import('./ClientForm'), {
+  loading: () => (
+    <div className="eos-page-shell flex min-h-[50dvh] items-center justify-center text-sm text-[var(--eos-muted)]">
+      Ładowanie formularza…
+    </div>
+  ),
+});
 
 const guestUser = { isLoggedIn: false as const };
 

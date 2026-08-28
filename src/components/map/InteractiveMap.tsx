@@ -18,6 +18,7 @@ import {
   transactionModeFromOffers,
 } from "@/lib/transactionType";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
+import { fetchHomeCatalogJson } from "@/lib/homeCatalogCache";
 
 function parseOfferPrice(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -429,15 +430,13 @@ export default function InteractiveMap({ immersive = false }: Props) {
     const load = async () => {
       try {
         if (mapMarket === "car") {
-          const res = await fetch(`/api/cars?t=${Date.now()}`, { cache: "no-store" });
-          const data = await res.json().catch(() => []);
-          const raw = Array.isArray(data) ? data : Array.isArray(data?.cars) ? data.cars : [];
+          const data = await fetchHomeCatalogJson<unknown>("/api/cars");
+          const raw = Array.isArray(data) ? data : Array.isArray((data as { cars?: unknown })?.cars) ? (data as { cars: unknown[] }).cars : [];
           const list = raw.map(normalizeCarForMap).filter(Boolean);
           if (!cancelled) setAllOffers(list);
           return;
         }
-        const res = await fetch(`/api/offers?t=${Date.now()}`, { cache: "no-store" });
-        const data = await res.json();
+        const data = await fetchHomeCatalogJson<{ transactionType?: unknown }[]>("/api/offers");
         const list = Array.isArray(data) ? data : [];
         if (cancelled) return;
         setAllOffers(list);

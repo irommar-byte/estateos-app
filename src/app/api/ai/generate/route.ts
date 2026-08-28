@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { resolveWebUserId } from "@/lib/webSessionAuth";
+import { checkRateLimit, rateLimitResponse } from "@/lib/securityRateLimit";
 
 // ====== BAZA SŁÓW ======
 const hooks = [
@@ -91,6 +93,15 @@ function scoreDescription(text: string): number {
 // ====== API ======
 export async function POST(req: Request) {
   try {
+    const userId = await resolveWebUserId(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+    }
+
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const limit = checkRateLimit(`ai-generate:${userId}:${ip}`, 30, 60_000);
+    if (!limit.allowed) return rateLimitResponse(limit.retryAfterSeconds);
+
     const data = await req.json();
 
     const variants = [];

@@ -26,6 +26,7 @@ import {
   assertAgencyCanCreateForClient,
   linkOfferToAgencyClient,
 } from '@/lib/offerAgencyManagement';
+import { attachCacheHeaders } from '@/lib/httpCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -161,20 +162,24 @@ export async function GET(req: Request) {
     const listFxDate = fxResult?.date ?? new Date().toISOString().slice(0, 10);
     const listFx = { rate: listFxRate, date: listFxDate };
 
-    return NextResponse.json(
-      visibleOffers.map((offer: any) => {
-        const withListPrice = {
-          ...offer,
-          listPricePln: resolveEffectiveListPricePln(
-            offer,
-            historyMaxMap.get(Number(offer.id)),
-          ),
-        };
-        return shapePublicListOffer(applyLegalStatusOverride(withListPrice, legalOverrides), {
-          viewsCount: viewsMap.get(Number(offer.id)) || 0,
-          fx: listFx,
-        });
-      }),
+    return attachCacheHeaders(
+      NextResponse.json(
+        visibleOffers.map((offer: any) => {
+          const withListPrice = {
+            ...offer,
+            listPricePln: resolveEffectiveListPricePln(
+              offer,
+              historyMaxMap.get(Number(offer.id)),
+            ),
+          };
+          return shapePublicListOffer(applyLegalStatusOverride(withListPrice, legalOverrides), {
+            viewsCount: viewsMap.get(Number(offer.id)) || 0,
+            fx: listFx,
+          });
+        }),
+      ),
+      60,
+      300,
     );
 
   } catch (error) {

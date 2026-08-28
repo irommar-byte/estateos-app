@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
-import jwt from 'jsonwebtoken';
 
 /** Authorization: Bearer <token> (mobile JWT). */
 export function extractBearerToken(req: Request): string | null {
@@ -16,10 +15,6 @@ export function parseUserIdFromMobileJwt(token: string): number | null {
   const verified = verifyMobileToken(token) as Record<string, unknown> | null;
   const verifiedId = Number(verified?.id ?? verified?.userId ?? verified?.sub);
   if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
-
-  const decoded = jwt.decode(token) as Record<string, unknown> | null;
-  const decodedId = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
-  if (Number.isFinite(decodedId) && decodedId > 0) return decodedId;
 
   return null;
 }

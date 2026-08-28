@@ -2,11 +2,20 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcrypt';
+import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 
 export const dynamic = 'force-dynamic';
 
+function clientIp(req: Request): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+}
+
 export async function POST(req: Request) {
   try {
+    const ip = clientIp(req);
+    const limit = checkRateLimit(`reset-password:${ip}`, 8, 15 * 60_000);
+    if (!limit.allowed) return rateLimitResponse(limit.retryAfterSeconds);
+
     const { identifier, otp, newPassword } = await req.json();
 
     const clean = identifier?.trim();

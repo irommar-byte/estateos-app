@@ -292,7 +292,7 @@ export default function CatalogPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/offers?t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/offers`);
       const data: unknown = await res.json().catch(() => null);
       if (!res.ok) {
         const msg =

@@ -1,30 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyMobileToken } from '@/lib/jwtMobile';
-import jwt from 'jsonwebtoken';
 import { logEvent } from '@/lib/observability';
 import { tokenRef } from '@/lib/pushTelemetry';
+import { parseMobileUserIdFromAuthHeader } from '@/lib/mobileAuthUserId';
 
 function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const rawToken = authHeader.slice('Bearer '.length).trim();
-  const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken;
-  if (!token) return null;
-
-  const verified = verifyMobileToken(token) as any;
-  const verifiedId = Number(verified?.id ?? verified?.userId ?? verified?.sub);
-  if (Number.isFinite(verifiedId) && verifiedId > 0) {
-    return verifiedId;
-  }
-
-  // Fallback dla tokenów podpisanych innym sekretem (np. część flow passkey).
-  const decoded = jwt.decode(token) as any;
-  const decodedId = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
-  if (Number.isFinite(decodedId) && decodedId > 0) {
-    return decodedId;
-  }
-
-  return null;
+  return parseMobileUserIdFromAuthHeader(authHeader);
 }
 
 /** Szybki test z przeglądarki / curl GET — potwierdza TLS i routing bez body tokena Expo. */
