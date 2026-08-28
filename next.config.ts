@@ -29,7 +29,10 @@ const nextConfig: NextConfig = {
       { source: "/press", destination: "/dla-prasy", permanent: true },
       { source: "/press/", destination: "/dla-prasy", permanent: true },
       { source: "/plan", destination: "/kampania", permanent: false },
-      { source: "/plan/", destination: "/kampania", permanent: false },
+      { source: "/register", destination: "/rejestracja", permanent: true },
+      { source: "/sprzedaj-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
+      { source: "/wystaw-nieruchomosc-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
+      { source: "/start", destination: "/wystaw-za-darmo", permanent: false },
     ];
   },
   async rewrites() {

@@ -88,7 +88,7 @@ export default function AppointmentManager({ appointment, onClose }: any) {
   const neonRed = "bg-red-500/5 hover:bg-red-500/15 text-red-500 border border-red-500/20 hover:border-red-500/60 shadow-[0_0_10px_rgba(239,68,68,0.05)] hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]";
 
   const modalContent = (
-    <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
+    <div className="fixed inset-0 eos-z-modal flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="eos-modal-backdrop absolute inset-0" />
       
       {/* Usunięto sztywne h-[650px]. Dodano h-auto i elastyczne marginesy dla płynnego dopasowania */}

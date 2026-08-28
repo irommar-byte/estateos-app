@@ -160,7 +160,7 @@ export default function AgencyMemberDetailPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex justify-end bg-black/50 p-0 sm:p-4">
+    <div className="fixed inset-0 eos-z-drawer flex justify-end bg-black/50 p-0 sm:p-4">
       <div className="flex h-full w-full max-w-xl flex-col border-l border-[var(--eos-border)] bg-[var(--eos-bg)] shadow-2xl sm:rounded-l-3xl">
         <div className="flex items-start justify-between gap-4 border-b border-[var(--eos-border)] p-5">
           <div className="flex items-center gap-4">

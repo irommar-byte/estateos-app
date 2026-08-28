@@ -25,7 +25,7 @@ export default function CarPublishSuccessModal({ carId, open, onClose }: CarPubl
       {open ? (
         <motion.div
           key="car-publish-success"
-          className="fixed inset-0 z-[999999] flex items-center justify-center overflow-hidden p-4"
+          className="fixed inset-0 eos-z-modal flex items-center justify-center overflow-hidden p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}

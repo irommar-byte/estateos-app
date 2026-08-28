@@ -173,7 +173,7 @@ export default function IntelligenceEnableSheet() {
   return createPortal(
     <AnimatePresence>
       {visible ? (
-        <div className="fixed inset-0 z-[10050] flex items-end justify-center p-3 sm:items-center sm:p-6">
+        <div className="fixed inset-0 eos-z-modal flex items-end justify-center p-3 sm:items-center sm:p-6">
           <motion.button
             type="button"
             aria-label={dict.intelligence.sheetDismissA11y}

@@ -1508,7 +1508,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       )}
 
       {confirmAction ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 eos-z-modal flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-2xl">
             <h3 className="text-lg font-black text-[var(--eos-text)]">
               {confirmAction.status === 'SUSPENDED' ? t.confirmSuspendTitle : t.confirmRemoveTitle}

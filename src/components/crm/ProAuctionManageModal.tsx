@@ -221,7 +221,7 @@ export default function ProAuctionManageModal({
   const modal = (
     <AnimatePresence>
       {isOpen ? (
-        <div className="fixed inset-0 z-[999998] flex items-start justify-center overflow-y-auto p-4 pb-10 pt-10 sm:pt-16">
+        <div className="fixed inset-0 eos-z-modal flex items-start justify-center overflow-y-auto p-4 pb-10 pt-10 sm:pt-16">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

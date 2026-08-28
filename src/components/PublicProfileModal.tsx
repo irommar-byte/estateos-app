@@ -116,7 +116,7 @@ export default function PublicProfileModal({
   const agencyName = isAgencyUser(data?.user) ? resolveAgencyDisplayName(data?.user) : null;
 
   const modalContent = (
-    <div className="theme-aware-dashboard fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
+    <div className="theme-aware-dashboard fixed inset-0 eos-z-modal flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

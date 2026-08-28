@@ -198,7 +198,7 @@ export default function NotificationCenter() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.96 }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="theme-aware-dashboard fixed left-1/2 top-[calc(env(safe-area-inset-top)+4.75rem)] z-[100050] w-[min(430px,calc(100vw-1.25rem))] -translate-x-1/2 overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)] shadow-[var(--eos-shadow-strong)] sm:left-auto sm:right-4 sm:translate-x-0 sm:w-[400px]"
+              className="theme-aware-dashboard eos-modal-surface fixed inset-x-3 bottom-[calc(var(--eos-dock-offset,5.5rem)+env(safe-area-inset-bottom,0px))] eos-z-dropdown max-h-[min(70dvh,440px)] w-auto overflow-hidden rounded-t-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)] shadow-[var(--eos-shadow-strong)] sm:inset-x-auto sm:bottom-auto sm:left-auto sm:right-4 sm:top-[calc(env(safe-area-inset-top)+4.75rem)] sm:max-h-[min(440px,calc(100svh-10rem))] sm:w-[400px] sm:rounded-[2rem]"
             >
               <div className="flex items-center justify-between border-b border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-4">
                 <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-text)]">

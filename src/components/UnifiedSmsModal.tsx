@@ -48,7 +48,7 @@ export default function UnifiedSmsModal({ show, phoneNumber, onClose, onVerifySu
   const modalContent = (
     <AnimatePresence>
       {show && (
-        <motion.div initial={{ opacity: 0, backdropFilter: "blur(0px)" }} animate={{ opacity: 1, backdropFilter: "blur(20px)" }} exit={{ opacity: 0, backdropFilter: "blur(0px)" }} className="fixed inset-0 z-[999999] bg-black/60 flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
+        <motion.div initial={{ opacity: 0, backdropFilter: "blur(0px)" }} animate={{ opacity: 1, backdropFilter: "blur(20px)" }} exit={{ opacity: 0, backdropFilter: "blur(0px)" }} className="fixed inset-0 eos-z-modal bg-black/60 flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
           <motion.div initial={{ scale: 0.9, y: 40, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.95, y: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 200, damping: 20 }} className="bg-[#0a0a0a]/80 backdrop-blur-3xl border border-white/10 p-10 md:p-14 rounded-[3rem] max-w-lg w-full text-center shadow-[0_40px_100px_rgba(0,0,0,0.8)] relative overflow-hidden flex flex-col items-center">
             
             {/* Luksusowe poświaty w tle szklanego panelu */}

@@ -147,7 +147,7 @@ export default function CrmClientLiveChat({
   const modal =
     open && typeof document !== "undefined"
       ? createPortal(
-          <div className="fixed inset-0 z-[100100] flex items-end justify-center bg-black/45 p-3 backdrop-blur-[2px] sm:items-center">
+          <div className="fixed inset-0 eos-z-modal-nested flex items-end justify-center bg-black/45 p-3 backdrop-blur-[2px] sm:items-center">
             <section className="flex max-h-[min(760px,90svh)] w-full max-w-xl flex-col overflow-hidden rounded-[1.75rem] border border-emerald-500/25 bg-[var(--eos-card)] shadow-[0_30px_100px_rgba(0,0,0,0.38)]">
               <header className="flex items-center justify-between border-b border-[var(--eos-border)] bg-gradient-to-r from-emerald-500/12 to-transparent px-5 py-4">
                 <div className="min-w-0">

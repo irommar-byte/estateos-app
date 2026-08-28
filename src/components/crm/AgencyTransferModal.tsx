@@ -234,7 +234,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-start justify-center overflow-y-auto p-4 pt-16">
+    <div className="fixed inset-0 eos-z-modal-nested flex items-start justify-center overflow-y-auto p-4 pt-16">
       <div className="eos-modal-backdrop absolute inset-0" onClick={onClose} />
       <div className="eos-themed-modal relative flex w-full max-w-xl flex-col rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)] sm:max-h-[90vh] sm:p-8">
         <button

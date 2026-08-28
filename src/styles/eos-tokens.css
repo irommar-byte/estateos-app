@@ -1,0 +1,129 @@
+/**
+ * EstateOS design tokens — z-index scale, breakpoints, layout offsets.
+ * Import early in globals.css (before component styles).
+ */
+
+:root {
+  /* Breakpoints (reference for custom @media; Tailwind uses its own defaults) */
+  --eos-bp-sm: 640px;
+  --eos-bp-md: 768px;
+  --eos-bp-lg: 1024px;
+  --eos-bp-xl: 1280px;
+  --eos-bp-2xl: 1536px;
+
+  /* CRM desk breakpoints */
+  --eos-desk-rail-hide: 760px;
+  --eos-desk-inspector-hide: 1100px;
+
+  /* Layout */
+  --eos-dock-offset: 5.5rem;
+
+  /* Z-index scale — single source of truth */
+  --eos-z-nav: 50;
+  --eos-z-nav-backdrop: 55;
+  --eos-z-drawer: 60;
+  --eos-z-dock: 70;
+  --eos-z-sticky: 80;
+  --eos-z-dropdown: 100;
+  --eos-z-modal: 1000;
+  --eos-z-modal-nested: 1010;
+  --eos-z-toast: 1100;
+  --eos-z-spotlight: 1200;
+  --eos-z-cinematic: 1300;
+  --eos-z-critical: 1400;
+  --eos-z-share-banner: 1500;
+}
+
+/* Z-index utility classes (use instead of eos-z-modal etc.) */
+.eos-z-nav { z-index: var(--eos-z-nav); }
+.eos-z-nav-backdrop { z-index: var(--eos-z-nav-backdrop); }
+.eos-z-drawer { z-index: var(--eos-z-drawer); }
+.eos-z-dock { z-index: var(--eos-z-dock); }
+.eos-z-sticky { z-index: var(--eos-z-sticky); }
+.eos-z-dropdown { z-index: var(--eos-z-dropdown); }
+.eos-z-modal { z-index: var(--eos-z-modal); }
+.eos-z-modal-nested { z-index: var(--eos-z-modal-nested); }
+.eos-z-toast { z-index: var(--eos-z-toast); }
+.eos-z-spotlight { z-index: var(--eos-z-spotlight); }
+.eos-z-cinematic { z-index: var(--eos-z-cinematic); }
+.eos-z-critical { z-index: var(--eos-z-critical); }
+.eos-z-share-banner { z-index: var(--eos-z-share-banner); }
+
+:root {
+  --eos-bg: #050505;
+  --eos-bg-elevated: #0a0a0a;
+  --eos-surface: rgba(10, 10, 10, 0.74);
+  --eos-surface-strong: rgba(14, 14, 16, 0.92);
+  --eos-card: rgba(12, 12, 14, 0.92);
+  --eos-text: #ffffff;
+  --eos-muted: rgba(255, 255, 255, 0.72);
+  --eos-subtle: rgba(255, 255, 255, 0.62);
+  --eos-border: rgba(255, 255, 255, 0.11);
+  --eos-border-strong: rgba(255, 255, 255, 0.2);
+  --eos-glass: rgba(8, 8, 10, 0.72);
+  --eos-input: rgba(255, 255, 255, 0.08);
+  --eos-input-text: #ffffff;
+  --eos-contrast: #050505;
+  --eos-accent: #10b981;
+  --eos-accent-soft: rgba(16, 185, 129, 0.12);
+  --eos-shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.34);
+  --eos-shadow-strong: 0 28px 90px rgba(0, 0, 0, 0.72);
+  --eos-nav-height: calc(env(safe-area-inset-top, 0px) + 5rem);
+  --eos-brand-label: "Home";
+}
+
+html[data-ecosystem="car"] {
+  --eos-accent: #0ea5e9;
+  --eos-accent-soft: rgba(14, 165, 233, 0.14);
+  --eos-brand-label: "Car";
+  --eos-bg: #07090c;
+}
+
+html.light[data-ecosystem="car"] {
+  --eos-accent: #0284c7;
+  --eos-accent-soft: rgba(2, 132, 199, 0.14);
+  --eos-bg: #eef2f6;
+}
+
+html.light {
+  --eos-bg: #f0f2f6;
+  --eos-bg-elevated: #ffffff;
+  --eos-surface: rgba(255, 255, 255, 0.88);
+  --eos-surface-strong: #ffffff;
+  --eos-card: #ffffff;
+  --eos-text: #111827;
+  --eos-muted: rgba(17, 24, 39, 0.68);
+  --eos-subtle: rgba(17, 24, 39, 0.48);
+  --eos-border: rgba(15, 23, 42, 0.1);
+  --eos-border-strong: rgba(15, 23, 42, 0.18);
+  --eos-glass: rgba(255, 255, 255, 0.82);
+  --eos-input: rgba(15, 23, 42, 0.045);
+  --eos-input-text: #111827;
+  --eos-contrast: #ffffff;
+  --eos-accent: #059669;
+  --eos-accent-soft: rgba(5, 150, 105, 0.14);
+  --eos-shadow-soft:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px rgba(15, 23, 42, 0.07),
+    0 20px 48px rgba(15, 23, 42, 0.06);
+  --eos-shadow-strong:
+    0 2px 6px rgba(15, 23, 42, 0.05),
+    0 16px 40px rgba(15, 23, 42, 0.1),
+    0 32px 72px rgba(15, 23, 42, 0.08);
+  --eos-shadow-lift:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 10px 28px rgba(15, 23, 42, 0.09);
+}
+
+body {
+  background-color: var(--eos-bg);
+  color: var(--eos-text);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  transition: background-color 0.35s ease, color 0.35s ease;
+}
+
+html {
+  scroll-padding-top: var(--eos-nav-height);
+}
+

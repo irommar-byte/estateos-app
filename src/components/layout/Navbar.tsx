@@ -420,7 +420,7 @@ export default function Navbar() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.28 }}
-              className="fixed inset-0 z-[55] bg-[rgba(20,18,14,0.45)] backdrop-blur-md lg:hidden"
+              className="fixed inset-0 eos-z-nav-backdrop bg-[rgba(20,18,14,0.45)] backdrop-blur-md lg:hidden"
               style={{ top: "var(--eos-nav-height)" }}
               onClick={() => setIsOpen(false)}
             />
@@ -430,7 +430,7 @@ export default function Navbar() {
               animate={{ opacity: 1, y: 0, clipPath: "inset(0 0 0% 0)" }}
               exit={{ opacity: 0, y: -18, clipPath: "inset(0 0 100% 0)" }}
               transition={{ duration: 0.48, ease: [0.16, 1, 0.3, 1] }}
-              className="eos-lux-drawer fixed inset-x-0 z-[60] overflow-y-auto lg:hidden"
+              className="eos-lux-drawer eos-modal-surface fixed inset-x-0 eos-z-drawer overflow-y-auto lg:hidden"
               style={{
                 top: "var(--eos-nav-height)",
                 maxHeight: "calc(100dvh - var(--eos-nav-height))",

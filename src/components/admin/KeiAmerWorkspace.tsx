@@ -275,7 +275,7 @@ function ImportProgressModal(props: {
 
   const modal = (
     <div
-      className="fixed inset-0 z-[999999] flex items-start sm:items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 eos-z-modal flex items-start sm:items-center justify-center p-3 sm:p-6"
       style={{ paddingTop: "calc(var(--eos-nav-height, 5rem) + 0.75rem)" }}
     >
       <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={props.onMinimize} aria-label="Zminimalizuj" />
@@ -1817,7 +1817,7 @@ export default function KeiAmerWorkspace() {
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            className="fixed bottom-0 inset-x-0 z-[70] p-4 md:p-6 pointer-events-none"
+            className="fixed bottom-0 inset-x-0 eos-z-dock p-4 md:p-6 pointer-events-none"
           >
             <div className="max-w-3xl mx-auto pointer-events-auto">
               <motion.button

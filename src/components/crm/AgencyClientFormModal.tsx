@@ -386,7 +386,7 @@ export default function AgencyClientFormModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[99990] flex items-end justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4"
+          className="fixed inset-0 eos-z-modal-nested flex items-end justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4"
         >
           <div
             className="eos-modal-backdrop absolute inset-0"

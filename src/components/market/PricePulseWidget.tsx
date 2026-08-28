@@ -366,7 +366,7 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="eos-modal-backdrop fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 pt-10 pb-10 sm:pt-16"
+            className="eos-modal-backdrop fixed inset-0 eos-z-modal flex items-start justify-center overflow-y-auto p-4 pt-10 pb-10 sm:pt-16"
             onClick={() => setOpen(false)}
           >
             <motion.div

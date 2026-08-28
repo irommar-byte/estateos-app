@@ -120,7 +120,7 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999999] overflow-y-auto overscroll-contain"
+        className="fixed inset-0 eos-z-modal overflow-y-auto overscroll-contain"
         onClick={onClose}
       >
         <div className="eos-modal-backdrop absolute inset-0" />

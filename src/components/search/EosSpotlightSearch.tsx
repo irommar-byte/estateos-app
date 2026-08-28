@@ -250,7 +250,7 @@ export default function EosSpotlightSearch({ floating = false }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100060] bg-[rgba(8,10,16,0.52)] backdrop-blur-xl"
+              className="fixed inset-0 eos-z-spotlight bg-[rgba(8,10,16,0.52)] backdrop-blur-xl"
               onClick={() => setOpen(false)}
             />
             <motion.div
@@ -259,7 +259,7 @@ export default function EosSpotlightSearch({ floating = false }: Props) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.98 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+5.5rem)] z-[100070] w-[min(620px,calc(100vw-1.25rem))] -translate-x-1/2 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_30px_80px_rgba(0,0,0,0.35)]"
+              className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+5.5rem)] eos-z-spotlight w-[min(620px,calc(100vw-1.25rem))] -translate-x-1/2 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_30px_80px_rgba(0,0,0,0.35)]"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-center gap-3 border-b border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-3.5">

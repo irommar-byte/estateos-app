@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import { pushModalStack } from "@/hooks/useModalStack";
 
 type PresentationFlowModalShellProps = {
   open: boolean;
@@ -35,14 +36,13 @@ export default function PresentationFlowModalShell({
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const pop = pushModalStack();
     const onEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onEsc);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      pop();
       window.removeEventListener("keydown", onEsc);
     };
   }, [open, onClose]);
@@ -57,7 +57,7 @@ export default function PresentationFlowModalShell({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.18 }}
-        className="fixed inset-0 z-[999999] flex items-end justify-center sm:items-center sm:p-4"
+        className="fixed inset-0 eos-z-modal flex items-end justify-center sm:items-center sm:p-4"
         role="presentation"
       >
         <button

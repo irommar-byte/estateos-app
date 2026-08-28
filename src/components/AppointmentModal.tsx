@@ -146,7 +146,7 @@ export default function AppointmentModal({
     <>
     <AnimatePresence>
       {isOpen && !authPromptOpen && (
-        <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
+        <div className="fixed inset-0 eos-z-modal flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="eos-modal-backdrop absolute inset-0" />
           <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="eos-modal-surface eos-modal-shell eos-themed-modal relative my-auto flex h-[650px] max-h-[90vh] w-full max-w-md shrink-0 flex-col overflow-hidden rounded-[2.5rem]" onClick={(e) => e.stopPropagation()}>
             <div className="relative z-10 flex shrink-0 items-center justify-between border-b border-[var(--eos-border)] p-6 md:p-8">

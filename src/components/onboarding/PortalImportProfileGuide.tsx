@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 import {
   getPortalImportProfileGuideDict,
   type WelcomeGuideMode,
@@ -179,7 +180,7 @@ export default function PortalImportProfileGuide({
 
             {step === 'ecosystem' ? (
               <div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#141416] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--eos-contrast)] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-text)] dark:bg-white dark:text-[var(--eos-contrast)]">
                   <BadgeCheck size={12} /> {dict.ecosystemBadge}
                 </span>
                 <h2 className="mt-4 text-2xl font-black tracking-tight text-[#141416]">{dict.ecosystemTitle}</h2>
@@ -332,7 +333,7 @@ export default function PortalImportProfileGuide({
               <button
                 type="button"
                 onClick={goNext}
-                className="eos-dark-cta flex w-full items-center justify-center gap-2 rounded-2xl bg-[#141416] py-4 text-sm font-black uppercase tracking-widest text-white"
+                className={eosBtn('primary', { block: true, className: '!rounded-2xl !py-4 !text-sm !tracking-widest' })}
               >
                 {stepIndex >= total - 1 ? (
                   <>

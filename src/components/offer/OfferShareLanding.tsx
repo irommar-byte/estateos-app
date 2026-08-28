@@ -264,7 +264,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
       ) : null}
 
       {resuming ? (
-        <div className="pointer-events-none fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="pointer-events-none fixed inset-0 eos-z-modal-nested flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <p className="rounded-2xl bg-white px-6 py-4 text-sm font-bold text-[#141416] shadow-xl dark:bg-[#101014] dark:text-white">
             Kończymy rezerwację terminu…
           </p>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Mail, Send, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { useState, FormEvent } from "react";
+import { Send, CheckCircle2, AlertCircle, Mail } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import EosModal from "@/components/ui/EosModal";
 
 type Props = {
   isOpen: boolean;
@@ -31,19 +31,6 @@ export default function ContactModal({ isOpen, onClose }: Props) {
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [mailtoFallback, setMailtoFallback] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    document.body.style.overflow = "hidden";
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", onEsc);
-    };
-  }, [isOpen, onClose]);
 
   const topicLabel = (key: (typeof TOPICS)[number]) => {
     const map: Record<(typeof TOPICS)[number], string> = {
@@ -89,149 +76,120 @@ export default function ContactModal({ isOpen, onClose }: Props) {
     }
   }
 
-  if (!isOpen) return null;
-
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 sm:p-6"
-        onClick={onClose}
-      >
-        <div className="eos-modal-backdrop absolute inset-0" />
-        <motion.div
-          initial={{ scale: 0.96, y: 16 }}
-          animate={{ scale: 1, y: 0 }}
-          exit={{ scale: 0.96, y: 16 }}
-          onClick={(e) => e.stopPropagation()}
-          className="eos-themed-modal relative my-auto w-full max-w-lg overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)]"
+    <EosModal
+      open={isOpen}
+      onClose={onClose}
+      variant="centered"
+      maxWidth="max-w-lg"
+      title={c.title}
+      subtitle={c.subtitle}
+      icon={<Mail size={22} />}
+      hideBodyPadding
+    >
+      <div className="px-6 pb-6 sm:px-8 sm:pb-8">
+        <a
+          href={`mailto:${c.emailTo}`}
+          className="mb-6 inline-block text-xs font-semibold uppercase tracking-widest text-emerald-600 transition-colors hover:text-emerald-500"
         >
-          <div className="relative border-b border-[var(--eos-border)] p-6 sm:p-8">
-            <button
-              type="button"
-              onClick={onClose}
-              className="absolute right-4 top-4 rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
-              aria-label={c.close}
-            >
-              <X size={20} />
+          {c.emailTo}
+        </a>
+
+        {status === "success" ? (
+          <div className="flex flex-col items-center gap-4 py-6 text-center">
+            <CheckCircle2 className="text-emerald-500" size={48} />
+            <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{c.success}</p>
+            <button type="button" onClick={onClose} className={eosBtn("secondary")}>
+              {c.close}
             </button>
-            <div className="flex items-start gap-4 pr-10">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600">
-                <Mail size={22} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight text-[var(--eos-text)]">{c.title}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{c.subtitle}</p>
-                <a
-                  href={`mailto:${c.emailTo}`}
-                  className="mt-3 inline-block text-xs font-semibold uppercase tracking-widest text-emerald-600 transition-colors hover:text-emerald-500"
-                >
-                  {c.emailTo}
-                </a>
-              </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="hidden" aria-hidden>
+              <input name="website" tabIndex={-1} autoComplete="off" />
             </div>
-          </div>
 
-          <div className="relative p-6 sm:p-8">
-            {status === "success" ? (
-              <div className="flex flex-col items-center gap-4 py-6 text-center">
-                <CheckCircle2 className="text-emerald-500" size={48} />
-                <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{c.success}</p>
-                <button type="button" onClick={onClose} className={eosBtn("secondary")}>
-                  {c.close}
-                </button>
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
+                {c.name}
+              </span>
+              <input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={c.namePlaceholder}
+                className={fieldClass}
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
+                {c.email}
+              </span>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={c.emailPlaceholder}
+                className={fieldClass}
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
+                {c.topic}
+              </span>
+              <select
+                value={topic}
+                onChange={(e) => setTopic(e.target.value as (typeof TOPICS)[number])}
+                className={fieldClass}
+              >
+                {TOPICS.map((t) => (
+                  <option key={t} value={t}>
+                    {topicLabel(t)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
+                {c.message}
+              </span>
+              <textarea
+                required
+                rows={5}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder={c.messagePlaceholder}
+                className={`${fieldClass} resize-y`}
+              />
+            </label>
+
+            {status === "error" && (
+              <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                <span>{c.error}</span>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="hidden" aria-hidden>
-                  <input name="website" tabIndex={-1} autoComplete="off" />
-                </div>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
-                    {c.name}
-                  </span>
-                  <input
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={c.namePlaceholder}
-                    className={fieldClass}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
-                    {c.email}
-                  </span>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder={c.emailPlaceholder}
-                    className={fieldClass}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
-                    {c.topic}
-                  </span>
-                  <select
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value as (typeof TOPICS)[number])}
-                    className={fieldClass}
-                  >
-                    {TOPICS.map((t) => (
-                      <option key={t} value={t}>
-                        {topicLabel(t)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
-                    {c.message}
-                  </span>
-                  <textarea
-                    required
-                    rows={5}
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    placeholder={c.messagePlaceholder}
-                    className={`${fieldClass} resize-y`}
-                  />
-                </label>
-
-                {status === "error" && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
-                    <AlertCircle size={18} className="mt-0.5 shrink-0" />
-                    <span>{c.error}</span>
-                  </div>
-                )}
-
-                {mailtoFallback && (
-                  <a
-                    href={mailtoFallback}
-                    className="block text-center text-xs font-semibold uppercase tracking-widest text-emerald-600 hover:text-emerald-500"
-                  >
-                    {c.fallbackMailto}
-                  </a>
-                )}
-
-                <button type="submit" disabled={status === "sending"} className={eosBtn("home", { block: true, size: "lg" })}>
-                  <Send size={16} />
-                  {status === "sending" ? c.sending : c.send}
-                </button>
-              </form>
             )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+
+            {mailtoFallback && (
+              <a
+                href={mailtoFallback}
+                className="block text-center text-xs font-semibold uppercase tracking-widest text-emerald-600 hover:text-emerald-500"
+              >
+                {c.fallbackMailto}
+              </a>
+            )}
+
+            <button type="submit" disabled={status === "sending"} className={eosBtn("home", { block: true, size: "lg" })}>
+              <Send size={16} />
+              {status === "sending" ? c.sending : c.send}
+            </button>
+          </form>
+        )}
+      </div>
+    </EosModal>
   );
 }

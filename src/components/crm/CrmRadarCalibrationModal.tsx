@@ -177,7 +177,7 @@ export default function CrmRadarCalibrationModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="eos-modal-backdrop fixed inset-0 z-[99999] overflow-y-auto overscroll-y-contain"
+          className="eos-modal-backdrop fixed inset-0 eos-z-modal-nested overflow-y-auto overscroll-y-contain"
           role="dialog"
           aria-modal="true"
           aria-labelledby="crm-radar-calibration-title"

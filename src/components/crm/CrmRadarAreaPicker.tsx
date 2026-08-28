@@ -208,7 +208,7 @@ export default function CrmRadarAreaPicker({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[10000000] flex flex-col bg-black"
+          className="fixed inset-0 eos-z-critical flex flex-col bg-black"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >

@@ -79,7 +79,7 @@ export default function OfferActions({ offerId, currentUserId }: OfferActionsPro
       {/* MODAL (WIZYTA LUB OFERTA) */}
       <AnimatePresence>
         {activeModal !== 'none' && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          <div className="fixed inset-0 eos-z-modal-nested flex items-center justify-center p-4">
             <div className="eos-modal-backdrop absolute inset-0" onClick={() => setActiveModal('none')} />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}

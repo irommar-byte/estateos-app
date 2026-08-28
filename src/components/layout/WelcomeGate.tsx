@@ -75,7 +75,7 @@ export default function WelcomeGate() {
   if (!showGate) return null;
 
   return (
-    <div className="fixed inset-0 z-[999999] overflow-y-auto bg-[var(--eos-bg)]/95 backdrop-blur-3xl">
+    <div className="fixed inset-0 eos-z-modal overflow-y-auto bg-[var(--eos-bg)]/95 backdrop-blur-3xl">
       <div className="relative flex min-h-screen flex-col items-center justify-center p-4 py-12 md:p-6">
         {canClose && (
           <button

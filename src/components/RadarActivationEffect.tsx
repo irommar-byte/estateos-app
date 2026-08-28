@@ -30,7 +30,7 @@ export default function RadarActivationEffect({
     <motion.div 
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }} 
-      className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-2xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6 text-center overflow-hidden"
+      className="fixed inset-0 eos-z-modal bg-black/95 backdrop-blur-2xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6 text-center overflow-hidden"
     >
       <AnimatePresence mode="wait">
         

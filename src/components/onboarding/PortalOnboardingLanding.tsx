@@ -28,6 +28,7 @@ import { normalizePhoneE164 } from '@/lib/phoneE164';
 import type { PortalListingPreview } from '@/lib/portalOnboarding';
 import type { ImportDraftIssue } from '@/lib/importDraftValidate';
 import { isNonCityLabel } from '@/lib/location/locationCatalog';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
@@ -716,7 +717,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
               type="button"
               disabled={!formReady || submitting}
               onClick={() => void handleSubmit()}
-              className="eos-dark-cta mt-6 flex w-full items-center justify-center gap-2 rounded-[1.25rem] bg-[#141416] py-5 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_16px_40px_rgba(20,20,22,0.2)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-45"
+              className={eosBtn('primary', { block: true, className: 'mt-6 !rounded-[1.25rem] !py-5 !text-sm !tracking-[0.16em]' })}
             >
               {submitting ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
               {dict.submitCta}

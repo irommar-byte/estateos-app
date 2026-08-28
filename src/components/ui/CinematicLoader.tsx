@@ -27,7 +27,7 @@ export default function CinematicLoader() {
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, scale: 1.04, filter: "blur(10px)" }}
           transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#050505]"
+          className="fixed inset-0 eos-z-modal flex flex-col items-center justify-center bg-[#050505]"
         >
           <motion.div
             initial={{ opacity: 0, y: 18 }}

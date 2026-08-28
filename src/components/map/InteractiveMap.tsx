@@ -1064,7 +1064,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999999] flex items-center justify-center overflow-hidden bg-black/80 p-4 backdrop-blur-xl sm:p-6"
+            className="fixed inset-0 eos-z-modal flex items-center justify-center overflow-hidden bg-black/80 p-4 backdrop-blur-xl sm:p-6"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}

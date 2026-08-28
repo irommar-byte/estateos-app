@@ -41,7 +41,7 @@ export default function PremiumMatchmaking({ offerId, onComplete }: { offerId: s
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-2xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 eos-z-modal bg-black/95 backdrop-blur-2xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6">
       <div className="max-w-xl w-full flex flex-col items-center text-center">
         {scanning ? (
           <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="flex flex-col items-center">

@@ -851,7 +851,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <AnimatePresence>
         {bidActionModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] flex items-center justify-center overflow-y-auto p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 eos-z-modal-nested flex items-center justify-center overflow-y-auto p-4">
             <div className="eos-modal-backdrop absolute inset-0" />
             <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className="eos-themed-modal relative w-full max-w-md rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)]">
               <h4 className="mb-2 text-lg font-black leading-tight text-[var(--eos-text)]">Decyzja negocjacyjna — cena</h4>
@@ -913,7 +913,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <AnimatePresence>
         {appointmentActionModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] flex items-center justify-center overflow-y-auto p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 eos-z-modal-nested flex items-center justify-center overflow-y-auto p-4">
             <div className="eos-modal-backdrop absolute inset-0" />
             <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className={`eos-themed-modal relative w-full rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)] ${appointmentActionModal.action === 'RESCHEDULE' ? 'max-w-lg' : 'max-w-md'}`}>
               <h4 className="mb-2 text-lg font-black leading-tight text-[var(--eos-text)]">Decyzja negocjacyjna — termin</h4>

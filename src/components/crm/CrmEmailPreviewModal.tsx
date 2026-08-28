@@ -54,7 +54,7 @@ export default function CrmEmailPreviewModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100000] flex items-end justify-center bg-black/70 p-4 backdrop-blur-md sm:items-center"
+          className="fixed inset-0 eos-z-share-banner flex items-end justify-center bg-black/70 p-4 backdrop-blur-md sm:items-center"
           onClick={onClose}
         >
           <motion.div

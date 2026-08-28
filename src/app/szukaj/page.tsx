@@ -201,7 +201,7 @@ export default function SzukajNieruchomosci() {
         )}
         
         {isVerification && !isLoggedIn && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[999999] bg-[#050505]/95 backdrop-blur-xl flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6 text-center">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 eos-z-modal bg-[#050505]/95 backdrop-blur-xl flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6 text-center">
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#0a0a0a] border border-white/10 p-8 md:p-10 rounded-[3rem] max-w-lg w-full shadow-2xl relative overflow-hidden">
               <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">Weryfikacja <span className="text-emerald-500">SMS</span></h2>
               <p className="text-sm text-white/50 mb-8">Wysłaliśmy 6-cyfrowy kod na podany numer <br/><b className="text-white tracking-widest text-lg mt-1 block">+48 {formData.phone}</b></p>

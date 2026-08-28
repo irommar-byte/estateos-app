@@ -107,7 +107,7 @@ export default function FloatingPreferencesDock() {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] right-3 z-40 max-w-[min(100vw-2rem,22rem)] sm:bottom-4 sm:right-4"
+      className="pointer-events-none fixed bottom-[calc(var(--eos-dock-offset,5.5rem)+env(safe-area-inset-bottom,0px))] right-3 eos-z-dock max-w-[min(100vw-2rem,22rem)] sm:right-4"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >

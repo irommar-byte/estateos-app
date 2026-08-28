@@ -91,7 +91,7 @@ export default function OfferShareMessageModal({
     <>
       <AnimatePresence>
         {isOpen && !authPromptOpen ? (
-          <div className="fixed inset-0 z-[999998] flex items-end justify-center p-4 sm:items-center">
+          <div className="fixed inset-0 eos-z-modal flex items-end justify-center p-4 sm:items-center">
             <motion.button
               type="button"
               aria-label="Zamknij"

@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, Loader2, X } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import PublicationWalletPanel from "@/components/profile/PublicationWalletPanel";
 import type { PublicationCouponOption } from "@/components/publication/PublicationChoiceModal";
 import {
@@ -14,6 +12,7 @@ import {
 } from "@/lib/publicationSelection";
 import { PUBLICATION_RENEWAL_PRICE_LABEL } from "@/lib/publicationConstants";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import EosModal from "@/components/ui/EosModal";
 
 type Props = {
   offerId: string | null;
@@ -32,7 +31,6 @@ export default function OfferRenewalModal({
   onRenewed,
   locale = "pl",
 }: Props) {
-  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,8 +41,6 @@ export default function OfferRenewalModal({
     hasPlusCredit: boolean;
     plusExpiresAt: string | null;
   } | null>(null);
-
-  useEffect(() => setMounted(true), []);
 
   const loadWallet = useCallback(async () => {
     setLoading(true);
@@ -97,19 +93,6 @@ export default function OfferRenewalModal({
       setSubmitting(false);
     }
   }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    document.body.style.overflow = "hidden";
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !submitting) onClose();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", onEsc);
-    };
-  }, [isOpen, onClose, submitting]);
 
   const handleConfirm = async () => {
     if (!offerId || !selection || submitting) return;
@@ -179,7 +162,7 @@ export default function OfferRenewalModal({
     }
   };
 
-  if (!mounted || !isOpen || !offerId) return null;
+  if (!offerId) return null;
 
   const confirmLabel =
     selection && publicationSelectionLabel(selection, locale) === "Opłać odnowienie"
@@ -188,105 +171,86 @@ export default function OfferRenewalModal({
         ? publicationSelectionLabel(selection, locale)
         : "Wybierz metodę";
 
-  return createPortal(
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999999] overflow-y-auto overscroll-contain"
-        onClick={() => !submitting && onClose()}
-      >
-        <div className="eos-modal-backdrop absolute inset-0" />
-        <div
-          className="relative flex min-h-full items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
-          onClick={() => !submitting && onClose()}
-        >
-          <motion.div
-            initial={{ y: 20, scale: 0.98, opacity: 0 }}
-            animate={{ y: 0, scale: 1, opacity: 1 }}
-            exit={{ y: 20, scale: 0.98, opacity: 0 }}
-            onClick={(e) => e.stopPropagation()}
-            className="eos-themed-modal flex max-h-[min(92dvh,820px)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)]"
+  const handleClose = () => {
+    if (!submitting) onClose();
+  };
+
+  return (
+    <EosModal
+      open={isOpen}
+      onClose={handleClose}
+      variant="centered"
+      maxWidth="max-w-xl"
+      hideHeader
+      hideBodyPadding
+      closeOnBackdrop={!submitting}
+      footer={
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={submitting}
+            className={eosBtn("secondary", { className: "flex-1" })}
           >
-            <div className="relative shrink-0 overflow-hidden border-b border-[var(--eos-border)] p-6">
-              <div className="relative flex items-start justify-between gap-4">
-                <div className="min-w-0 pr-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-sky-600">
-                    Odnowienie oferty
-                  </p>
-                  <h3 className="mt-1 text-xl font-black text-[var(--eos-text)]">Wróć na rynek na 30 dni</h3>
-                  {offerTitle ? (
-                    <p className="mt-2 truncate text-sm text-[var(--eos-muted)]">{offerTitle}</p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  disabled={submitting}
-                  className="shrink-0 rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)] disabled:opacity-40"
-                  aria-label="Zamknij"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              {loading ? (
-                <div className="flex flex-col items-center justify-center py-16 text-[var(--eos-muted)]">
-                  <Loader2 className="mb-3 animate-spin text-emerald-500" size={28} />
-                  <p className="text-xs font-bold uppercase tracking-widest">Ładowanie portfela…</p>
-                </div>
-              ) : wallet ? (
-                <PublicationWalletPanel
-                  selectable
-                  variant="renew"
-                  selection={selection ?? undefined}
-                  onSelectionChange={setSelection}
-                  walletOverride={{
-                    coupons: wallet.coupons,
-                    plusCredits: wallet.plusCredits,
-                    hasPlusCredit: wallet.hasPlusCredit,
-                    plusExpiresAt: wallet.plusExpiresAt,
-                  }}
-                />
-              ) : null}
-
-              {error ? (
-                <p className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-center text-xs text-red-700">
-                  {error}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex shrink-0 gap-3 border-t border-[var(--eos-border)] p-6">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={submitting}
-                className={eosBtn("secondary", { className: "flex-1" })}
-              >
-                Anuluj
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleConfirm()}
-                disabled={submitting || loading || !selection}
-                className={eosBtn("home", { className: "flex-[1.4]" })}
-              >
-                {submitting ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <CheckCircle2 size={16} />
-                )}
-                {submitting ? "Przetwarzam…" : confirmLabel}
-              </button>
-            </div>
-          </motion.div>
+            Anuluj
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleConfirm()}
+            disabled={submitting || loading || !selection}
+            className={eosBtn("home", { className: "flex-[1.4]" })}
+          >
+            {submitting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={16} />
+            )}
+            {submitting ? "Przetwarzam…" : confirmLabel}
+          </button>
         </div>
-      </motion.div>
-    </AnimatePresence>,
-    document.body,
+      }
+    >
+      <div className="relative shrink-0 overflow-hidden border-b border-[var(--eos-border)] p-6">
+        <div className="relative flex items-start justify-between gap-4">
+          <div className="min-w-0 pr-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-sky-600">
+              Odnowienie oferty
+            </p>
+            <h3 className="mt-1 text-xl font-black text-[var(--eos-text)]">Wróć na rynek na 30 dni</h3>
+            {offerTitle ? (
+              <p className="mt-2 truncate text-sm text-[var(--eos-muted)]">{offerTitle}</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-[var(--eos-muted)]">
+            <Loader2 className="mb-3 animate-spin text-emerald-500" size={28} />
+            <p className="text-xs font-bold uppercase tracking-widest">Ładowanie portfela…</p>
+          </div>
+        ) : wallet ? (
+          <PublicationWalletPanel
+            selectable
+            variant="renew"
+            selection={selection ?? undefined}
+            onSelectionChange={setSelection}
+            walletOverride={{
+              coupons: wallet.coupons,
+              plusCredits: wallet.plusCredits,
+              hasPlusCredit: wallet.hasPlusCredit,
+              plusExpiresAt: wallet.plusExpiresAt,
+            }}
+          />
+        ) : null}
+
+        {error ? (
+          <p className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-center text-xs text-red-700">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </EosModal>
   );
 }

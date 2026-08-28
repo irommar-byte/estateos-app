@@ -45,7 +45,7 @@ export default function WebNotificationPrompt() {
     <div
       role="region"
       aria-label={dict.webNotifications.promptTitle}
-      className="fixed bottom-6 left-1/2 z-[9998] w-[min(420px,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] p-4 shadow-[var(--eos-shadow-strong)] sm:left-auto sm:right-6 sm:translate-x-0"
+      className="fixed bottom-6 left-1/2 eos-z-toast w-[min(420px,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] p-4 shadow-[var(--eos-shadow-strong)] sm:left-auto sm:right-6 sm:translate-x-0"
     >
       <div className="flex gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--eos-accent-soft)] text-[var(--eos-accent)]">

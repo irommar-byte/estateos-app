@@ -63,7 +63,7 @@ export default function OfferShareAppBanner({ offerId, canonicalUrl, offerTitle 
   return (
     <>
       <div
-        className="fixed inset-x-0 top-0 z-[100000] border-b border-black/10 bg-[#f2f2f4]/95 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] backdrop-blur-xl dark:border-white/10 dark:bg-[#1c1c1e]/95"
+        className="fixed inset-x-0 top-0 eos-z-share-banner border-b border-black/10 bg-[#f2f2f4]/95 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] backdrop-blur-xl dark:border-white/10 dark:bg-[#1c1c1e]/95"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         <div className="mx-auto flex max-w-xl items-center gap-3 px-3 py-2.5">
@@ -97,7 +97,7 @@ export default function OfferShareAppBanner({ offerId, canonicalUrl, offerTitle 
       <div aria-hidden className="h-[calc(env(safe-area-inset-top)+3.5rem)]" />
       {toast ? (
         <div
-          className="pointer-events-none fixed inset-x-3 z-[100001] mx-auto max-w-md rounded-2xl bg-[#141416]/92 px-4 py-3 text-center text-xs font-medium text-white shadow-xl backdrop-blur-md dark:bg-black/90"
+          className="pointer-events-none fixed inset-x-3 eos-z-share-banner mx-auto max-w-md rounded-2xl bg-[#141416]/92 px-4 py-3 text-center text-xs font-medium text-white shadow-xl backdrop-blur-md dark:bg-black/90"
           style={{ top: 'calc(env(safe-area-inset-top) + 4.5rem)' }}
         >
           {toast}

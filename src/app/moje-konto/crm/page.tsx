@@ -94,7 +94,7 @@ const WowOverlay = ({
   const bgGlow = isGold ? "bg-yellow-500" : isBlue ? "bg-blue-500" : "bg-emerald-500";
   
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-[var(--eos-bg)]/95 backdrop-blur-3xl overflow-hidden">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 eos-z-modal-nested flex flex-col items-center justify-center bg-[var(--eos-bg)]/95 backdrop-blur-3xl overflow-hidden">
       <motion.div initial={{ scale: 0.8, y: 50 }} animate={{ scale: 1, y: 0 }} transition={{ type: "spring", bounce: 0.6, duration: 1 }} className="text-center relative">
          {step >= 2 && (
             <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: [1, 4, 0], opacity: [1, 0] }} transition={{ duration: 1.5, ease: "easeOut" }} className={`absolute inset-0 rounded-full blur-[100px] pointer-events-none z-0 ${bgGlow}`} />
@@ -186,7 +186,7 @@ const WowPlusOverlay = ({ wowPlus }: { wowPlus: CrmExtendedDictionary["wowPlus"]
   }, [stage, particles.length]);
 
   return (
-    <div className={`fixed inset-0 z-[999999] flex items-center justify-center bg-[#020202] overflow-hidden select-none pointer-events-none transition-opacity duration-1000 ${stage >= 5 ? "opacity-0" : "opacity-100"}`} style={{ perspective: "1200px" }}>
+    <div className={`fixed inset-0 eos-z-modal flex items-center justify-center bg-[#020202] overflow-hidden select-none pointer-events-none transition-opacity duration-1000 ${stage >= 5 ? "opacity-0" : "opacity-100"}`} style={{ perspective: "1200px" }}>
       <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.15)_0%,transparent_70%)] transition-opacity duration-3000 ${stage >= 3 ? 'opacity-100' : 'opacity-0'}`} />
       
       <div className={`absolute transition-all duration-[3000ms] ease-in-out transform-gpu`} 
@@ -892,7 +892,7 @@ export default function CRMDashboard() {
 
   if (isBooting) {
     return (
-        <div className="fixed inset-0 z-[999999] bg-[var(--eos-bg)] flex flex-col items-center justify-center font-sans overflow-hidden">
+        <div className="fixed inset-0 eos-z-modal bg-[var(--eos-bg)] flex flex-col items-center justify-center font-sans overflow-hidden">
            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-br from-[#D4AF37]/5 to-emerald-500/5 rounded-full blur-[100px] opacity-50 animate-pulse"></div>
            
            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 1, ease: "easeOut" }} className="relative z-10 flex flex-col items-center">
@@ -1501,7 +1501,7 @@ export default function CRMDashboard() {
 
             <AnimatePresence>
               {isRadarUpdating && (
-                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[9999999] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4">
+                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 eos-z-cinematic bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4">
                     <motion.div animate={{ scale: [1, 1.3, 1], rotate: [0, 120, 240, 360] }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} className="w-48 h-48 rounded-full border border-emerald-500/30 flex items-center justify-center shadow-[0_0_150px_rgba(16,185,129,0.2)] mb-10 relative overflow-hidden">
                        <div className="absolute inset-0 rounded-full border-4 border-emerald-500/10 animate-[ping_3s_linear_infinite]" />
                        <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/20 to-transparent animate-[pulse_2s_linear_infinite]" />
@@ -2084,7 +2084,7 @@ export default function CRMDashboard() {
 
       <AnimatePresence>
         {profileModalUser && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 eos-z-modal bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
             <motion.div initial={{ scale: 0.95, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 12 }} className="bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-[2rem] p-6 max-w-2xl w-full shadow-2xl relative">
               <button onClick={() => { setProfileModalUser(null); setProfileModalData(null); }} className="absolute top-4 right-4 text-[var(--eos-subtle)] hover:text-white transition-colors">
                 <X size={20} />
@@ -2162,7 +2162,7 @@ export default function CRMDashboard() {
 
       <AnimatePresence>
         {offerToArchive && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 eos-z-modal bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-[2.5rem] p-8 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden text-center">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500"></div>
               
