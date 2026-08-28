@@ -11,6 +11,7 @@ struct WinampSpectrumHost: UIViewRepresentable {
     var barScale: Double = 1.0
     var speed: Double = 1.0
     var compact: Bool
+    var lightAppearance: Bool = false
 
     func makeUIView(context: Context) -> WinampSpectrumUIView {
         let view = WinampSpectrumUIView()
@@ -21,7 +22,8 @@ struct WinampSpectrumHost: UIViewRepresentable {
             bandCount: bandCount,
             barScale: barScale,
             speed: speed,
-            compact: compact
+            compact: compact,
+            lightAppearance: lightAppearance
         )
         return view
     }
@@ -34,7 +36,8 @@ struct WinampSpectrumHost: UIViewRepresentable {
             bandCount: bandCount,
             barScale: barScale,
             speed: speed,
-            compact: compact
+            compact: compact,
+            lightAppearance: lightAppearance
         )
     }
 
@@ -53,8 +56,9 @@ final class WinampSpectrumUIView: UIView {
     private var barScale: Double = 1.0
     private var speed: Double = 1.0
     private var compact = false
+    private var lightAppearance = false
     private var lastDrawAt: CFTimeInterval = 0
-    private var targetFPS: CFTimeInterval = 30
+    private var targetFPS: CFTimeInterval = 24
     private var snap: (
         levels: [Double],
         peaks: [Double],
@@ -73,13 +77,23 @@ final class WinampSpectrumUIView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        applyChromeStyle(light: false)
+        contentMode = .redraw
+    }
+
+    private func applyChromeStyle(light: Bool) {
         isOpaque = true
-        backgroundColor = UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
+        lightAppearance = light
+        if light {
+            backgroundColor = UIColor(red: 0.93, green: 0.94, blue: 0.96, alpha: 1)
+            layer.borderColor = UIColor.black.withAlphaComponent(0.08).cgColor
+        } else {
+            backgroundColor = UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
+            layer.borderColor = UIColor.white.withAlphaComponent(0.12).cgColor
+        }
         layer.cornerRadius = 8
         layer.masksToBounds = true
         layer.borderWidth = 0.5
-        layer.borderColor = UIColor.white.withAlphaComponent(0.12).cgColor
-        contentMode = .redraw
     }
 
     required init?(coder: NSCoder) {
@@ -97,7 +111,8 @@ final class WinampSpectrumUIView: UIView {
         bandCount: Int,
         barScale: Double,
         speed: Double,
-        compact: Bool
+        compact: Bool,
+        lightAppearance: Bool = false
     ) {
         self.visualizer = visualizer
         let nextBands = max(8, min(MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax, bandCount))
@@ -109,19 +124,24 @@ final class WinampSpectrumUIView: UIView {
         let playingChanged = self.isPlaying != isPlaying
         let compactChanged = self.compact != compact
         let intensityChanged = abs(self.intensity - intensity) > 0.01
+        let appearanceChanged = self.lightAppearance != lightAppearance
 
         // Idempotent — SwiftUI may call updateUIView often; never restart the link needlessly.
-        guard bandChanged || scaleChanged || speedChanged || playingChanged || compactChanged || intensityChanged || (displayLink == nil && isPlaying) else {
+        guard bandChanged || scaleChanged || speedChanged || playingChanged || compactChanged || intensityChanged || appearanceChanged || (displayLink == nil && isPlaying) else {
             return
         }
 
         self.isPlaying = isPlaying
         self.intensity = intensity
         self.bandCount = nextBands
+        self.lightAppearance = lightAppearance
+        if appearanceChanged {
+            applyChromeStyle(light: lightAppearance)
+        }
         self.barScale = nextScale
         self.speed = nextSpeed
         self.compact = compact
-        self.targetFPS = min(48, max(20, 12 + 24 * nextSpeed))
+        self.targetFPS = min(24, max(16, 10 + 12 * nextSpeed))
         if bandChanged {
             envelope.reset()
         }
@@ -148,11 +168,11 @@ final class WinampSpectrumUIView: UIView {
     private func start() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(onFrame(_:)))
-        let fps = max(20, min(48, targetFPS))
+        let fps = max(16, min(24, targetFPS))
         if #available(iOS 15.0, *) {
             link.preferredFrameRateRange = CAFrameRateRange(
-                minimum: 20,
-                maximum: Float(min(60, fps + 8)),
+                minimum: 16,
+                maximum: Float(min(30, fps + 4)),
                 preferred: Float(fps)
             )
         } else {
@@ -196,7 +216,11 @@ final class WinampSpectrumUIView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        ctx.setFillColor(UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1).cgColor)
+        if lightAppearance {
+            ctx.setFillColor(UIColor(red: 0.93, green: 0.94, blue: 0.96, alpha: 1).cgColor)
+        } else {
+            ctx.setFillColor(UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1).cgColor)
+        }
         ctx.fill(rect)
 
         let narrow = rect.width < 340
@@ -216,23 +240,25 @@ final class WinampSpectrumUIView: UIView {
         let titleFontSize: CGFloat = narrow ? 8 : 10
         let bandFontSize: CGFloat = narrow ? 6 : (compact ? 6 : 7)
 
-        // Reserve EQ strip first — on iPhone the view is often ~150 pt tall; old math gave eqRect.height = 0.
-        let minEQH: CGFloat = compact ? 36 : 44
+        // EQ bars get most of the height so they can jump to the top; BASS/MID/TREBLE stay compact.
+        let minEQH: CGFloat = compact ? 52 : 64
         let usableH = max(0, rect.height - pad * 2 - headerH - bandLabelReserve)
-        let eqH = max(minEQH, usableH * (compact ? 0.42 : 0.48))
-        let vuBlockH = max(24, usableH - eqH - labelH - gap)
-        let vuH = min(compact ? 48 : 62, vuBlockH)
+        let vuH = min(compact ? 22 : 28, max(16, usableH * 0.18))
+        let eqH = max(minEQH, usableH - vuH - labelH - gap)
 
+        let headerColor = lightAppearance
+            ? UIColor(red: 0.12, green: 0.58, blue: 0.22, alpha: 0.95)
+            : UIColor(red: 0.45, green: 0.95, blue: 0.35, alpha: 0.9)
         let headerAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: headerFontSize, weight: .heavy),
-            .foregroundColor: UIColor(red: 0.45, green: 0.95, blue: 0.35, alpha: 0.9),
+            .foregroundColor: headerColor,
             .kern: 1.0
         ]
         let header = "SPECTRUM EQ" as NSString
         header.draw(at: CGPoint(x: pad, y: pad - 2), withAttributes: headerAttrs)
         let bandAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.monospacedDigitSystemFont(ofSize: narrow ? 8 : 9, weight: .semibold),
-            .foregroundColor: UIColor(white: 0.45, alpha: 1)
+            .foregroundColor: lightAppearance ? UIColor(white: 0.38, alpha: 1) : UIColor(white: 0.45, alpha: 1)
         ]
         let bandText = "\(bandCount)" as NSString
         let bandSize = bandText.size(withAttributes: bandAttrs)
@@ -246,7 +272,7 @@ final class WinampSpectrumUIView: UIView {
 
         let titleAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: titleFontSize, weight: .heavy),
-            .foregroundColor: UIColor(white: 0.58, alpha: 1),
+            .foregroundColor: lightAppearance ? UIColor(white: 0.42, alpha: 1) : UIColor(white: 0.58, alpha: 1),
             .kern: 0.5
         ]
 
@@ -261,8 +287,10 @@ final class WinampSpectrumUIView: UIView {
             )
 
             let meter = CGRect(x: x, y: vuTop + labelH, width: channelW, height: vuH)
-            ctx.setFillColor(UIColor.black.cgColor)
-            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.14).cgColor)
+            ctx.setFillColor((lightAppearance ? UIColor(white: 0.88, alpha: 1) : UIColor.black).cgColor)
+            ctx.setStrokeColor(
+                (lightAppearance ? UIColor.black.withAlphaComponent(0.12) : UIColor.white.withAlphaComponent(0.14)).cgColor
+            )
             ctx.setLineWidth(0.5)
             let meterPath = UIBezierPath(roundedRect: meter, cornerRadius: 3)
             ctx.addPath(meterPath.cgPath)
@@ -275,10 +303,19 @@ final class WinampSpectrumUIView: UIView {
         }
 
         let eqTop = vuTop + labelH + vuH + gap
-        let eqRect = CGRect(x: pad, y: eqTop, width: contentW, height: max(minEQH, rect.height - eqTop - pad - bandLabelReserve))
-        ctx.setFillColor(UIColor.black.withAlphaComponent(0.55).cgColor)
+        let eqRect = CGRect(
+            x: pad,
+            y: eqTop,
+            width: contentW,
+            height: min(eqH, max(minEQH, rect.height - eqTop - pad - bandLabelReserve))
+        )
+        ctx.setFillColor(
+            (lightAppearance ? UIColor.white.withAlphaComponent(0.72) : UIColor.black.withAlphaComponent(0.55)).cgColor
+        )
         ctx.fill(eqRect.insetBy(dx: -2, dy: -2))
-        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.08).cgColor)
+        ctx.setStrokeColor(
+            (lightAppearance ? UIColor.black.withAlphaComponent(0.08) : UIColor.white.withAlphaComponent(0.08)).cgColor
+        )
         ctx.setLineWidth(0.5)
         for tick in 1..<4 {
             let y = eqRect.minY + eqRect.height * CGFloat(tick) / 4
@@ -293,7 +330,7 @@ final class WinampSpectrumUIView: UIView {
 
         let labelAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.monospacedDigitSystemFont(ofSize: bandFontSize, weight: .medium),
-            .foregroundColor: UIColor(white: 0.55, alpha: 0.7)
+            .foregroundColor: lightAppearance ? UIColor(white: 0.48, alpha: 0.85) : UIColor(white: 0.55, alpha: 0.7)
         ]
         let step = max(1, bandCount / 6)
         let bandW = eqRect.width / CGFloat(max(1, bandCount))
@@ -320,19 +357,19 @@ final class WinampSpectrumUIView: UIView {
         let segments = WinampSpectrumStyle.segmentCount
         let lit = Int(round(min(1, max(0, level)) * Double(segments)))
         let peakLit = Int(round(min(1, max(0, peak)) * Double(segments)))
-        let segmentH = max(1, floor(rect.height / CGFloat(segments)))
+        let gap: CGFloat = 0.5
 
-        for segment in 0..<lit {
-            let y = rect.maxY - CGFloat(segment + 1) * segmentH
-            let color = UIColor(WinampSpectrumStyle.barColor(segmentFromBottom: segment))
-            ctx.setFillColor(color.cgColor)
-            ctx.fill(CGRect(x: rect.minX, y: y, width: rect.width, height: segmentH - 0.5))
-        }
-        if peakLit > lit {
-            let y = rect.maxY - CGFloat(peakLit) * segmentH
-            let color = UIColor(WinampSpectrumStyle.peakColor(forLevel: Double(peakLit) / Double(segments)))
-            ctx.setFillColor(color.cgColor)
-            ctx.fill(CGRect(x: rect.minX, y: y, width: rect.width, height: segmentH - 0.5))
+        for segment in 0..<max(lit, peakLit) {
+            let y1 = rect.maxY - CGFloat(segment) / CGFloat(segments) * rect.height
+            let y0 = rect.maxY - CGFloat(segment + 1) / CGFloat(segments) * rect.height
+            let slice = CGRect(x: rect.minX, y: y0, width: rect.width, height: max(0.5, y1 - y0 - gap))
+            if segment < lit {
+                ctx.setFillColor(UIColor(WinampSpectrumStyle.barColor(segmentFromBottom: segment)).cgColor)
+                ctx.fill(slice)
+            } else if segment + 1 == peakLit {
+                ctx.setFillColor(UIColor(WinampSpectrumStyle.peakColor(forLevel: Double(peakLit) / Double(segments))).cgColor)
+                ctx.fill(slice)
+            }
         }
     }
 

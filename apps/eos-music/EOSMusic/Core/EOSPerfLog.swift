@@ -60,6 +60,8 @@ enum DownloadRetryPolicy {
 enum StreamRecoveryPolicy {
     static let maxAttempts = 4
     static let stablePlaybackSeconds: Double = 30
+    /// Live / ingest streams that never deliver the first packet.
+    static let firstByteTimeoutNanoseconds: UInt64 = 8_000_000_000
 
     static func shouldResetAttemptCount(stablePlaybackDuration: Double) -> Bool {
         stablePlaybackDuration >= stablePlaybackSeconds
@@ -71,11 +73,10 @@ enum StreamRecoveryPolicy {
 
     static func isFatalPlaybackError(_ message: String) -> Bool {
         let lower = message.lowercased()
+        // 404 during ingest is retryable — the stream endpoint appears once the file exists.
         return lower.contains("401")
             || lower.contains("403")
-            || lower.contains("404")
             || lower.contains("unauthorized")
-            || lower.contains("not found")
-            || lower.contains("nie znaleziono")
+            || lower.contains("forbidden")
     }
 }

@@ -5,7 +5,9 @@ import ImageIO
 
 @MainActor
 final class AppModel: ObservableObject {
-    @Published private(set) var user: AuthUser?
+    @Published private(set) var user: AuthUser? {
+        didSet { ListeningStatsStore.shared.activate(userLogin: user?.login) }
+    }
     @Published private(set) var isBootstrapping = true
     @Published private(set) var musicFolders: [MusicFolder] = []
     @Published private(set) var musicTracks: [MusicTrack] = []
@@ -141,6 +143,10 @@ final class AppModel: ObservableObject {
                 self.playback.engine?.offlineOnly = self.isOfflinePlaybackActive
             }
             .store(in: &cancellables)
+        downloads.externalFileUploadProvider = { [weak self] url in
+            guard let self else { throw APIError.server("Brak dostępu do pliku.") }
+            return try await self.resolveExternalUploadFile(for: url)
+        }
     }
 
     func configureOfflineMode(from preferences: UIPreferences) {
@@ -426,6 +432,8 @@ final class AppModel: ObservableObject {
     func isOnServer(_ url: String) -> Bool {
         if musicTracks.first(where: { $0.url == url })?.isOnServer == true { return true }
         if serverAssets.contains(where: { $0.url == url }) { return true }
+        // Keep cloud filled after a successful upload even before library jobId sync.
+        if downloads.wasConfirmedOnServer(url) { return true }
         return false
     }
 
@@ -611,6 +619,95 @@ final class AppModel: ObservableObject {
         return folder.id
     }
 
+    /// Lokalny / iCloud folder → nowa playlista (nazwa folderu) + zapis wszystkich utworów na serwerze EOS.
+    func importFolderAsPlaylist(kind: MusicSourceKind, name: String, folderURL: URL) async throws -> String {
+        guard SessionStore.load() != nil else {
+            throw APIError.server("Zaloguj się, aby dodać folder do biblioteki i zapisać na serwerze.")
+        }
+
+        let accessed = folderURL.startAccessingSecurityScopedResource()
+        defer { if accessed { folderURL.stopAccessingSecurityScopedResource() } }
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw APIError.server("Wybierz folder z utworami, nie pojedynczy plik.")
+        }
+
+        let playlistName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? folderURL.lastPathComponent
+            : name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let accountEmail: String? = nil
+        try sources.connectFolder(
+            kind: kind,
+            name: playlistName,
+            folderURL: folderURL,
+            accountEmail: accountEmail
+        )
+
+        guard let source = sources.sources.first(where: { $0.kind == kind && $0.name == playlistName }) else {
+            throw APIError.server("Nie udało się podpiąć folderu.")
+        }
+
+        let externalTracks = try await sources.listTracks(for: source)
+        guard !externalTracks.isEmpty else {
+            throw APIError.server("W folderze nie ma plików audio (MP3, M4A, FLAC, WAV…).")
+        }
+
+        let payloads = externalTracks.map { track in
+            track.playbackTrack(sourceId: source.id).payload
+        }
+
+        let folder = try await api.createMusicFolder(name: playlistName)
+        try await addTracksToFolder(folderId: folder.id, tracks: payloads)
+        queueAlbumOnServer(folderId: folder.id, albumTitle: playlistName, tracks: payloads)
+
+        presentToast(MusicToast(
+            systemImage: "music.note.list",
+            title: "Playlista utworzona",
+            subtitle: "\(payloads.count) utworów · \(playlistName)"
+        ))
+
+        return folder.id
+    }
+
+    private func resolveExternalUploadFile(for url: String) async throws -> (local: URL, title: String, artist: String?, album: String?, fileName: String) {
+        guard let ref = ExternalTrackReference.parse(url) else {
+            throw APIError.server("Nieprawidłowy adres pliku z folderu.")
+        }
+        guard let source = sources.sources.first(where: { $0.id == ref.sourceId }) else {
+            throw APIError.server("Folder źródłowy nie jest podpięty — dodaj go ponownie.")
+        }
+
+        let meta = musicTracks.first(where: { $0.url == url })
+        let fallbackName = ref.relativePath?
+            .split(separator: "/")
+            .last
+            .map(String.init)
+            .flatMap { ($0 as NSString).deletingPathExtension }
+        let title = meta?.title ?? fallbackName ?? "Utwór"
+        let artist = meta?.artist
+        let album = meta?.album
+
+        let playback = MusicPlaybackTrack(
+            externalFile: nil,
+            externalRelativePath: ref.relativePath,
+            webDAVPath: ref.webDAVPath,
+            googleDriveFileId: ref.googleDriveFileId,
+            sourceId: ref.sourceId,
+            title: title,
+            artist: artist,
+            album: album
+        )
+        let local = try await sources.resolvePlayableFile(for: playback)
+        let fileName = ref.relativePath?
+            .split(separator: "/")
+            .last
+            .map(String.init) ?? local.lastPathComponent
+        return (local, title, artist, album, fileName)
+    }
+
     private func queueAlbumOnServer(folderId: String, albumTitle: String, tracks: [MusicTrackPayload]) {
         let items = tracks.map {
             MusicDownloadService.ServerQueueItem(url: $0.url, folderId: folderId, title: $0.title)
@@ -729,16 +826,12 @@ final class AppModel: ObservableObject {
     }
 
     func minimizePlayer() {
-        withAnimation(EOSMotion.playerSheet) {
-            isFullPlayerPresented = false
-        }
+        isFullPlayerPresented = false
     }
 
     func expandPlayer() {
         guard playback.engine != nil else { return }
-        withAnimation(EOSMotion.playerSheet) {
-            isFullPlayerPresented = true
-        }
+        isFullPlayerPresented = true
     }
 
     func playTracks(_ tracks: [MusicTrack], startIndex: Int, folder: MusicFolder?) async {
@@ -790,6 +883,7 @@ final class AppModel: ObservableObject {
             folderName: folder?.name ?? (isOfflinePlaybackActive ? "Pobrane" : "EOS Music")
         )
         let needsExternalResolver = !externalSourceIds.isEmpty
+        prepareServerCopyForPlayback(enriched, folder: folder)
         await playback.play(
             session: session,
             api: api,
@@ -816,6 +910,26 @@ final class AppModel: ObservableObject {
         isFullPlayerPresented = false
     }
 
+    /// Kolejkuje zapis na serwer **przed** startem odtwarzania — play nie otwiera konkurencyjnego streamu.
+    func prepareServerCopyForPlayback(_ tracks: [MusicPlaybackTrack], folder: MusicFolder?) {
+        guard SessionStore.load() != nil, !isOfflinePlaybackActive else { return }
+        for track in tracks {
+            guard !isOnServer(track.url) else { continue }
+            let uiState = downloads.uiState(for: track.url, isOnServer: false)
+            if uiState.isBusy { continue }
+
+            if track.isOpenedLocalImport {
+                Task { await uploadOpenedImportToServer(track) }
+                continue
+            }
+
+            let folderHint = folder?.id
+                ?? track.folderId
+                ?? musicTracks.first(where: { $0.url == track.url })?.folderId
+            queuePlus(track.payload, preferredFolderId: folderHint)
+        }
+    }
+
     func playCatalogItems(_ items: [SearchResultItem], startIndex: Int) async {
         var queueItems = items
         var start = startIndex
@@ -836,6 +950,7 @@ final class AppModel: ObservableObject {
         }
         let queue = queueItems.map { MusicPlaybackTrack(from: $0) }
         let session = MusicPlaybackSession(queue: queue, startIndex: start, folderId: nil, folderName: "EOS Music")
+        prepareServerCopyForPlayback(queue, folder: nil)
         await playback.play(
             session: session,
             api: api,
@@ -1043,6 +1158,7 @@ final class AppModel: ObservableObject {
             folderName: source.name,
             externalSourceId: sourceId
         )
+        prepareServerCopyForPlayback(queue, folder: nil)
         await playback.play(
             session: session,
             api: api,
@@ -1080,11 +1196,7 @@ final class AppModel: ObservableObject {
             return
         }
         if current.isExternal {
-            presentToast(MusicToast(
-                systemImage: "iphone",
-                title: "Plik lokalny",
-                subtitle: "Ten utwór nie wymaga pobierania"
-            ))
+            prepareServerCopyForPlayback([current], folder: nil)
             return
         }
         let alreadyOnServer = isOnServer(current.url) || current.isOnServer
@@ -1192,7 +1304,7 @@ final class AppModel: ObservableObject {
     }
 
     private func prepareLibraryPayload(_ track: MusicTrackPayload) async throws -> MusicTrackPayload {
-        if track.source == "opened-file" { return track }
+        if track.source == "opened-file" || track.source == "external-file" { return track }
         return try await TrackMetadataEnricher.enrichPayload(track, api: api)
     }
 

@@ -48,6 +48,9 @@ enum TrackDownloadUIState: Equatable {
 
 @MainActor
 final class MusicDownloadService: ObservableObject {
+    /// Wysyła lokalny plik (eosmusic://external/…) na serwer — ustawiane z AppModel.
+    var externalFileUploadProvider: (@MainActor (String) async throws -> (local: URL, title: String, artist: String?, album: String?, fileName: String))?
+
     @Published private(set) var states: [String: TrackDownloadUIState] = [:]
     /// Postęp masowego zapisu albumu / playlisty na serwerze EOS.
     @Published private(set) var bulkServerQueue: BulkServerQueueProgress?
@@ -81,6 +84,19 @@ final class MusicDownloadService: ObservableObject {
     /// Used by playback prefetch to avoid fighting user downloads for bandwidth.
     static var hasActiveDownloads: Bool { activeDownloadCount > 0 }
     private static var activeDownloadCount = 0
+    private static var serverAcquireURLs: Set<String> = []
+
+    static func isServerAcquireActive(_ url: String) -> Bool {
+        serverAcquireURLs.contains(url)
+    }
+
+    private static func setServerAcquireActive(_ url: String, _ active: Bool) {
+        if active {
+            serverAcquireURLs.insert(url)
+        } else {
+            serverAcquireURLs.remove(url)
+        }
+    }
 
     struct BulkServerQueueProgress: Equatable {
         let label: String
@@ -143,6 +159,11 @@ final class MusicDownloadService: ObservableObject {
         return isOnServer ? .onServer : .idle
     }
 
+    /// Successful local/external upload remembered on-device (survives until app restart).
+    func wasConfirmedOnServer(_ url: String) -> Bool {
+        wasOnServer[url] == true
+    }
+
     /// Kompatybilność ze starymi call-site’ami (`isDownloaded` = na serwerze).
     func uiState(for url: String, isDownloaded: Bool) -> TrackDownloadUIState {
         uiState(for: url, isOnServer: isDownloaded)
@@ -186,6 +207,7 @@ final class MusicDownloadService: ObservableObject {
         if case .acquiringServer = states[url] { return }
         if case .downloading = states[url] { return }
 
+        Self.setServerAcquireActive(url, true)
         activeTasks[url]?.cancel()
         activeTasks[url] = Task {
             do {
@@ -238,6 +260,7 @@ final class MusicDownloadService: ObservableObject {
         isBulkQueueMinimized = false
 
         plusQueuedURLs.insert(url)
+        Self.setServerAcquireActive(url, true)
         states[url] = .acquiringServer(progress: 4)
         plusFIFO.append(ServerQueueItem(url: url, folderId: folderId ?? "", title: title))
         plusTotal += 1
@@ -576,13 +599,17 @@ final class MusicDownloadService: ObservableObject {
                 guard let delay = DownloadRetryPolicy.delayNanoseconds(afterAttempt: attempt) else {
                     EOSPerfLog.download.error("ensureOnServer exhausted title=\(title, privacy: .public)")
                     states[url] = .failed(error.localizedDescription)
+                    Self.setServerAcquireActive(url, false)
+                    activeServerJobIds.removeValue(forKey: url)
                     return
                 }
                 EOSPerfLog.download.warning("ensureOnServer retry=\(attempt) title=\(title, privacy: .public)")
-                states[url] = .failed(error.localizedDescription)
+                if let stuckJob = activeServerJobIds.removeValue(forKey: url) {
+                    try? await api.cancelJob(jobId: stuckJob)
+                }
+                states[url] = .acquiringServer(progress: 2)
                 try? await Task.sleep(nanoseconds: delay)
                 attempt += 1
-                states[url] = .acquiringServer(progress: 2)
             }
         }
     }
@@ -594,6 +621,12 @@ final class MusicDownloadService: ObservableObject {
         onLibraryChanged: (() async -> Void)? = nil,
         onAcquireProgress: ((Double) -> Void)? = nil
     ) async throws {
+        Self.activeDownloadCount += 1
+        Self.setServerAcquireActive(url, true)
+        defer {
+            Self.activeDownloadCount = max(0, Self.activeDownloadCount - 1)
+            Self.setServerAcquireActive(url, false)
+        }
         states[url] = .acquiringServer(progress: 3)
 
         if OpenedAudioRegistry.isOpenedLibraryURL(url) {
@@ -607,15 +640,26 @@ final class MusicDownloadService: ObservableObject {
             return
         }
 
-        let ensure = try await api.startMusicPlay(
-            url: url,
-            folderId: folderId,
-            trackUrl: url,
-            intent: "download"
-        )
-        let jobId = ensure.jobId
-        activeServerJobIds[url] = jobId
-        if !ensure.isDurableServerCopy {
+        if ExternalTrackReference.isLibraryURL(url) {
+            try await acquireExternalFileOnServer(
+                url: url,
+                folderId: folderId,
+                api: api,
+                onLibraryChanged: onLibraryChanged,
+                onAcquireProgress: onAcquireProgress
+            )
+            return
+        }
+
+        // Reuse an in-flight NAS job (this device or another) — never spawn a second acquire.
+        let jobId: String
+        if let active = await api.findActiveMusicJob(url: url),
+           !active.isTerminal,
+           !active.isFailed,
+           active.looksLikeFileIngest {
+            jobId = active.jobId
+            activeServerJobIds[url] = jobId
+            EOSPerfLog.download.info("reuse active server acquire job=\(jobId, privacy: .public)")
             try await pollServerAcquire(
                 jobId: jobId,
                 trackUrl: url,
@@ -623,19 +667,38 @@ final class MusicDownloadService: ObservableObject {
                 onProgress: onAcquireProgress
             )
         } else {
-            states[url] = .acquiringServer(progress: 96)
-            onAcquireProgress?(96)
+            if let stale = await api.findActiveMusicJob(url: url), !stale.isTerminal, !stale.looksLikeFileIngest {
+                EOSPerfLog.download.warning("cancel stale play-proxy job=\(stale.jobId, privacy: .public)")
+                try? await api.cancelJob(jobId: stale.jobId)
+            }
+            let ensure = try await api.startMusicDownload(
+                url: url,
+                folderId: folderId,
+                trackUrl: url
+            )
+            jobId = ensure.jobId
+            activeServerJobIds[url] = jobId
+            if ensure.isDurableServerCopy || ensure.ready == true || ensure.status?.lowercased() == "done" {
+                states[url] = .acquiringServer(progress: 96)
+                onAcquireProgress?(96)
+            } else {
+                try await pollServerAcquire(
+                    jobId: jobId,
+                    trackUrl: url,
+                    api: api,
+                    onProgress: onAcquireProgress
+                )
+            }
         }
 
-        if let folderId {
-            _ = try? await api.linkTrackDownload(
-                folderId: folderId,
-                url: url,
-                downloadJobId: jobId
-            )
-        }
+        await persistTrackDownloadLink(
+            folderId: folderId,
+            url: url,
+            downloadJobId: jobId,
+            api: api,
+            onLibraryChanged: onLibraryChanged
+        )
         wasOnServer[url] = true
-        scheduleLibraryRefresh(onLibraryChanged)
         activeServerJobIds.removeValue(forKey: url)
         if Task.isCancelled { throw CancellationError() }
     }
@@ -676,15 +739,66 @@ final class MusicDownloadService: ObservableObject {
             states[url] = .acquiringServer(progress: 96)
             onAcquireProgress?(96)
         }
-        if let folderId {
-            _ = try? await api.linkTrackDownload(
-                folderId: folderId,
-                url: url,
-                downloadJobId: jobId
-            )
-        }
+        await persistTrackDownloadLink(
+            folderId: folderId,
+            url: url,
+            downloadJobId: jobId,
+            api: api,
+            onLibraryChanged: onLibraryChanged
+        )
         wasOnServer[url] = true
-        scheduleLibraryRefresh(onLibraryChanged)
+        activeServerJobIds.removeValue(forKey: url)
+        if Task.isCancelled { throw CancellationError() }
+    }
+
+    private func acquireExternalFileOnServer(
+        url: String,
+        folderId: String?,
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)? = nil,
+        onAcquireProgress: ((Double) -> Void)? = nil
+    ) async throws {
+        guard let provider = externalFileUploadProvider else {
+            throw APIError.server("Brak dostępu do pliku w folderze.")
+        }
+        onAcquireProgress?(10)
+        states[url] = .acquiringServer(progress: 14)
+        let file = try await provider(url)
+        onAcquireProgress?(24)
+        states[url] = .acquiringServer(progress: 32)
+        let fileData = try Data(contentsOf: file.local)
+        onAcquireProgress?(42)
+        states[url] = .acquiringServer(progress: 48)
+        let ensure = try await api.uploadLocalMusicFile(
+            url: url,
+            folderId: folderId,
+            title: file.title,
+            artist: file.artist,
+            album: file.album,
+            fileName: file.fileName,
+            fileData: fileData
+        )
+        let jobId = ensure.jobId
+        activeServerJobIds[url] = jobId
+        if ensure.ready != true {
+            try await pollServerAcquire(
+                jobId: jobId,
+                trackUrl: url,
+                api: api,
+                onProgress: onAcquireProgress
+            )
+        } else {
+            states[url] = .acquiringServer(progress: 96)
+            onAcquireProgress?(96)
+        }
+        await persistTrackDownloadLink(
+            folderId: folderId,
+            url: url,
+            downloadJobId: jobId,
+            api: api,
+            onLibraryChanged: onLibraryChanged
+        )
+        wasOnServer[url] = true
         activeServerJobIds.removeValue(forKey: url)
         if Task.isCancelled { throw CancellationError() }
     }
@@ -774,6 +888,7 @@ final class MusicDownloadService: ObservableObject {
         artist: String?,
         api: MusicAPIClient,
         folderId: String? = nil,
+        downloadJobId: String? = nil,
         onLibraryChanged: (() async -> Void)? = nil
     ) async throws {
         if offline.isAvailable(url) { return }
@@ -784,27 +899,57 @@ final class MusicDownloadService: ObservableObject {
 
         try await coordinator.enqueueDownload(trackUrl: url) {
             let jobId: String = try await self.coordinator.withPhaseSlot(trackUrl: url, kind: .serverAcquire) {
+                if let known = downloadJobId, !known.isEmpty {
+                    self.states[url] = .acquiringServer(progress: 96)
+                    await self.persistTrackDownloadLink(
+                        folderId: folderId,
+                        url: url,
+                        downloadJobId: known,
+                        api: api,
+                        onLibraryChanged: onLibraryChanged
+                    )
+                    self.wasOnServer[url] = true
+                    return known
+                }
+                if let active = await api.findActiveMusicJob(url: url),
+                   !active.jobId.isEmpty,
+                   active.isTerminal || active.looksLikeFileIngest {
+                    self.states[url] = .acquiringServer(progress: 96)
+                    await self.persistTrackDownloadLink(
+                        folderId: folderId,
+                        url: url,
+                        downloadJobId: active.jobId,
+                        api: api,
+                        onLibraryChanged: onLibraryChanged
+                    )
+                    self.wasOnServer[url] = true
+                    return active.jobId
+                }
+                // Local-only URIs cannot be re-fetched by the server — require an existing job.
+                if ExternalTrackReference.isLibraryURL(url) || OpenedAudioRegistry.isOpenedLibraryURL(url) {
+                    throw APIError.server(
+                        "Brak kopii na serwerze EOS. Najpierw dokończ „Zapis na serwer” na urządzeniu z folderem."
+                    )
+                }
                 self.states[url] = .acquiringServer(progress: 3)
-                let ensure = try await api.startMusicPlay(
+                let ensure = try await api.startMusicDownload(
                     url: url,
                     folderId: folderId,
-                    trackUrl: url,
-                    intent: "download"
+                    trackUrl: url
                 )
                 if !ensure.isDurableServerCopy {
                     try await self.pollServerAcquire(jobId: ensure.jobId, trackUrl: url, api: api)
                 } else {
                     self.states[url] = .acquiringServer(progress: 96)
                 }
-                if let folderId {
-                    _ = try? await api.linkTrackDownload(
-                        folderId: folderId,
-                        url: url,
-                        downloadJobId: ensure.jobId
-                    )
-                }
+                await self.persistTrackDownloadLink(
+                    folderId: folderId,
+                    url: url,
+                    downloadJobId: ensure.jobId,
+                    api: api,
+                    onLibraryChanged: onLibraryChanged
+                )
                 self.wasOnServer[url] = true
-                self.scheduleLibraryRefresh(onLibraryChanged)
                 return ensure.jobId
             }
 
@@ -847,8 +992,7 @@ final class MusicDownloadService: ObservableObject {
         }
 
         // Already on EOS server — skip second APLMate acquire; transfer only.
-        if track.isOnServer || wasOnServer[track.url] == true,
-           let jobId = track.durableJobId {
+        if let jobId = track.durableJobId, !jobId.isEmpty {
             try await transferServerJobToDevice(
                 jobId: jobId,
                 track: track,
@@ -857,6 +1001,24 @@ final class MusicDownloadService: ObservableObject {
                 onLibraryChanged: onLibraryChanged
             )
             return
+        }
+        if let active = await api.findActiveMusicJob(url: track.url),
+           !active.jobId.isEmpty,
+           (active.isTerminal || active.looksLikeFileIngest || wasOnServer[track.url] == true) {
+            try await transferServerJobToDevice(
+                jobId: active.jobId,
+                track: track,
+                folderId: folderId,
+                api: api,
+                onLibraryChanged: onLibraryChanged
+            )
+            return
+        }
+
+        if ExternalTrackReference.isLibraryURL(track.url) || OpenedAudioRegistry.isOpenedLibraryURL(track.url) {
+            throw APIError.server(
+                "Brak kopii na serwerze EOS. Najpierw dokończ „Zapis na serwer” na urządzeniu z folderem."
+            )
         }
 
         states[track.url] = .acquiringServer(progress: 3)
@@ -874,13 +1036,14 @@ final class MusicDownloadService: ObservableObject {
                 self.states[track.url] = .acquiringServer(progress: 96)
             }
 
-            _ = try? await api.linkTrackDownload(
+            await self.persistTrackDownloadLink(
                 folderId: folderId,
                 url: track.url,
-                downloadJobId: jobId
+                downloadJobId: jobId,
+                api: api,
+                onLibraryChanged: onLibraryChanged
             )
             self.wasOnServer[track.url] = true
-            self.scheduleLibraryRefresh(onLibraryChanged)
             return jobId
         }
 
@@ -926,14 +1089,50 @@ final class MusicDownloadService: ObservableObject {
             }
             self.states[track.url] = .done
             self.wasOnServer[track.url] = true
-            _ = try? await api.linkTrackDownload(
+            await self.persistTrackDownloadLink(
                 folderId: folderId,
                 url: track.url,
-                downloadJobId: jobId
+                downloadJobId: jobId,
+                api: api,
+                onLibraryChanged: onLibraryChanged
             )
-            self.scheduleLibraryRefresh(onLibraryChanged)
             EOSPerfLog.download.info("device transfer done track=\(track.url, privacy: .public)")
         }
+    }
+
+    /// Maps library track → durable jobId so other devices can stream without the local folder bookmark.
+    private func persistTrackDownloadLink(
+        folderId: String?,
+        url: String,
+        downloadJobId: String,
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)?
+    ) async {
+        guard let folderId, !folderId.isEmpty, !downloadJobId.isEmpty else {
+            scheduleLibraryRefresh(onLibraryChanged)
+            return
+        }
+        for attempt in 1...3 {
+            do {
+                _ = try await api.linkTrackDownload(
+                    folderId: folderId,
+                    url: url,
+                    downloadJobId: downloadJobId
+                )
+                wasOnServer[url] = true
+                scheduleLibraryRefresh(onLibraryChanged)
+                return
+            } catch {
+                EOSPerfLog.download.error(
+                    "linkTrackDownload failed attempt=\(attempt) url=\(url, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
+                }
+            }
+        }
+        // Still refresh — server asset may exist even if PATCH failed.
+        scheduleLibraryRefresh(onLibraryChanged)
     }
 
     func downloadAllPending(
@@ -992,6 +1191,8 @@ final class MusicDownloadService: ObservableObject {
     }
 
     private func restoreAfterCancel(url: String, isOnServerHint: Bool) {
+        Self.setServerAcquireActive(url, false)
+        activeServerJobIds.removeValue(forKey: url)
         if offline.isAvailable(url) {
             states[url] = .done
         } else if isOnServerHint || wasOnServer[url] == true {
@@ -1058,6 +1259,9 @@ final class MusicDownloadService: ObservableObject {
         onProgress: ((Double) -> Void)? = nil
     ) async throws {
         let deadline = Date().addingTimeInterval(600)
+        var lastMapped: Double?
+        var lastProgressChange = Date()
+        let stallSeconds: TimeInterval = 28
         while Date() < deadline {
             if Task.isCancelled { throw CancellationError() }
             if await coordinator.isCancelled(trackUrl) { throw CancellationError() }
@@ -1065,6 +1269,19 @@ final class MusicDownloadService: ObservableObject {
             let serverPct = max(0, min(100, job.progress ?? 0))
             let mapped = serverPct > 0 ? max(4, serverPct) : 4
             onProgress?(mapped)
+            if let lastMapped, abs(lastMapped - mapped) < 0.75 {
+                if Date().timeIntervalSince(lastProgressChange) > stallSeconds, mapped < 96 {
+                    EOSPerfLog.download.warning(
+                        "server acquire stalled job=\(jobId, privacy: .public) at \(mapped, format: .fixed(precision: 0))%"
+                    )
+                    activeServerJobIds.removeValue(forKey: trackUrl)
+                    try? await api.cancelJob(jobId: jobId)
+                    throw APIError.server("Zapis utknął — ponawiam pobieranie…")
+                }
+            } else {
+                lastMapped = mapped
+                lastProgressChange = Date()
+            }
             let now = Date().timeIntervalSinceReferenceDate
             let previous = acquirePollLastPublish[trackUrl]
             let shouldPublish =
@@ -1080,7 +1297,7 @@ final class MusicDownloadService: ObservableObject {
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Zapis na serwerze nie powiódł się.")
             }
-            if job.isDurableServerCopy { return }
+            if job.isDurableServerCopy || job.status.lowercased() == "done" { return }
             try await Task.sleep(nanoseconds: 700_000_000)
         }
         throw APIError.server("Przekroczono czas zapisu na serwerze.")
@@ -1138,6 +1355,8 @@ final class MusicDownloadService: ObservableObject {
             guard case .acquiringServer = state else { continue }
             if activeTasks[url] != nil { continue }
             if bulkServerTask != nil { continue }
+            if plusDrainTask != nil, plusQueuedURLs.contains(url) || plusActive?.url == url { continue }
+            if activeServerJobIds[url] != nil { continue }
             if remoteURLs.contains(url) { continue }
             states[url] = wasOnServer[url] == true ? .onServer : .idle
             touched = true

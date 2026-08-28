@@ -15,12 +15,13 @@ private var audioImportTypes: [UTType] {
 struct LocalFolderConnectionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let onConnect: (String, URL) throws -> Void
+    let onImportFolder: (String, URL) async throws -> Void
+    let onImportFile: (String, URL) throws -> Void
 
     @State private var folderName = ""
-    @State private var showFolderPicker = false
     @State private var showFilePicker = false
     @State private var isConnecting = false
+    @State private var statusMessage: String?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -28,7 +29,7 @@ struct LocalFolderConnectionSheet: View {
             List {
                 Section {
                     Label {
-                        Text("Dodaj folder z muzyką zapisany na iPhonie lub w aplikacji Pliki — bez konta iCloud.")
+                        Text("Wybierz folder z muzyką — utworzy się playlista o tej samej nazwie, a wszystkie utwory trafią do biblioteki i na serwer EOS.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } icon: {
@@ -38,9 +39,15 @@ struct LocalFolderConnectionSheet: View {
                 }
 
                 Section {
-                    TextField("Nazwa w Przeglądaj", text: $folderName, prompt: Text("np. Moja muzyka"))
+                    TextField("Nazwa playlisty", text: $folderName, prompt: Text("np. Moja muzyka"))
 
-                    Button { showFolderPicker = true } label: {
+                    Button {
+                        FolderPickerPresenter.present(
+                            onPick: { url in
+                                connect(url: url, expectsDirectory: true)
+                            }
+                        )
+                    } label: {
                         FilesActionRow(icon: "folder.badge.plus", title: "Wybierz folder", iconColor: .orange)
                     }
                     .disabled(isConnecting)
@@ -53,14 +60,14 @@ struct LocalFolderConnectionSheet: View {
                     if isConnecting {
                         HStack {
                             ProgressView()
-                            Text("Dodaję…")
+                            Text(statusMessage ?? "Importuję…")
                                 .foregroundStyle(.secondary)
                         }
                     }
                 } header: {
                     Text("Folder z muzyką")
                 } footer: {
-                    Text("Pojedynczy plik jest kopiowany do aplikacji i działa od razu. Folder zostaje podpięty z Plików (bookmark). MP3, M4A, FLAC, WAV.")
+                    Text("Folder → nowa playlista + automatyczny zapis na serwerze. Pojedynczy plik zostaje podpięty lokalnie (MP3, M4A, FLAC, WAV).")
                 }
             }
             .listStyle(.insetGrouped)
@@ -73,18 +80,11 @@ struct LocalFolderConnectionSheet: View {
                 }
             }
             .fileImporter(
-                isPresented: $showFolderPicker,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleImport(result)
-            }
-            .fileImporter(
                 isPresented: $showFilePicker,
                 allowedContentTypes: audioImportTypes,
                 allowsMultipleSelection: false
             ) { result in
-                handleImport(result)
+                handleImport(result, expectsDirectory: false)
             }
             .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -94,7 +94,7 @@ struct LocalFolderConnectionSheet: View {
         }
     }
 
-    private func handleImport(_ result: Result<[URL], Error>) {
+    private func handleImport(_ result: Result<[URL], Error>, expectsDirectory: Bool) {
         switch result {
         case .failure(let error):
             let ns = error as NSError
@@ -103,24 +103,35 @@ struct LocalFolderConnectionSheet: View {
             errorMessage = error.localizedDescription
         case .success(let urls):
             guard let url = urls.first else { return }
-            connect(url: url)
+            connect(url: url, expectsDirectory: expectsDirectory)
         }
     }
 
-    private func connect(url: URL) {
+    private func connect(url: URL, expectsDirectory: Bool) {
         isConnecting = true
-        defer { isConnecting = false }
-
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        errorMessage = nil
 
         let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolved = name.isEmpty ? url.deletingPathExtension().lastPathComponent : name
-        do {
-            try onConnect(resolved, url)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+
+        Task {
+            defer { isConnecting = false }
+            do {
+                var isDirectory: ObjCBool = false
+                _ = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                let isDir = isDirectory.boolValue
+
+                if expectsDirectory || isDir {
+                    statusMessage = "Skanuję folder…"
+                    try await onImportFolder(resolved, url)
+                } else {
+                    statusMessage = "Dodaję plik…"
+                    try onImportFile(resolved, url)
+                }
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -130,13 +141,14 @@ struct LocalFolderConnectionSheet: View {
 struct ICloudConnectionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let onConnect: (String, URL) throws -> Void
+    let onImportFolder: (String, URL) async throws -> Void
+    let onImportFile: (String, URL) throws -> Void
 
     @State private var accountState = ICloudAccountService.currentState()
     @State private var folderName = ""
-    @State private var showFolderPicker = false
     @State private var showFilePicker = false
     @State private var isConnecting = false
+    @State private var statusMessage: String?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -164,9 +176,15 @@ struct ICloudConnectionSheet: View {
 
                 if accountState.isSignedIn {
                     Section {
-                        TextField("Nazwa folderu", text: $folderName, prompt: Text("Moja muzyka"))
+                        TextField("Nazwa playlisty", text: $folderName, prompt: Text("Moja muzyka"))
 
-                        Button { showFolderPicker = true } label: {
+                        Button {
+                            FolderPickerPresenter.present(
+                                onPick: { url in
+                                    connect(url: url, expectsDirectory: true)
+                                }
+                            )
+                        } label: {
                             FilesActionRow(icon: "folder.badge.plus", title: "Wybierz folder", iconColor: .blue)
                         }
                         .disabled(isConnecting)
@@ -179,14 +197,14 @@ struct ICloudConnectionSheet: View {
                         if isConnecting {
                             HStack {
                                 ProgressView()
-                                Text("Dodaję…")
+                                Text(statusMessage ?? "Importuję…")
                                     .foregroundStyle(.secondary)
                             }
                         }
                     } header: {
                         Text("Folder z muzyką")
                     } footer: {
-                        Text("Pojedynczy plik jest kopiowany do aplikacji. Folder pozostaje w iCloud z dostępem przez bookmark.")
+                        Text("Folder → nowa playlista + automatyczny zapis na serwerze EOS. Pojedynczy plik zostaje podpięty z iCloud.")
                     }
                 }
             }
@@ -201,18 +219,11 @@ struct ICloudConnectionSheet: View {
             }
             .onAppear { accountState = ICloudAccountService.currentState() }
             .fileImporter(
-                isPresented: $showFolderPicker,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleImport(result)
-            }
-            .fileImporter(
                 isPresented: $showFilePicker,
                 allowedContentTypes: audioImportTypes,
                 allowsMultipleSelection: false
             ) { result in
-                handleImport(result)
+                handleImport(result, expectsDirectory: false)
             }
             .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -222,7 +233,7 @@ struct ICloudConnectionSheet: View {
         }
     }
 
-    private func handleImport(_ result: Result<[URL], Error>) {
+    private func handleImport(_ result: Result<[URL], Error>, expectsDirectory: Bool) {
         switch result {
         case .failure(let error):
             let ns = error as NSError
@@ -231,24 +242,35 @@ struct ICloudConnectionSheet: View {
             errorMessage = error.localizedDescription
         case .success(let urls):
             guard let url = urls.first else { return }
-            connect(url: url)
+            connect(url: url, expectsDirectory: expectsDirectory)
         }
     }
 
-    private func connect(url: URL) {
+    private func connect(url: URL, expectsDirectory: Bool) {
         isConnecting = true
-        defer { isConnecting = false }
-
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        errorMessage = nil
 
         let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolved = name.isEmpty ? url.deletingPathExtension().lastPathComponent : name
-        do {
-            try onConnect(resolved, url)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+
+        Task {
+            defer { isConnecting = false }
+            do {
+                var isDirectory: ObjCBool = false
+                _ = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                let isDir = isDirectory.boolValue
+
+                if expectsDirectory || isDir {
+                    statusMessage = "Skanuję folder…"
+                    try await onImportFolder(resolved, url)
+                } else {
+                    statusMessage = "Dodaję plik…"
+                    try onImportFile(resolved, url)
+                }
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

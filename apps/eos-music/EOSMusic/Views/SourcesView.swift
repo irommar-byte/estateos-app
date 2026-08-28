@@ -196,7 +196,7 @@ private struct SourcesViewBody: View {
                 } header: {
                     Text("Dodaj muzykę")
                 } footer: {
-                    Text("Wybierz lokalny folder (np. On My iPhone → Muzyka) albo folder w iCloud Drive. Pliki MP3, M4A i FLAC pojawią się posortowane według wykonawców i albumów.")
+                    Text("Wybierz folder — powstanie playlista o jego nazwie, utwory trafią do biblioteki i zapiszą się na serwerze EOS.")
                 }
 
                 if !sortedSources.isEmpty {
@@ -249,13 +249,23 @@ private struct SourcesViewBody: View {
             .sheet(item: $activeLocation) { location in
                 switch location {
                 case .localFolder:
-                    LocalFolderConnectionSheet { name, url in
-                        try sources.connectFolder(kind: .localFolder, name: name, folderURL: url)
-                    }
+                    LocalFolderConnectionSheet(
+                        onImportFolder: { name, url in
+                            try await app.importFolderAsPlaylist(kind: .localFolder, name: name, folderURL: url)
+                        },
+                        onImportFile: { name, url in
+                            try sources.connectFolder(kind: .localFolder, name: name, folderURL: url)
+                        }
+                    )
                 case .iCloud:
-                    ICloudConnectionSheet { name, url in
-                        try sources.connectFolder(kind: .iCloudDrive, name: name, folderURL: url)
-                    }
+                    ICloudConnectionSheet(
+                        onImportFolder: { name, url in
+                            try await app.importFolderAsPlaylist(kind: .iCloudDrive, name: name, folderURL: url)
+                        },
+                        onImportFile: { name, url in
+                            try sources.connectFolder(kind: .iCloudDrive, name: name, folderURL: url)
+                        }
+                    )
                 }
             }
             .alert("Odłączyć folder?", isPresented: Binding(

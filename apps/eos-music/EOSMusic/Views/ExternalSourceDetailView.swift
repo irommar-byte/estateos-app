@@ -141,10 +141,16 @@ struct ExternalSourceDetailView: View {
         .refreshable { await load() }
         .task { await load() }
         .sheet(isPresented: $showReconnectPicker) {
-            LocalFolderConnectionSheet { _, url in
-                try app.sources.reconnectFolder(sourceId: source.id, folderURL: url)
-                Task { await load() }
-            }
+            LocalFolderConnectionSheet(
+                onImportFolder: { _, url in
+                    try app.sources.reconnectFolder(sourceId: source.id, folderURL: url)
+                    await load()
+                },
+                onImportFile: { _, url in
+                    try app.sources.reconnectFolder(sourceId: source.id, folderURL: url)
+                    Task { await load() }
+                }
+            )
         }
         .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}

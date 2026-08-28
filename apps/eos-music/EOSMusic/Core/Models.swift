@@ -209,10 +209,41 @@ struct JobStatusResponse: Codable {
     let mode: String?
 
     var isDurableServerCopy: Bool {
+        let s = status.lowercased()
+        if s == "done" { return true }
         if onServer == true || persistent == true { return true }
         if mode == "file" { return true }
         if mode == "stream-proxy" { return false }
         return false
+    }
+
+    /// yt-dlp / NAS file copy — not a live preview proxy.
+    var looksLikeFileIngest: Bool {
+        if mode == "stream-proxy" { return false }
+        if intent == "download" { return true }
+        if mode == "file", ready != true { return true }
+        let s = status.lowercased()
+        if s == "downloading" || s == "preparing" || s == "starting" || s == "queued" { return true }
+        let p = (phase ?? "").lowercased()
+        return p == "download" || p == "acquire" || p == "file" || p == "ingest"
+    }
+
+    var isPlayableServerStream: Bool {
+        let s = status.lowercased()
+        if s == "error" || s == "cancelled" { return false }
+        if ready == true || s == "done" { return true }
+        return isDurableServerCopy && s != "downloading"
+    }
+}
+
+enum MusicPlayWaitPolicy {
+    /// When `requireDurable`, keep polling past a live `ready` proxy until the MP3 is on the NAS.
+    static func isSatisfied(_ job: JobStatusResponse, requireDurable: Bool) -> Bool {
+        if job.status.lowercased() == "error" { return false }
+        let ready = job.ready == true || job.status.lowercased() == "done"
+        guard ready else { return false }
+        if !requireDurable { return true }
+        return job.isDurableServerCopy || job.status.lowercased() == "done"
     }
 }
 
@@ -245,6 +276,14 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
     var isFailed: Bool {
         let s = status.lowercased()
         return s == "error" || s == "cancelled"
+    }
+
+    /// Server is writing a durable MP3 (bulk „Zapis na serwer”), not a live preview.
+    var looksLikeFileIngest: Bool {
+        let s = status.lowercased()
+        let p = (phase ?? "").lowercased()
+        if s == "downloading" || s == "preparing" || s == "starting" || s == "queued" { return true }
+        return p == "download" || p == "acquire" || p == "file" || p == "ingest"
     }
 
     var progressPercent: Double {
@@ -280,6 +319,8 @@ struct DownloadStartResponse: Codable {
 
     /// Durable MP3 on the EOS server — not a live preview stream.
     var isDurableServerCopy: Bool {
+        let s = status?.lowercased() ?? ""
+        if s == "done" { return true }
         if onServer == true || persistent == true { return true }
         if mode == "file" { return true }
         if mode == "stream-proxy" { return false }

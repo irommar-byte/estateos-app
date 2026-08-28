@@ -115,7 +115,7 @@ struct TrackStorageActionButton: View {
     var body: some View {
         Group {
             switch state {
-            case .idle, .failed:
+            case .idle:
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     app.queuePlus(track, preferredFolderId: folderId)
@@ -130,6 +130,23 @@ struct TrackStorageActionButton: View {
                 .buttonStyle(.plain)
                 .disabled(app.isOfflinePlaybackActive)
                 .accessibilityLabel("Dodaj na serwer EOS")
+
+            case .failed:
+                // Keep a distinct cloud error — do not flicker back to "+".
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    app.queuePlus(track, preferredFolderId: folderId)
+                } label: {
+                    Image(systemName: "exclamationmark.icloud.fill")
+                        .font(.system(size: size, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(EOSTheme.accent)
+                        .frame(width: frameSize, height: frameSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(app.isOfflinePlaybackActive)
+                .accessibilityLabel("Zapis na serwer nie udał się — spróbuj ponownie")
 
             case .onServer, .acquiringServer, .downloading, .done:
                 DownloadCloudButton(

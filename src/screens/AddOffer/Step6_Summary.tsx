@@ -74,6 +74,7 @@ import { API_URL } from '../../config/network';
 import { offerPhotoUploadParts } from '../../utils/offerPhotoUpload';
 import { parseRentAdditionalFeeForApi } from '../../lib/rentAdditionalFees';
 import { formatOfferConditionLabel } from '../../utils/offerFieldLabels';
+import OfferDescriptionRichText from '../../components/OfferDescriptionRichText';
 
 const { width } = Dimensions.get('window');
 const DARK_COLORS = { primary: '#10b981', background: '#000000', card: '#1C1C1E', text: '#FFFFFF', subtitle: '#8E8E93', danger: '#ef4444' };
@@ -1448,7 +1449,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           {draft.description ? (
             <View style={[styles.premiumCard, { backgroundColor: colors.card, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)', shadowColor: isDark ? '#000' : '#9CA3AF' }]}>
               <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>{t('addOffer.step6.sections.description')}</Text>
-              <Text style={[styles.descriptionText, { color: colors.text }]}>{draft.description}</Text>
+              <OfferDescriptionRichText value={draft.description} isDark={isDark} compact />
             </View>
           ) : null}
         </View>

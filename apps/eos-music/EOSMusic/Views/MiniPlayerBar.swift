@@ -10,6 +10,10 @@ private struct EOSScrollActiveKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct MiniPlayerUsesSystemChromeKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var miniPlayerClearance: CGFloat {
         get { self[MiniPlayerClearanceKey.self] }
@@ -20,6 +24,12 @@ extension EnvironmentValues {
     var eosScrollActive: Bool {
         get { self[EOSScrollActiveKey.self] }
         set { self[EOSScrollActiveKey.self] = newValue }
+    }
+
+    /// iOS 26 tab accessory already draws Liquid Glass — skip our nested capsule.
+    var miniPlayerUsesSystemChrome: Bool {
+        get { self[MiniPlayerUsesSystemChromeKey.self] }
+        set { self[MiniPlayerUsesSystemChromeKey.self] = newValue }
     }
 }
 
@@ -33,7 +43,8 @@ struct MiniPlayerTabInset: ViewModifier {
     }
 
     private var showsMusic: Bool {
-        !showsVideo && app.playback.engine != nil && !app.isFullPlayerPresented
+        // Stay mounted while the full player is up so collapse doesn't pop the bar back in.
+        !showsVideo && app.playback.engine != nil
     }
 
     private var isVisible: Bool { showsVideo || showsMusic }
@@ -54,17 +65,31 @@ struct MiniPlayerTabInset: ViewModifier {
     }
 }
 
-/// One dock above the tab bar — not inside NavigationStack, so sides/shadows are not clipped.
+/// One dock — iPhone floats above tab icons; iPad pins to the absolute bottom edge.
 struct MiniPlayerDock: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var tabBarLift: CGFloat = EOSLayout.tabBarItemRow
 
     private var showsVideo: Bool {
         video.engine.currentItem != nil && !video.isPlayerPresented
     }
 
     private var showsMusic: Bool {
-        !showsVideo && app.playback.engine != nil && !app.isFullPlayerPresented
+        !showsVideo && app.playback.engine != nil
+    }
+
+    private var isPadBottomDock: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad || horizontalSizeClass == .regular
+    }
+
+    private var bottomPadding: CGFloat {
+        guard showsVideo || showsMusic else { return 0 }
+        // iPad: pin to the very bottom — no tab-icon overlap risk like on iPhone.
+        if isPadBottomDock { return 4 }
+        // iPhone: clear Biblioteka / Szukaj labels under the floating capsule.
+        return 6 + max(tabBarLift, EOSLayout.tabBarItemRow)
     }
 
     var body: some View {
@@ -75,11 +100,21 @@ struct MiniPlayerDock: View {
                 MiniPlayerBar()
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
-        .animation(EOSMotion.playerSheet, value: showsVideo || showsMusic)
-        .animation(EOSMotion.playerSheet, value: app.isFullPlayerPresented)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, showsVideo || showsMusic ? (isPadBottomDock ? 10 : 12) : 0)
+        .padding(.top, showsVideo || showsMusic ? (isPadBottomDock ? 2 : 6) : 0)
+        .padding(.bottom, bottomPadding)
+        .background {
+            if !isPadBottomDock {
+                TabBarHeightProbe { height in
+                    if abs(tabBarLift - height) > 0.5 {
+                        tabBarLift = height
+                    }
+                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
+        }
     }
 }
 
@@ -90,104 +125,57 @@ struct VideoMiniPlayerBar: View {
 
     var body: some View {
         if let item = video.engine.currentItem {
-            HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Button {
-                    withAnimation(EOSMotion.standard) { video.expandPlayer() }
+                    withAnimation(EOSMotion.playerExpand) { video.expandPlayer() }
                 } label: {
-                    HStack(spacing: 12) {
+                    HStack(alignment: .center, spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(Color.black)
                             Image(systemName: "film.fill")
                                 .font(.title3)
                                 .foregroundStyle(EOSTheme.accent)
                         }
-                        .frame(width: 44, height: 44)
+                        .frame(width: EOSLayout.miniPlayerArt, height: EOSLayout.miniPlayerArt)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            MarqueeText(
-                                text: item.title,
-                                font: .subheadline.weight(.semibold),
-                                foreground: EOSTheme.textPrimary,
-                                speedPointsPerSecond: 30
-                            )
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            HStack(spacing: 6) {
-                                MarqueeText(
-                                    text: video.engine.folderName,
-                                    font: .caption,
-                                    foreground: EOSTheme.textSecondary,
-                                    speedPointsPerSecond: 26
-                                )
-                                if video.pipController.isActive {
-                                    Label("PiP", systemImage: "pip.fill")
-                                        .font(.caption2.weight(.bold))
-                                        .foregroundStyle(EOSTheme.accent)
-                                } else if video.pipController.isExternalPlaybackActive {
-                                    Label("AirPlay", systemImage: "airplayvideo")
-                                        .font(.caption2.weight(.bold))
-                                        .foregroundStyle(EOSTheme.accent)
-                                }
-                            }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(EOSTheme.textPrimary)
+                                .lineLimit(1)
+                            Text(video.engine.folderName)
+                                .font(.caption)
+                                .foregroundStyle(EOSTheme.textSecondary)
+                                .lineLimit(1)
                         }
-                        Spacer(minLength: 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(EOSPressableStyle())
+                .buttonStyle(.plain)
 
-                Button {
+                miniPlayerIconButton(systemName: video.engine.isPlaying ? "pause.fill" : "play.fill") {
                     if video.pipController.isActive || video.pipController.isExternalPlaybackActive {
                         video.pipController.toggleExternalPlayPause()
                     } else {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         video.engine.togglePlayPause()
                     }
-                } label: {
-                    Image(systemName: video.engine.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title3)
-                        .foregroundStyle(EOSTheme.textPrimary)
-                        .frame(width: 44, height: 44)
-                        .contentTransition(.symbolEffect(.replace))
                 }
-                .buttonStyle(EOSPressableStyle())
 
-                Button {
+                miniPlayerIconButton(systemName: "forward.fill", secondary: true) {
                     Task {
                         await app.onlineMovies.advanceToNextStreamingEpisode(video: video)
                     }
-                } label: {
-                    Image(systemName: "forward.fill")
-                        .foregroundStyle(EOSTheme.textSecondary)
-                        .frame(width: 36, height: 44)
                 }
-                .buttonStyle(EOSPressableStyle())
 
-                Button {
+                miniPlayerIconButton(systemName: "xmark", secondary: true, size: 32) {
                     video.stopAndClosePlayer()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(EOSTheme.textSecondary)
-                        .frame(width: 32, height: 44)
                 }
-                .buttonStyle(EOSPressableStyle())
                 .accessibilityLabel("Zatrzymaj wideo")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background {
-                RoundedRectangle(cornerRadius: EOSLayout.miniPlayerCorner, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .shadow(
-                        color: Color.black.opacity(colorScheme == .dark ? 0.45 : 0.16),
-                        radius: 18,
-                        y: 8
-                    )
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: EOSLayout.miniPlayerCorner, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.06), lineWidth: 0.5)
-            )
+            .miniPlayerChrome(colorScheme: colorScheme)
         }
     }
 }
@@ -195,6 +183,25 @@ struct VideoMiniPlayerBar: View {
 extension View {
     func miniPlayerTabInset() -> some View {
         modifier(MiniPlayerTabInset())
+    }
+
+    /// Mini-player sits in the gap above the tab labels — never over them.
+    /// iOS 26 `tabViewBottomAccessory` is too short and clips the title; we size our own bar.
+    @ViewBuilder
+    func eosMiniPlayerAboveTabBar() -> some View {
+        if #available(iOS 26.0, *) {
+            self
+                .tabBarMinimizeBehavior(.never)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    MiniPlayerDock()
+                        .environment(\.miniPlayerUsesSystemChrome, false)
+                }
+        } else {
+            self.safeAreaInset(edge: .bottom, spacing: 0) {
+                MiniPlayerDock()
+                    .environment(\.miniPlayerUsesSystemChrome, false)
+            }
+        }
     }
 
     /// Extra bottom scroll room under the floating mini-player (for nested screens).
@@ -257,56 +264,53 @@ private struct MiniPlayerContent: View {
 
     var body: some View {
         if let track = engine.currentTrack {
-            HStack(spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 Button {
                     app.expandPlayer()
                 } label: {
-                    HStack(spacing: 10) {
+                    HStack(alignment: .center, spacing: 12) {
                         ArtworkImage(
                             url: track.artworkURL,
-                            size: 44,
-                            cornerRadius: 9,
+                            size: EOSLayout.miniPlayerArt,
+                            cornerRadius: 8,
                             fallbackImage: engine.displayArtwork
                         )
-                            .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
-                        VStack(alignment: .leading, spacing: 2) {
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(track.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(EOSTheme.textPrimary)
+                                .lineLimit(1)
+
                             HStack(spacing: 6) {
-                                MarqueeText(
-                                    text: track.title,
-                                    font: .subheadline.weight(.semibold),
-                                    foreground: EOSTheme.textPrimary,
-                                    speedPointsPerSecond: 30
-                                )
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                if engine.playbackOrigin != .unknown {
-                                    BreathingSourceBadge(origin: engine.playbackOrigin, compact: true)
+                                if showsActivity {
+                                    if statusFlags.activity.phase.showsSpinner || engine.isLoading {
+                                        ProgressView()
+                                            .controlSize(.mini)
+                                    }
+                                    Text(activitySubtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(EOSTheme.textSecondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text(track.artist ?? "")
+                                        .font(.caption)
+                                        .foregroundStyle(EOSTheme.textSecondary)
+                                        .lineLimit(1)
                                 }
                             }
-
-                            if engine.isLoading || statusFlags.isBuffering || statusFlags.activity.phase.showsSpinner {
-                                PlaybackActivityLine(activity: statusFlags.activity, compact: true)
-                            } else {
-                                MarqueeText(
-                                    text: track.artist ?? "",
-                                    font: .caption,
-                                    foreground: EOSTheme.textSecondary,
-                                    speedPointsPerSecond: 26
-                                )
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
                         }
-                        Spacer(minLength: 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(EOSPressableStyle())
+                .buttonStyle(.plain)
 
-                if !track.isExternal {
-                    TrackStorageActionButton(
-                        track: track.payload,
-                        folderId: track.folderId,
-                        frameSize: 36
-                    )
-                }
+                TrackStorageActionButton(
+                    track: track.payload,
+                    folderId: track.folderId,
+                    frameSize: 32
+                )
 
                 if engine.playbackQueueRows.count > 1 {
                     Button {
@@ -314,71 +318,119 @@ private struct MiniPlayerContent: View {
                         showQueueSheet = true
                     } label: {
                         Text(engine.queuePositionLabel)
-                            .font(EOSTypography.monoDigit)
+                            .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(EOSTheme.textSecondary)
-                            .frame(minWidth: 36, minHeight: 36)
+                            .frame(minWidth: 32, minHeight: 32)
                     }
-                    .buttonStyle(EOSPressableStyle())
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Kolejka, \(engine.queuePositionLabel)")
                 }
 
-                Button {
+                miniPlayerIconButton(
+                    systemName: engine.isPlaying ? "pause.fill" : "play.fill",
+                    disabled: engine.isLoading
+                ) {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     engine.togglePlayPause()
-                } label: {
-                    Group {
-                        if engine.isLoading {
-                            ProgressView()
-                                .scaleEffect(0.85)
-                        } else {
-                            Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.title3)
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                    }
-                    .foregroundStyle(EOSTheme.textPrimary)
-                    .frame(width: 44, height: 44)
                 }
-                .buttonStyle(EOSPressableStyle())
-                .disabled(engine.isLoading)
 
-                Button {
+                miniPlayerIconButton(systemName: "forward.fill", secondary: true) {
                     Task { await engine.skipNext() }
-                } label: {
-                    Image(systemName: "forward.fill")
-                        .foregroundStyle(EOSTheme.textSecondary)
-                        .frame(width: 36, height: 44)
                 }
-                .buttonStyle(EOSPressableStyle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background {
-                RoundedRectangle(cornerRadius: EOSLayout.miniPlayerCorner, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .shadow(
-                        color: Color.black.opacity(colorScheme == .dark ? 0.45 : 0.16),
-                        radius: 18,
-                        x: 0,
-                        y: 8
-                    )
-                    .shadow(
-                        color: Color.black.opacity(colorScheme == .dark ? 0.2 : 0.06),
-                        radius: 4,
-                        x: 0,
-                        y: 1
-                    )
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: EOSLayout.miniPlayerCorner, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.06), lineWidth: 0.5)
-            )
+            .miniPlayerChrome(colorScheme: colorScheme)
             .sheet(isPresented: $showQueueSheet) {
                 PlaybackQueueSheet(engine: engine)
             }
         }
     }
 
+    private var showsActivity: Bool {
+        engine.isLoading || statusFlags.isBuffering || statusFlags.activity.phase.showsSpinner
+    }
+
+    private var activitySubtitle: String {
+        let detail = statusFlags.activity.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detail.isEmpty { return detail }
+        let title = statusFlags.activity.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Buforowanie…" : title
+    }
+}
+
+@ViewBuilder
+private func miniPlayerIconButton(
+    systemName: String,
+    secondary: Bool = false,
+    size: CGFloat = 40,
+    disabled: Bool = false,
+    action: @escaping () -> Void
+) -> some View {
+    Button(action: action) {
+        Image(systemName: systemName)
+            .font(.system(size: secondary ? 17 : 20, weight: .semibold))
+            .foregroundStyle(secondary ? EOSTheme.textSecondary : EOSTheme.textPrimary)
+            .frame(width: size, height: size)
+            .contentShape(Rectangle())
+            .contentTransition(.symbolEffect(.replace))
+    }
+    .buttonStyle(.plain)
+    .disabled(disabled)
+}
+
+private extension View {
+    @ViewBuilder
+    func miniPlayerChrome(colorScheme: ColorScheme) -> some View {
+        self
+            .padding(.leading, 10)
+            .padding(.trailing, 8)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: EOSLayout.miniPlayerHeight, alignment: .center)
+            .modifier(EOSLiquidGlassChrome(
+                cornerRadius: EOSLayout.miniPlayerCorner,
+                colorScheme: colorScheme
+            ))
+    }
+}
+
+/// Reads the tab item row height so the mini-player sits above Biblioteka / Szukaj / …
+private struct TabBarHeightProbe: UIViewRepresentable {
+    var onChange: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.onChange = onChange
+    }
+
+    final class ProbeView: UIView {
+        var onChange: ((CGFloat) -> Void)?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            DispatchQueue.main.async { [weak self] in self?.report() }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+
+        private func report() {
+            var cursor: UIView? = self
+            while let current = cursor {
+                if let bar = current as? UITabBar {
+                    let row = max(49, bar.bounds.height - bar.safeAreaInsets.bottom)
+                    onChange?(row)
+                    return
+                }
+                cursor = current.superview
+            }
+        }
+    }
 }
 
 /// Subtle scale on press — Apple Music–like micro interaction.

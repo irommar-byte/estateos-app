@@ -31,8 +31,7 @@ import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../components/HdrPreviewBadge';
-import DescriptionFormatBar from '../components/DescriptionFormatBar';
-import { insertEditorialMark } from '../utils/listingDescriptionFormat';
+import ListingDescriptionEditor from '../components/ListingDescriptionEditor';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
@@ -509,7 +508,6 @@ export default function EditOfferScreen({ route }: any) {
   const [propertyRoomScans, setPropertyRoomScans] = useState<PropertyRoomScan[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [descSelection, setDescSelection] = useState({ start: 0, end: 0 });
   const [area, setArea] = useState('');
   const [plotArea, setPlotArea] = useState('');
   const [rooms, setRooms] = useState('');
@@ -784,7 +782,7 @@ export default function EditOfferScreen({ route }: any) {
             hasStorage: isTrue(offer.hasStorage),
             hasElevator: isTrue(offer.hasElevator), 
             hasGarden: isTrue(offer.hasGarden), 
-            isTwoLevel: isTrue(offer.isTwoLevel),
+            isTwoLevel: isTrue(offer.isTwoLevel ?? offer.isDuplex),
             isFurnished: isTrue(offer.isFurnished),
           });
           setDeposit(offer.deposit != null && offer.deposit !== '' ? String(Math.round(Number(offer.deposit) || 0)) : '');
@@ -813,10 +811,12 @@ export default function EditOfferScreen({ route }: any) {
   }, [offerId, token, user?.id]);
 
   const setAmenityFlag = (
-    field: 'hasBalcony' | 'hasParking' | 'hasStorage' | 'hasElevator' | 'hasGarden' | 'isFurnished',
+    field: 'hasBalcony' | 'hasParking' | 'hasStorage' | 'hasElevator' | 'hasGarden' | 'isFurnished' | 'isDuplex',
     value: boolean,
+    uiField?: 'isTwoLevel',
   ) => {
-    setAmenities((prev) => ({ ...prev, [field]: value }));
+    const stateField = uiField ?? field;
+    setAmenities((prev) => ({ ...prev, [stateField]: value }));
     const patch = intelPatches[field];
     if (!patch || !token || !offerId) return;
     const action = value ? 'reapply' : 'undo';
@@ -2671,34 +2671,13 @@ export default function EditOfferScreen({ route }: any) {
                   },
                 ]}
               />
-              <DescriptionFormatBar
+              <ListingDescriptionEditor
                 isDark={isDark}
                 disabled={isGeneratingDescription}
-                onInsert={(kind) => {
-                  const next = insertEditorialMark(description, descSelection, kind);
-                  setDescription(next.text);
-                  setDescSelection({ start: next.start, end: next.end });
-                }}
-              />
-              <TextInput
-                style={[
-                  styles.textAreaPremium,
-                  {
-                    color: txtColor,
-                    backgroundColor: isDark ? '#141416' : '#F7F8FA',
-                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)',
-                    fontWeight: '300',
-                    letterSpacing: 0.2,
-                    lineHeight: 26,
-                  },
-                ]}
                 value={description}
-                onChangeText={setDescription}
-                onSelectionChange={(e) => setDescSelection(e.nativeEvent.selection)}
+                onChange={setDescription}
                 placeholder={t('offer.edit.mainInfo.descriptionPlaceholder')}
-                placeholderTextColor={subColor}
-                multiline
-                editable={!isGeneratingDescription}
+                minHeight={260}
               />
             </View>
           </View>
@@ -3367,7 +3346,8 @@ export default function EditOfferScreen({ route }: any) {
               tint="#AF52DE"
               label={t('offer.shared.amenitiesEdit.twoLevel')}
               value={amenities.isTwoLevel}
-              onChange={(v) => setAmenities({ ...amenities, isTwoLevel: v })}
+              intelApplied={intelPatches.isDuplex?.status === 'applied'}
+              onChange={(v) => setAmenityFlag('isDuplex', v, 'isTwoLevel')}
               borderColor={borderColor}
               txtColor={txtColor}
               isDark={isDark}

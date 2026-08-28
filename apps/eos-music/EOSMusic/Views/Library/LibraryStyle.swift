@@ -527,9 +527,6 @@ struct RecentLibraryCell: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Image(systemName: "play.circle.fill")
-                .font(.title3)
-                .foregroundStyle(LibraryAccent.icon.opacity(0.9))
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

@@ -231,8 +231,8 @@ final class MusicPlaybackEngine: ObservableObject {
                 fps = min(18, max(12, policy.analyzerFPS))
             case .full:
                 fps = needsSpectrum
-                    ? min(22, max(16, policy.analyzerFPS))
-                    : min(16, max(12, policy.analyzerFPS))
+                    ? min(18, max(14, policy.analyzerFPS))
+                    : min(14, max(10, policy.analyzerFPS))
             }
         } else {
             fps = 0
@@ -321,7 +321,13 @@ final class MusicPlaybackEngine: ObservableObject {
     private var sessionGeneration = 0
     private var activePlayTask: Task<Void, Never>?
     private var streamRecoveryAttempts = 0
+    private var streamRecoveryInFlight = false
+    private var firstByteWatchdog: Task<Void, Never>?
     private var continuousPlayingSince: Date?
+    private var listenTrackURL: String?
+    private var listenAccumulated: Double = 0
+    private var listenLastTick: Date?
+    private var listenCounted = false
     private var stalledObserver: NSObjectProtocol?
     /// True while the user/engine intends continuous playback (survives temporary rate=0 stalls).
     private var playbackDesired = false
@@ -497,6 +503,7 @@ final class MusicPlaybackEngine: ObservableObject {
         sessionGeneration += 1
         activePlayTask?.cancel()
         activePlayTask = nil
+        finalizeListenSession()
         teardownPlayer()
         currentTrack = nil
         displayArtwork = nil
@@ -521,6 +528,50 @@ final class MusicPlaybackEngine: ObservableObject {
         removeAudioLifecycleObservers()
         onTeardown?()
         onTeardown = nil
+    }
+
+    private func beginListenSession(for track: MusicPlaybackTrack) {
+        listenTrackURL = track.url
+        listenAccumulated = 0
+        listenLastTick = isPlaying ? Date() : nil
+        listenCounted = false
+    }
+
+    private func tickListenSession() {
+        guard let track = currentTrack, listenTrackURL == track.url else { return }
+        if isPlaying {
+            let now = Date()
+            if let last = listenLastTick {
+                listenAccumulated += now.timeIntervalSince(last)
+            }
+            listenLastTick = now
+            commitListenIfQualified(track: track)
+        } else {
+            listenLastTick = nil
+        }
+    }
+
+    private func finalizeListenSession() {
+        tickListenSession()
+        if let track = currentTrack, listenTrackURL == track.url {
+            commitListenIfQualified(track: track)
+        }
+        listenTrackURL = nil
+        listenAccumulated = 0
+        listenLastTick = nil
+        listenCounted = false
+    }
+
+    private func commitListenIfQualified(track: MusicPlaybackTrack) {
+        guard !listenCounted else { return }
+        let duration = liveDuration()
+        guard ListeningStatsPolicy.qualifies(accumulated: listenAccumulated, duration: duration) else { return }
+        listenCounted = true
+        let seconds = listenAccumulated
+        let snapshot = track
+        Task { @MainActor in
+            ListeningStatsStore.shared.recordPlay(track: snapshot, listenedSeconds: seconds)
+        }
     }
 
     func togglePlayPause() {
@@ -633,17 +684,26 @@ final class MusicPlaybackEngine: ObservableObject {
         // Drop old item observers so end-of-track cannot double-skip while we resolve the next URL.
         // Keep the current player audible until the next stream is ready (no silent token RTT).
         cleanupObservers()
+        finalizeListenSession()
 
         currentTrack = track
+        beginListenSession(for: track)
         displayArtwork = nil
         playbackOrigin = .unknown
         isLoading = true
         isBuffering = false
-        setPlaybackActivity(
-            .resolvingStream,
-            title: "Przygotowuję odtwarzanie",
-            detail: track.title
-        )
+        if !track.isExternal,
+           isDownloaded(track),
+           OpenedAudioRegistry.localURL(for: track.url) == nil,
+           OfflineMusicStore.shared.localURL(for: track.url) == nil {
+            setPlaybackActivity(.onServerConnecting, title: "Na serwerze EOS", detail: track.title)
+        } else {
+            setPlaybackActivity(
+                .resolvingStream,
+                title: "Przygotowuję odtwarzanie",
+                detail: track.title
+            )
+        }
         errorMessage = nil
         streamRecoveryAttempts = 0
         continuousPlayingSince = nil
@@ -733,17 +793,6 @@ final class MusicPlaybackEngine: ObservableObject {
         forceRefresh: Bool,
         ignoreLocalFile: Bool = false
     ) async throws -> URL {
-        if track.isExternal {
-            if let resolver = externalFileResolver {
-                return try await resolver(track)
-            }
-            if let file = track.playbackFileURL {
-                playbackOrigin = file.isFileURL ? .phone : .liveSource
-                return file
-            }
-            throw APIError.server("Nie można odtworzyć pliku ze źródła.")
-        }
-
         if !ignoreLocalFile, let openedLocal = OpenedAudioRegistry.localURL(for: track.url) {
             activeStreamJobId = nil
             tokenExpiresAt = nil
@@ -752,10 +801,8 @@ final class MusicPlaybackEngine: ObservableObject {
             return openedLocal
         }
 
-        guard let api else { throw APIError.server("Brak połączenia z serwerem.") }
-
         if !ignoreLocalFile, let local = OfflineMusicStore.shared.localURL(for: track.url) {
-            if offlineOnly {
+            if offlineOnly || track.isExternal {
                 activeStreamJobId = nil
                 tokenExpiresAt = nil
                 setPlaybackActivity(.openingLocal, title: "Plik lokalny", detail: "Odtwarzam z iPhone'a")
@@ -774,6 +821,38 @@ final class MusicPlaybackEngine: ObservableObject {
             return local
         }
 
+        // Folder / iCloud imports: prefer durable EOS stream so other devices can play
+        // after upload — do not require the original security-scoped bookmark.
+        if track.isExternal {
+            if offlineOnly {
+                throw APIError.server("Tryb Offline — utwór nie jest pobrany na to urządzenie.")
+            }
+            if let stream = try await resolveExternalViaServerIfPossible(
+                track: track,
+                forceRefresh: forceRefresh
+            ) {
+                return stream
+            }
+            if let resolver = externalFileResolver {
+                do {
+                    return try await resolver(track)
+                } catch {
+                    throw APIError.server(
+                        "Nie można odtworzyć pliku z chmury. Poczekaj na „Zapis na serwer EOS” albo otwórz folder na tym urządzeniu."
+                    )
+                }
+            }
+            if let file = track.playbackFileURL {
+                playbackOrigin = file.isFileURL ? .phone : .liveSource
+                return file
+            }
+            throw APIError.server(
+                "Nie można odtworzyć pliku z chmury. Utwór jeszcze nie jest dostępny na serwerze EOS."
+            )
+        }
+
+        guard let api else { throw APIError.server("Brak połączenia z serwerem.") }
+
         if offlineOnly {
             throw APIError.server("Tryb Offline — utwór nie jest pobrany na to urządzenie.")
         }
@@ -781,33 +860,85 @@ final class MusicPlaybackEngine: ObservableObject {
         let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
+        var seenIds = Set<String>()
+        let uniqueIds = knownIds.filter { seenIds.insert($0).inserted }
+        let verifyKnown = forceRefresh || streamRecoveryAttempts > 0
 
-        // Ready-on-server path: reuse warm token, else one cheap play-token GET — never waitForReady.
-        for jobId in knownIds {
-            if !forceRefresh, let cached = cachedPlayToken(for: jobId) {
-                activateStreamToken(jobId: jobId, token: cached.token, expiresAt: cached.expiresAt)
-                setPlaybackActivity(
-                    .onServerConnecting,
-                    title: "Na serwerze EOS",
-                    detail: "Łączę ze streamem (cache tokenu)"
+        // Play + „Zapis na serwer” of the same URL must share one job. A second live
+        // play never gets first bytes while the NAS is busy ingesting.
+        let shouldProbeActive =
+            verifyKnown
+            || MusicDownloadService.hasActiveDownloads
+            || MusicDownloadService.isServerAcquireActive(track.url)
+            || uniqueIds.isEmpty
+        if shouldProbeActive, let active = await api.findActiveMusicJob(url: track.url), !active.jobId.isEmpty {
+            EOSPerfLog.stream.debug(
+                "reuse active server job=\(active.jobId, privacy: .public) status=\(active.status, privacy: .public) ingest=\(active.looksLikeFileIngest)"
+            )
+            return try await openJobStream(
+                jobId: active.jobId,
+                track: track,
+                preferDurable: active.looksLikeFileIngest && !active.isTerminal,
+                waitIfNeeded: !active.isTerminal,
+                forceRefresh: forceRefresh
+            )
+        }
+
+        // Never open a competing live play job while this URL is being saved to NAS.
+        if MusicDownloadService.isServerAcquireActive(track.url) {
+            if let active = await api.findActiveMusicJob(url: track.url), !active.isTerminal {
+                EOSPerfLog.stream.debug(
+                    "play waits for server acquire job=\(active.jobId, privacy: .public)"
                 )
-                EOSPerfLog.stream.debug("token cache hit job=\(jobId, privacy: .public)")
-                playbackOrigin = .server
-                return api.musicStreamURL(jobId: jobId, token: cached.token)
+                return try await openJobStream(
+                    jobId: active.jobId,
+                    track: track,
+                    preferDurable: active.looksLikeFileIngest,
+                    waitIfNeeded: true,
+                    forceRefresh: forceRefresh
+                )
             }
-            do {
-                setPlaybackActivity(
-                    .onServerConnecting,
-                    title: "Na serwerze EOS",
-                    detail: "Pobieram token odtwarzania…"
-                )
-                let token = try await api.musicPlayToken(jobId: jobId)
-                rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
-                playbackOrigin = .server
-                return api.musicStreamURL(jobId: jobId, token: token.token)
-            } catch {
-                // Stale id — try next / fall through to ensure.
-                continue
+            for _ in 0..<40 {
+                if let active = await api.findActiveMusicJob(url: track.url), !active.isTerminal {
+                    EOSPerfLog.stream.debug(
+                        "play picked up queued server acquire job=\(active.jobId, privacy: .public)"
+                    )
+                    return try await openJobStream(
+                        jobId: active.jobId,
+                        track: track,
+                        preferDurable: active.looksLikeFileIngest,
+                        waitIfNeeded: true,
+                        forceRefresh: forceRefresh
+                    )
+                }
+                try await Task.sleep(nanoseconds: 250_000_000)
+            }
+        }
+
+        for jobId in uniqueIds {
+            if let status = try? await api.fetchJobStatus(jobId: jobId) {
+                if status.status.lowercased() == "error" || status.status.lowercased() == "cancelled" {
+                    clearServerJobBinding(for: track)
+                    continue
+                }
+                if status.looksLikeFileIngest, !status.isPlayableServerStream {
+                    return try await openJobStream(
+                        jobId: jobId,
+                        track: track,
+                        preferDurable: true,
+                        waitIfNeeded: true,
+                        forceRefresh: forceRefresh
+                    )
+                }
+                if status.isPlayableServerStream {
+                    return try await openJobStream(
+                        jobId: jobId,
+                        track: track,
+                        preferDurable: status.isDurableServerCopy,
+                        waitIfNeeded: false,
+                        forceRefresh: forceRefresh || streamRecoveryAttempts > 0
+                    )
+                }
             }
         }
 
@@ -829,10 +960,11 @@ final class MusicPlaybackEngine: ObservableObject {
         if durable {
             bindDurableJobId(jobId, toTrackURL: track.url)
         }
-        if let token = ensure.token, !token.isEmpty, ensure.ready == true {
+        let ingesting = ensure.status?.lowercased() == "downloading" || (ensure.mode == "file" && ensure.ready != true)
+        if let token = ensure.token, !token.isEmpty, ensure.ready == true, !ingesting {
             rememberStreamToken(jobId: jobId, token: token, expiresIn: nil)
             if durable {
-                setPlaybackActivity(.onServerConnecting, title: "Na serwerze EOS", detail: "Otwieram odtwarzacz…")
+                setPlaybackActivity(.onServerConnecting, title: "Na serwerze EOS", detail: "Odtwarzam…")
                 playbackOrigin = .server
             } else {
                 setPlaybackActivity(.connectingStream, title: "Źródło", detail: "Otwieram stream…")
@@ -840,31 +972,204 @@ final class MusicPlaybackEngine: ObservableObject {
             }
             return api.musicStreamURL(jobId: jobId, token: token)
         }
-        if ensure.ready != true {
-            let waited = try await api.waitForMusicPlayReady(jobId: jobId) { [weak self] progress, status in
+        if ensure.ready == true, durable, !ingesting {
+            return try await authenticatedStreamURL(
+                jobId: jobId,
+                track: track,
+                durable: true,
+                forceRefresh: forceRefresh
+            )
+        }
+        if ensure.ready != true || ingesting {
+            let waited = try await api.waitForMusicPlayReady(
+                jobId: jobId,
+                timeoutSeconds: ingesting ? 600 : 180,
+                requireDurable: ingesting
+            ) { [weak self] progress, status in
                 Task { @MainActor in
                     self?.setPlaybackActivity(
                         .preparingServer,
-                        title: durable ? "Przygotowanie na serwerze" : "Łączę ze źródłem",
+                        title: ingesting ? "Zapis na serwer EOS" : (durable ? "Przygotowanie na serwerze" : "Łączę ze źródłem"),
                         detail: Self.serverStatusCaption(status),
                         progress: progress
                     )
                 }
             }
-            durable = waited.isDurableServerCopy || durable
+            durable = waited.isDurableServerCopy || durable || waited.status.lowercased() == "done"
             if durable {
                 bindDurableJobId(jobId, toTrackURL: track.url)
             }
         }
-        setPlaybackActivity(
-            .onServerConnecting,
-            title: durable ? "Na serwerze EOS" : "Źródło",
-            detail: "Pobieram token…"
+        return try await authenticatedStreamURL(
+            jobId: jobId,
+            track: track,
+            durable: durable,
+            forceRefresh: forceRefresh
         )
-        let token = try await api.musicPlayToken(jobId: jobId)
-        rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
-        playbackOrigin = durable ? .server : .liveSource
-        return api.musicStreamURL(jobId: jobId, token: token.token)
+    }
+
+    /// Cross-device path for `eosmusic://external/…` after upload: stream `/api/music/stream/{jobId}`.
+    private func resolveExternalViaServerIfPossible(
+        track: MusicPlaybackTrack,
+        forceRefresh: Bool
+    ) async throws -> URL? {
+        guard let api else { return nil }
+
+        let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        let uniqueIds = knownIds.filter { seen.insert($0).inserted }
+
+        if let jobId = uniqueIds.first {
+            EOSPerfLog.stream.debug(
+                "external via durable job=\(jobId, privacy: .public) url=\(track.url, privacy: .public)"
+            )
+            return try await openJobStream(
+                jobId: jobId,
+                track: track,
+                preferDurable: true,
+                waitIfNeeded: true,
+                forceRefresh: forceRefresh
+            )
+        }
+
+        if let active = await api.findActiveMusicJob(url: track.url), !active.jobId.isEmpty {
+            EOSPerfLog.stream.debug(
+                "external via active job=\(active.jobId, privacy: .public) status=\(active.status, privacy: .public)"
+            )
+            return try await openJobStream(
+                jobId: active.jobId,
+                track: track,
+                preferDurable: active.looksLikeFileIngest || active.isTerminal,
+                waitIfNeeded: !active.isTerminal,
+                forceRefresh: forceRefresh
+            )
+        }
+
+        if MusicDownloadService.isServerAcquireActive(track.url) {
+            for _ in 0..<24 {
+                try await Task.sleep(nanoseconds: 400_000_000)
+                if let active = await api.findActiveMusicJob(url: track.url), !active.jobId.isEmpty {
+                    return try await openJobStream(
+                        jobId: active.jobId,
+                        track: track,
+                        preferDurable: true,
+                        waitIfNeeded: true,
+                        forceRefresh: forceRefresh
+                    )
+                }
+                if !MusicDownloadService.isServerAcquireActive(track.url) { break }
+            }
+        }
+
+        return nil
+    }
+
+    private func openJobStream(
+        jobId: String,
+        track: MusicPlaybackTrack,
+        preferDurable: Bool,
+        waitIfNeeded: Bool,
+        forceRefresh: Bool
+    ) async throws -> URL {
+        guard let api else { throw APIError.server("Brak połączenia z serwerem.") }
+        if preferDurable {
+            setPlaybackActivity(
+                .preparingServer,
+                title: "Zapis na serwer EOS",
+                detail: "Czekam aż plik będzie gotowy do odtwarzania…",
+                progress: 4
+            )
+            playbackOrigin = .server
+            let waited = try await api.waitForMusicPlayReady(
+                jobId: jobId,
+                timeoutSeconds: 600,
+                requireDurable: true
+            ) { [weak self] progress, status in
+                Task { @MainActor in
+                    self?.setPlaybackActivity(
+                        .preparingServer,
+                        title: "Zapis na serwer EOS",
+                        detail: Self.serverStatusCaption(status),
+                        progress: progress
+                    )
+                }
+            }
+            let durable = waited.isDurableServerCopy || waited.status.lowercased() == "done"
+            if durable {
+                bindDurableJobId(jobId, toTrackURL: track.url)
+            }
+            return try await authenticatedStreamURL(
+                jobId: jobId,
+                track: track,
+                durable: durable,
+                forceRefresh: forceRefresh
+            )
+        }
+        if waitIfNeeded {
+            let waited = try await api.waitForMusicPlayReady(jobId: jobId) { [weak self] progress, status in
+                Task { @MainActor in
+                    self?.setPlaybackActivity(
+                        .preparingServer,
+                        title: "Łączę ze źródłem",
+                        detail: Self.serverStatusCaption(status),
+                        progress: progress
+                    )
+                }
+            }
+            let durable = waited.isDurableServerCopy || waited.status.lowercased() == "done"
+            if durable {
+                bindDurableJobId(jobId, toTrackURL: track.url)
+            }
+            return try await authenticatedStreamURL(
+                jobId: jobId,
+                track: track,
+                durable: durable,
+                forceRefresh: forceRefresh
+            )
+        }
+        return try await authenticatedStreamURL(
+            jobId: jobId,
+            track: track,
+            durable: true,
+            forceRefresh: forceRefresh
+        )
+    }
+
+    private func authenticatedStreamURL(
+        jobId: String,
+        track: MusicPlaybackTrack,
+        durable: Bool,
+        forceRefresh: Bool
+    ) async throws -> URL {
+        guard let api else { throw APIError.server("Brak połączenia z serwerem.") }
+        if durable {
+            bindDurableJobId(jobId, toTrackURL: track.url)
+            playbackOrigin = .server
+            setPlaybackActivity(.onServerConnecting, title: "Na serwerze EOS", detail: "Odtwarzam…")
+        } else {
+            playbackOrigin = .liveSource
+            setPlaybackActivity(.connectingStream, title: "Źródło", detail: "Otwieram stream…")
+        }
+
+        let needsFreshToken = forceRefresh || tokenNeedsRefreshBeforeRemount()
+        if !needsFreshToken, let cached = cachedPlayToken(for: jobId) {
+            activateStreamToken(jobId: jobId, token: cached.token, expiresAt: cached.expiresAt)
+            EOSPerfLog.stream.debug("token cache hit job=\(jobId, privacy: .public)")
+            return api.musicStreamURL(jobId: jobId, token: cached.token)
+        }
+
+        do {
+            let token = try await api.musicPlayToken(jobId: jobId)
+            rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
+            return api.musicStreamURL(jobId: jobId, token: token.token)
+        } catch {
+            EOSPerfLog.stream.debug("play-token fetch failed — session Bearer job=\(jobId, privacy: .public)")
+            activateStreamToken(jobId: jobId, token: "", expiresAt: nil)
+            warmPlayTokenInBackground(jobId: jobId)
+            return api.musicStreamURL(jobId: jobId)
+        }
     }
 
     private static func isEOSMusicStream(_ url: URL) -> Bool {
@@ -879,6 +1184,28 @@ final class MusicPlaybackEngine: ObservableObject {
         queue[idx] = current.applying(downloadJobId: jobId, serverAssetId: jobId)
     }
 
+    private func clearServerJobBinding(for track: MusicPlaybackTrack) {
+        guard let idx = queue.firstIndex(where: { $0.url == track.url }) else { return }
+        let staleJobId = track.serverAssetId ?? track.downloadJobId
+        queue[idx] = queue[idx].withoutServerJobIds()
+        if let staleJobId, !staleJobId.isEmpty {
+            playTokenCache.removeValue(forKey: staleJobId)
+        }
+    }
+
+    private static func shouldReacquireAfterStreamFailure(_ reason: String) -> Bool {
+        let lower = reason.lowercased()
+        return lower.contains("404")
+            || lower.contains("not found")
+            || lower.contains("first-byte-timeout")
+            || lower.contains("cannot open")
+            || lower.contains("couldn't be opened")
+            || lower.contains("could not be opened")
+            || lower.contains("-11828")
+            || lower.contains("-11800")
+            || lower.contains("operation stopped")
+    }
+
     private static func serverStatusCaption(_ status: String) -> String {
         switch status {
         case "preparing": return "Szukam źródła audio…"
@@ -886,6 +1213,16 @@ final class MusicPlaybackEngine: ObservableObject {
         case "downloading": return "Zapisuję trwałą kopię na serwerze…"
         case "done": return "Gotowe — łączę ze streamem"
         default: return status.isEmpty ? "Czekam na serwer…" : status
+        }
+    }
+
+    private func warmPlayTokenInBackground(jobId: String) {
+        guard let api else { return }
+        Task { [weak self] in
+            guard let token = try? await api.musicPlayToken(jobId: jobId) else { return }
+            await MainActor.run {
+                self?.rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
+            }
         }
     }
 
@@ -993,19 +1330,20 @@ final class MusicPlaybackEngine: ObservableObject {
             .filter { !$0.isEmpty }
 
         if let jobId = knownIds.first {
+            if let status = try? await api.fetchJobStatus(jobId: jobId),
+               status.looksLikeFileIngest {
+                return
+            }
             if let cached = cachedPlayToken(for: jobId) {
                 let url = api.musicStreamURL(jobId: jobId, token: cached.token)
                 prefetchedStream = PrefetchedStream(trackID: track.id, url: url, readyRemote: true)
                 warmRemoteAsset(url)
                 return
             }
-            if let token = try? await api.musicPlayToken(jobId: jobId) {
-                guard generation == sessionGeneration else { return }
-                rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
-                let url = api.musicStreamURL(jobId: jobId, token: token.token)
-                prefetchedStream = PrefetchedStream(trackID: track.id, url: url, readyRemote: true)
-                warmRemoteAsset(url)
-            }
+            let url = api.musicStreamURL(jobId: jobId)
+            prefetchedStream = PrefetchedStream(trackID: track.id, url: url, readyRemote: true)
+            warmRemoteAsset(url)
+            warmPlayTokenInBackground(jobId: jobId)
             return
         }
 
@@ -1034,7 +1372,15 @@ final class MusicPlaybackEngine: ObservableObject {
 
     private func warmRemoteAsset(_ url: URL) {
         Task {
-            let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: AppConfig.userAgent])
+            var options: [String: Any] = [AVURLAssetHTTPUserAgentKey: AppConfig.userAgent]
+            if Self.isEOSMusicStream(url) {
+                var headers: [String: String] = ["User-Agent": AppConfig.userAgent]
+                if let token = api?.sessionToken, !token.isEmpty {
+                    headers["Authorization"] = "Bearer \(token)"
+                }
+                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+            }
+            let asset = AVURLAsset(url: url, options: options)
             _ = try? await asset.load(.isPlayable)
         }
     }
@@ -1087,11 +1433,70 @@ final class MusicPlaybackEngine: ObservableObject {
         reason: String
     ) async -> Bool {
         guard generation == sessionGeneration, !track.isExternal else { return false }
+        if streamRecoveryInFlight { return true }
+        streamRecoveryInFlight = true
+        defer { streamRecoveryInFlight = false }
+
+        firstByteWatchdog?.cancel()
+        firstByteWatchdog = nil
 
         let authFailure = isTokenAuthFailure(reason)
         if StreamRecoveryPolicy.isFatalPlaybackError(reason), !authFailure {
             EOSPerfLog.stream.error("fatal stream error — stop retrying: \(reason, privacy: .public)")
             return false
+        }
+
+        // Ingest in flight: wait for the MP3 instead of remounting an empty live proxy.
+        if let api, let active = await api.findActiveMusicJob(url: track.url),
+           active.looksLikeFileIngest, !active.isTerminal {
+            errorMessage = nil
+            isLoading = true
+            setPlaybackActivity(
+                .preparingServer,
+                title: "Zapis na serwer EOS",
+                detail: "Czekam aż plik będzie gotowy do odtwarzania…",
+                progress: active.progressPercent
+            )
+            EOSPerfLog.stream.info(
+                "stream waits for ingest job=\(active.jobId, privacy: .public) reason=\(reason, privacy: .public)"
+            )
+            do {
+                let waited = try await api.waitForMusicPlayReady(
+                    jobId: active.jobId,
+                    timeoutSeconds: 600,
+                    requireDurable: true
+                ) { [weak self] progress, status in
+                    Task { @MainActor in
+                        self?.setPlaybackActivity(
+                            .preparingServer,
+                            title: "Zapis na serwer EOS",
+                            detail: Self.serverStatusCaption(status),
+                            progress: progress
+                        )
+                    }
+                }
+                guard generation == sessionGeneration else { return true }
+                bindDurableJobId(active.jobId, toTrackURL: track.url)
+                let streamURL = try await authenticatedStreamURL(
+                    jobId: active.jobId,
+                    track: track,
+                    durable: waited.isDurableServerCopy || waited.status.lowercased() == "done",
+                    forceRefresh: false
+                )
+                guard generation == sessionGeneration else { return true }
+                loadStream(
+                    url: streamURL,
+                    track: track,
+                    queueIndex: queueIndex,
+                    generation: generation,
+                    resumeAt: max(0, resumeAt),
+                    readyRemote: true
+                )
+                streamRecoveryAttempts = 0
+                return true
+            } catch {
+                EOSPerfLog.stream.error("ingest wait failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         guard let delay = StreamRecoveryPolicy.delayNanoseconds(afterAttempt: streamRecoveryAttempts) else {
@@ -1102,6 +1507,23 @@ final class MusicPlaybackEngine: ObservableObject {
             isBuffering = false
             refreshNowPlaying(force: true)
             return true
+        }
+
+        if Self.shouldReacquireAfterStreamFailure(reason), let api {
+            let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+            for jobId in knownIds {
+                if let status = try? await api.fetchJobStatus(jobId: jobId),
+                   status.status.lowercased() == "error"
+                    || status.status.lowercased() == "cancelled"
+                    || (status.looksLikeFileIngest && !status.isPlayableServerStream) {
+                    EOSPerfLog.stream.warning("clear broken server job=\(jobId, privacy: .public)")
+                    try? await api.cancelJob(jobId: jobId)
+                }
+            }
+            clearServerJobBinding(for: track)
+            streamRecoveryAttempts = 0
         }
 
         let attempt = streamRecoveryAttempts
@@ -1382,10 +1804,55 @@ final class MusicPlaybackEngine: ObservableObject {
             syncPlayingState()
             refreshNowPlaying(force: true)
         }
+        armFirstByteWatchdog(track: track, queueIndex: queueIndex, generation: generation)
+    }
+
+    private func armFirstByteWatchdog(
+        track: MusicPlaybackTrack,
+        queueIndex: Int,
+        generation: Int
+    ) {
+        firstByteWatchdog?.cancel()
+        firstByteWatchdog = nil
+        guard currentStreamIsRemote, !currentStreamIsReadyRemote else { return }
+        firstByteWatchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: StreamRecoveryPolicy.firstByteTimeoutNanoseconds)
+            guard let self, !Task.isCancelled, self.sessionGeneration == generation else { return }
+            guard self.playbackDesired, self.currentStreamIsRemote, !self.currentStreamIsReadyRemote else { return }
+            let loaded = self.streamLoadedSeconds()
+            let elapsed = self.livePlaybackTime()
+            guard elapsed < 0.4, loaded < 0.25 else { return }
+            EOSPerfLog.stream.warning(
+                "first-byte timeout title=\(track.title, privacy: .public) loaded=\(loaded, format: .fixed(precision: 2))"
+            )
+            await self.recoverFromStreamDisruption(
+                track: track,
+                queueIndex: queueIndex,
+                generation: generation,
+                at: max(0, elapsed),
+                reason: "first-byte-timeout"
+            )
+        }
+    }
+
+    private func streamLoadedSeconds() -> Double {
+        guard let item = player?.currentItem else { return 0 }
+        let loaded = item.loadedTimeRanges
+            .compactMap { $0.timeRangeValue.end.seconds }
+            .max() ?? 0
+        return loaded.isFinite ? max(0, loaded) : 0
     }
 
     private func makePlayerItem(url: URL) -> AVPlayerItem {
-        let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: AppConfig.userAgent])
+        var options: [String: Any] = [AVURLAssetHTTPUserAgentKey: AppConfig.userAgent]
+        if Self.isEOSMusicStream(url) {
+            var headers: [String: String] = ["User-Agent": AppConfig.userAgent]
+            if let token = api?.sessionToken, !token.isEmpty {
+                headers["Authorization"] = "Bearer \(token)"
+            }
+            options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+        }
+        let asset = AVURLAsset(url: url, options: options)
         return AVPlayerItem(asset: asset, automaticallyLoadedAssetKeys: ["playable"])
     }
 
@@ -1425,6 +1892,8 @@ final class MusicPlaybackEngine: ObservableObject {
                 progress: pct
             )
         } else if !isLoading, player.currentItem?.status == .readyToPlay, isPlaying || playbackDesired {
+            firstByteWatchdog?.cancel()
+            firstByteWatchdog = nil
             setPlaybackActivity(.playing, title: "Odtwarzanie", detail: currentTrack?.title ?? "")
         }
     }
@@ -1475,6 +1944,7 @@ final class MusicPlaybackEngine: ObservableObject {
         } else if player?.timeControlStatus != .waitingToPlayAtSpecifiedRate {
             continuousPlayingSince = nil
         }
+        tickListenSession()
         updateBufferingState()
     }
 
@@ -1504,6 +1974,7 @@ final class MusicPlaybackEngine: ObservableObject {
         } else {
             BluetoothMediaBrowser.shared.touchCurrentProgress(from: self)
         }
+        tickListenSession()
     }
 
     private func hydratePlaybackMetadata(from item: AVPlayerItem, queueIndex: Int, generation: Int) async {
@@ -1627,6 +2098,8 @@ final class MusicPlaybackEngine: ObservableObject {
     }
 
     private func cleanupObservers() {
+        firstByteWatchdog?.cancel()
+        firstByteWatchdog = nil
         if let timeObserver, let player {
             player.removeTimeObserver(timeObserver)
         }
@@ -1706,8 +2179,8 @@ private final class WinampFFTProcessor {
 
         let invScale = max(0.08, scale)
         return magnitudes.map { mag in
-            let compressed = log1pf(mag * 48.0 / invScale)
-            let value = Int(compressed * 72.0)
+            let compressed = log1pf(mag * 56.0 / invScale)
+            let value = Int(compressed * 108.0)
             return UInt8(min(255, max(0, value)))
         }
     }
@@ -1725,6 +2198,7 @@ private final class PlayerAudioAnalyzer {
         var islandBars: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.islandBarCount)
         var bandTargets: [Int] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax)
         var energy: Float = 0
+        var spectrumAGC: Double = 0.2
         var monoScratch: [Float] = Array(repeating: 0, count: 2048)
         var ringBuffer: [Float] = Array(repeating: 0, count: 512)
         var ringWrite = 0
@@ -1744,7 +2218,7 @@ private final class PlayerAudioAnalyzer {
     private let fft = WinampFFTProcessor()
     private let barTable32: [Int]
     private let barTable64: [Int]
-    private let fftScale: Float = 1.4
+    private let fftScale: Float = 0.95
 
     private var barTable: [Int] {
         activeBandCount >= MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense ? barTable64 : barTable32
@@ -1851,10 +2325,24 @@ private final class PlayerAudioAnalyzer {
         return sum / (high - low)
     }
 
-    /// Soft-knee 0…1 — widoczny ruch przy cichym materiale, miękki limit u góry.
     private static func softNormalize(_ value: Float, gain: Float) -> Float {
         let x = max(0, value * gain)
-        return min(0.96, x / (1 + x * 0.36))
+        // Softer knee so loud passages reach the top of the VU, quiet ones still move.
+        return min(1, x / (1 + x * 0.18))
+    }
+
+    /// System output volume (0…1). PCM tap is post-mix at unity, so bars must follow the speaker.
+    private static func playbackVolumeGain() -> Double {
+        let volume = Double(AVAudioSession.sharedInstance().outputVolume)
+        return 0.28 + 0.82 * min(1, max(0, volume))
+    }
+
+    /// Keep headroom: quiet stays quiet, peaks can hit the top. No compression that pegs every bar.
+    private static func liftVisual(_ value: Double, volumeGain: Double, extra: Double = 1.0) -> Double {
+        let v = min(1, max(0, value))
+        guard v > 0.001 else { return 0 }
+        let shaped = pow(v, 0.9)
+        return min(1, shaped * extra * (0.78 + 0.32 * volumeGain))
     }
 
     private weak var attachedItem: AVPlayerItem?
@@ -2043,10 +2531,10 @@ private final class PlayerAudioAnalyzer {
         }
         local.lastPeak = max(instantLevel, local.lastPeak * 0.91)
 
-        let bassNorm = Self.softNormalize(bass, gain: 7.8)
-        let midNorm = Self.softNormalize(mid, gain: 7.2)
-        let trebleNorm = Self.softNormalize(treble, gain: 6.8)
-        let beatNorm = min(1, local.kickEnvelope * 28)
+        let bassNorm = Self.softNormalize(bass, gain: 11.2)
+        let midNorm = Self.softNormalize(mid, gain: 10.4)
+        let trebleNorm = Self.softNormalize(treble, gain: 9.8)
+        let beatNorm = min(1, local.kickEnvelope * 13)
         let targets: [Float] = [
             min(1, bassNorm * 0.88),
             min(1, bassNorm * 0.28 + midNorm * 0.58),
@@ -2147,6 +2635,7 @@ private final class PlayerAudioAnalyzer {
                 }
             }
 
+            let volumeGain = Self.playbackVolumeGain()
             let spectrumPeak = spectrumBands.prefix(bandCount).max() ?? 0
             let bassEnd = max(1, bandCount / 4)
             let midEnd = max(bassEnd + 1, bandCount * 11 / 20)
@@ -2162,17 +2651,29 @@ private final class PlayerAudioAnalyzer {
                 midVU = Double(midNorm)
                 trebleVU = Double(trebleNorm)
             }
+            if wantsSpectrum {
+                var peak = 0.0
+                for index in 0..<bandCount {
+                    peak = max(peak, spectrumBands[index])
+                }
+                // Slow AGC so the loudest band can reach the top while others stay independent.
+                local.spectrumAGC = max(local.spectrumAGC * 0.978, peak, 0.1)
+                let denom = max(0.1, local.spectrumAGC)
+                for index in 0..<bandCount {
+                    spectrumBands[index] = min(1, spectrumBands[index] / denom)
+                }
+            }
 
             publishFrame = MusicPlaybackEngine.AudioReactiveFrame(
-                level: Double(local.visualEnvelope),
-                bass: bassVU,
-                mid: midVU,
-                treble: trebleVU,
-                beat: Double(beatNorm),
-                islandBars: local.islandBars.map(Double.init),
+                level: Self.liftVisual(Double(local.visualEnvelope), volumeGain: volumeGain, extra: 1.0),
+                bass: Self.liftVisual(bassVU, volumeGain: volumeGain, extra: 1.04),
+                mid: Self.liftVisual(midVU, volumeGain: volumeGain, extra: 1.02),
+                treble: Self.liftVisual(trebleVU, volumeGain: volumeGain, extra: 1.02),
+                beat: min(1, Double(beatNorm)),
+                islandBars: local.islandBars.map { Self.liftVisual(Double($0), volumeGain: volumeGain, extra: 1.0) },
                 spectrumBands: spectrumBands,
                 peakHold: spectrumBands,
-                energy: Double(local.energy),
+                energy: Self.liftVisual(Double(local.energy), volumeGain: volumeGain, extra: 1.0),
                 activeSpectrumBands: wantsSpectrum ? bandCount : 0
             )
         }

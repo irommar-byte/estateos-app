@@ -7,7 +7,6 @@ struct VideoFolderConnectionSheet: View {
     let onConnect: (String, URL) throws -> Void
 
     @State private var folderName = ""
-    @State private var showFolderPicker = false
     @State private var showFilePicker = false
     @State private var errorMessage: String?
     @State private var isConnecting = false
@@ -40,7 +39,11 @@ struct VideoFolderConnectionSheet: View {
                     TextField("Nazwa w bibliotece", text: $folderName, prompt: Text("np. Filmy USB"))
 
                     Button {
-                        showFolderPicker = true
+                        FolderPickerPresenter.present(
+                            onPick: { url in
+                                connect(url: url)
+                            }
+                        )
                     } label: {
                         FilesActionRow(icon: "folder.badge.plus", title: "Wybierz folder", iconColor: EOSTheme.accent)
                     }
@@ -74,14 +77,6 @@ struct VideoFolderConnectionSheet: View {
                     Button("Anuluj") { dismiss() }
                         .disabled(isConnecting)
                 }
-            }
-            // fileImporter is more reliable than a nested document-picker sheet.
-            .fileImporter(
-                isPresented: $showFolderPicker,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleImport(result)
             }
             .fileImporter(
                 isPresented: $showFilePicker,

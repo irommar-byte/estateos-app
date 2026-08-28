@@ -110,6 +110,7 @@ import RadarOfferGallery, {
 } from '../components/radar/RadarOfferGallery';
 import { isOfferFeatured } from '../utils/listingPromotion';
 import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
+import EosSpotlightHost from '../components/spotlight/EosSpotlightHost';
 import MarketCatalogViewToggle, {
   type MarketCatalogContentMode,
 } from '../components/catalog/MarketCatalogViewToggle';
@@ -5296,7 +5297,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <View style={styles.topBarCenterSpacer} />
         )}
 
-        <View style={{ flexShrink: 0, zIndex: 5 }}>
+        <View style={{ flexShrink: 0, zIndex: 5, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <EosSpotlightHost isDark={isDark} lightChrome={isGalleryLightChrome} navigation={navigation} />
           <CatalogSearchFilterButton
             isDark={isDark}
             accent={showOnlyFavorites ? favoritesScopeAccent : modeAccentColor}

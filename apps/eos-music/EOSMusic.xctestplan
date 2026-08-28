@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "3D8C5980-EC67-4730-8955-62E59CC29301",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:EOSMusic.xcodeproj",
+      "identifier" : "E4D918742BDD44B8AA89DD1D",
+      "name" : "EOSMusic"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:EOSMusic.xcodeproj",
+        "identifier" : "32380F359E7C44A6B26929D0",
+        "name" : "EOSMusicTests"
+      }
+    }
+  ],
+  "version" : 1
+}

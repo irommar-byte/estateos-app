@@ -29,6 +29,7 @@ import { useMoneyContext } from '../money/useMoneyContext';
 import CarFavoriteButton from '../components/cars/CarFavoriteButton';
 import CarAuthGateModal from '../components/cars/CarAuthGateModal';
 import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
+import EosSpotlightHost from '../components/spotlight/EosSpotlightHost';
 import CarsCatalogMapView, { type CarsCatalogMapViewHandle } from '../components/cars/CarsCatalogMapView';
 import CarsAdvancedSearchModal from '../components/cars/CarsAdvancedSearchModal';
 import VerticalSegmentRail from '../components/VerticalSegmentRail';
@@ -1156,7 +1157,8 @@ export default function CarsCatalogScreen({
           {centerChrome}
         </View>
 
-        <View style={styles.topBarSearchSlot}>
+        <View style={[styles.topBarSearchSlot, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+          <EosSpotlightHost isDark={isDark} lightChrome={isGalleryLightChrome} navigation={navigation} />
           <CatalogSearchFilterButton
             isDark={isDark}
             accent={CAR_ACCENT}
@@ -1610,7 +1612,8 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       paddingTop: 2,
     },
     topBarSearchSlot: {
-      width: 112,
+      width: 'auto',
+      maxWidth: 170,
       flexGrow: 0,
       flexShrink: 0,
       zIndex: 5,

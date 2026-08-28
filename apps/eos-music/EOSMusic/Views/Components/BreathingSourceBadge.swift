@@ -75,6 +75,8 @@ enum MediaPlaybackOrigin: Equatable {
 struct BreathingSourceBadge: View {
     let origin: MediaPlaybackOrigin
     var compact: Bool = false
+    /// Mini-player: icon only so the capsule never covers the title.
+    var iconOnly: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var inhale = false
@@ -83,32 +85,45 @@ struct BreathingSourceBadge: View {
         if origin != .unknown {
             HStack(spacing: compact ? 4 : 6) {
                 Image(systemName: origin.systemImage)
-                Text(compact ? origin.compactTitle : origin.title)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: !compact, vertical: false)
+                if !iconOnly {
+                    Text(compact ? origin.compactTitle : origin.title)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
-            .font(compact ? .caption2.weight(.bold) : .caption.weight(.bold))
+            .font(compact || iconOnly ? .caption2.weight(.bold) : .caption.weight(.bold))
             .foregroundStyle(.white)
-            .padding(.horizontal, compact ? 8 : 10)
-            .padding(.vertical, compact ? 4 : 6)
-            .background(origin.tint.opacity(inhale ? 0.95 : 0.52), in: Capsule())
+            .padding(.horizontal, iconOnly ? 7 : (compact ? 8 : 10))
+            .padding(.vertical, iconOnly ? 5 : (compact ? 4 : 6))
+            .background(origin.tint.opacity(pulse ? 0.95 : 0.62), in: Capsule())
             .overlay(
                 Capsule()
-                    .stroke(origin.tint.opacity(inhale ? 1 : 0.35), lineWidth: compact ? 1 : 1.4)
+                    .stroke(origin.tint.opacity(pulse ? 1 : 0.4), lineWidth: compact || iconOnly ? 1 : 1.4)
             )
-            .scaleEffect(reduceMotion ? 1 : (inhale ? 1.06 : 0.96))
-            .shadow(color: origin.tint.opacity(inhale ? 0.75 : 0.2), radius: inhale ? 8 : 2)
+            // Compact / icon-only never scale — the pulse was covering the song title.
+            .scaleEffect(allowsPulse ? (inhale ? 1.05 : 0.97) : 1)
+            .shadow(
+                color: origin.tint.opacity(allowsPulse && inhale ? 0.55 : 0.18),
+                radius: allowsPulse && inhale ? 6 : 1
+            )
+            .fixedSize()
+            .layoutPriority(1)
             .onAppear {
                 inhale = false
-                withAnimation(
-                    reduceMotion
-                        ? nil
-                        : .easeInOut(duration: 1.15).repeatForever(autoreverses: true)
-                ) {
+                guard allowsPulse else { return }
+                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) {
                     inhale = true
                 }
             }
             .accessibilityLabel("Źródło odtwarzania: \(origin.title)")
         }
+    }
+
+    private var allowsPulse: Bool {
+        !reduceMotion && !compact && !iconOnly
+    }
+
+    private var pulse: Bool {
+        allowsPulse && inhale
     }
 }

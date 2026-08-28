@@ -6,6 +6,9 @@ final class MusicAPIClient {
 
     var isAuthenticated: Bool { token != nil }
 
+    /// Session JWT for AVPlayer stream headers (proxy sets X-Movies-Authorized).
+    var sessionToken: String? { token }
+
     func setToken(_ token: String?) {
         self.token = token
     }
@@ -202,28 +205,38 @@ final class MusicAPIClient {
         let deadline = Date().addingTimeInterval(60)
         while Date() < deadline {
             if Task.isCancelled { return nil }
-            if let active = try? await fetchActiveServerDownloads() {
-                let match = (active.music + active.items).first {
-                    $0.isMusic && !$0.jobId.isEmpty && $0.url == url
-                }
-                if let match {
-                    return DownloadStartResponse(
-                        jobId: match.jobId,
-                        assetId: match.assetId,
-                        reused: true,
-                        ready: match.ready,
-                        status: match.status,
-                        progress: match.progress,
-                        token: nil,
-                        persistent: match.ready,
-                        onServer: match.ready,
-                        mode: nil
-                    )
-                }
+            if let match = await findActiveMusicJob(url: url) {
+                return DownloadStartResponse(
+                    jobId: match.jobId,
+                    assetId: match.assetId,
+                    reused: true,
+                    ready: match.ready,
+                    status: match.status,
+                    progress: match.progress,
+                    token: nil,
+                    persistent: match.ready,
+                    onServer: match.ready,
+                    mode: match.looksLikeFileIngest ? "file" : nil
+                )
             }
             try? await Task.sleep(nanoseconds: 800_000_000)
         }
         return nil
+    }
+
+    /// Prefer an in-flight file ingest (Zapis na serwer) over a competing live play job.
+    func findActiveMusicJob(url: String) async -> ActiveServerDownload? {
+        guard let active = try? await fetchActiveServerDownloads() else { return nil }
+        let matches = (active.music + active.items).filter {
+            $0.isMusic && !$0.jobId.isEmpty && $0.url == url && !$0.isFailed
+        }
+        if let ingest = matches.first(where: { !$0.isTerminal && $0.looksLikeFileIngest }) {
+            return ingest
+        }
+        if let inflight = matches.first(where: { !$0.isTerminal }) {
+            return inflight
+        }
+        return matches.first
     }
 
     /// Shared account queue — server-side music + movie downloads in flight.
@@ -268,6 +281,7 @@ final class MusicAPIClient {
     func waitForMusicPlayReady(
         jobId: String,
         timeoutSeconds: Int = 180,
+        requireDurable: Bool = false,
         onProgress: ((Double, String) -> Void)? = nil
     ) async throws -> JobStatusResponse {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
@@ -290,7 +304,9 @@ final class MusicAPIClient {
             }
             let pct = max(0, min(100, job.progress ?? 0))
             onProgress?(pct, job.status)
-            if job.ready == true || job.status == "done" { return job }
+            if MusicPlayWaitPolicy.isSatisfied(job, requireDurable: requireDurable) {
+                return job
+            }
             poll += 1
             let ns: UInt64 = poll < 40 ? 200_000_000 : poll < 80 ? 400_000_000 : 1_000_000_000
             try await Task.sleep(nanoseconds: ns)
@@ -302,20 +318,58 @@ final class MusicAPIClient {
         try await request("GET", path: "/api/music/play-token/\(jobId)")
     }
 
-    func musicStreamURL(jobId: String, token: String) -> URL {
-        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        var components = URLComponents(string: base + "/api/music/stream/\(jobId)")!
-        components.queryItems = [
-            URLQueryItem(name: "token", value: token),
-        ]
+    /// Stream URL. Query `token` is optional — iOS AVPlayer sends the session Bearer instead.
+    func musicStreamURL(jobId: String, token: String? = nil) -> URL {
+        Self.musicStreamURL(base: AppConfig.apiBaseURL, jobId: jobId, token: token)
+    }
+
+    nonisolated static func musicStreamURL(base: URL, jobId: String, token: String? = nil) -> URL {
+        let root = base.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var components = URLComponents(string: root + "/api/music/stream/\(jobId)")!
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty {
+            components.queryItems = [URLQueryItem(name: "token", value: trimmed)]
+        }
         return components.url!
     }
 
     func startMusicDownload(url: String, folderId: String?, trackUrl: String?) async throws -> DownloadStartResponse {
-        var body: [String: Any] = ["url": url]
+        var body: [String: Any] = ["url": url, "intent": "download"]
         if let folderId { body["folderId"] = folderId }
         if let trackUrl { body["trackUrl"] = trackUrl }
-        return try await request("POST", path: "/api/download", body: body)
+        do {
+            return try await request("POST", path: "/api/download", body: body)
+        } catch {
+            guard APIError.isTimeout(error) else { throw error }
+            if let recovered = await recoverMusicDownloadJob(url: trackUrl ?? url) {
+                return recovered
+            }
+            throw error
+        }
+    }
+
+    /// POST /api/download may time out after the NAS already queued the job.
+    private func recoverMusicDownloadJob(url: String) async -> DownloadStartResponse? {
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline {
+            if Task.isCancelled { return nil }
+            if let match = await findActiveMusicJob(url: url) {
+                return DownloadStartResponse(
+                    jobId: match.jobId,
+                    assetId: match.assetId,
+                    reused: true,
+                    ready: match.ready,
+                    status: match.status,
+                    progress: match.progress,
+                    token: nil,
+                    persistent: match.ready,
+                    onServer: match.ready,
+                    mode: match.looksLikeFileIngest ? "file" : nil
+                )
+            }
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+        return nil
     }
 
     // MARK: - EOS™LIBRARY / Online movies

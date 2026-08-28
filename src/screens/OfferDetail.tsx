@@ -734,7 +734,7 @@ export default function OfferDetail({ route, navigation }: any) {
   if (isTrue(offer?.hasElevator)) activeAmenities.push(t('offer.shared.amenities.elevator'));
   if (isTrue(offer?.hasStorage)) activeAmenities.push(t('offer.shared.amenities.storage'));
   if (isTrue(offer?.hasGarden)) activeAmenities.push(t('offer.shared.amenities.garden'));
-  if (isTrue(offer?.isTwoLevel)) activeAmenities.push(t('offer.shared.amenities.twoLevel'));
+  if (isTrue(offer?.isTwoLevel) || isTrue(offer?.isDuplex)) activeAmenities.push(t('offer.shared.amenities.twoLevel'));
   if (isTrue(offer?.petsAllowed)) activeAmenities.push(t('offer.shared.amenities.petsAllowed'));
   const heatingLabel = formatOfferHeatingLabel(offer?.heating, t);
   const furnishedLabel = isTrue(offer?.isFurnished) ? t('offer.shared.furnished.yes') : t('offer.shared.furnished.no');

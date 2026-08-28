@@ -360,12 +360,17 @@ final class MusicSourcesStore: ObservableObject {
                 // Nie blokuj odtwarzania jeśli plik już jest lokalnie.
             }
 
-            let timeout = Date().addingTimeInterval(12)
+            let timeout = Date().addingTimeInterval(45)
             while Date() < timeout {
-                values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+                values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey, .fileSizeKey])
                 let status = values?.ubiquitousItemDownloadingStatus
                 if status == URLUbiquitousItemDownloadingStatus.current ||
                     status == URLUbiquitousItemDownloadingStatus.downloaded {
+                    break
+                }
+                // If the file already has bytes on disk, proceed even if status lags.
+                if FileManager.default.fileExists(atPath: url.path),
+                   (values?.fileSize ?? 0) > 0 {
                     break
                 }
                 try await Task.sleep(nanoseconds: 250_000_000)

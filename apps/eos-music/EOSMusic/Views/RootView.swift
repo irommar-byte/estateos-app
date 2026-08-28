@@ -7,6 +7,7 @@ struct RootView: View {
     @EnvironmentObject private var video: VideoAppModel
     @State private var showLaunchIntro = true
 
+    /// iPad (and regular width): edge-to-edge like iPhone large sheet — not a floating card.
     private var prefersFullScreenPlayer: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
@@ -139,37 +140,22 @@ private struct MusicPlayerPresentation<PlayerContent: View>: ViewModifier {
     let useFullScreen: Bool
     @ViewBuilder let playerContent: () -> PlayerContent
 
+    @ViewBuilder
     func body(content: Content) -> some View {
         if useFullScreen {
             content.fullScreenCover(isPresented: $isPresented) {
                 playerContent()
+                    .presentationBackground(EOSTheme.background)
             }
         } else {
-            content.sheet(isPresented: $isPresented) {
-                playerContent()
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationCornerRadius(32)
-                    .presentationContentInteraction(.scrolls)
-                    .presentationBackground {
-                        ZStack {
-                            Color(red: 0.06, green: 0.06, blue: 0.08).opacity(0.96)
-                            ProMixerStageBackground()
-                                .opacity(0.35)
-                            LinearGradient(
-                                colors: [
-                                    EOSTheme.accentSecondary.opacity(0.1),
-                                    .clear,
-                                    EOSTheme.accent.opacity(0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        }
-                        .ignoresSafeArea()
-                    }
-            }
-            .animation(EOSMotion.playerSheet, value: isPresented)
+            content
+                .sheet(isPresented: $isPresented) {
+                    playerContent()
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.visible)
+                        .presentationBackground(EOSTheme.background)
+                        .interactiveDismissDisabled(false)
+                }
         }
     }
 }

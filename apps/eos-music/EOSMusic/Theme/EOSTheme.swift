@@ -59,16 +59,22 @@ enum EOSMotion {
     static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
     static let snappy = Animation.snappy(duration: 0.25)
     static let soft = Animation.easeInOut(duration: 0.28)
-    /// Sheet mini ↔ full — ultra-fluid spring transition.
-    static let playerSheet = Animation.spring(response: 0.36, dampingFraction: 0.88)
+    /// Mini → full (video overlay). Music player uses the system sheet.
+    static let playerExpand = Animation.spring(response: 0.32, dampingFraction: 0.90)
+    /// Full → mini.
+    static let playerCollapse = Animation.spring(response: 0.30, dampingFraction: 0.92)
+    /// Shared identity for expand/collapse (legacy call sites).
+    static let playerSheet = playerExpand
 }
 
 enum EOSLayout {
     /// Bottom scroll room so the last row clears the floating mini-player.
-    /// Nested NavigationStack Lists often ignore parent `safeAreaInset`, so this must be
-    /// roughly the bar height (≈62) + gap — not a token 28 pt.
-    static let miniPlayerScrollClearance: CGFloat = 100
-    static let miniPlayerCorner: CGFloat = 16
+    static let miniPlayerScrollClearance: CGFloat = 148
+    static let miniPlayerCorner: CGFloat = 18
+    static let miniPlayerArt: CGFloat = 48
+    static let miniPlayerHeight: CGFloat = 72
+    /// Tab item row (icons + labels), excluding home indicator.
+    static let tabBarItemRow: CGFloat = 56
 }
 
 /// Visual presets for the full player (legacy values map on load).
@@ -178,7 +184,7 @@ struct PlayerVisualPolicy: Equatable {
         }
 
         // Analyzer FPS feeds PCM → visualizer lock. UI timelines stay at 0 (UIKit hosts poll).
-        var fps: Double = preset == .spectrum ? 20 : 16
+        var fps: Double = preset == .spectrum ? 18 : 14
         let timeline: Double = 0
         var reason: String?
         var scale = clampedIntensity
@@ -505,18 +511,25 @@ struct EOSAmbientBackground: View {
     var body: some View {
         ZStack {
             EOSTheme.background.ignoresSafeArea()
+            // Soft Apple Music–like wash — restrained, not decorative noise.
             RadialGradient(
-                colors: [EOSTheme.accentSecondary.opacity(colorScheme == .dark ? 0.18 : 0.1), .clear],
-                center: .topLeading,
-                startRadius: 0,
-                endRadius: 420
+                colors: [
+                    EOSTheme.accent.opacity(colorScheme == .dark ? 0.14 : 0.07),
+                    .clear
+                ],
+                center: .topTrailing,
+                startRadius: 20,
+                endRadius: 520
             )
             .ignoresSafeArea()
             RadialGradient(
-                colors: [EOSTheme.accent.opacity(colorScheme == .dark ? 0.12 : 0.08), .clear],
-                center: .topTrailing,
+                colors: [
+                    EOSTheme.accentSecondary.opacity(colorScheme == .dark ? 0.10 : 0.05),
+                    .clear
+                ],
+                center: .bottomLeading,
                 startRadius: 0,
-                endRadius: 380
+                endRadius: 440
             )
             .ignoresSafeArea()
         }
@@ -581,8 +594,78 @@ struct EOSGlassCard: ViewModifier {
     }
 }
 
+/// Native Liquid Glass when available (iOS 26+), Material fallback otherwise — Apple Music mini-player feel.
+struct EOSLiquidGlassChrome: ViewModifier {
+    var cornerRadius: CGFloat
+    var colorScheme: ColorScheme
+    var interactive: Bool = true
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    interactive ? .regular.interactive() : .regular,
+                    in: shape
+                )
+                .shadow(
+                    color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.10),
+                    radius: 12,
+                    y: 4
+                )
+        } else {
+            content
+                .background {
+                    shape
+                        .fill(.ultraThinMaterial)
+                        .shadow(
+                            color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.14),
+                            radius: 14,
+                            y: 6
+                        )
+                }
+                .overlay(
+                    shape.strokeBorder(
+                        Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.07),
+                        lineWidth: 0.5
+                    )
+                )
+        }
+    }
+}
+
 extension View {
     func eosCard() -> some View { modifier(EOSGlassCard()) }
+
+    func eosLiquidGlass(
+        cornerRadius: CGFloat = 18,
+        colorScheme: ColorScheme,
+        interactive: Bool = true
+    ) -> some View {
+        modifier(EOSLiquidGlassChrome(
+            cornerRadius: cornerRadius,
+            colorScheme: colorScheme,
+            interactive: interactive
+        ))
+    }
+
+    @ViewBuilder
+    func eosGlassCircle() -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            self.background(.ultraThinMaterial, in: Circle())
+        }
+    }
+
+    @ViewBuilder
+    func eosGlassCapsule() -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            self.background(.ultraThinMaterial, in: Capsule())
+        }
+    }
 
     func settingsInsetSurfaces() -> some View {
         modifier(SettingsInsetSurfaces())
@@ -698,24 +781,25 @@ final class StrobeBeatDriver: ObservableObject {
         lastRhythm = smoothed
 
         if rhythmOnset || bassPulse {
-            let flashDuration = 0.034 + (1 - speed) * 0.055
+            let flashDuration = 0.048 + (1 - speed) * 0.04
             flashUntil = max(flashUntil, time + flashDuration)
             lastRhythmHitAt = time
         }
 
-        let bpm = 68 + speed * 96
+        let bpm = 88 + speed * 120
         let fallbackInterval = 60.0 / bpm
         if time - lastFallbackTick >= fallbackInterval {
             lastFallbackTick = time
-            if time - lastRhythmHitAt > 0.95, level > 0.05, rhythm > 0.12 {
-                flashUntil = max(flashUntil, time + 0.038)
+            if time - lastRhythmHitAt > 0.75, level > 0.04, rhythm > 0.10 {
+                flashUntil = max(flashUntil, time + 0.052)
             }
         }
 
         guard time < flashUntil else { return 0 }
         let tail = flashUntil - time
-        let window = 0.04 + (1 - speed) * 0.06
-        return min(1, tail / window)
+        let window = 0.05 + (1 - speed) * 0.04
+        let raw = min(1, tail / window)
+        return min(1, raw * raw * (1.15 + bass * 0.35))
     }
 }
 

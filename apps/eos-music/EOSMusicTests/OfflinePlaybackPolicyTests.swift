@@ -31,6 +31,24 @@ final class OfflinePlaybackPolicyTests: XCTestCase {
             )
         )
     }
+
+    func testServerStreamURLSkipsPlayTokenQuery() {
+        let url = MusicAPIClient.musicStreamURL(
+            base: URL(string: "https://example.com/proxy")!,
+            jobId: "asset-1"
+        )
+        XCTAssertEqual(url.path, "/proxy/api/music/stream/asset-1")
+        XCTAssertNil(url.query)
+    }
+
+    func testServerStreamURLKeepsPlayTokenWhenProvided() {
+        let url = MusicAPIClient.musicStreamURL(
+            base: URL(string: "https://example.com/proxy")!,
+            jobId: "asset-1",
+            token: "abc"
+        )
+        XCTAssertEqual(url.query, "token=abc")
+    }
 }
 
 final class DownloadRetryPolicyTests: XCTestCase {
@@ -55,8 +73,53 @@ final class StreamRecoveryPolicyTests: XCTestCase {
 
     func testFatalErrorsDetected() {
         XCTAssertTrue(StreamRecoveryPolicy.isFatalPlaybackError("HTTP 401 Unauthorized"))
-        XCTAssertTrue(StreamRecoveryPolicy.isFatalPlaybackError("404 Not Found"))
+        XCTAssertTrue(StreamRecoveryPolicy.isFatalPlaybackError("HTTP 403 Forbidden"))
+        XCTAssertFalse(StreamRecoveryPolicy.isFatalPlaybackError("404 Not Found"))
         XCTAssertFalse(StreamRecoveryPolicy.isFatalPlaybackError("The network connection was lost"))
+    }
+}
+
+final class MusicPlayWaitPolicyTests: XCTestCase {
+    func testLiveProxySatisfiesWithoutDurableRequirement() {
+        let job = Self.decodeJob("""
+        {"jobId":"j1","status":"starting","ready":true,"mode":"stream-proxy"}
+        """)
+        XCTAssertTrue(MusicPlayWaitPolicy.isSatisfied(job, requireDurable: false))
+        XCTAssertFalse(MusicPlayWaitPolicy.isSatisfied(job, requireDurable: true))
+        XCTAssertFalse(job.looksLikeFileIngest)
+    }
+
+    func testDownloadingIngestWaitsForDurableFile() {
+        let mid = Self.decodeJob("""
+        {"jobId":"j2","status":"downloading","ready":false,"progress":4,"intent":"download"}
+        """)
+        XCTAssertFalse(MusicPlayWaitPolicy.isSatisfied(mid, requireDurable: false))
+        XCTAssertFalse(MusicPlayWaitPolicy.isSatisfied(mid, requireDurable: true))
+        XCTAssertTrue(mid.looksLikeFileIngest)
+
+        let preparing = Self.decodeJob("""
+        {"jobId":"j4","status":"preparing","ready":false,"progress":22,"intent":"download"}
+        """)
+        XCTAssertTrue(preparing.looksLikeFileIngest)
+        XCTAssertFalse(preparing.isPlayableServerStream)
+
+        let done = Self.decodeJob("""
+        {"jobId":"j2","status":"done","ready":true,"onServer":true,"mode":"file"}
+        """)
+        XCTAssertTrue(MusicPlayWaitPolicy.isSatisfied(done, requireDurable: true))
+        XCTAssertTrue(done.isDurableServerCopy)
+    }
+
+    func testReadyLiveDoesNotCountAsDurable() {
+        let job = Self.decodeJob("""
+        {"jobId":"j3","status":"starting","ready":true,"mode":"stream-proxy","onServer":false}
+        """)
+        XCTAssertTrue(MusicPlayWaitPolicy.isSatisfied(job, requireDurable: false))
+        XCTAssertFalse(job.isDurableServerCopy)
+    }
+
+    private static func decodeJob(_ json: String) -> JobStatusResponse {
+        try! JSONDecoder().decode(JobStatusResponse.self, from: Data(json.utf8))
     }
 }
 

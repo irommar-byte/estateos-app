@@ -122,7 +122,7 @@ private struct PlayerContent: View {
                         isPlaying: engine.isPlaying && !engine.isLoading,
                         intensity: max(0.55, policy.intensityScale),
                         speed: ui.playerStrobeSpeed,
-                        brightness: ui.playerStrobeBrightness * 0.72,
+                        brightness: ui.playerStrobeBrightness,
                         sensitivity: ui.playerSensitivity,
                         trackID: engine.currentTrack?.id,
                         colorScheme: colorScheme
@@ -184,7 +184,7 @@ private struct PlayerContent: View {
             playerFooter(layout: layout)
         }
         .padding(.horizontal, layout.horizontalPadding)
-        .frame(maxWidth: layout.maxContentWidth)
+        .frame(maxWidth: max(0, layout.maxContentWidth))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -278,7 +278,7 @@ private struct PlayerContent: View {
             playerFooter(layout: layout)
         }
         .padding(.horizontal, layout.horizontalPadding)
-        .frame(maxWidth: layout.maxContentWidth)
+        .frame(maxWidth: max(0, layout.maxContentWidth))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -361,7 +361,14 @@ private struct PlayerContent: View {
     }
 
     private func playerChrome(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
-        HStack(spacing: 4) {
+        VStack(spacing: 6) {
+            Capsule()
+                .fill(Color.clear)
+                .frame(width: 36, height: 5)
+                .padding(.top, 2)
+                .accessibilityHidden(true)
+
+            HStack(spacing: 4) {
             Button {
                 app.minimizePlayer()
             } label: {
@@ -369,7 +376,7 @@ private struct PlayerContent: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(EOSTheme.textSecondary)
                     .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .eosGlassCircle()
             }
             Spacer()
             Button {
@@ -385,7 +392,7 @@ private struct PlayerContent: View {
                 .foregroundStyle(EOSTheme.textMuted)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
+                .eosGlassCapsule()
             }
             .buttonStyle(EOSPressableStyle())
             .accessibilityLabel("Kolejka odtwarzania, \(engine.queuePositionLabel)")
@@ -397,12 +404,12 @@ private struct PlayerContent: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(effectsActive ? EOSTheme.accent : EOSTheme.textSecondary)
                     .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .eosGlassCircle()
             }
             .accessibilityLabel("Efekty playera")
             FavoriteButton(item: track.favoriteItem, size: 18)
                 .frame(width: 40, height: 40)
-                .background(.ultraThinMaterial, in: Circle())
+                .eosGlassCircle()
             Button {
                 showAddToPlaylist = true
             } label: {
@@ -410,15 +417,14 @@ private struct PlayerContent: View {
                     .font(.body)
                     .foregroundStyle(EOSTheme.textSecondary)
                     .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .eosGlassCircle()
             }
-            if !track.isExternal {
-                TrackStorageActionButton(
-                    track: track.payload,
-                    folderId: track.folderId,
-                    frameSize: 40
-                )
-                .background(.ultraThinMaterial, in: Circle())
+            TrackStorageActionButton(
+                track: track.payload,
+                folderId: track.folderId,
+                frameSize: 40
+            )
+            .eosGlassCircle()
             }
         }
         .padding(.top, layout.chromeTop)
@@ -607,10 +613,10 @@ private struct PlayerLayout {
             return min(discSize, max(56, availableHeight * 0.11))
         }
         // Cover / vinyl — zajmij większość wolnej przestrzeni, ale zostaw pasek efektów.
-        let reserved: CGFloat = isPad ? 230 : 248
+        let reserved: CGFloat = isPad ? 210 : 248
         let leftover = max(140, availableHeight - reserved)
-        let target = leftover * (isPad ? 0.78 : 0.82)
-        let capped = min(width * (isPad ? 0.72 : 0.78), target, leftover, isPad ? 520 : 280)
+        let target = leftover * (isPad ? 0.84 : 0.82)
+        let capped = min(width * (isPad ? 0.86 : 0.78), target, leftover, isPad ? 640 : 280)
         return max(min(discSize, leftover), min(capped, leftover))
     }
 
@@ -679,12 +685,17 @@ private struct PlayerLayout {
     var bottomGap: CGFloat { tight ? 2 : (compact ? 4 : 6) }
     var chromeTop: CGFloat { tight ? 2 : 6 }
     var safeBottom: CGFloat { isPad ? 10 : (tight ? 2 : 4) }
-    var horizontalPadding: CGFloat { wide ? 28 : (width > 700 ? 24 : (width < 340 ? 10 : 16)) }
+    var horizontalPadding: CGFloat {
+        if isPad { return wide ? 28 : (width > 900 ? 32 : 20) }
+        return wide ? 28 : (width > 700 ? 24 : (width < 340 ? 10 : 16))
+    }
     var maxContentWidth: CGFloat {
-        if wide { return min(width - 32, 1200) }
+        // iPad full-screen player uses nearly the whole window (like iPhone).
         if isPad {
-            return width > 820 ? min(width * 0.9, 960) : min(width * 0.94, 720)
+            if wide { return min(width - 24, 1400) }
+            return width - (horizontalPadding * 2)
         }
+        if wide { return min(width - 32, 1200) }
         return min(width - 36, 500)
     }
     var wideArtColumnWidth: CGFloat { min(420, width * 0.42) }
@@ -713,14 +724,19 @@ private struct PlayerGlassBackground: View {
 private struct PlayerAmbientWash: View {
     let isPlaying: Bool
     let preset: PlayerVisualPreset
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pulse = false
+
+    private var isLight: Bool { colorScheme == .light }
 
     var body: some View {
         ZStack {
             RadialGradient(
                 colors: [
                     (preset == .spectrum ? EOSTheme.accentSecondary : EOSTheme.accent)
-                        .opacity(isPlaying ? (pulse ? 0.22 : 0.12) : 0.06),
+                        .opacity(isLight
+                            ? (isPlaying ? (pulse ? 0.14 : 0.07) : 0.04)
+                            : (isPlaying ? (pulse ? 0.22 : 0.12) : 0.06)),
                     .clear
                 ],
                 center: .topTrailing,
@@ -729,22 +745,46 @@ private struct PlayerAmbientWash: View {
             )
             RadialGradient(
                 colors: [
-                    EOSTheme.accent.opacity(isPlaying ? (pulse ? 0.16 : 0.08) : 0.04),
+                    EOSTheme.accent.opacity(isLight
+                        ? (isPlaying ? (pulse ? 0.10 : 0.05) : 0.03)
+                        : (isPlaying ? (pulse ? 0.16 : 0.08) : 0.04)),
                     .clear
                 ],
                 center: .bottomLeading,
                 startRadius: 10,
                 endRadius: 380
             )
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.06),
-                    .clear,
-                    EOSTheme.accent.opacity(0.04)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if isLight {
+                // Soft porcelain sheen — avoids muddy gray wash on white.
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.55),
+                        Color.clear,
+                        EOSTheme.accent.opacity(isPlaying ? 0.06 : 0.03)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                RadialGradient(
+                    colors: [
+                        Color(red: 1.0, green: 0.94, blue: 0.90).opacity(isPlaying ? 0.35 : 0.18),
+                        .clear
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: 520
+                )
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.06),
+                        .clear,
+                        EOSTheme.accent.opacity(0.04)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -757,7 +797,7 @@ private struct PlayerAmbientWash: View {
             withAnimation(.easeOut(duration: 0.4)) { pulse = false }
             return
         }
-        withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+        withAnimation(.easeInOut(duration: isLight ? 3.2 : 2.4).repeatForever(autoreverses: true)) {
             pulse = true
         }
     }
@@ -788,49 +828,35 @@ private struct PlayerHeroArtwork: View {
             } else if preset == .vinyl {
                 VinylHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize)
             } else if preset == .cover, let visualizer {
-                CoverBeatHero(
+                CoverSplitBeatPulseView(
                     artworkURL: artworkURL,
                     fallbackImage: fallbackImage,
                     isPlaying: isPlaying,
                     visualizer: visualizer,
                     policy: policy,
-                    canvasSize: canvasSize
+                    canvasSize: canvasSize,
+                    cornerRadius: 18,
+                    style: .split
                 )
             } else if preset == .cover {
                 CoverHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize, lively: true)
+            } else if let visualizer {
+                CoverSplitBeatPulseView(
+                    artworkURL: artworkURL,
+                    fallbackImage: fallbackImage,
+                    isPlaying: isPlaying,
+                    visualizer: visualizer,
+                    policy: policy,
+                    canvasSize: canvasSize,
+                    cornerRadius: 16,
+                    style: .halo
+                )
             } else {
-                // Spectrum — rich cover + soft glow; EQ lives below in UIKit.
+                // Spectrum fallback without analyzer.
                 CoverHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize, lively: false)
             }
         }
         .frame(width: canvasSize, height: canvasSize)
-    }
-}
-
-private struct CoverBeatHero: View {
-    let artworkURL: URL?
-    var fallbackImage: UIImage? = nil
-    let isPlaying: Bool
-    let visualizer: PlayerAudioVisualizer
-    let policy: PlayerVisualPolicy
-    var canvasSize: CGFloat = 286
-
-    var body: some View {
-        let fps = max(10, min(24, policy.timelineFPS))
-        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: !isPlaying)) { _ in
-            let audio = visualizer.snapshot(isPlaying: isPlaying)
-            let intensity = max(0.55, policy.intensityScale)
-            let drive = audio.visualDrive(isStrong: true, intensity: intensity)
-            let beat = min(1, (audio.beat * 1.55 + drive * 0.28) * intensity)
-            PulsingCoverArtwork(
-                artworkURL: artworkURL,
-                isPlaying: isPlaying,
-                drive: drive,
-                beat: beat,
-                canvasSize: canvasSize,
-                lively: true
-            )
-        }
     }
 }
 
@@ -854,61 +880,6 @@ private struct VinylHero: View {
         .frame(width: 320, height: 320)
         .scaleEffect(scale)
         .frame(width: canvasSize, height: canvasSize)
-    }
-}
-
-private struct CoverHero: View {
-    let artworkURL: URL?
-    var fallbackImage: UIImage? = nil
-    let isPlaying: Bool
-    var canvasSize: CGFloat = 286
-    var lively: Bool = false
-    @State private var breathe = false
-
-    var body: some View {
-        let pulse: CGFloat = isPlaying ? (breathe ? (lively ? 1.045 : 1.028) : 1.0) : 1
-        let glow = isPlaying ? (breathe ? (lively ? 0.38 : 0.28) : 0.18) : 0.1
-
-        ZStack {
-            RoundedRectangle(cornerRadius: lively ? 22 : 24, style: .continuous)
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            EOSTheme.accent.opacity(0.42 * glow),
-                            EOSTheme.accentSecondary.opacity(0.22 * glow),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: canvasSize * 0.1,
-                        endRadius: canvasSize * 0.7
-                    )
-                )
-                .frame(width: canvasSize * 1.14, height: canvasSize * 1.14)
-                .blur(radius: lively ? 20 : 16)
-                .scaleEffect(pulse)
-
-            ArtworkImage(
-                url: artworkURL,
-                size: canvasSize * 0.84,
-                cornerRadius: lively ? 16 : 18,
-                allowAnimated: true,
-                fallbackImage: fallbackImage
-            )
-            .scaleEffect(pulse)
-            .shadow(color: EOSTheme.accent.opacity(glow), radius: 18, y: 10)
-        }
-        .onAppear { syncBreath() }
-        .onChange(of: isPlaying) { _, _ in syncBreath() }
-    }
-
-    private func syncBreath() {
-        guard isPlaying else {
-            withAnimation(.easeOut(duration: 0.35)) { breathe = false }
-            return
-        }
-        withAnimation(.easeInOut(duration: lively ? 1.35 : 1.8).repeatForever(autoreverses: true)) {
-            breathe = true
-        }
     }
 }
 
@@ -944,6 +915,61 @@ private struct SoftOrbGlow: View {
         }
         withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
             pulse = true
+        }
+    }
+}
+
+private struct CoverHero: View {
+    let artworkURL: URL?
+    var fallbackImage: UIImage? = nil
+    let isPlaying: Bool
+    var canvasSize: CGFloat = 286
+    var lively: Bool = false
+    @State private var breathe = false
+
+    var body: some View {
+        let pulse: CGFloat = isPlaying ? (breathe ? (lively ? 1.045 : 1.028) : 1.0) : 1
+        let glow = isPlaying ? (breathe ? (lively ? 0.38 : 0.28) : 0.18) : 0.1
+
+        ZStack {
+            RoundedRectangle(cornerRadius: lively ? 22 : 24, style: .continuous)
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            EOSTheme.accent.opacity(0.42 * glow),
+                            EOSTheme.accentSecondary.opacity(0.22 * glow),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: canvasSize * 0.1,
+                        endRadius: canvasSize * 0.7
+                    )
+                )
+                .frame(width: canvasSize * 1.14, height: canvasSize * 1.14)
+                .blur(radius: lively ? 8 : 6)
+                .scaleEffect(pulse)
+
+            ArtworkImage(
+                url: artworkURL,
+                size: canvasSize * 0.84,
+                cornerRadius: lively ? 16 : 18,
+                allowAnimated: true,
+                fallbackImage: fallbackImage
+            )
+            .scaleEffect(pulse)
+            .shadow(color: EOSTheme.accent.opacity(glow), radius: 18, y: 10)
+        }
+        .onAppear { syncBreath() }
+        .onChange(of: isPlaying) { _, _ in syncBreath() }
+    }
+
+    private func syncBreath() {
+        guard isPlaying else {
+            withAnimation(.easeOut(duration: 0.35)) { breathe = false }
+            return
+        }
+        withAnimation(.easeInOut(duration: lively ? 1.35 : 1.8).repeatForever(autoreverses: true)) {
+            breathe = true
         }
     }
 }
@@ -1294,28 +1320,44 @@ private struct StrobeFlashView: View {
     var backgroundMode: Bool = false
 
     var body: some View {
-        let bgScale: Double = backgroundMode ? 0.42 : 1
-        let power = isPlaying ? min(1, flash * brightness * (0.55 + intensity * 0.65) * bgScale) : 0
+        let bgScale: Double = backgroundMode ? 0.78 : 1
+        let power = isPlaying ? min(1, flash * brightness * (0.72 + intensity * 0.85) * bgScale) : 0
         let isLight = colorScheme == .light
         let flashCore = isLight ? Color.black : Color.white
         let flashAccent = isLight ? EOSTheme.accent : Color.white
 
         ZStack {
-            flashCore.opacity(power * (isLight ? 0.35 : 0.22))
+            flashCore.opacity(power * (isLight ? 0.55 : 0.48))
                 .blendMode(isLight ? .multiply : .plusLighter)
+
+            flashCore.opacity(power * (isLight ? 0.22 : 0.35))
+                .blendMode(.screen)
 
             RadialGradient(
                 colors: [
-                    flashAccent.opacity(power * (isLight ? 0.38 : 0.48)),
-                    EOSTheme.accent.opacity(power * 0.38),
-                    EOSTheme.accentSecondary.opacity(power * 0.18),
+                    flashAccent.opacity(power * (isLight ? 0.62 : 0.78)),
+                    EOSTheme.accent.opacity(power * 0.55),
+                    EOSTheme.accentSecondary.opacity(power * 0.32),
                     .clear
                 ],
                 center: .center,
-                startRadius: 8,
-                endRadius: 520
+                startRadius: 4,
+                endRadius: 620
             )
             .blendMode(isLight ? .normal : .plusLighter)
+
+            if backgroundMode {
+                LinearGradient(
+                    colors: [
+                        flashAccent.opacity(power * 0.42),
+                        .clear,
+                        EOSTheme.accent.opacity(power * 0.38)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .blendMode(.plusLighter)
+            }
 
             if !backgroundMode {
                 HStack {
@@ -1455,7 +1497,7 @@ private struct PulsingCoverArtwork: View {
                         )
                     )
                     .frame(width: canvasSize * 1.08, height: canvasSize * 1.08)
-                    .blur(radius: lively ? 20 : 16)
+                    .blur(radius: lively ? 8 : 6)
                     .scaleEffect(pulse * 1.02)
 
                 // Czysta, prosta okładka z podwójną ramką szkła
@@ -1717,7 +1759,6 @@ private struct MusicReactiveHalo: View {
                     }
                 }
                 .frame(width: 330, height: 330)
-                .drawingGroup(opaque: false)
             }
 
             Circle()
@@ -2120,21 +2161,43 @@ private struct PlayerStageBackdrop: View {
                     .ignoresSafeArea()
                     .opacity(0.92)
             } else {
-                EOSTheme.background.ignoresSafeArea()
+                // Layered light stage — depth without muddy flat white.
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.99, green: 0.985, blue: 0.98),
+                        Color(white: 0.965),
+                        Color(red: 0.96, green: 0.95, blue: 0.97)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
                 RadialGradient(
-                    colors: [EOSTheme.accentSecondary.opacity(0.08), .clear],
+                    colors: [EOSTheme.accentSecondary.opacity(0.10), .clear],
                     center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 480
+                )
+                .ignoresSafeArea()
+
+                RadialGradient(
+                    colors: [EOSTheme.accent.opacity(0.08), .clear],
+                    center: .bottomTrailing,
                     startRadius: 0,
                     endRadius: 420
                 )
                 .ignoresSafeArea()
+
+                // Soft vignette for console depth.
                 RadialGradient(
-                    colors: [EOSTheme.accent.opacity(0.06), .clear],
-                    center: .bottomTrailing,
-                    startRadius: 0,
-                    endRadius: 360
+                    colors: [.clear, Color.black.opacity(0.04)],
+                    center: .center,
+                    startRadius: 180,
+                    endRadius: 700
                 )
                 .ignoresSafeArea()
+                .blendMode(.multiply)
             }
         }
     }

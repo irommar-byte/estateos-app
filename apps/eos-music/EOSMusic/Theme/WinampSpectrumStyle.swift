@@ -40,8 +40,8 @@ enum WinampSpectrumStyle {
     static let gridLine = Color.white.opacity(0.08)
     static let labelSecondary = Color(white: 0.55)
     static let channelInset: CGFloat = 2
-    /// Odświeżanie animacji słupków (Hz) — UIKit host; 30 Hz = płynny Winamp.
-    static let displayFPS: Double = 30
+    /// Odświeżanie animacji słupków (Hz) — UIKit host; 24 Hz looks live without extra GPU heat.
+    static let displayFPS: Double = 24
     /// Szybsze opadanie niż klasyczny vis_classic — EQ ma „latać”, nie pełzać.
     static let falloffNormPerSecond: Double = Double(falloffRate) * 96.0 / 255.0 * 1.85
 
@@ -100,12 +100,12 @@ struct WinampDisplayEnvelope {
         let dt = min(0.04, lastTime.map { time - $0 } ?? (1.0 / WinampSpectrumStyle.displayFPS))
         lastTime = time
         let speedMul = min(1.85, max(0.35, speed))
-        // Instant attack, aggressive release — classic snappy oscilloscope feel.
+        let gain = min(1.06, max(0.75, intensity))
         let fall = WinampSpectrumStyle.falloffNormPerSecond * dt * (isPlaying ? 1.75 : 0.4) * speedMul
         let peakFallBase = (8.0 / 255.0) * (dt * WinampSpectrumStyle.displayFPS) * speedMul
 
         for index in 0..<bandCount {
-            let target = WinampSpectrumStyle.quantizeLevel(min(1, frame.spectrumBand(at: index) * intensity))
+            let target = WinampSpectrumStyle.quantizeLevel(min(1, frame.spectrumBand(at: index) * gain))
             if target >= levels[index] {
                 levels[index] = target
             } else {
@@ -121,9 +121,9 @@ struct WinampDisplayEnvelope {
             }
         }
 
-        let bassTarget = WinampSpectrumStyle.quantizeLevel(min(1, frame.bass * intensity))
-        let midTarget = WinampSpectrumStyle.quantizeLevel(min(1, max(frame.mid, frame.beat * 0.28) * intensity))
-        let trebleTarget = WinampSpectrumStyle.quantizeLevel(min(1, frame.treble * intensity))
+        let bassTarget = WinampSpectrumStyle.quantizeLevel(min(1, frame.bass * gain))
+        let midTarget = WinampSpectrumStyle.quantizeLevel(min(1, max(frame.mid, frame.beat * 0.28) * gain))
+        let trebleTarget = WinampSpectrumStyle.quantizeLevel(min(1, frame.treble * gain))
         bassLevel = advanceChannel(bassLevel, target: bassTarget, fall: fall)
         midLevel = advanceChannel(midLevel, target: midTarget, fall: fall)
         trebleLevel = advanceChannel(trebleLevel, target: trebleTarget, fall: fall)

@@ -13,6 +13,11 @@ struct LibraryView: View {
     @State private var errorMessage: String?
     @State private var deviceStorage: StorageSnapshot?
     @State private var cachedRecentItems: [RecentLibraryItem] = []
+    @State private var recentDisplayLimit = 12
+
+    private var recentPageSize: Int {
+        recentLayout == .large ? 8 : 12
+    }
 
     private var recentLayout: RecentLibraryLayout {
         RecentLibraryLayout(rawValue: recentLayoutRaw) ?? .tiles
@@ -36,8 +41,11 @@ struct LibraryView: View {
 
     private var recentRebuildToken: String {
         let tracks = app.libraryTracksForBrowsing
-        let limit = recentLayout == .large ? 8 : 12
-        return "\(tracks.count)|\(limit)|\(app.isOfflinePlaybackActive)|\(tracks.first?.url ?? "")|\(tracks.last?.addedAt ?? 0)"
+        return "\(tracks.count)|\(app.isOfflinePlaybackActive)|\(tracks.first?.url ?? "")|\(tracks.last?.addedAt ?? 0)|\(recentLayoutRaw)"
+    }
+
+    private var hasMoreRecentItems: Bool {
+        LibraryData.recentTracks(from: app.libraryTracksForBrowsing, limit: recentDisplayLimit + 1).count > recentDisplayLimit
     }
 
     private var downloadedCount: Int {
@@ -82,25 +90,18 @@ struct LibraryView: View {
 
                         LazyVGrid(columns: recentColumns, spacing: recentLayout == .list ? 4 : 20) {
                             ForEach(recentItems) { item in
-                                ZStack(alignment: .topTrailing) {
-                                    Button {
-                                        Task { await playRecent(item.track) }
-                                    } label: {
-                                        RecentLibraryCell(item: item, style: recentLayout)
+                                recentRow(for: item)
+                                    .onAppear {
+                                        if item.id == recentItems.last?.id {
+                                            loadMoreRecentItemsIfNeeded()
+                                        }
                                     }
-                                    .buttonStyle(.plain)
-                                    .contextMenu {
-                                        recentContextMenu(for: item)
-                                    }
+                            }
 
-                                    TrackStorageActionButton(
-                                        track: item.track.payload,
-                                        folderId: item.track.folderId,
-                                        size: 18,
-                                        frameSize: 30
-                                    )
-                                    .padding(6)
-                                }
+                            if hasMoreRecentItems {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -154,6 +155,11 @@ struct LibraryView: View {
             }
             .refreshable { await refresh() }
             .task(id: recentRebuildToken) {
+                resetRecentDisplayLimit()
+                rebuildRecentItems()
+            }
+            .onChange(of: recentLayoutRaw) { _, _ in
+                resetRecentDisplayLimit()
                 rebuildRecentItems()
             }
             .onAppear {
@@ -178,9 +184,62 @@ struct LibraryView: View {
         }
     }
 
+    private func resetRecentDisplayLimit() {
+        recentDisplayLimit = recentPageSize
+    }
+
     private func rebuildRecentItems() {
-        let limit = recentLayout == .large ? 8 : 12
-        cachedRecentItems = LibraryData.recentTracks(from: app.libraryTracksForBrowsing, limit: limit)
+        cachedRecentItems = LibraryData.recentTracks(from: app.libraryTracksForBrowsing, limit: recentDisplayLimit)
+    }
+
+    private func loadMoreRecentItemsIfNeeded() {
+        guard hasMoreRecentItems else { return }
+        recentDisplayLimit += recentPageSize
+        rebuildRecentItems()
+    }
+
+    @ViewBuilder
+    private func recentRow(for item: RecentLibraryItem) -> some View {
+        if recentLayout == .list {
+            HStack(spacing: 8) {
+                Button {
+                    Task { await playRecent(item.track) }
+                } label: {
+                    RecentLibraryCell(item: item, style: .list)
+                }
+                .buttonStyle(.plain)
+
+                TrackStorageActionButton(
+                    track: item.track.payload,
+                    folderId: item.track.folderId,
+                    size: 18,
+                    frameSize: 30
+                )
+            }
+            .contextMenu {
+                recentContextMenu(for: item)
+            }
+        } else {
+            ZStack(alignment: .topTrailing) {
+                Button {
+                    Task { await playRecent(item.track) }
+                } label: {
+                    RecentLibraryCell(item: item, style: recentLayout)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    recentContextMenu(for: item)
+                }
+
+                TrackStorageActionButton(
+                    track: item.track.payload,
+                    folderId: item.track.folderId,
+                    size: 18,
+                    frameSize: 30
+                )
+                .padding(6)
+            }
+        }
     }
 
     private var recentSectionHeader: some View {

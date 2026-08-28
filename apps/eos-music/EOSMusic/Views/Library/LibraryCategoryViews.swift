@@ -9,6 +9,7 @@ private enum PlaylistLayoutMode: String {
 
 struct LibraryPlaylistsView: View {
     @EnvironmentObject private var app: AppModel
+    @ObservedObject private var stats = ListeningStatsStore.shared
     @AppStorage("ui.playlistsLayout") private var playlistsLayout = PlaylistLayoutMode.list.rawValue
     @State private var editMode: EditMode = .inactive
     @State private var folderToDelete: MusicFolder?
@@ -21,6 +22,8 @@ struct LibraryPlaylistsView: View {
 
     private var isGrid: Bool { playlistsLayout == PlaylistLayoutMode.grid.rawValue && editMode != .active }
 
+    private var smartKinds: [SmartPlaylistKind] { SmartPlaylistKind.allCases }
+
     private var filteredFolders: [MusicFolder] {
         let q = playlistQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = app.libraryFoldersForBrowsing
@@ -28,45 +31,100 @@ struct LibraryPlaylistsView: View {
         return base.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }
 
+    private var matchingSmartKinds: [SmartPlaylistKind] {
+        let q = playlistQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 1 else { return smartKinds }
+        return smartKinds.filter {
+            $0.title.localizedCaseInsensitiveContains(q) || $0.subtitle.localizedCaseInsensitiveContains(q)
+        }
+    }
+
+    private func smartCount(_ kind: SmartPlaylistKind) -> Int {
+        stats.entries(for: kind, library: app.libraryTracksForBrowsing).count
+    }
+
     var body: some View {
         Group {
-            if app.libraryFoldersForBrowsing.isEmpty {
-                ContentUnavailableView(
-                    app.isOfflinePlaybackActive ? "Brak playlist offline" : "Brak playlist",
-                    systemImage: "music.note.list",
-                    description: Text(app.isOfflinePlaybackActive
-                        ? "Pobierz utwory z playlisty, aby zobaczyć ją w trybie Offline."
-                        : "Utwórz playlistę przyciskiem + w Bibliotece.")
-                )
-            } else {
-                if isGrid {
-                    ScrollView {
-                        LazyVGrid(columns: gridColumns, spacing: 16) {
-                            ForEach(filteredFolders) { folder in
-                                NavigationLink(value: folder) {
-                                    playlistCard(folder)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                    }
-                } else {
-                    List {
-                        ForEach(filteredFolders) { folder in
-                            if editMode == .active {
-                                playlistRow(folder)
-                            } else {
-                                NavigationLink(value: folder) {
-                                    playlistRow(folder)
+            if isGrid {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        if !matchingSmartKinds.isEmpty {
+                            smartSectionHeader
+                            LazyVGrid(columns: gridColumns, spacing: 16) {
+                                ForEach(matchingSmartKinds) { kind in
+                                    NavigationLink(value: kind) {
+                                        SmartPlaylistCard(kind: kind, trackCount: smartCount(kind))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
-                        .onDelete(perform: deleteFolders)
+
+                        if !filteredFolders.isEmpty {
+                            userPlaylistsHeader
+                            LazyVGrid(columns: gridColumns, spacing: 16) {
+                                ForEach(filteredFolders) { folder in
+                                    NavigationLink(value: folder) {
+                                        playlistCard(folder)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        } else if matchingSmartKinds.isEmpty {
+                            emptyUserPlaylists
+                        } else {
+                            emptyUserPlaylists
+                                .padding(.top, 8)
+                        }
                     }
-                    .listStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
+            } else {
+                List {
+                    if !matchingSmartKinds.isEmpty {
+                        Section {
+                            ForEach(matchingSmartKinds) { kind in
+                                NavigationLink(value: kind) {
+                                    smartRow(kind)
+                                }
+                            }
+                        } header: {
+                            smartSectionHeader
+                                .textCase(nil)
+                                .padding(.bottom, 4)
+                        } footer: {
+                            Text("Te playlisty układają się same z Twoich odtworzeń. Przy utworze widać, ile razy go puściłeś.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if filteredFolders.isEmpty {
+                        Section {
+                            emptyUserPlaylists
+                                .listRowBackground(Color.clear)
+                        }
+                    } else {
+                        Section {
+                            ForEach(filteredFolders) { folder in
+                                if editMode == .active {
+                                    playlistRow(folder)
+                                } else {
+                                    NavigationLink(value: folder) {
+                                        playlistRow(folder)
+                                    }
+                                }
+                            }
+                            .onDelete(perform: deleteFolders)
+                        } header: {
+                            userPlaylistsHeader
+                                .textCase(nil)
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("Playlisty")
@@ -75,6 +133,9 @@ struct LibraryPlaylistsView: View {
         .eosScrollClearance()
         .navigationDestination(for: MusicFolder.self) { folder in
             FolderDetailView(folder: folder)
+        }
+        .navigationDestination(for: SmartPlaylistKind.self) { kind in
+            SmartPlaylistDetailView(kind: kind)
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -113,6 +174,86 @@ struct LibraryPlaylistsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var smartSectionHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Dla Ciebie")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+            Text("Automatyczne playlisty ze statystyk słuchania")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var userPlaylistsHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Moje playlisty")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+            Text("Twoje listy, które tworzysz ręcznie")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var emptyUserPlaylists: some View {
+        ContentUnavailableView(
+            app.isOfflinePlaybackActive ? "Brak playlist offline" : "Brak własnych playlist",
+            systemImage: "music.note.list",
+            description: Text(app.isOfflinePlaybackActive
+                ? "Pobierz utwory z playlisty, aby zobaczyć ją w trybie Offline."
+                : "Utwórz playlistę przyciskiem + w Bibliotece.")
+        )
+        .padding(.vertical, 12)
+    }
+
+    private func smartRow(_ kind: SmartPlaylistKind) -> some View {
+        let accent = Color(red: kind.accent.r, green: kind.accent.g, blue: kind.accent.b)
+        let count = smartCount(kind)
+        return HStack(spacing: 14) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [accent, accent.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 56, height: 56)
+                .overlay {
+                    Image(systemName: kind.systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(kind.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text("AUTO")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(accent)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(accent.opacity(0.14), in: Capsule())
+                }
+                Text(kind.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Text(count > 0 ? "\(count) utworów" : "Zbiera statystyki")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     private func playlistRow(_ folder: MusicFolder) -> some View {

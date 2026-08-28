@@ -7,9 +7,12 @@ struct MainTabView: View {
     init() {
         EOSTypography.configureGlobalAppearance()
         let appearance = UITabBarAppearance()
-        appearance.configureWithDefaultBackground()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: .systemChromeMaterial)
+        appearance.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.02)
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
+        UITabBar.appearance().isTranslucent = true
     }
 
     var body: some View {
@@ -67,9 +70,7 @@ struct MainTabView: View {
                     .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
             }
             .tint(EOSTheme.accent)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                MiniPlayerDock()
-            }
+            .eosMiniPlayerAboveTabBar()
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         // Offline sync lives in EOSMusicApp (configureOfflineMode + onChange); picker writes both.
@@ -134,12 +135,18 @@ private struct GlobalOfflineModeBar: View {
 
             Divider()
         }
-        .background(.bar)
+        .background {
+            if #available(iOS 26.0, *) {
+                Rectangle().fill(.clear)
+            } else {
+                Rectangle().fill(.bar)
+            }
+        }
     }
 
     private var statusCaption: String {
         if ui.offlineModeEnabled {
-            return "Offline · muzyka i filmy: tylko pliki zapisane na tym iPhonie."
+            return "Offline · muzyka i filmy: tylko pliki zapisane na tym urządzeniu."
         }
         if !app.network.isOnline {
             return "Brak sieci · włącz Offline, aby przeglądać pobrane."
@@ -762,6 +769,7 @@ struct ServerMusicAssetsView: View {
                 title: asset.title ?? "Utwór",
                 artist: asset.artist,
                 api: app.api,
+                downloadJobId: asset.assetId,
                 onLibraryChanged: { [weak app] in
                     await app?.refreshServerAssets()
                 }

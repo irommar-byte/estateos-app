@@ -139,7 +139,7 @@ enum TrackMetadataEnricher {
     }
 
     private static func needsCatalogEnrichment(_ track: MusicTrackPayload) -> Bool {
-        if track.source == "opened-file" { return false }
+        if track.source == "opened-file" || track.source == "external-file" { return false }
         return needsCatalogEnrichment(
             thumbnail: track.thumbnail,
             album: track.album,
@@ -214,6 +214,29 @@ enum TrackMetadataEnricher {
 }
 
 extension MusicPlaybackTrack {
+    /// Drop stale server job ids so playback can re-acquire the track.
+    func withoutServerJobIds() -> MusicPlaybackTrack {
+        MusicPlaybackTrack(
+            id: id,
+            url: url,
+            title: title,
+            artist: artist,
+            album: album,
+            thumbnail: thumbnail,
+            duration: duration,
+            artistId: artistId,
+            albumId: albumId,
+            folderId: folderId,
+            downloadJobId: nil,
+            serverAssetId: nil,
+            playbackFileURL: playbackFileURL,
+            externalRelativePath: externalRelativePath,
+            webDAVPath: webDAVPath,
+            googleDriveFileId: googleDriveFileId,
+            externalSourceId: externalSourceId
+        )
+    }
+
     func applying(
         title: String? = nil,
         artist: String? = nil,
