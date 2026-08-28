@@ -2269,7 +2269,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         const url = `${API_URL}/api/mobile/v1/offers?catalog=1`;
         const etag = await readMobileCatalogCacheEtag();
         const headers: Record<string, string> = {};
-        if (etag) headers['If-None-Match'] = etag;
+        if (etag) headers['X-Catalog-ETag'] = etag;
 
         const { response: res, data, notModified } = await mobileFetchJson(url, {
           timeoutMs: 60_000,
@@ -2282,7 +2282,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
         const list = parseOfferList(data);
         if (res.ok && Array.isArray(list)) {
-          const nextEtag = res.headers.get('etag') || undefined;
+          const nextEtag = res.headers.get('x-catalog-etag') || undefined;
           applyRawOfferList(list, true, nextEtag);
           return true;
         }
