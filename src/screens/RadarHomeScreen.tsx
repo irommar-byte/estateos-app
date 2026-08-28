@@ -87,6 +87,7 @@ import { API_URL } from '../config/network';
 import { mobileFetchJson } from '../utils/mobileFetch';
 import {
   readMobileCatalogCache,
+  readMobileCatalogCacheEtag,
   readMobileCatalogMemory,
   writeMobileCatalogCache,
 } from '../utils/mobileCatalogCache';
@@ -2230,9 +2231,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
    */
   const fetchOffersOnce = useCallback(
     async (showSpinner: boolean, opts?: { forceNetwork?: boolean }): Promise<boolean> => {
-      if (showSpinner) setLoading(true);
-
-      const applyRawOfferList = (rawList: any[], persistCache = true) => {
+      const applyRawOfferList = (rawList: any[], persistCache = true, etag?: string) => {
         const activeOnly = rawList.filter((o: any) => !isOfferClosed(o));
         setCatalogRawOffers(activeOnly);
         const mapped = activeOnly
@@ -2242,42 +2241,61 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         catalogCountRef.current = mapped.length;
         setOffersFetchError('');
         if (persistCache) {
-          void writeMobileCatalogCache(activeOnly as Record<string, unknown>[]);
+          void writeMobileCatalogCache(activeOnly as Record<string, unknown>[], etag);
         }
       };
 
       const useStaleWhileRevalidate = !opts?.forceNetwork && !showSpinner;
+      let hasWarmCache = false;
+
       if (useStaleWhileRevalidate) {
-        const warm = readMobileCatalogMemory(45_000);
+        const warm = readMobileCatalogMemory(300_000);
         if (warm?.length) {
           applyRawOfferList(warm, false);
+          hasWarmCache = true;
         }
       } else if (!opts?.forceNetwork) {
-        const cached = await readMobileCatalogCache(90_000);
+        const cached = await readMobileCatalogCache(300_000);
         if (cached?.length) {
           applyRawOfferList(cached, false);
-          if (!showSpinner) return true;
+          hasWarmCache = true;
+          if (showSpinner) setLoading(false);
         }
       }
 
+      if (showSpinner && !hasWarmCache) setLoading(true);
+
       try {
         const url = `${API_URL}/api/mobile/v1/offers?catalog=1`;
-        const { response: res, data } = await mobileFetchJson(url, { timeoutMs: 60_000 });
+        const etag = await readMobileCatalogCacheEtag();
+        const headers: Record<string, string> = {};
+        if (etag) headers['If-None-Match'] = etag;
+
+        const { response: res, data, notModified } = await mobileFetchJson(url, {
+          timeoutMs: 60_000,
+          headers,
+        });
+
+        if (notModified || res.status === 304) {
+          return hasWarmCache || catalogCountRef.current > 0;
+        }
+
         const list = parseOfferList(data);
         if (res.ok && Array.isArray(list)) {
-          applyRawOfferList(list);
+          const nextEtag = res.headers.get('etag') || undefined;
+          applyRawOfferList(list, true, nextEtag);
           return true;
         }
         const lastError = res.ok && list === null ? 'Nieprawidłowa odpowiedź serwera (brak listy ofert)' : `HTTP ${res.status}`;
         if (catalogCountRef.current === 0) {
           setOffersFetchError(lastError || 'Brak połączenia z katalogiem ofert');
         }
-        return false;
+        return hasWarmCache || catalogCountRef.current > 0;
       } catch (err) {
         if (catalogCountRef.current === 0) {
           setOffersFetchError(err instanceof Error ? err.message : 'Brak połączenia z katalogiem ofert');
         }
-        return false;
+        return hasWarmCache || catalogCountRef.current > 0;
       } finally {
         if (showSpinner) setLoading(false);
       }

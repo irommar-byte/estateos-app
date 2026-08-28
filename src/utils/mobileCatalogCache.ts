@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const STORAGE_KEY = '@estateos_mobile_catalog_v1';
-const DEFAULT_TTL_MS = 90_000;
+const STORAGE_KEY = '@estateos_mobile_catalog_v2';
+const DEFAULT_TTL_MS = 300_000;
 
 type CatalogCacheEntry = {
   at: number;
+  etag?: string;
   offers: Record<string, unknown>[];
 };
 
@@ -16,8 +17,12 @@ export function readMobileCatalogMemory(maxAgeMs = DEFAULT_TTL_MS): Record<strin
   return memoryHit.offers;
 }
 
-export function writeMobileCatalogMemory(offers: Record<string, unknown>[]) {
-  memoryHit = { at: Date.now(), offers };
+export function readMobileCatalogEtag(): string | null {
+  return memoryHit?.etag ?? null;
+}
+
+export function writeMobileCatalogMemory(offers: Record<string, unknown>[], etag?: string) {
+  memoryHit = { at: Date.now(), offers, etag };
 }
 
 export async function readMobileCatalogCache(maxAgeMs = DEFAULT_TTL_MS): Promise<Record<string, unknown>[] | null> {
@@ -37,8 +42,20 @@ export async function readMobileCatalogCache(maxAgeMs = DEFAULT_TTL_MS): Promise
   }
 }
 
-export async function writeMobileCatalogCache(offers: Record<string, unknown>[]) {
-  const entry: CatalogCacheEntry = { at: Date.now(), offers };
+export async function readMobileCatalogCacheEtag(): Promise<string | null> {
+  if (memoryHit?.etag) return memoryHit.etag;
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CatalogCacheEntry;
+    return parsed?.etag ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeMobileCatalogCache(offers: Record<string, unknown>[], etag?: string) {
+  const entry: CatalogCacheEntry = { at: Date.now(), offers, etag };
   memoryHit = entry;
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entry));

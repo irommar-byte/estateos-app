@@ -173,8 +173,11 @@ export async function mobileFetch(input: string, init: MobileFetchInit = {}): Pr
 export async function mobileFetchJson<T = unknown>(
   input: string,
   init: MobileFetchInit = {},
-): Promise<{ response: Response; data: T | null }> {
+): Promise<{ response: Response; data: T | null; notModified?: boolean }> {
   const response = await mobileFetch(input, init);
+  if (response.status === 304) {
+    return { response, data: null, notModified: true };
+  }
   const text = await response.text().catch(() => '');
   if (!text) return { response, data: null };
   try {
