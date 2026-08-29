@@ -4810,6 +4810,17 @@ function ProfileScreenLoggedIn({
                 }}
                 isDark={isDark}
               />
+              <ListItem
+                icon="timer-outline"
+                color="#AF52DE"
+                title="Automatyzacja"
+                subtitle="Harmonogram importów, KEI i rejestr AI"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  (navigation as any).navigate('AdminAutomation');
+                }}
+                isDark={isDark}
+              />
               <ListItem icon="people" color="#32ADE6" title="Użytkownicy" onPress={() => setIsAdminUsersVisible(true)} isDark={isDark} />
               <ListItem
                 icon="sparkles"
