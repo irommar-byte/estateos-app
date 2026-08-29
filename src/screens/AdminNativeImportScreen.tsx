@@ -20,9 +20,6 @@ import { readUserFirstFreePublicationUsed } from '../utils/userPublicationFlags'
 import { linkAgencyClientOffer } from '../services/agencyClientService';
 import PublicationChoiceModal, { type PublicationChoiceConfirm } from '../components/publication/PublicationChoiceModal';
 import type { CreatePublicationRedemption } from '../contracts/offerPublicationContract';
-import IntelligenceAmenityPrompt, {
-  type SmartAddSuggestion,
-} from '../components/intelligence/IntelligenceAmenityPrompt';
 
 type ImportSource = 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
 
@@ -229,9 +226,6 @@ export default function AdminNativeImportScreen() {
   const [storageReady, setStorageReady] = useState(false);
   const [restoredDraftBadge, setRestoredDraftBadge] = useState(false);
   const [successFxVisible, setSuccessFxVisible] = useState(false);
-  const [smartAddSuggestions, setSmartAddSuggestions] = useState<SmartAddSuggestion[]>([]);
-  const [smartAddDecisions, setSmartAddDecisions] = useState<Record<string, boolean>>({});
-  const [smartAddEnabled, setSmartAddEnabled] = useState(false);
 
   const asMoney = (raw?: number | null) => (raw == null ? '—' : `${Number(raw).toLocaleString('pl-PL')} zł`);
   const asArea = (raw?: number | null) => (raw == null ? '—' : `${raw} m²`);
@@ -353,9 +347,6 @@ export default function AdminNativeImportScreen() {
       }
       setDraft((data.draft || null) as ImportDraft | null);
       setPresentation((data.presentation || null) as ImportPresentation | null);
-      setSmartAddEnabled(Boolean(data.smartAddEnabled));
-      setSmartAddSuggestions(Array.isArray(data.smartAddSuggestions) ? data.smartAddSuggestions : []);
-      setSmartAddDecisions({});
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       setError('Błąd połączenia z serwerem.');
@@ -468,8 +459,6 @@ export default function AdminNativeImportScreen() {
                 draft,
                 rightsConfirmed: true,
                 redemption,
-                smartAddEnabled,
-                smartAddDecisions,
               }),
             });
             const data = await res.json().catch(() => ({}));
@@ -1001,15 +990,6 @@ export default function AdminNativeImportScreen() {
         onClose={() => setPublicationChoiceVisible(false)}
       />
       <ImportSuccessCinematic visible={successFxVisible} onDone={() => setSuccessFxVisible(false)} />
-      {smartAddSuggestions.length > 0 ? (
-        <IntelligenceAmenityPrompt
-          suggestions={smartAddSuggestions}
-          onDone={(decisions) => {
-            setSmartAddDecisions(decisions);
-            setSmartAddSuggestions([]);
-          }}
-        />
-      ) : null}
     </ScrollView>
   );
 }
