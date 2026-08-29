@@ -145,8 +145,6 @@ export default function CrmIntelligenceAssistant({
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
   const [pick, setPick] = useState<IntelligencePick | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
-  const [smartAdd, setSmartAdd] = useState(false);
-  const [smartAddBusy, setSmartAddBusy] = useState(false);
   const [blooming, setBlooming] = useState(false);
   const [saved, setSaved] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
@@ -181,39 +179,6 @@ export default function CrmIntelligenceAssistant({
     enabledRef.current = draft.enabled;
     return undefined;
   }, [draft.enabled]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/crm/intelligence-smart-add", { credentials: "include", cache: "no-store" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && typeof json?.enabled === "boolean") setSmartAdd(json.enabled);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const saveSmartAdd = async (enabled: boolean) => {
-    setSmartAddBusy(true);
-    setSmartAdd(enabled);
-    try {
-      const res = await fetch("/api/crm/intelligence-smart-add", {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) setSmartAdd(!enabled);
-      else if (typeof json.enabled === "boolean") setSmartAdd(json.enabled);
-    } catch {
-      setSmartAdd(!enabled);
-    } finally {
-      setSmartAddBusy(false);
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -398,16 +363,13 @@ export default function CrmIntelligenceAssistant({
               Inteligentne dodawanie
             </p>
             <p className="mt-1 text-xs leading-snug text-[var(--eos-text)]/75">
-              Przy imporcie mózg pyta, czy zaznaczyć balkon, komórkę, ogród i resztę z opisu. Każdą zmianę widać na
-              ofercie i można cofnąć.
+              Przy każdym imporcie automatycznie zaznacza balkon, windę, parking, klimatyzację, umeblowanie,
+              ogrzewanie i resztę parametrów wykrytych w opisie portalu. Zmiany widać na ofercie i można cofnąć.
             </p>
           </div>
-          <IosRainbowSwitch
-            checked={smartAdd}
-            disabled={smartAddBusy}
-            label="Inteligentne dodawanie"
-            onChange={(enabled) => void saveSmartAdd(enabled)}
-          />
+          <span className="shrink-0 rounded-full border border-emerald-400/35 bg-emerald-500/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+            Zawsze włączone
+          </span>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <EosGlowSelect

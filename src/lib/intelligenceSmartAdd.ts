@@ -1,32 +1,11 @@
-import { prisma } from '@/lib/prisma';
+/** Smart Add jest zawsze włączony — import automatycznie uzupełnia parametry z opisu portalu. */
+export const SMART_ADD_ALWAYS_ON = true;
 
-async function ensureSmartAddColumn(): Promise<void> {
-  try {
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE \`User\` ADD COLUMN \`intelligenceSmartAddEnabled\` BOOLEAN NOT NULL DEFAULT false`,
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/Duplicate column|exists/i.test(message)) throw error;
-  }
+export async function getIntelligenceSmartAddEnabled(_userId?: number): Promise<boolean> {
+  return SMART_ADD_ALWAYS_ON;
 }
 
-export async function getIntelligenceSmartAddEnabled(userId: number): Promise<boolean> {
-  if (!userId) return false;
-  await ensureSmartAddColumn();
-  const rows = await prisma.$queryRawUnsafe<Array<{ intelligenceSmartAddEnabled: number | boolean }>>(
-    `SELECT intelligenceSmartAddEnabled FROM User WHERE id = ? LIMIT 1`,
-    userId,
-  );
-  return Boolean(rows[0]?.intelligenceSmartAddEnabled);
-}
-
-export async function setIntelligenceSmartAddEnabled(userId: number, enabled: boolean): Promise<boolean> {
-  await ensureSmartAddColumn();
-  await prisma.$executeRawUnsafe(
-    `UPDATE User SET intelligenceSmartAddEnabled = ? WHERE id = ?`,
-    enabled ? 1 : 0,
-    userId,
-  );
-  return enabled;
+/** Zachowane dla kompatybilności API — ustawienie użytkownika nie wyłącza już Smart Add. */
+export async function setIntelligenceSmartAddEnabled(_userId: number, _enabled: boolean): Promise<boolean> {
+  return SMART_ADD_ALWAYS_ON;
 }

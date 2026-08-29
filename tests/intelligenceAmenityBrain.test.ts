@@ -53,6 +53,79 @@ test('duplex and furnished are inferred from description', () => {
   assert.ok(fields.includes('isFurnished'));
 });
 
+test('long import description infers miejskie ogrzewanie', () => {
+  const { inferHeatingFromImportText } = require('../src/lib/intelligenceAmenityBrain') as typeof import('../src/lib/intelligenceAmenityBrain');
+  const text =
+    'Mieszkanie na 3 piętrze budynku z 2017 roku, wyposażonego w windę. Salon z wyjściem na balkon. Mieszkanie jest dodatkowo wyposażone w klimatyzację. Do lokalu przynależy miejsce postojowe w garażu podziemnym.';
+  assert.equal(inferHeatingFromImportText(`${text} Ogrzewanie miejskie z MCO.`), 'Miejskie');
+});
+
+test('otodom-like import preview marks balcony elevator parking and klima', () => {
+  const { previewImportSmartAdd } = require('../src/lib/intelligenceAmenityBrain') as typeof import('../src/lib/intelligenceAmenityBrain');
+  const preview = previewImportSmartAdd({
+    source: 'OTODOM',
+    externalId: 68357457,
+    externalUrl: 'https://www.otodom.pl/pl/oferta/test',
+    title: '39m, 2 pokoje, duży balkon, klima. Miejsce postojowe w cenie.',
+    descriptionText:
+      'Salon z aneksem kuchennym i wyjściem na balkon. Balkon - 8,05 m². Budynek wyposażony w windę. Miejsce postojowe w garażu podziemnym w cenie. Klimatyzacja.',
+    descriptionHtml: '',
+    features: [],
+    transactionType: 'SELL',
+    propertyType: 'FLAT',
+    price: 500000,
+    priceCurrency: 'PLN',
+    area: 39,
+    rooms: 2,
+    city: 'Warszawa',
+    district: 'Białołęka',
+    lat: 52.3,
+    lng: 21.0,
+    imageUrls: [],
+    heating: null,
+    heatingCode: null,
+  } as any);
+  assert.equal(preview.amenities.hasBalcony, true);
+  assert.equal(preview.amenities.hasElevator, true);
+  assert.equal(preview.amenities.hasParking, true);
+  assert.equal(preview.amenities.hasAirConditioning, true);
+});
+
+test('klimatyzacja and miejskie ogrzewanie are inferred from import text', () => {
+  const text = 'Mieszkanie z klimatyzacją i ogrzewaniem miejskim.';
+  assert.equal(descriptionImpliesAmenity(text, 'hasAirConditioning'), true);
+  const { inferHeatingFromImportText, previewImportSmartAdd } = require('../src/lib/intelligenceAmenityBrain') as typeof import('../src/lib/intelligenceAmenityBrain');
+  assert.equal(inferHeatingFromImportText(text), 'Miejskie');
+  const preview = previewImportSmartAdd({
+    source: 'OTODOM',
+    externalId: 1,
+    externalUrl: 'https://www.otodom.pl/pl/oferta/test',
+    title: 'Mieszkanie z balkonem',
+    descriptionText: 'Duży balkon, winda, miejsce postojowe, klimatyzacja, ogrzewanie miejskie, umeblowane.',
+    descriptionHtml: '',
+    features: [],
+    transactionType: 'SELL',
+    propertyType: 'FLAT',
+    price: 500000,
+    priceCurrency: 'PLN',
+    area: 40,
+    rooms: 2,
+    city: 'Warszawa',
+    district: 'Mokotów',
+    lat: 52.2,
+    lng: 21.0,
+    imageUrls: [],
+    heating: null,
+    heatingCode: null,
+  } as any);
+  assert.equal(preview.amenities.hasBalcony, true);
+  assert.equal(preview.amenities.hasElevator, true);
+  assert.equal(preview.amenities.hasParking, true);
+  assert.equal(preview.amenities.hasAirConditioning, true);
+  assert.equal(preview.amenities.isFurnished, true);
+  assert.equal(preview.heating, 'Miejskie');
+});
+
 test('jednopoziomowe does not suggest duplex', () => {
   assert.equal(
     descriptionImpliesAmenity('Przestronne mieszkanie jednopoziomowe bez antresoli.', 'isDuplex'),

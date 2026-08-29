@@ -6,7 +6,6 @@ import {
 } from '@/lib/keiAmerExport';
 import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
 import type { KeiPropertyKind, KeiTransactionKind } from '@/lib/keiAmerClient';
-import { getIntelligenceSmartAddEnabled } from '@/lib/intelligenceSmartAdd';
 
 export type KeiImportJobItemStatus = 'pending' | 'active' | 'done' | 'skipped';
 
@@ -567,8 +566,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         fillUntilPublished: payload.source === 'auto',
         shouldCancel: () => isCancelRequested(jobId),
         onProgress: enqueueProgress,
-        smartAddEnabled:
-          payload.smartAddEnabled ?? (await getIntelligenceSmartAddEnabled(payload.adminUserId)),
+        smartAddEnabled: true,
         smartAddDecisionsByUrl: payload.smartAddDecisionsByUrl,
       });
       await progressChain;

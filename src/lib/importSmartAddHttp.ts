@@ -1,4 +1,5 @@
-import { inferAmenitySuggestions } from '@/lib/intelligenceAmenityBrain';
+import { inferAmenitySuggestions, previewImportSmartAdd } from '@/lib/intelligenceAmenityBrain';
+import { SMART_ADD_ALWAYS_ON } from '@/lib/intelligenceSmartAdd';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 
 export function suggestionsFromImportDraft(draft: OtodomImportDraft) {
@@ -10,9 +11,11 @@ export function suggestionsFromImportDraft(draft: OtodomImportDraft) {
 }
 
 export async function buildSmartAddPreview(_userId: number, draft: OtodomImportDraft) {
+  const preview = previewImportSmartAdd(draft);
   return {
-    smartAddEnabled: true,
-    smartAddSuggestions: suggestionsFromImportDraft(draft),
+    smartAddEnabled: SMART_ADD_ALWAYS_ON,
+    smartAddSuggestions: preview.suggestions,
+    smartAddPreview: preview,
   };
 }
 
@@ -22,8 +25,8 @@ export async function resolveSmartAddCreateOptions(
   _mode: 'interactive' | 'auto' = 'interactive',
 ) {
   return {
-    smartAddEnabled: true,
-    smartAddAutoApply: true,
+    smartAddEnabled: SMART_ADD_ALWAYS_ON,
+    smartAddAutoApply: SMART_ADD_ALWAYS_ON,
     smartAddDecisions: body.smartAddDecisions,
   };
 }

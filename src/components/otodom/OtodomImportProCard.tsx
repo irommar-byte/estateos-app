@@ -22,10 +22,6 @@ import PortalImportImagePicker, {
   type PortalImportFloorPlanSelection,
 } from "@/components/otodom/PortalImportImagePicker";
 import EosModal from "@/components/ui/EosModal";
-import IntelligenceAmenityPrompt, {
-  type SmartAddDecisions,
-} from "@/components/intelligence/IntelligenceAmenityPrompt";
-import type { IntelligenceAmenitySuggestion } from "@/lib/intelligenceAmenityBrain";
 
 const OtodomImportLocationPreview = dynamic(
   () => import("@/components/admin/OtodomImportLocationPreview"),
@@ -112,9 +108,6 @@ export default function OtodomImportProCard() {
   const [walletCoupons, setWalletCoupons] = useState<PublicationCouponOption[]>([]);
   const [walletPlusCredits, setWalletPlusCredits] = useState(0);
   const [walletHasPlusCredit, setWalletHasPlusCredit] = useState(false);
-  const [smartAddEnabled, setSmartAddEnabled] = useState(false);
-  const [smartAddSuggestions, setSmartAddSuggestions] = useState<IntelligenceAmenitySuggestion[]>([]);
-  const [smartAddDecisions, setSmartAddDecisions] = useState<SmartAddDecisions>({});
 
   const resetCreateState = () => {
     setCreateMessage("");
@@ -185,8 +178,6 @@ export default function OtodomImportProCard() {
     setPresentation(null);
     resetPreviewState();
     resetCreateState();
-    setSmartAddSuggestions([]);
-    setSmartAddDecisions({});
     try {
       const res = await fetch("/api/otodom-import", {
         method: "POST",
@@ -207,12 +198,6 @@ export default function OtodomImportProCard() {
       setPresentation(data.presentation ?? null);
       setPreviewIssues(issues);
       setImagePeek(peek);
-      setSmartAddEnabled(Boolean(data.smartAddEnabled));
-      const suggestions = Array.isArray(data.smartAddSuggestions)
-        ? (data.smartAddSuggestions as IntelligenceAmenitySuggestion[])
-        : [];
-      setSmartAddSuggestions(suggestions);
-      setSmartAddDecisions({});
 
       if (nextDraft) {
         const urls = peek?.imageUrls?.length ? peek.imageUrls : nextDraft.imageUrls;
@@ -273,8 +258,6 @@ export default function OtodomImportProCard() {
           floorPlanImageIndex,
           rightsConfirmed: true,
           publication: pendingRedemption,
-          smartAddEnabled,
-          smartAddDecisions,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -569,15 +552,6 @@ export default function OtodomImportProCard() {
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void handleCreate()}
       />
-      {smartAddSuggestions.length > 0 ? (
-        <IntelligenceAmenityPrompt
-          suggestions={smartAddSuggestions}
-          onDone={(decisions) => {
-            setSmartAddDecisions(decisions);
-            setSmartAddSuggestions([]);
-          }}
-        />
-      ) : null}
     </>
   );
 }

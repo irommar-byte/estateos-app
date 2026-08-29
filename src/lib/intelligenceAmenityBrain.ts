@@ -1,9 +1,13 @@
+import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { sanitizeImportHeating } from '@/lib/otodomImport';
+
 export const INTELLIGENCE_AMENITY_FIELDS = [
   'hasBalcony',
   'hasStorage',
   'hasGarden',
   'hasParking',
   'hasElevator',
+  'hasAirConditioning',
   'isFurnished',
   'isDuplex',
 ] as const;
@@ -70,11 +74,17 @@ const AMENITY_META: Record<
     positive: /\b(winda|windą|windy)/i,
     negative: /bez\s+windy|brak\s+windy|nie\s+ma\s+windy/i,
   },
+  hasAirConditioning: {
+    label: 'Klimatyzacja',
+    portalNeedles: ['klimatyz', 'air conditioning', 'air_conditioning'],
+    positive: /\b(klimatyz\w*|air[\s-]?condition\w*|klima\b)/i,
+    negative: /bez\s+klimatyz|brak\s+klimatyz|nie\s+ma\s+klimatyz/i,
+  },
   isFurnished: {
     label: 'Umeblowanie',
-    portalNeedles: ['meble', 'umeblow'],
-    positive: /\b(umeblowan\w*|w\s+pełni\s+umeblowan\w*|z\s+meblami)/i,
-    negative: /nieumeblowan\w*|bez\s+mebli|brak\s+mebli|do\s+umeblo/i,
+    portalNeedles: ['meble', 'umeblow', 'wyposażon'],
+    positive: /\b(umeblowan\w*|w\s+pełni\s+umeblowan\w*|z\s+meblami|wyposażon\w*\s+w\s+meble|gotow\w*\s+do\s+zamieszkania)/i,
+    negative: /nieumeblowan\w*|bez\s+mebli|brak\s+mebli|do\s+umeblo|do\s+wykończenia|do\s+remontu|stan\s+do\s+wyko/i,
   },
   isDuplex: {
     label: 'Dwupoziomowe',
@@ -253,4 +263,62 @@ export function offerHasAmenityFromBrain(
 ): boolean {
   if (offer[field] === true) return true;
   return descriptionImpliesAmenity([offer.title, offer.description].filter(Boolean).join('\n'), field);
+}
+
+export function importDescriptionBlob(draft: Pick<OtodomImportDraft, 'title' | 'descriptionText' | 'descriptionHtml'>): string {
+  return [draft.title, draft.descriptionText, draft.descriptionHtml].filter(Boolean).join('\n');
+}
+
+export function inferHeatingFromImportText(text: string): string | null {
+  const hay = normalizeHay(text).toLowerCase();
+  if (!hay) return null;
+
+  const short = sanitizeImportHeating(hay);
+  if (short) return short;
+
+  if (/ogrzewani\w*\s+miejsk|miejsk\w*\s+ogrzew|ciepłoci\w*|cieploci\w*|\bmco\b|co\s+miejsk|centraln\w*\s+ogrzew/i.test(hay)) {
+    return 'Miejskie';
+  }
+  if (/ogrzewani\w*\s+gaz|gazow\w*\s+ogrzew/i.test(hay)) return 'Gazowe';
+  if (/ogrzewani\w*\s+elektr|elektryczn\w*\s+ogrzew/i.test(hay)) return 'Elektryczne';
+  if (/pomp\w*\s+ciep|ogrzewani\w*\s+.*pomp/i.test(hay)) return 'Pompa Ciepła';
+  if (/węglow|weglow|pellet|ekogroszek|ogrzewani\w*\s+.*(?:węg|weg|pellet)/i.test(hay)) {
+    return 'Węglowe/Pellet';
+  }
+  if (/ogrzewani\w*\s+komink|komink\w*\s+ogrzew/i.test(hay)) return 'Inne';
+
+  return null;
+}
+
+export function resolveImportBooleanField(
+  field: IntelligenceAmenityField,
+  params: {
+    features?: string[] | null;
+    description: string;
+    explicit?: boolean;
+    veto?: boolean;
+  },
+): boolean {
+  if (params.veto) return Boolean(params.explicit);
+  if (params.explicit === true) return true;
+  if (portalFeaturesIncludeAmenity(params.features, field)) return true;
+  return descriptionImpliesAmenity(params.description, field);
+}
+
+export function previewImportSmartAdd(draft: OtodomImportDraft) {
+  const description = importDescriptionBlob(draft);
+  const suggestions = inferAmenitySuggestions({
+    features: draft.features,
+    title: draft.title,
+    description,
+  });
+  const amenities = Object.fromEntries(
+    INTELLIGENCE_AMENITY_FIELDS.map((field) => [
+      field,
+      resolveImportBooleanField(field, { features: draft.features, description }),
+    ]),
+  ) as Record<IntelligenceAmenityField, boolean>;
+  const heating =
+    sanitizeImportHeating(draft.heating, draft.heatingCode) ?? inferHeatingFromImportText(description);
+  return { amenities, heating, hasAirConditioning: amenities.hasAirConditioning, suggestions };
 }

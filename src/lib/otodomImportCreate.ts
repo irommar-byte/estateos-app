@@ -38,9 +38,12 @@ import {
 } from '@/lib/importDuplicateGuard';
 import {
   buildAppliedPatch,
+  descriptionImpliesAmenity,
+  importDescriptionBlob,
   inferAmenitySuggestions,
   parseSmartAddDecisions,
   portalFeaturesIncludeAmenity,
+  previewImportSmartAdd,
   type IntelligenceAmenityField,
   type IntelligenceAmenityPatchMap,
   type IntelligenceAmenitySuggestion,
@@ -142,37 +145,49 @@ export function suggestionsFromOtodomDraft(draft: OtodomImportDraft): Intelligen
 
 export function resolveImportSmartAdd(params: {
   draft: OtodomImportDraft;
-  enabled?: boolean;
-  autoApply?: boolean;
+  /** Jawne odrzucenie pojedynczego pola (np. z UI importu). */
   decisions?: unknown;
 }): {
   amenities: Record<IntelligenceAmenityField, boolean>;
+  hasAirConditioning: boolean;
+  heating: string | null;
   patches: IntelligenceAmenityPatchMap;
   suggestions: IntelligenceAmenitySuggestion[];
 } {
-  const features = params.draft.features || [];
-  const suggestions = suggestionsFromOtodomDraft(params.draft);
+  const preview = previewImportSmartAdd(params.draft);
   const decisions = parseSmartAddDecisions(params.decisions);
-  const amenities: Record<IntelligenceAmenityField, boolean> = {
-    hasBalcony: portalFeaturesIncludeAmenity(features, 'hasBalcony'),
-    hasElevator: portalFeaturesIncludeAmenity(features, 'hasElevator'),
-    hasStorage: portalFeaturesIncludeAmenity(features, 'hasStorage'),
-    hasParking: portalFeaturesIncludeAmenity(features, 'hasParking'),
-    hasGarden: portalFeaturesIncludeAmenity(features, 'hasGarden'),
-    isFurnished: portalFeaturesIncludeAmenity(features, 'isFurnished'),
-    isDuplex: portalFeaturesIncludeAmenity(features, 'isDuplex'),
-  };
+  const amenities = { ...preview.amenities };
   const patches: IntelligenceAmenityPatchMap = {};
-  if (params.enabled) {
-    for (const suggestion of suggestions) {
-      const decided = decisions[suggestion.field];
-      const apply = decided === true || (params.autoApply && decided !== false);
-      if (!apply) continue;
-      amenities[suggestion.field] = true;
-      patches[suggestion.field] = buildAppliedPatch(suggestion, 'import');
+  const description = importDescriptionBlob(params.draft);
+  const features = params.draft.features || [];
+
+  for (const field of Object.keys(amenities) as IntelligenceAmenityField[]) {
+    if (decisions[field] === false) {
+      amenities[field] = portalFeaturesIncludeAmenity(features, field);
+      continue;
+    }
+    const fromPortal = portalFeaturesIncludeAmenity(features, field);
+    const fromDescription = descriptionImpliesAmenity(description, field);
+    if (!fromPortal && fromDescription && amenities[field]) {
+      const suggestion =
+        preview.suggestions.find((item) => item.field === field) ||
+        ({
+          field,
+          label: field,
+          question: '',
+          quotes: [],
+        } as IntelligenceAmenitySuggestion);
+      patches[field] = buildAppliedPatch(suggestion, 'import');
     }
   }
-  return { amenities, patches, suggestions };
+
+  return {
+    amenities,
+    hasAirConditioning: amenities.hasAirConditioning,
+    heating: preview.heating,
+    patches,
+    suggestions: preview.suggestions,
+  };
 }
 
 export async function draftToOfferCreateBody(
@@ -192,8 +207,6 @@ export async function draftToOfferCreateBody(
   const country = await inferCountryFromCoordinates(draft.lat, draft.lng);
   const smart = resolveImportSmartAdd({
     draft,
-    enabled: options?.smartAddEnabled,
-    autoApply: options?.smartAddAutoApply,
     decisions: options?.smartAddDecisions,
   });
 
@@ -229,7 +242,8 @@ export async function draftToOfferCreateBody(
     hasGarden: smart.amenities.hasGarden,
     isFurnished: smart.amenities.isFurnished,
     isDuplex: smart.amenities.isDuplex,
-    heating: sanitizeImportHeating(draft.heating, draft.heatingCode),
+    hasAirConditioning: smart.hasAirConditioning,
+    heating: smart.heating ?? sanitizeImportHeating(draft.heating, draft.heatingCode),
     status: 'PENDING',
     images: '[]',
     ...(options?.agentCommissionPercent != null
@@ -618,8 +632,6 @@ export async function createOfferFromOtodomDraft(
 
     const smart = resolveImportSmartAdd({
       draft,
-      enabled: options?.smartAddEnabled,
-      autoApply: options?.smartAddAutoApply,
       decisions: options?.smartAddDecisions,
     });
     if (Object.keys(smart.patches).length) {

@@ -483,8 +483,6 @@ export async function exportKeiListingsToEstateOS(options?: {
         maxImportImages: KEI_MAX_IMPORT_IMAGES,
         floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
         shouldCancel: checkCancel,
-        smartAddEnabled: options?.smartAddEnabled,
-        smartAddAutoApply: options?.smartAddEnabled === true && !options?.smartAddDecisionsByUrl?.[portalUrl],
         smartAddDecisions: options?.smartAddDecisionsByUrl?.[portalUrl],
         onCopyProgress: (label, detail, meta) => {
           emit?.({
