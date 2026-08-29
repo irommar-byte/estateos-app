@@ -416,6 +416,41 @@ export async function listActiveKeiImportJobs(adminUserId?: number): Promise<Kei
   return mapped;
 }
 
+export async function listKeiImportJobs(params: {
+  limit?: number;
+  offset?: number;
+  status?: KeiImportJobStatus | 'all';
+}): Promise<{ jobs: KeiImportJobSnapshot[]; total: number }> {
+  await ensureKeiAmerImportJobTable();
+  const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
+  const offset = Math.max(params.offset ?? 0, 0);
+  const status = params.status ?? 'all';
+
+  const where = status !== 'all' ? 'WHERE status = ?' : '';
+  const countParams = status !== 'all' ? [status] : [];
+  const listParams = status !== 'all' ? [status, limit, offset] : [limit, offset];
+
+  const countRows = (await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(
+    `SELECT COUNT(*) AS total FROM KeiAmerImportJob ${where}`,
+    ...countParams,
+  )) as Array<{ total: bigint | number }>;
+
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT id, adminUserId, status, message, propertyKind, transactionKind, payloadJson, itemsJson,
+            resultJson, cancelRequested, createdAt, updatedAt, finishedAt
+     FROM KeiAmerImportJob
+     ${where}
+     ORDER BY updatedAt DESC
+     LIMIT ? OFFSET ?`,
+    ...listParams,
+  )) as JobRow[];
+
+  return {
+    jobs: rows.map(mapRow),
+    total: Number(countRows[0]?.total ?? 0),
+  };
+}
+
 export async function requestCancelKeiImportJob(jobId: string): Promise<KeiImportJobSnapshot | null> {
   await ensureKeiAmerImportJobTable();
   await prisma.$executeRawUnsafe(

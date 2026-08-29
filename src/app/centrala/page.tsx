@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Wallet, Contact2 } from "lucide-react";
+import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Wallet, Contact2, Bot } from "lucide-react";
 import KeiAmerWorkspace from "@/components/admin/KeiAmerWorkspace";
 import PortalOnboardingInvitePanel from "@/components/admin/PortalOnboardingInvitePanel";
 import ServerMemoryTile from "@/components/admin/ServerMemoryTile";
@@ -91,6 +91,7 @@ export default function Centrala() {
             { title: "Klienci CRM", desc: "Klienci biur — aktywni i archiwum.", icon: <Contact2 size={32} />, path: "/centrala/klienci", color: "from-red-500/20 to-red-500/5" },
             { title: "Portfel", desc: "Kredyty, kupony i historia.", icon: <Wallet size={32} />, path: "/centrala/portfel", color: "from-amber-500/20 to-amber-500/5" },
             { title: "Statystyki", desc: "Przeglądaj ruch.", icon: <BarChart3 size={32} />, path: "/centrala/statystyki", color: "from-purple-500/20 to-purple-500/5" },
+            { title: "Automatyzacja", desc: "Harmonogram i rejestr importów AI.", icon: <Bot size={32} />, path: "/centrala/automatyzacja", color: "from-violet-500/20 to-violet-500/5" },
             { title: "Sesje zdjęciowe", desc: "Negocjacje EstateOS Studio.", icon: <Database size={32} />, path: "/centrala/sesje-zdjeciowe", color: "from-emerald-500/20 to-emerald-500/5" }
           ].map((item) => (
             <motion.div

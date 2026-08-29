@@ -511,6 +511,17 @@ export default function CRMDashboard() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const commentOfferId = Number(params.get('commentOfferId') || '');
+    if (!Number.isFinite(commentOfferId) || commentOfferId <= 0) return;
+    setCommentModalOffer({ id: commentOfferId });
+    params.delete('commentOfferId');
+    const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+    window.history.replaceState({}, '', next);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     localStorage.setItem('crm_pinned_deals', JSON.stringify(pinnedDealIds));
   }, [pinnedDealIds]);
   // ===================================================================
