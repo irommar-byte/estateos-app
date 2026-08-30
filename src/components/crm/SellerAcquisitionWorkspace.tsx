@@ -561,7 +561,22 @@ export default function SellerAcquisitionWorkspace({
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Właściciel / współwłaściciele" value={form.ownership.owners} onChange={(value) => updateSection("ownership", { owners: value })} />
               <Field label="Podstawa nabycia" value={form.ownership.ownershipBasis} onChange={(value) => updateSection("ownership", { ownershipBasis: value })} placeholder="akt notarialny, spadek, darowizna…" />
-              <Field label="Numer księgi wieczystej" value={form.ownership.landRegisterNumber} onChange={(value) => updateSection("ownership", { landRegisterNumber: value })} />
+              <Field
+                label="Numer księgi wieczystej"
+                value={form.ownership.landRegisterNumber}
+                onChange={(value) => updateSection("ownership", { landRegisterNumber: value.toUpperCase() })}
+                placeholder="WA4N/00012345/6"
+              />
+              <div className="flex items-end">
+                <a
+                  href={`https://przegladarka-ekw.ms.gov.pl/eukw_prz/KsiegiWieczyste/wyszukiwanieKW`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${eosBtn("secondary")} w-full justify-center`}
+                >
+                  <ExternalLink className="size-4" /> Sprawdź w EKW
+                </a>
+              </div>
               {isFlatSellerProperty(form.property.propertyType) ? (
                 <div>
                   <Field
@@ -955,6 +970,14 @@ export default function SellerAcquisitionWorkspace({
                         <p className="mt-1 text-xs text-[var(--eos-muted)]">
                           Publikacja jest osobnym krokiem — umowa pozostaje tylko do odczytu.
                         </p>
+                        {linkedOffer.landRegistryNumber ? (
+                          <p className="mt-2 flex items-center gap-1.5 text-xs font-bold text-[var(--eos-text)]">
+                            {(linkedOffer.isLegalSafeVerified || String(linkedOffer.legalCheckStatus || "").toUpperCase() === "VERIFIED") ? (
+                              <BadgeCheck className="size-3.5 text-emerald-600" />
+                            ) : null}
+                            KW {linkedOffer.landRegistryNumber}
+                          </p>
+                        ) : null}
                       </div>
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${officeOfferStatusChipClass(offerUiStatus.key)}`}

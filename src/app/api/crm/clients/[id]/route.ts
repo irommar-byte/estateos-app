@@ -44,6 +44,7 @@ import {
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
+import { stampKwFromAcquisitionForm } from '@/lib/legalVerificationAgentStamp';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
@@ -82,8 +83,13 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const portalChat = await getPortalChatState(client.id, 'agent');
   const acquisition = await prisma.agencyClientAcquisition.findUnique({
     where: { clientId: client.id },
-    select: { status: true, currentStep: true, signedAt: true },
+    select: { status: true, currentStep: true, signedAt: true, formData: true },
   });
+  await stampKwFromAcquisitionForm({
+    offerId: client.linkedOfferId,
+    agentUserId: agencyUserId,
+    formData: acquisition?.formData,
+  }).catch(() => {});
   const journey = buildJourneyStages({
     clientType: client.type,
     hasMeeting: Boolean(meeting),

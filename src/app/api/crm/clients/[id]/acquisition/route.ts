@@ -21,6 +21,7 @@ import {
   acquisitionClientLinks,
   buildAcquisitionClientEmailHtml,
 } from "@/lib/crm/acquisitionDocument";
+import { stampKwFromAcquisitionForm } from "@/lib/legalVerificationAgentStamp";
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -34,6 +35,29 @@ function escapeHtml(value: unknown): string {
 
 function portalLinks(client: { portalToken?: string | null }) {
   return acquisitionClientLinks(client.portalToken);
+}
+
+function serializeLinkedOffer(raw: {
+  id: number;
+  title?: string | null;
+  status?: string | null;
+  officeReviewStatus?: string | null;
+  landRegistryNumber?: string | null;
+  apartmentNumber?: string | null;
+  isLegalSafeVerified?: boolean | null;
+  legalCheckStatus?: string | null;
+} | null) {
+  if (!raw) return null;
+  return {
+    id: raw.id,
+    title: raw.title,
+    status: raw.status,
+    officeReviewStatus: raw.officeReviewStatus ?? null,
+    landRegistryNumber: raw.landRegistryNumber ?? null,
+    apartmentNumber: raw.apartmentNumber ?? null,
+    isLegalSafeVerified: Boolean(raw.isLegalSafeVerified),
+    legalCheckStatus: raw.legalCheckStatus ?? null,
+  };
 }
 
 function shapeAcquisition(record: any, fallbackForm: AcquisitionFormData) {
@@ -163,20 +187,18 @@ export async function GET(req: Request, ctx: RouteCtx) {
     acquisition.formData.meeting.startsAt = fallbackForm.meeting.startsAt;
     if (fallbackForm.meeting.location) acquisition.formData.meeting.location = fallbackForm.meeting.location;
   }
+  await stampKwFromAcquisitionForm({
+    offerId: client.linkedOfferId,
+    agentUserId: agencyUserId,
+    formData: acquisition?.formData || fallbackForm,
+  }).catch(() => {});
+
   const linkedOfferRaw = client.linkedOfferId
     ? await prisma.offer.findFirst({
         where: { id: client.linkedOfferId, userId: agencyUserId },
       })
     : null;
-  const linkedOffer = linkedOfferRaw
-    ? {
-        id: linkedOfferRaw.id,
-        title: linkedOfferRaw.title,
-        status: linkedOfferRaw.status,
-        officeReviewStatus:
-          (linkedOfferRaw as { officeReviewStatus?: string | null }).officeReviewStatus ?? null,
-      }
-    : null;
+  const linkedOffer = serializeLinkedOffer(linkedOfferRaw as any);
 
   return NextResponse.json({
     success: true,
@@ -251,6 +273,12 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       ...(Number.isFinite(sellerPrice) && sellerPrice > 0 ? { sellerPrice } : {}),
       sellerPropertyType: parseSellerPropertyType(formData.property.propertyType),
     },
+  }).catch(() => {});
+
+  await stampKwFromAcquisitionForm({
+    offerId: client.linkedOfferId,
+    agentUserId: agencyUserId,
+    formData,
   }).catch(() => {});
 
   return NextResponse.json({ success: true, acquisition: shapeAcquisition(record, formData) });

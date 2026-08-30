@@ -356,11 +356,13 @@ export async function createOffer(body: any) {
     apartmentNumber: body.apartmentNumber,
     landRegistryNumber: body.landRegistryNumber,
   });
+  const hasLegalVerificationSeed = Boolean(verificationMeta.landRegistryNumber);
+  const legalVerifiedByAgent = Boolean(body.legalVerifiedByAgent) && hasLegalVerificationSeed;
+  if (legalVerifiedByAgent) verificationMeta.status = 'VERIFIED';
   const descriptionWithVerification = attachVerificationMetaToDescription(
     String(body.description || ''),
     verificationMeta
   );
-  const hasLegalVerificationSeed = Boolean(verificationMeta.landRegistryNumber);
 
   let agentCommissionPercent: number | null | undefined = undefined;
   if (body.agentCommissionPercent !== undefined && body.agentCommissionPercent !== null) {
@@ -420,9 +422,11 @@ export async function createOffer(body: any) {
       floorPlanUrl: body.floorPlanUrl || null,
       landRegistryNumber: verificationMeta.landRegistryNumber || null,
       apartmentNumber: verificationMeta.apartmentNumber || null,
-      legalCheckStatus: hasLegalVerificationSeed ? 'PENDING' : 'NONE',
+      legalCheckStatus: legalVerifiedByAgent ? 'VERIFIED' : hasLegalVerificationSeed ? 'PENDING' : 'NONE',
       legalCheckSubmittedAt: hasLegalVerificationSeed ? new Date() : null,
-      isLegalSafeVerified: false,
+      legalCheckReviewedAt: legalVerifiedByAgent ? new Date() : null,
+      legalCheckReviewedBy: legalVerifiedByAgent ? Number(userId) : null,
+      isLegalSafeVerified: legalVerifiedByAgent,
 
       hasBalcony: !!body.hasBalcony,
       hasElevator: !!body.hasElevator,
@@ -482,15 +486,18 @@ export async function createOffer(body: any) {
         data: {
           offerId: Number(created.id),
           requesterId: Number(userId),
-          status: 'PENDING',
+          status: legalVerifiedByAgent ? 'APPROVED' : 'PENDING',
           landRegistryNumber: verificationMeta.landRegistryNumber,
           apartmentNumber: verificationMeta.apartmentNumber || null,
+          note: legalVerifiedByAgent ? 'Zweryfikowane przez agenta przy pozyskaniu.' : null,
         },
       });
-      notifyAdminsLegalVerificationPending(
-        Number(created.id),
-        typeof created.title === 'string' ? created.title : null,
-      );
+      if (!legalVerifiedByAgent) {
+        notifyAdminsLegalVerificationPending(
+          Number(created.id),
+          typeof created.title === 'string' ? created.title : null,
+        );
+      }
     }
     return created;
   } catch (error) {
@@ -524,15 +531,18 @@ export async function createOffer(body: any) {
         data: {
           offerId: Number(fallbackCreated.id),
           requesterId: Number(userId),
-          status: 'PENDING',
+          status: legalVerifiedByAgent ? 'APPROVED' : 'PENDING',
           landRegistryNumber: verificationMeta.landRegistryNumber,
           apartmentNumber: verificationMeta.apartmentNumber || null,
+          note: legalVerifiedByAgent ? 'Zweryfikowane przez agenta przy pozyskaniu.' : null,
         },
       });
-      notifyAdminsLegalVerificationPending(
-        Number(fallbackCreated.id),
-        typeof fallbackCreated.title === 'string' ? fallbackCreated.title : null,
-      );
+      if (!legalVerifiedByAgent) {
+        notifyAdminsLegalVerificationPending(
+          Number(fallbackCreated.id),
+          typeof fallbackCreated.title === 'string' ? fallbackCreated.title : null,
+        );
+      }
     }
     return fallbackCreated;
   }
