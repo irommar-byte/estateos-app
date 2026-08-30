@@ -1,4 +1,5 @@
 import type {
+  FloorPlanScanMeta,
   RoomScanDetectedObject,
   RoomScanSection,
   RoomScanWallSegment,
@@ -54,6 +55,28 @@ export function roomTypeKeyFromName(name: string): string {
   if (NAME_TO_KEY[raw]) return NAME_TO_KEY[raw];
   const hit = Object.entries(NAME_TO_KEY).find(([label]) => raw.includes(label));
   return hit?.[1] || 'unspecified';
+}
+
+export function roomTypeLabelFromKey(key: string, fallback = ''): string {
+  return ROOM_PRESET_DEFS.find((row) => row.key === key)?.label || fallback;
+}
+
+export function applyRoomIdentityToScanMeta(
+  meta: FloorPlanScanMeta | undefined,
+  params: { sectionIndex?: number | null; name: string; typeKey?: string },
+): FloorPlanScanMeta | undefined {
+  if (!meta?.sections?.length) return meta;
+  const key = params.typeKey || roomTypeKeyFromName(params.name);
+  const label = String(params.name || '').trim() || roomTypeLabelFromKey(key, 'Pomieszczenie');
+  let idx = params.sectionIndex;
+  if (idx == null || idx < 0 || idx >= meta.sections.length) {
+    idx = meta.sections.length === 1 ? 0 : null;
+  }
+  if (idx == null) return meta;
+  const sections = meta.sections.map((section, i) =>
+    i === idx ? { ...section, key, label, userAssigned: true } : section,
+  );
+  return { ...meta, sections };
 }
 
 export function listingRoomCountFromKeys(keys: Array<string | undefined>): number {
@@ -221,6 +244,7 @@ export function refineScanSections(
   const globalDims = deriveRoomDimensionsFromWalls(walls);
 
   let next: RoomScanSection[] = sections.map((section) => {
+    if (section.userAssigned) return section;
     const nearby = objectsNear(objects, section.centerX, section.centerZ, 2.45);
     const key = resolveSectionKey(
       section.key,

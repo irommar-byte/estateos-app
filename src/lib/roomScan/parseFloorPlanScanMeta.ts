@@ -35,6 +35,9 @@ function parseRooms(raw: unknown): PropertyRoomScan[] {
       id: String(room.id || `room-${index}`),
       name: String(room.name || `Pomieszczenie ${index + 1}`),
       typeKey: room.typeKey ? String(room.typeKey) : undefined,
+      sourceSectionIndex: Number.isFinite(Number(room.sourceSectionIndex))
+        ? Number(room.sourceSectionIndex)
+        : undefined,
       widthM: String(room.widthM || ''),
       lengthM: String(room.lengthM || ''),
       heightM: String(room.heightM || ''),
