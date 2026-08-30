@@ -143,7 +143,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
 
   private func makeRemoteCarouselItem(for offer: TopShelfOffer) -> TVTopShelfCarouselItem? {
     let card = ShelfOfferFormatting.card(from: offer)
-    guard let remote = resolveImageURL(for: offer) else { return nil }
+    let remote = resolveImageURL(for: offer)
 
     let item = TVTopShelfCarouselItem(identifier: String(offer.id))
     item.title = card.title
@@ -156,15 +156,23 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       ]
     }
 
-    item.setImageURL(remote, for: .screenScale1x)
-    item.setImageURL(remote, for: .screenScale2x)
+    if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .carousel) {
+      item.setImageURL(fileURL, for: .screenScale1x)
+      item.setImageURL(fileURL, for: .screenScale2x)
+    } else if let remote {
+      item.setImageURL(remote, for: .screenScale1x)
+      item.setImageURL(remote, for: .screenScale2x)
+    } else {
+      return nil
+    }
+
     attachActions(to: item, offerId: offer.id)
     return item
   }
 
   private func makeStyledCarouselItem(for offer: TopShelfOffer, downloadPhoto: Bool) async -> TVTopShelfCarouselItem? {
     let card = ShelfOfferFormatting.card(from: offer)
-    guard let remote = resolveImageURL(for: offer) else { return nil }
+    let remote = resolveImageURL(for: offer)
 
     let item = TVTopShelfCarouselItem(identifier: String(offer.id))
     clearSystemText(on: item)
@@ -176,7 +184,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     }
 
     let background: UIImage?
-    if downloadPhoto {
+    if downloadPhoto, let remote {
       background = await TopShelfImageLoader.loadImage(from: remote, timeout: 2.5)
     } else {
       background = nil
@@ -190,9 +198,11 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     ) {
       item.setImageURL(fileURL, for: .screenScale1x)
       item.setImageURL(fileURL, for: .screenScale2x)
-    } else {
+    } else if let remote {
       item.setImageURL(remote, for: .screenScale1x)
       item.setImageURL(remote, for: .screenScale2x)
+    } else {
+      return nil
     }
 
     attachActions(to: item, offerId: offer.id)
@@ -228,26 +238,40 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
 
   private func makeRemoteSectionedItem(for offer: TopShelfOffer) -> TVTopShelfSectionedItem? {
     let card = ShelfOfferFormatting.card(from: offer)
-    guard let remote = resolveImageURL(for: offer) else { return nil }
+    let remote = resolveImageURL(for: offer)
 
     let item = TVTopShelfSectionedItem(identifier: String(offer.id))
     item.title = card.title
     item.imageShape = .hdtv
-    item.setImageURL(remote, for: .screenScale1x)
-    item.setImageURL(remote, for: .screenScale2x)
+
+    if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .sectioned) {
+      item.setImageURL(fileURL, for: .screenScale1x)
+      item.setImageURL(fileURL, for: .screenScale2x)
+    } else if let remote {
+      item.setImageURL(remote, for: .screenScale1x)
+      item.setImageURL(remote, for: .screenScale2x)
+    } else {
+      return nil
+    }
+
     attachActions(to: item, offerId: offer.id)
     return item
   }
 
   private func makeStyledSectionedItem(for offer: TopShelfOffer) async -> TVTopShelfSectionedItem? {
     let card = ShelfOfferFormatting.card(from: offer)
-    guard let remote = resolveImageURL(for: offer) else { return nil }
+    let remote = resolveImageURL(for: offer)
 
     let item = TVTopShelfSectionedItem(identifier: String(offer.id))
     item.title = ""
     item.imageShape = .hdtv
 
-    let background = await TopShelfImageLoader.loadImage(from: remote, timeout: 2.5)
+    let background: UIImage?
+    if let remote {
+      background = await TopShelfImageLoader.loadImage(from: remote, timeout: 2.5)
+    } else {
+      background = nil
+    }
 
     if let fileURL = renderStyledImage(
       offer: card,
@@ -257,9 +281,11 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     ) {
       item.setImageURL(fileURL, for: .screenScale1x)
       item.setImageURL(fileURL, for: .screenScale2x)
-    } else {
+    } else if let remote {
       item.setImageURL(remote, for: .screenScale1x)
       item.setImageURL(remote, for: .screenScale2x)
+    } else {
+      return nil
     }
 
     attachActions(to: item, offerId: offer.id)

@@ -9,6 +9,7 @@ struct HomeView: View {
     @FocusState private var chromeFocus: HomeChromeFocus?
     @FocusState private var showroomFocus: HomeShowroomFocus?
     @FocusState private var accountFocusedItem: HomeAccountFocus?
+    @FocusState private var auxFocus: HomeAuxFocus?
     @State private var accountContentFocus = false
     @State private var showFilterSheet = false
 
@@ -22,7 +23,12 @@ struct HomeView: View {
                     accountFocusedItem: $accountFocusedItem,
                     accountContentFocus: $accountContentFocus,
                     showFilterSheet: $showFilterSheet,
-                    onBrandChange: { _ in tab = .showroom }
+                    showroomFocus: $showroomFocus,
+                    auxFocus: $auxFocus,
+                    onBrandChange: { _ in
+                        tab = .showroom
+                        showroomFocus = .hero
+                    }
                 )
                 .padding(.bottom, 18)
                 .zIndex(2)
@@ -62,11 +68,28 @@ struct HomeView: View {
             .environmentObject(app)
         }
         .onAppear {
-            if chromeFocus == nil { chromeFocus = .tab(tab) }
+            if tab == .showroom {
+                showroomFocus = .hero
+            } else if chromeFocus == nil {
+                chromeFocus = .tab(tab)
+            }
             if tab == .account { accountContentFocus = true }
         }
         .onChange(of: tab) { _, newTab in
-            if newTab == .account { accountContentFocus = true }
+            switch newTab {
+            case .showroom:
+                showroomFocus = .hero
+                auxFocus = nil
+            case .account:
+                accountContentFocus = true
+                auxFocus = nil
+            case .search:
+                chromeFocus = nil
+                auxFocus = .searchQuery
+            case .favorites:
+                chromeFocus = nil
+                auxFocus = nil
+            }
         }
     }
 
@@ -85,12 +108,12 @@ struct HomeView: View {
                 .transition(.eosModeTransition)
             case .search:
                 catalogLoadingGate {
-                    SearchView()
+                    SearchView(chromeFocus: $chromeFocus, auxFocus: $auxFocus)
                         .environmentObject(app)
                 }
                 .transition(.eosModeTransition)
             case .favorites:
-                HomeFavoritesView(tab: $tab)
+                HomeFavoritesView(tab: $tab, chromeFocus: $chromeFocus)
                     .transition(.eosModeTransition)
             case .account:
                 HomeAccountView(

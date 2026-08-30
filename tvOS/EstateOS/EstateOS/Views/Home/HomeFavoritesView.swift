@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeFavoritesView: View {
     @EnvironmentObject private var app: AppModel
     @Binding var tab: HomeTab
+    var chromeFocus: FocusState<HomeChromeFocus?>.Binding
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -63,6 +64,12 @@ struct HomeFavoritesView: View {
                 }
             }
             .padding(.bottom, 40)
+        }
+        .focusSection()
+        .onMoveCommand { direction in
+            if direction == .up {
+                chromeFocus.wrappedValue = .tab(.favorites)
+            }
         }
     }
 

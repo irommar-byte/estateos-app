@@ -5,6 +5,7 @@ struct HomeFilterStrip: View {
     @Binding var tab: HomeTab
     @Binding var showFilterSheet: Bool
     var moreFiltersFocus: FocusState<HomeChromeFocus?>.Binding
+    var showroomFocus: FocusState<HomeShowroomFocus?>.Binding
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -24,8 +25,13 @@ struct HomeFilterStrip: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
         .onMoveCommand { direction in
-            if direction == .up {
+            switch direction {
+            case .up:
                 moreFiltersFocus.wrappedValue = .tab(.showroom)
+            case .down:
+                showroomFocus.wrappedValue = .hero
+            default:
+                break
             }
         }
     }

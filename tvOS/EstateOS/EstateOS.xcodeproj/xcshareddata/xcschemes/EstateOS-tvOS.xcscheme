@@ -20,6 +20,20 @@
                ReferencedContainer = "container:EstateOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A1B2C3D4E5F6478990ABCD01"
+               BuildableName = "EstateOSTopShelf.appex"
+               BlueprintName = "EstateOSTopShelf"
+               ReferencedContainer = "container:EstateOS.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

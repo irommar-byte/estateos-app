@@ -23,10 +23,12 @@ struct RootView: View {
             }
 
             if !splashFinished {
-                AppleSplashView(bootstrapComplete: !app.isBootstrapping) {
+                AppleSplashView {
                     TvLaunchMetrics.recordSplashEnd()
                     splashFinished = true
                 }
+                .environmentObject(app)
+                .id("estateos-splash")
                 .transition(.opacity)
                 .zIndex(2)
             } else if showExtendedHold {

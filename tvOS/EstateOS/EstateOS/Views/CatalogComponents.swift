@@ -37,9 +37,28 @@ struct CarsCatalogView: View {
             .frame(width: 360)
             .background(CarFocusSectionProbe(title: sectionTitle))
         }
-        .buttonStyle(EOSPosterButtonStyle(focusScale: 1.0))
+        .buttonStyle(EOSPosterButtonStyle(focusScale: 1.06))
         .focusEffectDisabled()
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contextMenu {
+            carPosterContextMenu(car, sectionTitle: sectionTitle)
+        }
+    }
+
+    @ViewBuilder
+    private func carPosterContextMenu(_ car: CarListing, sectionTitle: String) -> some View {
+        Button(app.isFavoriteCar(car.id) ? "Usuń z ulubionych" : "Dodaj do ulubionych") {
+            app.toggleFavoriteCar(car)
+        }
+        Button("Immersyjny przegląd") {
+            let pool = cars
+            let index = pool.firstIndex(where: { $0.id == car.id }) ?? 0
+            app.openImmersiveCarBrowse(at: index, from: pool)
+        }
+        Button("Otwórz szczegóły") {
+            app.noteShowroomSection(sectionTitle)
+            onSelect(car)
+        }
     }
 }
 
@@ -226,7 +245,6 @@ struct BrandSwitcher: View {
 }
 
 struct ShowroomHeroCard: View {
-    @Environment(\.isFocused) private var isFocused
     let title: String
     let subtitle: String
     let badge: String
@@ -236,8 +254,13 @@ struct ShowroomHeroCard: View {
     let secondaryTitle: String?
     var heroNamespace: Namespace.ID? = nil
     var heroTransitionID: String? = nil
+    var showroomFocus: FocusState<HomeShowroomFocus?>.Binding? = nil
     let onPrimary: () -> Void
     let onSecondary: (() -> Void)?
+
+    private var heroFocusActive: Bool {
+        showroomFocus?.wrappedValue == .hero
+    }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -276,11 +299,7 @@ struct ShowroomHeroCard: View {
                 }
 
                 HStack(spacing: 16) {
-                    Button(primaryTitle, action: onPrimary)
-                        .buttonStyle(EOSDetailActionButtonStyle(accent: accent))
-                        .focusEffectDisabled()
-                        .accessibilityLabel("Pokaż szczegóły oferty")
-
+                    primaryActionButton
                     if let secondaryTitle, let onSecondary {
                         Button(secondaryTitle, action: onSecondary)
                             .buttonStyle(EOSDetailChromeButtonStyle())
@@ -298,18 +317,31 @@ struct ShowroomHeroCard: View {
         )
         .eosGlass(cornerRadius: 28, opacity: 0.18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .scaleEffect(isFocused ? 1.04 : 1.0)
-        .animation(.easeOut(duration: 0.18), value: isFocused)
+        .scaleEffect(heroFocusActive ? 1.04 : 1.0)
+        .animation(.easeOut(duration: 0.18), value: heroFocusActive)
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Karta showroom: \(title)")
     }
 
     @ViewBuilder
+    private var primaryActionButton: some View {
+        let button = Button(primaryTitle, action: onPrimary)
+            .buttonStyle(EOSDetailActionButtonStyle(accent: accent))
+            .focusEffectDisabled()
+            .accessibilityLabel("Pokaż szczegóły oferty")
+        if let showroomFocus {
+            button.focused(showroomFocus, equals: .hero)
+        } else {
+            button
+        }
+    }
+
+    @ViewBuilder
     private var heroImage: some View {
         let thumb = EOSOfferThumbnail(url: imageURL, height: 420)
         if let heroNamespace, let heroTransitionID {
-            thumb.matchedGeometryEffect(id: heroTransitionID, in: heroNamespace)
+            thumb.matchedGeometryEffect(id: heroTransitionID, in: heroNamespace, isSource: true)
         } else {
             thumb
         }

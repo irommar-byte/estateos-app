@@ -37,9 +37,28 @@ struct OffersCatalogView: View {
             .frame(width: 360)
             .background(FocusSectionProbe(title: sectionTitle))
         }
-        .buttonStyle(EOSPosterButtonStyle(focusScale: 1.0))
+        .buttonStyle(EOSPosterButtonStyle(focusScale: 1.06))
         .focusEffectDisabled()
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contextMenu {
+            offerPosterContextMenu(offer, sectionTitle: sectionTitle)
+        }
+    }
+
+    @ViewBuilder
+    private func offerPosterContextMenu(_ offer: EstateOffer, sectionTitle: String) -> some View {
+        Button(app.isFavorite(offer.id) ? "Usuń z ulubionych" : "Dodaj do ulubionych") {
+            Task { await app.toggleFavorite(offer) }
+        }
+        Button("Immersyjny przegląd") {
+            let pool = offers
+            let index = pool.firstIndex(where: { $0.id == offer.id }) ?? 0
+            app.openImmersiveBrowse(at: index, from: pool)
+        }
+        Button("Otwórz szczegóły") {
+            app.noteShowroomSection(sectionTitle)
+            onSelect(offer)
+        }
     }
 }
 

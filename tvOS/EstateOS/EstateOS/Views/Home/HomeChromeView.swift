@@ -32,6 +32,8 @@ struct HomeChromeView: View {
     var accountFocusedItem: FocusState<HomeAccountFocus?>.Binding
     @Binding var accountContentFocus: Bool
     @Binding var showFilterSheet: Bool
+    var showroomFocus: FocusState<HomeShowroomFocus?>.Binding
+    var auxFocus: FocusState<HomeAuxFocus?>.Binding
     var onBrandChange: (CatalogBrand) -> Void
 
     private var brandAccent: Color { EOSPalette.accent(for: app.catalogBrand) }
@@ -39,20 +41,27 @@ struct HomeChromeView: View {
     var body: some View {
         VStack(spacing: 16) {
             header
-            BrandSwitcher(
-                brand: Binding(
-                    get: { app.catalogBrand },
-                    set: { app.setCatalogBrand($0) }
-                ),
-                onChange: onBrandChange
-            )
-            .focused(chromeFocus, equals: .brandSwitcher)
 
             if tab == .showroom {
+                BrandSwitcher(
+                    brand: Binding(
+                        get: { app.catalogBrand },
+                        set: { app.setCatalogBrand($0) }
+                    ),
+                    onChange: onBrandChange
+                )
+                .focused(chromeFocus, equals: .brandSwitcher)
+                .onMoveCommand { direction in
+                    if direction == .down {
+                        chromeFocus.wrappedValue = .moreFilters
+                    }
+                }
+
                 HomeFilterStrip(
                     tab: $tab,
                     showFilterSheet: $showFilterSheet,
-                    moreFiltersFocus: chromeFocus
+                    moreFiltersFocus: chromeFocus,
+                    showroomFocus: showroomFocus
                 )
             }
         }
@@ -109,10 +118,14 @@ struct HomeChromeView: View {
             .focusSection()
             .onMoveCommand { direction in
                 if direction == .down {
-                    if tab == .showroom {
+                    switch tab {
+                    case .showroom:
                         chromeFocus.wrappedValue = .brandSwitcher
-                    } else if tab == .account {
-                        accountContentFocus = true
+                    case .search:
+                        auxFocus.wrappedValue = .searchQuery
+                    case .favorites, .account:
+                        chromeFocus.wrappedValue = nil
+                        if tab == .account { accountContentFocus = true }
                     }
                 }
             }
@@ -125,8 +138,15 @@ struct HomeChromeView: View {
         if TvCatalogCache.isUsingCachedCatalog {
             return "Tryb offline · ostatni zapisany katalog"
         }
-        if tab == .showroom, !app.activeShowroomSection.isEmpty {
-            return app.activeShowroomSection
+        switch tab {
+        case .showroom:
+            if !app.activeShowroomSection.isEmpty { return app.activeShowroomSection }
+        case .search:
+            return app.catalogBrand == .home ? "Szukaj w katalogu nieruchomości" : "Szukaj w katalogu aut"
+        case .favorites:
+            return "Twoje zapisane oferty Home i Car"
+        case .account:
+            return "Top Shelf, logowanie i ustawienia"
         }
         if let login = app.session?.user.login {
             return "Witaj, \(login)"

@@ -44,8 +44,13 @@ struct HomeShowroomView: View {
             if app.activeShowroomSection.isEmpty {
                 app.noteShowroomSection(app.catalogBrand == .home ? "Nowe w ostatnich 24h" : "Nowe auta · 24h")
             }
-            if showroomFocus.wrappedValue == nil {
-                showroomFocus.wrappedValue = .hero
+            showroomFocus.wrappedValue = .hero
+        }
+        .onChange(of: app.catalogBrand) { _, _ in
+            heroAppeared = false
+            showroomFocus.wrappedValue = .hero
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                heroAppeared = true
             }
         }
     }
@@ -128,6 +133,7 @@ struct HomeShowroomView: View {
             secondaryTitle: newest.count > 1 ? "Immersyjny przegląd" : nil,
             heroNamespace: heroNamespace,
             heroTransitionID: transitionID,
+            showroomFocus: showroomFocus,
             onPrimary: {
                 heroTransition.begin(id: .home(hero.id), imageURL: imageURL)
                 app.openDetail(hero)
@@ -137,9 +143,12 @@ struct HomeShowroomView: View {
         .id("home-hero-\(hero.id)-\(app.homeFilterSummary)")
         .scaleEffect(heroAppeared ? 1 : 0.98)
         .animation(.easeOut(duration: 0.35), value: heroAppeared)
-        .focused(showroomFocus, equals: .hero)
         .onMoveCommand { direction in
-            if direction == .up { chromeFocus.wrappedValue = .moreFilters }
+            switch direction {
+            case .up: chromeFocus.wrappedValue = .moreFilters
+            case .down: showroomFocus.wrappedValue = .firstRail
+            default: break
+            }
         }
         .onAppear {
             heroAppeared = true
@@ -205,6 +214,7 @@ struct HomeShowroomView: View {
             secondaryTitle: fresh.count > 1 ? "Immersyjny przegląd" : nil,
             heroNamespace: heroNamespace,
             heroTransitionID: transitionID,
+            showroomFocus: showroomFocus,
             onPrimary: {
                 heroTransition.begin(id: .car(hero.id), imageURL: imageURL)
                 app.openCarDetail(hero)
@@ -214,9 +224,12 @@ struct HomeShowroomView: View {
         .id("car-hero-\(hero.id)-\(app.carFilterSummary)")
         .scaleEffect(heroAppeared ? 1 : 0.98)
         .animation(.easeOut(duration: 0.35), value: heroAppeared)
-        .focused(showroomFocus, equals: .hero)
         .onMoveCommand { direction in
-            if direction == .up { chromeFocus.wrappedValue = .moreFilters }
+            switch direction {
+            case .up: chromeFocus.wrappedValue = .moreFilters
+            case .down: showroomFocus.wrappedValue = .firstRail
+            default: break
+            }
         }
         .onAppear {
             heroAppeared = true

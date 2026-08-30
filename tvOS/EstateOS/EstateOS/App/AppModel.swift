@@ -209,6 +209,9 @@ final class AppModel: ObservableObject {
             TvCatalogCache.saveOffers(offers)
             TvCatalogCache.isUsingCachedCatalog = false
             warmPrefetchCatalogImages()
+#if canImport(TVServices)
+            TVTopShelfContentProvider.topShelfContentDidChange()
+#endif
         } catch {
             if offers.isEmpty, let cached = TvCatalogCache.loadOffers() {
                 offers = cached
@@ -437,6 +440,9 @@ final class AppModel: ObservableObject {
             TvCatalogCache.saveCars(cars)
             TvCatalogCache.isUsingCachedCatalog = false
             warmPrefetchCatalogImages()
+#if canImport(TVServices)
+            TVTopShelfContentProvider.topShelfContentDidChange()
+#endif
         } catch {
             if cars.isEmpty, let cached = TvCatalogCache.loadCars() {
                 cars = cached

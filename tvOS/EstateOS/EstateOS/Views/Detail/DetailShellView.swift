@@ -121,7 +121,7 @@ struct DetailShellView<QRSheet: View>: View {
             .ignoresSafeArea()
             .opacity((mode == .info || mode == .description) ? 0.28 : 1)
         if let heroNamespace, let heroTransitionID, mode == .hero {
-            image.matchedGeometryEffect(id: heroTransitionID, in: heroNamespace)
+            image.matchedGeometryEffect(id: heroTransitionID, in: heroNamespace, isSource: false)
         } else {
             image
         }

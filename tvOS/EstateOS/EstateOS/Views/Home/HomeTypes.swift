@@ -36,6 +36,10 @@ enum HomeShowroomFocus: Hashable {
     case firstRail
 }
 
+enum HomeAuxFocus: Hashable {
+    case searchQuery
+}
+
 enum HomeAccountFocus: Hashable {
     case refresh
     case login

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SearchView: View {
     @EnvironmentObject private var app: AppModel
+    var chromeFocus: FocusState<HomeChromeFocus?>.Binding
+    var auxFocus: FocusState<HomeAuxFocus?>.Binding
     @FocusState private var queryFocused: Bool
 
     var body: some View {
@@ -70,8 +72,26 @@ struct SearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .focusSection()
+        .onMoveCommand { direction in
+            if direction == .up {
+                queryFocused = false
+                auxFocus.wrappedValue = nil
+                chromeFocus.wrappedValue = .tab(.search)
+            }
+        }
+        .onChange(of: auxFocus.wrappedValue) { _, value in
+            if value == .searchQuery {
+                queryFocused = true
+            }
+        }
+        .onChange(of: queryFocused) { _, focused in
+            if focused {
+                auxFocus.wrappedValue = .searchQuery
+            }
+        }
         .onAppear {
-            if app.searchQuery.isEmpty, app.carSearchQuery.isEmpty {
+            if auxFocus.wrappedValue == .searchQuery || (app.searchQuery.isEmpty && app.carSearchQuery.isEmpty) {
                 queryFocused = true
             }
         }
@@ -145,11 +165,27 @@ struct SearchView: View {
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
                         .eosFocusRing(cornerRadius: 18, accent: EOSPalette.home)
                     }
-                    .buttonStyle(EOSPosterButtonStyle())
+                    .buttonStyle(EOSPosterButtonStyle(focusScale: 1.04))
                     .focusEffectDisabled()
+                    .contextMenu {
+                        offerSearchContextMenu(offer)
+                    }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func offerSearchContextMenu(_ offer: EstateOffer) -> some View {
+        Button(app.isFavorite(offer.id) ? "Usuń z ulubionych" : "Dodaj do ulubionych") {
+            Task { await app.toggleFavorite(offer) }
+        }
+        Button("Immersyjny przegląd") {
+            let pool = app.filteredOffersForBrowse
+            let index = pool.firstIndex(where: { $0.id == offer.id }) ?? 0
+            app.openImmersiveBrowse(at: index, from: pool)
+        }
+        Button("Szczegóły oferty") { app.openDetail(offer) }
     }
 
     private var carResults: some View {
@@ -205,10 +241,26 @@ struct SearchView: View {
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
                         .eosFocusRing(cornerRadius: 18, accent: EOSPalette.car)
                     }
-                    .buttonStyle(EOSPosterButtonStyle())
+                    .buttonStyle(EOSPosterButtonStyle(focusScale: 1.04))
                     .focusEffectDisabled()
+                    .contextMenu {
+                        carSearchContextMenu(car)
+                    }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func carSearchContextMenu(_ car: CarListing) -> some View {
+        Button(app.isFavoriteCar(car.id) ? "Usuń z ulubionych" : "Dodaj do ulubionych") {
+            app.toggleFavoriteCar(car)
+        }
+        Button("Immersyjny przegląd") {
+            let pool = app.filteredCars
+            let index = pool.firstIndex(where: { $0.id == car.id }) ?? 0
+            app.openImmersiveCarBrowse(at: index, from: pool)
+        }
+        Button("Szczegóły ogłoszenia") { app.openCarDetail(car) }
     }
 }
