@@ -6,7 +6,8 @@ type CatalogCacheEntry = {
   at: number;
 };
 
-const TTL_MS = 90_000;
+const SOFT_TTL_MS = 90_000;
+const HARD_TTL_MS = 15 * 60_000;
 const globalAny = global as typeof globalThis & {
   __mobileCatalogCache?: CatalogCacheEntry;
 };
@@ -40,16 +41,18 @@ export function buildCatalogEtag(offers: unknown[]): string {
   return `"${digest.digest('hex')}"`;
 }
 
-export function readMobileCatalogCache(etag?: string | null): { etag: string; body: string } | null {
+export function readMobileCatalogCache(): { etag: string; body: string; at: number } | null {
   const hit = globalAny.__mobileCatalogCache;
   if (!hit) return null;
-  if (Date.now() - hit.at > TTL_MS) {
+  if (Date.now() - hit.at > HARD_TTL_MS) {
     globalAny.__mobileCatalogCache = undefined;
     return null;
   }
-  if (etag && etagMatches(etag, hit.etag)) return hit;
-  if (!etag) return hit;
-  return null;
+  return hit;
+}
+
+export function isCatalogCacheFresh(hit: { at: number }, softTtlMs = SOFT_TTL_MS): boolean {
+  return Date.now() - hit.at <= softTtlMs;
 }
 
 export function writeMobileCatalogCache(etag: string, body: string) {

@@ -42,6 +42,7 @@ import {
   catalogJsonResponse,
   catalogNotModifiedResponse,
   etagMatches,
+  isCatalogCacheFresh,
   readMobileCatalogCache,
   writeMobileCatalogCache,
 } from '@/lib/mobileOfferCatalogCache';
@@ -96,11 +97,11 @@ export async function GET(req: Request) {
   const ifNoneMatch = req.headers.get('if-none-match') || req.headers.get('x-catalog-etag');
 
   if (isPublicCatalog) {
-    const cached = readMobileCatalogCache(ifNoneMatch);
-    if (cached && ifNoneMatch && etagMatches(ifNoneMatch, cached.etag)) {
-      return catalogNotModifiedResponse(cached.etag);
-    }
-    if (cached && !ifNoneMatch) {
+    const cached = readMobileCatalogCache();
+    if (cached && isCatalogCacheFresh(cached)) {
+      if (ifNoneMatch && etagMatches(ifNoneMatch, cached.etag)) {
+        return catalogNotModifiedResponse(cached.etag);
+      }
       return catalogJsonResponse(cached.body, cached.etag);
     }
   }
@@ -241,6 +242,10 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     if (isOfferSchemaCompatibilityError(error)) {
       return schemaCompatibilityResponse();
+    }
+    if (isPublicCatalog) {
+      const stale = readMobileCatalogCache();
+      if (stale) return catalogJsonResponse(stale.body, stale.etag);
     }
     const message = error instanceof Error ? error.message : 'Błąd serwera';
     console.error("🔥 MOBILE API ERROR:", error);
