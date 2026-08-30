@@ -20,11 +20,12 @@ type Props = {
   height: number;
   locale: Locale;
   className?: string;
+  compact?: boolean;
 };
 
-export default function FloorPlanScanArtboard({ walls, meta, width, height, locale, className }: Props) {
-  const padding = 36;
-  const bg = '#0b1220';
+export default function FloorPlanScanArtboard({ walls, meta, width, height, locale, className, compact }: Props) {
+  const padding = compact ? 8 : 36;
+  const bg = compact ? '#f4f7fb' : '#0b1220';
 
   const viewport = useMemo(
     () => buildFloorPlanViewport(meta.bounds, width, height, padding),
@@ -68,9 +69,9 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
       role="img"
       aria-label="Interactive LiDAR floor plan"
     >
-      <rect x={0} y={0} width={width} height={height} fill={bg} rx={24} />
+      <rect x={0} y={0} width={width} height={height} fill={bg} rx={compact ? 10 : 24} />
 
-      {mappedSections.map((section) => {
+      {compact ? null : mappedSections.map((section) => {
         const r = sectionMarkerRadiusPx(viewport, section.areaSqM);
         return (
           <g key={section.id}>
@@ -95,8 +96,8 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
             y1={wall.a.y}
             x2={wall.b.x}
             y2={wall.b.y}
-            stroke="#0f172a"
-            strokeWidth={12}
+            stroke={compact ? '#94a3b8' : '#0f172a'}
+            strokeWidth={compact ? 5 : 12}
             strokeLinecap="square"
           />
           <line
@@ -104,11 +105,11 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
             y1={wall.a.y}
             x2={wall.b.x}
             y2={wall.b.y}
-            stroke="#e2e8f0"
-            strokeWidth={2}
+            stroke={compact ? '#1e293b' : '#e2e8f0'}
+            strokeWidth={compact ? 1.4 : 2}
             strokeLinecap="square"
           />
-          {wall.showLabel ? (
+          {!compact && wall.showLabel ? (
             <g>
               <rect
                 x={wall.lx - 28}
@@ -171,13 +172,26 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
             stroke={obj.stroke}
             strokeWidth={1.3}
           />
+          {compact ? null : (
           <text x={obj.x} y={obj.y + 3} fill="#f8fafc" fontSize={obj.glyph.length > 5 ? 5.5 : 6.5} fontWeight={800} textAnchor="middle">
             {obj.glyph}
           </text>
+          )}
         </g>
       ))}
 
-      {mappedSections.map((section) => {
+      {compact
+        ? mappedSections.map((section) => (
+            <circle
+              key={`${section.id}-dot`}
+              cx={section.x}
+              cy={section.y}
+              r={4}
+              fill={section.fill}
+              stroke="rgba(14,165,233,0.45)"
+            />
+          ))
+        : mappedSections.map((section) => {
         const labelH = section.areaSqM ? 32 : 22;
         const labelW = Math.min(120, Math.max(70, section.label.length * 6.4 + 18));
         return (
@@ -204,6 +218,7 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
         );
       })}
 
+      {compact ? null : (
       <g>
         <rect
           x={padding - 8}
@@ -241,6 +256,7 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
           {scaleBar.meters} m
         </text>
       </g>
+      )}
     </svg>
   );
 }

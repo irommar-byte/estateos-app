@@ -9,6 +9,7 @@ import { formatRoomScanRoomCount } from '@/lib/roomScan/roomScanLabels';
 import { resolvePublicAssetUrl } from '@/lib/roomScan/parseFloorPlanScanMeta';
 import FloorPlan3dWalkthrough from '@/components/offers/FloorPlan3dWalkthrough';
 import FloorPlanScanArtboard from '@/components/offers/FloorPlanScanArtboard';
+import { cropScanMetaToRoom, roomsFromScanMeta } from '@/lib/roomScan/refineScanSections';
 
 type OfferFloorPlanPanelProps = {
   floorPlanSrc: string;
@@ -37,11 +38,12 @@ export default function OfferFloorPlanPanel({
   variant = 'full',
   onEnlarge,
 }: OfferFloorPlanPanelProps) {
-  const roomScans = Array.isArray(scanMeta?.roomScans) ? scanMeta.roomScans : [];
+  const roomScans = useMemo(() => roomsFromScanMeta(scanMeta || null), [scanMeta]);
   const [planKey, setPlanKey] = useState<'whole' | string>('whole');
   const selectedRoom: PropertyRoomScan | null =
     planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
-  const activeMeta = selectedRoom?.scanMeta || scanMeta;
+  const croppedSelected = selectedRoom ? cropScanMetaToRoom(scanMeta, selectedRoom) : null;
+  const activeMeta = croppedSelected || selectedRoom?.scanMeta || scanMeta;
   const activeImage = assetUrl(selectedRoom?.floorPlanPngUri) || floorPlanSrc;
   const active3d = assetUrl(selectedRoom?.floorPlan3dUri) || floorPlan3dSrc || '';
   const hasInteractive = Boolean(activeMeta?.walls?.length);
@@ -292,12 +294,44 @@ export default function OfferFloorPlanPanel({
                 setPlanKey(room.id);
                 onEnlarge?.();
               }}
-              className={`rounded-2xl border p-3 text-left transition-colors ${
+              className={`flex items-start gap-3 rounded-2xl border p-3 text-left transition-colors ${
                 planKey === room.id
                   ? 'border-sky-400/40 bg-sky-500/10'
                   : 'border-[var(--eos-border)] hover:bg-[var(--eos-surface-strong)]'
               }`}
             >
+              {(() => {
+                const cropped = cropScanMetaToRoom(scanMeta, room);
+                if (cropped?.walls?.length) {
+                  return (
+                    <div className="h-[72px] w-[88px] shrink-0 overflow-hidden rounded-xl bg-[#f4f7fb]">
+                      <FloorPlanScanArtboard
+                        walls={cropped.walls}
+                        meta={cropped}
+                        width={88}
+                        height={72}
+                        locale={locale}
+                        compact
+                      />
+                    </div>
+                  );
+                }
+                if (room.floorPlanPngUri) {
+                  return (
+                    <img
+                      src={assetUrl(room.floorPlanPngUri)}
+                      alt=""
+                      className="h-[72px] w-[88px] shrink-0 rounded-xl object-cover bg-black/20"
+                    />
+                  );
+                }
+                return (
+                  <div className="flex h-[72px] w-[88px] shrink-0 items-center justify-center rounded-xl bg-[var(--eos-surface-strong)] text-[var(--eos-muted)]">
+                    <FileImage size={18} />
+                  </div>
+                );
+              })()}
+              <div className="min-w-0">
               <p className="text-sm font-bold text-[var(--eos-text)]">{room.name}</p>
               <p className="mt-1 text-[11px] text-[var(--eos-muted)]">
                 {[
@@ -308,6 +342,7 @@ export default function OfferFloorPlanPanel({
                   .filter(Boolean)
                   .join(' · ')}
               </p>
+              </div>
             </button>
           ))}
         </div>
