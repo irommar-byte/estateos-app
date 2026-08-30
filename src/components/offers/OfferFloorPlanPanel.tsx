@@ -170,7 +170,7 @@ export default function OfferFloorPlanPanel({
           </button>
           {chips ? <div className="mb-3">{chips}</div> : null}
           <button type="button" onClick={onEnlarge} className="block w-full">
-            <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#050505]">
+            <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#f4f7fb]">
               <div className="aspect-[4/3] w-full">{planCanvas}</div>
             </div>
           </button>
@@ -255,7 +255,7 @@ export default function OfferFloorPlanPanel({
         onClick={onEnlarge}
         className="group block w-full px-6 py-6 md:px-8"
       >
-        <div className="relative aspect-[16/10] overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[#050505] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="relative aspect-[16/10] overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[#f4f7fb] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
           {planCanvas}
           <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-5 py-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
