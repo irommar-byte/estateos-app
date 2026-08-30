@@ -62,6 +62,7 @@ final class AppModel: ObservableObject {
             TvCatalogCache.isUsingCachedCatalog = true
         }
         warmPrefetchCatalogImages()
+        TopShelfArtBaker.enqueue(offers: offers, cars: cars)
         async let offersTask: Void = { try? await refreshOffers() }()
         async let carsTask: Void = { try? await refreshCars() }()
         async let favoritesTask: Void = { await refreshFavoritesIfNeeded() }()
@@ -219,6 +220,7 @@ final class AppModel: ObservableObject {
             TvCatalogCache.saveOffers(offers)
             TvCatalogCache.isUsingCachedCatalog = false
             warmPrefetchCatalogImages()
+            TopShelfArtBaker.enqueue(offers: offers)
 #if canImport(TVServices)
             TVTopShelfContentProvider.topShelfContentDidChange()
 #endif
@@ -450,6 +452,7 @@ final class AppModel: ObservableObject {
             TvCatalogCache.saveCars(cars)
             TvCatalogCache.isUsingCachedCatalog = false
             warmPrefetchCatalogImages()
+            TopShelfArtBaker.enqueue(cars: cars)
 #if canImport(TVServices)
             TVTopShelfContentProvider.topShelfContentDidChange()
 #endif

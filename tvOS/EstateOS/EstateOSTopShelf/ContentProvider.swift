@@ -71,16 +71,31 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
 
   public override func loadTopShelfContent(completionHandler: @escaping (TVTopShelfContent?) -> Void) {
     Task {
-      let content: TVTopShelfContent?
-      do {
-        content = await buildContent()
-      } catch {
-        content = nil
+      let content = await withTimeout(seconds: 2.4) { await self.buildContent() }
+      completionHandler(content ?? Self.emergencyContent())
+    }
+  }
+
+  private func withTimeout(
+    seconds: Double,
+    work: @escaping () async -> TVTopShelfContent?
+  ) async -> TVTopShelfContent? {
+    enum Race {
+      case value(TVTopShelfContent?)
+      case timeout
+    }
+    return await withTaskGroup(of: Race.self) { group in
+      group.addTask { .value(await work()) }
+      group.addTask {
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        return .timeout
       }
-      let resolved = content ?? Self.emergencyContent()
-      await MainActor.run {
-        completionHandler(resolved)
+      let first = await group.next()
+      group.cancelAll()
+      if case .value(let content)? = first {
+        return content
       }
+      return nil
     }
   }
 
@@ -100,22 +115,22 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     let limitedOffers = Array(offers.prefix(offerLimit))
     let limitedCars = Array(cars.prefix(carLimit))
 
-    // Explicit "Karty w rzędzie" preference → sectioned Home + Car.
+    // Karty: zawsze dwa rzędy. Carousel tylko gdy jest JPEG (HeadBoard odrzuca WebP).
     if TopShelfSharedPreferences.isSectioned {
       if let sectioned = await buildDualSectionedContent(offers: limitedOffers, cars: limitedCars) {
         return sectioned
       }
-      if !limitedOffers.isEmpty, let carousel = await buildCarouselContent(offers: limitedOffers) {
-        return carousel
-      }
       return fallbackContent()
     }
 
-    // Default: full-bleed Apple TV+ carousel with property photos (Top Shelf hero).
+    if !limitedOffers.isEmpty, carouselArtIsSafe(limitedOffers),
+       let carousel = await buildCarouselContent(offers: limitedOffers) {
+      return carousel
+    }
+    if let sectioned = await buildDualSectionedContent(offers: limitedOffers, cars: limitedCars) {
+      return sectioned
+    }
     if !limitedOffers.isEmpty {
-      if let carousel = await buildCarouselContent(offers: limitedOffers) {
-        return carousel
-      }
       return fallbackContent()
     }
 
@@ -128,23 +143,9 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   // MARK: - Carousel
 
   private func buildCarouselContent(offers: [TopShelfOffer]) async -> TVTopShelfContent? {
-    // HeadBoard rejects WebP and 720p banners for the Apple TV+ carousel.
-    // Download listing photos (WebP OK in UIKit) and write 1920x1080 JPEGs.
-    let slice = Array(offers.prefix(8))
-    var slots: [TVTopShelfCarouselItem?] = Array(repeating: nil, count: slice.count)
-    await withTaskGroup(of: (Int, TVTopShelfCarouselItem?).self) { group in
-      for (index, offer) in slice.enumerated() {
-        group.addTask {
-          (index, await self.makePreparedCarouselItem(for: offer))
-        }
-      }
-      for await (index, item) in group {
-        slots[index] = item
-      }
-    }
-    let items = slots.compactMap { $0 }
-    guard !items.isEmpty else { return nil }
-    return TVTopShelfCarouselContent(style: .actions, items: items)
+    // Must return instantly. UIKit downloads in this process crash HeadBoard.
+    // Prefer JPEGs baked by the main app into the App Group; else HTTPS.
+    return buildRemoteCarouselContent(offers: Array(offers.prefix(8)))
   }
 
   private func buildRemoteCarouselContent(offers: [TopShelfOffer]) -> TVTopShelfContent? {
@@ -180,16 +181,12 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       ]
     }
 
-    // HeadBoard loads carousel art itself. Remote HTTPS works; 720p file banners
-    // are treated as "no full-screen content" and the static Top Shelf image wins.
-    if let remote {
-      item.setImageURL(remote, for: .screenScale1x)
-      item.setImageURL(remote, for: .screenScale2x)
-    } else if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .carousel) {
+    if let fileURL = cachedArtURL(prefix: "offer", id: offer.id, suffix: "carousel") {
       item.setImageURL(fileURL, for: .screenScale1x)
       item.setImageURL(fileURL, for: .screenScale2x)
-    } else {
-      return nil
+    } else if let remote, isHeadBoardSafe(remote) {
+      item.setImageURL(remote, for: .screenScale1x)
+      item.setImageURL(remote, for: .screenScale2x)
     }
 
     attachCarouselActions(to: item, offerId: offer.id)
@@ -299,14 +296,12 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     item.title = card.title
     item.imageShape = .hdtv
 
-    if let remote {
-      item.setImageURL(remote, for: .screenScale1x)
-      item.setImageURL(remote, for: .screenScale2x)
-    } else if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .sectioned) {
+    if let fileURL = cachedArtURL(prefix: "offer", id: offer.id, suffix: "sectioned") {
       item.setImageURL(fileURL, for: .screenScale1x)
       item.setImageURL(fileURL, for: .screenScale2x)
-    } else {
-      return nil
+    } else if let remote {
+      item.setImageURL(remote, for: .screenScale1x)
+      item.setImageURL(remote, for: .screenScale2x)
     }
 
     attachActions(to: item, offerId: offer.id)
@@ -414,32 +409,18 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   private func buildDualSectionedContent(offers: [TopShelfOffer], cars: [TopShelfCar]) async -> TVTopShelfContent? {
     var sections: [TVTopShelfItemCollection<TVTopShelfSectionedItem>] = []
 
-    if !offers.isEmpty {
-      var homeItems: [TVTopShelfSectionedItem] = []
-      for offer in offers.prefix(10) {
-        if let item = await makePreparedSectionedItem(for: offer) {
-          homeItems.append(item)
-        }
-      }
-      if !homeItems.isEmpty {
-        let collection = TVTopShelfItemCollection(items: homeItems)
-        collection.title = "Nieruchomości"
-        sections.append(collection)
-      }
+    let homeItems = offers.prefix(10).compactMap { makeRemoteSectionedItem(for: $0) }
+    if !homeItems.isEmpty {
+      let collection = TVTopShelfItemCollection(items: homeItems)
+      collection.title = "Nieruchomości"
+      sections.append(collection)
     }
 
-    if !cars.isEmpty {
-      var carItems: [TVTopShelfSectionedItem] = []
-      for car in cars.prefix(8) {
-        if let item = await makePreparedCarSectionedItem(for: car) {
-          carItems.append(item)
-        }
-      }
-      if !carItems.isEmpty {
-        let collection = TVTopShelfItemCollection(items: carItems)
-        collection.title = "Samochody"
-        sections.append(collection)
-      }
+    let carItems = cars.prefix(8).compactMap { makeRemoteCarSectionedItem(for: $0) }
+    if !carItems.isEmpty {
+      let collection = TVTopShelfItemCollection(items: carItems)
+      collection.title = "Samochody"
+      sections.append(collection)
     }
 
     guard !sections.isEmpty else { return nil }
@@ -451,7 +432,10 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     let item = TVTopShelfSectionedItem(identifier: "car-\(car.id)")
     item.title = car.displayTitle
     item.imageShape = .hdtv
-    if let remote {
+    if let fileURL = cachedArtURL(prefix: "car", id: car.id, suffix: "sectioned") {
+      item.setImageURL(fileURL, for: .screenScale1x)
+      item.setImageURL(fileURL, for: .screenScale2x)
+    } else if let remote {
       item.setImageURL(remote, for: .screenScale1x)
       item.setImageURL(remote, for: .screenScale2x)
     }
@@ -528,7 +512,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   private func fetchCarsFromNetwork() async -> [TopShelfCar]? {
     var request = URLRequest(url: carsURL)
     request.setValue("EstateOS-tvOS-TopShelf/1.0", forHTTPHeaderField: "User-Agent")
-    request.timeoutInterval = 8
+    request.timeoutInterval = 2.4
     do {
       let (data, response) = try await URLSession.shared.data(for: request)
       guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
@@ -608,6 +592,25 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     return caches.appendingPathComponent("topshelf", isDirectory: true)
   }
 
+  private func cachedArtURL(prefix: String, id: Int, suffix: String) -> URL? {
+    let url = sharedShelfDirectory().appendingPathComponent("\(prefix)-\(id)-\(suffix).jpg")
+    return FileManager.default.fileExists(atPath: url.path) ? url : nil
+  }
+
+  private func isHeadBoardSafe(_ url: URL) -> Bool {
+    if url.isFileURL { return true }
+    let path = url.path.lowercased()
+    return path.hasSuffix(".jpg") || path.hasSuffix(".jpeg") || path.hasSuffix(".png")
+  }
+
+  private func carouselArtIsSafe(_ offers: [TopShelfOffer]) -> Bool {
+    offers.contains { offer in
+      if cachedArtURL(prefix: "offer", id: offer.id, suffix: "carousel") != nil { return true }
+      if let remote = resolveImageURL(for: offer), isHeadBoardSafe(remote) { return true }
+      return false
+    }
+  }
+
   private func attachActions(to item: TVTopShelfItem, offerId: Int) {
     // Sectioned tiles must open that listing — not the 24h immersive reel.
     if let actionURL = offerDetailDeepLink(for: offerId) {
@@ -670,7 +673,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   private func fetchOffersFromNetwork() async -> [TopShelfOffer]? {
     var request = URLRequest(url: offersURL)
     request.setValue("EstateOS-tvOS-TopShelf/1.0", forHTTPHeaderField: "User-Agent")
-    request.timeoutInterval = 8
+    request.timeoutInterval = 2.4
     do {
       let (data, response) = try await URLSession.shared.data(for: request)
       guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {

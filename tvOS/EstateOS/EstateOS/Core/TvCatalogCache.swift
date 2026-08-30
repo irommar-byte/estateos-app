@@ -86,7 +86,7 @@ enum TvCatalogCache {
                 price: offer.price,
                 area: offer.area,
                 transactionType: offer.transactionType,
-                imageUrl: offer.imageUrl,
+                imageUrl: EOSOfferMedia.primaryImageURL(for: offer)?.absoluteString ?? offer.imageUrl,
                 images: offer.imageCandidates.first,
                 createdAt: offer.createdAt
             )
@@ -108,7 +108,7 @@ enum TvCatalogCache {
                 year: car.year > 0 ? car.year : nil,
                 pricePln: car.pricePln,
                 city: car.city.isEmpty ? nil : car.city,
-                imageUrl: car.imageUrl,
+                imageUrl: EOSOfferMedia.imageURL(from: car.imageUrl)?.absoluteString ?? car.imageUrl,
                 fuelType: car.fuelType,
                 transmission: car.transmission,
                 featured: car.featured,
