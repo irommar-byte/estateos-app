@@ -557,7 +557,7 @@ enum TopShelfSharedPreferences {
 }
 
 enum TopShelfImageLoader {
-  private static let maxPixelSize: CGFloat = 1280
+  private static let maxPixelSize: CGFloat = 1920
 
   static func loadImage(from url: URL, timeout: TimeInterval) async -> UIImage? {
     await withTaskGroup(of: UIImage?.self) { group in

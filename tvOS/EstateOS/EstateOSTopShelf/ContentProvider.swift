@@ -21,7 +21,7 @@ struct TopShelfOffer: Decodable {
   let createdAt: String?
 
   enum CodingKeys: String, CodingKey {
-    case id, title, city, district, price, area, transactionType, imageUrl, images, createdAt
+    case id, title, city, district, price, area, transactionType, imageUrl, images, createdAt, created_at, publishedAt, updatedAt
   }
 
   init(from decoder: Decoder) throws {
@@ -31,9 +31,21 @@ struct TopShelfOffer: Decodable {
     city = try c.decodeIfPresent(String.self, forKey: .city)
     district = try c.decodeIfPresent(String.self, forKey: .district)
     transactionType = try c.decodeIfPresent(String.self, forKey: .transactionType)
-    imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
-    images = try c.decodeIfPresent(String.self, forKey: .images)
-    createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+    let decodedImageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+    // catalog=1 sends `images` as [String], never `imageUrl`.
+    let firstFromArray = (try? c.decode([String].self, forKey: .images))?.first
+    let imagesString = try? c.decodeIfPresent(String.self, forKey: .images)
+    images = firstFromArray ?? imagesString ?? nil
+    imageUrl = {
+      if let decodedImageUrl, !decodedImageUrl.isEmpty { return decodedImageUrl }
+      if let firstFromArray, !firstFromArray.isEmpty { return firstFromArray }
+      if let imagesString, !imagesString.isEmpty { return imagesString }
+      return nil
+    }()
+    createdAt = (try? c.decodeIfPresent(String.self, forKey: .createdAt))
+      ?? (try? c.decodeIfPresent(String.self, forKey: .created_at))
+      ?? (try? c.decodeIfPresent(String.self, forKey: .publishedAt))
+      ?? (try? c.decodeIfPresent(String.self, forKey: .updatedAt))
     price = TopShelfOffer.decodeFlexibleDouble(from: c, key: .price)
     area = TopShelfOffer.decodeFlexibleDouble(from: c, key: .area)
   }
@@ -116,13 +128,25 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   // MARK: - Carousel
 
   private func buildCarouselContent(offers: [TopShelfOffer]) async -> TVTopShelfContent? {
-    // Always use remote HTTPS images. UIKit offscreen rendering in the
-    // Top Shelf extension process is unstable on Simulator and was crashing
-    // the plugin → HeadBoard fell back to the static brand banner.
-    return buildRemoteCarouselContent(offers: offers)
+    // HeadBoard rejects WebP and 720p banners for the Apple TV+ carousel.
+    // Download listing photos (WebP OK in UIKit) and write 1920x1080 JPEGs.
+    let slice = Array(offers.prefix(8))
+    var slots: [TVTopShelfCarouselItem?] = Array(repeating: nil, count: slice.count)
+    await withTaskGroup(of: (Int, TVTopShelfCarouselItem?).self) { group in
+      for (index, offer) in slice.enumerated() {
+        group.addTask {
+          (index, await self.makePreparedCarouselItem(for: offer))
+        }
+      }
+      for await (index, item) in group {
+        slots[index] = item
+      }
+    }
+    let items = slots.compactMap { $0 }
+    guard !items.isEmpty else { return nil }
+    return TVTopShelfCarouselContent(style: .actions, items: items)
   }
 
-  /// Physical Apple TV: remote HTTPS images only (proven in build 6).
   private func buildRemoteCarouselContent(offers: [TopShelfOffer]) -> TVTopShelfContent? {
     let items = offers.compactMap { makeRemoteCarouselItem(for: $0) }
     guard !items.isEmpty else { return nil }
@@ -168,6 +192,35 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       return nil
     }
 
+    attachCarouselActions(to: item, offerId: offer.id)
+    return item
+  }
+
+  private func makePreparedCarouselItem(for offer: TopShelfOffer) async -> TVTopShelfCarouselItem? {
+    let card = ShelfOfferFormatting.card(from: offer)
+    let remote = resolveImageURL(for: offer)
+    let photo: UIImage?
+    if let remote {
+      photo = await TopShelfImageLoader.loadImage(from: remote, timeout: 1.8)
+    } else {
+      photo = nil
+    }
+    let jpeg = ShelfImageRenderer.renderCarouselHero(offer: card, background: photo, scale: 1)
+    guard let fileURL = writeShelfImage(jpeg, offerId: offer.id, suffix: "carousel-fs") else {
+      return makeRemoteCarouselItem(for: offer)
+    }
+
+    let item = TVTopShelfCarouselItem(identifier: String(offer.id))
+    item.title = card.title
+    item.contextTitle = card.contextTitle
+    item.summary = card.summary
+    if let area = offer.area, area > 0 {
+      item.namedAttributes = [
+        TVTopShelfNamedAttribute(name: "Powierzchnia", values: ["\(Int(area.rounded())) m²"]),
+      ]
+    }
+    item.setImageURL(fileURL, for: .screenScale1x)
+    item.setImageURL(fileURL, for: .screenScale2x)
     attachCarouselActions(to: item, offerId: offer.id)
     return item
   }
@@ -318,7 +371,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
-      case id, title, make, model, year, pricePln, city, imageUrl, fuelType, transmission, featured, createdAt
+      case id, title, make, model, year, pricePln, city, imageUrl, images, fuelType, transmission, featured, createdAt
     }
 
     init(from decoder: Decoder) throws {
@@ -328,7 +381,9 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       make = try c.decodeIfPresent(String.self, forKey: .make)
       model = try c.decodeIfPresent(String.self, forKey: .model)
       city = try c.decodeIfPresent(String.self, forKey: .city)
-      imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+      let rawImage = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+      let firstImage = (try? c.decode([String].self, forKey: .images))?.first
+      imageUrl = (rawImage?.isEmpty == false ? rawImage : nil) ?? firstImage
       fuelType = try c.decodeIfPresent(String.self, forKey: .fuelType)
       transmission = try c.decodeIfPresent(String.self, forKey: .transmission)
       featured = try c.decodeIfPresent(Bool.self, forKey: .featured)
@@ -360,16 +415,26 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     var sections: [TVTopShelfItemCollection<TVTopShelfSectionedItem>] = []
 
     if !offers.isEmpty {
-      let homeItems = offers.compactMap { makeRemoteSectionedItem(for: $0) }
+      var homeItems: [TVTopShelfSectionedItem] = []
+      for offer in offers.prefix(10) {
+        if let item = await makePreparedSectionedItem(for: offer) {
+          homeItems.append(item)
+        }
+      }
       if !homeItems.isEmpty {
         let collection = TVTopShelfItemCollection(items: homeItems)
-        collection.title = "Nieruchomości · 24h"
+        collection.title = "Nieruchomości"
         sections.append(collection)
       }
     }
 
     if !cars.isEmpty {
-      let carItems = cars.compactMap { makeRemoteCarSectionedItem(for: $0) }
+      var carItems: [TVTopShelfSectionedItem] = []
+      for car in cars.prefix(8) {
+        if let item = await makePreparedCarSectionedItem(for: car) {
+          carItems.append(item)
+        }
+      }
       if !carItems.isEmpty {
         let collection = TVTopShelfItemCollection(items: carItems)
         collection.title = "Samochody"
@@ -382,23 +447,85 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   }
 
   private func makeRemoteCarSectionedItem(for car: TopShelfCar) -> TVTopShelfSectionedItem? {
-    guard let remote = absoluteURL(car.imageUrl ?? "") else { return nil }
+    let remote = absoluteURL(car.imageUrl ?? "")
     let item = TVTopShelfSectionedItem(identifier: "car-\(car.id)")
     item.title = car.displayTitle
     item.imageShape = .hdtv
-    item.setImageURL(remote, for: .screenScale1x)
-    item.setImageURL(remote, for: .screenScale2x)
+    if let remote {
+      item.setImageURL(remote, for: .screenScale1x)
+      item.setImageURL(remote, for: .screenScale2x)
+    }
     if let url = carDeepLink(for: car.id) {
       item.displayAction = TVTopShelfAction(url: url)
     }
     return item
   }
 
+  private func makePreparedCarSectionedItem(for car: TopShelfCar) async -> TVTopShelfSectionedItem? {
+    let remote = absoluteURL(car.imageUrl ?? "")
+    let photo: UIImage?
+    if let remote {
+      photo = await TopShelfImageLoader.loadImage(from: remote, timeout: 1.4)
+    } else {
+      photo = nil
+    }
+    let card = ShelfOfferCard(
+      id: car.id,
+      title: car.displayTitle,
+      priceText: "",
+      pricePerSqmText: "",
+      location: car.city ?? "",
+      transactionLabel: "Auto",
+      isRent: false
+    )
+    if let fileURL = renderStyledImage(offer: card, background: photo, offerId: car.id + 100_000, mode: .sectioned) {
+      let item = TVTopShelfSectionedItem(identifier: "car-\(car.id)")
+      item.title = car.displayTitle
+      item.imageShape = .hdtv
+      item.setImageURL(fileURL, for: .screenScale1x)
+      item.setImageURL(fileURL, for: .screenScale2x)
+      if let url = carDeepLink(for: car.id) {
+        item.displayAction = TVTopShelfAction(url: url)
+      }
+      return item
+    }
+    return makeRemoteCarSectionedItem(for: car)
+  }
+
+  private func makePreparedSectionedItem(for offer: TopShelfOffer) async -> TVTopShelfSectionedItem? {
+    let card = ShelfOfferFormatting.card(from: offer)
+    let remote = resolveImageURL(for: offer)
+    let photo: UIImage?
+    if let remote {
+      photo = await TopShelfImageLoader.loadImage(from: remote, timeout: 1.4)
+    } else {
+      photo = nil
+    }
+    if let fileURL = renderStyledImage(offer: card, background: photo, offerId: offer.id, mode: .sectioned) {
+      let item = TVTopShelfSectionedItem(identifier: String(offer.id))
+      item.title = card.title
+      item.imageShape = .hdtv
+      item.setImageURL(fileURL, for: .screenScale1x)
+      item.setImageURL(fileURL, for: .screenScale2x)
+      attachActions(to: item, offerId: offer.id)
+      return item
+    }
+    return makeRemoteSectionedItem(for: offer)
+  }
+
   private func fetchCarsForTopShelf() async -> [TopShelfCar]? {
+    if let network = await fetchCarsFromNetwork(), !network.isEmpty {
+      return Array(network.prefix(carLimit))
+    }
     if let data = cachedCarsData(),
-       let list = try? JSONDecoder().decode([TopShelfCar].self, from: data) {
+       let list = try? JSONDecoder().decode([TopShelfCar].self, from: data),
+       !list.isEmpty {
       return Array(list.prefix(carLimit))
     }
+    return nil
+  }
+
+  private func fetchCarsFromNetwork() async -> [TopShelfCar]? {
     var request = URLRequest(url: carsURL)
     request.setValue("EstateOS-tvOS-TopShelf/1.0", forHTTPHeaderField: "User-Agent")
     request.timeoutInterval = 8
@@ -530,25 +657,32 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   }
 
   private func fetchAllOffers() async -> [TopShelfOffer]? {
+    let network = await fetchOffersFromNetwork()
+    if let network, !network.isEmpty { return network }
     if let data = cachedOffersData(),
-       let list = try? JSONDecoder().decode([TopShelfOffer].self, from: data) {
+       let list = try? JSONDecoder().decode([TopShelfOffer].self, from: data),
+       !list.isEmpty {
       return list
     }
+    return network
+  }
+
+  private func fetchOffersFromNetwork() async -> [TopShelfOffer]? {
     var request = URLRequest(url: offersURL)
     request.setValue("EstateOS-tvOS-TopShelf/1.0", forHTTPHeaderField: "User-Agent")
     request.timeoutInterval = 8
-
     do {
       let (data, response) = try await URLSession.shared.data(for: request)
       guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
         return nil
       }
-
-      if let list = try? JSONDecoder().decode([TopShelfOffer].self, from: data) {
+      if let list = try? JSONDecoder().decode([TopShelfOffer].self, from: data), !list.isEmpty {
         return list
       }
-      let envelope = try JSONDecoder().decode(TopShelfOfferEnvelope.self, from: data)
-      return envelope.offers ?? envelope.data ?? envelope.items ?? []
+      if let envelope = try? JSONDecoder().decode(TopShelfOfferEnvelope.self, from: data) {
+        return envelope.offers ?? envelope.data ?? envelope.items ?? []
+      }
+      return nil
     } catch {
       return nil
     }
