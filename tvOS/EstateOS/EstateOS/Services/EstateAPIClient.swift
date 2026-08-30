@@ -47,6 +47,19 @@ final class EstateAPIClient {
         return user
     }
 
+    func searchSpotlight(query: String) async throws -> SpotlightSearchResponse {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return SpotlightSearchResponse(success: true, results: [], sections: [], tookMs: 0)
+        }
+        let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
+        return try await request(
+            "GET",
+            path: "/api/mobile/v1/spotlight/search?q=\(encoded)",
+            authorized: token != nil
+        )
+    }
+
     func fetchOffers() async throws -> [EstateOffer] {
         // Prefer full payloads — catalog=1 strips body copy to VERIFY tokens only.
         let endpoints = [
@@ -333,6 +346,89 @@ enum APIError: LocalizedError {
         case .unauthorized: return "Sesja wygasła. Zaloguj się ponownie."
         case .decode: return "Nie udało się odczytać odpowiedzi serwera."
         case .server(let msg): return msg
+        }
+    }
+}
+
+struct SpotlightSearchResponse: Decodable {
+    let success: Bool?
+    let results: [SpotlightResult]
+    let sections: [SpotlightSection]
+    let tookMs: Int?
+
+    enum CodingKeys: String, CodingKey { case success, results, sections, tookMs }
+
+    init(success: Bool?, results: [SpotlightResult], sections: [SpotlightSection], tookMs: Int?) {
+        self.success = success
+        self.results = results
+        self.sections = sections
+        self.tookMs = tookMs
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        success = try c.decodeIfPresent(Bool.self, forKey: .success)
+        results = (try? c.decode([SpotlightResult].self, forKey: .results)) ?? []
+        sections = (try? c.decode([SpotlightSection].self, forKey: .sections)) ?? []
+        tookMs = try c.decodeIfPresent(Int.self, forKey: .tookMs)
+    }
+}
+
+struct SpotlightSection: Decodable, Identifiable {
+    var id: String { kind.rawValue + label }
+    let kind: SpotlightResultKind
+    let label: String
+    let items: [SpotlightResult]
+}
+
+struct SpotlightResult: Decodable, Identifiable, Hashable {
+    let id: String
+    let kind: SpotlightResultKind
+    let title: String
+    let subtitle: String
+    let detail: String?
+    let imageUrl: String?
+    let href: String
+    let score: Double?
+
+    var offerId: Int? {
+        guard kind == .offer else { return nil }
+        guard let match = href.range(of: #"/oferta/(\d+)"#, options: .regularExpression) else { return nil }
+        let digits = href[match].split(separator: "/").last.flatMap { Int($0) }
+        return digits
+    }
+
+    var absoluteURL: URL {
+        if let url = URL(string: href), url.scheme != nil { return url }
+        let path = href.hasPrefix("/") ? href : "/\(href)"
+        return URL(string: "https://estateos.pl\(path)") ?? AppConfig.apiBaseURL
+    }
+}
+
+enum SpotlightResultKind: String, Decodable, Hashable, CaseIterable {
+    case offer, agent, agency
+
+    var label: String {
+        switch self {
+        case .offer: return "Oferta"
+        case .agency: return "Biuro"
+        case .agent: return "Agent"
+        }
+    }
+
+    var sectionLabel: String {
+        switch self {
+        case .offer: return "Oferty"
+        case .agency: return "Biura"
+        case .agent: return "Agenci"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .offer: return "house.fill"
+        case .agency: return "building.2.fill"
+        case .agent: return "person.fill"
         }
     }
 }

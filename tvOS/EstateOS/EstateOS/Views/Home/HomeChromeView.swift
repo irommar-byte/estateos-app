@@ -102,6 +102,18 @@ struct HomeChromeView: View {
                 }
             }
             Spacer(minLength: 16)
+            Button {
+                tab = .search
+                auxFocus.wrappedValue = .searchQuery
+            } label: {
+                EOSSpotlightLens(active: tab == .search, size: 40)
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .accessibilityLabel("Spotlight — szukaj ofert, agentów i biur")
+            .padding(.trailing, 4)
+
             HStack(spacing: 8) {
                 ForEach(HomeTab.allCases, id: \.self) { item in
                     Button {
@@ -142,7 +154,7 @@ struct HomeChromeView: View {
         case .showroom:
             if !app.activeShowroomSection.isEmpty { return app.activeShowroomSection }
         case .search:
-            return app.catalogBrand == .home ? "Szukaj w katalogu nieruchomości" : "Szukaj w katalogu aut"
+            return "Spotlight · oferty, agenci, biura"
         case .favorites:
             return "Twoje zapisane oferty Home i Car"
         case .account:

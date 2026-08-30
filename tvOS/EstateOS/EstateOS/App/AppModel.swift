@@ -771,6 +771,32 @@ final class AppModel: ObservableObject {
         selectedCar = nil
     }
 
+    func searchSpotlight(query: String) async throws -> SpotlightSearchResponse {
+        try await api.searchSpotlight(query: query)
+    }
+
+    func openSpotlightOffer(id: Int) async {
+        if let offer = offers.first(where: { $0.id == id }) {
+            setCatalogBrand(.home)
+            openDetail(offer)
+            return
+        }
+        if let offer = try? await api.offerDetail(id: id, fallbackOffers: offers) {
+            setCatalogBrand(.home)
+            openDetail(offer)
+        }
+    }
+
+    func recordSpotlightSearch(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return }
+        var list = TvPreferences.recentSpotlightSearches
+        list.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        list.insert(trimmed, at: 0)
+        TvPreferences.recentSpotlightSearches = Array(list.prefix(6))
+        objectWillChange.send()
+    }
+
     func openDetail(_ offer: EstateOffer) {
         selectedOffer = offer
         Task {

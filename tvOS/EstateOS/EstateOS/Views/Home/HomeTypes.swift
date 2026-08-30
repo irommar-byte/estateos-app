@@ -2,14 +2,14 @@ import SwiftUI
 
 enum HomeTab: String, CaseIterable, Hashable {
     case showroom = "Showroom"
-    case search = "Szukaj"
+    case search = "Spotlight"
     case favorites = "Ulubione"
     case account = "Konto"
 
     var accessibilityLabel: String {
         switch self {
         case .showroom: return "Showroom, przeglądaj oferty"
-        case .search: return "Szukaj w katalogu"
+        case .search: return "Spotlight, szukaj ofert, agentów i biur"
         case .favorites: return "Ulubione oferty"
         case .account: return "Konto i ustawienia"
         }

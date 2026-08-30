@@ -28,9 +28,15 @@ enum TvPreferences {
     private static let suiteName = "group.pl.estateos.app.tvos"
     private static let topShelfStyleKey = "topShelfPresentationStyle"
 
+    private static let recentSpotlightKey = "recentSpotlightSearches"
     private static let recentSearchesHomeKey = "recentSearchesHome"
     private static let recentSearchesCarKey = "recentSearchesCar"
     private static let accountAdvancedExpandedKey = "accountAdvancedExpanded"
+
+    static var recentSpotlightSearches: [String] {
+        get { store.stringArray(forKey: recentSpotlightKey) ?? [] }
+        set { store.set(Array(newValue.prefix(6)), forKey: recentSpotlightKey); store.synchronize() }
+    }
 
     static var recentSearchesHome: [String] {
         get { store.stringArray(forKey: recentSearchesHomeKey) ?? [] }

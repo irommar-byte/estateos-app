@@ -90,11 +90,9 @@ struct HomeView: View {
                 }
                 .transition(.eosModeTransition)
             case .search:
-                catalogLoadingGate {
-                    SearchView(chromeFocus: $chromeFocus, auxFocus: $auxFocus)
-                        .environmentObject(app)
-                }
-                .transition(.eosModeTransition)
+                SearchView(chromeFocus: $chromeFocus, auxFocus: $auxFocus)
+                    .environmentObject(app)
+                    .transition(.eosModeTransition)
             case .favorites:
                 HomeFavoritesView(tab: $tab, chromeFocus: $chromeFocus)
                     .transition(.eosModeTransition)
