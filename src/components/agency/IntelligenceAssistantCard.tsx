@@ -453,7 +453,7 @@ export default function IntelligenceAssistantCard({
             style={[styles.save, { backgroundColor: colors.accent, opacity: busy ? 0.5 : 1 }]}
           >
             <Text style={{ color: '#000', fontWeight: '900', fontSize: 12, textAlign: 'center' }}>
-              {busy ? 'Zapisuję…' : 'Zapisz asystenta'}
+              {busy ? 'Zapisuję…' : 'Zapisz asystenta i ankietę'}
             </Text>
           </Pressable>
           <Pressable

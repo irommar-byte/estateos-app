@@ -142,7 +142,13 @@ function buildAnalysis(params: {
 
 export async function pickIntelligenceOffer(
   clientId: number,
-  options: { force?: boolean; preview?: boolean; ignoreInterval?: boolean; excludeOfferIds?: number[] } = {},
+  options: {
+    force?: boolean;
+    preview?: boolean;
+    ignoreInterval?: boolean;
+    excludeOfferIds?: number[];
+    portalSupplyAttempted?: boolean;
+  } = {},
 ): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null }> {
   await ensureIntelligenceLockedFieldsColumn();
 
@@ -316,6 +322,17 @@ export async function pickIntelligenceOffer(
     : null;
   const lessons = buildIntelligenceLessons(matches, nextOffer);
 
+  if (!best && !options.preview && !options.portalSupplyAttempted && (enabled || options.force)) {
+    const { autoSupplyClientFromNieruchomosciOnline } = await import('@/lib/crm/clientIntelligencePortalSupply');
+    const supply = await autoSupplyClientFromNieruchomosciOnline({
+      clientId,
+      agencyUserId: client.agencyUserId,
+    });
+    if (supply.imported > 0) {
+      return pickIntelligenceOffer(clientId, { ...options, portalSupplyAttempted: true });
+    }
+  }
+
   let skipReason: string | null = null;
   if (!enabled && !options.force) skipReason = 'Asystent wyłączony — włącz, żeby wysyłał sam.';
   else if (!calibrating && taste.learnCount < minLearns && !options.force) {
@@ -400,6 +417,7 @@ export async function sendIntelligenceOffer(params: {
   clientId: number;
   force?: boolean;
   ignoreInterval?: boolean;
+  channel?: 'email' | 'manual';
 }): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
   const excludeOfferIds: number[] = [];
   let lastPick: IntelligencePick | null = null;
@@ -437,7 +455,8 @@ export async function sendIntelligenceOffer(params: {
       clientId: params.clientId,
       offerId: pick.offerId,
       agencyUserId,
-      channel: 'email',
+      channel: params.channel ?? 'email',
+      matchScore: pick.radarScore ?? undefined,
       customMessage: pick.clientWhy || clientFacingWhyLine({
         reasons: pick.reasons,
         city: pick.city,

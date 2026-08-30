@@ -41,6 +41,7 @@ const INTEL_HISTORY_KINDS = new Set([
   "CLIENT_NOTIFIED",
   "CLIENT_FEEDBACK",
   "OFFER_SHARED",
+  "PORTAL_HUNT",
 ]);
 
 function IosRainbowSwitch({
@@ -144,12 +145,24 @@ export default function CrmIntelligenceAssistant({
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
   const [pick, setPick] = useState<IntelligencePick | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
-  const [smartAdd, setSmartAdd] = useState(false);
-  const [smartAddBusy, setSmartAddBusy] = useState(false);
   const [blooming, setBlooming] = useState(false);
   const [saved, setSaved] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
   const [sendNote, setSendNote] = useState("");
+  const [huntBusy, setHuntBusy] = useState<"preview" | "import" | null>(null);
+  const [huntNote, setHuntNote] = useState("");
+  const [huntHits, setHuntHits] = useState<
+    Array<{
+      url: string;
+      title: string;
+      price: number | null;
+      area: number | null;
+      rooms: number | null;
+      city: string | null;
+      street: string | null;
+      alreadyImported?: boolean;
+    }>
+  >([]);
   const enabledRef = useRef(Boolean(value?.enabled));
 
   useEffect(() => {
@@ -166,39 +179,6 @@ export default function CrmIntelligenceAssistant({
     enabledRef.current = draft.enabled;
     return undefined;
   }, [draft.enabled]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/crm/intelligence-smart-add", { credentials: "include", cache: "no-store" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && typeof json?.enabled === "boolean") setSmartAdd(json.enabled);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const saveSmartAdd = async (enabled: boolean) => {
-    setSmartAddBusy(true);
-    setSmartAdd(enabled);
-    try {
-      const res = await fetch("/api/crm/intelligence-smart-add", {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) setSmartAdd(!enabled);
-      else if (typeof json.enabled === "boolean") setSmartAdd(json.enabled);
-    } catch {
-      setSmartAdd(!enabled);
-    } finally {
-      setSmartAddBusy(false);
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -314,6 +294,28 @@ export default function CrmIntelligenceAssistant({
     }
   };
 
+  const runPortalHunt = async (mode: "preview" | "import") => {
+    setHuntBusy(mode);
+    setHuntNote(mode === "preview" ? "Szukam na Nieruchomości-Online według ankiety…" : "Importuję z portalu i podaję mózgowi…");
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "portal_hunt", mode, send: mode === "import" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json.error || "Nie udało się przeszukać portalu."));
+      if (Array.isArray(json.hits)) setHuntHits(json.hits.slice(0, 8));
+      setHuntNote(String(json.message || "Gotowe."));
+      if (json.pick) setPick(json.pick as IntelligencePick);
+      if (mode === "import") await refreshPick();
+    } catch (error) {
+      setHuntNote(error instanceof Error ? error.message : "Nie udało się przeszukać Nieruchomości-Online.");
+    } finally {
+      setHuntBusy(null);
+    }
+  };
+
   return (
     <div className={`eos-intel-shell ${draft.enabled ? "is-on" : ""} ${blooming ? "is-blooming" : ""}`}>
       <div className="eos-intel-bubbles" aria-hidden>
@@ -361,16 +363,13 @@ export default function CrmIntelligenceAssistant({
               Inteligentne dodawanie
             </p>
             <p className="mt-1 text-xs leading-snug text-[var(--eos-text)]/75">
-              Przy imporcie mózg pyta, czy zaznaczyć balkon, komórkę, ogród i resztę z opisu. Każdą zmianę widać na
-              ofercie i można cofnąć.
+              Przy każdym imporcie automatycznie zaznacza balkon, windę, parking, klimatyzację, umeblowanie,
+              ogrzewanie i resztę parametrów wykrytych w opisie portalu. Zmiany widać na ofercie i można cofnąć.
             </p>
           </div>
-          <IosRainbowSwitch
-            checked={smartAdd}
-            disabled={smartAddBusy}
-            label="Inteligentne dodawanie"
-            onChange={(enabled) => void saveSmartAdd(enabled)}
-          />
+          <span className="shrink-0 rounded-full border border-emerald-400/35 bg-emerald-500/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+            Zawsze włączone
+          </span>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <EosGlowSelect
@@ -550,7 +549,7 @@ export default function CrmIntelligenceAssistant({
                 Zapisany
               </span>
             ) : (
-              "Zapisz asystenta"
+              "Zapisz asystenta i ankietę"
             )}
           </button>
           <button
@@ -561,8 +560,46 @@ export default function CrmIntelligenceAssistant({
           >
             {sendingNow ? "Wysyłam…" : "Wyślij teraz"}
           </button>
+          <button
+            type="button"
+            disabled={busy || sendingNow || huntBusy != null}
+            onClick={() => void runPortalHunt("preview")}
+            className={eosBtn("ghost", { size: "sm" })}
+          >
+            {huntBusy === "preview" ? "Szukam…" : "Szukaj na N-O"}
+          </button>
+          <button
+            type="button"
+            disabled={busy || sendingNow || huntBusy != null}
+            onClick={() => void runPortalHunt("import")}
+            className={eosBtn("ghost", { size: "sm" })}
+          >
+            {huntBusy === "import" ? "Importuję…" : "Importuj i wyślij"}
+          </button>
         </div>
         {sendNote ? <p className="text-xs font-semibold text-[var(--eos-text)]/80">{sendNote}</p> : null}
+        {huntNote ? <p className="text-xs font-semibold text-[var(--eos-text)]/80">{huntNote}</p> : null}
+        {huntHits.length ? (
+          <ul className="space-y-1.5 text-xs text-[var(--eos-text)]/85">
+            {huntHits.map((hit) => (
+              <li key={hit.url} className="rounded-xl border border-white/10 bg-black/10 px-3 py-2">
+                <p className="font-semibold leading-snug">{hit.title}</p>
+                <p className="mt-0.5 opacity-80">
+                  {[
+                    hit.city,
+                    hit.street,
+                    hit.price != null ? `${hit.price.toLocaleString("pl-PL")} zł` : null,
+                    hit.area != null ? `${hit.area} m²` : null,
+                    hit.rooms != null ? `${hit.rooms} pok.` : null,
+                    hit.alreadyImported ? "już w EstateOS" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </div>
   );

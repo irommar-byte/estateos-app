@@ -1104,7 +1104,12 @@ export default function AgencyClientDetailScreen() {
   const saveIntelligence = async (next: typeof DEFAULT_INTELLIGENCE_SETTINGS) => {
     if (!token) return;
     setBusy('intel');
-    const res = await patchAgencyClient(token, clientId, { intelligence: { ...next, lockedFields: intelLocks } });
+    const res = await patchAgencyClient(token, clientId, {
+      alsoSearching: true,
+      buyerFilters: { ...buyerFilters, pushNotifications: false },
+      intelligence: { ...next, lockedFields: { ...intelLocks, maxPrice: true } },
+    });
+    if (res.ok) setIntelLocks((current) => ({ ...current, maxPrice: true }));
     setBusy('');
     if (!res.ok) Alert.alert('Asystent', res.message);
     else void load();

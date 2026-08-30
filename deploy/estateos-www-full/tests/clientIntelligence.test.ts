@@ -190,7 +190,7 @@ test('maybe does not reject the listing, likes pull similar rooms and price band
   assert.ok(similar.score > 80);
 });
 
-test('write-back tightens unlocked budget and balcony, but respects district lock', () => {
+test('write-back adds balcony and keeps agent budget, but respects district lock', () => {
   const taste = learnFromFeedback([
     {
       offerId: 1,
@@ -210,7 +210,8 @@ test('write-back tightens unlocked budget and balcony, but respects district loc
   });
   assert.equal(locked.data.districts, undefined);
   assert.equal(locked.data.requireBalcony, true);
-  assert.ok((locked.data.maxPrice || 0) < 1000000);
+  assert.equal(locked.data.maxPrice, undefined);
+  assert.ok(locked.notes.some((item) => /budżet/i.test(item)));
   assert.ok(locked.notes.some((item) => /zablokowana/.test(item)));
 
   const unlocked = preferenceUpdatesFromTaste({
