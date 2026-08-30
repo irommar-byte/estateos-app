@@ -77,6 +77,8 @@ export const radar = {
     galleryFilterAbroad: 'Abroad',
     galleryEmptyTitle: 'No listings',
     galleryEmptyBody: 'Change rent/buy, country or type filters — or clear the search at the top.',
+    galleryLoadingTitle: 'Loading listings',
+    galleryLoadingBody: 'Fetching the catalog from the server. This can take a moment.',
     gallerySortLabel: 'Sort by',
     gallerySortNewest: 'Newest',
     gallerySortPriceAsc: 'Price ↑',

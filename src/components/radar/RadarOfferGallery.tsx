@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   LayoutAnimation,
   Platform,
@@ -588,7 +589,9 @@ export default function RadarOfferGallery({
           <Text style={catalogStyles.eyebrow}>{t('radar.home.galleryEyebrow')}</Text>
           <Text style={catalogStyles.sectionTitle}>{t('radar.home.galleryCatalogTitle')}</Text>
           <Text style={catalogStyles.countLine}>
-            {t('radar.home.galleryResults', { count: String(offers.length) })}
+            {refreshing && offers.length === 0
+              ? t('radar.home.galleryLoadingTitle')
+              : t('radar.home.galleryResults', { count: String(offers.length) })}
           </Text>
         </View>
 
@@ -733,6 +736,7 @@ export default function RadarOfferGallery({
       onClearFilters,
       onPressOffer,
       onSortFilterChange,
+      refreshing,
       sortFilter,
       sortOptions,
       t,
@@ -1095,11 +1099,12 @@ export default function RadarOfferGallery({
           <View style={styles.emptyWrap}>
             <Ionicons name="albums-outline" size={40} color={isDark ? '#6366F1' : '#94A3B8'} />
             <Text style={[styles.emptyTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
-              {t('radar.home.galleryRailsEmptyTitle')}
+              {refreshing ? t('radar.home.galleryLoadingTitle') : t('radar.home.galleryRailsEmptyTitle')}
             </Text>
             <Text style={[styles.emptyBody, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
-              {t('radar.home.galleryRailsEmptyBody')}
+              {refreshing ? t('radar.home.galleryLoadingBody') : t('radar.home.galleryRailsEmptyBody')}
             </Text>
+            {refreshing ? <ActivityIndicator color={GALLERY_ACCENT} style={{ marginTop: 12 }} /> : null}
           </View>
         )}
       </ScrollView>
@@ -1135,14 +1140,18 @@ export default function RadarOfferGallery({
       removeClippedSubviews={false}
       ListEmptyComponent={
         <View style={styles.emptyWrap}>
-          <Ionicons name="images-outline" size={40} color={isDark ? '#6366F1' : '#94A3B8'} />
+          {refreshing ? (
+            <ActivityIndicator color={GALLERY_ACCENT} size="large" />
+          ) : (
+            <Ionicons name="images-outline" size={40} color={isDark ? '#6366F1' : '#94A3B8'} />
+          )}
           <Text style={[styles.emptyTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
-            {t('radar.home.galleryEmptyTitle')}
+            {refreshing ? t('radar.home.galleryLoadingTitle') : t('radar.home.galleryEmptyTitle')}
           </Text>
           <Text style={[styles.emptyBody, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
-            {loadError || t('radar.home.galleryEmptyBody')}
+            {refreshing ? t('radar.home.galleryLoadingBody') : loadError || t('radar.home.galleryEmptyBody')}
           </Text>
-          {loadError && onRefresh ? (
+          {!refreshing && loadError && onRefresh ? (
             <Pressable
               onPress={() => {
                 void Haptics.selectionAsync();

@@ -77,6 +77,8 @@ export const radar = {
     galleryFilterAbroad: 'Zagranica',
     galleryEmptyTitle: 'Brak ofert',
     galleryEmptyBody: 'Zmień filtry wynajem/kupno, państwo lub typ — albo wyczyść wyszukiwanie u góry.',
+    galleryLoadingTitle: 'Ładowanie ofert',
+    galleryLoadingBody: 'Pobieram katalog z serwera. To potrwa chwilę.',
     gallerySortLabel: 'Sortowanie',
     gallerySortNewest: 'Najnowsze',
     gallerySortPriceAsc: 'Cena ↑',

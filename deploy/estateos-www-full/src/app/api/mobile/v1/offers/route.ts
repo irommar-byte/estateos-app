@@ -36,6 +36,16 @@ import {
 } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { trimOfferForMobileCatalog } from '@/lib/mobileOfferCatalogTrim';
+import { shapeOfferForMobileCatalog } from '@/lib/mobileOfferCatalogEnrich';
+import {
+  buildCatalogEtag,
+  catalogJsonResponse,
+  catalogNotModifiedResponse,
+  etagMatches,
+  isCatalogCacheFresh,
+  readMobileCatalogCache,
+  writeMobileCatalogCache,
+} from '@/lib/mobileOfferCatalogCache';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -83,6 +93,18 @@ export async function GET(req: Request) {
   const includeAll = searchParams.get('includeAll') === 'true';
   const catalogOnly = searchParams.get('catalog') === '1' || searchParams.get('catalog') === 'true';
   const userId = searchParams.get('userId');
+  const isPublicCatalog = catalogOnly && !userId && !includeAll;
+  const ifNoneMatch = req.headers.get('if-none-match') || req.headers.get('x-catalog-etag');
+
+  if (isPublicCatalog) {
+    const cached = readMobileCatalogCache();
+    if (cached && isCatalogCacheFresh(cached)) {
+      if (ifNoneMatch && etagMatches(ifNoneMatch, cached.etag)) {
+        return catalogNotModifiedResponse(cached.etag);
+      }
+      return catalogJsonResponse(cached.body, cached.etag);
+    }
+  }
 
   let where: any = {};
 
@@ -124,45 +146,69 @@ export async function GET(req: Request) {
 
     const offerIds = publicationGatedOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
+      const emptyBody = JSON.stringify({ success: true, offers: [] });
+      if (isPublicCatalog) {
+        const etag = buildCatalogEtag([]);
+        writeMobileCatalogCache(etag, emptyBody);
+        return catalogJsonResponse(emptyBody, etag);
+      }
       return NextResponse.json({ success: true, offers: [] }, {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
       });
     }
 
+    if (catalogOnly && isPublicCatalog) {
+      const normalizedOffers = publicationGatedOffers.map((offer: any) =>
+        shapeOfferForMobileCatalog(offer as Record<string, unknown>),
+      );
+      const etag = buildCatalogEtag(normalizedOffers);
+      const body = JSON.stringify({ success: true, offers: normalizedOffers });
+      writeMobileCatalogCache(etag, body);
+      if (ifNoneMatch && etagMatches(ifNoneMatch, etag)) {
+        return catalogNotModifiedResponse(etag);
+      }
+      return catalogJsonResponse(body, etag);
+    }
+
     let viewsMap = new Map<number, number>();
-    try {
-      const viewsRows = await prisma.$queryRawUnsafe<any[]>(
-        `
-          SELECT offerId, COUNT(*) AS total
-          FROM OfferViewLog
-          WHERE offerId IN (${offerIds.join(',')})
-          GROUP BY offerId
-        `
-      );
-      viewsMap = new Map<number, number>(
-        viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
-      );
-    } catch {
-      // OfferViewLog unavailable — keep zero views rather than fail catalog.
-    }
-
     let favoritesMap = new Map<number, number>();
-    try {
-      const favRows = await prisma.favoriteOffer.groupBy({
-        by: ['offerId'],
-        where: { offerId: { in: offerIds } },
-        _count: { _all: true },
-      });
-      favoritesMap = new Map(
-        favRows.map((row) => [Number(row.offerId), Number(row._count._all || 0)]),
-      );
-    } catch {
-      // FavoriteOffer table may be temporarily unavailable — keep zeros.
-    }
-
-    const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
-
-    const historyMaxMap = await fetchMaxHistoricalPricePlnByOfferIds(offerIds);
+    const [viewsResult, favoritesResult, legalOverrides, historyMaxMap] = await Promise.all([
+      (async () => {
+        try {
+          const viewsRows = await prisma.$queryRawUnsafe<any[]>(
+            `
+              SELECT offerId, COUNT(*) AS total
+              FROM OfferViewLog
+              WHERE offerId IN (${offerIds.join(',')})
+              GROUP BY offerId
+            `,
+          );
+          return new Map<number, number>(
+            viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)]),
+          );
+        } catch {
+          return new Map<number, number>();
+        }
+      })(),
+      (async () => {
+        try {
+          const favRows = await prisma.favoriteOffer.groupBy({
+            by: ['offerId'],
+            where: { offerId: { in: offerIds } },
+            _count: { _all: true },
+          });
+          return new Map(
+            favRows.map((row) => [Number(row.offerId), Number(row._count._all || 0)]),
+          );
+        } catch {
+          return new Map<number, number>();
+        }
+      })(),
+      legalStatusOverridesForOffers(prisma, offerIds),
+      fetchMaxHistoricalPricePlnByOfferIds(offerIds),
+    ]);
+    viewsMap = viewsResult;
+    favoritesMap = favoritesResult;
 
     const normalizedOffers = publicationGatedOffers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
@@ -196,6 +242,10 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     if (isOfferSchemaCompatibilityError(error)) {
       return schemaCompatibilityResponse();
+    }
+    if (isPublicCatalog) {
+      const stale = readMobileCatalogCache();
+      if (stale) return catalogJsonResponse(stale.body, stale.etag);
     }
     const message = error instanceof Error ? error.message : 'Błąd serwera';
     console.error("🔥 MOBILE API ERROR:", error);

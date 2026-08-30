@@ -77,6 +77,8 @@ export const radar = {
     galleryFilterAbroad: 'Заграница',
     galleryEmptyTitle: 'Нет объявлений',
     galleryEmptyBody: 'Измените фильтры аренда/покупка, страна или тип — или очистите поиск сверху.',
+    galleryLoadingTitle: 'Загрузка объявлений',
+    galleryLoadingBody: 'Загружаю каталог с сервера. Это займёт мгновение.',
     gallerySortLabel: 'Сортировка',
     gallerySortNewest: 'Новые',
     gallerySortPriceAsc: 'Цена ↑',

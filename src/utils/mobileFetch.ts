@@ -161,8 +161,16 @@ export async function mobileFetch(input: string, init: MobileFetchInit = {}): Pr
     } catch (err) {
       lastError = err;
       if (attempt < MAX_ATTEMPTS - 1) {
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 280 * (attempt + 1)));
       }
+    }
+  }
+
+  if (method === 'GET') {
+    try {
+      return await xhrRequest(input, init);
+    } catch (err) {
+      lastError = err;
     }
   }
 
