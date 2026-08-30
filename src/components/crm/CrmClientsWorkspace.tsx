@@ -51,6 +51,7 @@ import { formatClientFeedbackForAgent, parseClientOfferFeedback, sentimentLabel 
 import { type ClientNextStep } from "@/lib/crm/clientNextStep";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
+import MatchImportAgentMeta, { type MatchImportBrief } from "@/components/crm/MatchImportAgentMeta";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -89,6 +90,7 @@ type ClientDetail = AgencyClientListItem & {
     clientFeedbackAt: string | null;
     intelligenceSent?: boolean;
     intelligenceReason?: string | null;
+    importBrief?: MatchImportBrief | null;
     offer: {
       id: number;
       title: string;
@@ -1363,6 +1365,7 @@ export default function CrmClientsWorkspace() {
                                   {[m.offer.city, m.offer.district].filter(Boolean).join(" · ")} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł
                                 </p>
                                 <OfferDescriptionToggle offer={m.offer} />
+                                <MatchImportAgentMeta brief={m.importBrief} />
                                 <div className="mt-2 flex items-center gap-2">
                                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--eos-input)]">
                                     <div
@@ -1553,6 +1556,7 @@ export default function CrmClientsWorkspace() {
                                       {[m.offer.city, m.offer.district].filter(Boolean).join(" · ")} · {Math.round(m.offer.price).toLocaleString("pl-PL")} zł · {m.score}%
                                     </p>
                                     <OfferDescriptionToggle offer={m.offer} />
+                                    <MatchImportAgentMeta brief={m.importBrief} />
                                   </div>
                                   {!sent ? (
                                     <button

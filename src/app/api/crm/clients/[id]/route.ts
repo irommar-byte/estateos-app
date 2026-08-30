@@ -51,6 +51,7 @@ import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
 import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
 import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
+import { attachMatchImportBrief, listMatchImportBriefs } from '@/lib/crm/matchImportProvenance';
 
 export const maxDuration = 300;
 
@@ -161,17 +162,20 @@ export async function GET(req: Request, ctx: RouteCtx) {
       buyerFilters: client.buyerPreference
         ? buyerPrefToWebRadarFilters(client.buyerPreference)
         : null,
-      matches: client.matches.map((m) => ({
-        id: m.id,
-        score: m.score,
-        notifiedAt: m.notifiedAt?.toISOString() ?? null,
-        sharedAt: m.sharedAt?.toISOString() ?? null,
-        clientFeedback: m.clientFeedback,
-        clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
-        intelligenceSent: Boolean(m.intelligenceSent),
-        intelligenceReason: m.intelligenceReason || null,
-        offer: shapeAgencyClientMatchOffer(m.offer),
-      })),
+      matches: attachMatchImportBrief(
+        client.matches.map((m) => ({
+          id: m.id,
+          score: m.score,
+          notifiedAt: m.notifiedAt?.toISOString() ?? null,
+          sharedAt: m.sharedAt?.toISOString() ?? null,
+          clientFeedback: m.clientFeedback,
+          clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
+          intelligenceSent: Boolean(m.intelligenceSent),
+          intelligenceReason: m.intelligenceReason || null,
+          offer: shapeAgencyClientMatchOffer(m.offer),
+        })),
+        await listMatchImportBriefs(client.matches.map((m) => m.offer.id)),
+      ),
       intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
       meeting,
       presentation,

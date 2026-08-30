@@ -13,6 +13,7 @@ import {
 import type { IntelligencePick } from "@/lib/crm/clientIntelligenceRun";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import EosGlowSelect from "@/components/crm/EosGlowSelect";
+import { PortalSourceBadge } from "@/components/crm/MatchImportAgentMeta";
 
 const BUBBLES = [
   { color: "#ff4d6d", size: 118, x: "8%", y: "72%", delay: "0s", duration: "11s" },
@@ -583,7 +584,10 @@ export default function CrmIntelligenceAssistant({
           <ul className="space-y-1.5 text-xs text-[var(--eos-text)]/85">
             {huntHits.map((hit) => (
               <li key={hit.url} className="rounded-xl border border-white/10 bg-black/10 px-3 py-2">
-                <p className="font-semibold leading-snug">{hit.title}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <PortalSourceBadge url={hit.url} />
+                  <p className="font-semibold leading-snug">{hit.title}</p>
+                </div>
                 <p className="mt-0.5 opacity-80">
                   {[
                     hit.city,
@@ -596,6 +600,9 @@ export default function CrmIntelligenceAssistant({
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                <a href={hit.url} target="_blank" rel="noreferrer" className="mt-1 inline-block font-extrabold text-sky-300 hover:underline">
+                  Oryginał na portalu
+                </a>
               </li>
             ))}
           </ul>
