@@ -143,6 +143,7 @@ export default function IntelligenceAssistantCard({
   value,
   colors,
   busy,
+  pendingCheckback,
   onSave,
 }: {
   clientId: number;
@@ -150,6 +151,13 @@ export default function IntelligenceAssistantCard({
   value?: IntelligenceSettings | null;
   colors: { text: string; secondary: string; accent: string; border: string; card: string; input: string };
   busy?: boolean;
+  pendingCheckback?: {
+    activityId: number;
+    type: string;
+    body: string;
+    options: Array<{ id: string; label: string }>;
+    createdAt: string;
+  } | null;
   onSave: (next: IntelligenceSettings) => void;
 }) {
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
@@ -377,10 +385,18 @@ export default function IntelligenceAssistantCard({
           </View>
           {draft.enabled ? (
             <View style={[styles.queue, { borderColor: colors.border, backgroundColor: colors.input }]}>
+              {pendingCheckback ? (
+                <View style={{ marginBottom: 10, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.08)' }}>
+                  <Text style={{ color: '#B45309', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>CZEKA NA KLIENTA</Text>
+                  <Text style={{ color: colors.text, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{pendingCheckback.body}</Text>
+                </View>
+              ) : null}
               <Text style={styles.kicker}>Konsola asystenta</Text>
               <Text style={{ color: colors.text, fontSize: 12, marginTop: 8, lineHeight: 17 }}>
                 Teraz:{' '}
-                {!draft.enabled
+                {pendingCheckback
+                  ? 'asystent czeka na odpowiedź w panelu klienta.'
+                  : !draft.enabled
                   ? 'asystent wyłączony.'
                   : queueBusy
                     ? 'analizuję opisy i reakcje…'

@@ -105,6 +105,13 @@ export type AgencyClientDetail = AgencyClientListItem & {
       requireFurnished: boolean;
     };
   } | null;
+  pendingCheckback?: {
+    activityId: number;
+    type: string;
+    body: string;
+    options: Array<{ id: string; label: string }>;
+    createdAt: string;
+  } | null;
   meeting?: {
     startsAt: string;
     location: string | null;

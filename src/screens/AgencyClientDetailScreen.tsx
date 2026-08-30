@@ -2837,6 +2837,7 @@ export default function AgencyClientDetailScreen() {
                       clientId={clientId}
                       token={token}
                       value={client.intelligence || DEFAULT_INTELLIGENCE_SETTINGS}
+                      pendingCheckback={client.pendingCheckback}
                       colors={colors}
                       busy={busy === 'intel'}
                       onSave={(next) => void saveIntelligence(next)}
