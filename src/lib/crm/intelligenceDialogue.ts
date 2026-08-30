@@ -32,7 +32,7 @@ export type DialogueTurn = {
 };
 
 type OfferLike = {
-  id?: number;
+  id: number;
   title?: string | null;
   city?: string | null;
   district?: string | null;
