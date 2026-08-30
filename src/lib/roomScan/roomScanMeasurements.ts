@@ -56,6 +56,24 @@ export function deriveRoomDimensionsFromWalls(
   };
 }
 
+export function wallsFootprintSqM(walls: RoomScanWallSegment[]): number {
+  const deduped = uniqueWalls(walls);
+  if (!deduped.length) return 0;
+  const xs = deduped.flatMap((w) => [w.x1, w.x2]);
+  const zs = deduped.flatMap((w) => [w.z1, w.z2]);
+  return Math.max(0, (Math.max(...xs) - Math.min(...xs)) * (Math.max(...zs) - Math.min(...zs)));
+}
+
+export function estimateFloorAreaFromWalls(walls: RoomScanWallSegment[]): number {
+  const bbox = wallsFootprintSqM(walls);
+  const dims = deriveRoomDimensionsFromWalls(walls);
+  if (dims) {
+    const rect = dims.widthM * dims.lengthM;
+    if (bbox > 0 && rect >= bbox * 0.42 && rect <= bbox * 1.05) return rect;
+  }
+  return bbox;
+}
+
 export function measurementsFromScanMeta(meta: FloorPlanScanMeta): {
   widthM: string;
   lengthM: string;

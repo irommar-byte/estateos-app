@@ -27,6 +27,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { Image } from 'expo-image';
 import PropertyRoomScanWorkspace from '../components/roomScan/PropertyRoomScanWorkspace';
 import type { PropertyRoomScan, RoomScanDraftAssets, WholePropertyScan } from '../types/roomScan';
+import { listingRoomCountFromRooms, livableAreaFromRooms } from '../lib/roomScan/refineScanSections';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
@@ -1204,13 +1205,11 @@ export default function EditOfferScreen({ route }: any) {
     } catch {
       baseMeta = {};
     }
-    const roomAreaTotalSqM = rooms.reduce((sum, room) => {
-      const value = Number(String(room.areaM2 || '').replace(',', '.'));
-      return sum + (Number.isFinite(value) ? value : 0);
-    }, 0);
-    setFloorPlanScanMetaLocal(JSON.stringify({ ...baseMeta, roomScans: rooms, roomAreaTotalSqM }));
+    const roomAreaTotalSqM = livableAreaFromRooms(rooms);
+    const listingRooms = listingRoomCountFromRooms(rooms);
+    setFloorPlanScanMetaLocal(JSON.stringify({ ...baseMeta, roomScans: rooms, roomAreaTotalSqM, roomCount: listingRooms }));
     if (roomAreaTotalSqM > 0) setArea(roomAreaTotalSqM.toFixed(1));
-    if (rooms.length > 0) setRooms(String(rooms.length));
+    if (listingRooms > 0) setRooms(String(listingRooms));
   };
 
   const handleWholePropertyScanChange = (scan: WholePropertyScan | null) => {

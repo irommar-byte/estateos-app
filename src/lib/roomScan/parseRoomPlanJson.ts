@@ -20,6 +20,13 @@ import {
   inferRoomTypeFromObjects,
   normalizeRoomScanObjectCategory,
 } from './roomScanLabels';
+import {
+  listingRoomCountFromRooms,
+  listingRoomCountFromSections,
+  refineScanSections,
+  totalUniqueAreaSqM,
+  uniqueRoomsByFootprint,
+} from './refineScanSections';
 
 type SurfaceLike = {
   dimensions?: number[];
@@ -140,18 +147,6 @@ function sectionFromRaw(section: SectionLike): RoomScanSection | null {
   };
 }
 
-function roomWallsFingerprint(walls: RoomScanWallSegment[]): string {
-  return dedupeWallSegments(walls)
-    .map((w) => {
-      const len = wallLengthMeters(w).toFixed(2);
-      const ax = Math.min(w.x1, w.x2).toFixed(1);
-      const az = Math.min(w.z1, w.z2).toFixed(1);
-      return `${len}@${ax},${az}`;
-    })
-    .sort()
-    .join('|');
-}
-
 function averageCeilingHeight(walls: RoomScanWallSegment[]): number | null {
   const heights = walls
     .map((w) => w.heightM)
@@ -212,7 +207,6 @@ function collectSurfaces(payload: unknown): {
   const objects: RoomScanDetectedObject[] = [];
   const openings: RoomScanOpening[] = [];
   const sections: RoomScanSection[] = [];
-  const seenRoomPrints = new Set<string>();
   let objectIndex = 0;
   let openingIndex = 0;
 
@@ -243,6 +237,8 @@ function collectSurfaces(payload: unknown): {
   pushOpenings(root.openings, 'opening');
   pushObjects(root.objects);
 
+  const parsedRooms: Array<{ walls: RoomScanWallSegment[]; sections: RoomScanSection[] }> = [];
+
   if (Array.isArray(root.rooms) && root.rooms.length > 0) {
     for (const room of root.rooms) {
       const roomWalls = Array.isArray(room.walls)
@@ -256,28 +252,28 @@ function collectSurfaces(payload: unknown): {
       pushOpenings(room.openings, 'opening');
       pushObjects(room.objects);
 
-      if (roomWalls.length) {
-        const fingerprint = roomWallsFingerprint(roomWalls);
-        if (seenRoomPrints.has(fingerprint)) continue;
-        seenRoomPrints.add(fingerprint);
-      }
-
-      const roomFootprint = roomWalls.length ? estimateFloorAreaFromWalls(roomWalls) : 0;
-      const roomDimensions = deriveRoomDimensionsFromWalls(roomWalls);
-      const roomCeiling = averageCeilingHeight(roomWalls);
       const roomSections = Array.isArray(room.sections)
         ? room.sections.map(sectionFromRaw).filter((s): s is RoomScanSection => Boolean(s))
         : [];
+      parsedRooms.push({ walls: roomWalls, sections: roomSections });
+    }
+
+    const uniqueRooms = uniqueRoomsByFootprint(parsedRooms);
+    for (const room of uniqueRooms) {
+      const roomWalls = room.walls;
+      const roomFootprint = roomWalls.length ? estimateFloorAreaFromWalls(roomWalls) : 0;
+      const roomDimensions = deriveRoomDimensionsFromWalls(roomWalls);
+      const roomCeiling = averageCeilingHeight(roomWalls);
+      const roomSections = room.sections;
+      const manySections = roomSections.length > 1 || uniqueRooms.length > 1;
 
       if (roomSections.length) {
-        const perSectionArea =
-          roomFootprint > 0 ? Number((roomFootprint / roomSections.length).toFixed(1)) : undefined;
         for (const section of roomSections) {
           sections.push({
             ...section,
-            areaSqM: section.areaSqM ?? perSectionArea,
-            widthM: section.widthM ?? roomDimensions?.widthM,
-            lengthM: section.lengthM ?? roomDimensions?.lengthM,
+            areaSqM: manySections ? undefined : section.areaSqM ?? (roomFootprint || undefined),
+            widthM: manySections ? undefined : section.widthM ?? roomDimensions?.widthM,
+            lengthM: manySections ? undefined : section.lengthM ?? roomDimensions?.lengthM,
             ceilingHeightM: roomCeiling ?? undefined,
           });
         }
@@ -348,7 +344,7 @@ export function buildFloorPlanScanMeta(
   const totalFootprint = estimateFloorAreaFromWalls(walls);
   const overallDimensions = deriveRoomDimensionsFromWalls(walls);
   const enriched = enrichSectionsWithObjects(sections, objects, ceilingHeightM);
-  let displaySections = dedupeRoomSections(enriched);
+  let displaySections = refineScanSections(dedupeRoomSections(enriched), walls, objects, ceilingHeightM);
   if (!displaySections.length && walls.length) {
     const inferredKey = inferRoomTypeFromObjects(objects.map((item) => item.category));
     displaySections = [
@@ -365,28 +361,20 @@ export function buildFloorPlanScanMeta(
       },
     ];
   }
-  const sectionCount = Math.max(1, displaySections.length);
-  const sectionAreaTotal = displaySections.reduce(
-    (sum, section) => sum + (typeof section.areaSqM === 'number' ? section.areaSqM : 0),
-    0,
-  );
-  const measuredTotalArea =
-    displaySections.length > 1 && sectionAreaTotal > 0 ? sectionAreaTotal : totalFootprint;
   const finalSections = displaySections.map((section) => ({
     ...section,
-    areaSqM:
-      section.areaSqM ??
-      (measuredTotalArea > 0 ? Number((measuredTotalArea / sectionCount).toFixed(1)) : undefined),
-    widthM: section.widthM ?? (sectionCount === 1 ? overallDimensions?.widthM : undefined),
-    lengthM: section.lengthM ?? (sectionCount === 1 ? overallDimensions?.lengthM : undefined),
+    widthM: section.widthM ?? (displaySections.length === 1 ? overallDimensions?.widthM : undefined),
+    lengthM: section.lengthM ?? (displaySections.length === 1 ? overallDimensions?.lengthM : undefined),
     ceilingHeightM: section.ceilingHeightM ?? ceilingHeightM ?? undefined,
   }));
+  const measuredTotalArea = totalUniqueAreaSqM(finalSections, walls);
+  const listingCount = listingRoomCountFromSections(finalSections);
 
   return {
     version: 2,
     scannedAt: new Date().toISOString(),
-    roomCount: sectionCount,
-    totalAreaSqM: measuredTotalArea > 0 ? Number(measuredTotalArea.toFixed(1)) : null,
+    roomCount: listingCount || Math.max(1, finalSections.length),
+    totalAreaSqM: measuredTotalArea > 0 ? measuredTotalArea : null,
     ceilingHeightM,
     sections: finalSections,
     walls,
@@ -414,7 +402,7 @@ export function normalizeStoredScanMeta(raw: unknown): FloorPlanScanMeta | null 
     return {
       version: 2,
       scannedAt: meta.scannedAt || new Date().toISOString(),
-      roomCount: storedRoomScans.length,
+      roomCount: listingRoomCountFromRooms(storedRoomScans) || storedRoomScans.length,
       totalAreaSqM: roomAreaTotalSqM || null,
       ceilingHeightM: null,
       sections: [],
@@ -433,25 +421,25 @@ export function normalizeStoredScanMeta(raw: unknown): FloorPlanScanMeta | null 
   const objects = dedupeDetectedObjects(Array.isArray(meta.objects) ? meta.objects : []);
   const openings = Array.isArray(meta.openings) ? meta.openings : [];
   const sections = dedupeRoomSections(meta.sections);
-  const totalFootprint = estimateFloorAreaFromWalls(walls);
   const ceilingHeightM =
     typeof meta.ceilingHeightM === 'number'
       ? meta.ceilingHeightM
       : averageCeilingHeight(walls);
-  const sectionCount = Math.max(1, sections.length);
-  const localizedSections = enrichSectionsWithObjects(sections, objects, ceilingHeightM).map(
-    (section) => ({
-      ...section,
-      areaSqM:
-        section.areaSqM ??
-        (totalFootprint > 0 ? Number((totalFootprint / sectionCount).toFixed(1)) : undefined),
-    }),
+  const localizedSections = refineScanSections(
+    enrichSectionsWithObjects(sections, objects, ceilingHeightM),
+    walls,
+    objects,
+    ceilingHeightM,
   );
+  const measuredTotalArea = totalUniqueAreaSqM(localizedSections, walls);
   return {
     version: 1,
     scannedAt: meta.scannedAt || new Date().toISOString(),
-    roomCount: sectionCount,
-    totalAreaSqM: totalFootprint > 0 ? Number(totalFootprint.toFixed(1)) : meta.totalAreaSqM ?? null,
+    roomCount:
+      listingRoomCountFromSections(localizedSections) ||
+      listingRoomCountFromRooms(storedRoomScans) ||
+      Math.max(1, localizedSections.length),
+    totalAreaSqM: measuredTotalArea > 0 ? measuredTotalArea : meta.totalAreaSqM ?? null,
     ceilingHeightM,
     sections: localizedSections,
     walls,

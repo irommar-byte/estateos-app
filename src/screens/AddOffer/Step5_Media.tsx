@@ -33,6 +33,7 @@ import MagicalAiDescribeButton from '../../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../../components/HdrPreviewBadge';
 import ListingDescriptionEditor from '../../components/ListingDescriptionEditor';
 import type { PropertyRoomScan, WholePropertyScan } from '../../types/roomScan';
+import { listingRoomCountFromRooms, livableAreaFromRooms } from '../../lib/roomScan/refineScanSections';
 import { useAuthStore } from '../../store/useAuthStore';
 import { generateListingDescriptionWithGpt } from '../../services/offerDescriptionAiService';
 
@@ -537,14 +538,12 @@ export default function Step5_Media({ theme }: { theme: any }) {
       : null;
 
   const handlePropertyRoomsChange = (rooms: PropertyRoomScan[]) => {
-    const measuredArea = rooms.reduce((sum, room) => {
-      const value = Number(String(room.areaM2 || '').replace(',', '.'));
-      return sum + (Number.isFinite(value) ? value : 0);
-    }, 0);
+    const measuredArea = livableAreaFromRooms(rooms);
+    const listingRooms = listingRoomCountFromRooms(rooms);
     updateDraft({
       propertyRoomScans: rooms,
       ...(measuredArea ? { area: measuredArea.toFixed(1) } : {}),
-      ...(rooms.length ? { rooms: String(rooms.length) } : {}),
+      ...(listingRooms ? { rooms: String(listingRooms) } : {}),
     });
   };
 

@@ -84,6 +84,7 @@ import {
 } from '../utils/contactAttachment';
 import { API_URL } from '../config/network';
 import type { WholePropertyScan } from '../types/roomScan';
+import { listingRoomCountFromRooms, livableAreaFromRooms } from '../lib/roomScan/refineScanSections';
 import MarketValuationCard from '../components/market/MarketValuationCard';
 import {
   ACQUISITION_GUIDE_STEPS,
@@ -564,17 +565,15 @@ export default function AgencyClientDetailScreen() {
       const roomsJson = JSON.stringify(rooms);
       const wholeScanJson = wholePropertyScan ? JSON.stringify(wholePropertyScan) : '';
       const planJoined = planImages.join(',');
-      const measuredArea = rooms.reduce((sum, room) => {
-        const value = Number(String(room.areaM2 || '').replace(',', '.'));
-        return sum + (Number.isFinite(value) ? value : 0);
-      }, 0);
+      const measuredArea = livableAreaFromRooms(rooms);
+      const listingRooms = listingRoomCountFromRooms(rooms);
       const property = (current.property || {}) as Record<string, unknown>;
       if (
         String(property.roomsJson || '') === roomsJson &&
         String(property.wholeScanJson || '') === wholeScanJson &&
         String(property.planImages || '') === planJoined &&
         (!measuredArea || String(property.area || '') === measuredArea.toFixed(1)) &&
-        (!rooms.length || String(property.rooms || '') === String(rooms.length))
+        (!listingRooms || String(property.rooms || '') === String(listingRooms))
       ) {
         return current;
       }
@@ -583,7 +582,7 @@ export default function AgencyClientDetailScreen() {
         wholeScanJson,
         planImages: planJoined,
         ...(measuredArea ? { area: measuredArea.toFixed(1) } : {}),
-        ...(rooms.length ? { rooms: String(rooms.length) } : {}),
+        ...(listingRooms ? { rooms: String(listingRooms) } : {}),
       });
     });
   }, [rooms, wholePropertyScan, planImages]);

@@ -12,28 +12,17 @@ import type {
   RoomScanDraftAssets,
   WholePropertyScan,
 } from '../../types/roomScan';
-
-const ROOM_PRESETS = [
-  'Salon',
-  'Sypialnia',
-  'Kuchnia',
-  'Łazienka',
-  'Przedpokój',
-  'Gabinet',
-  'Garderoba',
-  'Balkon / Taras',
-  'Garaż',
-  'Komórka lokatorska',
-  'Inne',
-];
+import {
+  listingRoomCountFromRooms,
+  livableAreaFromRooms,
+  ROOM_PRESET_DEFS,
+  roomTypeKeyFromName,
+} from '../../lib/roomScan/refineScanSections';
+import { getRoomScanSectionLabel } from '../../lib/roomScan/roomScanLabels';
 
 function numberValue(raw: string): number {
   const value = Number(String(raw || '').replace(',', '.'));
   return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function roomArea(room: PropertyRoomScan): number {
-  return numberValue(room.areaM2);
 }
 
 type Props = {
@@ -87,8 +76,9 @@ export default function PropertyRoomScanWorkspace({
     success: '#22c55e',
   };
 
+  const listingRooms = listingRoomCountFromRooms(rooms);
   const totalArea = useMemo(
-    () => rooms.reduce((sum, room) => sum + roomArea(room), 0),
+    () => livableAreaFromRooms(rooms),
     [rooms],
   );
   const scannedRooms = rooms.filter((room) => room.scanMeta).length;
@@ -99,6 +89,7 @@ export default function PropertyRoomScanWorkspace({
     const room: PropertyRoomScan = {
       id: `room-${Date.now()}-${Math.round(Math.random() * 1000)}`,
       name,
+      typeKey: roomTypeKeyFromName(name),
       widthM: '',
       lengthM: '',
       heightM: '',
@@ -122,6 +113,9 @@ export default function PropertyRoomScanWorkspace({
           const length = numberValue(next.lengthM);
           next.areaM2 = width && length ? (width * length).toFixed(1) : next.areaM2;
         }
+        if (patch.name && !patch.typeKey) {
+          next.typeKey = roomTypeKeyFromName(next.name);
+        }
         return next;
       }),
     );
@@ -144,9 +138,11 @@ export default function PropertyRoomScanWorkspace({
       const area =
         section.areaSqM ??
         (section.widthM && section.lengthM ? section.widthM * section.lengthM : undefined);
+      const typeKey = section.key || roomTypeKeyFromName(section.label);
       return {
         id: `room-${stamp}-${index}-${Math.round(Math.random() * 1000)}`,
-        name: section.label || `Pomieszczenie ${index + 1}`,
+        name: section.label || getRoomScanSectionLabel(typeKey) || `Pomieszczenie ${index + 1}`,
+        typeKey,
         widthM: fmt(section.widthM),
         lengthM: fmt(section.lengthM),
         heightM: fmt(section.ceilingHeightM ?? meta.ceilingHeightM),
@@ -159,20 +155,8 @@ export default function PropertyRoomScanWorkspace({
   const offerDetectedRooms = (meta: RoomScanDraftAssets['scanMeta']) => {
     const detected = roomsFromScanSections(meta);
     if (!detected.length) return;
-    Alert.alert(
-      'Wykryte pomieszczenia',
-      `Skan rozpoznał ${detected.length === 1 ? '1 pomieszczenie' : `${detected.length} pomieszczenia`} razem z wymiarami. Dodać je do listy? Nazwy poprawisz ręcznie w każdej pozycji.`,
-      [
-        { text: 'Nie teraz', style: 'cancel' },
-        {
-          text: `Dodaj (${detected.length})`,
-          onPress: () => {
-            onChangeRooms([...roomsRef.current, ...detected]);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          },
-        },
-      ],
-    );
+    onChangeRooms(detected);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const applyScan = (assets: RoomScanDraftAssets) => {
@@ -269,12 +253,12 @@ export default function PropertyRoomScanWorkspace({
         <View style={[styles.addCard, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
           <Text style={[styles.label, { color: palette.secondary }]}>1. WYBIERZ POMIESZCZENIE</Text>
           <View style={styles.presets}>
-            {ROOM_PRESETS.map((name) => {
-              const selected = newRoomName === name;
+            {ROOM_PRESET_DEFS.map((preset) => {
+              const selected = newRoomName === preset.label;
               return (
                 <Pressable
-                  key={name}
-                  onPress={() => setNewRoomName(name)}
+                  key={preset.key}
+                  onPress={() => setNewRoomName(preset.label)}
                   style={[
                     styles.preset,
                     {
@@ -284,7 +268,7 @@ export default function PropertyRoomScanWorkspace({
                   ]}
                 >
                   <Text style={{ color: selected ? '#fff' : palette.text, fontSize: 11, fontWeight: '800' }}>
-                    {name}
+                    {preset.label}
                   </Text>
                 </Pressable>
               );
@@ -316,6 +300,10 @@ export default function PropertyRoomScanWorkspace({
 
       <View style={styles.summaryRow}>
         <View style={[styles.summaryPill, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
+          <Text style={[styles.summaryLabel, { color: palette.secondary }]}>POKOJE</Text>
+          <Text style={[styles.summaryValue, { color: palette.text }]}>{listingRooms}</Text>
+        </View>
+        <View style={[styles.summaryPill, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
           <Text style={[styles.summaryLabel, { color: palette.secondary }]}>POMIESZCZENIA</Text>
           <Text style={[styles.summaryValue, { color: palette.text }]}>{rooms.length}</Text>
         </View>
@@ -328,6 +316,10 @@ export default function PropertyRoomScanWorkspace({
           <Text style={[styles.summaryValue, { color: palette.success }]}>{totalArea.toFixed(1)} m²</Text>
         </View>
       </View>
+
+      <Text style={[styles.countHint, { color: palette.secondary }]}>
+        Do liczby pokoi w ofercie liczą się salon, pokój, sypialnia, gabinet i jadalnia. Łazienka, WC, kuchnia, komórka i przedpokój pozostają na planie, ale nie jako pokoje.
+      </Text>
 
       {rooms.map((room, index) => (
         <View key={room.id} style={[styles.roomCard, { backgroundColor: palette.elevated, borderColor: room.scanMeta ? `${palette.success}66` : palette.border }]}>
@@ -353,6 +345,30 @@ export default function PropertyRoomScanWorkspace({
               </Pressable>
             ) : null}
           </View>
+          {!disabled ? (
+            <View style={styles.presets}>
+              {ROOM_PRESET_DEFS.map((preset) => {
+                const selected = (room.typeKey || roomTypeKeyFromName(room.name)) === preset.key;
+                return (
+                  <Pressable
+                    key={`${room.id}-${preset.key}`}
+                    onPress={() => updateRoom(room.id, { name: preset.label, typeKey: preset.key })}
+                    style={[
+                      styles.preset,
+                      {
+                        backgroundColor: selected ? palette.accent : palette.card,
+                        borderColor: selected ? palette.accent : palette.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: selected ? '#fff' : palette.text, fontSize: 10, fontWeight: '800' }}>
+                      {preset.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
 
           <View style={styles.measureGrid}>
             {([
@@ -509,12 +525,13 @@ const styles = StyleSheet.create({
   addSecondary: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
   addPrimary: { flex: 1.25, minHeight: 44, borderRadius: 12, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
   addPrimaryText: { color: '#fff', fontWeight: '900' },
-  summaryRow: { flexDirection: 'row', gap: 7, marginBottom: 10 },
+  summaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 8 },
+  countHint: { fontSize: 10, lineHeight: 14, fontWeight: '600', marginBottom: 10 },
   summaryPill: { flex: 1, borderRadius: 12, borderWidth: 1, padding: 9, alignItems: 'center' },
   summaryLabel: { fontSize: 8, fontWeight: '900', letterSpacing: 0.6 },
   summaryValue: { fontSize: 14, fontWeight: '900', marginTop: 2 },
   roomCard: { borderRadius: 16, borderWidth: 1, padding: 12, marginBottom: 10 },
-  roomHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  roomHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   roomNumber: { width: 27, height: 27, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   roomNumberText: { color: '#fff', fontWeight: '900', fontSize: 12 },
   roomName: { flex: 1, fontSize: 14, fontWeight: '900', paddingVertical: 5 },

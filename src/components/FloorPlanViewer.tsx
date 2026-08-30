@@ -20,6 +20,7 @@ import { useI18n } from '../i18n';
 import { getSafeQuickLook } from '../utils/safeQuickLook';
 import FloorPlanScanArtboard from './roomScan/FloorPlanScanArtboard';
 import type { FloorPlanScanMeta } from '../types/roomScan';
+import { listingRoomCountFromRooms, listingRoomCountFromSections } from '../lib/roomScan/refineScanSections';
 import { API_URL } from '../config/network';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -61,7 +62,9 @@ export default function FloorPlanViewer({
   const hasPlan = Boolean(displayImageUrl) || hasVectorPlan || roomScans.length > 0;
   const active3dUrl = selectedRoom?.floorPlan3dUri || model3dUrl;
   const has3d = Boolean(absolutePlanAssetUrl(active3dUrl)?.trim());
-  const roomCount = scanMeta?.roomCount || roomScans.length;
+  const listingCount =
+    listingRoomCountFromRooms(roomScans) || listingRoomCountFromSections(scanMeta?.sections || []);
+  const roomCount = listingCount || scanMeta?.roomCount || roomScans.length;
   const furniture = activeMeta?.objects || [];
 
   const openModal = () => {

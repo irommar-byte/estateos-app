@@ -96,6 +96,7 @@ export type RoomScanDraftAssets = {
 export type PropertyRoomScan = {
   id: string;
   name: string;
+  typeKey?: string;
   widthM: string;
   lengthM: string;
   heightM: string;

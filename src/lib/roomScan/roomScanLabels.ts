@@ -3,13 +3,17 @@ import type { RoomScanObjectCategory } from '../../types/roomScan';
 
 const ROOM_TYPE_KEYS = new Set([
   'livingRoom',
+  'livingRoomKitchenette',
   'bedroom',
+  'room',
   'bathroom',
+  'wc',
   'kitchen',
   'diningRoom',
   'office',
   'hallway',
   'closet',
+  'storageUnit',
   'laundry',
   'garage',
   'balcony',
@@ -92,23 +96,8 @@ export function getRoomScanObjectIcon(category: RoomScanObjectCategory): string 
   }
 }
 
-/**
- * Heurystyka: kuchenka / piekarnik / zmywarka / lodówka → kuchnia itd.
- */
-export function inferRoomTypeFromObjects(categories: RoomScanObjectCategory[]): string {
-  const set = new Set(categories);
-  if (set.has('stove') || set.has('oven') || set.has('dishwasher') || set.has('refrigerator')) {
-    return 'kitchen';
-  }
-  if (set.has('toilet') || set.has('bathtub')) return 'bathroom';
-  if (set.has('washerDryer')) return 'laundry';
-  if (set.has('bed')) return 'bedroom';
-  if (set.has('sofa') || set.has('television') || set.has('fireplace')) return 'livingRoom';
-  if (set.has('table') && set.has('chair')) return 'diningRoom';
-  if (set.has('sink') && !set.has('stove')) return 'bathroom';
-  if (set.has('storage')) return 'closet';
-  return 'unspecified';
-}
+import { inferRoomTypeFromObjects } from './roomScanClassify';
+export { inferRoomTypeFromObjects } from './roomScanClassify';
 
 export function formatRoomScanRoomCount(count: number): string {
   const locale = getAppLocale();

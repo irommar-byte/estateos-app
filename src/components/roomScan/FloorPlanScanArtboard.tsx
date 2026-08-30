@@ -300,6 +300,7 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
           ))}
 
           {mappedObjects.map((obj) => {
+            const fontSize = obj.glyph.length > 4 ? (forExport ? 7 : 5.5) : forExport ? 8 : 6.5;
             return (
               <G key={obj.id} transform={`rotate(${obj.rotationDeg} ${obj.x} ${obj.y})`}>
                 <Rect
@@ -316,7 +317,7 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                   x={obj.x}
                   y={obj.y + 3}
                   fill="#0f172a"
-                  fontSize={forExport ? 8 : 6.5}
+                  fontSize={fontSize}
                   fontWeight="800"
                   textAnchor="middle"
                 >
@@ -327,18 +328,10 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
           })}
 
           {mappedSections.map((section) => {
-            const hasDimensions = Boolean(section.widthM && section.lengthM);
-            const lines = [
-              section.label,
-              section.areaSqM ? `${section.areaSqM} m²` : null,
-              hasDimensions ? `${section.widthM?.toFixed(2)} × ${section.lengthM?.toFixed(2)} m` : null,
-              section.ceilingHeightM
-                ? t('addOffer.step5.roomScan.ceilingShort', { height: section.ceilingHeightM.toFixed(2) })
-                : null,
-            ].filter(Boolean) as string[];
-            const lineH = forExport ? 14 : 12;
-            const boxH = Math.max(36, lines.length * lineH + 16);
-            const boxW = 128;
+            const lines = [section.label, section.areaSqM ? `${section.areaSqM} m²` : null].filter(Boolean) as string[];
+            const lineH = forExport ? 12 : 10;
+            const boxH = Math.max(28, lines.length * lineH + 10);
+            const boxW = Math.min(108, Math.max(64, section.label.length * 7 + 16));
             return (
               <G key={`${section.id}-label`}>
                 <Rect
@@ -346,18 +339,18 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                   y={section.y - boxH / 2}
                   width={boxW}
                   height={boxH}
-                  rx={12}
-                  fill="rgba(255,255,255,0.94)"
-                  stroke="rgba(14,165,233,0.35)"
-                  strokeWidth={1}
+                  rx={8}
+                  fill="rgba(255,255,255,0.82)"
+                  stroke="rgba(14,165,233,0.28)"
+                  strokeWidth={0.8}
                 />
                 {lines.map((line, i) => (
                   <SvgText
                     key={`${section.id}-l-${i}`}
                     x={section.x}
-                    y={section.y - (lines.length - 1) * (lineH / 2) + i * lineH + 4}
-                    fill={i === 0 ? '#0f172a' : i === lines.length - 1 && section.ceilingHeightM ? '#0369a1' : '#334155'}
-                    fontSize={i === 0 ? (forExport ? 12 : 10) : forExport ? 9 : 8}
+                    y={section.y - (lines.length - 1) * (lineH / 2) + i * lineH + 3}
+                    fill={i === 0 ? '#0f172a' : '#0369a1'}
+                    fontSize={i === 0 ? (forExport ? 10 : 8) : forExport ? 8 : 7}
                     fontWeight={i === 0 ? '800' : '700'}
                     textAnchor="middle"
                   >
