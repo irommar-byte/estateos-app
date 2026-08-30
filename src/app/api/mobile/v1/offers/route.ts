@@ -40,8 +40,6 @@ import { shapeOfferForMobileCatalog } from '@/lib/mobileOfferCatalogEnrich';
 import {
   buildCatalogEtag,
   catalogJsonResponse,
-  catalogNotModifiedResponse,
-  etagMatches,
   isCatalogCacheFresh,
   readMobileCatalogCache,
   writeMobileCatalogCache,
@@ -94,14 +92,12 @@ export async function GET(req: Request) {
   const catalogOnly = searchParams.get('catalog') === '1' || searchParams.get('catalog') === 'true';
   const userId = searchParams.get('userId');
   const isPublicCatalog = catalogOnly && !userId && !includeAll;
-  const ifNoneMatch = req.headers.get('if-none-match') || req.headers.get('x-catalog-etag');
 
   if (isPublicCatalog) {
     const cached = readMobileCatalogCache();
     if (cached && isCatalogCacheFresh(cached)) {
-      if (ifNoneMatch && etagMatches(ifNoneMatch, cached.etag)) {
-        return catalogNotModifiedResponse(cached.etag);
-      }
+      // Always return the body. 304 left TestFlight with an expired local cache
+      // and an empty market grid while Intelligence still had cards.
       return catalogJsonResponse(cached.body, cached.etag);
     }
   }
@@ -164,9 +160,6 @@ export async function GET(req: Request) {
       const etag = buildCatalogEtag(normalizedOffers);
       const body = JSON.stringify({ success: true, offers: normalizedOffers });
       writeMobileCatalogCache(etag, body);
-      if (ifNoneMatch && etagMatches(ifNoneMatch, etag)) {
-        return catalogNotModifiedResponse(etag);
-      }
       return catalogJsonResponse(body, etag);
     }
 
