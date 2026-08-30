@@ -19,6 +19,7 @@ enum SplashAnimationTimeline {
 
     static let breatheStartMs: Double = 2400
     static let bootstrapCapMs: Double = 8000
+    static let catalogReadyCapMs: Double = 20000
     static let doorSoundVolume: Float = 0.24
 
     static let line1 = "TWÓJ OSOBISTY RADAR"

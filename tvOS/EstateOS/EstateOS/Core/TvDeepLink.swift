@@ -29,9 +29,7 @@ enum TvDeepLink {
     }
 
     static func opensImmersive(from url: URL) -> Bool {
-        if queryValue(url, key: "immersive") == "1" { return true }
-        let host = String(url.host ?? "").lowercased()
-        return host == "browse24h" || host == "browsecars"
+        queryValue(url, key: "immersive") == "1"
     }
 
     private static func queryValue(_ url: URL, key: String) -> String? {

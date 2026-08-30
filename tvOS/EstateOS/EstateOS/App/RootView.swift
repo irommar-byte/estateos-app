@@ -2,15 +2,17 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
+    @Namespace private var heroNamespace
+    @EnvironmentObject private var heroTransition: HeroTransitionCoordinator
     @State private var splashFinished = false
     @State private var bootstrapTimedOut = false
 
     private var showHome: Bool {
-        splashFinished && !app.isBootstrapping
+        splashFinished
     }
 
     private var showExtendedHold: Bool {
-        splashFinished && app.isBootstrapping && bootstrapTimedOut
+        false
     }
 
     var body: some View {
@@ -26,6 +28,7 @@ struct RootView: View {
                 AppleSplashView {
                     TvLaunchMetrics.recordSplashEnd()
                     splashFinished = true
+                    Task { await app.fulfillPendingDeepLink() }
                 }
                 .environmentObject(app)
                 .id("estateos-splash")
@@ -47,6 +50,24 @@ struct RootView: View {
         .fullScreenCover(isPresented: $app.isLoginSheetPresented) {
             LoginView()
                 .environmentObject(app)
+        }
+        .fullScreenCover(item: $app.selectedOffer) { offer in
+            OfferDetailView(
+                offer: offer,
+                heroNamespace: heroNamespace,
+                heroTransitionID: HeroTransitionID.home(offer.id).stringValue
+            )
+            .environmentObject(app)
+            .environmentObject(heroTransition)
+        }
+        .fullScreenCover(item: $app.selectedCar) { car in
+            CarDetailView(
+                car: car,
+                heroNamespace: heroNamespace,
+                heroTransitionID: HeroTransitionID.car(car.id).stringValue
+            )
+            .environmentObject(app)
+            .environmentObject(heroTransition)
         }
         .fullScreenCover(item: $app.immersiveBrowse, onDismiss: app.closeImmersiveBrowse) { context in
             switch context.kind {

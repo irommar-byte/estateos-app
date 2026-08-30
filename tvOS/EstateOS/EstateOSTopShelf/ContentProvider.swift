@@ -246,12 +246,12 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     item.title = card.title
     item.imageShape = .hdtv
 
-    if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .sectioned) {
-      item.setImageURL(fileURL, for: .screenScale1x)
-      item.setImageURL(fileURL, for: .screenScale2x)
-    } else if let remote {
+    if let remote {
       item.setImageURL(remote, for: .screenScale1x)
       item.setImageURL(remote, for: .screenScale2x)
+    } else if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .sectioned) {
+      item.setImageURL(fileURL, for: .screenScale1x)
+      item.setImageURL(fileURL, for: .screenScale2x)
     } else {
       return nil
     }
@@ -482,8 +482,10 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   }
 
   private func attachActions(to item: TVTopShelfItem, offerId: Int) {
-    guard let actionURL = immersiveDeepLink(for: offerId) else { return }
-    item.displayAction = TVTopShelfAction(url: actionURL)
+    // Sectioned tiles must open that listing — not the 24h immersive reel.
+    if let actionURL = offerDetailDeepLink(for: offerId) {
+      item.displayAction = TVTopShelfAction(url: actionURL)
+    }
   }
 
   private func attachCarouselActions(to item: TVTopShelfCarouselItem, offerId: Int) {

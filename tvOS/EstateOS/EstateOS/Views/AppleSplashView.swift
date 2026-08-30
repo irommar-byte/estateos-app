@@ -298,7 +298,6 @@ struct AppleSplashView: View {
         }
 
         let flyDelay = tl.flyOutStartMs(taglineLength: tagLen)
-        let doorAt = tl.doorOpenAtMs(taglineLength: tagLen)
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(flyDelay * 1_000_000))
             guard !skipped else { return }
@@ -309,12 +308,15 @@ struct AppleSplashView: View {
                 lowerLift = size.height * 0.52
             }
 
-            let soundLead = max(0, doorAt - tl.doorSoundLeadMs - flyDelay)
-            try? await Task.sleep(nanoseconds: UInt64(soundLead * 1_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(tl.flyOutMs * 1_000_000))
             guard !skipped else { return }
-            playDoorSound()
 
-            try? await Task.sleep(nanoseconds: UInt64((doorAt - flyDelay - soundLead) * 1_000_000))
+            // Keep doors closed until the catalog is on screen — never reveal an empty showroom.
+            await waitUntilCatalogReady()
+            guard !skipped else { return }
+
+            playDoorSound()
+            try? await Task.sleep(nanoseconds: UInt64(tl.doorSoundLeadMs * 1_000_000))
             guard !skipped else { return }
 
             withAnimation(.linear(duration: 0.075)) { doorEdgeGlow = 1 }
@@ -332,15 +334,18 @@ struct AppleSplashView: View {
             guard !skipped else { return }
             animationFinished = true
             SplashAnimationTimeline.persistNextTaglineSlot(nextSlot)
-            await waitForBootstrapOrCap()
             finishSplash(nextSlot: nextSlot)
         }
     }
 
-    private func waitForBootstrapOrCap() async {
-        let cap = SplashAnimationTimeline.bootstrapCapMs
+    private var catalogReady: Bool {
+        !app.offers.isEmpty || !app.cars.isEmpty || !app.isBootstrapping
+    }
+
+    private func waitUntilCatalogReady() async {
+        let cap = SplashAnimationTimeline.catalogReadyCapMs
         let start = Date()
-        while app.isBootstrapping && !skipped {
+        while !catalogReady && !skipped {
             if Date().timeIntervalSince(start) * 1000 >= cap { break }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
@@ -348,16 +353,6 @@ struct AppleSplashView: View {
 
     private func finishSplash(nextSlot: Int) {
         guard !didFinish else { return }
-        let minMs = SplashAnimationTimeline.totalAnimationMs(taglineLength: taglineLength)
-        let elapsedMs = Date().timeIntervalSince(sequenceStart) * 1000
-        if elapsedMs + 20 < minMs {
-            let wait = UInt64((minMs - elapsedMs) * 1_000_000)
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: wait)
-                finishSplash(nextSlot: nextSlot)
-            }
-            return
-        }
         didFinish = true
         SplashAnimationTimeline.persistNextTaglineSlot(nextSlot)
         onFinish()

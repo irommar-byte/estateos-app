@@ -48,6 +48,7 @@ final class AppModel: ObservableObject {
     private var locationBag = Set<AnyCancellable>()
     private var pendingDeepLinkOfferId: Int?
     private var pendingDeepLinkCarId: Int?
+    private var pendingDeepLinkURL: URL?
 
     func bootstrap() async {
         defer { isBootstrapping = false; TvLaunchMetrics.recordBootstrapEnd() }
@@ -68,6 +69,7 @@ final class AppModel: ObservableObject {
 #if canImport(TVServices)
         TVTopShelfContentProvider.topShelfContentDidChange()
 #endif
+        await fulfillPendingDeepLink()
         if let saved = SessionStore.load() {
             api.setToken(saved.token)
             session = saved
@@ -819,67 +821,58 @@ final class AppModel: ObservableObject {
     }
 
     func handleDeepLink(_ url: URL) {
-        if let carId = TvDeepLink.carId(from: url) {
-            handleCarDeepLink(carId: carId, immersive: TvDeepLink.opensImmersive(from: url))
-            return
-        }
-        guard let offerId = TvDeepLink.offerId(from: url) else { return }
-        let immersive = TvDeepLink.opensImmersive(from: url)
-
-        func resolve() {
-            if immersive {
-                let pool = offersLast24Hours
-                if let index = pool.firstIndex(where: { $0.id == offerId }) {
-                    pendingDeepLinkOfferId = nil
-                    openImmersiveBrowse(at: index, from: pool)
-                } else if let offer = offers.first(where: { $0.id == offerId }) {
-                    pendingDeepLinkOfferId = nil
-                    openImmersiveBrowse(at: 0, from: [offer])
-                }
-            } else if let offer = offers.first(where: { $0.id == offerId }) {
-                pendingDeepLinkOfferId = nil
-                openDetail(offer)
-            }
-        }
-
-        if offers.isEmpty {
-            pendingDeepLinkOfferId = offerId
-            pendingDeepLinkImmersive = immersive
-            Task {
-                try? await refreshOffers()
-                consumePendingDeepLink()
-            }
-        } else {
-            resolve()
-        }
+        pendingDeepLinkURL = url
+        Task { await fulfillPendingDeepLink() }
     }
 
-    private func handleCarDeepLink(carId: Int, immersive: Bool) {
-        func resolve() {
+    func fulfillPendingDeepLink() async {
+        guard let url = pendingDeepLinkURL else { return }
+        let immersive = TvDeepLink.opensImmersive(from: url)
+
+        if let carId = TvDeepLink.carId(from: url) {
+            var car = cars.first(where: { $0.id == carId })
+            if car == nil {
+                car = try? await api.carDetail(id: carId, fallback: cars)
+            }
+            guard let car else { return }
+            pendingDeepLinkURL = nil
+            pendingDeepLinkCarId = nil
+            setCatalogBrand(.car)
             if immersive {
                 let pool = carsLast24Hours.isEmpty ? cars : carsLast24Hours
-                if let index = pool.firstIndex(where: { $0.id == carId }) {
-                    pendingDeepLinkCarId = nil
+                if let index = pool.firstIndex(where: { $0.id == car.id }) {
                     openImmersiveCarBrowse(at: index, from: pool)
-                } else if let car = cars.first(where: { $0.id == carId }) {
-                    pendingDeepLinkCarId = nil
+                } else {
                     openImmersiveCarBrowse(at: 0, from: [car])
                 }
-            } else if let car = cars.first(where: { $0.id == carId }) {
-                pendingDeepLinkCarId = nil
+            } else {
                 openCarDetail(car)
             }
+            return
         }
 
-        if cars.isEmpty {
-            pendingDeepLinkCarId = carId
-            pendingDeepLinkCarImmersive = immersive
-            Task {
-                try? await refreshCars()
-                consumePendingDeepLink()
+        guard let offerId = TvDeepLink.offerId(from: url) else {
+            pendingDeepLinkURL = nil
+            return
+        }
+
+        var offer = offers.first(where: { $0.id == offerId })
+        if offer == nil {
+            offer = try? await api.offerDetail(id: offerId, fallbackOffers: offers)
+        }
+        guard let offer else { return }
+        pendingDeepLinkURL = nil
+        pendingDeepLinkOfferId = nil
+        setCatalogBrand(.home)
+        if immersive {
+            let pool = offersLast24Hours
+            if let index = pool.firstIndex(where: { $0.id == offer.id }) {
+                openImmersiveBrowse(at: index, from: pool)
+            } else {
+                openImmersiveBrowse(at: 0, from: [offer])
             }
         } else {
-            resolve()
+            openDetail(offer)
         }
     }
 
@@ -887,45 +880,7 @@ final class AppModel: ObservableObject {
     private var pendingDeepLinkCarImmersive = false
 
     private func consumePendingDeepLink() {
-        if let carId = pendingDeepLinkCarId {
-            let immersive = pendingDeepLinkCarImmersive
-            pendingDeepLinkCarId = nil
-            pendingDeepLinkCarImmersive = false
-            if immersive {
-                let pool = carsLast24Hours.isEmpty ? cars : carsLast24Hours
-                if let index = pool.firstIndex(where: { $0.id == carId }) {
-                    openImmersiveCarBrowse(at: index, from: pool)
-                    return
-                }
-                if let car = cars.first(where: { $0.id == carId }) {
-                    openImmersiveCarBrowse(at: 0, from: [car])
-                    return
-                }
-            } else if let car = cars.first(where: { $0.id == carId }) {
-                openCarDetail(car)
-                return
-            }
-        }
-
-        guard let offerId = pendingDeepLinkOfferId else { return }
-        let immersive = pendingDeepLinkImmersive
-        pendingDeepLinkOfferId = nil
-        pendingDeepLinkImmersive = false
-
-        if immersive {
-            let pool = offersLast24Hours
-            if let index = pool.firstIndex(where: { $0.id == offerId }) {
-                openImmersiveBrowse(at: index, from: pool)
-                return
-            }
-        }
-        if let offer = offers.first(where: { $0.id == offerId }) {
-            if immersive {
-                openImmersiveBrowse(at: 0, from: [offer])
-            } else {
-                openDetail(offer)
-            }
-        }
+        Task { await fulfillPendingDeepLink() }
     }
 
     func openLoginSheet() {

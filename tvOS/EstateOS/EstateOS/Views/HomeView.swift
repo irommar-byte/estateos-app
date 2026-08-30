@@ -40,24 +40,6 @@ struct HomeView: View {
             .padding(.horizontal, EOSTvSpacing.screenHorizontal)
             .padding(.vertical, EOSTvSpacing.screenVertical)
         }
-        .fullScreenCover(item: $app.selectedOffer) { offer in
-            OfferDetailView(
-                offer: offer,
-                heroNamespace: heroNamespace,
-                heroTransitionID: HeroTransitionID.home(offer.id).stringValue
-            )
-            .environmentObject(app)
-            .environmentObject(heroTransition)
-        }
-        .fullScreenCover(item: $app.selectedCar) { car in
-            CarDetailView(
-                car: car,
-                heroNamespace: heroNamespace,
-                heroTransitionID: HeroTransitionID.car(car.id).stringValue
-            )
-            .environmentObject(app)
-            .environmentObject(heroTransition)
-        }
         .fullScreenCover(isPresented: $showFilterSheet, onDismiss: {
             chromeFocus = .moreFilters
         }) {
@@ -74,6 +56,7 @@ struct HomeView: View {
                 chromeFocus = .tab(tab)
             }
             if tab == .account { accountContentFocus = true }
+            Task { await app.fulfillPendingDeepLink() }
         }
         .onChange(of: tab) { _, newTab in
             switch newTab {
