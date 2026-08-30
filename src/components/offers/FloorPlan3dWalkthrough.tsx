@@ -4,13 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Box, Smartphone } from 'lucide-react';
 import { resolvePublicAssetUrl } from '@/lib/roomScan/parseFloorPlanScanMeta';
 import type { OfferPageCopy } from '@/content/offerPageCopy';
+import type { FloorPlanScanMeta } from '@/types/roomScan';
+import FloorPlan3dOrbit from '@/components/offers/FloorPlan3dOrbit';
 
 type FloorPlan3dWalkthroughProps = {
-  modelUrl: string;
+  modelUrl?: string;
   copy: OfferPageCopy['floorPlanWalkthrough'];
   compact?: boolean;
+  scanMeta?: FloorPlanScanMeta | null;
 };
-
 
 function isIosSafari(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -20,12 +22,21 @@ function isIosSafari(): boolean {
   return isAppleMobile && isSafari;
 }
 
-export default function FloorPlan3dWalkthrough({ modelUrl, copy, compact = false }: FloorPlan3dWalkthroughProps) {
+export default function FloorPlan3dWalkthrough({
+  modelUrl = '',
+  copy,
+  compact = false,
+  scanMeta = null,
+}: FloorPlan3dWalkthroughProps) {
   const [ready, setReady] = useState(false);
   const absoluteUrl = useMemo(() => resolvePublicAssetUrl(modelUrl), [modelUrl]);
-  const showArLink = isIosSafari();
+  const showArLink = isIosSafari() && Boolean(absoluteUrl);
+  const hasUsdz = /\.usdz($|\?)/i.test(absoluteUrl);
+  const canOrbitFromScan = Boolean(scanMeta?.walls?.length);
+  const useGltfViewer = Boolean(absoluteUrl) && !hasUsdz;
 
   useEffect(() => {
+    if (!useGltfViewer) return;
     let cancelled = false;
     import('@google/model-viewer')
       .then(() => {
@@ -37,19 +48,20 @@ export default function FloorPlan3dWalkthrough({ modelUrl, copy, compact = false
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [useGltfViewer]);
 
-  if (!absoluteUrl) return null;
+  if (!absoluteUrl && !canOrbitFromScan) return null;
 
   if (compact) {
     return (
       <div className="mt-3 space-y-2">
+        {canOrbitFromScan && scanMeta ? (
+          <div className="overflow-hidden rounded-2xl border border-sky-400/20">
+            <FloorPlan3dOrbit meta={scanMeta} className="block h-56 w-full cursor-grab touch-none bg-[#05070c]" />
+          </div>
+        ) : null}
         {showArLink ? (
-          <a
-            rel="ar"
-            href={absoluteUrl}
-            className="eos-btn eos-btn--car eos-btn--sm"
-          >
+          <a rel="ar" href={absoluteUrl} className="eos-btn eos-btn--car eos-btn--sm">
             <Smartphone size={14} />
             {copy.openAr}
           </a>
@@ -66,11 +78,7 @@ export default function FloorPlan3dWalkthrough({ modelUrl, copy, compact = false
           <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">{copy.subtitle}</p>
         </div>
         {showArLink ? (
-          <a
-            rel="ar"
-            href={absoluteUrl}
-            className="eos-btn eos-btn--car eos-btn--sm"
-          >
+          <a rel="ar" href={absoluteUrl} className="eos-btn eos-btn--car eos-btn--sm">
             <Smartphone size={13} />
             {copy.openAr}
           </a>
@@ -78,14 +86,17 @@ export default function FloorPlan3dWalkthrough({ modelUrl, copy, compact = false
       </div>
 
       <div className="overflow-hidden rounded-[1.25rem] border border-sky-400/20 bg-[#050505]">
-        {ready ? (
+        {canOrbitFromScan && scanMeta ? (
+          <FloorPlan3dOrbit meta={scanMeta} />
+        ) : useGltfViewer && ready ? (
           <model-viewer
             src={absoluteUrl}
-            ios-src={absoluteUrl}
+            ios-src={hasUsdz ? absoluteUrl : undefined}
             ar
             ar-modes="quick-look webxr scene-viewer"
             camera-controls
-            touch-action="pan-y"
+            auto-rotate
+            touch-action="none"
             loading="lazy"
             reveal="auto"
             interaction-prompt="auto"
@@ -94,18 +105,28 @@ export default function FloorPlan3dWalkthrough({ modelUrl, copy, compact = false
             alt={copy.title}
             className="block h-[min(420px,58vw)] w-full bg-[#0a0a0a]"
           />
-        ) : (
+        ) : useGltfViewer ? (
           <div className="flex h-[min(320px,50vw)] flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="flex size-11 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-300">
               <Box size={20} />
             </div>
             <p className="text-sm text-[var(--eos-muted)]">{copy.loading}</p>
           </div>
+        ) : (
+          <div className="flex h-[min(220px,40vw)] flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="text-sm text-[var(--eos-muted)]">{copy.desktopHint}</p>
+            {showArLink ? (
+              <a rel="ar" href={absoluteUrl} className="eos-btn eos-btn--car eos-btn--sm">
+                <Smartphone size={13} />
+                {copy.openAr}
+              </a>
+            ) : null}
+          </div>
         )}
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-[var(--eos-muted)]">
-        {showArLink ? copy.iosHint : copy.desktopHint}
+        {showArLink ? copy.iosHint : 'Przeciągnij model, aby obejrzeć mieszkanie z każdej strony.'}
       </p>
     </div>
   );

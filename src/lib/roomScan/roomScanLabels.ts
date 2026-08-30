@@ -2,13 +2,17 @@ import type { Locale } from '@/i18n/config';
 
 const ROOM_TYPE_KEYS = new Set([
   'livingRoom',
+  'livingRoomKitchenette',
   'bedroom',
+  'room',
   'bathroom',
+  'wc',
   'kitchen',
   'diningRoom',
   'office',
   'hallway',
   'closet',
+  'storageUnit',
   'laundry',
   'garage',
   'balcony',
@@ -18,27 +22,35 @@ const ROOM_TYPE_KEYS = new Set([
 const ROOM_LABELS: Record<Locale, Record<string, string>> = {
   pl: {
     livingRoom: 'Salon',
+    livingRoomKitchenette: 'Salon z aneksem kuchennym',
     bedroom: 'Sypialnia',
+    room: 'Pokój',
     bathroom: 'Łazienka',
+    wc: 'WC',
     kitchen: 'Kuchnia',
     diningRoom: 'Jadalnia',
-    office: 'Biuro',
-    hallway: 'Korytarz',
+    office: 'Gabinet',
+    hallway: 'Przedpokój',
     closet: 'Garderoba',
-    laundry: 'Пральня',
+    storageUnit: 'Komórka lokatorska',
+    laundry: 'Pralnia',
     garage: 'Garaż',
     balcony: 'Balkon',
     unspecified: 'Pomieszczenie',
   },
   en: {
     livingRoom: 'Living room',
+    livingRoomKitchenette: 'Living room with kitchenette',
     bedroom: 'Bedroom',
+    room: 'Room',
     bathroom: 'Bathroom',
+    wc: 'WC',
     kitchen: 'Kitchen',
     diningRoom: 'Dining room',
     office: 'Office',
     hallway: 'Hallway',
     closet: 'Closet',
+    storageUnit: 'Storage',
     laundry: 'Laundry',
     garage: 'Garage',
     balcony: 'Balcony',
@@ -46,13 +58,17 @@ const ROOM_LABELS: Record<Locale, Record<string, string>> = {
   },
   uk: {
     livingRoom: 'Вітальня',
+    livingRoomKitchenette: 'Вітальня з кухнею',
     bedroom: 'Спальня',
+    room: 'Кімната',
     bathroom: 'Ванна',
+    wc: 'WC',
     kitchen: 'Кухня',
     diningRoom: 'Їдальня',
     office: 'Кабінет',
     hallway: 'Коридор',
     closet: 'Гардероб',
+    storageUnit: 'Комора',
     laundry: 'Пральня',
     garage: 'Гараж',
     balcony: 'Балкон',
@@ -82,10 +98,12 @@ function interpolate(template: string, count: number): string {
   return template.replace('{{count}}', String(count));
 }
 
-export function getRoomScanSectionLabel(key: string, locale: Locale): string {
+export function getRoomScanSectionLabel(key: string, locale: Locale = 'pl'): string {
   const normalized = ROOM_TYPE_KEYS.has(key) ? key : 'unspecified';
   return ROOM_LABELS[locale][normalized] || ROOM_LABELS.en[normalized];
 }
+
+export { inferRoomTypeFromObjects } from './roomScanClassify';
 
 export function formatRoomScanRoomCount(count: number, locale: Locale): string {
   const templates = ROOM_COUNT[locale] || ROOM_COUNT.en;

@@ -171,56 +171,33 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
             stroke={obj.stroke}
             strokeWidth={1.3}
           />
-          <text x={obj.x} y={obj.y + 3} fill="#f8fafc" fontSize={6.5} fontWeight={800} textAnchor="middle">
+          <text x={obj.x} y={obj.y + 3} fill="#f8fafc" fontSize={obj.glyph.length > 5 ? 5.5 : 6.5} fontWeight={800} textAnchor="middle">
             {obj.glyph}
           </text>
         </g>
       ))}
-      {mappedObjects.map((obj) => (
-        <text
-          key={`${obj.id}-label`}
-          x={obj.x}
-          y={obj.y + obj.depthPx / 2 + 11}
-          fill="#94a3b8"
-          fontSize={6.5}
-          fontWeight={600}
-          textAnchor="middle"
-        >
-          {obj.label}
-        </text>
-      ))}
 
       {mappedSections.map((section) => {
-        const hasDimensions = Boolean(section.widthM && section.lengthM);
-        const labelH = section.ceilingHeightM ? (hasDimensions ? 62 : 50) : hasDimensions ? 50 : section.areaSqM ? 40 : 24;
+        const labelH = section.areaSqM ? 32 : 22;
+        const labelW = Math.min(120, Math.max(70, section.label.length * 6.4 + 18));
         return (
           <g key={`${section.id}-label`}>
             <rect
-              x={section.x - 58}
+              x={section.x - labelW / 2}
               y={section.y - labelH / 2}
-              width={116}
+              width={labelW}
               height={labelH}
-              rx={12}
-              fill="rgba(15,23,42,0.88)"
-              stroke="rgba(56,189,248,0.35)"
-              strokeWidth={1}
+              rx={8}
+              fill="rgba(15,23,42,0.72)"
+              stroke="rgba(56,189,248,0.28)"
+              strokeWidth={0.8}
             />
-            <text x={section.x} y={section.y - (section.ceilingHeightM || hasDimensions ? 10 : 0)} fill="#f8fafc" fontSize={10} fontWeight={800} textAnchor="middle">
+            <text x={section.x} y={section.areaSqM ? section.y - 2 : section.y + 3} fill="#f8fafc" fontSize={9} fontWeight={800} textAnchor="middle">
               {section.label}
             </text>
             {section.areaSqM ? (
-              <text x={section.x} y={section.y + 8} fill="#94a3b8" fontSize={8} fontWeight={600} textAnchor="middle">
+              <text x={section.x} y={section.y + 11} fill="#7dd3fc" fontSize={7.5} fontWeight={700} textAnchor="middle">
                 {section.areaSqM} m²
-              </text>
-            ) : null}
-            {hasDimensions ? (
-              <text x={section.x} y={section.y + 22} fill="#cbd5e1" fontSize={7.5} fontWeight={700} textAnchor="middle">
-                {section.widthM?.toFixed(2)} × {section.lengthM?.toFixed(2)} m
-              </text>
-            ) : null}
-            {section.ceilingHeightM ? (
-              <text x={section.x} y={section.y + (hasDimensions ? 34 : 22)} fill="#7dd3fc" fontSize={8} fontWeight={700} textAnchor="middle">
-                H {section.ceilingHeightM.toFixed(2)} m
               </text>
             ) : null}
           </g>

@@ -174,9 +174,14 @@ export default function OfferFloorPlanPanel({
           </button>
         </div>
         {furnitureRow ? <div className="px-4 pb-3">{furnitureRow}</div> : null}
-        {active3d ? (
+        {active3d || hasInteractive ? (
           <div className="border-t border-[var(--eos-border)] px-4 pb-4">
-            <FloorPlan3dWalkthrough modelUrl={active3d} copy={copy.floorPlanWalkthrough} compact />
+            <FloorPlan3dWalkthrough
+              modelUrl={active3d}
+              scanMeta={activeMeta}
+              copy={copy.floorPlanWalkthrough}
+              compact
+            />
           </div>
         ) : null}
       </div>
@@ -266,9 +271,10 @@ export default function OfferFloorPlanPanel({
         </div>
       ) : null}
 
-      {active3d ? (
+      {active3d || hasInteractive ? (
         <FloorPlan3dWalkthrough
           modelUrl={active3d}
+          scanMeta={activeMeta}
           copy={{
             ...copy.floorPlanWalkthrough,
             title: selectedRoom ? copy.floorPlanScan.roomWalkthrough : copy.floorPlanWalkthrough.title,
