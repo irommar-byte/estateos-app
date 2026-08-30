@@ -3,6 +3,10 @@ export type LinkedOfferSnapshot = {
   status?: string | null;
   officeReviewStatus?: string | null;
   title?: string | null;
+  landRegistryNumber?: string | null;
+  apartmentNumber?: string | null;
+  isLegalSafeVerified?: boolean | null;
+  legalCheckStatus?: string | null;
 };
 
 export type OfficeOfferUiStatus = 'draft' | 'review' | 'rejected' | 'active';

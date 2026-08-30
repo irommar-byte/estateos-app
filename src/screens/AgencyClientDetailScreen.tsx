@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,6 +31,7 @@ import AcquisitionDatePickerModal from '../components/agency/AcquisitionDatePick
 import AcquisitionAddressMapField from '../components/agency/AcquisitionAddressMapField';
 import AcquisitionRoomScanner, { type RoomItem } from '../components/agency/AcquisitionRoomScanner';
 import AcquisitionKwField from '../components/agency/AcquisitionKwField';
+import EkwBookViewerModal from '../components/admin/EkwBookViewerModal';
 import MultiSelectChipGroup from '../components/agency/MultiSelectChipGroup';
 import SellerPropertyTypePicker, {
   sellerPropertyTypeLabel,
@@ -99,6 +100,7 @@ import {
   type LinkedOfferSnapshot,
 } from '../lib/officeOfferStatusUi';
 import { fetchOfficeReviewCapability, postOfficeReviewAction } from '../services/agencyCompanyService';
+import { LAND_REGISTRY_REGEX } from '../utils/landRegistry';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -398,6 +400,7 @@ export default function AgencyClientDetailScreen() {
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [showOfferErrors, setShowOfferErrors] = useState(false);
   const [linkedOffer, setLinkedOffer] = useState<LinkedOfferSnapshot | null>(null);
+  const [ekwViewerKw, setEkwViewerKw] = useState<string | null>(null);
   const [canManageOfficeOffers, setCanManageOfficeOffers] = useState(false);
   const [offerActionBusy, setOfferActionBusy] = useState(false);
 
@@ -591,6 +594,25 @@ export default function AgencyClientDetailScreen() {
   signedRef.current = signed;
   const offerUiStatus = resolveOfficeOfferUiStatus(linkedOffer);
   const canSubmitLinkedOffer = canSubmitOfferForOfficeActivation(linkedOffer);
+  const clientKwNumbers = useMemo(() => {
+    const seen = new Set<string>();
+    const rows: { kw: string; verified: boolean }[] = [];
+    const push = (raw: unknown, verified: boolean) => {
+      const kw = String(raw || '').trim().toUpperCase();
+      if (!kw || !LAND_REGISTRY_REGEX.test(kw) || seen.has(kw)) return;
+      seen.add(kw);
+      rows.push({ kw, verified });
+    };
+    const fromAcquisition = LAND_REGISTRY_REGEX.test(
+      String(form?.ownership?.landRegisterNumber || '').trim().toUpperCase(),
+    );
+    const offerVerified =
+      linkedOffer?.isLegalSafeVerified === true ||
+      String(linkedOffer?.legalCheckStatus || '').toUpperCase() === 'VERIFIED';
+    push(form?.ownership?.landRegisterNumber, fromAcquisition || offerVerified);
+    push(linkedOffer?.landRegistryNumber, fromAcquisition || offerVerified);
+    return rows;
+  }, [form?.ownership?.landRegisterNumber, linkedOffer]);
 
   const submitLinkedOfferActivation = async () => {
     if (!token || !linkedOffer?.id) return;
@@ -1338,6 +1360,31 @@ export default function AgencyClientDetailScreen() {
                             </Text>
                           </View>
                         ) : null}
+                        {clientKwNumbers.map((item) => (
+                          <Pressable
+                            key={item.kw}
+                            onPress={() => setEkwViewerKw(item.kw)}
+                            hitSlop={8}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                          >
+                            <Ionicons
+                              name={item.verified ? 'shield-checkmark' : 'document-text-outline'}
+                              size={14}
+                              color={item.verified ? '#34C759' : colors.secondary}
+                            />
+                            <Text
+                              style={{
+                                color: item.verified ? colors.text : colors.secondary,
+                                fontSize: 13,
+                                fontWeight: '700',
+                                fontVariant: ['tabular-nums'],
+                              }}
+                            >
+                              KW {item.kw}
+                            </Text>
+                            <Ionicons name="open-outline" size={13} color="#007AFF" />
+                          </Pressable>
+                        ))}
                       </View>
                     </View>
                   </View>
@@ -1998,6 +2045,28 @@ export default function AgencyClientDetailScreen() {
                               {offerUiStatus.label}
                             </Text>
                           </View>
+                          {linkedOffer.landRegistryNumber ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                              <Ionicons
+                                name={
+                                  linkedOffer.isLegalSafeVerified ||
+                                  String(linkedOffer.legalCheckStatus || '').toUpperCase() === 'VERIFIED'
+                                    ? 'shield-checkmark'
+                                    : 'document-text-outline'
+                                }
+                                size={14}
+                                color={
+                                  linkedOffer.isLegalSafeVerified ||
+                                  String(linkedOffer.legalCheckStatus || '').toUpperCase() === 'VERIFIED'
+                                    ? '#34C759'
+                                    : colors.secondary
+                                }
+                              />
+                              <Text style={{ color: colors.secondary, fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+                                KW {linkedOffer.landRegistryNumber}
+                              </Text>
+                            </View>
+                          ) : null}
                           {canSubmitLinkedOffer ? (
                             <Pressable
                               disabled={offerActionBusy}
@@ -2849,6 +2918,17 @@ export default function AgencyClientDetailScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      <EkwBookViewerModal
+        visible={ekwViewerKw !== null}
+        landRegistryNumber={ekwViewerKw}
+        onClose={() => setEkwViewerKw(null)}
+        theme={{
+          background: colors.bg,
+          text: colors.text,
+          subtitle: colors.secondary,
+          glass: isDark ? 'dark' : 'light',
+        }}
+      />
     </View>
   );
 }

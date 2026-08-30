@@ -44,6 +44,12 @@ import {
   parseOfferImagesField,
 } from '@/lib/upload/deleteOfferImageArtifacts';
 
+function resolveDuplexFlag(body: Record<string, unknown>): boolean {
+  if (body.isDuplex !== undefined) return !!body.isDuplex;
+  if (body.isTwoLevel !== undefined) return !!body.isTwoLevel;
+  return false;
+}
+
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
   readonly statusCode = 400;
@@ -350,11 +356,13 @@ export async function createOffer(body: any) {
     apartmentNumber: body.apartmentNumber,
     landRegistryNumber: body.landRegistryNumber,
   });
+  const hasLegalVerificationSeed = Boolean(verificationMeta.landRegistryNumber);
+  const legalVerifiedByAgent = Boolean(body.legalVerifiedByAgent) && hasLegalVerificationSeed;
+  if (legalVerifiedByAgent) verificationMeta.status = 'VERIFIED';
   const descriptionWithVerification = attachVerificationMetaToDescription(
     String(body.description || ''),
     verificationMeta
   );
-  const hasLegalVerificationSeed = Boolean(verificationMeta.landRegistryNumber);
 
   let agentCommissionPercent: number | null | undefined = undefined;
   if (body.agentCommissionPercent !== undefined && body.agentCommissionPercent !== null) {
@@ -414,9 +422,11 @@ export async function createOffer(body: any) {
       floorPlanUrl: body.floorPlanUrl || null,
       landRegistryNumber: verificationMeta.landRegistryNumber || null,
       apartmentNumber: verificationMeta.apartmentNumber || null,
-      legalCheckStatus: hasLegalVerificationSeed ? 'PENDING' : 'NONE',
+      legalCheckStatus: legalVerifiedByAgent ? 'VERIFIED' : hasLegalVerificationSeed ? 'PENDING' : 'NONE',
       legalCheckSubmittedAt: hasLegalVerificationSeed ? new Date() : null,
-      isLegalSafeVerified: false,
+      legalCheckReviewedAt: legalVerifiedByAgent ? new Date() : null,
+      legalCheckReviewedBy: legalVerifiedByAgent ? Number(userId) : null,
+      isLegalSafeVerified: legalVerifiedByAgent,
 
       hasBalcony: !!body.hasBalcony,
       hasElevator: !!body.hasElevator,
@@ -424,7 +434,7 @@ export async function createOffer(body: any) {
       hasParking: !!body.hasParking,
       hasGarden: !!body.hasGarden,
       hasAirConditioning: !!body.hasAirConditioning,
-      isDuplex: !!body.isDuplex,
+      isDuplex: resolveDuplexFlag(body as Record<string, unknown>),
       isFurnished: !!body.isFurnished,
       heating: body.heating ? String(body.heating).trim() : null,
 
@@ -476,15 +486,18 @@ export async function createOffer(body: any) {
         data: {
           offerId: Number(created.id),
           requesterId: Number(userId),
-          status: 'PENDING',
+          status: legalVerifiedByAgent ? 'APPROVED' : 'PENDING',
           landRegistryNumber: verificationMeta.landRegistryNumber,
           apartmentNumber: verificationMeta.apartmentNumber || null,
+          note: legalVerifiedByAgent ? 'Zweryfikowane przez agenta przy pozyskaniu.' : null,
         },
       });
-      notifyAdminsLegalVerificationPending(
-        Number(created.id),
-        typeof created.title === 'string' ? created.title : null,
-      );
+      if (!legalVerifiedByAgent) {
+        notifyAdminsLegalVerificationPending(
+          Number(created.id),
+          typeof created.title === 'string' ? created.title : null,
+        );
+      }
     }
     return created;
   } catch (error) {
@@ -518,15 +531,18 @@ export async function createOffer(body: any) {
         data: {
           offerId: Number(fallbackCreated.id),
           requesterId: Number(userId),
-          status: 'PENDING',
+          status: legalVerifiedByAgent ? 'APPROVED' : 'PENDING',
           landRegistryNumber: verificationMeta.landRegistryNumber,
           apartmentNumber: verificationMeta.apartmentNumber || null,
+          note: legalVerifiedByAgent ? 'Zweryfikowane przez agenta przy pozyskaniu.' : null,
         },
       });
-      notifyAdminsLegalVerificationPending(
-        Number(fallbackCreated.id),
-        typeof fallbackCreated.title === 'string' ? fallbackCreated.title : null,
-      );
+      if (!legalVerifiedByAgent) {
+        notifyAdminsLegalVerificationPending(
+          Number(fallbackCreated.id),
+          typeof fallbackCreated.title === 'string' ? fallbackCreated.title : null,
+        );
+      }
     }
     return fallbackCreated;
   }
@@ -784,7 +800,9 @@ export async function updateOffer(body: any) {
       ...(body.hasParking !== undefined && { hasParking: !!body.hasParking }),
       ...(body.hasGarden !== undefined && { hasGarden: !!body.hasGarden }),
       ...(body.hasAirConditioning !== undefined && { hasAirConditioning: !!body.hasAirConditioning }),
-      ...(body.isDuplex !== undefined && { isDuplex: !!body.isDuplex }),
+      ...(body.isDuplex !== undefined || body.isTwoLevel !== undefined
+        ? { isDuplex: resolveDuplexFlag(body as Record<string, unknown>) }
+        : {}),
       ...(body.isFurnished !== undefined && { isFurnished: !!body.isFurnished }),
       ...(body.heating !== undefined && {
         heating: body.heating ? String(body.heating).trim() : null

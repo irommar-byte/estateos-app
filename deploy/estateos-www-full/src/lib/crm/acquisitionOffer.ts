@@ -1,3 +1,4 @@
+import { stampOfferLandRegistryVerifiedByAgent } from '@/lib/legalVerificationAgentStamp';
 import { createOffer } from '@/lib/services/offer.service';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { prisma } from '@/lib/prisma';
@@ -364,6 +365,7 @@ export async function createOfferFromAcquisitionRecord(params: {
       lng: coords.lng,
       landRegistryNumber,
       apartmentNumber: apartmentNumber || undefined,
+      legalVerifiedByAgent: Boolean(landRegistryNumber),
       description:
         [property.advantages || client.sellerDescription || client.notes, extraBits.join('. ')].filter(Boolean).join('\n\n') ||
         'Oferta utworzona z karty pozyskania CRM EstateOS.',
@@ -376,6 +378,14 @@ export async function createOfferFromAcquisitionRecord(params: {
     });
 
     const offerId = Number(createdOffer.id);
+    if (landRegistryNumber) {
+      await stampOfferLandRegistryVerifiedByAgent({
+        offerId,
+        agentUserId: params.agencyUserId,
+        landRegistryNumber,
+        apartmentNumber,
+      }).catch(() => {});
+    }
     await prisma.offer.update({
       where: { id: offerId },
       data: {

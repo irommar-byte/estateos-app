@@ -221,7 +221,11 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
             </Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 64 }} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={{ padding: 16, paddingBottom: 64 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {items.map((item) => (
               <QueueCard
                 key={item.offerId}
@@ -240,7 +244,6 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
             ))}
           </ScrollView>
         )}
-      </View>
 
       {/* Modal odrzucenia — zagnieżdżony, otwiera się tylko gdy `rejectingItem != null` */}
       <Modal
@@ -349,14 +352,15 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
       <NumericKeyboardAccessory />
     </Modal>
     <NumericKeyboardAccessory />
-    </Modal>
-
       <EkwBookViewerModal
         visible={ekwViewerNumber !== null}
         landRegistryNumber={ekwViewerNumber}
         onClose={() => setEkwViewerNumber(null)}
         theme={theme}
+        presentation="overlay"
       />
+      </View>
+    </Modal>
     </>
   );
 }
@@ -443,9 +447,10 @@ function QueueCard({
 
       <Pressable
         onPress={onOpenEKW}
+        hitSlop={12}
         style={({ pressed }) => [
           styles.ekwBtn,
-          { borderColor: '#007AFF', opacity: pressed ? 0.78 : 1 },
+          { borderColor: '#007AFF', zIndex: 2, opacity: pressed ? 0.78 : 1 },
         ]}
       >
         <Ionicons name="open-outline" size={16} color="#007AFF" />

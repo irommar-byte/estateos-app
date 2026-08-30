@@ -34,6 +34,8 @@ type Props = {
   landRegistryNumber: string | null;
   onClose: () => void;
   theme: Theme;
+  /** `overlay` — warstwa wewnątrz już otwartego Modala (iOS nie pokazuje zagnieżdżonego Modala). */
+  presentation?: 'modal' | 'overlay';
 };
 
 type WebViewHandle = {
@@ -57,7 +59,13 @@ function useEkwWebView() {
   }, []);
 }
 
-export default function EkwBookViewerModal({ visible, landRegistryNumber, onClose, theme }: Props) {
+export default function EkwBookViewerModal({
+  visible,
+  landRegistryNumber,
+  onClose,
+  theme,
+  presentation = 'modal',
+}: Props) {
   const insets = useSafeAreaInsets();
   const isDark = theme.glass === 'dark';
   const WebView = useEkwWebView();
@@ -141,11 +149,26 @@ export default function EkwBookViewerModal({ visible, landRegistryNumber, onClos
     void Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie udało się otworzyć EKW.'));
   }, [landRegistryNumber]);
 
+  const wrap = (inner: React.ReactNode, sheet: 'pageSheet' | 'fullScreen') => {
+    if (presentation === 'overlay') {
+      return (
+        <View style={[StyleSheet.absoluteFillObject, styles.overlayHost]} pointerEvents="auto">
+          {inner}
+        </View>
+      );
+    }
+    return (
+      <Modal visible animationType="slide" presentationStyle={sheet} onRequestClose={handleClose}>
+        {inner}
+      </Modal>
+    );
+  };
+
   if (!visible) return null;
 
   if (!parts) {
-    return (
-      <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    return wrap(
+      (
         <View style={[styles.root, { backgroundColor: theme.background, paddingTop: insets.top + 12, paddingHorizontal: 20 }]}>
           <Text style={[styles.title, { color: theme.text }]}>EKW</Text>
           <Text style={[styles.hint, { color: theme.subtitle }]}>
@@ -155,13 +178,14 @@ export default function EkwBookViewerModal({ visible, landRegistryNumber, onClos
             <Text style={styles.primaryBtnText}>Zamknij</Text>
           </Pressable>
         </View>
-      </Modal>
+      ),
+      'pageSheet',
     );
   }
 
   if (!WebView) {
-    return (
-      <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    return wrap(
+      (
         <View style={[styles.root, { backgroundColor: theme.background, paddingTop: insets.top + 12, paddingHorizontal: 20 }]}>
           <Text style={[styles.title, { color: theme.text }]}>Podgląd EKW niedostępny</Text>
           <Text style={[styles.hint, { color: theme.subtitle }]}>
@@ -177,12 +201,13 @@ export default function EkwBookViewerModal({ visible, landRegistryNumber, onClos
             <Text style={styles.primaryBtnText}>Otwórz w Safari</Text>
           </Pressable>
         </View>
-      </Modal>
+      ),
+      'pageSheet',
     );
   }
 
-  return (
-    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
+  return wrap(
+    (
       <View style={[styles.root, { backgroundColor: theme.background }]}>
         <View
           style={[
@@ -254,11 +279,13 @@ export default function EkwBookViewerModal({ visible, landRegistryNumber, onClos
           />
         </View>
       </View>
-    </Modal>
+    ),
+    'fullScreen',
   );
 }
 
 const styles = StyleSheet.create({
+  overlayHost: { zIndex: 80, elevation: 80 },
   root: { flex: 1 },
   header: {
     flexDirection: 'row',

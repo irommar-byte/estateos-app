@@ -44,11 +44,15 @@ import {
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
+import { stampKwFromAcquisitionForm } from '@/lib/legalVerificationAgentStamp';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
 import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
+import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
+
+export const maxDuration = 300;
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -79,8 +83,13 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const portalChat = await getPortalChatState(client.id, 'agent');
   const acquisition = await prisma.agencyClientAcquisition.findUnique({
     where: { clientId: client.id },
-    select: { status: true, currentStep: true, signedAt: true },
+    select: { status: true, currentStep: true, signedAt: true, formData: true },
   });
+  await stampKwFromAcquisitionForm({
+    offerId: client.linkedOfferId,
+    agentUserId: agencyUserId,
+    formData: acquisition?.formData,
+  }).catch(() => {});
   const journey = buildJourneyStages({
     clientType: client.type,
     hasMeeting: Boolean(meeting),
@@ -363,6 +372,23 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
     const result = await sendIntelligenceOffer({ clientId, force: true });
     return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'portal_hunt') {
+    try {
+      const result = await huntNieruchomosciOnlineForClient({
+        clientId,
+        agencyUserId,
+        mode: body.mode === 'import' ? 'import' : 'preview',
+        send: body.mode === 'import' ? body.send !== false : false,
+        count: Number(body.count) || undefined,
+        urls: Array.isArray(body.urls) ? body.urls.map(String) : undefined,
+      });
+      return NextResponse.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nie udało się przeszukać Nieruchomości-Online.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
   if (action === 'notify_offer') {
