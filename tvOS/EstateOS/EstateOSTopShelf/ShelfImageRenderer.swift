@@ -4,8 +4,10 @@ import ImageIO
 enum ShelfImageRenderer {
   /// Carousel hero — full-bleed photo with cinematic centered title overlay.
   static func renderCarouselHero(offer: ShelfOfferCard, background: UIImage?, scale: CGFloat) -> UIImage {
-    let width: CGFloat = 2320 * scale
-    let height: CGFloat = 720 * scale
+    // Carousel / Apple TV+ full screen is 16:9. 2320x720 is the static/inset banner
+    // size — HeadBoard rejects it and falls back to the asset-catalog Top Shelf image.
+    let width: CGFloat = 1920 * scale
+    let height: CGFloat = 1080 * scale
     let size = CGSize(width: width, height: height)
 
     let renderer = UIGraphicsImageRenderer(size: size)

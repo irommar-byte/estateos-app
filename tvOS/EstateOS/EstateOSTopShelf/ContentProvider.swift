@@ -126,7 +126,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   private func buildRemoteCarouselContent(offers: [TopShelfOffer]) -> TVTopShelfContent? {
     let items = offers.compactMap { makeRemoteCarouselItem(for: $0) }
     guard !items.isEmpty else { return nil }
-    return TVTopShelfCarouselContent(style: .details, items: items)
+    return TVTopShelfCarouselContent(style: .actions, items: items)
   }
 
   /// Simulator: designer titles burned into image.
@@ -138,7 +138,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       }
     }
     guard !items.isEmpty else { return nil }
-    return TVTopShelfCarouselContent(style: .details, items: items)
+    return TVTopShelfCarouselContent(style: .actions, items: items)
   }
 
   private func makeRemoteCarouselItem(for offer: TopShelfOffer) -> TVTopShelfCarouselItem? {
@@ -156,17 +156,19 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       ]
     }
 
-    if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .carousel) {
-      item.setImageURL(fileURL, for: .screenScale1x)
-      item.setImageURL(fileURL, for: .screenScale2x)
-    } else if let remote {
+    // HeadBoard loads carousel art itself. Remote HTTPS works; 720p file banners
+    // are treated as "no full-screen content" and the static Top Shelf image wins.
+    if let remote {
       item.setImageURL(remote, for: .screenScale1x)
       item.setImageURL(remote, for: .screenScale2x)
+    } else if let fileURL = renderStyledImage(offer: card, background: nil, offerId: offer.id, mode: .carousel) {
+      item.setImageURL(fileURL, for: .screenScale1x)
+      item.setImageURL(fileURL, for: .screenScale2x)
     } else {
       return nil
     }
 
-    attachActions(to: item, offerId: offer.id)
+    attachCarouselActions(to: item, offerId: offer.id)
     return item
   }
 
@@ -205,7 +207,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       return nil
     }
 
-    attachActions(to: item, offerId: offer.id)
+    attachCarouselActions(to: item, offerId: offer.id)
     return item
   }
 
@@ -484,6 +486,25 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     item.displayAction = TVTopShelfAction(url: actionURL)
   }
 
+  private func attachCarouselActions(to item: TVTopShelfCarouselItem, offerId: Int) {
+    if let playURL = immersiveDeepLink(for: offerId) {
+      item.playAction = TVTopShelfAction(url: playURL)
+    }
+    if let infoURL = offerDetailDeepLink(for: offerId) {
+      item.displayAction = TVTopShelfAction(url: infoURL)
+    } else if let playURL = immersiveDeepLink(for: offerId) {
+      item.displayAction = TVTopShelfAction(url: playURL)
+    }
+  }
+
+  private func offerDetailDeepLink(for offerId: Int) -> URL? {
+    var components = URLComponents()
+    components.scheme = "estateos"
+    components.host = "offer"
+    components.queryItems = [URLQueryItem(name: "id", value: String(offerId))]
+    return components.url
+  }
+
 
   private func cachedOffersData() -> Data? {
     guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return nil }
@@ -590,10 +611,11 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
       clearSystemText(on: item)
       item.setImageURL(fileURL, for: .screenScale1x)
       item.setImageURL(fileURL, for: .screenScale2x)
-      if let deepLink = URL(string: "estateos://browse24h") {
+      if let deepLink = URL(string: "estateos://browse24h?immersive=1") {
+        item.playAction = TVTopShelfAction(url: deepLink)
         item.displayAction = TVTopShelfAction(url: deepLink)
       }
-      return TVTopShelfCarouselContent(style: .details, items: [item])
+      return TVTopShelfCarouselContent(style: .actions, items: [item])
     }
     #endif
     return Self.emergencyContent() as? TVTopShelfCarouselContent
@@ -602,7 +624,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   private static func emergencyContent() -> TVTopShelfContent {
     guard let remote = URL(string: "https://estateos.pl/uploads/offers/575/89c45a6d-1ac9-4ba5-871c-06aa8ac01065.webp") else {
       let item = TVTopShelfCarouselItem(identifier: "emergency")
-      return TVTopShelfCarouselContent(style: .details, items: [item])
+      return TVTopShelfCarouselContent(style: .actions, items: [item])
     }
 
     let item = TVTopShelfCarouselItem(identifier: "emergency")
@@ -611,9 +633,10 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     item.summary = "Najnowsze oferty"
     item.setImageURL(remote, for: .screenScale1x)
     item.setImageURL(remote, for: .screenScale2x)
-    if let deepLink = URL(string: "estateos://browse24h") {
+    if let deepLink = URL(string: "estateos://browse24h?immersive=1") {
+      item.playAction = TVTopShelfAction(url: deepLink)
       item.displayAction = TVTopShelfAction(url: deepLink)
     }
-    return TVTopShelfCarouselContent(style: .details, items: [item])
+    return TVTopShelfCarouselContent(style: .actions, items: [item])
   }
 }

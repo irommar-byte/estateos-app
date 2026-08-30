@@ -98,7 +98,15 @@ final class AppModel: ObservableObject {
     func setTopShelfStyle(_ style: TopShelfPresentationStyle) {
         topShelfStyle = style
         TvPreferences.topShelfStyle = style
-        // Ask tvOS to reload Top Shelf; user still must focus the app icon on the Home screen.
+        // HeadBoard often queries before the App Group write is visible — notify twice.
+        notifyTopShelfDidChange()
+        Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            notifyTopShelfDidChange()
+        }
+    }
+
+    private func notifyTopShelfDidChange() {
 #if canImport(TVServices)
         TVTopShelfContentProvider.topShelfContentDidChange()
 #endif

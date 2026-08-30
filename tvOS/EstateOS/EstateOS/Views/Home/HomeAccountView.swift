@@ -150,7 +150,7 @@ struct HomeAccountView: View {
                 .id(focusID)
             }
 
-            Text("Po zmianie wyjdź na ekran główny Apple TV (Menu) i ustaw fokus na ikonie EstateOS — dopiero wtedy Górny pasek przełącza się na kafelki.")
+            Text("Po zmianie naciśnij Menu, wróć na ekran główny i ustaw fokus na ikonie EstateOS (najlepiej w górnym rzędzie). Pełny ekran widać dopiero wtedy — jak przy Apple TV+.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

@@ -16,9 +16,9 @@ enum TopShelfPresentationStyle: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .carousel:
-            return "Jedna oferta na cały Górny pasek. Przesuń w górę, aby otworzyć pełny ekran."
+            return "Pełny ekran jak Apple TV+: zdjęcie oferty, Play otwiera przegląd, Info — szczegóły. Wymaga ikony w górnym rzędzie."
         case .sectioned:
-            return "Sekcje Home i Car obok siebie z metadanymi na banerze."
+            return "Kafelki Home i Car w rzędzie pod ikoną — szybki przegląd bez pełnego ekranu."
         }
     }
 }
