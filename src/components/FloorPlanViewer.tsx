@@ -19,8 +19,16 @@ import { exportFloorPlanPdfFromMeta, shareFloorPlanPdf } from '../lib/roomScan/e
 import { useI18n } from '../i18n';
 import { getSafeQuickLook } from '../utils/safeQuickLook';
 import FloorPlanScanArtboard from './roomScan/FloorPlanScanArtboard';
-import type { FloorPlanScanMeta } from '../types/roomScan';
-import { listingRoomCountFromRooms, listingRoomCountFromSections } from '../lib/roomScan/refineScanSections';
+import RoomScanParamsSheet from './roomScan/RoomScanParamsSheet';
+import RoomScanModal, { isRoomScanSupportedOnDevice } from './roomScan/RoomScanModal';
+import type { FloorPlanScanMeta, PropertyRoomScan, RoomScanDraftAssets } from '../types/roomScan';
+import {
+  applyRoomDraftToScanMeta,
+  cropScanMetaToRoom,
+  listingRoomCountFromRooms,
+  listingRoomCountFromSections,
+  roomsFromScanMeta,
+} from '../lib/roomScan/refineScanSections';
 import { API_URL } from '../config/network';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,11 +44,15 @@ export default function FloorPlanViewer({
   model3dUrl,
   scanMeta,
   theme,
+  editable,
+  onChangeMeta,
 }: {
   imageUrl?: string | null;
   model3dUrl?: string | null;
   scanMeta?: FloorPlanScanMeta | null;
   theme?: { glass?: string; dark?: boolean };
+  editable?: boolean;
+  onChangeMeta?: (meta: FloorPlanScanMeta) => void;
 }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -50,10 +62,15 @@ export default function FloorPlanViewer({
   const animValue = React.useRef(new Animated.Value(0)).current;
 
   const isDark = theme?.glass === 'dark' || theme?.dark;
-  const roomScans = Array.isArray(scanMeta?.roomScans) ? scanMeta.roomScans : [];
+  const displayRooms = useMemo(() => roomsFromScanMeta(scanMeta || null), [scanMeta]);
+  const roomScans = displayRooms;
   const [planKey, setPlanKey] = useState<'whole' | string>('whole');
+  const [editingRoom, setEditingRoom] = useState<PropertyRoomScan | null>(null);
+  const [rescanRoom, setRescanRoom] = useState<PropertyRoomScan | null>(null);
+  const canScan = isRoomScanSupportedOnDevice();
   const selectedRoom = planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
-  const activeMeta = selectedRoom?.scanMeta || scanMeta;
+  const croppedSelected = selectedRoom ? cropScanMetaToRoom(scanMeta, selectedRoom) : null;
+  const activeMeta = croppedSelected || selectedRoom?.scanMeta || scanMeta;
   const displayImageUrl =
     absolutePlanAssetUrl(selectedRoom?.floorPlanPngUri) ||
     absolutePlanAssetUrl(imageUrl) ||
@@ -124,6 +141,67 @@ export default function FloorPlanViewer({
     }
   };
 
+  const commitRoomDraft = (room: PropertyRoomScan) => {
+    if (!scanMeta || !onChangeMeta) return;
+    onChangeMeta(applyRoomDraftToScanMeta(scanMeta, room));
+    setEditingRoom(null);
+  };
+
+  const applyRoomRescan = (assets: RoomScanDraftAssets) => {
+    if (!rescanRoom || !scanMeta || !onChangeMeta) return;
+    const nextRoom: PropertyRoomScan = {
+      ...rescanRoom,
+      widthM: assets.scanMeta.sections?.[0]?.widthM
+        ? String(assets.scanMeta.sections[0].widthM)
+        : rescanRoom.widthM,
+      lengthM: assets.scanMeta.sections?.[0]?.lengthM
+        ? String(assets.scanMeta.sections[0].lengthM)
+        : rescanRoom.lengthM,
+      heightM: assets.scanMeta.ceilingHeightM
+        ? String(assets.scanMeta.ceilingHeightM)
+        : rescanRoom.heightM,
+      areaM2: assets.scanMeta.sections?.[0]?.areaSqM
+        ? String(assets.scanMeta.sections[0].areaSqM)
+        : rescanRoom.areaM2,
+      floorPlanPngUri: assets.floorPlanPngUri,
+      floorPlan3dUri: assets.floorPlan3dUri,
+      scanMeta: assets.scanMeta,
+      scannedAt: assets.scanMeta.scannedAt,
+    };
+    onChangeMeta(applyRoomDraftToScanMeta(scanMeta, nextRoom));
+    setRescanRoom(null);
+    setEditingRoom(null);
+  };
+
+  const roomForSection = (index: number) =>
+    roomScans.find((room) => room.sourceSectionIndex === index) || roomScans[index] || null;
+
+  const beginEditSection = (index: number) => {
+    const room = roomForSection(index);
+    if (room) setEditingRoom(room);
+  };
+
+  const renderRoomThumb = (room: PropertyRoomScan) => {
+    const cropped = cropScanMetaToRoom(scanMeta, room);
+    if (cropped?.walls?.length) {
+      return (
+        <View style={styles.roomScanImage}>
+          <FloorPlanScanArtboard walls={cropped.walls} meta={cropped} width={88} height={72} compact />
+        </View>
+      );
+    }
+    if (room.floorPlanPngUri) {
+      return (
+        <Image source={{ uri: absolutePlanAssetUrl(room.floorPlanPngUri) }} style={styles.roomScanImage} resizeMode="cover" />
+      );
+    }
+    return (
+      <View style={[styles.roomScanImage, styles.roomScanPlaceholder]}>
+        <Ionicons name="map-outline" size={20} color="#64748b" />
+      </View>
+    );
+  };
+
   const subtitle = useMemo(() => {
     if (roomCount && roomCount > 0) {
       return t('offer.detail.floorPlan.roomsCount', { count: roomCount });
@@ -143,39 +221,56 @@ export default function FloorPlanViewer({
 
       {hasPlan ? (
         <>
-          <Pressable
-            onPress={openModal}
+          <View
             style={[
               styles.thumbnailWrapper,
               { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
             ]}
           >
-            {hasVectorPlan && activeMeta ? (
-              <FloorPlanScanArtboard
-                walls={activeMeta.walls}
-                meta={activeMeta}
-                width={Math.min(screenW - 40, 360)}
-                height={180}
-              />
-            ) : displayImageUrl ? (
-              <Image source={{ uri: displayImageUrl }} style={styles.thumbnail} resizeMode="cover" />
-            ) : null}
-            <View style={[styles.thumbnailOverlay, (has3d || hasVectorPlan) && { backgroundColor: 'rgba(0,0,0,0.06)' }]}>
-              {!has3d && !hasVectorPlan ? (
-                <>
-                  <View style={styles.iconGlass}>
-                    <Ionicons name="expand-outline" size={28} color="#FFF" />
+            <Pressable onPress={openModal} style={StyleSheet.absoluteFill} pointerEvents={editable ? 'box-none' : 'auto'}>
+              {hasVectorPlan && activeMeta ? (
+                <FloorPlanScanArtboard
+                  walls={activeMeta.walls}
+                  meta={activeMeta}
+                  width={Math.min(screenW - 40, 360)}
+                  height={180}
+                  onSectionPress={
+                    editable
+                      ? (index) => {
+                          if (planKey === 'whole') beginEditSection(index);
+                          else if (selectedRoom) setEditingRoom(selectedRoom);
+                        }
+                      : undefined
+                  }
+                />
+              ) : displayImageUrl ? (
+                <Image source={{ uri: displayImageUrl }} style={styles.thumbnail} resizeMode="cover" />
+              ) : null}
+              <View
+                style={[styles.thumbnailOverlay, (has3d || hasVectorPlan) && { backgroundColor: 'rgba(0,0,0,0.06)' }]}
+                pointerEvents="none"
+              >
+                {!has3d && !hasVectorPlan ? (
+                  <>
+                    <View style={styles.iconGlass}>
+                      <Ionicons name="expand-outline" size={28} color="#FFF" />
+                    </View>
+                    <Text style={styles.thumbnailText}>{t('offer.detail.floorPlan.enlarge')}</Text>
+                  </>
+                ) : (
+                  <View style={styles.lidarBadge}>
+                    <Ionicons name="scan-outline" size={14} color="#7dd3fc" />
+                    <Text style={styles.lidarBadgeText}>{t('offer.detail.floorPlan.scannedPlan')}</Text>
                   </View>
-                  <Text style={styles.thumbnailText}>{t('offer.detail.floorPlan.enlarge')}</Text>
-                </>
-              ) : (
-                <View style={styles.lidarBadge}>
-                  <Ionicons name="scan-outline" size={14} color="#7dd3fc" />
-                  <Text style={styles.lidarBadgeText}>{t('offer.detail.floorPlan.scannedPlan')}</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
+                )}
+              </View>
+            </Pressable>
+            {editable && hasVectorPlan ? (
+              <Pressable onPress={openModal} style={styles.expandFab} hitSlop={8}>
+                <Ionicons name="expand-outline" size={16} color="#e0f2fe" />
+              </Pressable>
+            ) : null}
+          </View>
 
           {subtitle ? <Text style={[styles.subtitle, isDark && { color: '#9ca3af' }]}>{subtitle}</Text> : null}
 
@@ -244,13 +339,7 @@ export default function FloorPlanViewer({
                     isDark && { backgroundColor: '#242427', borderColor: 'rgba(255,255,255,0.1)' },
                   ]}
                 >
-                  {room.floorPlanPngUri ? (
-                    <Image source={{ uri: absolutePlanAssetUrl(room.floorPlanPngUri) }} style={styles.roomScanImage} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.roomScanImage, styles.roomScanPlaceholder]}>
-                      <Ionicons name="map-outline" size={20} color="#64748b" />
-                    </View>
-                  )}
+                  {renderRoomThumb(room)}
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.roomScanName, isDark && { color: '#f8fafc' }]}>{room.name}</Text>
                     <Text style={[styles.roomScanMeta, isDark && { color: '#94a3b8' }]}>
@@ -264,12 +353,23 @@ export default function FloorPlanViewer({
                         <Text style={styles.roomScan3dText}>{t('offer.detail.floorPlan.walkthrough3d')}</Text>
                       </Pressable>
                     ) : null}
-                    {(room.scanMeta?.objects || []).length > 0 ? (
+                    {(room.scanMeta?.objects || cropScanMetaToRoom(scanMeta, room)?.objects || []).length > 0 ? (
                       <Text style={[styles.roomScanMeta, isDark && { color: '#94a3b8' }]} numberOfLines={2}>
-                        {(room.scanMeta?.objects || []).map((obj) => obj.label).join(' · ')}
+                        {(room.scanMeta?.objects || cropScanMetaToRoom(scanMeta, room)?.objects || [])
+                          .map((obj) => obj.label)
+                          .join(' · ')}
                       </Text>
                     ) : null}
                   </View>
+                  {editable ? (
+                    <Pressable
+                      onPress={() => setEditingRoom(room)}
+                      hitSlop={8}
+                      style={styles.roomEditBtn}
+                    >
+                      <Ionicons name="create-outline" size={18} color="#0ea5e9" />
+                    </Pressable>
+                  ) : null}
                 </Pressable>
               ))}
             </View>
@@ -421,6 +521,14 @@ export default function FloorPlanViewer({
                     meta={activeMeta}
                     width={modalArtboardW}
                     height={modalArtboardH}
+                    onSectionPress={
+                    editable
+                      ? (index) => {
+                          if (planKey === 'whole') beginEditSection(index);
+                          else if (selectedRoom) setEditingRoom(selectedRoom);
+                        }
+                      : undefined
+                  }
                   />
                 ) : displayImageUrl ? (
                   <Image source={{ uri: displayImageUrl }} style={styles.fullImage} resizeMode="contain" />
@@ -461,6 +569,31 @@ export default function FloorPlanViewer({
           </BlurView>
         </Modal>
       )}
+
+      <RoomScanParamsSheet
+        visible={Boolean(editingRoom)}
+        room={editingRoom}
+        isDark={isDark}
+        canScan={canScan && Boolean(onChangeMeta)}
+        onClose={() => setEditingRoom(null)}
+        onSave={commitRoomDraft}
+        onRescan={
+          editingRoom && onChangeMeta
+            ? () => {
+                const room = editingRoom;
+                setEditingRoom(null);
+                setRescanRoom(room);
+              }
+            : undefined
+        }
+      />
+      <RoomScanModal
+        visible={Boolean(rescanRoom)}
+        scanMode="room"
+        roomName={rescanRoom?.name}
+        onClose={() => setRescanRoom(null)}
+        onComplete={applyRoomRescan}
+      />
     </View>
   );
 }
@@ -563,12 +696,32 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(14,165,233,0.55)',
     backgroundColor: 'rgba(224,242,254,0.7)',
   },
-  roomScanImage: { width: 72, height: 60, borderRadius: 10, backgroundColor: '#e2e8f0' },
+  roomScanImage: { width: 88, height: 72, borderRadius: 10, overflow: 'hidden', backgroundColor: '#e2e8f0' },
   roomScanPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   roomScanName: { color: '#0f172a', fontSize: 13, fontWeight: '900' },
   roomScanMeta: { color: '#64748b', fontSize: 10.5, fontWeight: '600', marginTop: 3 },
   roomScan3dBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, alignSelf: 'flex-start' },
   roomScan3dText: { color: '#0ea5e9', fontSize: 11, fontWeight: '900' },
+  roomEditBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(14,165,233,0.12)',
+  },
+  expandFab: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(15,23,42,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
   actionRow: { marginTop: 12, gap: 10 },
   walkthroughBtn: {
     borderRadius: 18,

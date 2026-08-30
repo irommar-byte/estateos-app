@@ -1,5 +1,11 @@
 import FloorPlanViewer from '../components/FloorPlanViewer';
 import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
+import {
+  listingRoomCountFromRooms,
+  livableAreaFromRooms,
+  roomsFromScanMeta,
+} from '../lib/roomScan/refineScanSections';
+import type { FloorPlanScanMeta } from '../types/roomScan';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
@@ -1724,6 +1730,51 @@ export default function OfferDetail({ route, navigation }: any) {
     );
   };
 
+  const parsedFloorPlanScanMeta = useMemo((): FloorPlanScanMeta | null => {
+    try {
+      const raw = offer?.floorPlanScanMeta;
+      if (!raw) return null;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return normalizeStoredScanMeta(parsed);
+    } catch {
+      return null;
+    }
+  }, [offer?.floorPlanScanMeta]);
+
+  const persistFloorPlanScanMeta = useCallback(
+    async (meta: FloorPlanScanMeta) => {
+      const json = JSON.stringify(meta);
+      setHydratedOffer((prev: any) => ({ ...(prev || offer || {}), floorPlanScanMeta: json }));
+      if (isSamplePreview || !token || !offer?.id) return;
+      const derivedRooms = roomsFromScanMeta(meta);
+      const roomsCount = listingRoomCountFromRooms(derivedRooms) || meta.roomCount || undefined;
+      const areaVal = livableAreaFromRooms(derivedRooms) || meta.roomAreaTotalSqM || meta.totalAreaSqM || undefined;
+      const payload: Record<string, unknown> = { floorPlanScanMeta: json };
+      if (typeof roomsCount === 'number' && roomsCount > 0) payload.rooms = roomsCount;
+      if (typeof areaVal === 'number' && areaVal > 0) payload.area = areaVal;
+      try {
+        const res = await fetch(`${API_URL}/api/mobile/v1/offers/${offer.id}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.message || 'Nie udało się zapisać planu pomieszczeń.');
+        }
+      } catch (error) {
+        Alert.alert(
+          t('offer.detail.floorPlan.sectionTitle'),
+          error instanceof Error ? error.message : 'Nie udało się zapisać planu pomieszczeń.',
+        );
+      }
+    },
+    [isSamplePreview, offer, t, token],
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#000000' : '#ffffff' }]}>
       <StatusBar hidden={isCinemaMode} animated />
@@ -2259,16 +2310,10 @@ export default function OfferDetail({ route, navigation }: any) {
                   : offer.floorPlan3dUrl
                 : null
             }
-            scanMeta={(() => {
-              try {
-                const raw = offer?.floorPlanScanMeta;
-                if (!raw || typeof raw !== 'string') return null;
-                return normalizeStoredScanMeta(JSON.parse(raw));
-              } catch {
-                return null;
-              }
-            })()}
+            scanMeta={parsedFloorPlanScanMeta}
             theme={theme}
+            editable={Boolean(isOwner && !isSamplePreview)}
+            onChangeMeta={isOwner && !isSamplePreview ? persistFloorPlanScanMeta : undefined}
           />
 
           {hasValidMapCoords ? (

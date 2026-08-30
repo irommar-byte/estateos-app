@@ -1,5 +1,6 @@
 import type {
   FloorPlanScanMeta,
+  PropertyRoomScan,
   RoomScanDetectedObject,
   RoomScanSection,
   RoomScanWallSegment,
@@ -374,4 +375,153 @@ export function totalUniqueAreaSqM(sections: RoomScanSection[], walls: RoomScanW
     return Number(Math.min(sum, footprint * 1.04).toFixed(1));
   }
   return Number((sum || footprint).toFixed(1));
+}
+
+export function resolveRoomSectionIndex(
+  meta: FloorPlanScanMeta,
+  room: Pick<PropertyRoomScan, 'sourceSectionIndex' | 'name' | 'typeKey'>,
+): number | null {
+  const sections = meta.sections || [];
+  if (typeof room.sourceSectionIndex === 'number' && sections[room.sourceSectionIndex]) {
+    return room.sourceSectionIndex;
+  }
+  const byLabel = sections.findIndex((section) => section.label === room.name);
+  if (byLabel >= 0) return byLabel;
+  const key = room.typeKey || roomTypeKeyFromName(room.name || '');
+  const byKey = sections.findIndex((section) => section.key === key);
+  return byKey >= 0 ? byKey : null;
+}
+
+export function cropScanMetaToRoom(
+  meta: FloorPlanScanMeta | null | undefined,
+  room: PropertyRoomScan,
+): FloorPlanScanMeta | null {
+  if (room.scanMeta?.walls?.length) return room.scanMeta;
+  if (!meta?.walls?.length) return null;
+  const index = resolveRoomSectionIndex(meta, room);
+  if (index == null) return null;
+  const section = meta.sections[index];
+  const walls = assignWallsToSection(section, meta.sections, meta.walls);
+  const objects = objectsNear(meta.objects || [], section.centerX, section.centerZ, 2.4);
+  const box = wallsBoundingBox(walls);
+  const pad = 0.4;
+  const bounds = box
+    ? { minX: box.minX - pad, maxX: box.maxX + pad, minZ: box.minZ - pad, maxZ: box.maxZ + pad }
+    : {
+        minX: section.centerX - 2.2,
+        maxX: section.centerX + 2.2,
+        minZ: section.centerZ - 2.2,
+        maxZ: section.centerZ + 2.2,
+      };
+  const openings = (meta.openings || []).filter((opening) => {
+    const mx = (opening.x1 + opening.x2) / 2;
+    const mz = (opening.z1 + opening.z2) / 2;
+    return mx >= bounds.minX && mx <= bounds.maxX && mz >= bounds.minZ && mz <= bounds.maxZ;
+  });
+  return {
+    ...meta,
+    roomCount: 1,
+    totalAreaSqM: section.areaSqM ?? null,
+    ceilingHeightM: section.ceilingHeightM ?? meta.ceilingHeightM,
+    sections: [section],
+    walls: walls.length ? walls : meta.walls,
+    objects,
+    openings,
+    bounds,
+    roomScans: undefined,
+  };
+}
+
+export function roomsFromScanMeta(meta: FloorPlanScanMeta | null | undefined): PropertyRoomScan[] {
+  if (!meta) return [];
+  const fromSections: PropertyRoomScan[] = (meta.sections || []).map((section, index) => ({
+    id: `section-${index}`,
+    name: section.label || roomTypeLabelFromKey(section.key, `Pomieszczenie ${index + 1}`),
+    typeKey: section.key,
+    sourceSectionIndex: index,
+    widthM: section.widthM && section.widthM > 0 ? String(section.widthM) : '',
+    lengthM: section.lengthM && section.lengthM > 0 ? String(section.lengthM) : '',
+    heightM: section.ceilingHeightM && section.ceilingHeightM > 0 ? String(section.ceilingHeightM) : '',
+    areaM2: section.areaSqM && section.areaSqM > 0 ? String(section.areaSqM) : '',
+  }));
+  const stored = Array.isArray(meta.roomScans) ? meta.roomScans : [];
+  if (!fromSections.length) return stored;
+  const used = new Set<number>();
+  const merged = fromSections.map((generated, index) => {
+    const matchIndex = stored.findIndex((item, storedIndex) => {
+      if (used.has(storedIndex)) return false;
+      if (item.id && generated.id && item.id === generated.id) return true;
+      if (typeof item.sourceSectionIndex === 'number' && item.sourceSectionIndex === index) return true;
+      return false;
+    });
+    const fallbackIndex =
+      matchIndex < 0
+        ? stored.findIndex((_, storedIndex) => !used.has(storedIndex) && storedIndex === index)
+        : matchIndex;
+    if (fallbackIndex < 0) return generated;
+    used.add(fallbackIndex);
+    const match = stored[fallbackIndex];
+    return {
+      ...match,
+      ...generated,
+      id: match.id || generated.id,
+      floorPlanPngUri: match.floorPlanPngUri,
+      floorPlan3dUri: match.floorPlan3dUri,
+      scanMeta: match.scanMeta,
+      scannedAt: match.scannedAt,
+    };
+  });
+  const extras = stored.filter((_, storedIndex) => !used.has(storedIndex));
+  return extras.length ? [...merged, ...extras] : merged;
+}
+
+export function applyRoomDraftToScanMeta(
+  meta: FloorPlanScanMeta,
+  room: PropertyRoomScan,
+): FloorPlanScanMeta {
+  const width = Number(String(room.widthM || '').replace(',', '.'));
+  const length = Number(String(room.lengthM || '').replace(',', '.'));
+  const height = Number(String(room.heightM || '').replace(',', '.'));
+  const area = Number(String(room.areaM2 || '').replace(',', '.'));
+  const index = resolveRoomSectionIndex(meta, room);
+  let next =
+    applyRoomIdentityToScanMeta(meta, {
+      sectionIndex: index,
+      name: room.name,
+      typeKey: room.typeKey,
+    }) || meta;
+  if (index != null && next.sections[index]) {
+    const sections = next.sections.map((section, i) =>
+      i === index
+        ? {
+            ...section,
+            widthM: Number.isFinite(width) && width > 0 ? width : section.widthM,
+            lengthM: Number.isFinite(length) && length > 0 ? length : section.lengthM,
+            ceilingHeightM: Number.isFinite(height) && height > 0 ? height : section.ceilingHeightM,
+            areaSqM: Number.isFinite(area) && area > 0 ? area : section.areaSqM,
+            userAssigned: true,
+          }
+        : section,
+    );
+    next = { ...next, sections };
+  }
+  const roomScans = roomsFromScanMeta(next).map((item) =>
+    item.id === room.id ||
+    (typeof room.sourceSectionIndex === 'number' && item.sourceSectionIndex === room.sourceSectionIndex)
+      ? { ...item, ...room, sourceSectionIndex: item.sourceSectionIndex ?? room.sourceSectionIndex }
+      : item,
+  );
+  const hasRoom = roomScans.some(
+    (item) =>
+      item.id === room.id ||
+      (typeof room.sourceSectionIndex === 'number' && item.sourceSectionIndex === room.sourceSectionIndex),
+  );
+  const nextRooms = hasRoom ? roomScans : [...roomScans, room];
+  return {
+    ...next,
+    roomScans: nextRooms,
+    roomCount: listingRoomCountFromRooms(nextRooms) || listingRoomCountFromSections(next.sections || []),
+    roomAreaTotalSqM: livableAreaFromRooms(nextRooms),
+    totalAreaSqM: totalUniqueAreaSqM(next.sections || [], next.walls || []),
+  };
 }

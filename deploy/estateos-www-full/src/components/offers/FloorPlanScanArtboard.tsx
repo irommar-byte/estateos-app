@@ -20,11 +20,12 @@ type Props = {
   height: number;
   locale: Locale;
   className?: string;
+  compact?: boolean;
 };
 
-export default function FloorPlanScanArtboard({ walls, meta, width, height, locale, className }: Props) {
-  const padding = 36;
-  const bg = '#0b1220';
+export default function FloorPlanScanArtboard({ walls, meta, width, height, locale, className, compact }: Props) {
+  const padding = compact ? 8 : 36;
+  const bg = compact ? '#f4f7fb' : '#0b1220';
 
   const viewport = useMemo(
     () => buildFloorPlanViewport(meta.bounds, width, height, padding),
@@ -68,9 +69,9 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
       role="img"
       aria-label="Interactive LiDAR floor plan"
     >
-      <rect x={0} y={0} width={width} height={height} fill={bg} rx={24} />
+      <rect x={0} y={0} width={width} height={height} fill={bg} rx={compact ? 10 : 24} />
 
-      {mappedSections.map((section) => {
+      {compact ? null : mappedSections.map((section) => {
         const r = sectionMarkerRadiusPx(viewport, section.areaSqM);
         return (
           <g key={section.id}>
@@ -95,8 +96,8 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
             y1={wall.a.y}
             x2={wall.b.x}
             y2={wall.b.y}
-            stroke="#0f172a"
-            strokeWidth={12}
+            stroke={compact ? '#94a3b8' : '#0f172a'}
+            strokeWidth={compact ? 5 : 12}
             strokeLinecap="square"
           />
           <line
@@ -104,11 +105,11 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
             y1={wall.a.y}
             x2={wall.b.x}
             y2={wall.b.y}
-            stroke="#e2e8f0"
-            strokeWidth={2}
+            stroke={compact ? '#1e293b' : '#e2e8f0'}
+            strokeWidth={compact ? 1.4 : 2}
             strokeLinecap="square"
           />
-          {wall.showLabel ? (
+          {!compact && wall.showLabel ? (
             <g>
               <rect
                 x={wall.lx - 28}
@@ -171,62 +172,53 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
             stroke={obj.stroke}
             strokeWidth={1.3}
           />
-          <text x={obj.x} y={obj.y + 3} fill="#f8fafc" fontSize={6.5} fontWeight={800} textAnchor="middle">
+          {compact ? null : (
+          <text x={obj.x} y={obj.y + 3} fill="#f8fafc" fontSize={obj.glyph.length > 5 ? 5.5 : 6.5} fontWeight={800} textAnchor="middle">
             {obj.glyph}
           </text>
+          )}
         </g>
       ))}
-      {mappedObjects.map((obj) => (
-        <text
-          key={`${obj.id}-label`}
-          x={obj.x}
-          y={obj.y + obj.depthPx / 2 + 11}
-          fill="#94a3b8"
-          fontSize={6.5}
-          fontWeight={600}
-          textAnchor="middle"
-        >
-          {obj.label}
-        </text>
-      ))}
 
-      {mappedSections.map((section) => {
-        const hasDimensions = Boolean(section.widthM && section.lengthM);
-        const labelH = section.ceilingHeightM ? (hasDimensions ? 62 : 50) : hasDimensions ? 50 : section.areaSqM ? 40 : 24;
+      {compact
+        ? mappedSections.map((section) => (
+            <circle
+              key={`${section.id}-dot`}
+              cx={section.x}
+              cy={section.y}
+              r={4}
+              fill={section.fill}
+              stroke="rgba(14,165,233,0.45)"
+            />
+          ))
+        : mappedSections.map((section) => {
+        const labelH = section.areaSqM ? 32 : 22;
+        const labelW = Math.min(120, Math.max(70, section.label.length * 6.4 + 18));
         return (
           <g key={`${section.id}-label`}>
             <rect
-              x={section.x - 58}
+              x={section.x - labelW / 2}
               y={section.y - labelH / 2}
-              width={116}
+              width={labelW}
               height={labelH}
-              rx={12}
-              fill="rgba(15,23,42,0.88)"
-              stroke="rgba(56,189,248,0.35)"
-              strokeWidth={1}
+              rx={8}
+              fill="rgba(15,23,42,0.72)"
+              stroke="rgba(56,189,248,0.28)"
+              strokeWidth={0.8}
             />
-            <text x={section.x} y={section.y - (section.ceilingHeightM || hasDimensions ? 10 : 0)} fill="#f8fafc" fontSize={10} fontWeight={800} textAnchor="middle">
+            <text x={section.x} y={section.areaSqM ? section.y - 2 : section.y + 3} fill="#f8fafc" fontSize={9} fontWeight={800} textAnchor="middle">
               {section.label}
             </text>
             {section.areaSqM ? (
-              <text x={section.x} y={section.y + 8} fill="#94a3b8" fontSize={8} fontWeight={600} textAnchor="middle">
+              <text x={section.x} y={section.y + 11} fill="#7dd3fc" fontSize={7.5} fontWeight={700} textAnchor="middle">
                 {section.areaSqM} m²
-              </text>
-            ) : null}
-            {hasDimensions ? (
-              <text x={section.x} y={section.y + 22} fill="#cbd5e1" fontSize={7.5} fontWeight={700} textAnchor="middle">
-                {section.widthM?.toFixed(2)} × {section.lengthM?.toFixed(2)} m
-              </text>
-            ) : null}
-            {section.ceilingHeightM ? (
-              <text x={section.x} y={section.y + (hasDimensions ? 34 : 22)} fill="#7dd3fc" fontSize={8} fontWeight={700} textAnchor="middle">
-                H {section.ceilingHeightM.toFixed(2)} m
               </text>
             ) : null}
           </g>
         );
       })}
 
+      {compact ? null : (
       <g>
         <rect
           x={padding - 8}
@@ -264,6 +256,7 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
           {scaleBar.meters} m
         </text>
       </g>
+      )}
     </svg>
   );
 }

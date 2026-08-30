@@ -21,7 +21,9 @@ type Props = {
   width: number;
   height: number;
   forExport?: boolean;
+  compact?: boolean;
   title?: string;
+  onSectionPress?: (sectionIndex: number) => void;
 };
 
 export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
@@ -31,13 +33,15 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
     width,
     height,
     forExport,
+    compact,
     title,
+    onSectionPress,
   },
   ref,
 ) {
-  const padding = forExport ? 72 : 40;
-  const headerH = forExport ? 88 : 0;
-  const footerH = forExport ? 56 : 0;
+  const padding = compact ? 8 : forExport ? 72 : 40;
+  const headerH = compact ? 0 : forExport ? 88 : 0;
+  const footerH = compact ? 0 : forExport ? 56 : 0;
   const drawH = height - headerH - footerH;
   const bg = forExport ? '#f8fafc' : '#f4f7fb';
   const wallStroke = '#1e293b';
@@ -91,7 +95,7 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
       <Svg ref={ref} width={width} height={height}>
         <Rect x={0} y={0} width={width} height={height} fill={bg} rx={forExport ? 24 : 0} />
 
-        {/* Soft floor grid */}
+        {!compact ? (
         <G opacity={0.35}>
           {Array.from({ length: 12 }).map((_, i) => {
             const x = padding + i * ((width - padding * 2) / 11);
@@ -122,6 +126,7 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
             );
           })}
         </G>
+        ) : null}
 
         {forExport ? (
           <G>
@@ -236,7 +241,7 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
             </G>
           ))}
 
-          {dimensionChains.map((chain) => (
+          {compact ? null : dimensionChains.map((chain) => (
             <G key={chain.id}>
               {chain.segments.map((seg) => (
                 <G key={seg.id}>
@@ -308,11 +313,12 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                   y={obj.y - obj.depthPx / 2}
                   width={obj.widthPx}
                   height={obj.depthPx}
-                  rx={3}
+                  rx={compact ? 2 : 3}
                   fill={obj.fill}
                   stroke={obj.stroke}
-                  strokeWidth={1.4}
+                  strokeWidth={compact ? 1 : 1.4}
                 />
+                {compact ? null : (
                 <SvgText
                   x={obj.x}
                   y={obj.y + 3}
@@ -323,17 +329,36 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                 >
                   {obj.glyph}
                 </SvgText>
+                )}
               </G>
             );
           })}
 
-          {mappedSections.map((section) => {
+          {compact
+            ? mappedSections.map((section) => (
+                <Circle
+                  key={`${section.id}-dot`}
+                  cx={section.x}
+                  cy={section.y}
+                  r={5}
+                  fill={section.fill}
+                  stroke="rgba(14,165,233,0.4)"
+                />
+              ))
+            : mappedSections.map((section, index) => {
             const lines = [section.label, section.areaSqM ? `${section.areaSqM} m²` : null].filter(Boolean) as string[];
             const lineH = forExport ? 12 : 10;
             const boxH = Math.max(28, lines.length * lineH + 10);
             const boxW = Math.min(108, Math.max(64, section.label.length * 7 + 16));
             return (
-              <G key={`${section.id}-label`}>
+              <G key={`${section.id}-label`} onPress={onSectionPress ? () => onSectionPress(index) : undefined}>
+                <Circle
+                  cx={section.x}
+                  cy={section.y}
+                  r={Math.max(22, Math.min(boxW, boxH) / 2 + 8)}
+                  fill="transparent"
+                  onPress={onSectionPress ? () => onSectionPress(index) : undefined}
+                />
                 <Rect
                   x={section.x - boxW / 2}
                   y={section.y - boxH / 2}
@@ -341,8 +366,9 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                   height={boxH}
                   rx={8}
                   fill="rgba(255,255,255,0.82)"
-                  stroke="rgba(14,165,233,0.28)"
-                  strokeWidth={0.8}
+                  stroke={onSectionPress ? 'rgba(14,165,233,0.55)' : 'rgba(14,165,233,0.28)'}
+                  strokeWidth={onSectionPress ? 1.2 : 0.8}
+                  onPress={onSectionPress ? () => onSectionPress(index) : undefined}
                 />
                 {lines.map((line, i) => (
                   <SvgText
@@ -361,7 +387,7 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
             );
           })}
 
-          {/* Scale bar */}
+          {compact ? null : (
           <G>
             <Rect
               x={padding - 8}
@@ -400,9 +426,10 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
               {scaleBar.meters} m
             </SvgText>
           </G>
+          )}
         </G>
 
-        {/* Professional compass — letters stay upright; only the needle rotates. */}
+        {compact ? null : (
         <G>
           <Circle cx={compassCx} cy={compassCy} r={compassR} fill="#ffffff" stroke="#94a3b8" strokeWidth={1.2} />
           <Circle cx={compassCx} cy={compassCy} r={compassR - 7} fill="none" stroke="#e2e8f0" strokeWidth={1} />
@@ -439,6 +466,7 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
             {t('addOffer.step5.roomScan.compassHint')}
           </SvgText>
         </G>
+        )}
 
         {forExport ? (
           <SvgText

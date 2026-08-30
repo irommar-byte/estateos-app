@@ -17,7 +17,9 @@ import type {
   WholePropertyScan,
 } from '../../types/roomScan';
 import {
+  applyRoomDraftToScanMeta,
   applyRoomIdentityToScanMeta,
+  cropScanMetaToRoom,
   listingRoomCountFromRooms,
   livableAreaFromRooms,
   ROOM_PRESET_DEFS,
@@ -217,8 +219,15 @@ export default function PropertyRoomScanWorkspace({
     });
     onChangeRooms(nextRooms);
 
-    if (!identityChanged || disabled) return;
     const changed = nextRooms.find((room) => room.id === id);
+    if (changed && wholeScan && onChangeWholeScan && !disabled && !identityChanged) {
+      onChangeWholeScan({
+        ...wholeScan,
+        scanMeta: applyRoomDraftToScanMeta(wholeScan.scanMeta, changed),
+      });
+    }
+
+    if (!identityChanged || disabled) return;
     if (!changed) return;
 
     let nextWhole = wholeScan || null;
@@ -552,37 +561,56 @@ export default function PropertyRoomScanWorkspace({
             ))}
           </View>
 
-          {room.floorPlanPngUri ? (
-            <View style={styles.roomPlanRow}>
-              <Image source={{ uri: room.floorPlanPngUri }} style={styles.roomPlanThumb} contentFit="cover" />
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={[styles.planTitle, { color: palette.text }]}>Plan przypisany do: {room.name}</Text>
-                <Text style={[styles.planSubtitle, { color: palette.secondary }]}>
-                  {room.scanMeta?.openings?.length || 0} przejść, drzwi lub okien · wysokość {room.heightM || '—'} m
-                  {room.scanMeta?.objects?.length ? ` · ${room.scanMeta.objects.length} mebli / AGD` : ''}
-                </Text>
-                {(room.scanMeta?.objects || []).length > 0 || room.scanMeta ? (
-                  room.scanMeta ? (
-                    <FloorPlanFurnitureEditor
-                      meta={room.scanMeta}
-                      onChange={(next) => updateRoom(room.id, { scanMeta: next })}
-                      textColor={palette.text}
-                      secondaryColor={palette.secondary}
-                      borderColor={palette.border}
-                      accent={palette.accent}
-                      disabled={disabled}
-                    />
-                  ) : null
-                ) : null}
-                {room.floorPlan3dUri ? (
-                  <Pressable onPress={() => void open3d(room.floorPlan3dUri)} style={styles.inline3d}>
-                    <Ionicons name="cube-outline" size={16} color={palette.accent} />
-                    <Text style={{ color: palette.accent, fontSize: 12, fontWeight: '800' }}>Otwórz model 3D</Text>
-                  </Pressable>
-                ) : null}
+          {(() => {
+            const cropped = cropScanMetaToRoom(wholeScan?.scanMeta, room);
+            const previewMeta = cropped || (room.scanMeta?.walls?.length ? room.scanMeta : null);
+            if (!previewMeta?.walls?.length && !room.floorPlanPngUri) return null;
+            return (
+          <View style={styles.roomPlanRow}>
+            {previewMeta?.walls?.length ? (
+              <View style={[styles.roomPlanThumb, { overflow: 'hidden' }]}>
+                <FloorPlanScanArtboard
+                  walls={previewMeta.walls}
+                  meta={previewMeta}
+                  width={82}
+                  height={68}
+                  compact
+                />
               </View>
+            ) : (
+              <Image source={{ uri: room.floorPlanPngUri }} style={styles.roomPlanThumb} contentFit="cover" />
+            )}
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[styles.planTitle, { color: palette.text }]}>Plan przypisany do: {room.name}</Text>
+              <Text style={[styles.planSubtitle, { color: palette.secondary }]}>
+                {(previewMeta?.openings || room.scanMeta?.openings)?.length || 0} przejść, drzwi lub okien · wysokość {room.heightM || '—'} m
+                {(previewMeta?.objects || room.scanMeta?.objects)?.length
+                  ? ` · ${(previewMeta?.objects || room.scanMeta?.objects || []).length} mebli / AGD`
+                  : ''}
+              </Text>
+              {(room.scanMeta?.objects || []).length > 0 || room.scanMeta ? (
+                room.scanMeta ? (
+                  <FloorPlanFurnitureEditor
+                    meta={room.scanMeta}
+                    onChange={(next) => updateRoom(room.id, { scanMeta: next })}
+                    textColor={palette.text}
+                    secondaryColor={palette.secondary}
+                    borderColor={palette.border}
+                    accent={palette.accent}
+                    disabled={disabled}
+                  />
+                ) : null
+              ) : null}
+              {room.floorPlan3dUri ? (
+                <Pressable onPress={() => void open3d(room.floorPlan3dUri)} style={styles.inline3d}>
+                  <Ionicons name="cube-outline" size={16} color={palette.accent} />
+                  <Text style={{ color: palette.accent, fontSize: 12, fontWeight: '800' }}>Otwórz model 3D</Text>
+                </Pressable>
+              ) : null}
             </View>
-          ) : null}
+          </View>
+            );
+          })()}
 
           {scanAvailable && !disabled ? (
             <Pressable
