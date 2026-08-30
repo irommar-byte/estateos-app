@@ -130,16 +130,16 @@ async function resolvePinCity(
   return canonicalizeCity(inferCityFromMapboxFeature(feature));
 }
 
-export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft, 'district' | 'neighborhood' | 'title' | 'externalUrl' | 'street'>): string {
+export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft, 'district' | 'neighborhood' | 'title' | 'externalUrl' | 'street' | 'descriptionText'>): string {
   const canonicalCity = canonicalizeCity(city);
   if (!canonicalCity) return '';
 
-  const fromStreet = inferDistrictFromStreet(canonicalCity, draft.street);
-  if (fromStreet) return fromStreet;
-
-  const blob = [draft.district, draft.neighborhood, draft.street, draft.title, draft.externalUrl].filter(Boolean).join(' ');
+  const blob = [draft.district, draft.neighborhood, draft.street, draft.title, draft.descriptionText, draft.externalUrl].filter(Boolean).join(' ');
   const fromCatalog = pickDistrictFromPlaceName(canonicalCity, blob);
   if (fromCatalog) return fromCatalog;
+
+  const fromStreet = inferDistrictFromStreet(canonicalCity, draft.street);
+  if (fromStreet) return fromStreet;
 
   if (draft.neighborhood) return canonicalizeDistrict(canonicalCity, draft.neighborhood);
   if (draft.district) return canonicalizeDistrict(canonicalCity, draft.district);

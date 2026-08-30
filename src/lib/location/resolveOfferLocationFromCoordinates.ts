@@ -6,6 +6,7 @@ import {
   inferStrictDistrictFromMapboxFeature,
   inferDistrictFromStreet,
   preferStreetOrOsiedleDistrict,
+  containsNormalizedToken,
   isNonCityLabel,
   isPlaceholderDistrict,
   isStrictCity,
@@ -52,12 +53,34 @@ function isDistrictHint(value: unknown): value is string {
 }
 
 /** Kandydaci dzielnicy z danych OtoDom — przed GPS / pinezką. */
+export function listingConfirmedDistrict(
+  city: string,
+  draft: {
+    district?: string | null;
+    neighborhood?: string | null;
+    title?: string | null;
+    descriptionText?: string | null;
+  },
+): string {
+  const blob = [draft.district, draft.neighborhood, draft.title, draft.descriptionText]
+    .filter(Boolean)
+    .join(' · ');
+  const named =
+    canonicalizeDistrict(city, draft.district) || pickDistrictFromPlaceName(city, blob);
+  if (!named) return '';
+  if (!containsNormalizedToken(blob, named)) return '';
+  const validation = validateCityDistrict(city, named);
+  return validation.valid ? validation.district : '';
+}
+
 export function collectOtodomDistrictCandidates(
   city: string,
   draft: {
     district?: string | null;
     neighborhood?: string | null;
     street?: string | null;
+    title?: string | null;
+    descriptionText?: string | null;
   },
 ): string[] {
   const canonicalCity = canonicalizeCity(city);
@@ -76,6 +99,13 @@ export function collectOtodomDistrictCandidates(
 
   push(draft.district);
   push(draft.neighborhood);
+  if (draft.title || draft.descriptionText) {
+    const fromText = pickDistrictFromPlaceName(
+      canonicalCity,
+      [draft.title, draft.descriptionText].filter(Boolean).join(' '),
+    );
+    if (fromText) hints.push(fromText);
+  }
 
   if (draft.street) {
     const fromStreet = inferDistrictFromStreet(canonicalCity, draft.street);
@@ -176,6 +206,7 @@ export async function resolveOtodomImportLocationFields(draft: {
   neighborhood?: string | null;
   street?: string | null;
   title?: string | null;
+  descriptionText?: string | null;
 }): Promise<{ city: string; district: string; street: string }> {
   if (draft.lat == null || draft.lng == null) {
     throw new Error("Brak współrzędnych GPS — nie można utworzyć oferty.");
@@ -195,6 +226,13 @@ export async function resolveOtodomImportLocationFields(draft: {
   }
 
   const street = resolved?.street || String(draft.street || "").trim();
+  const confirmed = listingConfirmedDistrict(city, draft);
+  if (confirmed) {
+    const known = validateCityDistrict(city, confirmed);
+    if (known.valid) {
+      return { city: known.city, district: known.district, street };
+    }
+  }
   const knownDistrict = preferStreetOrOsiedleDistrict(city, {
     street: draft.street || street,
     neighborhood: draft.neighborhood,

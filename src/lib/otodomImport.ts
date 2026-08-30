@@ -1092,25 +1092,64 @@ function parseNierOnlineArea(
   );
 }
 
+const NIER_ONLINE_FEATURE_LABELS = [
+  'Powierzchnia dodatkowa',
+  'Miejsce parkingowe',
+  'Wyposażenie',
+  'Rozkład mieszkania',
+  'Budynek',
+  'Bezpieczeństwo',
+  'Kuchnia',
+  'Łazienka',
+  'Media',
+];
+
+function parseNierOnlineFheaderPairs(html: string): string[] {
+  const out: string[] = [];
+  const re =
+    /<span[^>]*class="[^"]*fheader[^"]*"[^>]*>\s*([^<]+)<\/span>\s*<br\s*\/?>\s*<span[^>]*class="[^"]*fsize-c[^"]*"[^>]*>\s*([^<]+)/gi;
+  for (const match of html.matchAll(re)) {
+    const label = plainImportListText(match[1] || '').replace(/:+\s*$/, '');
+    const value = plainImportListText(match[2] || '');
+    if (label && value) out.push(`${label}: ${value}`);
+  }
+  return out;
+}
+
+function parseNierOnlineFeatures(html: string): string[] {
+  const parts: string[] = [];
+  for (const label of NIER_ONLINE_FEATURE_LABELS) {
+    const value = extractNierOnlineListValue(html, label);
+    if (value) parts.push(`${label}: ${value}`);
+  }
+  parts.push(...parseNierOnlineFheaderPairs(html));
+  return [...new Set(parts.map((part) => part.replace(/\s+/g, ' ').trim()).filter((part) => part.length >= 3 && part.length <= 240))];
+}
+
 function parseNierOnlineDescription(html: string, fallbackMeta: string): { text: string; html: string } {
   const candidates = [
+    html.match(/<div[^>]+class="[^"]*estate-desc-more[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
+    html.match(/<div[^>]+class="[^"]*estate-desc-less[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
+    html.match(/<div[^>]+class="[^"]*box-offer-custom-desc[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
     html.match(/<div[^>]+class="[^"]*ad-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
     html.match(/<section[^>]+class="[^"]*description[^"]*"[^>]*>([\s\S]*?)<\/section>/i)?.[1],
     html.match(/<div[^>]+id="description"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
     html.match(/<div[^>]+class="[^"]*offer-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
   ].filter(Boolean) as string[];
 
+  let bestText = '';
   for (const raw of candidates) {
-    const text = stripHtml(decodeImportHtmlText(raw));
-    if (text.length >= 24) {
-      const paragraphs = text
-        .split(/\n{2,}/)
-        .map((p) => p.trim())
-        .filter(Boolean)
-        .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
-        .join('');
-      return { text, html: paragraphs || `<p>${text}</p>` };
+    const text = stripHtml(decodeImportHtmlText(raw))
+      .replace(/\s*Rozwiń opis\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text.length >= 24 && text.length > bestText.length) {
+      bestText = text;
     }
+  }
+
+  if (bestText) {
+    return { text: bestText, html: `<p>${bestText}</p>` };
   }
 
   const meta = String(fallbackMeta || '').trim();
@@ -1344,7 +1383,7 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     localityCountryCode: 'PL',
     descriptionHtml,
     descriptionText: stripHtml(descriptionHtml),
-    features: [],
+    features: parseNierOnlineFeatures(html),
     imageUrls,
     imageCount: imageUrls.length,
     agency: null,
@@ -1388,7 +1427,11 @@ export async function importOfferFromUrl(inputUrl: string): Promise<OtodomImport
 
   const url = normalizeNieruchomosciOnlineUrl(inputUrl);
   const html = await fetchOtodomOfferHtml(url);
-  return parseNierOnlineHtml(html, url);
+  return parseNieruchomosciOnlineHtml(html, url);
+}
+
+export function parseNieruchomosciOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft {
+  return parseNierOnlineHtml(html, sourceUrl);
 }
 
 /** Kanoniczny URL portalu do wykrywania duplikatów importu. */
