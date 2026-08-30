@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildNierOnlineSearchFallbackUrl,
   buildNierOnlineSearchUrl,
+  buildNierOnlineSzukajQuery,
   isNierOnlineListingUrl,
   listingMatchesClientFilters,
   parseNierOnlineSearchHtml,
@@ -15,18 +16,29 @@ test('city slug strips diacritics and spaces', () => {
   assert.equal(slugifyNierOnlineCity('Jelenia Góra'), 'jelenia-gora');
 });
 
-test('search URL uses city subdomain and listing path', () => {
+test('search URL uses N-O szukaj query with price, area and district', () => {
   assert.equal(
-    buildNierOnlineSearchUrl({ city: 'Warszawa', propertyType: 'FLAT', transactionType: 'SELL' }),
-    'https://warszawa.nieruchomosci-online.pl/mieszkania,sprzedaz/',
+    buildNierOnlineSzukajQuery(
+      { city: 'Warszawa', propertyType: 'FLAT', transactionType: 'SELL', maxPrice: 1_000_000, minArea: 40 },
+      'Wola',
+    ),
+    '3,mieszkanie,sprzedaz,,Warszawa,Wola,,,-1000000,40',
   );
   assert.equal(
+    buildNierOnlineSearchUrl(
+      { city: 'Warszawa', propertyType: 'FLAT', transactionType: 'SELL', maxPrice: 800000, minArea: 40 },
+      1,
+      'Wola',
+    ),
+    'https://www.nieruchomosci-online.pl/szukaj.html?3,mieszkanie,sprzedaz,,Warszawa,Wola,,,-800000,40',
+  );
+  assert.match(
     buildNierOnlineSearchUrl({ city: 'Kraków', propertyType: 'HOUSE', transactionType: 'RENT' }, 2),
-    'https://krakow.nieruchomosci-online.pl/domy,wynajem/?p=2',
+    /szukaj\.html\?3,dom,wynajem,,.+&p=2$/,
   );
   assert.match(
     buildNierOnlineSearchFallbackUrl({ city: 'Warszawa', propertyType: 'FLAT', transactionType: 'SELL' }),
-    /szukaj\.html\?3,mieszkanie,sprzedaz,,Warszawa/,
+    /warszawa\.nieruchomosci-online\.pl\/mieszkania,sprzedaz/,
   );
 });
 

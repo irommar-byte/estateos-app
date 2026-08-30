@@ -17,7 +17,7 @@ import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
-import { parseIntelligencePatch, shapeIntelligenceSettings } from '@/lib/crm/clientIntelligence';
+import { parseIntelligenceLocks, parseIntelligencePatch, shapeIntelligenceSettings } from '@/lib/crm/clientIntelligence';
 import { ensureIntelligenceLockedFieldsColumn, pickIntelligenceOffer, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { parsePesel } from '@/lib/pesel';
@@ -298,6 +298,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     const prefData = webRadarFiltersToBuyerPrefCreate(
       (body.buyerFilters || {}) as WebRadarFilters,
     );
+    const previousPrice = existing.buyerPreference?.maxPrice ?? null;
     if (existing.buyerPreference) {
       await prisma.agencyClientBuyerPreference.update({
         where: { clientId },
@@ -306,6 +307,24 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     } else {
       await prisma.agencyClientBuyerPreference.create({
         data: { clientId, ...prefData },
+      });
+    }
+    const nextPrice = prefData.maxPrice ?? null;
+    if (nextPrice != null && Number(nextPrice) !== Number(previousPrice)) {
+      const current = await prisma.agencyClient.findUnique({
+        where: { id: clientId },
+        select: { intelligenceLockedFields: true, buyerPreference: true },
+      });
+      const locks = parseIntelligenceLocks(
+        (body.intelligence as { lockedFields?: unknown } | undefined)?.lockedFields ??
+          current?.intelligenceLockedFields,
+        current?.buyerPreference || existing.buyerPreference,
+      );
+      locks.maxPrice = true;
+      await ensureIntelligenceLockedFieldsColumn();
+      await prisma.agencyClient.update({
+        where: { id: clientId },
+        data: { intelligenceLockedFields: locks },
       });
     }
     await refreshAgencyClientMatches(clientId);

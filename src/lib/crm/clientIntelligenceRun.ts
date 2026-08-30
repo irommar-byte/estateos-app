@@ -322,13 +322,7 @@ export async function pickIntelligenceOffer(
     : null;
   const lessons = buildIntelligenceLessons(matches, nextOffer);
 
-  if (
-    !best &&
-    considered === 0 &&
-    !options.preview &&
-    !options.portalSupplyAttempted &&
-    (enabled || options.force)
-  ) {
+  if (!best && !options.preview && !options.portalSupplyAttempted && (enabled || options.force)) {
     const { autoSupplyClientFromNieruchomosciOnline } = await import('@/lib/crm/clientIntelligencePortalSupply');
     const supply = await autoSupplyClientFromNieruchomosciOnline({
       clientId,

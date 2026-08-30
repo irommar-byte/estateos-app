@@ -294,9 +294,14 @@ export async function importListingsForClientFromNierOnline(params: {
   await refreshAgencyClientMatches(params.clientId);
 
   const fresh = imported.filter((item) => !item.reused).length;
+  const budget = filters.maxPrice ? `do ${filters.maxPrice.toLocaleString('pl-PL')} zł` : 'bez limitu';
+  const where = filters.districts?.length ? filters.districts.join(', ') : filters.city;
   const message = imported.length
     ? `Zaimportowano ${fresh} ${fresh === 1 ? 'ofertę' : 'ofert'} z Nieruchomości-Online i odświeżono radar.`
-    : skipped[0]?.reason || 'Nie udało się zaimportować ogłoszeń z Nieruchomości-Online.';
+    : skipped[0]?.reason ||
+      (hits.length
+        ? 'Ogłoszenia z N-O są już w EstateOS — radar odświeżony.'
+        : `Na Nieruchomości-Online nic nie pasuje (${where}, ${budget}).`);
 
   return {
     success: imported.length > 0,
@@ -354,9 +359,13 @@ export async function huntNieruchomosciOnlineForClient(params: {
     const extra = searched.hits.length < 8 ? await keiNierOnlineFallback(filters, seen) : [];
     const mergedHits = [...searched.hits, ...extra];
     const hits = await decorateHits(mergedHits);
+    const budget = filters.maxPrice
+      ? `do ${filters.maxPrice.toLocaleString('pl-PL')} zł`
+      : 'bez limitu budżetu';
+    const where = filters.districts?.length ? filters.districts.join(', ') : filters.city;
     const message = hits.length
-      ? `Znalazłem ${hits.length} ogłoszeń na Nieruchomości-Online pasujących do ankiety (przeszukane ${searched.scanned + extra.length}).`
-      : 'Brak ogłoszeń na Nieruchomości-Online dla tej ankiety. Zmień budżet, dzielnice albo metraż.';
+      ? `Znalazłem ${hits.length} ogłoszeń na Nieruchomości-Online (${where}, ${budget}, przeszukane ${searched.scanned + extra.length}).`
+      : `Na Nieruchomości-Online nic nie pasuje (${where}, ${budget}${filters.minArea ? `, od ${filters.minArea} m²` : ''}${filters.requireParking ? ', parking' : ''}). Popraw budżet albo kryteria.`;
     return {
       success: true,
       mode: 'preview',

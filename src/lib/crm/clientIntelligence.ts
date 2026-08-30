@@ -527,17 +527,11 @@ export function preferenceUpdatesFromTaste(params: {
   }
 
   if (phraseCount(taste, 'Za drogo') >= 2 && pref.maxPrice) {
-    if (locks.maxPrice) {
-      notes.push('Klient sygnalizował „za drogo”, ale budżet jest zablokowany.');
-    } else {
-      const likedMax = taste.likedPrices.length ? Math.max(...taste.likedPrices) : 0;
-      let next = Math.round((Number(pref.maxPrice) * 0.92) / 10000) * 10000;
-      if (likedMax > 0) next = Math.max(next, Math.round(likedMax / 10000) * 10000);
-      if (next > 0 && next < Number(pref.maxPrice)) {
-        data.maxPrice = next;
-        notes.push(`Obniżono maks. budżet do ${next.toLocaleString('pl-PL')} zł po sygnałach „za drogo”.`);
-      }
-    }
+    notes.push(
+      locks.maxPrice
+        ? 'Klient sygnalizował „za drogo”, ale budżet zostaje — ustawił go agent.'
+        : `Klient sygnalizował „za drogo”. Budżet ${Number(pref.maxPrice).toLocaleString('pl-PL')} zł zostaje; mózg tylko unika droższych ofert.`,
+    );
   }
 
   if (phraseCount(taste, 'Nie ta dzielnica') >= 1) {

@@ -468,10 +468,15 @@ export default function CrmClientsWorkspace() {
       const res = await fetch(`/api/crm/clients/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intelligence: { ...next, lockedFields: intelLocks } }),
+        body: JSON.stringify({
+          alsoSearching: true,
+          buyerFilters: { ...sellerFilters, pushNotifications: false },
+          intelligence: { ...next, lockedFields: { ...intelLocks, maxPrice: true } },
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(json?.error || "Nie udało się zapisać asystenta."));
+      setIntelLocks((current) => ({ ...current, maxPrice: true }));
       await loadDetail(selectedId);
       return true;
     } catch (e) {

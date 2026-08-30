@@ -94,20 +94,49 @@ export function normalizeNierOnlineListingUrl(input: string): string {
   return url.toString();
 }
 
-export function buildNierOnlineSearchUrl(filters: NierOnlineSearchFilters, page = 1): string {
-  const citySlug = slugifyNierOnlineCity(filters.city) || 'warszawa';
-  const property = nierOnlinePropertyPath(filters.propertyType);
-  const transaction = nierOnlineTransactionPath(filters.transactionType);
-  const url = new URL(`https://${citySlug}.${NIER_ONLINE_HOST}/${property.list},${transaction}/`);
-  if (page > 1) url.searchParams.set('p', String(page));
-  return url.toString();
-}
-
-export function buildNierOnlineSearchFallbackUrl(filters: NierOnlineSearchFilters): string {
+/** Query v3: 3,mieszkanie,sprzedaz,,Warszawa,Wola,,,-800000,40 */
+export function buildNierOnlineSzukajQuery(filters: NierOnlineSearchFilters, district?: string | null): string {
   const city = (canonicalizeCity(filters.city) || filters.city || 'Warszawa').trim();
   const property = nierOnlinePropertyPath(filters.propertyType);
   const transaction = nierOnlineTransactionPath(filters.transactionType);
-  return `https://www.${NIER_ONLINE_HOST}/szukaj.html?3,${property.singular},${transaction},,${encodeURIComponent(city)}`;
+  const priceTo =
+    filters.maxPrice != null && Number.isFinite(filters.maxPrice) && filters.maxPrice > 0
+      ? `-${Math.round(filters.maxPrice)}`
+      : '';
+  const areaFrom =
+    filters.minArea != null && Number.isFinite(filters.minArea) && filters.minArea > 0
+      ? String(Math.round(filters.minArea))
+      : '';
+  const quarter = String(district || '').trim();
+  return [
+    '3',
+    property.singular,
+    transaction,
+    '',
+    encodeURIComponent(city),
+    encodeURIComponent(quarter),
+    '',
+    '',
+    priceTo,
+    areaFrom,
+  ].join(',');
+}
+
+export function buildNierOnlineSearchUrl(
+  filters: NierOnlineSearchFilters,
+  page = 1,
+  district?: string | null,
+): string {
+  const query = buildNierOnlineSzukajQuery(filters, district);
+  const href = `https://www.${NIER_ONLINE_HOST}/szukaj.html?${query}`;
+  return page > 1 ? `${href}&p=${page}` : href;
+}
+
+export function buildNierOnlineSearchFallbackUrl(filters: NierOnlineSearchFilters): string {
+  const citySlug = slugifyNierOnlineCity(filters.city) || 'warszawa';
+  const property = nierOnlinePropertyPath(filters.propertyType);
+  const transaction = nierOnlineTransactionPath(filters.transactionType);
+  return `https://${citySlug}.${NIER_ONLINE_HOST}/${property.list},${transaction}/`;
 }
 
 function amenityGroups(filters: NierOnlineSearchFilters): string[][] {
@@ -285,11 +314,12 @@ export async function searchNieruchomosciOnline(
 ): Promise<{ hits: NierOnlineSearchHit[]; searchUrl: string; scanned: number; fallbackUsed: boolean }> {
   const pages = Math.max(1, Math.min(options?.pages ?? 2, 3));
   const limit = Math.max(1, Math.min(options?.limit ?? 24, 40));
-  const primary = buildNierOnlineSearchUrl(filters, 1);
+  const districts = (filters.districts || []).map((item) => String(item || '').trim()).filter(Boolean);
+  const scopes = districts.length ? districts : [null];
   const collected: NierOnlineSearchHit[] = [];
   const seen = new Set<string>();
   let fallbackUsed = false;
-  let searchUrl = primary;
+  let searchUrl = buildNierOnlineSearchUrl(filters, 1, scopes[0]);
 
   const ingest = (html: string) => {
     for (const hit of parseNierOnlineSearchHtml(html)) {
@@ -299,18 +329,20 @@ export async function searchNieruchomosciOnline(
     }
   };
 
-  try {
-    ingest(await fetchOtodomOfferHtml(primary));
-  } catch {
-    collected.length = 0;
-    seen.clear();
-  }
-
-  for (let page = 2; page <= pages && collected.length > 0 && collected.length < 80; page += 1) {
+  for (const district of scopes) {
+    const primary = buildNierOnlineSearchUrl(filters, 1, district);
+    searchUrl = primary;
     try {
-      ingest(await fetchOtodomOfferHtml(buildNierOnlineSearchUrl(filters, page)));
+      ingest(await fetchOtodomOfferHtml(primary));
     } catch {
-      break;
+      continue;
+    }
+    for (let page = 2; page <= pages && collected.length < 80; page += 1) {
+      try {
+        ingest(await fetchOtodomOfferHtml(buildNierOnlineSearchUrl(filters, page, district)));
+      } catch {
+        break;
+      }
     }
   }
 
@@ -318,16 +350,28 @@ export async function searchNieruchomosciOnline(
     const fallback = buildNierOnlineSearchFallbackUrl(filters);
     searchUrl = fallback;
     fallbackUsed = true;
-    ingest(await fetchOtodomOfferHtml(fallback));
+    try {
+      ingest(await fetchOtodomOfferHtml(fallback));
+    } catch {
+      // zostaw pusty zbiór — komunikat pójdzie z hunt
+    }
   }
 
-  const matched = collected.filter((hit) => listingMatchesClientFilters(hit, filters));
-  const relaxed =
-    matched.length === 0 && (filters.districts || []).length
-      ? collected.filter((hit) => listingMatchesClientFilters(hit, { ...filters, districts: [] }))
-      : matched;
+  const apply = (next: NierOnlineSearchFilters) =>
+    collected.filter((hit) => listingMatchesClientFilters(hit, next));
+
+  let matched = apply(filters);
+  if (!matched.length && filters.requireParking) {
+    matched = apply({ ...filters, requireParking: false });
+  }
+  if (!matched.length && filters.requireBalcony) {
+    matched = apply({ ...filters, requireBalcony: false, requireParking: filters.requireParking });
+  }
+  if (!matched.length && districts.length) {
+    matched = apply({ ...filters, districts: [] });
+  }
   return {
-    hits: relaxed.slice(0, limit),
+    hits: matched.slice(0, limit),
     searchUrl,
     scanned: collected.length,
     fallbackUsed,

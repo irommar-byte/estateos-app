@@ -549,7 +549,7 @@ export default function CrmIntelligenceAssistant({
                 Zapisany
               </span>
             ) : (
-              "Zapisz asystenta"
+              "Zapisz asystenta i ankietę"
             )}
           </button>
           <button
