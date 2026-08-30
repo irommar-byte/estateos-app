@@ -285,7 +285,7 @@ export function mapSectionsForRender(
     return {
       id: `room-${index}`,
       key: section.key,
-      label: getRoomScanSectionLabel(section.key),
+      label: (section.label && section.label.trim()) || getRoomScanSectionLabel(section.key),
       centerX: section.centerX,
       centerZ: section.centerZ,
       areaSqM: section.areaSqM,

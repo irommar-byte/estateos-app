@@ -564,7 +564,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
       floorPlan3d: scan.floorPlan3dUri,
       floorPlanScanMeta: JSON.stringify({
         ...scan.scanMeta,
-        roomScans: propertyRoomScans,
+        roomScans: Array.isArray(scan.scanMeta.roomScans) ? scan.scanMeta.roomScans : propertyRoomScans,
       }),
     });
   };

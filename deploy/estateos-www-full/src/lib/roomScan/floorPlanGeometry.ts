@@ -61,22 +61,22 @@ export type MappedOpening = {
 };
 
 const OBJECT_GLYPH: Record<string, string> = {
-  stove: 'AGD',
-  oven: 'AGD',
-  refrigerator: 'LOD',
-  dishwasher: 'ZM',
-  sink: 'ZL',
-  washerDryer: 'PR',
+  stove: 'Kuchenka',
+  oven: 'Piekarnik',
+  refrigerator: 'Lodówka',
+  dishwasher: 'Zmywarka',
+  sink: 'Zlew',
+  washerDryer: 'Pralka',
   toilet: 'WC',
-  bathtub: 'WAN',
-  bed: 'LOZ',
-  sofa: 'SOF',
-  table: 'ST',
-  chair: 'KR',
+  bathtub: 'Wanna',
+  bed: 'Łóżko',
+  sofa: 'Sofa',
+  table: 'Stół',
+  chair: 'Krzesło',
   television: 'TV',
-  fireplace: 'KOM',
-  storage: 'SZ',
-  stairs: 'SCH',
+  fireplace: 'Kominek',
+  storage: 'Szafa',
+  stairs: 'Schody',
   unknown: '•',
 };
 
@@ -99,6 +99,35 @@ const OBJECT_FILL: Record<string, { fill: string; stroke: string }> = {
   stairs: { fill: 'rgba(148,163,184,0.28)', stroke: '#cbd5e1' },
   unknown: { fill: 'rgba(148,163,184,0.18)', stroke: '#94a3b8' },
 };
+
+export function deriveRoomDimensionsFromWalls(
+  walls: RoomScanWallSegment[],
+): { widthM: number; lengthM: number } | null {
+  const deduped = dedupeWallSegments(walls).filter((wall) => wallLengthMeters(wall) >= 0.65);
+  if (deduped.length < 2) return null;
+  const dominant = [...deduped].sort((a, b) => wallLengthMeters(b) - wallLengthMeters(a))[0];
+  const dx = dominant.x2 - dominant.x1;
+  const dz = dominant.z2 - dominant.z1;
+  const magnitude = Math.hypot(dx, dz);
+  if (magnitude < 0.01) return null;
+  const ux = dx / magnitude;
+  const uz = dz / magnitude;
+  const vx = -uz;
+  const vz = ux;
+  const points = deduped.flatMap((wall) => [
+    { x: wall.x1, z: wall.z1 },
+    { x: wall.x2, z: wall.z2 },
+  ]);
+  const along = points.map((point) => point.x * ux + point.z * uz);
+  const across = points.map((point) => point.x * vx + point.z * vz);
+  const sideA = Math.max(...along) - Math.min(...along);
+  const sideB = Math.max(...across) - Math.min(...across);
+  if (sideA < 0.3 || sideB < 0.3) return null;
+  return {
+    widthM: Number(Math.min(sideA, sideB).toFixed(2)),
+    lengthM: Number(Math.max(sideA, sideB).toFixed(2)),
+  };
+}
 
 const ROOM_FILL_COLORS = [
   'rgba(56,189,248,0.14)',
@@ -294,7 +323,7 @@ export function mapSectionsForRender(
     return {
       id: `room-${index}`,
       key: section.key,
-      label: getRoomScanSectionLabel(section.key, locale),
+      label: (section.label && section.label.trim()) || getRoomScanSectionLabel(section.key, locale),
       centerX: section.centerX,
       centerZ: section.centerZ,
       areaSqM: section.areaSqM,

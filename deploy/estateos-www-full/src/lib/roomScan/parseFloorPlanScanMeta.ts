@@ -6,6 +6,7 @@ import type {
   RoomScanSection,
   RoomScanWallSegment,
 } from '@/types/roomScan';
+import { listingRoomCountFromRooms, listingRoomCountFromSections, refineScanSections, totalUniqueAreaSqM } from '@/lib/roomScan/refineScanSections';
 
 function asNumber(value: unknown): number | undefined {
   const n = Number(value);
@@ -33,6 +34,10 @@ function parseRooms(raw: unknown): PropertyRoomScan[] {
     rooms.push({
       id: String(room.id || `room-${index}`),
       name: String(room.name || `Pomieszczenie ${index + 1}`),
+      typeKey: room.typeKey ? String(room.typeKey) : undefined,
+      sourceSectionIndex: Number.isFinite(Number(room.sourceSectionIndex))
+        ? Number(room.sourceSectionIndex)
+        : undefined,
       widthM: String(room.widthM || ''),
       lengthM: String(room.lengthM || ''),
       heightM: String(room.heightM || ''),
@@ -66,16 +71,24 @@ export function parseFloorPlanScanMeta(raw: unknown): FloorPlanScanMeta | null {
       ? (meta.bounds as FloorPlanScanMeta['bounds'])
       : { minX: -2, maxX: 2, minZ: -2, maxZ: 2 };
 
+    const refined = walls.length
+      ? refineScanSections(sections, walls, objects, asNumber(meta.ceilingHeightM) ?? null)
+      : sections;
+    const listingCount =
+      listingRoomCountFromSections(refined) || listingRoomCountFromRooms(roomScans);
+
     return {
       version: meta.version === 1 ? 1 : 2,
       scannedAt: String(meta.scannedAt || ''),
-      roomCount: Number(meta.roomCount) || Math.max(sections.length, roomScans.length, 0),
+      roomCount: listingCount || Number(meta.roomCount) || Math.max(refined.length, roomScans.length, 0),
       totalAreaSqM:
-        meta.totalAreaSqM != null && Number.isFinite(Number(meta.totalAreaSqM))
-          ? Number(meta.totalAreaSqM)
-          : null,
+        walls.length
+          ? totalUniqueAreaSqM(refined, walls)
+          : meta.totalAreaSqM != null && Number.isFinite(Number(meta.totalAreaSqM))
+            ? Number(meta.totalAreaSqM)
+            : null,
       ceilingHeightM: asNumber(meta.ceilingHeightM) ?? null,
-      sections,
+      sections: refined,
       walls,
       objects,
       openings,

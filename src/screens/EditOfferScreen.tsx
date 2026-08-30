@@ -1220,7 +1220,10 @@ export default function EditOfferScreen({ route }: any) {
     handleRoomScanComplete({
       floorPlanPngUri: scan.floorPlanPngUri,
       floorPlan3dUri: scan.floorPlan3dUri,
-      scanMeta: { ...scan.scanMeta, roomScans: propertyRoomScans },
+      scanMeta: {
+        ...scan.scanMeta,
+        roomScans: Array.isArray(scan.scanMeta.roomScans) ? scan.scanMeta.roomScans : propertyRoomScans,
+      },
     });
   };
 

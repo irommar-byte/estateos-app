@@ -60,11 +60,14 @@ export type RoomScanSection = {
   lengthM?: number;
   ceilingHeightM?: number;
   inferredFromObjects?: boolean;
+  userAssigned?: boolean;
 };
 
 export type PropertyRoomScan = {
   id: string;
   name: string;
+  typeKey?: string;
+  sourceSectionIndex?: number;
   widthM: string;
   lengthM: string;
   heightM: string;

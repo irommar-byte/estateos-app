@@ -3,9 +3,9 @@ import type {
   RoomScanDetectedObject,
   RoomScanSection,
   RoomScanWallSegment,
-} from '../../types/roomScan';
-import { deriveRoomDimensionsFromWalls, estimateFloorAreaFromWalls } from './roomScanMeasurements';
-import { inferRoomTypeFromObjects } from './roomScanClassify';
+} from '@/types/roomScan';
+import { deriveRoomDimensionsFromWalls, estimateFloorAreaFromWalls } from '@/lib/roomScan/floorPlanGeometry';
+import { inferRoomTypeFromObjects } from '@/lib/roomScan/roomScanClassify';
 
 export const LISTING_ROOM_TYPE_KEYS = new Set([
   'livingRoom',

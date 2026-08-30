@@ -5,14 +5,19 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import RoomScanModal, { isRoomScanSupportedOnDevice } from './RoomScanModal';
 import FloorPlanFurnitureEditor from './FloorPlanFurnitureEditor';
+import FloorPlanScanArtboard from './FloorPlanScanArtboard';
+import { captureArtboardToPng } from '../../lib/roomScan/captureArtboard';
 import { measurementsFromScanMeta } from '../../lib/roomScan/roomScanMeasurements';
 import { getSafeQuickLook } from '../../utils/safeQuickLook';
 import type {
+  FloorPlanScanMeta,
   PropertyRoomScan,
   RoomScanDraftAssets,
+  RoomScanWallSegment,
   WholePropertyScan,
 } from '../../types/roomScan';
 import {
+  applyRoomIdentityToScanMeta,
   listingRoomCountFromRooms,
   livableAreaFromRooms,
   ROOM_PRESET_DEFS,
@@ -23,6 +28,60 @@ import { getRoomScanSectionLabel } from '../../lib/roomScan/roomScanLabels';
 function numberValue(raw: string): number {
   const value = Number(String(raw || '').replace(',', '.'));
   return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+type PlanRelabelJob = {
+  id: number;
+  walls: RoomScanWallSegment[];
+  meta: FloorPlanScanMeta;
+  onCaptured: (uri: string) => void;
+};
+
+function HiddenPlanRelabelCapture({ job }: { job: PlanRelabelJob | null }) {
+  const svgRef = useRef(null);
+  const viewRef = useRef<View>(null);
+  const jobRef = useRef(job);
+  jobRef.current = job;
+
+  useEffect(() => {
+    const current = jobRef.current;
+    if (!current) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const uri = await captureArtboardToPng(svgRef, viewRef);
+          if (!cancelled && uri) current.onCaptured(uri);
+        } catch {
+          /* zostaw poprzedni PNG */
+        }
+      })();
+    }, 160);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [job?.id]);
+
+  if (!job) return null;
+  return (
+    <View
+      style={{ position: 'absolute', left: -4200, top: 0, width: 720, height: 720 }}
+      pointerEvents="none"
+      collapsable={false}
+    >
+      <View ref={viewRef} collapsable={false} style={{ width: 720, height: 720, backgroundColor: '#f8fafc' }}>
+        <FloorPlanScanArtboard
+          ref={svgRef}
+          walls={job.walls.length ? job.walls : job.meta.walls}
+          meta={job.meta}
+          width={720}
+          height={720}
+          forExport
+        />
+      </View>
+    </View>
+  );
 }
 
 type Props = {
@@ -58,12 +117,42 @@ export default function PropertyRoomScanWorkspace({
   const scanAvailable = isRoomScanSupportedOnDevice();
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
+  const wholeScanRef = useRef(wholeScan);
+  wholeScanRef.current = wholeScan;
+  const [relabelJob, setRelabelJob] = useState<PlanRelabelJob | null>(null);
+  const relabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const relabelSeqRef = useRef(0);
+
+  const queuePlanPngRelabel = (
+    meta: FloorPlanScanMeta | undefined,
+    onCaptured: (uri: string) => void,
+    delayMs = 380,
+  ) => {
+    if (!meta?.walls?.length) return;
+    if (relabelTimerRef.current) clearTimeout(relabelTimerRef.current);
+    relabelTimerRef.current = setTimeout(() => {
+      relabelSeqRef.current += 1;
+      setRelabelJob({
+        id: relabelSeqRef.current,
+        walls: meta.walls,
+        meta,
+        onCaptured,
+      });
+    }, delayMs);
+  };
 
   useEffect(() => {
     if (!autoOpen || coachmarkHandled.current) return;
     coachmarkHandled.current = true;
     setShowCoachmark(true);
   }, [autoOpen]);
+
+  useEffect(
+    () => () => {
+      if (relabelTimerRef.current) clearTimeout(relabelTimerRef.current);
+    },
+    [],
+  );
 
   const palette = {
     card: isDark ? '#1c1c1e' : '#ffffff',
@@ -104,21 +193,88 @@ export default function PropertyRoomScanWorkspace({
   };
 
   const updateRoom = (id: string, patch: Partial<PropertyRoomScan>, recalculate = false) => {
-    onChangeRooms(
-      rooms.map((room) => {
-        if (room.id !== id) return room;
-        const next = { ...room, ...patch };
-        if (recalculate) {
-          const width = numberValue(next.widthM);
-          const length = numberValue(next.lengthM);
-          next.areaM2 = width && length ? (width * length).toFixed(1) : next.areaM2;
+    const identityChanged = patch.name !== undefined || patch.typeKey !== undefined;
+    const nextRooms = rooms.map((room) => {
+      if (room.id !== id) return room;
+      const next = { ...room, ...patch };
+      if (recalculate) {
+        const width = numberValue(next.widthM);
+        const length = numberValue(next.lengthM);
+        next.areaM2 = width && length ? (width * length).toFixed(1) : next.areaM2;
+      }
+      if (patch.name && !patch.typeKey) {
+        next.typeKey = roomTypeKeyFromName(next.name);
+      }
+      if (identityChanged && next.scanMeta) {
+        const patched = applyRoomIdentityToScanMeta(next.scanMeta, {
+          sectionIndex: next.scanMeta.sections?.length === 1 ? 0 : next.sourceSectionIndex ?? 0,
+          name: next.name,
+          typeKey: next.typeKey,
+        });
+        if (patched) next.scanMeta = patched;
+      }
+      return next;
+    });
+    onChangeRooms(nextRooms);
+
+    if (!identityChanged || disabled) return;
+    const changed = nextRooms.find((room) => room.id === id);
+    if (!changed) return;
+
+    let nextWhole = wholeScan || null;
+    if (nextWhole && onChangeWholeScan) {
+      const sectionIndex =
+        typeof changed.sourceSectionIndex === 'number'
+          ? changed.sourceSectionIndex
+          : nextWhole.scanMeta.sections?.length === nextRooms.length
+            ? nextRooms.findIndex((room) => room.id === id)
+            : nextWhole.scanMeta.sections?.length === 1
+              ? 0
+              : null;
+      const patchedMeta = applyRoomIdentityToScanMeta(nextWhole.scanMeta, {
+        sectionIndex,
+        name: changed.name,
+        typeKey: changed.typeKey,
+      });
+      if (patchedMeta) {
+        nextWhole = { ...nextWhole, scanMeta: { ...patchedMeta, roomScans: nextRooms } };
+        onChangeWholeScan(nextWhole);
+      }
+    }
+
+    if (nextWhole?.scanMeta) {
+      queuePlanPngRelabel(nextWhole.scanMeta, (uri) => {
+        const latest = wholeScanRef.current;
+        if (!latest || !onChangeWholeScan) return;
+        onChangeWholeScan({
+          ...latest,
+          floorPlanPngUri: uri,
+          scanMeta: { ...latest.scanMeta, roomScans: roomsRef.current },
+        });
+        const roomNow = roomsRef.current.find((item) => item.id === id);
+        if (roomNow?.scanMeta?.walls?.length) {
+          queuePlanPngRelabel(
+            roomNow.scanMeta,
+            (roomUri) => {
+              onChangeRooms(
+                roomsRef.current.map((item) =>
+                  item.id === id ? { ...item, floorPlanPngUri: roomUri } : item,
+                ),
+              );
+            },
+            80,
+          );
         }
-        if (patch.name && !patch.typeKey) {
-          next.typeKey = roomTypeKeyFromName(next.name);
-        }
-        return next;
-      }),
-    );
+      });
+    } else if (changed.scanMeta) {
+      queuePlanPngRelabel(changed.scanMeta, (uri) => {
+        onChangeRooms(
+          roomsRef.current.map((room) =>
+            room.id === id ? { ...room, floorPlanPngUri: uri } : room,
+          ),
+        );
+      });
+    }
   };
 
   const removeRoom = (room: PropertyRoomScan) => {
@@ -143,6 +299,7 @@ export default function PropertyRoomScanWorkspace({
         id: `room-${stamp}-${index}-${Math.round(Math.random() * 1000)}`,
         name: section.label || getRoomScanSectionLabel(typeKey) || `Pomieszczenie ${index + 1}`,
         typeKey,
+        sourceSectionIndex: index,
         widthM: fmt(section.widthM),
         lengthM: fmt(section.lengthM),
         heightM: fmt(section.ceilingHeightM ?? meta.ceilingHeightM),
@@ -469,7 +626,19 @@ export default function PropertyRoomScanWorkspace({
             </View>
             <FloorPlanFurnitureEditor
               meta={wholeScan.scanMeta}
-              onChange={(next) => onChangeWholeScan?.({ ...wholeScan, scanMeta: next })}
+              onChange={(next) => {
+                const updated = { ...wholeScan, scanMeta: next };
+                onChangeWholeScan?.(updated);
+                queuePlanPngRelabel(next, (uri) => {
+                  const latest = wholeScanRef.current;
+                  if (!latest || !onChangeWholeScan) return;
+                  onChangeWholeScan({
+                    ...latest,
+                    floorPlanPngUri: uri,
+                    scanMeta: { ...next, roomScans: roomsRef.current },
+                  });
+                }, 220);
+              }}
               textColor={palette.text}
               secondaryColor={palette.secondary}
               borderColor={palette.border}
@@ -504,6 +673,7 @@ export default function PropertyRoomScanWorkspace({
         onComplete={applyScan}
         onMeasurements={applyMeasurements}
       />
+      <HiddenPlanRelabelCapture job={relabelJob} />
     </View>
   );
 }

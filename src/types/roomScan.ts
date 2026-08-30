@@ -64,6 +64,8 @@ export type RoomScanSection = {
   /** Średnia wysokość pomieszczenia (m), jeśli znana. */
   ceilingHeightM?: number;
   inferredFromObjects?: boolean;
+  /** Agent zmienił typ ręcznie — nie nadpisuj z powrotem inferencją z mebli. */
+  userAssigned?: boolean;
 };
 
 export type FloorPlanScanMeta = {
@@ -97,6 +99,8 @@ export type PropertyRoomScan = {
   id: string;
   name: string;
   typeKey?: string;
+  /** Indeks pomieszczenia na planie całego mieszkania — nie przesuwa się przy usuwaniu innych kart. */
+  sourceSectionIndex?: number;
   widthM: string;
   lengthM: string;
   heightM: string;
