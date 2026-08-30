@@ -446,6 +446,7 @@ export async function notifyAgencyClientAboutOffer(params: {
         emailSent,
         intelligence: Boolean(params.intelligence),
         intelligenceReason: params.intelligence?.reason || null,
+        clientWhy: params.customMessage?.trim() || null,
         offerIds: [params.offerId],
         offers: preview.offers.map((o) => ({
           id: o.id,

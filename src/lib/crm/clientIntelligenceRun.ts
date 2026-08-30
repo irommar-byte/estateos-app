@@ -14,6 +14,40 @@ import {
   type IntelligenceLesson,
   type LearnedTaste,
 } from '@/lib/crm/clientIntelligence';
+import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
+import { buildOfferDialogueTurn } from '@/lib/crm/intelligenceDialogue';
+import { clientAcceptsScarceBudget } from '@/lib/crm/intelligenceCheckback';
+import { sendPortalChat } from '@/lib/crm/portalChat';
+import { resolveSellerPersonName } from '@/lib/sellerDisplay';
+
+function lastFeedbackLesson(
+  matches: Array<{
+    offerId: number;
+    clientFeedback: string | null;
+    clientFeedbackAt?: Date | string | null;
+    offer: OfferRow;
+  }>,
+): { prevOffer: OfferRow; prevFeedbackRaw: string } | null {
+  const withFeedback = matches
+    .filter((row) => row.clientFeedback)
+    .map((row) => ({
+      row,
+      at: row.clientFeedbackAt ? new Date(row.clientFeedbackAt).getTime() : 0,
+    }))
+    .sort((a, b) => b.at - a.at);
+  for (const { row } of withFeedback) {
+    const parsed = parseClientOfferFeedback(row.clientFeedback);
+    if (!parsed.sentiment && !parsed.phrases.length && !parsed.note) continue;
+    return { prevOffer: row.offer, prevFeedbackRaw: row.clientFeedback! };
+  }
+  return null;
+}
+
+function agentFirstNameFromUser(user: { name?: string | null } | null | undefined): string | null {
+  const full = resolveSellerPersonName(user) || user?.name || '';
+  const first = full.trim().split(/\s+/)[0];
+  return first || null;
+}
 
 const OFFER_SELECT = {
   id: true,
@@ -148,14 +182,16 @@ export async function pickIntelligenceOffer(
     ignoreInterval?: boolean;
     excludeOfferIds?: number[];
     portalSupplyAttempted?: boolean;
+    replyToFeedback?: boolean;
   } = {},
-): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null }> {
+): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null; agentFirstName: string | null }> {
   await ensureIntelligenceLockedFieldsColumn();
 
   const client = await prisma.agencyClient.findUnique({
     where: { id: clientId },
     include: {
       buyerPreference: true,
+      agencyUser: { select: { name: true, companyName: true } },
       matches: {
         include: { offer: { select: OFFER_SELECT } },
         orderBy: { score: 'desc' },
@@ -195,9 +231,13 @@ export async function pickIntelligenceOffer(
       agencyUserId: client?.agencyUserId || 0,
       maxPrice: null,
       taste: learnFromFeedback([]),
+      agentFirstName: null,
       pick: empty('Brak kryteriów radaru.'),
     };
   }
+
+  const agentFirstName = agentFirstNameFromUser(client.agencyUser);
+  const acceptScarceBudget = await clientAcceptsScarceBudget(clientId);
 
   const taste = learnFromFeedback(
     client.matches.map((row) => ({
@@ -277,7 +317,7 @@ export async function pickIntelligenceOffer(
   const excluded = new Set(options.excludeOfferIds || []);
   let best: Cand | null = null;
   let considered = 0;
-  const relaxScore = Boolean(options.force || options.preview || calibrating);
+  const relaxScore = Boolean(options.force || options.preview || calibrating || options.replyToFeedback);
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
     if (taste.rejectedOfferIds.includes(row.offerId)) continue;
@@ -289,6 +329,7 @@ export async function pickIntelligenceOffer(
       offer: row.offer,
       taste,
       maxPrice: client.buyerPreference.maxPrice,
+      acceptScarceBudget,
     });
     if (adjusted.score < minScore && !relaxScore) continue;
     const cheaperTie =
@@ -346,7 +387,9 @@ export async function pickIntelligenceOffer(
   }
 
   const canSchedule = enabled && (calibrating || taste.learnCount >= minLearns);
-  const qualifies = Boolean(best && (calibrating || best.score >= minScore || options.force));
+  const qualifies = Boolean(
+    best && (calibrating || best.score >= minScore || options.force || options.replyToFeedback),
+  );
   const nextSendAt = nextSendAtIso(client.intelligenceLastSentAt, intervalHours, canSchedule && qualifies);
   const ready = !skipReason && qualifies;
 
@@ -355,6 +398,7 @@ export async function pickIntelligenceOffer(
       agencyUserId: client.agencyUserId,
       maxPrice: client.buyerPreference.maxPrice,
       taste,
+      agentFirstName,
       pick: empty(skipReason || 'Brak oferty z wystarczającą pewnością.', {
         tasteSummary: summarizeTaste(taste),
         learnCount: taste.learnCount,
@@ -367,6 +411,31 @@ export async function pickIntelligenceOffer(
     };
   }
 
+  const feedbackLesson = lastFeedbackLesson(
+    matches.map((row) => ({
+      offerId: row.offerId,
+      clientFeedback: row.clientFeedback,
+      clientFeedbackAt: row.clientFeedbackAt,
+      offer: row.offer,
+    })),
+  );
+  const dialogueWhy = buildOfferDialogueTurn({
+    prevOffer: feedbackLesson?.prevOffer ?? null,
+    prevFeedback: feedbackLesson ? parseClientOfferFeedback(feedbackLesson.prevFeedbackRaw) : null,
+    nextOffer: nextOffer,
+    reasons: best.reasons,
+    city: best.city,
+    district: best.district,
+    calibrating,
+    agentFirstName,
+  }).body;
+  const clientWhy = dialogueWhy || clientFacingWhyLine({
+    reasons: best.reasons,
+    city: best.city,
+    district: best.district,
+    calibrating,
+  });
+
   const analysis = buildAnalysis({
     tasteSummary: summarizeTaste(taste),
     radarScore: best.radarScore,
@@ -377,17 +446,12 @@ export async function pickIntelligenceOffer(
     correctedBalcony: correctedBalconyIds.includes(best.offerId),
     calibrating,
   });
-  const clientWhy = clientFacingWhyLine({
-    reasons: best.reasons,
-    city: best.city,
-    district: best.district,
-    calibrating,
-  });
 
   return {
     agencyUserId: client.agencyUserId,
     maxPrice: client.buyerPreference.maxPrice,
     taste,
+    agentFirstName,
     pick: {
       ready,
       skipReason: ready ? null : skipReason,
@@ -417,6 +481,7 @@ export async function sendIntelligenceOffer(params: {
   clientId: number;
   force?: boolean;
   ignoreInterval?: boolean;
+  replyToFeedback?: boolean;
   channel?: 'email' | 'manual';
 }): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
   const excludeOfferIds: number[] = [];
@@ -425,7 +490,8 @@ export async function sendIntelligenceOffer(params: {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { pick, agencyUserId } = await pickIntelligenceOffer(params.clientId, {
       force: params.force,
-      ignoreInterval: params.ignoreInterval,
+      ignoreInterval: params.ignoreInterval ?? params.replyToFeedback,
+      replyToFeedback: params.replyToFeedback,
       excludeOfferIds,
     });
     lastPick = pick;
@@ -451,20 +517,31 @@ export async function sendIntelligenceOffer(params: {
       .filter(Boolean)
       .join('\n');
 
+    const customMessage =
+      pick.clientWhy ||
+      clientFacingWhyLine({
+        reasons: pick.reasons,
+        city: pick.city,
+        district: pick.district,
+        calibrating: pick.calibrating,
+      });
+
     const notified = await notifyAgencyClientAboutOffer({
       clientId: params.clientId,
       offerId: pick.offerId,
       agencyUserId,
       channel: params.channel ?? 'email',
       matchScore: pick.radarScore ?? undefined,
-      customMessage: pick.clientWhy || clientFacingWhyLine({
-        reasons: pick.reasons,
-        city: pick.city,
-        district: pick.district,
-        calibrating: pick.calibrating,
-      }),
+      customMessage,
       intelligence: { reason },
     });
+
+    await sendPortalChat({
+      clientId: params.clientId,
+      agencyUserId,
+      from: 'agent',
+      content: customMessage,
+    }).catch(() => {});
 
     await prisma.agencyClient.update({
       where: { id: params.clientId },

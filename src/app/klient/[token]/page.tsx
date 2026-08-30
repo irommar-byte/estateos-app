@@ -15,6 +15,9 @@ import {
 import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
+import ClientPortalIntelligenceCheckback, {
+  type PortalPendingCheckback,
+} from "@/components/portal/ClientPortalIntelligenceCheckback";
 import ClientPortalOfferSearchPanel from "@/components/portal/ClientPortalOfferSearchPanel";
 import ClientPortalUpcomingOfferSlot from "@/components/portal/ClientPortalUpcomingOfferSlot";
 import ClientPortalLiveChat from "@/components/portal/ClientPortalLiveChat";
@@ -77,6 +80,7 @@ type PortalData = {
   agencyAddress?: string | null;
   searchCriteria: SearchCriteria;
   intelligenceEnabled: boolean;
+  pendingCheckback?: PortalPendingCheckback | null;
   unscoredMatchCount: number;
   canChat: boolean;
   meeting: (ScheduleSlot & { prepLabels?: string[] }) | null;
@@ -90,6 +94,7 @@ type PortalData = {
     clientFeedbackAt: string | null;
     intelligenceSent?: boolean;
     intelligenceReason?: string | null;
+    clientWhy?: string | null;
     offer: {
       id: number;
       title: string;
@@ -765,6 +770,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             ))}
           </ul>
         </section>
+      ) : null}
+
+      {portal.type === "BUYER" && portal.pendingCheckback && token ? (
+        <ClientPortalIntelligenceCheckback
+          token={token}
+          checkback={portal.pendingCheckback}
+          onDone={() => void load()}
+        />
       ) : null}
 
       {portal.type === "BUYER" ? (

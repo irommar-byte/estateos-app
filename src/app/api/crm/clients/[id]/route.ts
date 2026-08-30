@@ -50,6 +50,7 @@ import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
 import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
+import { getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
 import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
 import { attachMatchImportBrief, listMatchImportBriefs } from '@/lib/crm/matchImportProvenance';
 
@@ -117,6 +118,8 @@ export async function GET(req: Request, ctx: RouteCtx) {
       ?.toISOString?.() || null,
   });
 
+  const pendingCheckback = await getPendingCheckback(client.id);
+
   const nextStep = resolveClientNextStep({
     type: client.type,
     email: client.email,
@@ -134,6 +137,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     presentationStatus: presentation?.status ?? null,
     acquisitionStatus: acquisition?.status ?? null,
     linkedOfferId: client.linkedOfferId,
+    pendingIntelligenceCheckback: Boolean(pendingCheckback),
   });
 
   return NextResponse.json({
@@ -177,6 +181,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         await listMatchImportBriefs(client.matches.map((m) => m.offer.id)),
       ),
       intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
+      pendingCheckback,
       meeting,
       presentation,
       journey,

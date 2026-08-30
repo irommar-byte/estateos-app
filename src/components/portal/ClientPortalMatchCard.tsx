@@ -22,6 +22,7 @@ type Match = {
   clientFeedbackAt: string | null;
   intelligenceSent?: boolean;
   intelligenceReason?: string | null;
+  clientWhy?: string | null;
   offer: {
     id: number;
     title: string;
@@ -163,6 +164,9 @@ export default function ClientPortalMatchCard({
             {match.offer.rooms ? ` · ${match.offer.rooms} pok.` : ""}
           </p>
           <p className="mt-0.5 line-clamp-1 text-xs text-[var(--eos-muted)]">{location}</p>
+          {match.clientWhy ? (
+            <p className="mt-2 text-xs leading-relaxed text-[var(--eos-text)]/90">{match.clientWhy}</p>
+          ) : null}
           {!expanded ? (
             <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--eos-subtle)]">
               Zdjęcie = galeria · początek opisu = szybki podgląd

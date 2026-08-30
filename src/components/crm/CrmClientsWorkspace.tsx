@@ -106,6 +106,13 @@ type ClientDetail = AgencyClientListItem & {
   }>;
   buyerFilters?: WebRadarFilters | null;
   intelligence?: IntelligenceSettings | null;
+  pendingCheckback?: {
+    activityId: number;
+    type: string;
+    body: string;
+    options: Array<{ id: string; label: string }>;
+    createdAt: string;
+  } | null;
   nextStep?: ClientNextStep | null;
   activities?: Array<{
     id: number;
@@ -142,7 +149,7 @@ type Report = {
 };
 
 const ACTIVITY_GROUPS: Array<{ label: string; kinds: string[] }> = [
-  { label: "Plan i kolejka", kinds: ["INTELLIGENCE_PLANNED"] },
+  { label: "Plan i kolejka", kinds: ["INTELLIGENCE_PLANNED", "INTELLIGENCE_CHECKBACK", "INTELLIGENCE_HANDOFF"] },
   {
     label: "Wysłane i przypomnienia",
     kinds: ["INTELLIGENCE_OFFER", "CLIENT_NOTIFIED", "OFFER_SHARED", "FEEDBACK_REMINDER"],
@@ -1264,6 +1271,7 @@ export default function CrmClientsWorkspace() {
                     value={detail.intelligence}
                     busy={busy}
                     activities={detail.activities}
+                    pendingCheckback={detail.pendingCheckback}
                     onSave={(next) => saveIntelligence(next)}
                   />
                   <div id="crm-criteria">
@@ -1474,6 +1482,7 @@ export default function CrmClientsWorkspace() {
                           value={detail.intelligence}
                           busy={busy}
                           activities={detail.activities}
+                          pendingCheckback={detail.pendingCheckback}
                           onSave={(next) => saveIntelligence(next)}
                         />
                         <AgencyClientCriteriaEditor

@@ -31,6 +31,7 @@ export function resolveClientNextStep(input: {
   presentationStatus?: 'confirmed' | 'pending' | null;
   acquisitionStatus?: string | null;
   linkedOfferId?: number | null;
+  pendingIntelligenceCheckback?: boolean;
 }): ClientNextStep {
   if (!input.email && !input.phone) {
     return {
@@ -89,6 +90,14 @@ export function resolveClientNextStep(input: {
       label: 'Ustaw kryteria poszukiwań',
       hint: 'Bez ankiety radar i Intelligence nie mają czego dopasować.',
       action: 'set_criteria',
+    };
+  }
+  if (input.pendingIntelligenceCheckback) {
+    return {
+      id: 'await_checkback',
+      label: 'Klient ma pytanie od asystenta',
+      hint: 'Asystent czeka na tak/nie w panelu — dopiero potem poleci kolejna oferta.',
+      action: 'open_portal',
     };
   }
   if (input.matchCount === 0) {

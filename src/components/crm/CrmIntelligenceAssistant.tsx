@@ -38,6 +38,8 @@ const INTEL_HISTORY_KINDS = new Set([
   "INTELLIGENCE_OFFER",
   "INTELLIGENCE_PLANNED",
   "INTELLIGENCE_TASTE",
+  "INTELLIGENCE_CHECKBACK",
+  "INTELLIGENCE_HANDOFF",
   "FEEDBACK_REMINDER",
   "CLIENT_NOTIFIED",
   "CLIENT_FEEDBACK",
@@ -135,12 +137,20 @@ export default function CrmIntelligenceAssistant({
   value,
   busy,
   activities,
+  pendingCheckback,
   onSave,
 }: {
   clientId: number;
   value?: IntelligenceSettings | null;
   busy?: boolean;
   activities?: IntelligenceActivity[];
+  pendingCheckback?: {
+    activityId: number;
+    type: string;
+    body: string;
+    options: Array<{ id: string; label: string }>;
+    createdAt: string;
+  } | null;
   onSave: (next: IntelligenceSettings) => void | boolean | Promise<unknown>;
 }) {
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
@@ -213,6 +223,12 @@ export default function CrmIntelligenceAssistant({
 
   const nowLines = useMemo(() => {
     if (!draft.enabled) return ["Asystent jest wyłączony — nic nie wyjdzie, kolejka tylko podgląda."];
+    if (pendingCheckback) {
+      return [
+        "Czekam na odpowiedź klienta w panelu.",
+        pendingCheckback.body.slice(0, 160),
+      ];
+    }
     if (queueBusy) return ["Analizuję opisy, ankietę i reakcje…"];
     if (pick?.ready && pick.title) {
       return [
@@ -221,7 +237,7 @@ export default function CrmIntelligenceAssistant({
       ];
     }
     return [pick?.skipReason || "Czeka na kolejny cykl albo reakcję klienta."];
-  }, [draft.enabled, pick, queueBusy]);
+  }, [draft.enabled, pick, queueBusy, pendingCheckback]);
 
   const plannedLines = useMemo(() => {
     const interval = INTELLIGENCE_INTERVAL_OPTIONS.find((item) => item.value === draft.intervalHours)?.label || `${draft.intervalHours} godz.`;
@@ -419,6 +435,15 @@ export default function CrmIntelligenceAssistant({
 
         {draft.enabled ? (
           <div className="eos-intel-console">
+            {pendingCheckback ? (
+              <div className="mb-4 rounded-2xl border border-amber-400/35 bg-amber-500/10 px-4 py-3 text-sm leading-relaxed text-[var(--eos-text)]">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-200">Czeka na klienta</p>
+                <p className="mt-2">{pendingCheckback.body}</p>
+                <p className="mt-2 text-xs text-[var(--eos-muted)]">
+                  Opcje: {pendingCheckback.options.map((o) => o.label).join(" · ")}
+                </p>
+              </div>
+            ) : null}
             <p className="eos-intel-kicker inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
               <Sparkles className="size-3.5" />
               Konsola asystenta

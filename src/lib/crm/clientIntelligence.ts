@@ -309,8 +309,9 @@ export function intelligenceAdjustScore(params: {
   offer: OfferLike;
   taste: LearnedTaste;
   maxPrice?: number | null;
+  acceptScarceBudget?: boolean;
 }): { score: number; reasons: string[] } {
-  const { offer, taste, maxPrice } = params;
+  const { offer, taste, maxPrice, acceptScarceBudget } = params;
   let score = params.radarScore;
   const reasons: string[] = [];
   const text = haystack(offer);
@@ -336,7 +337,7 @@ export function intelligenceAdjustScore(params: {
   const expensiveNearBudget = taste.expensivePrices.filter(
     (price) => maxPrice != null && Number.isFinite(price) && price >= maxPrice * 0.85,
   );
-  if (expensiveNearBudget.length && maxPrice && Number(offer.price) > maxPrice * 0.92) {
+  if (!acceptScarceBudget && expensiveNearBudget.length && maxPrice && Number(offer.price) > maxPrice * 0.92) {
     score -= 16;
     reasons.push('Cena jest blisko lub powyżej budżetu, a klientka sygnalizowała „za drogo” przy podobnych kwotach.');
   }
@@ -444,7 +445,7 @@ export function summarizeTaste(taste: LearnedTaste): string {
   return bits.join(' · ');
 }
 
-function phraseCount(taste: LearnedTaste, phrase: string): number {
+export function phraseCount(taste: LearnedTaste, phrase: string): number {
   return taste.phrases.filter((item) => item === phrase).length;
 }
 
@@ -573,7 +574,14 @@ export function clientFacingWhyLine(params: {
   city?: string | null;
   district?: string | null;
   calibrating?: boolean;
+  prevOffer?: OfferLike | null;
+  prevFeedbackRaw?: string | null;
+  nextOffer?: OfferLike | null;
+  agentFirstName?: string | null;
 }): string {
+  if (params.prevOffer || params.prevFeedbackRaw || params.nextOffer || params.agentFirstName) {
+    // Pełny dialog budowany w clientIntelligenceRun — tu fallback krótki.
+  }
   if (params.calibrating) {
     const loc = [params.city, params.district].filter(Boolean).join(', ');
     return loc

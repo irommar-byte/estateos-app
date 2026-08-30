@@ -36,6 +36,14 @@ import {
   formatClientFeedbackForAgent,
 } from '@/lib/crm/clientPortalFeedback';
 import { applyIntelligenceLearning, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
+import {
+  getPendingCheckback,
+  respondToIntelligenceCheckback,
+} from '@/lib/crm/intelligenceCheckback';
+import {
+  handleCheckbackFollowUpSend,
+  handleIntelligenceAfterFeedback,
+} from '@/lib/crm/intelligenceFeedbackReply';
 import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 
 type RouteCtx = { params: Promise<{ token: string }> };
@@ -237,6 +245,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'CLIENT_FEEDBACK',
               'INTELLIGENCE_OFFER',
               'INTELLIGENCE_PLANNED',
+              'INTELLIGENCE_CHECKBACK',
+              'INTELLIGENCE_HANDOFF',
               'FEEDBACK_REMINDER',
               'ACQUISITION_MEETING',
               'ACQUISITION_SIGNED',
@@ -313,6 +323,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     listingSold: ['SOLD', 'ARCHIVED'].includes(String(client.linkedOffer?.status || '').toUpperCase()),
   });
 
+  const pendingCheckback = await getPendingCheckback(client.id);
+
   return NextResponse.json({
     success: true,
     portal: {
@@ -332,6 +344,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agencyAddress,
       searchCriteria,
       intelligenceEnabled: Boolean(client.intelligenceEnabled),
+      pendingCheckback,
       unscoredMatchCount: client.buyerPreference
         ? await prisma.agencyClientMatch.count({
             where: {
@@ -352,7 +365,21 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       presentation,
       journey: stages,
       matches: client.buyerPreference
-        ? client.matches.map((m) => ({
+        ? client.matches.map((m) => {
+            const intelActivity = client.activities.find(
+              (a) =>
+                a.kind === 'INTELLIGENCE_OFFER' &&
+                (a.offerId === m.offerId ||
+                  (a.metadata &&
+                    typeof a.metadata === 'object' &&
+                    Array.isArray((a.metadata as Record<string, unknown>).offerIds) &&
+                    ((a.metadata as Record<string, unknown>).offerIds as number[]).includes(m.offerId))),
+            );
+            const intelMeta =
+              intelActivity?.metadata && typeof intelActivity.metadata === 'object'
+                ? (intelActivity.metadata as Record<string, unknown>)
+                : {};
+            return {
             id: m.id,
             score: m.score,
             notifiedAt: m.notifiedAt?.toISOString() ?? null,
@@ -360,8 +387,10 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
             intelligenceSent: Boolean(m.intelligenceSent),
             intelligenceReason: m.intelligenceReason || null,
+            clientWhy: typeof intelMeta.clientWhy === 'string' ? intelMeta.clientWhy : null,
             offer: shapeAgencyClientMatchOffer(m.offer),
-          }))
+          };
+          })
         : [],
       listing: listingVisible && client.linkedOffer
         ? {
@@ -663,7 +692,49 @@ export async function POST(req: Request, ctx: RouteCtx) {
       body: `${clientName}: ${agentSummary.slice(0, 160)}`,
     });
     await applyIntelligenceLearning(client.id).catch(() => {});
-    return NextResponse.json({ success: true });
+
+    const agent = await prisma.user.findUnique({
+      where: { id: client.agencyUserId },
+      select: { name: true, companyName: true },
+    });
+    const agentFirstName = agent?.name?.trim().split(/\s+/)[0] || null;
+
+    const reply = await handleIntelligenceAfterFeedback({
+      clientId: client.id,
+      agencyUserId: client.agencyUserId,
+      matchId,
+      agentFirstName,
+    }).catch(() => ({ action: 'none' as const }));
+
+    return NextResponse.json({ success: true, intelligenceReply: reply });
+  }
+
+  if (action === 'intelligence_checkback') {
+    if (client.type !== 'BUYER') {
+      return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
+    }
+    const activityId = Number(body.activityId);
+    const optionId = String(body.optionId || '').trim();
+    if (!Number.isFinite(activityId) || !optionId) {
+      return NextResponse.json({ error: 'Wybierz odpowiedź.' }, { status: 400 });
+    }
+    const result = await respondToIntelligenceCheckback({
+      clientId: client.id,
+      agencyUserId: client.agencyUserId,
+      activityId,
+      optionId,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error || 'Nie udało się zapisać.' }, { status: 400 });
+    }
+    let followUp = null;
+    if (result.followUp === 'send_offer') {
+      followUp = await handleCheckbackFollowUpSend({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+      });
+    }
+    return NextResponse.json({ success: true, followUp });
   }
 
   if (action === 'confirm_meeting' || action === 'confirm_presentation') {
