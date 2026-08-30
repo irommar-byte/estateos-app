@@ -46,6 +46,7 @@ import AgencyClientRadarSurvey, {
   type ClientRadarFilters,
 } from '../components/agency/AgencyClientRadarSurvey';
 import MatchPhotoCascade, { type CascadeOrigin } from '../components/agency/MatchPhotoCascade';
+import MatchImportAgentMeta from '../components/agency/MatchImportAgentMeta';
 import IntelligenceAssistantCard, {
   DEFAULT_INTELLIGENCE_SETTINGS,
 } from '../components/agency/IntelligenceAssistantCard';
@@ -264,6 +265,7 @@ function MatchRow({
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>{meta}</Text>
           </Pressable>
+          <MatchImportAgentMeta brief={item.importBrief} colors={colors} />
           {description ? (
             <Pressable onPress={() => toggle(() => setDescOpen((value) => !value))}>
               <Text

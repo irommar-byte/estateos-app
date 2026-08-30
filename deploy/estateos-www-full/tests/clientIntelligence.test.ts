@@ -51,7 +51,8 @@ test('learns likes, dislikes and phrases from portal feedback', () => {
   assert.equal(taste.dislikes, 1);
   assert.equal(taste.likes, 1);
   assert.ok(taste.rejectedOfferIds.includes(1));
-  assert.ok(taste.rejectedDistricts.includes('Mokotów'));
+  assert.equal(taste.rejectedDistricts.includes('Mokotów'), false);
+  assert.ok(taste.expensivePrices.includes(1200000));
   assert.ok(taste.likedDistricts.includes('Ursynów'));
   assert.match(summarizeTaste(taste), /2 reakcji/);
 });
@@ -88,6 +89,27 @@ test('boosts listings with balcony after a balcony objection, including from des
   assert.ok(withBalcony.score > without.score);
   assert.ok(fromDescription.score > without.score);
   assert.ok(without.reasons.some((item) => /balkonu/.test(item)));
+});
+
+test('does not treat cheap leftover za drogo as a reason to punish 1 mln listings', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 3,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        phrases: ['Za drogo'],
+      }),
+      offer: { id: 3, price: 80000, district: 'Wola', description: 'Kawalerka do remontu.' },
+    },
+  ]);
+  const nearBudget = intelligenceAdjustScore({
+    radarScore: 94,
+    taste,
+    maxPrice: 1_000_000,
+    offer: { ...baseOffer, id: 40, price: 950000, description: 'Jasne 2 pok. z balkonem.' },
+  });
+  assert.equal(nearBudget.score >= 94, true);
+  assert.equal(nearBudget.reasons.some((item) => /za drogo/i.test(item)), false);
 });
 
 test('penalizes listings near budget after za drogo and kitchen objections in the description', () => {

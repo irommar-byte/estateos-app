@@ -29,6 +29,20 @@ export type AgencyClientListItem = {
   portalUrl?: string | null;
 };
 
+export type AgencyClientMatchImportBrief = {
+  badge: 'OTO' | 'OLX' | 'N-O' | null;
+  source?: string | null;
+  url: string | null;
+  titleOriginal?: string | null;
+  descriptionOriginal?: string | null;
+  phone?: string | null;
+  agencyName?: string | null;
+  contactAddress?: string | null;
+  advertiserType?: string | null;
+  smartAdd?: string[];
+  userNote?: string | null;
+};
+
 export type AgencyClientMatch = {
   id: number;
   score: number;
@@ -38,6 +52,7 @@ export type AgencyClientMatch = {
   clientFeedbackAt?: string | null;
   intelligenceSent?: boolean;
   intelligenceReason?: string | null;
+  importBrief?: AgencyClientMatchImportBrief | null;
   offer: {
     id: number;
     title: string;

@@ -132,6 +132,7 @@ export type LearnedTaste = {
   likedAreas: number[];
   maybeRooms: number[];
   maybePrices: number[];
+  expensivePrices: number[];
 };
 
 const PHRASE_NEEDLES: Record<string, string[]> = {
@@ -219,6 +220,7 @@ function emptyTaste(): LearnedTaste {
     likedAreas: [],
     maybeRooms: [],
     maybePrices: [],
+    expensivePrices: [],
   };
 }
 
@@ -260,7 +262,12 @@ export function learnFromFeedback(
     if (feedback.sentiment === 'dislike') {
       taste.dislikes += 1;
       taste.rejectedOfferIds.push(row.offerId);
-      if (row.offer?.district) taste.rejectedDistricts.push(String(row.offer.district));
+      if (row.offer?.district && feedback.phrases.includes('Nie ta dzielnica')) {
+        taste.rejectedDistricts.push(String(row.offer.district));
+      }
+    }
+    if (feedback.phrases.includes('Za drogo') && row.offer?.price) {
+      taste.expensivePrices.push(Number(row.offer.price));
     }
     taste.phrases.push(...feedback.phrases);
     if (feedback.liked) taste.likedText.push(feedback.liked);
@@ -326,9 +333,12 @@ export function intelligenceAdjustScore(params: {
     reasons.push('Ma balkon / loggię — tego wcześniej brakowało.');
   }
 
-  if (phraseCounts.get('Za drogo') && maxPrice && Number(offer.price) > maxPrice * 0.92) {
+  const expensiveNearBudget = taste.expensivePrices.filter(
+    (price) => maxPrice != null && Number.isFinite(price) && price >= maxPrice * 0.85,
+  );
+  if (expensiveNearBudget.length && maxPrice && Number(offer.price) > maxPrice * 0.92) {
     score -= 16;
-    reasons.push('Cena jest blisko lub powyżej budżetu, a klientka sygnalizowała „za drogo”.');
+    reasons.push('Cena jest blisko lub powyżej budżetu, a klientka sygnalizowała „za drogo” przy podobnych kwotach.');
   }
 
   for (const [phrase, count] of phraseCounts) {
@@ -457,6 +467,7 @@ function parseDistrictList(raw: unknown): string[] {
 
 export function defaultIntelligenceLocks(pref?: {
   districts?: unknown;
+  maxPrice?: number | null;
   requireBalcony?: boolean | null;
   requireGarden?: boolean | null;
   requireElevator?: boolean | null;
@@ -465,7 +476,7 @@ export function defaultIntelligenceLocks(pref?: {
 } | null): IntelligenceLocks {
   return {
     districts: parseDistrictList(pref?.districts).length > 0,
-    maxPrice: false,
+    maxPrice: pref?.maxPrice != null && Number(pref.maxPrice) > 0,
     minArea: false,
     minYear: false,
     requireBalcony: Boolean(pref?.requireBalcony),

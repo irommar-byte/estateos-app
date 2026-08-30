@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Animated, Easing, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { PortalSourceBadge } from './MatchImportAgentMeta';
+import { importPortalBadge } from '../../lib/importPortalBadge';
 import { LinearGradient } from 'expo-linear-gradient';
 import { postAgencyClientAction } from '../../services/agencyClientService';
 import { API_URL } from '../../config/network';
@@ -514,19 +516,26 @@ export default function IntelligenceAssistantCard({
             <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 8 }}>{huntNote}</Text>
           ) : null}
           {huntHits.map((hit) => (
-            <Text key={hit.url} style={{ color: colors.text, fontSize: 11, marginTop: 6, lineHeight: 15 }}>
-              • {hit.title}
-              {'\n'}
-              {[
-                hit.city,
-                hit.street,
-                hit.price != null ? `${hit.price.toLocaleString('pl-PL')} zł` : null,
-                hit.area != null ? `${hit.area} m²` : null,
-                hit.alreadyImported ? 'już w EstateOS' : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
+            <View key={hit.url} style={{ marginTop: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <PortalSourceBadge badge={importPortalBadge(null, hit.url)} />
+                <Text style={{ color: colors.text, fontSize: 11, fontWeight: '800', flex: 1 }}>{hit.title}</Text>
+              </View>
+              <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15 }}>
+                {[
+                  hit.city,
+                  hit.street,
+                  hit.price != null ? `${hit.price.toLocaleString('pl-PL')} zł` : null,
+                  hit.area != null ? `${hit.area} m²` : null,
+                  hit.alreadyImported ? 'już w EstateOS' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+              <Pressable onPress={() => void Linking.openURL(hit.url)}>
+                <Text style={{ color: '#0A84FF', fontSize: 11, fontWeight: '800', marginTop: 2 }}>Oryginał na portalu</Text>
+              </Pressable>
+            </View>
           ))}
         </View>
       </View>
