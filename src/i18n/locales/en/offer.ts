@@ -399,7 +399,7 @@ export const offer = {
       furniture: 'Furniture & appliances',
       exportPdf: 'Export PDF plan',
       exportPdfFailed: 'Could not generate the PDF file.',
-      studioTitle: 'Floor-plan studio',
+      studioTitle: 'Floor plan',
     },
     offerId: 'Listing ID: {{id}}',
     profile: {

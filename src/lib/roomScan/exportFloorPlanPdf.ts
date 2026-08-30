@@ -3,11 +3,11 @@ import * as Sharing from 'expo-sharing';
 import type { FloorPlanScanMeta, RoomScanWallSegment } from '../../types/roomScan';
 import { t } from '../../i18n';
 import {
+  buildCleanPlanDimensions,
   buildFloorPlanViewport,
-  formatWallDimension,
+  buildWallRenderPaths,
+  mapOpeningsForRender,
   mapSectionsForRender,
-  mapWallsForRender,
-  sectionMarkerRadiusPx,
 } from './floorPlanGeometry';
 import { formatRoomScanRoomCount } from './roomScanLabels';
 
@@ -22,34 +22,58 @@ export async function exportFloorPlanPdfFromMeta(
   const headerH = 88;
   const drawH = height - headerH - 56;
   const viewport = buildFloorPlanViewport(meta.bounds, width, drawH, padding);
-  const mappedWalls = mapWallsForRender(walls, meta.bounds, viewport, true);
+  const wallPaths = buildWallRenderPaths(walls, meta.bounds, viewport);
   const mappedSections = mapSectionsForRender(meta.sections, meta.bounds, viewport);
+  const mappedOpenings = mapOpeningsForRender(meta.openings || [], meta.bounds, viewport);
+  const dimensionLabels = buildCleanPlanDimensions(
+    walls,
+    meta.openings || [],
+    meta.bounds,
+    viewport,
+    mappedSections.map((section) => ({ x: section.x, y: section.y })),
+  );
 
   const roomCountLabel = formatRoomScanRoomCount(meta.roomCount);
   const exportTitle = title || t('addOffer.step5.roomScan.export.defaultTitle');
   const exportBrand = t('addOffer.step5.roomScan.export.brand');
   const exportFooter = t('addOffer.step5.roomScan.export.footer');
 
-  const wallLines = mappedWalls
+  const wallNodes = wallPaths
+    .map((path) => {
+      const fill = path.d.includes(' Z')
+        ? `<path d="${path.d}" fill="rgba(241,245,249,0.95)" stroke="none" transform="translate(0 ${headerH})" />`
+        : '';
+      return `${fill}<path d="${path.d}" fill="none" stroke="#334155" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 ${headerH})" />`;
+    })
+    .join('');
+
+  const openingNodes = mappedOpenings
     .map(
-      (wall) => `
-      <line x1="${wall.a.x}" y1="${wall.a.y + headerH}" x2="${wall.b.x}" y2="${wall.b.y + headerH}" stroke="#e2e8f0" stroke-width="16" stroke-linecap="square" />
-      <line x1="${wall.a.x}" y1="${wall.a.y + headerH}" x2="${wall.b.x}" y2="${wall.b.y + headerH}" stroke="#334155" stroke-width="3.5" stroke-linecap="square" />
-      ${
-        wall.showLabel
-          ? `<text x="${wall.lx}" y="${wall.ly + headerH + 4}" fill="#0f172a" font-size="10" font-weight="700" text-anchor="middle">${formatWallDimension(wall.len)}</text>`
-          : ''
-      }`,
+      (opening) => `
+      <line x1="${opening.a.x}" y1="${opening.a.y + headerH}" x2="${opening.b.x}" y2="${opening.b.y + headerH}" stroke="#f8fafc" stroke-width="7" stroke-linecap="butt" />
+      <line x1="${opening.a.x}" y1="${opening.a.y + headerH}" x2="${opening.b.x}" y2="${opening.b.y + headerH}" stroke="${
+        opening.kind === 'window' ? '#0284c7' : opening.kind === 'door' ? '#d97706' : '#059669'
+      }" stroke-width="3" stroke-linecap="round" ${opening.kind === 'window' ? 'stroke-dasharray="5 3"' : ''} />`,
     )
+    .join('');
+
+  const dimNodes = dimensionLabels
+    .map((label) => {
+      const boxW = Math.max(40, label.text.length * 7 + 14);
+      const fill =
+        label.kind === 'window' ? '#e0f2fe' : label.kind === 'door' ? '#fef3c7' : '#ffffff';
+      const color = label.kind === 'window' ? '#0369a1' : label.kind === 'door' ? '#b45309' : '#0f172a';
+      return `
+      <rect x="${label.x - boxW / 2}" y="${label.y + headerH - 10}" width="${boxW}" height="20" rx="10" fill="${fill}" />
+      <text x="${label.x}" y="${label.y + headerH + 4}" fill="${color}" font-size="11" font-weight="800" text-anchor="middle">${label.text}</text>`;
+    })
     .join('');
 
   const sectionNodes = mappedSections
     .map((section) => {
-      const r = sectionMarkerRadiusPx(viewport, section.areaSqM);
       const y = section.y + headerH;
       const labelH = section.ceilingHeightM ? 52 : section.areaSqM ? 40 : 24;
       return `
-      <circle cx="${section.x}" cy="${y}" r="${r}" fill="${section.fill}" stroke="rgba(14,165,233,0.35)" stroke-width="1" stroke-dasharray="4 4" />
       <rect x="${section.x - 58}" y="${y - labelH / 2}" width="116" height="${labelH}" rx="12" fill="rgba(255,255,255,0.94)" stroke="rgba(14,165,233,0.35)" />
       <text x="${section.x}" y="${y - (section.ceilingHeightM ? 8 : section.areaSqM ? 2 : 0)}" fill="#0f172a" font-size="12" font-weight="800" text-anchor="middle">${escapeHtml(section.label)}</text>
       ${
@@ -84,8 +108,10 @@ export async function exportFloorPlanPdfFromMeta(
     <text x="${padding}" y="34" fill="#0369a1" font-size="11" font-weight="700" letter-spacing="2">${escapeHtml(exportBrand)}</text>
     <text x="${padding}" y="58" fill="#0f172a" font-size="22" font-weight="800">${escapeHtml(exportTitle)}</text>
     <text x="${padding}" y="78" fill="#64748b" font-size="12">${escapeHtml(roomCountLabel)}${meta.totalAreaSqM ? ` · ~${meta.totalAreaSqM} m²` : ''}${heightNote}</text>
+    ${wallNodes}
+    ${openingNodes}
+    ${dimNodes}
     ${sectionNodes}
-    ${wallLines}
     <line x1="${padding}" y1="${height - padding - 8}" x2="${padding + scaleBarPx}" y2="${height - padding - 8}" stroke="#334155" stroke-width="2" />
     <text x="${padding + scaleBarPx / 2}" y="${height - padding - 16}" fill="#0f172a" font-size="10" font-weight="700" text-anchor="middle">${scaleBarM} m</text>
     <text x="${width / 2}" y="${height - 18}" fill="#64748b" font-size="10" font-weight="600" text-anchor="middle">${escapeHtml(exportFooter)}</text>

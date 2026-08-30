@@ -1,16 +1,13 @@
 import React, { useMemo, forwardRef } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { G, Line, Rect, Text as SvgText, Circle, Polygon } from 'react-native-svg';
+import Svg, { G, Line, Path, Rect, Text as SvgText, Circle, Polygon } from 'react-native-svg';
 import type { FloorPlanScanMeta, RoomScanWallSegment } from '../../types/roomScan';
 import {
+  buildCleanPlanDimensions,
   buildFloorPlanViewport,
-  buildWallDimensionChains,
-  formatWallDimension,
-  mapObjectsForRender,
+  buildWallRenderPaths,
   mapOpeningsForRender,
   mapSectionsForRender,
-  mapWallsForRender,
-  sectionMarkerRadiusPx,
 } from '../../lib/roomScan/floorPlanGeometry';
 import { formatRoomScanRoomCount } from '../../lib/roomScan/roomScanLabels';
 import { t } from '../../i18n';
@@ -55,9 +52,9 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
     [meta.bounds, width, drawH, padding],
   );
 
-  const mappedWalls = useMemo(
-    () => mapWallsForRender(walls, meta.bounds, viewport, forExport),
-    [walls, meta.bounds, viewport, forExport],
+  const wallPaths = useMemo(
+    () => buildWallRenderPaths(walls, meta.bounds, viewport),
+    [walls, meta.bounds, viewport],
   );
 
   const mappedSections = useMemo(
@@ -65,19 +62,21 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
     [meta.sections, meta.bounds, viewport],
   );
 
-  const mappedObjects = useMemo(
-    () => mapObjectsForRender(meta.objects || [], meta.bounds, viewport),
-    [meta.objects, meta.bounds, viewport],
-  );
-
   const mappedOpenings = useMemo(
     () => mapOpeningsForRender(meta.openings || [], meta.bounds, viewport),
     [meta.openings, meta.bounds, viewport],
   );
 
-  const dimensionChains = useMemo(
-    () => buildWallDimensionChains(walls, meta.openings || [], meta.bounds, viewport),
-    [walls, meta.openings, meta.bounds, viewport],
+  const dimensionLabels = useMemo(
+    () =>
+      buildCleanPlanDimensions(
+        walls,
+        meta.openings || [],
+        meta.bounds,
+        viewport,
+        mappedSections.map((section) => ({ x: section.x, y: section.y })),
+      ),
+    [walls, meta.openings, meta.bounds, viewport, mappedSections],
   );
 
   const scaleBar = useMemo(() => {
@@ -94,39 +93,6 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
     <View style={[styles.wrap, { width, height, backgroundColor: bg }]}>
       <Svg ref={ref} width={width} height={height}>
         <Rect x={0} y={0} width={width} height={height} fill={bg} rx={forExport ? 24 : 0} />
-
-        {!compact ? (
-        <G opacity={0.35}>
-          {Array.from({ length: 12 }).map((_, i) => {
-            const x = padding + i * ((width - padding * 2) / 11);
-            return (
-              <Line
-                key={`gx-${i}`}
-                x1={x}
-                y1={headerH + padding * 0.4}
-                x2={x}
-                y2={headerH + drawH - padding * 0.4}
-                stroke="#cbd5e1"
-                strokeWidth={1}
-              />
-            );
-          })}
-          {Array.from({ length: 12 }).map((_, i) => {
-            const y = headerH + padding * 0.4 + i * ((drawH - padding * 0.8) / 11);
-            return (
-              <Line
-                key={`gy-${i}`}
-                x1={padding * 0.4}
-                y1={y}
-                x2={width - padding * 0.4}
-                y2={y}
-                stroke="#cbd5e1"
-                strokeWidth={1}
-              />
-            );
-          })}
-        </G>
-        ) : null}
 
         {forExport ? (
           <G>
@@ -145,72 +111,24 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
         ) : null}
 
         <G transform={`translate(0, ${headerH})`}>
-          {mappedSections.map((section) => {
-            const r = sectionMarkerRadiusPx(viewport, section.areaSqM);
-            return (
-              <G key={section.id}>
-                <Circle cx={section.x} cy={section.y} r={r} fill={section.fill} />
-                <Circle
-                  cx={section.x}
-                  cy={section.y}
-                  r={r}
-                  fill="none"
-                  stroke="rgba(14,165,233,0.28)"
-                  strokeWidth={1}
-                  strokeDasharray="4 4"
-                />
-              </G>
-            );
-          })}
+          {wallPaths.map((path) =>
+            path.d.includes(' Z') ? (
+              <Path key={`${path.id}-fill`} d={path.d} fill="rgba(241,245,249,0.95)" stroke="none" />
+            ) : null,
+          )}
 
-          {mappedWalls.map((wall) => (
-            <G key={wall.id}>
-              <Line
-                x1={wall.a.x}
-                y1={wall.a.y}
-                x2={wall.b.x}
-                y2={wall.b.y}
-                stroke="#e2e8f0"
-                strokeWidth={forExport ? 16 : 12}
-                strokeLinecap="square"
-              />
-              <Line
-                x1={wall.a.x}
-                y1={wall.a.y}
-                x2={wall.b.x}
-                y2={wall.b.y}
-                stroke={wallCore}
-                strokeWidth={forExport ? 3.5 : 2.5}
-                strokeLinecap="square"
-              />
-              {wall.showLabel ? (
-                <G>
-                  <Rect
-                    x={wall.lx - 30}
-                    y={wall.ly - 11}
-                    width={60}
-                    height={20}
-                    rx={10}
-                    fill={dimBg}
-                    stroke="#cbd5e1"
-                    strokeWidth={0.8}
-                  />
-                  <SvgText
-                    x={wall.lx}
-                    y={wall.ly + 4}
-                    fill={dimText}
-                    fontSize={forExport ? 10 : 8}
-                    fontWeight="700"
-                    textAnchor="middle"
-                  >
-                    {formatWallDimension(wall.len)}
-                  </SvgText>
-                </G>
-              ) : null}
-            </G>
+          {wallPaths.map((path) => (
+            <Path
+              key={path.id}
+              d={path.d}
+              fill="none"
+              stroke={wallCore}
+              strokeWidth={compact ? 2.2 : forExport ? 4 : 3.2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           ))}
 
-          {/* Otwory są nad ścianami, żeby drzwi, okna i przejścia nie znikały pod obrysem. */}
           {mappedOpenings.map((opening) => (
             <G key={opening.id}>
               <Line
@@ -218,8 +136,8 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                 y1={opening.a.y}
                 x2={opening.b.x}
                 y2={opening.b.y}
-                stroke="#f8fafc"
-                strokeWidth={forExport ? 13 : 10}
+                stroke={bg}
+                strokeWidth={compact ? 4 : forExport ? 7 : 5.5}
                 strokeLinecap="butt"
               />
               <Line
@@ -228,111 +146,50 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                 x2={opening.b.x}
                 y2={opening.b.y}
                 stroke={
-                  opening.kind === 'window'
-                    ? '#0284c7'
-                    : opening.kind === 'door'
-                      ? '#f59e0b'
-                      : '#10b981'
+                  opening.kind === 'window' ? '#0284c7' : opening.kind === 'door' ? '#d97706' : '#059669'
                 }
-                strokeWidth={opening.kind === 'door' ? 5 : 3.5}
-                strokeLinecap="butt"
-                strokeDasharray={opening.kind === 'window' ? '6 3' : opening.kind === 'opening' ? '3 3' : undefined}
+                strokeWidth={compact ? 2 : 3}
+                strokeLinecap="round"
+                strokeDasharray={opening.kind === 'window' ? '5 3' : undefined}
               />
             </G>
           ))}
 
-          {compact ? null : dimensionChains.map((chain) => (
-            <G key={chain.id}>
-              {chain.segments.map((seg) => (
-                <G key={seg.id}>
-                  <Line
-                    x1={seg.a.x}
-                    y1={seg.a.y}
-                    x2={seg.b.x}
-                    y2={seg.b.y}
-                    stroke={seg.kind === 'opening' ? '#0284c7' : '#0f172a'}
-                    strokeWidth={1}
-                  />
-                  <Line x1={seg.a.x} y1={seg.a.y - 4} x2={seg.a.x} y2={seg.a.y + 4} stroke="#0f172a" strokeWidth={1} />
-                  <Line x1={seg.b.x} y1={seg.b.y - 4} x2={seg.b.x} y2={seg.b.y + 4} stroke="#0f172a" strokeWidth={1} />
-                  <SvgText
-                    x={seg.lx}
-                    y={seg.ly}
-                    fill={seg.kind === 'opening' ? '#0369a1' : dimText}
-                    fontSize={forExport ? 8 : 7}
-                    fontWeight="700"
-                    textAnchor="middle"
-                  >
-                    {seg.label}
-                  </SvgText>
-                </G>
-              ))}
-              <Line
-                x1={chain.overall.a.x}
-                y1={chain.overall.a.y}
-                x2={chain.overall.b.x}
-                y2={chain.overall.b.y}
-                stroke="#0f172a"
-                strokeWidth={1.2}
-              />
-              <Line
-                x1={chain.overall.a.x}
-                y1={chain.overall.a.y - 6}
-                x2={chain.overall.a.x}
-                y2={chain.overall.a.y + 6}
-                stroke="#0f172a"
-                strokeWidth={1.2}
-              />
-              <Line
-                x1={chain.overall.b.x}
-                y1={chain.overall.b.y - 6}
-                x2={chain.overall.b.x}
-                y2={chain.overall.b.y + 6}
-                stroke="#0f172a"
-                strokeWidth={1.2}
-              />
-              <SvgText
-                x={chain.overall.lx}
-                y={chain.overall.ly}
-                fill={dimText}
-                fontSize={forExport ? 10 : 8}
-                fontWeight="800"
-                textAnchor="middle"
-              >
-                {chain.overall.label}
-              </SvgText>
-            </G>
-          ))}
-
-          {mappedObjects.map((obj) => {
-            const fontSize = obj.glyph.length > 4 ? (forExport ? 7 : 5.5) : forExport ? 8 : 6.5;
-            return (
-              <G key={obj.id} transform={`rotate(${obj.rotationDeg} ${obj.x} ${obj.y})`}>
-                <Rect
-                  x={obj.x - obj.widthPx / 2}
-                  y={obj.y - obj.depthPx / 2}
-                  width={obj.widthPx}
-                  height={obj.depthPx}
-                  rx={compact ? 2 : 3}
-                  fill={obj.fill}
-                  stroke={obj.stroke}
-                  strokeWidth={compact ? 1 : 1.4}
-                />
-                {compact ? null : (
-                <SvgText
-                  x={obj.x}
-                  y={obj.y + 3}
-                  fill="#0f172a"
-                  fontSize={fontSize}
-                  fontWeight="800"
-                  textAnchor="middle"
-                >
-                  {obj.glyph}
-                </SvgText>
-                )}
-              </G>
-            );
-          })}
+          {compact
+            ? null
+            : dimensionLabels.map((label) => {
+                const boxW = Math.max(36, label.text.length * 6.2 + 12);
+                const fill =
+                  label.kind === 'window'
+                    ? 'rgba(224,242,254,0.96)'
+                    : label.kind === 'door'
+                      ? 'rgba(254,243,199,0.96)'
+                      : dimBg;
+                const color =
+                  label.kind === 'window' ? '#0369a1' : label.kind === 'door' ? '#b45309' : dimText;
+                return (
+                  <G key={label.id}>
+                    <Rect
+                      x={label.x - boxW / 2}
+                      y={label.y - 9}
+                      width={boxW}
+                      height={18}
+                      rx={9}
+                      fill={fill}
+                    />
+                    <SvgText
+                      x={label.x}
+                      y={label.y + 4}
+                      fill={color}
+                      fontSize={forExport ? 9 : 8}
+                      fontWeight="800"
+                      textAnchor="middle"
+                    >
+                      {label.text}
+                    </SvgText>
+                  </G>
+                );
+              })}
 
           {compact
             ? mappedSections.map((section) => (

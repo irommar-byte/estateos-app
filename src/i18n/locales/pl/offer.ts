@@ -399,7 +399,7 @@ export const offer = {
       furniture: 'Meble i AGD',
       exportPdf: 'Eksportuj plan PDF',
       exportPdfFailed: 'Nie udało się wygenerować pliku PDF.',
-      studioTitle: 'Studio planu',
+      studioTitle: 'Plan mieszkania',
     },
     offerId: 'ID Oferty: {{id}}',
     profile: {

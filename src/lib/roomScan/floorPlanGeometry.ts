@@ -298,29 +298,37 @@ export function mapSectionsForRender(
   });
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 export function mapObjectsForRender(
   objects: FloorPlanScanMeta['objects'],
   bounds: FloorPlanScanMeta['bounds'],
   viewport: FloorPlanViewport,
 ): MappedObject[] {
-  return dedupeDetectedObjects(objects || []).map((obj, index) => {
-    const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, bounds, viewport);
-    const palette = OBJECT_FILL[obj.category] || OBJECT_FILL.unknown;
-    const widthM = obj.widthM && obj.widthM > 0.2 ? obj.widthM : 0.55;
-    const depthM = obj.depthM && obj.depthM > 0.2 ? obj.depthM : 0.4;
-    return {
-      id: obj.id || `obj-${index}`,
-      category: obj.category,
-      label: obj.label,
-      glyph: OBJECT_GLYPH[obj.category] || OBJECT_GLYPH.unknown,
-      widthPx: Math.max(14, Math.min(86, widthM * viewport.scale)),
-      depthPx: Math.max(10, Math.min(72, depthM * viewport.scale)),
-      rotationDeg: obj.rotationDeg || 0,
-      fill: palette.fill,
-      stroke: palette.stroke,
-      ...p,
-    };
-  });
+  const maxSidePx = Math.min(52, Math.max(28, viewport.scale * 1.15));
+  return dedupeDetectedObjects(objects || [])
+    .map((obj, index) => {
+      const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, bounds, viewport);
+      const palette = OBJECT_FILL[obj.category] || OBJECT_FILL.unknown;
+      const widthM = clamp(obj.widthM && obj.widthM > 0.2 ? obj.widthM : 0.55, 0.32, 2.1);
+      const depthM = clamp(obj.depthM && obj.depthM > 0.2 ? obj.depthM : 0.4, 0.28, 1.05);
+      if (widthM * depthM > 3.8 && obj.category !== 'bed' && obj.category !== 'sofa') return null;
+      return {
+        id: obj.id || `obj-${index}`,
+        category: obj.category,
+        label: obj.label,
+        glyph: OBJECT_GLYPH[obj.category] || OBJECT_GLYPH.unknown,
+        widthPx: clamp(widthM * viewport.scale, 16, maxSidePx),
+        depthPx: clamp(depthM * viewport.scale, 12, maxSidePx * 0.72),
+        rotationDeg: obj.rotationDeg || 0,
+        fill: palette.fill,
+        stroke: palette.stroke,
+        ...p,
+      };
+    })
+    .filter((row): row is MappedObject => Boolean(row));
 }
 
 export function mapOpeningsForRender(
@@ -328,12 +336,14 @@ export function mapOpeningsForRender(
   bounds: FloorPlanScanMeta['bounds'],
   viewport: FloorPlanViewport,
 ): MappedOpening[] {
-  return (openings || []).map((opening, index) => ({
-    id: opening.id || `op-${index}`,
-    kind: opening.kind,
-    a: mapFloorPlanPoint(opening.x1, opening.z1, bounds, viewport),
-    b: mapFloorPlanPoint(opening.x2, opening.z2, bounds, viewport),
-  }));
+  return (openings || [])
+    .filter((opening) => Math.hypot(opening.x2 - opening.x1, opening.z2 - opening.z1) >= 0.38)
+    .map((opening, index) => ({
+      id: opening.id || `op-${index}`,
+      kind: opening.kind,
+      a: mapFloorPlanPoint(opening.x1, opening.z1, bounds, viewport),
+      b: mapFloorPlanPoint(opening.x2, opening.z2, bounds, viewport),
+    }));
 }
 
 export function sectionMarkerRadiusPx(viewport: FloorPlanViewport, areaSqM?: number): number {
@@ -541,4 +551,254 @@ export function buildWallDimensionChains(
     });
 
   return chains;
+}
+
+export function snapWallEndpoints(
+  walls: RoomScanWallSegment[],
+  snapM = 0.24,
+): RoomScanWallSegment[] {
+  const cluster: Array<{ x: number; z: number }> = [];
+  const snap = (x: number, z: number) => {
+    const hit = cluster.find((p) => Math.hypot(p.x - x, p.z - z) <= snapM);
+    if (hit) return hit;
+    const next = { x, z };
+    cluster.push(next);
+    return next;
+  };
+  return dedupeWallSegments(walls)
+    .map((wall) => {
+      const a = snap(wall.x1, wall.z1);
+      const b = snap(wall.x2, wall.z2);
+      return {
+        ...wall,
+        x1: a.x,
+        z1: a.z,
+        x2: b.x,
+        z2: b.z,
+        lengthM: Math.hypot(b.x - a.x, b.z - a.z),
+      };
+    })
+    .filter((wall) => wallLengthMeters(wall) > 0.08);
+}
+
+function wallUnit(wall: RoomScanWallSegment) {
+  const dx = wall.x2 - wall.x1;
+  const dz = wall.z2 - wall.z1;
+  const len = Math.hypot(dx, dz) || 1;
+  return { dx: dx / len, dz: dz / len, len };
+}
+
+function wallsParallel(a: RoomScanWallSegment, b: RoomScanWallSegment, minDot = 0.94) {
+  const ua = wallUnit(a);
+  const ub = wallUnit(b);
+  return Math.abs(ua.dx * ub.dx + ua.dz * ub.dz) >= minDot;
+}
+
+/** Usuwa podwójne / wewnętrzne kreski LiDAR równoległe do dłuższej ściany. */
+export function cleanWallsForPlan(walls: RoomScanWallSegment[]): RoomScanWallSegment[] {
+  const snapped = snapWallEndpoints(walls, 0.24);
+  const longEnough = snapped.filter((wall) => wallLengthMeters(wall) >= 0.42);
+  const source = longEnough.length >= 3 ? longEnough : snapped;
+  const ranked = [...source].sort((a, b) => wallLengthMeters(b) - wallLengthMeters(a));
+  const kept: RoomScanWallSegment[] = [];
+  for (const wall of ranked) {
+    const mid = { x: (wall.x1 + wall.x2) / 2, z: (wall.z1 + wall.z2) / 2 };
+    const inner = kept.some((outer) => {
+      if (!wallsParallel(wall, outer)) return false;
+      if (distToWall(mid.x, mid.z, outer) > 0.42) return false;
+      const t1 = projectT(wall.x1, wall.z1, outer);
+      const t2 = projectT(wall.x2, wall.z2, outer);
+      const overlap = Math.min(1, Math.max(t1, t2)) - Math.max(0, Math.min(t1, t2));
+      return overlap > 0.32;
+    });
+    if (!inner) kept.push(wall);
+  }
+  return kept;
+}
+
+export type WallRenderPath = { id: string; d: string };
+
+export function buildWallRenderPaths(
+  walls: RoomScanWallSegment[],
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+): WallRenderPath[] {
+  const snapped = cleanWallsForPlan(walls);
+  const keyOf = (x: number, z: number) => `${x.toFixed(3)}:${z.toFixed(3)}`;
+  const unused = new Set(snapped.map((_, index) => index));
+  const paths: WallRenderPath[] = [];
+
+  const takeNext = (x: number, z: number) => {
+    const key = keyOf(x, z);
+    for (const index of unused) {
+      const wall = snapped[index];
+      if (keyOf(wall.x1, wall.z1) === key) {
+        unused.delete(index);
+        return { x: wall.x2, z: wall.z2 };
+      }
+      if (keyOf(wall.x2, wall.z2) === key) {
+        unused.delete(index);
+        return { x: wall.x1, z: wall.z1 };
+      }
+    }
+    return null;
+  };
+
+  let pathId = 0;
+  while (unused.size) {
+    const start = unused.values().next().value as number;
+    unused.delete(start);
+    const first = snapped[start];
+    const points = [
+      { x: first.x1, z: first.z1 },
+      { x: first.x2, z: first.z2 },
+    ];
+    while (true) {
+      const last = points[points.length - 1];
+      const next = takeNext(last.x, last.z);
+      if (!next) break;
+      points.push(next);
+    }
+    while (true) {
+      const head = points[0];
+      const prev = takeNext(head.x, head.z);
+      if (!prev) break;
+      points.unshift(prev);
+    }
+    const closed =
+      points.length > 2 && keyOf(points[0].x, points[0].z) === keyOf(points[points.length - 1].x, points[points.length - 1].z);
+    const mapped = points.map((point) => mapFloorPlanPoint(point.x, point.z, bounds, viewport));
+    const d =
+      mapped.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ') +
+      (closed ? ' Z' : '');
+    paths.push({ id: `wall-path-${pathId}`, d });
+    pathId += 1;
+  }
+  return paths;
+}
+
+export type PlanDimLabel = {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  kind: 'wall' | 'window' | 'door' | 'opening';
+};
+
+function nearlySameWall(a: RoomScanWallSegment, b: RoomScanWallSegment): boolean {
+  const midA = { x: (a.x1 + a.x2) / 2, z: (a.z1 + a.z2) / 2 };
+  const midB = { x: (b.x1 + b.x2) / 2, z: (b.z1 + b.z2) / 2 };
+  const lenGap = Math.abs(wallLengthMeters(a) - wallLengthMeters(b));
+  return Math.hypot(midA.x - midB.x, midA.z - midB.z) < 0.45 && lenGap < 0.35;
+}
+
+function canvasSizeFromViewport(bounds: FloorPlanScanMeta['bounds'], viewport: FloorPlanViewport) {
+  return {
+    w: 2 * viewport.offsetX + (bounds.maxX - bounds.minX) * viewport.scale,
+    h: 2 * viewport.offsetY + (bounds.maxZ - bounds.minZ) * viewport.scale,
+  };
+}
+
+function placePlanLabels(
+  labels: PlanDimLabel[],
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+  avoid: Array<{ x: number; y: number }>,
+): PlanDimLabel[] {
+  const ranked = [...labels].sort((a, b) => (a.kind === 'wall' ? 0 : 1) - (b.kind === 'wall' ? 0 : 1));
+  const { w, h } = canvasSizeFromViewport(bounds, viewport);
+  const placed: PlanDimLabel[] = [];
+
+  const clashes = (x: number, y: number, text: string) => {
+    if (x < 16 || y < 16 || x > w - 16 || y > h - 16) return true;
+    if (avoid.some((point) => Math.hypot(point.x - x, point.y - y) < 34)) return true;
+    return placed.some((existing) => {
+      const dist = Math.hypot(existing.x - x, existing.y - y);
+      return dist < 26 || (existing.text === text && dist < 72);
+    });
+  };
+
+  for (const label of ranked) {
+    const candidates = [
+      { x: label.x, y: label.y },
+      { x: label.x + 18, y: label.y },
+      { x: label.x - 18, y: label.y },
+      { x: label.x, y: label.y + 16 },
+      { x: label.x, y: label.y - 16 },
+      { x: label.x + 24, y: label.y - 14 },
+      { x: label.x - 24, y: label.y + 14 },
+    ];
+    const pick = candidates.find((candidate) => !clashes(candidate.x, candidate.y, label.text));
+    if (!pick) continue;
+    placed.push({ ...label, x: pick.x, y: pick.y });
+  }
+  return placed;
+}
+
+export function buildCleanPlanDimensions(
+  walls: RoomScanWallSegment[],
+  openings: RoomScanOpening[],
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+  avoid: Array<{ x: number; y: number }> = [],
+): PlanDimLabel[] {
+  const unique = cleanWallsForPlan(walls).filter((wall) => wallLengthMeters(wall) >= 0.9);
+  const picked: RoomScanWallSegment[] = [];
+  for (const wall of unique.sort((a, b) => wallLengthMeters(b) - wallLengthMeters(a))) {
+    if (picked.some((existing) => nearlySameWall(existing, wall))) continue;
+    picked.push(wall);
+    if (picked.length >= 8) break;
+  }
+
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cz = (bounds.minZ + bounds.maxZ) / 2;
+  const labels: PlanDimLabel[] = [];
+  const usedOpenings = new Set<number>();
+
+  picked.forEach((wall, wallIndex) => {
+    const a0 = mapFloorPlanPoint(wall.x1, wall.z1, bounds, viewport);
+    const b0 = mapFloorPlanPoint(wall.x2, wall.z2, bounds, viewport);
+    const pxDx = b0.x - a0.x;
+    const pxDy = b0.y - a0.y;
+    const pxLen = Math.hypot(pxDx, pxDy) || 1;
+    const nx = -pxDy / pxLen;
+    const ny = pxDx / pxLen;
+    const tx = pxDx / pxLen;
+    const ty = pxDy / pxLen;
+    const midX = (a0.x + b0.x) / 2;
+    const midY = (a0.y + b0.y) / 2;
+    const toCenter =
+      nx * (viewport.offsetX + (cx - bounds.minX) * viewport.scale - midX) +
+      ny * (viewport.offsetY + (cz - bounds.minZ) * viewport.scale - midY);
+    const sign = toCenter > 0 ? -1 : 1;
+    labels.push({
+      id: `wall-len-${wallIndex}`,
+      x: midX + nx * sign * 22,
+      y: midY + ny * sign * 22,
+      text: formatWallDimension(wallLengthMeters(wall)),
+      kind: 'wall',
+    });
+
+    (openings || []).forEach((opening, openingIndex) => {
+      if (usedOpenings.has(openingIndex)) return;
+      const ox = (opening.x1 + opening.x2) / 2;
+      const oz = (opening.z1 + opening.z2) / 2;
+      if (distToWall(ox, oz, wall) > 0.28) return;
+      const meters = Math.hypot(opening.x2 - opening.x1, opening.z2 - opening.z1);
+      if (meters < 0.42) return;
+      usedOpenings.add(openingIndex);
+      const p = mapFloorPlanPoint(ox, oz, bounds, viewport);
+      const along = Math.abs(projectT(ox, oz, wall) - 0.5) < 0.16 ? 18 : 0;
+      const kind = opening.kind === 'window' ? 'window' : opening.kind === 'door' ? 'door' : 'opening';
+      labels.push({
+        id: `open-len-${wallIndex}-${openingIndex}`,
+        x: p.x - nx * sign * 10 + tx * along,
+        y: p.y - ny * sign * 10 + ty * along,
+        text: formatWallDimension(meters),
+        kind,
+      });
+    });
+  });
+
+  return placePlanLabels(labels, bounds, viewport, avoid);
 }

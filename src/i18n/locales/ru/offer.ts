@@ -396,7 +396,7 @@ export const offer = {
       furniture: 'Мебель и техника',
       exportPdf: 'Экспорт PDF-плана',
       exportPdfFailed: 'Не удалось создать PDF-файл.',
-      studioTitle: 'Студия плана',
+      studioTitle: 'План квартиры',
     },
     offerId: 'Идентификатор объявления: {{id}}',
     profile: {
