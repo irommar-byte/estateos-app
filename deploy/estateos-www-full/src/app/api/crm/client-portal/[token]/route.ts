@@ -36,7 +36,7 @@ import {
   formatClientFeedbackForAgent,
 } from '@/lib/crm/clientPortalFeedback';
 import { applyIntelligenceLearning, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
-import { maskEmail, bearerUserIdFromRequest } from '@/lib/crm/portalAccountLink';
+import { bearerUserIdFromRequest, resolvePortalAccountStatus } from '@/lib/crm/portalAccountLink';
 import {
   getPendingCheckback,
   respondToIntelligenceCheckback,
@@ -334,6 +334,21 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 
   const pendingCheckback = await getPendingCheckback(client.id);
 
+  let sessionUserEmail: string | null = null;
+  if (sessionUserId) {
+    const sessionUser = await prisma.user.findUnique({
+      where: { id: sessionUserId },
+      select: { email: true },
+    });
+    sessionUserEmail = sessionUser?.email ?? null;
+  }
+  const account = resolvePortalAccountStatus({
+    clientEmail: client.email,
+    clientLinkedUserId: client.linkedUserId,
+    sessionUserId,
+    sessionUserEmail,
+  });
+
   return NextResponse.json({
     success: true,
     portal: {
@@ -364,11 +379,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           })
         : 0,
       canChat: true,
-      account: {
-        linked: Boolean(client.linkedUserId),
-        linkedToYou: Boolean(sessionUserId && client.linkedUserId === sessionUserId),
-        emailMasked: maskEmail(client.email),
-      },
+      account,
       meeting: meeting
         ? {
             ...meeting,

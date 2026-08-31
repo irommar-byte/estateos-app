@@ -3,41 +3,57 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ProfileCardShell from '../components/profile/ProfileCardShell';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { formatCurrencyPLN } from '../utils/crmFormatters';
-import { groupPortalOfferStacks, OFFER_STACKS, resolveAssistantPulse, type OfferStackId } from '../lib/clientPortalBoard';
+import {
+  defaultOpenStackIds,
+  groupPortalOfferStacks,
+  OFFER_STACKS,
+  resolveAssistantPulse,
+  type OfferStackId,
+} from '../lib/clientPortalBoard';
 import { rememberPortalSession } from '../lib/clientPortalSession';
-import { registerClientPortalPushIfPossible } from '../hooks/usePushNotifications';
+import {
+  getClientPortalPushPermissionStatus,
+  registerClientPortalPushAfterLink,
+  registerClientPortalPushIfPossible,
+} from '../hooks/usePushNotifications';
 import {
   fetchClientPortal,
   linkPortalAccount,
-  listPortalMessages,
-  markPortalMessagesRead,
-  sendPortalMessage,
   submitPortalCheckback,
   submitPortalFeedback,
   type ClientPortalPayload,
-  type PortalChatMessage,
+  type PortalAccount,
   type PortalMatch,
 } from '../services/clientPortalService';
 
 const LIKE_PHRASES = ['Świetna lokalizacja', 'Podoba mi się układ', 'Dobry metraż', 'Pasuje do budżetu'];
 const DISLIKE_PHRASES = ['Za drogo', 'Brak balkonu', 'Nie ta dzielnica', 'Za mało pokoi'];
+
+function accountFromStatus(base: PortalAccount | undefined, status: PortalAccount['status']): PortalAccount {
+  return {
+    status,
+    linked: status === 'linked' || Boolean(base?.linked),
+    linkedToYou: status === 'linked',
+    emailMasked: base?.emailMasked ?? null,
+    sessionEmailMasked: base?.sessionEmailMasked ?? null,
+  };
+}
 
 export default function ClientPortalScreen() {
   const navigation = useNavigation<any>();
@@ -49,39 +65,33 @@ export default function ClientPortalScreen() {
   const loginWithPasskey = useAuthStore((s) => s.loginWithPasskey);
 
   const portalToken = String(route.params?.portalToken || '').trim();
-  const palette = isDark
-    ? {
-        bg: '#000',
-        card: '#1C1C1E',
-        text: '#F5F5F7',
-        muted: 'rgba(255,255,255,0.55)',
-        line: 'rgba(255,255,255,0.12)',
-        gold: '#E8C36A',
-        green: '#34C759',
-      }
-    : {
-        bg: '#F2F2F7',
-        card: '#FFFFFF',
-        text: '#111827',
-        muted: '#6B7280',
-        line: 'rgba(0,0,0,0.08)',
-        gold: '#B45309',
-        green: '#059669',
-      };
+  const colors = {
+    bg: isDark ? '#000000' : '#F2F2F7',
+    card: isDark ? '#1C1C1E' : '#FFFFFF',
+    text: isDark ? '#FFFFFF' : '#000000',
+    secondary: isDark ? '#8E8E93' : '#6C6C70',
+    border: isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)',
+    green: '#34C759',
+    gold: isDark ? '#E8C36A' : '#B45309',
+    tint: isDark ? 'rgba(52,199,89,0.18)' : 'rgba(52,199,89,0.12)',
+  };
 
   const [portal, setPortal] = useState<ClientPortalPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [openStacks, setOpenStacks] = useState<OfferStackId[]>(['new', 'like']);
+  const [openStacks, setOpenStacks] = useState<OfferStackId[]>([]);
   const [openMatchIds, setOpenMatchIds] = useState<number[]>([]);
   const [pendingPhrases, setPendingPhrases] = useState<Record<number, string[]>>({});
   const [linking, setLinking] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatDraft, setChatDraft] = useState('');
-  const [messages, setMessages] = useState<PortalChatMessage[]>([]);
-  const [sending, setSending] = useState(false);
+  const [pushPermission, setPushPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
   const silent = useRef(false);
+  const stacksInitialized = useRef(false);
+  const autoLinkAttempted = useRef(false);
+
+  const refreshPushStatus = useCallback(async () => {
+    setPushPermission(await getClientPortalPushPermissionStatus());
+  }, []);
 
   const load = useCallback(
     async (mode: 'full' | 'silent' | 'refresh' = 'full') => {
@@ -96,12 +106,20 @@ export default function ClientPortalScreen() {
         const next = await fetchClientPortal(portalToken, authToken);
         setPortal(next);
         setError(null);
+        if (!stacksInitialized.current) {
+          const grouped = groupPortalOfferStacks(next.matches || []);
+          setOpenStacks(defaultOpenStackIds(grouped));
+          stacksInitialized.current = true;
+        }
         await rememberPortalSession({
           token: portalToken,
           clientName: next.clientName,
           agencyName: next.agencyName,
         });
-        void registerClientPortalPushIfPossible({ prompt: true });
+        if (next.account?.status !== 'wrong_account') {
+          void registerClientPortalPushIfPossible({ prompt: false });
+        }
+        await refreshPushStatus();
       } catch (err: any) {
         if (mode !== 'silent') setError(err?.message || 'Nie udało się otworzyć panelu.');
       } finally {
@@ -109,7 +127,7 @@ export default function ClientPortalScreen() {
         setRefreshing(false);
       }
     },
-    [portalToken, authToken],
+    [portalToken, authToken, refreshPushStatus],
   );
 
   useEffect(() => {
@@ -136,6 +154,63 @@ export default function ClientPortalScreen() {
     [portal, stacks.new.length],
   );
 
+  const accountStatus = portal?.account?.status ?? 'anonymous';
+  const canOfferPush = accountStatus === 'linked' || accountStatus === 'ready';
+
+  const patchAccountStatus = (status: PortalAccount['status']) => {
+    setPortal((prev) => (prev ? { ...prev, account: accountFromStatus(prev.account, status) } : prev));
+  };
+
+  const onLinkAccount = async () => {
+    if (!authToken) {
+      Alert.alert(
+        'Powiąż z kontem',
+        'Zaloguj się tym samym e-mailem co w CRM (Passkey). Po reinstalacji panel wróci sam.',
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          { text: 'Passkey', onPress: () => void loginWithPasskey(null) },
+          {
+            text: 'Zaloguj e-mailem',
+            onPress: () =>
+              navigation.navigate('MainTabs', {
+                screen: 'Profil',
+                params: { authIntent: 'login' },
+              }),
+          },
+        ],
+      );
+      return;
+    }
+    setLinking(true);
+    try {
+      await linkPortalAccount(portalToken, authToken);
+      patchAccountStatus('linked');
+      await registerClientPortalPushAfterLink({ prompt: true });
+      await refreshPushStatus();
+      await load('silent');
+    } catch (err: any) {
+      Alert.alert('Powiązanie', err?.message || 'Nie udało się powiązać konta.');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!authToken || !portalToken || accountStatus !== 'ready' || autoLinkAttempted.current) return;
+    autoLinkAttempted.current = true;
+    void linkPortalAccount(portalToken, authToken)
+      .then(async () => {
+        patchAccountStatus('linked');
+        await registerClientPortalPushAfterLink({ prompt: true });
+        await refreshPushStatus();
+        await load('silent');
+      })
+      .catch((err: any) => {
+        autoLinkAttempted.current = false;
+        Alert.alert('Powiązanie', err?.message || 'Nie udało się powiązać konta.');
+      });
+  }, [authToken, portalToken, accountStatus, load, refreshPushStatus]);
+
   const toggleStack = (id: OfferStackId) => {
     setOpenStacks((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
@@ -147,6 +222,7 @@ export default function ClientPortalScreen() {
   const rateMatch = async (match: PortalMatch, sentiment: 'like' | 'maybe' | 'dislike') => {
     silent.current = true;
     try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await submitPortalFeedback(portalToken, {
         matchId: match.id,
         sentiment,
@@ -165,6 +241,7 @@ export default function ClientPortalScreen() {
     if (!portal?.pendingCheckback) return;
     silent.current = true;
     try {
+      await Haptics.selectionAsync();
       await submitPortalCheckback(portalToken, {
         activityId: portal.pendingCheckback.activityId,
         optionId,
@@ -177,244 +254,280 @@ export default function ClientPortalScreen() {
     }
   };
 
-  const onLinkAccount = async () => {
-    if (!authToken) {
-      Alert.alert(
-        'Powiąż z kontem',
-        'Zaloguj się tym samym e-mailem co w CRM (Passkey). Po reinstalacji panel wróci sam.',
-        [
-          { text: 'Anuluj', style: 'cancel' },
-          {
-            text: 'Passkey',
-            onPress: () => {
-              void loginWithPasskey(null);
-            },
-          },
-          {
-            text: 'Zaloguj e-mailem',
-            onPress: () =>
-              navigation.navigate('MainTabs', {
-                screen: 'Profil',
-                params: { authIntent: 'login' },
-              }),
-          },
-        ],
+  const openChat = () => {
+    navigation.navigate('ClientPortalChat', {
+      portalToken,
+      agentName: portal?.agentName || 'Agent',
+    });
+  };
+
+  const renderAccountSection = () => {
+    const account = portal?.account;
+    if (accountStatus === 'linked') {
+      return (
+        <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+          <View style={styles.row}>
+            <Ionicons name="checkmark-circle" size={22} color={colors.green} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Panel powiązany z kontem</Text>
+              <Text style={[styles.rowSub, { color: colors.secondary }]}>
+                Po reinstalacji wystarczy Passkey — panel wróci sam.
+                {account?.emailMasked ? ` · ${account.emailMasked}` : ''}
+              </Text>
+            </View>
+          </View>
+        </ProfileCardShell>
       );
-      return;
     }
-    setLinking(true);
-    try {
-      await linkPortalAccount(portalToken, authToken);
-      await load('silent');
-    } catch (err: any) {
-      Alert.alert('Powiązanie', err?.message || 'Nie udało się powiązać konta.');
-    } finally {
-      setLinking(false);
+
+    if (accountStatus === 'wrong_account') {
+      return (
+        <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+          <View style={styles.row}>
+            <Ionicons name="alert-circle-outline" size={22} color="#FF9500" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Inne konto</Text>
+              <Text style={[styles.rowSub, { color: colors.secondary }]}>
+                Ten panel jest dla {account?.emailMasked || 'klienta z CRM'}
+                {account?.sessionEmailMasked ? ` · jesteś zalogowany jako ${account.sessionEmailMasked}` : ''}.
+              </Text>
+            </View>
+          </View>
+        </ProfileCardShell>
+      );
     }
+
+    if (accountStatus === 'ready') {
+      return (
+        <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+          <Text style={[styles.rowTitle, { color: colors.text }]}>Powiąż z kontem</Text>
+          <Text style={[styles.rowSub, { color: colors.secondary, marginTop: 4 }]}>
+            Ten sam e-mail co w CRM{account?.emailMasked ? ` (${account.emailMasked})` : ''}. Passkey albo logowanie —
+            wtedy panel i push zostają przy Twoim koncie.
+          </Text>
+          <Pressable
+            onPress={onLinkAccount}
+            disabled={linking}
+            style={[styles.primaryBtn, { opacity: linking ? 0.6 : 1 }]}
+          >
+            <Text style={styles.primaryBtnText}>{user ? 'Powiąż z tym kontem' : 'Zaloguj i powiąż'}</Text>
+          </Pressable>
+        </ProfileCardShell>
+      );
+    }
+
+    return (
+      <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }}>
+        <Text style={[styles.rowTitle, { color: colors.text }]}>Zaloguj się, żeby zapamiętać panel</Text>
+        <Text style={[styles.rowSub, { color: colors.secondary, marginTop: 4 }]}>
+          {account?.emailMasked
+            ? `Użyj ${account.emailMasked} — ten sam adres co w CRM.`
+            : 'Passkey albo e-mail od agenta.'}
+        </Text>
+        <Pressable onPress={onLinkAccount} style={styles.primaryBtn}>
+          <Text style={styles.primaryBtnText}>Zaloguj i powiąż</Text>
+        </Pressable>
+      </ProfileCardShell>
+    );
   };
 
-  useEffect(() => {
-    if (!authToken || !portalToken || portal?.account?.linkedToYou) return;
-    void linkPortalAccount(portalToken, authToken)
-      .then(() => load('silent'))
-      .catch(() => {});
-  }, [authToken, portalToken, portal?.account?.linkedToYou, load]);
-
-  const openChat = async () => {
-    setChatOpen(true);
-    try {
-      const state = await listPortalMessages(portalToken);
-      setMessages(state.messages);
-      await markPortalMessagesRead(portalToken);
-    } catch {
-      /* keep modal */
-    }
-  };
-
-  const sendChat = async () => {
-    const content = chatDraft.trim();
-    if (!content || sending) return;
-    setSending(true);
-    try {
-      await sendPortalMessage(portalToken, content);
-      setChatDraft('');
-      const state = await listPortalMessages(portalToken);
-      setMessages(state.messages);
-    } catch (err: any) {
-      Alert.alert('Czat', err?.message || 'Nie wysłano wiadomości.');
-    } finally {
-      setSending(false);
-    }
+  const renderPushRow = () => {
+    if (!canOfferPush || pushPermission === 'granted') return null;
+    return (
+      <Pressable
+        onPress={() => {
+          if (pushPermission === 'denied') {
+            void Linking.openSettings();
+            return;
+          }
+          void registerClientPortalPushAfterLink({ prompt: true }).then(refreshPushStatus);
+        }}
+        style={[styles.pushRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
+        <Ionicons name="notifications-outline" size={18} color={colors.green} />
+        <Text style={{ flex: 1, color: colors.text, fontSize: 14 }}>
+          {pushPermission === 'denied' ? 'Włącz powiadomienia w ustawieniach iPhone' : 'Włącz powiadomienia o nowych ofertach'}
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
+      </Pressable>
+    );
   };
 
   if (loading && !portal) {
     return (
-      <View style={[styles.center, { backgroundColor: palette.bg, paddingTop: insets.top }]}>
-        <ActivityIndicator color={palette.green} />
+      <View style={[styles.center, { backgroundColor: colors.bg, paddingTop: insets.top }]}>
+        <ActivityIndicator color={colors.green} />
       </View>
     );
   }
 
   if (error && !portal) {
     return (
-      <View style={[styles.center, { backgroundColor: palette.bg, paddingTop: insets.top, paddingHorizontal: 24 }]}>
-        <Text style={{ color: palette.text, fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{error}</Text>
+      <View style={[styles.center, { backgroundColor: colors.bg, paddingTop: insets.top, paddingHorizontal: 24 }]}>
+        <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600', textAlign: 'center' }}>{error}</Text>
         <Pressable onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-          <Text style={{ color: palette.green, fontWeight: '700' }}>Wróć</Text>
+          <Text style={{ color: colors.green, fontWeight: '700' }}>Wróć</Text>
         </Pressable>
       </View>
     );
   }
 
+  const visibleStacks = OFFER_STACKS.filter((stack) => stacks[stack.id].length > 0);
+
   return (
-    <View style={{ flex: 1, backgroundColor: palette.bg }}>
-      <View
-        style={{
-          paddingTop: insets.top + 8,
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={palette.text} />
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={[styles.header, { paddingTop: insets.top + 6, borderBottomColor: colors.border }]}>
+        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.headerBtn}>
+          <Ionicons name="chevron-back" size={24} color={colors.green} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: palette.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 }} numberOfLines={1}>
-            {(portal?.agencyName || 'EstateOS').toUpperCase()}
+          <Text style={{ color: colors.secondary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+            {portal?.agencyName || 'EstateOS'}
           </Text>
-          <Text style={{ color: palette.text, fontSize: 20, fontWeight: '800' }} numberOfLines={1}>
-            Panel klienta
+          <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }} numberOfLines={1}>
+            Panel
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }} numberOfLines={1}>
+            {portal?.clientName} · {portal?.agentName}
           </Text>
         </View>
-        <Pressable onPress={openChat} hitSlop={8} style={styles.iconBtn}>
-          <Ionicons name="chatbubble-ellipses-outline" size={22} color={palette.text} />
+        <Pressable onPress={openChat} hitSlop={8} style={styles.headerBtn}>
+          <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.green} />
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 32 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} />}
-      >
-        <Text style={{ color: palette.muted, marginBottom: 12 }}>
-          Cześć {portal?.clientName || ''} — tu są oferty od {portal?.agentName || 'Twojego agenta'}.
-        </Text>
-
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.line }]}>
-          <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
-            {portal?.account?.linkedToYou ? 'Panel powiązany z kontem' : 'Powiąż z kontem'}
-          </Text>
-          <Text style={{ color: palette.muted, marginTop: 6, lineHeight: 20 }}>
-            {portal?.account?.linkedToYou
-              ? 'Po reinstalacji wystarczy się zalogować (Passkey) — panel wróci sam. Powiadomienia idą na to urządzenie.'
-              : `Ten sam e-mail co w CRM${portal?.account?.emailMasked ? ` (${portal.account.emailMasked})` : ''}. Passkey albo logowanie — wtedy panel i push zostają przy Twoim koncie.`}
-          </Text>
-          {!portal?.account?.linkedToYou ? (
-            <Pressable
-              onPress={onLinkAccount}
-              disabled={linking}
-              style={[styles.cta, { backgroundColor: palette.green, opacity: linking ? 0.6 : 1 }]}
-            >
-              <Text style={styles.ctaText}>{user ? 'Powiąż z tym kontem' : 'Zaloguj i powiąż'}</Text>
+      {pulse ? (
+        <View style={[styles.pulseBar, { backgroundColor: colors.tint, borderBottomColor: colors.border }]}>
+          {pulse.busy ? <ActivityIndicator size="small" color={colors.green} style={{ marginRight: 8 }} /> : null}
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>
+              {pulse.badge.toUpperCase()}
+            </Text>
+            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600', marginTop: 2 }}>{pulse.title}</Text>
+            <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }} numberOfLines={2}>
+              {pulse.body}
+            </Text>
+          </View>
+          {pulse.cta ? (
+            <Pressable onPress={() => setOpenStacks((prev) => (prev.includes('new') ? prev : [...prev, 'new']))}>
+              <Text style={{ color: colors.green, fontWeight: '700', fontSize: 12 }}>{pulse.cta}</Text>
             </Pressable>
           ) : null}
         </View>
+      ) : null}
+
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} />}
+      >
+        {renderAccountSection()}
+        {renderPushRow()}
 
         {portal?.pendingCheckback ? (
-          <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.gold, borderWidth: 1.5 }]}>
-            <Text style={{ color: palette.gold, fontWeight: '800', fontSize: 12, letterSpacing: 0.6 }}>
+          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12, borderWidth: 1, borderColor: colors.gold }}>
+            <Text style={{ color: colors.gold, fontWeight: '800', fontSize: 11, letterSpacing: 0.5 }}>
               WYMAGA TWOJEJ ODPOWIEDZI
             </Text>
-            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 18, marginTop: 8 }}>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 17, marginTop: 8 }}>
               {portal.pendingCheckback.body}
             </Text>
-            <Text style={{ color: palette.muted, marginTop: 6 }}>Dopóki nie wybierzesz, kolejna oferta nie pójdzie.</Text>
             <View style={{ marginTop: 12, gap: 8 }}>
               {portal.pendingCheckback.options.map((option) => (
                 <Pressable
                   key={option.id}
                   onPress={() => answerCheckback(option.id)}
-                  style={[styles.choice, { borderColor: palette.gold }]}
+                  style={[styles.choiceBtn, { borderColor: colors.gold }]}
                 >
-                  <Text style={{ color: palette.text, fontWeight: '700' }}>{option.label}</Text>
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>{option.label}</Text>
                 </Pressable>
               ))}
             </View>
-          </View>
+          </ProfileCardShell>
         ) : null}
 
-        {pulse ? (
-          <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.line }]}>
-            <Text style={{ color: palette.gold, fontWeight: '800', fontSize: 12 }}>{pulse.badge.toUpperCase()}</Text>
-            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 17, marginTop: 6 }}>{pulse.title}</Text>
-            <Text style={{ color: palette.muted, marginTop: 6, lineHeight: 20 }}>{pulse.body}</Text>
-            {pulse.cta ? (
-              <Pressable onPress={() => setOpenStacks((prev) => (prev.includes('new') ? prev : [...prev, 'new']))} style={{ marginTop: 10 }}>
-                <Text style={{ color: palette.green, fontWeight: '800' }}>{pulse.cta}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+        <View style={styles.pillRow}>
           {[
-            ['Nowe', stacks.new.length],
-            ['Oglądać', stacks.like.length],
-            ['Może', stacks.maybe.length],
-            ['Nie', stacks.dislike.length],
-          ].map(([label, value]) => (
-            <View key={String(label)} style={[styles.stat, { backgroundColor: palette.card, borderColor: palette.line }]}>
-              <Text style={{ color: palette.text, fontWeight: '800', fontSize: 18 }}>{value}</Text>
-              <Text style={{ color: palette.muted, fontSize: 11 }}>{label}</Text>
+            ['Nowe', stacks.new.length, colors.green],
+            ['Oglądać', stacks.like.length, colors.green],
+            ['Może', stacks.maybe.length, '#FF9500'],
+            ['Nie', stacks.dislike.length, '#FF3B30'],
+          ].map(([label, value, tone]) => (
+            <View key={String(label)} style={[styles.pill, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={{ color: String(tone), fontWeight: '800', fontSize: 16 }}>{value}</Text>
+              <Text style={{ color: colors.secondary, fontSize: 11 }}>{label}</Text>
             </View>
           ))}
         </View>
 
-        {OFFER_STACKS.map((stack) => {
+        {visibleStacks.length === 0 ? (
+          <ProfileCardShell isDark={isDark} faceStyle={{ padding: 16 }}>
+            <Text style={{ color: colors.text, fontWeight: '600' }}>Brak ofert w panelu</Text>
+            <Text style={{ color: colors.secondary, marginTop: 6 }}>
+              Gdy agent wyśle propozycję, pojawi się tutaj — dostaniesz powiadomienie.
+            </Text>
+          </ProfileCardShell>
+        ) : null}
+
+        {visibleStacks.map((stack) => {
           const items = stacks[stack.id];
           const open = openStacks.includes(stack.id);
           return (
-            <View key={stack.id} style={[styles.card, { backgroundColor: palette.card, borderColor: palette.line }]}>
+            <ProfileCardShell key={stack.id} isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
               <Pressable onPress={() => toggleStack(stack.id)} style={styles.stackHead}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: palette.text, fontWeight: '800', fontSize: 16 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>
                     {stack.title} · {items.length}
                   </Text>
-                  <Text style={{ color: palette.muted, marginTop: 4 }}>{stack.hint}</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }}>{stack.hint}</Text>
                 </View>
-                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={palette.muted} />
+                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.secondary} />
               </Pressable>
+
               {open
-                ? items.map((match) => {
+                ? items.map((match, index) => {
                     const expanded = openMatchIds.includes(match.id);
                     const phrases = stack.id === 'new' ? [...LIKE_PHRASES, ...DISLIKE_PHRASES] : [];
                     const selected = pendingPhrases[match.id] || [];
+                    const isLast = index === items.length - 1;
                     return (
-                      <View key={match.id} style={[styles.match, { borderTopColor: palette.line }]}>
-                        <Pressable onPress={() => toggleMatch(match.id)} style={{ flexDirection: 'row', gap: 12 }}>
+                      <View
+                        key={match.id}
+                        style={[
+                          styles.matchRow,
+                          !isLast ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border } : null,
+                        ]}
+                      >
+                        <Pressable onPress={() => toggleMatch(match.id)} style={styles.matchHead}>
                           {match.offer.imageUrl ? (
                             <Image source={{ uri: match.offer.imageUrl }} style={styles.thumb} />
                           ) : (
-                            <View style={[styles.thumb, { backgroundColor: palette.line }]} />
+                            <View style={[styles.thumb, { backgroundColor: colors.border }]} />
                           )}
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: palette.text, fontWeight: '700' }} numberOfLines={2}>
+                            <Text style={{ color: colors.text, fontWeight: '600', fontSize: 15 }} numberOfLines={2}>
                               {match.offer.title}
                             </Text>
-                            <Text style={{ color: palette.muted, marginTop: 4 }}>
+                            <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}>
                               {[match.offer.city, match.offer.district].filter(Boolean).join(' · ')}
                             </Text>
-                            <Text style={{ color: palette.text, marginTop: 4, fontWeight: '700' }}>
-                              {formatCurrencyPLN(match.offer.price)} {match.score ? `· ${match.score}%` : ''}
+                            <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>
+                              {formatCurrencyPLN(match.offer.price)}
+                              {match.score ? ` · ${match.score}%` : ''}
                             </Text>
                           </View>
+                          <Ionicons
+                            name={expanded ? 'chevron-up' : 'chevron-down'}
+                            size={16}
+                            color={colors.secondary}
+                          />
                         </Pressable>
+
                         {expanded ? (
                           <View style={{ marginTop: 12 }}>
                             {match.clientWhy ? (
-                              <Text style={{ color: palette.muted, marginBottom: 8 }}>{match.clientWhy}</Text>
+                              <Text style={{ color: colors.secondary, marginBottom: 8, fontSize: 13 }}>
+                                {match.clientWhy}
+                              </Text>
                             ) : null}
                             <Pressable
                               onPress={() =>
@@ -424,12 +537,13 @@ export default function ClientPortalScreen() {
                                   offerId: match.offer.id,
                                 })
                               }
+                              style={{ marginBottom: 10 }}
                             >
-                              <Text style={{ color: palette.green, fontWeight: '700', marginBottom: 10 }}>Zobacz ogłoszenie</Text>
+                              <Text style={{ color: colors.green, fontWeight: '700' }}>Zobacz ogłoszenie</Text>
                             </Pressable>
                             {stack.id === 'new' ? (
                               <>
-                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                                <View style={styles.phraseWrap}>
                                   {phrases.map((phrase) => {
                                     const on = selected.includes(phrase);
                                     return (
@@ -438,32 +552,43 @@ export default function ClientPortalScreen() {
                                         onPress={() =>
                                           setPendingPhrases((prev) => {
                                             const current = prev[match.id] || [];
-                                            const next = on ? current.filter((p) => p !== phrase) : [...current, phrase];
+                                            const next = on
+                                              ? current.filter((p) => p !== phrase)
+                                              : [...current, phrase];
                                             return { ...prev, [match.id]: next };
                                           })
                                         }
                                         style={[
-                                          styles.phrase,
+                                          styles.phraseChip,
                                           {
-                                            borderColor: on ? palette.green : palette.line,
-                                            backgroundColor: on ? 'rgba(52,199,89,0.12)' : 'transparent',
+                                            borderColor: on ? colors.green : colors.border,
+                                            backgroundColor: on ? colors.tint : 'transparent',
                                           },
                                         ]}
                                       >
-                                        <Text style={{ color: palette.text, fontSize: 12 }}>{phrase}</Text>
+                                        <Text style={{ color: colors.text, fontSize: 12 }}>{phrase}</Text>
                                       </Pressable>
                                     );
                                   })}
                                 </View>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                  <Pressable onPress={() => rateMatch(match, 'like')} style={[styles.rate, { backgroundColor: '#059669' }]}>
-                                    <Text style={styles.rateText}>Chcę oglądać</Text>
+                                <View style={styles.rateRow}>
+                                  <Pressable
+                                    onPress={() => rateMatch(match, 'like')}
+                                    style={[styles.rateBtn, { backgroundColor: colors.green }]}
+                                  >
+                                    <Text style={styles.rateBtnText}>Chcę oglądać</Text>
                                   </Pressable>
-                                  <Pressable onPress={() => rateMatch(match, 'maybe')} style={[styles.rate, { backgroundColor: '#D97706' }]}>
-                                    <Text style={styles.rateText}>Może</Text>
+                                  <Pressable
+                                    onPress={() => rateMatch(match, 'maybe')}
+                                    style={[styles.rateBtn, { backgroundColor: '#FF9500' }]}
+                                  >
+                                    <Text style={styles.rateBtnText}>Może</Text>
                                   </Pressable>
-                                  <Pressable onPress={() => rateMatch(match, 'dislike')} style={[styles.rate, { backgroundColor: '#E11D48' }]}>
-                                    <Text style={styles.rateText}>Nie</Text>
+                                  <Pressable
+                                    onPress={() => rateMatch(match, 'dislike')}
+                                    style={[styles.rateBtn, { backgroundColor: '#FF3B30' }]}
+                                  >
+                                    <Text style={styles.rateBtnText}>Nie</Text>
                                   </Pressable>
                                 </View>
                               </>
@@ -474,78 +599,73 @@ export default function ClientPortalScreen() {
                     );
                   })
                 : null}
-              {open && items.length === 0 ? (
-                <Text style={{ color: palette.muted, paddingTop: 8 }}>Pusto w tym stosie.</Text>
-              ) : null}
-            </View>
+            </ProfileCardShell>
           );
         })}
       </ScrollView>
-
-      <Modal visible={chatOpen} animationType="slide" onRequestClose={() => setChatOpen(false)}>
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: palette.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' }}>
-            <Pressable onPress={() => setChatOpen(false)} hitSlop={12}>
-              <Ionicons name="close" size={26} color={palette.text} />
-            </Pressable>
-            <Text style={{ color: palette.text, fontWeight: '800', fontSize: 18, marginLeft: 12 }}>Czat z agentem</Text>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-            {messages.map((message) => {
-              const mine = message.from === 'client';
-              return (
-                <View
-                  key={message.id}
-                  style={{
-                    alignSelf: mine ? 'flex-end' : 'flex-start',
-                    backgroundColor: mine ? palette.green : palette.card,
-                    padding: 10,
-                    borderRadius: 14,
-                    maxWidth: '82%',
-                  }}
-                >
-                  <Text style={{ color: mine ? '#052e1c' : palette.text }}>{message.content || message.body}</Text>
-                </View>
-              );
-            })}
-          </ScrollView>
-          <View style={{ flexDirection: 'row', padding: 12, paddingBottom: insets.bottom + 12, gap: 8 }}>
-            <TextInput
-              value={chatDraft}
-              onChangeText={setChatDraft}
-              placeholder="Napisz do agenta…"
-              placeholderTextColor={palette.muted}
-              style={{
-                flex: 1,
-                backgroundColor: palette.card,
-                color: palette.text,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                minHeight: 44,
-              }}
-            />
-            <Pressable onPress={sendChat} disabled={sending} style={[styles.cta, { backgroundColor: palette.green, marginTop: 0 }]}>
-              <Text style={styles.ctaText}>Wyślij</Text>
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  card: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 16, marginBottom: 12 },
-  cta: { marginTop: 12, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center' },
-  ctaText: { color: '#052e1c', fontWeight: '800' },
-  choice: { borderWidth: 1, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
-  stat: { flex: 1, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingVertical: 10, alignItems: 'center' },
+  header: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  pulseBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  rowTitle: { fontSize: 16, fontWeight: '700' },
+  rowSub: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  primaryBtn: {
+    marginTop: 12,
+    backgroundColor: '#34C759',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+  pushRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 12,
+  },
+  pillRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  pill: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
   stackHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  match: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, marginTop: 12 },
-  thumb: { width: 64, height: 64, borderRadius: 10 },
-  phrase: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  rate: { flex: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  rateText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  matchRow: { paddingTop: 12, marginTop: 12 },
+  matchHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  thumb: { width: 72, height: 72, borderRadius: 10 },
+  choiceBtn: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  phraseWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  phraseChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  rateRow: { flexDirection: 'row', gap: 8 },
+  rateBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  rateBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
 });

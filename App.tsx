@@ -119,6 +119,7 @@ import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
 import AgencyClientCreateScreen from './src/screens/AgencyClientCreateScreen';
 import AgencyClientDetailScreen from './src/screens/AgencyClientDetailScreen';
 import ClientPortalScreen from './src/screens/ClientPortalScreen';
+import ClientPortalChatScreen from './src/screens/ClientPortalChatScreen';
 import EstateOsMarketScreen from './src/screens/EstateOsMarketScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import CarsCatalogScreen from './src/screens/CarsCatalogScreen';
@@ -2043,6 +2044,11 @@ export default function App() {
             <AppStack.Screen
               name="ClientPortal"
               component={ClientPortalScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="ClientPortalChat"
+              component={ClientPortalChatScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

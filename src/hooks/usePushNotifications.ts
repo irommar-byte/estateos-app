@@ -256,6 +256,18 @@ async function registerStoredPortalPushDevices(pushToken: string): Promise<void>
   }
 }
 
+export async function getClientPortalPushPermissionStatus(): Promise<'granted' | 'denied' | 'undetermined'> {
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status === 'granted') return 'granted';
+  if (status === 'denied') return 'denied';
+  return 'undetermined';
+}
+
+/** Po powiązaniu konta — ponownie zarejestruj device na linkedUserId. */
+export async function registerClientPortalPushAfterLink(options?: { prompt?: boolean }): Promise<boolean> {
+  return registerClientPortalPushIfPossible(options);
+}
+
 /** Rejestracja Expo tokenu przy kliencie CRM — działa też bez logowania, jeśli jest token panelu. */
 export async function registerClientPortalPushIfPossible(options?: { prompt?: boolean }): Promise<boolean> {
   if (!Device.isDevice) return false;

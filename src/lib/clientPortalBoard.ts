@@ -105,3 +105,13 @@ export function resolveAssistantPulse(input: {
 
   return null;
 }
+
+export function defaultOpenStackIds<T extends { id: number }>(
+  stacks: Record<OfferStackId, T[]>,
+): OfferStackId[] {
+  if (stacks.new.length) return ['new'];
+  if (stacks.like.length) return ['like'];
+  if (stacks.maybe.length) return ['maybe'];
+  if (stacks.dislike.length) return ['dislike'];
+  return [];
+}

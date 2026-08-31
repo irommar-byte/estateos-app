@@ -35,10 +35,14 @@ export type PortalCheckback = {
   createdAt?: string;
 } | null;
 
+export type PortalAccountStatus = 'linked' | 'ready' | 'wrong_account' | 'anonymous';
+
 export type PortalAccount = {
+  status: PortalAccountStatus;
   linked: boolean;
   linkedToYou?: boolean;
   emailMasked: string | null;
+  sessionEmailMasked?: string | null;
 };
 
 export type ClientPortalPayload = {
@@ -66,12 +70,26 @@ function portalUrl(token: string, suffix = '') {
   return `${API_URL}/api/crm/client-portal/${encodeURIComponent(token)}${suffix}`;
 }
 
+function normalizeAuthToken(authToken?: string | null): string | null {
+  if (!authToken?.trim()) return null;
+  const trimmed = authToken.trim();
+  return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
+}
+
+export function portalAuthHeaders(authToken?: string | null): Record<string, string> {
+  const token = normalizeAuthToken(authToken);
+  if (!token) return {};
+  return {
+    Authorization: `Bearer ${token}`,
+    'x-access-token': token,
+    'auth-token': token,
+  };
+}
+
 export async function fetchClientPortal(token: string, authToken?: string | null): Promise<ClientPortalPayload> {
-  const headers: Record<string, string> = {};
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const { response, data } = await mobileFetchJson<{ success?: boolean; portal?: ClientPortalPayload; error?: string }>(
     portalUrl(token),
-    { headers },
+    { headers: portalAuthHeaders(authToken) },
   );
   if (!response.ok || !data?.portal) {
     throw new Error(data?.error || 'Nie udało się otworzyć panelu klienta.');
@@ -79,10 +97,14 @@ export async function fetchClientPortal(token: string, authToken?: string | null
   return data.portal;
 }
 
-async function postPortal<T = Record<string, unknown>>(token: string, body: Record<string, unknown>): Promise<T> {
+async function postPortal<T = Record<string, unknown>>(
+  token: string,
+  body: Record<string, unknown>,
+  authToken?: string | null,
+): Promise<T> {
   const { response, data } = await mobileFetchJson<T & { error?: string; success?: boolean }>(portalUrl(token), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...portalAuthHeaders(authToken) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -134,7 +156,7 @@ export async function linkPortalAccount(token: string, authToken: string) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
+        ...portalAuthHeaders(authToken),
       },
       body: '{}',
     },
@@ -163,7 +185,7 @@ export async function restoreLinkedClientPortals(authToken: string): Promise<str
       success?: boolean;
       portals?: Array<{ portalToken?: string; clientName?: string; agencyName?: string }>;
     }>(`${API_URL}/api/mobile/v1/client-portal/mine`, {
-      headers: { Authorization: `Bearer ${authToken}` },
+      headers: portalAuthHeaders(authToken),
     });
     if (!response.ok || !data?.portals?.length) return null;
     return restorePortalSessionsFromServer(data.portals);

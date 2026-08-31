@@ -78,6 +78,83 @@ export function decidePortalAccountLink(params: {
   return { action: 'set' };
 }
 
+export type PortalAccountStatus = 'linked' | 'ready' | 'wrong_account' | 'anonymous';
+
+export function resolvePortalAccountStatus(params: {
+  clientEmail: string | null | undefined;
+  clientLinkedUserId: number | null | undefined;
+  sessionUserId: number | null;
+  sessionUserEmail: string | null | undefined;
+}): {
+  status: PortalAccountStatus;
+  emailMasked: string | null;
+  sessionEmailMasked: string | null;
+  linked: boolean;
+  linkedToYou: boolean;
+} {
+  const emailMasked = maskEmail(params.clientEmail);
+  const linkedUserId = Number(params.clientLinkedUserId || 0) || null;
+
+  if (!params.sessionUserId) {
+    return {
+      status: 'anonymous',
+      emailMasked,
+      sessionEmailMasked: null,
+      linked: Boolean(linkedUserId),
+      linkedToYou: false,
+    };
+  }
+
+  const sessionEmailMasked = maskEmail(params.sessionUserEmail);
+  const decision = decidePortalAccountLink({
+    clientEmail: params.clientEmail,
+    clientLinkedUserId: linkedUserId,
+    userId: params.sessionUserId,
+    userEmail: params.sessionUserEmail,
+  });
+
+  if (decision.action === 'mismatch') {
+    return {
+      status: 'wrong_account',
+      emailMasked,
+      sessionEmailMasked,
+      linked: Boolean(linkedUserId),
+      linkedToYou: false,
+    };
+  }
+
+  if (decision.action === 'ok') {
+    return {
+      status: 'linked',
+      emailMasked,
+      sessionEmailMasked,
+      linked: true,
+      linkedToYou: true,
+    };
+  }
+
+  if (decision.action === 'missing_email') {
+    const clientEmail = normalizePortalEmail(params.clientEmail);
+    if (!clientEmail || isPlaceholderPortalEmail(clientEmail)) {
+      return {
+        status: 'anonymous',
+        emailMasked,
+        sessionEmailMasked,
+        linked: Boolean(linkedUserId),
+        linkedToYou: linkedUserId === params.sessionUserId,
+      };
+    }
+  }
+
+  return {
+    status: 'ready',
+    emailMasked,
+    sessionEmailMasked,
+    linked: Boolean(linkedUserId),
+    linkedToYou: false,
+  };
+}
+
 export function bearerUserIdFromRequest(req: Request): number | null {
   const auth = req.headers.get('authorization') || req.headers.get('Authorization');
   const access = req.headers.get('x-access-token');

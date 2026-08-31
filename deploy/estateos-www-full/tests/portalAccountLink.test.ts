@@ -4,6 +4,7 @@ import {
   decidePortalAccountLink,
   extractPortalTokenFromUrl,
   maskEmail,
+  resolvePortalAccountStatus,
 } from '../src/lib/crm/portalAccountLink';
 
 test('extracts portal token from https, custom scheme and query', () => {
@@ -67,5 +68,50 @@ test('link decision requires the same real email as CRM', () => {
       userEmail: 'klient@estateos.pl',
     }).action,
     'missing_email',
+  );
+});
+
+test('resolvePortalAccountStatus distinguishes linked, ready, wrong_account and anonymous', () => {
+  assert.deepEqual(
+    resolvePortalAccountStatus({
+      clientEmail: 'klient@estateos.pl',
+      clientLinkedUserId: 9,
+      sessionUserId: 9,
+      sessionUserEmail: 'klient@estateos.pl',
+    }),
+    {
+      status: 'linked',
+      emailMasked: 'k***@estateos.pl',
+      sessionEmailMasked: 'k***@estateos.pl',
+      linked: true,
+      linkedToYou: true,
+    },
+  );
+  assert.equal(
+    resolvePortalAccountStatus({
+      clientEmail: 'klient@estateos.pl',
+      clientLinkedUserId: null,
+      sessionUserId: 9,
+      sessionUserEmail: 'klient@estateos.pl',
+    }).status,
+    'ready',
+  );
+  assert.equal(
+    resolvePortalAccountStatus({
+      clientEmail: 'klient@estateos.pl',
+      clientLinkedUserId: null,
+      sessionUserId: 3,
+      sessionUserEmail: 'agent@estateos.pl',
+    }).status,
+    'wrong_account',
+  );
+  assert.equal(
+    resolvePortalAccountStatus({
+      clientEmail: 'klient@estateos.pl',
+      clientLinkedUserId: 5,
+      sessionUserId: null,
+      sessionUserEmail: null,
+    }).status,
+    'anonymous',
   );
 });
