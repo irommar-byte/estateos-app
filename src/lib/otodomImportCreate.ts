@@ -47,6 +47,7 @@ import {
   type IntelligenceAmenityField,
   type IntelligenceAmenityPatchMap,
   type IntelligenceAmenitySuggestion,
+  INTELLIGENCE_AMENITY_FIELDS,
 } from '@/lib/intelligenceAmenityBrain';
 import { writeOfferAmenityPatches } from '@/lib/intelligenceAmenityPatches';
 
@@ -147,6 +148,10 @@ export function resolveImportSmartAdd(params: {
   draft: OtodomImportDraft;
   /** Jawne odrzucenie pojedynczego pola (np. z UI importu). */
   decisions?: unknown;
+  /** Gdy false — tylko checkboxy portalu, bez inferencji z opisu. */
+  enabled?: boolean;
+  /** Gdy false — podpowiedzi bez auto-zapisu patchy / amenity z opisu. */
+  autoApply?: boolean;
 }): {
   amenities: Record<IntelligenceAmenityField, boolean>;
   hasAirConditioning: boolean;
@@ -156,13 +161,36 @@ export function resolveImportSmartAdd(params: {
 } {
   const preview = previewImportSmartAdd(params.draft);
   const decisions = parseSmartAddDecisions(params.decisions);
+  const features = params.draft.features || [];
+  const enabled = params.enabled !== false;
+  const autoApply = params.autoApply !== false;
+
+  if (!enabled) {
+    const amenities = Object.fromEntries(
+      INTELLIGENCE_AMENITY_FIELDS.map((field) => [
+        field,
+        portalFeaturesIncludeAmenity(features, field),
+      ]),
+    ) as Record<IntelligenceAmenityField, boolean>;
+    return {
+      amenities,
+      hasAirConditioning: amenities.hasAirConditioning,
+      heating: preview.heating,
+      patches: {},
+      suggestions: preview.suggestions,
+    };
+  }
+
   const amenities = { ...preview.amenities };
   const patches: IntelligenceAmenityPatchMap = {};
   const description = importDescriptionBlob(params.draft);
-  const features = params.draft.features || [];
 
   for (const field of Object.keys(amenities) as IntelligenceAmenityField[]) {
     if (decisions[field] === false) {
+      amenities[field] = portalFeaturesIncludeAmenity(features, field);
+      continue;
+    }
+    if (!autoApply) {
       amenities[field] = portalFeaturesIncludeAmenity(features, field);
       continue;
     }
@@ -208,6 +236,8 @@ export async function draftToOfferCreateBody(
   const smart = resolveImportSmartAdd({
     draft,
     decisions: options?.smartAddDecisions,
+    enabled: options?.smartAddEnabled !== false,
+    autoApply: options?.smartAddAutoApply !== false,
   });
 
   return {
@@ -633,6 +663,8 @@ export async function createOfferFromOtodomDraft(
     const smart = resolveImportSmartAdd({
       draft,
       decisions: options?.smartAddDecisions,
+      enabled: options?.smartAddEnabled !== false,
+      autoApply: options?.smartAddAutoApply !== false,
     });
     if (Object.keys(smart.patches).length) {
       await writeOfferAmenityPatches(offerId, smart.patches);

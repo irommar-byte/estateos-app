@@ -71,7 +71,7 @@ const AMENITY_META: Record<
   hasElevator: {
     label: 'Winda',
     portalNeedles: ['winda'],
-    positive: /\b(winda|windą|windy)/i,
+    positive: /\b(wind[a-ząćęłńóśźż]*)/i,
     negative: /bez\s+windy|brak\s+windy|nie\s+ma\s+windy/i,
   },
   hasAirConditioning: {
