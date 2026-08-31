@@ -59,6 +59,7 @@ const OFFER_SELECT = {
   price: true,
   area: true,
   rooms: true,
+  yearBuilt: true,
   hasBalcony: true,
   hasGarden: true,
   hasElevator: true,
@@ -77,6 +78,7 @@ type OfferRow = {
   price: number | null;
   area: number | null;
   rooms: number | null;
+  yearBuilt: number | null;
   hasBalcony: boolean | null;
   hasGarden: boolean | null;
   hasElevator: boolean | null;
@@ -317,7 +319,7 @@ export async function pickIntelligenceOffer(
   const excluded = new Set(options.excludeOfferIds || []);
   let best: Cand | null = null;
   let considered = 0;
-  const relaxScore = Boolean(options.force || options.preview || calibrating || options.replyToFeedback);
+  const relaxScore = Boolean(options.force || options.preview || calibrating);
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
     if (taste.rejectedOfferIds.includes(row.offerId)) continue;
@@ -330,7 +332,15 @@ export async function pickIntelligenceOffer(
       taste,
       maxPrice: client.buyerPreference.maxPrice,
       acceptScarceBudget,
+      pref: {
+        minYear: client.buyerPreference.minYear,
+        minRooms: client.buyerPreference.minRooms,
+        maxArea: client.buyerPreference.maxArea,
+        minArea: client.buyerPreference.minArea,
+      },
     });
+    const passesStructural = adjusted.score > 0;
+    if (!passesStructural) continue;
     if (adjusted.score < minScore && !relaxScore) continue;
     const cheaperTie =
       best &&
@@ -388,7 +398,7 @@ export async function pickIntelligenceOffer(
 
   const canSchedule = enabled && (calibrating || taste.learnCount >= minLearns);
   const qualifies = Boolean(
-    best && (calibrating || best.score >= minScore || options.force || options.replyToFeedback),
+    best && (calibrating || best.score >= minScore || options.force),
   );
   const nextSendAt = nextSendAtIso(client.intelligenceLastSentAt, intervalHours, canSchedule && qualifies);
   const ready = !skipReason && qualifies;

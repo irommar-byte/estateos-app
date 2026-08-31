@@ -4,6 +4,7 @@ import {
   sentimentLabel,
   type ClientOfferFeedback,
 } from '@/lib/crm/clientPortalFeedback';
+import { extractFeedbackSignals } from '@/lib/crm/feedbackSignals';
 import { descriptionImpliesAmenity, offerHasAmenityFromBrain } from '@/lib/intelligenceAmenityBrain';
 import { plainOfferDescription } from '@/lib/offerDescriptionHtml';
 
@@ -11,7 +12,9 @@ export type IntelligenceLockKey =
   | 'districts'
   | 'maxPrice'
   | 'minArea'
+  | 'maxArea'
   | 'minYear'
+  | 'minRooms'
   | 'requireBalcony'
   | 'requireGarden'
   | 'requireElevator'
@@ -24,7 +27,9 @@ export const INTELLIGENCE_LOCK_KEYS: IntelligenceLockKey[] = [
   'districts',
   'maxPrice',
   'minArea',
+  'maxArea',
   'minYear',
+  'minRooms',
   'requireBalcony',
   'requireGarden',
   'requireElevator',
@@ -78,7 +83,9 @@ export const DEFAULT_INTELLIGENCE_LOCKS: IntelligenceLocks = {
   districts: false,
   maxPrice: false,
   minArea: false,
+  maxArea: false,
   minYear: false,
+  minRooms: false,
   requireBalcony: false,
   requireGarden: false,
   requireElevator: false,
@@ -106,6 +113,7 @@ type OfferLike = {
   price?: number | null;
   area?: number | null;
   rooms?: number | null;
+  yearBuilt?: number | null;
   hasBalcony?: boolean | null;
   hasGarden?: boolean | null;
   hasElevator?: boolean | null;
@@ -133,12 +141,23 @@ export type LearnedTaste = {
   maybeRooms: number[];
   maybePrices: number[];
   expensivePrices: number[];
+  minYearHint: number | null;
+  minRoomsHint: number | null;
+  maxAreaHint: number | null;
+  minAreaHint: number | null;
 };
 
 const PHRASE_NEEDLES: Record<string, string[]> = {
   'Za mała kuchnia': ['mała kuchnia', 'aneks kuchenny', 'kuchnia 4', 'kuchnia 5', 'kuchnia 6 m', 'ciasna kuchnia'],
   'Brak balkonu': ['bez balkonu', 'brak balkonu'],
+  'Brak parkingu': ['bez parkingu', 'brak parkingu', 'brak miejsca postojowego'],
+  'Brak windy': ['bez windy', 'brak windy'],
+  'Brak ogrodu': ['bez ogrodu', 'brak ogrodu'],
   'Za drogo': [],
+  'Za stare': ['rocznik', 'przedwojen', 'kamienic', 'stare budownictwo'],
+  'Za mało pokoi': ['kawalerka', 'jednopokoj', '1-pokoj', '1 pokoj'],
+  'Za mały metraż': ['ciasne', 'małe mieszkanie', 'mały metraż'],
+  'Za duży metraż': ['zbyt duże', 'za duży metraż'],
   'Hałas / ruchliwa ulica': ['hałas', 'ruchliw', 'arteria', 'przy al.', 'przy ul. ', 'duży ruch'],
   'Nie ta dzielnica': [],
   'Słabe doświetlenie': ['północ', 'ciemne', 'słabe doświetl', 'zacienion'],
@@ -221,6 +240,10 @@ function emptyTaste(): LearnedTaste {
     maybeRooms: [],
     maybePrices: [],
     expensivePrices: [],
+    minYearHint: null,
+    minRoomsHint: null,
+    maxAreaHint: null,
+    minAreaHint: null,
   };
 }
 
@@ -269,6 +292,21 @@ export function learnFromFeedback(
     if (feedback.phrases.includes('Za drogo') && row.offer?.price) {
       taste.expensivePrices.push(Number(row.offer.price));
     }
+    const signals = extractFeedbackSignals(feedback);
+    for (const signal of signals) {
+      if (signal.kind === 'minYear' && signal.value != null) {
+        taste.minYearHint = taste.minYearHint == null ? signal.value : Math.max(taste.minYearHint, signal.value);
+      }
+      if (signal.kind === 'minRooms' && signal.value != null) {
+        taste.minRoomsHint = taste.minRoomsHint == null ? signal.value : Math.max(taste.minRoomsHint, signal.value);
+      }
+      if (signal.kind === 'maxArea' && signal.value != null) {
+        taste.maxAreaHint = taste.maxAreaHint == null ? signal.value : Math.min(taste.maxAreaHint, signal.value);
+      }
+      if (signal.kind === 'minArea' && signal.value != null) {
+        taste.minAreaHint = taste.minAreaHint == null ? signal.value : Math.max(taste.minAreaHint, signal.value);
+      }
+    }
     taste.phrases.push(...feedback.phrases);
     if (feedback.liked) taste.likedText.push(feedback.liked);
     if (feedback.disliked) taste.dislikedText.push(feedback.disliked);
@@ -310,11 +348,60 @@ export function intelligenceAdjustScore(params: {
   taste: LearnedTaste;
   maxPrice?: number | null;
   acceptScarceBudget?: boolean;
+  pref?: {
+    minYear?: number | null;
+    minRooms?: number | null;
+    maxArea?: number | null;
+    minArea?: number | null;
+  } | null;
 }): { score: number; reasons: string[] } {
-  const { offer, taste, maxPrice, acceptScarceBudget } = params;
+  const { offer, taste, maxPrice, acceptScarceBudget, pref } = params;
   let score = params.radarScore;
   const reasons: string[] = [];
   const text = haystack(offer);
+
+  const minYear = Math.max(
+    Number(pref?.minYear || 0),
+    Number(taste.minYearHint || 0),
+  );
+  const minRooms = Math.max(
+    Number(pref?.minRooms || 0),
+    Number(taste.minRoomsHint || 0),
+  );
+  const maxArea =
+    pref?.maxArea != null && taste.maxAreaHint != null
+      ? Math.min(Number(pref.maxArea), Number(taste.maxAreaHint))
+      : pref?.maxArea ?? taste.maxAreaHint ?? null;
+  const minArea = Math.max(
+    Number(pref?.minArea || 0),
+    Number(taste.minAreaHint || 0),
+  );
+
+  const yearBuilt = offer.yearBuilt != null ? Number(offer.yearBuilt) : null;
+  if (minYear > 1900 && yearBuilt != null && Number.isFinite(yearBuilt) && yearBuilt < minYear) {
+    score = 0;
+    reasons.push(`Budynek z ${yearBuilt} r. — poniżej progu ${minYear}.`);
+  }
+
+  const rooms = offer.rooms != null ? Number(offer.rooms) : null;
+  if (minRooms > 0 && rooms != null && Number.isFinite(rooms) && rooms < minRooms) {
+    score = 0;
+    reasons.push(`Układ ${rooms} pok. — poniżej oczekiwanego minimum ${minRooms}.`);
+  }
+
+  if (maxArea != null && offer.area != null && Number(offer.area) > Number(maxArea)) {
+    score = 0;
+    reasons.push(`Metraż ${offer.area} m² przekracza limit ${maxArea} m².`);
+  }
+
+  if (minArea > 0 && offer.area != null && Number(offer.area) < minArea) {
+    score = Math.min(score, 40);
+    reasons.push(`Metraż ${offer.area} m² jest poniżej oczekiwanego minimum ${minArea} m².`);
+  }
+
+  if (score <= 0) {
+    return { score: 0, reasons: [...new Set(reasons)].slice(0, 6) };
+  }
   const phraseCounts = new Map<string, number>();
   for (const phrase of taste.phrases) {
     phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
@@ -366,8 +453,8 @@ export function intelligenceAdjustScore(params: {
   if (dislikedBlob) {
     for (const token of dislikedBlob
       .split(/[\s,.;:!?/]+/)
-      .filter((item) => item.length >= 6 && !FEEDBACK_STOPWORDS.has(item))
-      .slice(0, 12)) {
+      .filter((item) => item.length >= 4 && !FEEDBACK_STOPWORDS.has(item))
+      .slice(0, 16)) {
       if (text.includes(token)) {
         score -= 5;
         reasons.push(`W opisie wraca słowo z zastrzeżeń: „${token}”.`);
@@ -407,6 +494,29 @@ export function intelligenceAdjustScore(params: {
       score += 3;
       reasons.push(`Układ ${maybeRoomMode} pok. był przy „może być”.`);
     }
+  }
+
+  if (minRooms > 0 && rooms != null && rooms >= minRooms) {
+    score += 5;
+    reasons.push(`Ma co najmniej ${minRooms} pokoje — zgodnie z Twoimi uwagami.`);
+  }
+
+  if (minYear > 1900 && yearBuilt != null && yearBuilt >= minYear) {
+    score += 4;
+    reasons.push(`Budynek z ${yearBuilt} r. — spełnia oczekiwanie co do roku budowy.`);
+  }
+
+  if (phraseCounts.get('Brak parkingu') && offerHasAmenityFromBrain(offer, 'hasParking')) {
+    score += 5;
+    reasons.push('Ma parking lub miejsce postojowe.');
+  }
+  if (phraseCounts.get('Brak windy') && offerHasAmenityFromBrain(offer, 'hasElevator')) {
+    score += 4;
+    reasons.push('Jest winda w budynku.');
+  }
+  if (phraseCounts.get('Brak ogrodu') && offerHasAmenityFromBrain(offer, 'hasGarden')) {
+    score += 4;
+    reasons.push('Jest ogródek lub dostęp do zieleni.');
   }
 
   const likedPriceMid = median(taste.likedPrices);
@@ -449,7 +559,7 @@ export function phraseCount(taste: LearnedTaste, phrase: string): number {
   return taste.phrases.filter((item) => item === phrase).length;
 }
 
-function parseDistrictList(raw: unknown): string[] {
+export function parseDistrictList(raw: unknown): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map((item) => String(item).trim()).filter(Boolean);
   if (typeof raw === 'string') {
@@ -469,6 +579,10 @@ function parseDistrictList(raw: unknown): string[] {
 export function defaultIntelligenceLocks(pref?: {
   districts?: unknown;
   maxPrice?: number | null;
+  minArea?: number | null;
+  maxArea?: number | null;
+  minYear?: number | null;
+  minRooms?: number | null;
   requireBalcony?: boolean | null;
   requireGarden?: boolean | null;
   requireElevator?: boolean | null;
@@ -478,8 +592,10 @@ export function defaultIntelligenceLocks(pref?: {
   return {
     districts: parseDistrictList(pref?.districts).length > 0,
     maxPrice: pref?.maxPrice != null && Number(pref.maxPrice) > 0,
-    minArea: false,
-    minYear: false,
+    minArea: pref?.minArea != null && Number(pref.minArea) > 0,
+    maxArea: pref?.maxArea != null && Number(pref.maxArea) > 0,
+    minYear: pref?.minYear != null && Number(pref.minYear) > 1900,
+    minRooms: pref?.minRooms != null && Number(pref.minRooms) > 0,
     requireBalcony: Boolean(pref?.requireBalcony),
     requireGarden: Boolean(pref?.requireGarden),
     requireElevator: Boolean(pref?.requireElevator),
@@ -505,6 +621,10 @@ export function parseIntelligenceLocks(
 export type BuyerPrefWriteback = {
   districts?: string[];
   maxPrice?: number | null;
+  minArea?: number | null;
+  maxArea?: number | null;
+  minYear?: number | null;
+  minRooms?: number | null;
   requireBalcony?: boolean;
   requireGarden?: boolean;
   requireElevator?: boolean;
@@ -516,6 +636,10 @@ export function preferenceUpdatesFromTaste(params: {
   pref: {
     districts?: unknown;
     maxPrice?: number | null;
+    minArea?: number | null;
+    maxArea?: number | null;
+    minYear?: number | null;
+    minRooms?: number | null;
     requireBalcony?: boolean | null;
     requireGarden?: boolean | null;
     requireElevator?: boolean | null;
@@ -535,6 +659,73 @@ export function preferenceUpdatesFromTaste(params: {
     } else if (!pref.requireBalcony) {
       data.requireBalcony = true;
       notes.push('Dopisano obowiązkowy balkon — klient dwukrotnie zaznaczał „brak balkonu”.');
+    }
+  }
+
+  if (phraseCount(taste, 'Brak parkingu') >= 2) {
+    if (locks.requireParking) {
+      notes.push('Klient wielokrotnie odrzucał brak parkingu, ale to kryterium jest zablokowane.');
+    } else if (!pref.requireParking) {
+      data.requireParking = true;
+      notes.push('Dopisano obowiązkowy parking — klient dwukrotnie zaznaczał „brak parkingu”.');
+    }
+  }
+
+  if (phraseCount(taste, 'Brak windy') >= 2) {
+    if (locks.requireElevator) {
+      notes.push('Klient wielokrotnie odrzucał brak windy, ale to kryterium jest zablokowane.');
+    } else if (!pref.requireElevator) {
+      data.requireElevator = true;
+      notes.push('Dopisano obowiązkową windę — klient dwukrotnie zaznaczał „brak windy”.');
+    }
+  }
+
+  if (phraseCount(taste, 'Brak ogrodu') >= 2) {
+    if (locks.requireGarden) {
+      notes.push('Klient wielokrotnie odrzucał brak ogrodu, ale to kryterium jest zablokowane.');
+    } else if (!pref.requireGarden) {
+      data.requireGarden = true;
+      notes.push('Dopisano obowiązkowy ogród — klient dwukrotnie zaznaczał „brak ogrodu”.');
+    }
+  }
+
+  if ((phraseCount(taste, 'Za stare') >= 2 || (phraseCount(taste, 'Za stare') >= 1 && taste.minYearHint != null)) && taste.minYearHint != null) {
+    const nextYear = Math.max(Number(pref.minYear || 1900), taste.minYearHint);
+    if (locks.minYear) {
+      notes.push(`Klient sygnalizował „za stare” (od ${nextYear}), ale rok budowy jest zablokowany.`);
+    } else if (!pref.minYear || nextYear > Number(pref.minYear)) {
+      data.minYear = nextYear;
+      notes.push(`Podniesiono minimalny rok budowy do ${nextYear} — sygnał „za stare”.`);
+    }
+  }
+
+  if ((phraseCount(taste, 'Za mało pokoi') >= 2 || (phraseCount(taste, 'Za mało pokoi') >= 1 && taste.minRoomsHint != null)) && taste.minRoomsHint != null) {
+    const nextRooms = Math.max(Number(pref.minRooms || 0), taste.minRoomsHint);
+    if (locks.minRooms) {
+      notes.push(`Klient sygnalizował za mało pokoi (min. ${nextRooms}), ale liczba pokoi jest zablokowana.`);
+    } else if (!pref.minRooms || nextRooms > Number(pref.minRooms)) {
+      data.minRooms = nextRooms;
+      notes.push(`Ustawiono minimum ${nextRooms} pokoi — sygnał „za mało pokoi”.`);
+    }
+  }
+
+  if (phraseCount(taste, 'Za mały metraż') >= 2 && taste.minAreaHint != null) {
+    const nextArea = Math.max(Number(pref.minArea || 0), taste.minAreaHint);
+    if (locks.minArea) {
+      notes.push(`Klient sygnalizował za mały metraż, ale minArea jest zablokowane.`);
+    } else if (!pref.minArea || nextArea > Number(pref.minArea)) {
+      data.minArea = nextArea;
+      notes.push(`Podniesiono minimalny metraż do ${nextArea} m².`);
+    }
+  }
+
+  if (phraseCount(taste, 'Za duży metraż') >= 2 && taste.maxAreaHint != null) {
+    const nextMax = Math.min(Number(pref.maxArea || 9999), taste.maxAreaHint);
+    if (locks.maxArea) {
+      notes.push('Klient sygnalizował za duży metraż, ale maxArea jest zablokowane.');
+    } else if (!pref.maxArea || nextMax < Number(pref.maxArea)) {
+      data.maxArea = nextMax;
+      notes.push(`Obniżono maksymalny metraż do ${nextMax} m².`);
     }
   }
 
@@ -702,8 +893,19 @@ export function compareLessonToNext(
   const bits: string[] = [];
   const phrases = new Set(feedback.phrases);
   const note = `${feedback.disliked} ${feedback.note}`.toLowerCase();
+  const signals = extractFeedbackSignals(feedback);
+
   if ((phrases.has("Brak balkonu") || note.includes("balkon")) && next.hasBalcony) {
     bits.push("Ma balkon");
+  }
+  if ((phrases.has("Brak parkingu") || note.includes("parking")) && next.hasParking) {
+    bits.push("Ma parking");
+  }
+  if ((phrases.has("Brak windy") || note.includes("wind")) && next.hasElevator) {
+    bits.push("Ma windę");
+  }
+  if ((phrases.has("Brak ogrodu") || note.includes("ogród")) && next.hasGarden) {
+    bits.push("Ma ogród");
   }
   if (
     (phrases.has("Za drogo") || note.includes("drogo")) &&
@@ -724,9 +926,34 @@ export function compareLessonToNext(
   if (phrases.has("Za wysoko albo za nisko") && next.floor != null && String(next.floor) !== String(prev.floor ?? "")) {
     bits.push(`Inne piętro (${next.floor})`);
   }
-  if (next.rooms && prev.rooms && Number(next.rooms) !== Number(prev.rooms)) {
-    bits.push(`${next.rooms} pok. zamiast ${prev.rooms}`);
+
+  const minRoomsSignal = signals.find((s) => s.kind === "minRooms")?.value;
+  const minYearSignal = signals.find((s) => s.kind === "minYear")?.value;
+  const nextRooms = next.rooms != null ? Number(next.rooms) : null;
+  const prevRooms = prev.rooms != null ? Number(prev.rooms) : null;
+
+  if (minRoomsSignal && nextRooms != null && nextRooms >= minRoomsSignal) {
+    bits.push(`Co najmniej ${nextRooms} pok. (minimum ${minRoomsSignal})`);
+  } else if (nextRooms && prevRooms && nextRooms !== prevRooms) {
+    bits.push(`${nextRooms} pok. zamiast ${prevRooms}`);
   }
+
+  const nextYear = next.yearBuilt != null ? Number(next.yearBuilt) : null;
+  const prevYear = prev.yearBuilt != null ? Number(prev.yearBuilt) : null;
+  if (minYearSignal && nextYear != null && nextYear >= minYearSignal) {
+    bits.push(`Budynek z ${nextYear} r. (minimum ${minYearSignal})`);
+  } else if (nextYear && prevYear && nextYear !== prevYear) {
+    bits.push(`Rok ${nextYear} zamiast ${prevYear}`);
+  }
+
+  if (next.area && prev.area && Number(next.area) !== Number(prev.area)) {
+    if (phrases.has("Za mały metraż") && Number(next.area) > Number(prev.area)) {
+      bits.push(`Większy metraż (${next.area} m²)`);
+    } else if (phrases.has("Za duży metraż") && Number(next.area) < Number(prev.area)) {
+      bits.push(`Mniejszy metraż (${next.area} m²)`);
+    }
+  }
+
   return bits.join(" · ");
 }
 

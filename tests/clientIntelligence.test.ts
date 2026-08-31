@@ -274,3 +274,63 @@ test('lesson ledger compares sent reaction against the next listing', () => {
   assert.match(lessons[0].vsNext, /balkon/i);
   assert.match(lessons[0].vsNext, /Taniej/i);
 });
+
+test('intelligenceAdjustScore rejects offer below minYear and minRooms', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        disliked: 'Za stare',
+        note: 'Od 2000 roku poproszę.',
+        phrases: ['Za stare'],
+      }),
+      offer: { id: 1, yearBuilt: 1994, rooms: 2 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        disliked: 'Conajmniej 2 pokojowe',
+        phrases: ['Za mało pokoi'],
+      }),
+      offer: { id: 2, rooms: 1 },
+    },
+  ]);
+  const oldBuilding = intelligenceAdjustScore({
+    radarScore: 95,
+    taste,
+    pref: { minYear: 2000, minRooms: 2 },
+    offer: { id: 10, yearBuilt: 1977, rooms: 1, title: 'Test' },
+  });
+  assert.equal(oldBuilding.score, 0);
+
+  const good = intelligenceAdjustScore({
+    radarScore: 93,
+    taste,
+    pref: { minYear: 2000, minRooms: 2 },
+    offer: { id: 11, yearBuilt: 2015, rooms: 2, title: 'Test' },
+  });
+  assert.ok(good.score > 0);
+});
+
+test('preferenceUpdatesFromTaste writes minYear and minRooms from repeated signals', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Za stare'], note: 'od 2000' }),
+      offer: { id: 1, yearBuilt: 1990 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Za stare'], note: 'od 2000' }),
+      offer: { id: 2, yearBuilt: 1985 },
+    },
+  ]);
+  const yearWrite = preferenceUpdatesFromTaste({
+    pref: { minYear: 1900 },
+    taste,
+    locks: DEFAULT_INTELLIGENCE_LOCKS,
+  });
+  assert.equal(yearWrite.data.minYear, 2000);
+});

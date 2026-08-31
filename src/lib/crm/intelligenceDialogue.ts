@@ -8,6 +8,7 @@ import {
 } from '@/lib/crm/clientPortalFeedback';
 import type { MarketRealitySnapshot } from '@/lib/crm/buyerMarketReality';
 import { formatPln, formatPpsm } from '@/lib/market/format';
+import { buildRichAgentFollowUpLetter, lessonBitsToRichFacts } from '@/lib/crm/agentOfferFollowUp';
 
 export type DialogueTurnKind =
   | 'offer'
@@ -40,52 +41,15 @@ type OfferLike = {
   price?: number | null;
   area?: number | null;
   rooms?: number | null;
+  yearBuilt?: number | null;
   hasBalcony?: boolean | null;
+  hasParking?: boolean | null;
+  hasElevator?: boolean | null;
+  hasGarden?: boolean | null;
   floor?: number | string | null;
 };
 
-function agentLead(firstName?: string | null): string {
-  const name = String(firstName || '').trim();
-  return name ? `${name} — ` : '';
-}
-
-function bitsToSentences(bits: string, next: OfferLike): string[] {
-  const out: string[] = [];
-  for (const part of bits.split(' · ').filter(Boolean)) {
-    if (part === 'Ma balkon') out.push('Ma balkon lub loggię — tego wcześniej brakowało.');
-    else if (part === 'Taniej') out.push('Cena jest niższa niż przy ostatniej propozycji, którą odrzuciłeś.');
-    else if (part.startsWith('Inna dzielnica (')) {
-      const district = part.replace(/^Inna dzielnica \(/, '').replace(/\)$/, '');
-      out.push(`Lokalizacja to ${district} — inna dzielnica niż ta odrzucona.`);
-    } else if (part.startsWith('Inne piętro (')) {
-      const floor = part.replace(/^Inne piętro \(/, '').replace(/\)$/, '');
-      out.push(`Piętro ${floor} — inne niż w poprzedniej ofercie.`);
-    } else if (part.includes('pok. zamiast')) out.push(`Układ ${part}.`);
-    else out.push(part);
-  }
-  if (!out.length && next.district) {
-    out.push(`Lokalizacja: ${[next.city, next.district].filter(Boolean).join(', ')}.`);
-  }
-  return out;
-}
-
-function mapReasonToClientSentence(reason: string): string | null {
-  if (/balkon/i.test(reason)) return 'Ma balkon lub loggię — tego wcześniej brakowało.';
-  if (/dzielnica .+ już się podobała/i.test(reason)) {
-    return reason.replace('już się podobała.', 'którą już zaznaczałeś jako trafioną.');
-  }
-  if (/paśmie ogłoszeń/i.test(reason)) return 'Cena jest zbliżona do ofert, które już Ci się podobały.';
-  if (/pok\./i.test(reason) && /zostawał|może być/i.test(reason)) {
-    return 'Ma układ pokoi podobny do tego, który już zostawiałeś.';
-  }
-  if (/za drogo/i.test(reason)) return null;
-  if (/Radar dał|Po nauce|Dotychczasowa|Spośród|parametr był|scoring traktuje|zderza się|wraca słowo|już odpadała|dostała negatywną/i.test(reason)) {
-    return null;
-  }
-  return reason;
-}
-
-/** Pełny akapit „dlaczego ta oferta” dla klienta. */
+/** Pełny akapit „dlaczego ta oferta” dla klienta — styl listu od agenta. */
 export function buildOfferDialogueTurn(params: {
   prevOffer?: OfferLike | null;
   prevFeedback?: ClientOfferFeedback | null;
@@ -96,44 +60,94 @@ export function buildOfferDialogueTurn(params: {
   calibrating?: boolean;
   agentFirstName?: string | null;
 }): DialogueTurn {
-  const lead = agentLead(params.agentFirstName);
   const next = params.nextOffer;
   const loc = [params.city ?? next?.city, params.district ?? next?.district].filter(Boolean).join(', ');
 
   if (params.calibrating) {
-    const body = loc
-      ? `${lead}Wysyłam tę nieruchomość z ${loc}, bo najlepiej pasuje do Twojej ankiety — daj znać, czy kierunek jest dobry.`
-      : `${lead}Wysyłam tę nieruchomość, bo najlepiej pasuje do Twojej ankiety — daj znać, czy kierunek jest dobry.`;
+    const lead = params.agentFirstName ? `${params.agentFirstName} — ` : '';
+    const body = [
+      `${lead}Dzień dobry.`,
+      loc
+        ? `Wysyłam pierwszą propozycję z ${loc}, wybraną na podstawie Twojej ankiety i aktualnej puli rynkowej.`
+        : 'Wysyłam pierwszą propozycję dopasowaną do Twojej ankiety — chcę sprawdzić, czy kierunek poszukiwań jest właściwy.',
+      'Proszę o szczerą ocenę: co pasuje, a co należy skorygować. Każda uwaga pomoże mi precyzyjniej dobierać kolejne oferty.',
+    ].join('\n\n');
     return { kind: 'offer', body, facts: ['kalibracja ankiety'] };
   }
 
   const facts: string[] = [];
+  let lessonBits: string[] = [];
 
   if (params.prevOffer && params.prevFeedback && next) {
     const vs = compareLessonToNext(params.prevOffer, params.prevFeedback, next);
-    if (vs) facts.push(...bitsToSentences(vs, next));
+    lessonBits = vs ? lessonBitsToRichFacts(vs, next) : [];
+    facts.push(...lessonBits);
   }
 
   if (!facts.length && params.reasons?.length) {
-    const mapped = params.reasons.map(mapReasonToClientSentence).find(Boolean);
-    if (mapped) facts.push(mapped);
+    const mapped = params.reasons
+      .map((reason) => {
+        if (/balkon/i.test(reason)) return 'Ma balkon lub loggię — tego wcześniej brakowało.';
+        if (/pokoje|pok\./i.test(reason) && /zgodnie|minimum/i.test(reason)) return reason;
+        if (/Budynek z \d{4}/i.test(reason)) return reason;
+        if (/dzielnica .+ już się podobała/i.test(reason)) {
+          return reason.replace('już się podobała.', 'którą już zaznaczałeś jako trafioną.');
+        }
+        if (/paśmie ogłoszeń/i.test(reason)) return 'Cena jest zbliżona do ofert, które już Ci się podobały.';
+        if (/za drogo|Radar dał|Po nauce|Dotychczasowa|Spośród|parametr był|scoring|zderza|wraca słowo|już odpadała|dostała negatywną/i.test(reason)) {
+          return null;
+        }
+        return reason;
+      })
+      .filter(Boolean) as string[];
+    facts.push(...mapped.slice(0, 3));
   }
 
-  let objectionLead = '';
-  if (params.prevFeedback?.phrases.length) {
-    const phrases = params.prevFeedback.phrases.slice(0, 2).join(' i ');
-    if (phrases) objectionLead = `Ostatnią propozycję oceniłeś m.in. jako „${phrases}”. `;
-  }
+  const hasPriorFeedback =
+    params.prevFeedback &&
+    (params.prevFeedback.sentiment ||
+      params.prevFeedback.disliked ||
+      params.prevFeedback.note ||
+      params.prevFeedback.phrases.length);
 
-  const core =
-    facts.length > 0
-      ? facts.join(' ')
-      : loc
-        ? `Wybrałem tę nieruchomość z ${loc}, bo najlepiej pasuje do Twoich kryteriów i dotychczasowych reakcji.`
-        : 'Wybrałem tę nieruchomość, bo najlepiej pasuje do Twoich kryteriów i dotychczasowych reakcji.';
+  const body = hasPriorFeedback
+    ? buildRichAgentFollowUpLetter({
+        agentFirstName: params.agentFirstName,
+        prevOffer: params.prevOffer,
+        prevFeedback: params.prevFeedback,
+        nextOffer: next,
+        lessonBits,
+        reasons: params.reasons || [],
+        city: params.city,
+        district: params.district,
+      })
+    : buildFirstOfferLetter({
+        agentFirstName: params.agentFirstName,
+        loc,
+        facts,
+        next,
+      });
 
-  const body = `${lead}${objectionLead}${core}`.trim();
   return { kind: 'offer', body, facts };
+}
+
+function buildFirstOfferLetter(params: {
+  agentFirstName?: string | null;
+  loc: string;
+  facts: string[];
+  next?: OfferLike | null;
+}): string {
+  const name = String(params.agentFirstName || '').trim();
+  const lead = name ? `Dzień dobry — tu ${name}, Twój agent nieruchomości.` : 'Dzień dobry.';
+  const middle =
+    params.facts.length > 0
+      ? params.facts.join(' ')
+      : params.loc
+        ? `Wybrałem nieruchomość z ${params.loc}, ponieważ najlepiej odpowiada Twojej ankiecie i dotychczasowym preferencjom.`
+        : 'Wybrałem nieruchomość, która najlepiej odpowiada Twojej ankiecie i dotychczasowym preferencjom.';
+  const close =
+    'Proszę o spokojne zapoznanie się z opisem i ocenę — na tej podstawie przygotuję kolejne propozycje.';
+  return [lead, middle, close].join('\n\n');
 }
 
 /** Wrapper zachowujący stary kontrakt pickIntelligenceOffer. */
@@ -171,15 +185,24 @@ export function buildConfidenceDialogueTurn(params: {
   let question = '';
   if (phrase === 'Za drogo') {
     question =
-      'Kilka razy sygnalizowałeś „za drogo”. Czy dobrze rozumiem, że szukamy taniej niż ostatnie propozycje, które odrzuciłeś?';
+      'Kilka razy sygnalizowałeś „za drogo”. Czy dobrze rozumiem, że szukamy taniej niż ostatnie propozycje, które odrzuciłeś? Chcę to potwierdzić, zanim zawężę dalsze propozycje.';
   } else if (phrase === 'Brak balkonu') {
     question =
-      'Kilka razy zaznaczałeś brak balkonu. Czy dobrze rozumiem, że balkon lub loggia ma być obowiązkowo?';
+      'Kilka razy zaznaczałeś brak balkonu. Czy dobrze rozumiem, że balkon lub loggia ma być obowiązkowo? Od tego zależy, jak restrykcyjnie będę filtrował kolejne oferty.';
   } else if (phrase === 'Nie ta dzielnica') {
     question =
-      'Kilka razy odrzucałeś dzielnicę. Czy dobrze rozumiem, że lokalizacja z ostatnich propozycji nie wchodzi w grę?';
+      'Kilka razy odrzucałeś dzielnicę. Czy dobrze rozumiem, że lokalizacja z ostatnich propozycji nie wchodzi w grę i mam ją wykluczyć z poszukiwań?';
+  } else if (phrase === 'Za stare') {
+    question =
+      'Kilka razy sygnalizowałeś, że mieszkanie jest za stare. Czy dobrze rozumiem, że interesują Cię wyłącznie budynki od wskazanego roku — i mam to traktować jako twardy warunek?';
+  } else if (phrase === 'Za mało pokoi') {
+    question =
+      'Kilka razy zaznaczałeś, że zależy Ci na większej liczbie pokoi. Czy dobrze rozumiem minimalną liczbę pokoi, której nie chcesz schodzić poniżej?';
+  } else if (phrase === 'Brak parkingu') {
+    question =
+      'Kilka razy zaznaczałeś brak parkingu. Czy miejsce postojowe ma być obowiązkowe w każdej kolejnej propozycji?';
   } else {
-    question = `Czy dobrze rozumiem Twoją ostatnią uwagę: „${phrase}”?`;
+    question = `Chcę upewnić się co do Twojej ostatniej uwagi: „${phrase}”. Czy dobrze ją interpretuję?`;
   }
 
   return {
@@ -187,11 +210,28 @@ export function buildConfidenceDialogueTurn(params: {
     body: `${lead}${question}`,
     facts: [phrase],
     checkbackType: `confirm_${phrase.replace(/\s+/g, '_').toLowerCase()}`,
+    lockKey:
+      phrase === 'Za stare'
+        ? 'minYear'
+        : phrase === 'Za mało pokoi'
+          ? 'minRooms'
+          : phrase === 'Brak balkonu'
+            ? 'requireBalcony'
+            : phrase === 'Brak parkingu'
+              ? 'requireParking'
+              : phrase === 'Nie ta dzielnica'
+                ? 'districts'
+                : undefined,
     options: [
       { id: 'yes', label: 'Tak, zgadza się' },
       { id: 'no', label: 'Nie — poprawię' },
     ],
   };
+}
+
+function agentLead(firstName?: string | null): string {
+  const name = String(firstName || '').trim();
+  return name ? `${name} — ` : '';
 }
 
 export function buildMarketRealityDialogueTurn(params: {
@@ -266,7 +306,7 @@ export function buildHandoffDialogueTurn(params: {
   const lead = agentLead(params.agentFirstName);
   return {
     kind: 'handoff',
-    body: `${lead}${params.reason} Wrócę z konkretem po rozmowie z agentem — na ten moment nie dokładam kolejnej oferty z automatu.`,
+    body: `${lead}${params.reason} Wrócę z konkretem po rozmowie — na ten moment wstrzymuję automatyczne dokładanie kolejnej oferty.`,
     facts: ['handoff'],
   };
 }

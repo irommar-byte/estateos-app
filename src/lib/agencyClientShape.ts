@@ -39,6 +39,7 @@ export function buyerPrefToRadarRecord(pref: AgencyClientBuyerPreference | null)
     minArea: pref.minArea,
     maxArea: pref.maxArea,
     minYear: pref.minYear,
+    minRooms: pref.minRooms,
     requireBalcony: pref.requireBalcony,
     requireGarden: pref.requireGarden,
     requireElevator: pref.requireElevator,

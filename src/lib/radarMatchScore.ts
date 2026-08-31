@@ -183,10 +183,28 @@ function passesLocationGate(pref: Record<string, unknown>, offer: Record<string,
   return districts.some((d) => d === offerDistrict);
 }
 
+function passesStructuralGate(pref: Record<string, unknown>, offer: Record<string, unknown>): boolean {
+  const yearRaw = offer.yearBuilt != null ? parseInt(String(offer.yearBuilt), 10) : null;
+  const year = yearRaw != null && Number.isFinite(yearRaw) ? yearRaw : null;
+  const minYear = Number(pref.minYear || 0);
+  if (minYear > 1900 && year != null && year < minYear) return false;
+
+  const rooms = Number(offer.rooms ?? 0);
+  const minRooms = Number(pref.minRooms || 0);
+  if (minRooms > 0 && Number.isFinite(rooms) && rooms > 0 && rooms < minRooms) return false;
+
+  const area = Number(offer.area ?? 0);
+  const maxArea = Number(pref.maxArea || 0);
+  if (maxArea > 0 && Number.isFinite(area) && area > maxArea) return false;
+
+  return true;
+}
+
 /** Parity z aplikacją mobilną (`RadarHomeScreen.radarMatchScore`). Zwraca 0–100. */
 export function calculateRadarMatchScore(pref: Record<string, unknown>, offer: Record<string, unknown>): number {
   if (!passesLocationGate(pref, offer)) return 0;
   if (!passesAmenityGate(offer, pref)) return 0;
+  if (!passesStructuralGate(pref, offer)) return 0;
 
   const txPref = String(pref.transactionType || '').toUpperCase();
   const txOffer = String(offer.transactionType || '').toUpperCase();

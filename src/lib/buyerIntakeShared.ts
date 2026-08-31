@@ -759,6 +759,8 @@ export function buyerIntakePropertyTypeToPrisma(
 }
 
 export function buyerMissionToBuyerPrefCreate(mission: BuyerMissionRecord) {
+  const minRoomsFromMission =
+    mission.rooms.length > 0 ? Math.min(...mission.rooms.filter((r) => Number.isFinite(r) && r > 0)) : null;
   return {
     transactionType: mission.transactionType ?? 'SELL',
     propertyType: buyerIntakePropertyTypeToPrisma(mission.propertyType),
@@ -767,6 +769,7 @@ export function buyerMissionToBuyerPrefCreate(mission: BuyerMissionRecord) {
     maxPrice: mission.budgetMax,
     minArea: mission.minArea,
     maxArea: mission.maxArea,
+    minRooms: minRoomsFromMission,
     requireBalcony: mission.requireBalcony,
     requireGarden: mission.requireGarden,
     requireElevator: mission.requireElevator,

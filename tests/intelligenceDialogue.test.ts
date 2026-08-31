@@ -18,14 +18,15 @@ test('buildOfferDialogueTurn references last objection and lesson bits', () => {
       district: 'Ursus',
       price: 900000,
       hasBalcony: false,
-      rooms: 3,
+      rooms: 1,
+      yearBuilt: 1994,
     },
     prevFeedback: {
       sentiment: 'dislike',
       liked: '',
-      disliked: '',
+      disliked: 'Za stare',
       phrases: ['Brak balkonu', 'Nie ta dzielnica'],
-      note: '',
+      note: 'Od 2000 roku poproszę.',
     },
     nextOffer: {
       id: 2,
@@ -33,15 +34,16 @@ test('buildOfferDialogueTurn references last objection and lesson bits', () => {
       district: 'Bemowo',
       price: 846000,
       hasBalcony: true,
-      rooms: 3,
+      rooms: 2,
+      yearBuilt: 2015,
     },
     reasons: [],
     calibrating: false,
   });
-  assert.match(turn.body, /Anna —/);
-  assert.match(turn.body, /Brak balkonu/i);
+  assert.match(turn.body, /Anna/);
+  assert.match(turn.body, /Za stare|2000|star/i);
   assert.match(turn.body, /balkon/i);
-  assert.match(turn.body, /Bemowo/i);
+  assert.ok(turn.body.split('\n\n').length >= 3, 'expected multi-paragraph agent letter');
 });
 
 test('buildConfidenceDialogueTurn asks before changing criteria', () => {

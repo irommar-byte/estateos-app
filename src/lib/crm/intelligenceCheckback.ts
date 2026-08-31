@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import {
   learnFromFeedback,
   parseIntelligenceLocks,
+  parseDistrictList,
   type IntelligenceLockKey,
   type IntelligenceLocks,
   type LearnedTaste,
@@ -35,7 +36,14 @@ export type PendingCheckback = {
 };
 
 const COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
-const CONFIRM_PHRASES = ['Za drogo', 'Brak balkonu', 'Nie ta dzielnica'] as const;
+const CONFIRM_PHRASES = [
+  'Za drogo',
+  'Brak balkonu',
+  'Nie ta dzielnica',
+  'Za stare',
+  'Za mało pokoi',
+  'Brak parkingu',
+] as const;
 
 function phraseCount(taste: LearnedTaste, phrase: string): number {
   return taste.phrases.filter((item) => item === phrase).length;
@@ -285,6 +293,68 @@ export async function respondToIntelligenceCheckback(params: {
       if (type.includes('brak_balkonu') && !locks.requireBalcony) {
         prefUpdate.requireBalcony = true;
         followUp = 'send_offer';
+      } else if (type.includes('brak_parkingu') && !locks.requireParking) {
+        prefUpdate.requireParking = true;
+        followUp = 'send_offer';
+      } else if (type.includes('za_stare') && !locks.minYear) {
+        const taste = learnFromFeedback(
+          (
+            await prisma.agencyClientMatch.findMany({
+              where: { clientId: params.clientId },
+              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
+            })
+          ).map((row) => ({
+            offerId: row.offerId,
+            clientFeedback: row.clientFeedback,
+            offer: row.offer,
+            clientFeedbackAt: row.clientFeedbackAt,
+          })),
+        );
+        const nextYear = taste.minYearHint ?? 2000;
+        prefUpdate.minYear = nextYear;
+        lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { minYear: true });
+        followUp = 'send_offer';
+      } else if (type.includes('za_mało_pokoi') && !locks.minRooms) {
+        const taste = learnFromFeedback(
+          (
+            await prisma.agencyClientMatch.findMany({
+              where: { clientId: params.clientId },
+              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
+            })
+          ).map((row) => ({
+            offerId: row.offerId,
+            clientFeedback: row.clientFeedback,
+            offer: row.offer,
+            clientFeedbackAt: row.clientFeedbackAt,
+          })),
+        );
+        const nextRooms = taste.minRoomsHint ?? 2;
+        prefUpdate.minRooms = nextRooms;
+        lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { minRooms: true });
+        followUp = 'send_offer';
+      } else if (type.includes('nie_ta_dzielnica') && !locks.districts) {
+        const taste = learnFromFeedback(
+          (
+            await prisma.agencyClientMatch.findMany({
+              where: { clientId: params.clientId },
+              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
+            })
+          ).map((row) => ({
+            offerId: row.offerId,
+            clientFeedback: row.clientFeedback,
+            offer: row.offer,
+            clientFeedbackAt: row.clientFeedbackAt,
+          })),
+        );
+        const current = parseDistrictList(client.buyerPreference.districts);
+        const drop = [...new Set(taste.rejectedDistricts.filter((item) => !taste.likedDistricts.includes(item)))];
+        const next = current.filter((item) => !drop.includes(item));
+        if (next.length >= 1 && next.length < current.length) {
+          prefUpdate.districts = next;
+          followUp = 'send_offer';
+        }
+      } else if (type.includes('za_drogo')) {
+        followUp = 'send_offer';
       }
     }
   }
@@ -346,6 +416,11 @@ export async function respondToIntelligenceCheckback(params: {
     from: 'agent',
     content: ack,
   }).catch(() => {});
+
+  if (Object.keys(prefUpdate).length) {
+    const { refreshAgencyClientMatches } = await import('@/lib/agencyClientMatching');
+    await refreshAgencyClientMatches(params.clientId).catch(() => {});
+  }
 
   return { ok: true, followUp: agentNote ? 'none' : followUp };
 }

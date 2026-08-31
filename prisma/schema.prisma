@@ -1213,6 +1213,8 @@ model AgencyClientBuyerPreference {
   maxPrice          Float?
   minArea           Float?
   maxArea           Float?
+  minRooms          Int?
+  maxRooms          Int?
   minYear           Int?
   requireBalcony    Boolean          @default(false)
   requireGarden     Boolean          @default(false)
