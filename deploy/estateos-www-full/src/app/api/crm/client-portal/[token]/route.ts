@@ -6,6 +6,8 @@ import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { buyerPrefToWebRadarFilters } from '@/lib/agencyClientShape';
 import { formatRadarSummary } from '@/lib/radarCalibrationWeb';
+import { formatAgentTitle } from '@/lib/agentProfile';
+import type { AgencyClientBuyerPreference } from '@prisma/client';
 import { sendNotification } from '@/lib/core/notification.core';
 import type { AcquisitionFormData } from '@/lib/acquisitionWorkflow';
 import {
@@ -33,11 +35,24 @@ import {
   clientFeedbackHasContent,
   formatClientFeedbackForAgent,
 } from '@/lib/crm/clientPortalFeedback';
-import { applyIntelligenceLearning } from '@/lib/crm/clientIntelligenceRun';
+import { applyIntelligenceLearning, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
+import {
+  getPendingCheckback,
+  respondToIntelligenceCheckback,
+} from '@/lib/crm/intelligenceCheckback';
+import {
+  buildCheckbackChoicePrompt,
+  mapChatTextToCheckbackOption,
+} from '@/lib/crm/intelligenceCheckbackChat';
+import {
+  handleCheckbackFollowUpSend,
+  handleIntelligenceAfterFeedback,
+} from '@/lib/crm/intelligenceFeedbackReply';
+import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
-function shapeSearchCriteria(pref: Parameters<typeof buyerPrefToWebRadarFilters>[0]) {
+function shapeSearchCriteria(pref: AgencyClientBuyerPreference | null) {
   if (!pref) return null;
   const filters = buyerPrefToWebRadarFilters(pref);
   const summary = formatRadarSummary(filters);
@@ -53,7 +68,51 @@ function shapeSearchCriteria(pref: Parameters<typeof buyerPrefToWebRadarFilters>
     districts: filters.selectedDistricts,
     amenities,
     calibrationMode: filters.calibrationMode,
+    minYear: pref.minYear && pref.minYear > 1900 ? pref.minYear : null,
+    minRooms: pref.minRooms && pref.minRooms > 0 ? pref.minRooms : null,
+    maxArea: pref.maxArea && pref.maxArea > 0 ? pref.maxArea : null,
   };
+}
+
+function mergeQualificationIntoPref(
+  pref: AgencyClientBuyerPreference,
+  qualification: Record<string, unknown> | null | undefined,
+): AgencyClientBuyerPreference {
+  if (pref.maxArea != null || pref.minArea != null) return pref;
+  const maxArea = Number(qualification?.maxArea);
+  const minArea = Number(qualification?.minArea);
+  if (!Number.isFinite(maxArea) && !Number.isFinite(minArea)) return pref;
+  return {
+    ...pref,
+    minArea: Number.isFinite(minArea) && minArea > 0 ? minArea : pref.minArea,
+    maxArea: Number.isFinite(maxArea) && maxArea > 0 ? maxArea : pref.maxArea,
+  };
+}
+
+async function resolveSearchCriteria(
+  clientId: number,
+  agencyUserId: number,
+  pref: AgencyClientBuyerPreference | null,
+) {
+  if (!pref) return null;
+  let working = pref;
+  if (working.maxArea == null && working.minArea == null) {
+    const deskCase = await prisma.deskCase.findFirst({
+      where: { clientId, agencyUserId, kind: 'BUY' },
+      orderBy: { updatedAt: 'desc' },
+      select: { metadata: true },
+    });
+    const meta =
+      deskCase?.metadata && typeof deskCase.metadata === 'object'
+        ? (deskCase.metadata as Record<string, unknown>)
+        : null;
+    const qualification =
+      meta?.qualification && typeof meta.qualification === 'object'
+        ? (meta.qualification as Record<string, unknown>)
+        : null;
+    working = mergeQualificationIntoPref(pref, qualification);
+  }
+  return shapeSearchCriteria(working);
 }
 
 async function loadJourneyActivities(clientId: number) {
@@ -193,6 +252,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'CLIENT_FEEDBACK',
               'INTELLIGENCE_OFFER',
               'INTELLIGENCE_PLANNED',
+              'INTELLIGENCE_CHECKBACK',
+              'INTELLIGENCE_HANDOFF',
               'FEEDBACK_REMINDER',
               'ACQUISITION_MEETING',
               'ACQUISITION_SIGNED',
@@ -208,7 +269,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 40,
+        take: 80,
         select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true, metadata: true },
       },
     },
@@ -224,7 +285,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 
   const agentName = resolveSellerPersonName(agent) || agent.name || 'Dedykowany Agent';
   const agentPhoto = member?.profilePhotoUrl || agent.image || null;
-  const agentTitle = member?.agentTitle ? String(member.agentTitle) : 'Dedykowany Doradca d/s Nieruchomości';
+  const agentTitle = member?.agentTitle
+    ? formatAgentTitle(member.agentTitle)
+    : 'Dedykowany Doradca d/s Nieruchomości';
   const agencyName = company?.name || agent.companyName || 'EstateOS Biuro Nieruchomości';
   const agencyLogo = company?.logoUrl || null;
   const agencySlug = company?.slug ? `/firma/${company.slug}` : null;
@@ -233,7 +296,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const agencyEmail = company?.officeEmail || agent.email || null;
   const agencyAddress = company?.address || null;
 
-  const searchCriteria = client.buyerPreference ? shapeSearchCriteria(client.buyerPreference) : null;
+  const searchCriteria = await resolveSearchCriteria(client.id, client.agencyUserId, client.buyerPreference);
   const scheduleActs = await loadJourneyActivities(client.id);
   const meeting = resolveMeeting(scheduleActs);
   const presentation = resolvePresentation(scheduleActs);
@@ -267,6 +330,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     listingSold: ['SOLD', 'ARCHIVED'].includes(String(client.linkedOffer?.status || '').toUpperCase()),
   });
 
+  const pendingCheckback = await getPendingCheckback(client.id);
+
   return NextResponse.json({
     success: true,
     portal: {
@@ -285,6 +350,17 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agencyEmail,
       agencyAddress,
       searchCriteria,
+      intelligenceEnabled: Boolean(client.intelligenceEnabled),
+      pendingCheckback,
+      unscoredMatchCount: client.buyerPreference
+        ? await prisma.agencyClientMatch.count({
+            where: {
+              clientId: client.id,
+              notifiedAt: null,
+              score: { gte: client.buyerPreference.minMatchThreshold ?? 70 },
+            },
+          })
+        : 0,
       canChat: true,
       meeting: meeting
         ? {
@@ -296,7 +372,21 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       presentation,
       journey: stages,
       matches: client.buyerPreference
-        ? client.matches.map((m) => ({
+        ? client.matches.map((m) => {
+            const intelActivity = client.activities.find(
+              (a) =>
+                a.kind === 'INTELLIGENCE_OFFER' &&
+                (a.offerId === m.offerId ||
+                  (a.metadata &&
+                    typeof a.metadata === 'object' &&
+                    Array.isArray((a.metadata as Record<string, unknown>).offerIds) &&
+                    ((a.metadata as Record<string, unknown>).offerIds as number[]).includes(m.offerId))),
+            );
+            const intelMeta =
+              intelActivity?.metadata && typeof intelActivity.metadata === 'object'
+                ? (intelActivity.metadata as Record<string, unknown>)
+                : {};
+            return {
             id: m.id,
             score: m.score,
             notifiedAt: m.notifiedAt?.toISOString() ?? null,
@@ -304,8 +394,10 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
             intelligenceSent: Boolean(m.intelligenceSent),
             intelligenceReason: m.intelligenceReason || null,
+            clientWhy: typeof intelMeta.clientWhy === 'string' ? intelMeta.clientWhy : null,
             offer: shapeAgencyClientMatchOffer(m.offer),
-          }))
+          };
+          })
         : [],
       listing: listingVisible && client.linkedOffer
         ? {
@@ -444,6 +536,52 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   const clientName = `${client.firstName} ${client.lastName}`.trim();
 
+  if (action === 'release_first_match') {
+    if (client.type !== 'BUYER') {
+      return NextResponse.json({ error: 'Dostępne tylko dla kupujących.' }, { status: 400 });
+    }
+
+    const intel = await sendIntelligenceOffer({
+      clientId: client.id,
+      force: true,
+      ignoreInterval: true,
+      channel: 'manual',
+    });
+    if (intel.sent && intel.pick.offerId) {
+      return NextResponse.json({ success: true, offerId: intel.pick.offerId, via: 'intelligence' });
+    }
+
+    const topMatch = await prisma.agencyClientMatch.findFirst({
+      where: {
+        clientId: client.id,
+        notifiedAt: null,
+        score: { gte: 70 },
+      },
+      orderBy: { score: 'desc' },
+      select: { offerId: true, score: true },
+    });
+    if (!topMatch) {
+      return NextResponse.json({
+        success: false,
+        reason: intel.pick.skipReason || 'Brak dopasowań do udostępnienia.',
+      });
+    }
+
+    await notifyAgencyClientAboutOffer({
+      clientId: client.id,
+      offerId: topMatch.offerId,
+      agencyUserId: client.agencyUserId,
+      channel: 'manual',
+      matchScore: topMatch.score,
+      customMessage: `Pierwsza propozycja pod Twoje kryteria — dopasowanie ${topMatch.score}%.`,
+      intelligence: {
+        reason: `EstateOS™ Intelligence · dopasowanie ${topMatch.score}%`,
+      },
+    });
+
+    return NextResponse.json({ success: true, offerId: topMatch.offerId, via: 'match' });
+  }
+
   if (action === 'update_acquisition_checklist') {
     if (client.type !== 'SELLER' || !client.acquisition || client.acquisition.status === 'SIGNED') {
       return NextResponse.json({ error: 'Proces pozyskania nie jest dostępny do edycji.' }, { status: 400 });
@@ -560,8 +698,51 @@ export async function POST(req: Request, ctx: RouteCtx) {
       title: `Reakcja do oferty: ${match.offer.title}`,
       body: `${clientName}: ${agentSummary.slice(0, 160)}`,
     });
+
+    const agent = await prisma.user.findUnique({
+      where: { id: client.agencyUserId },
+      select: { name: true, companyName: true },
+    });
+    const agentFirstName = agent?.name?.trim().split(/\s+/)[0] || null;
+
+    const reply = await handleIntelligenceAfterFeedback({
+      clientId: client.id,
+      agencyUserId: client.agencyUserId,
+      matchId,
+      agentFirstName,
+    }).catch(() => ({ action: 'none' as const }));
+
     await applyIntelligenceLearning(client.id).catch(() => {});
-    return NextResponse.json({ success: true });
+
+    return NextResponse.json({ success: true, intelligenceReply: reply });
+  }
+
+  if (action === 'intelligence_checkback') {
+    if (client.type !== 'BUYER') {
+      return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
+    }
+    const activityId = Number(body.activityId);
+    const optionId = String(body.optionId || '').trim();
+    if (!Number.isFinite(activityId) || !optionId) {
+      return NextResponse.json({ error: 'Wybierz odpowiedź.' }, { status: 400 });
+    }
+    const result = await respondToIntelligenceCheckback({
+      clientId: client.id,
+      agencyUserId: client.agencyUserId,
+      activityId,
+      optionId,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error || 'Nie udało się zapisać.' }, { status: 400 });
+    }
+    let followUp = null;
+    if (result.followUp === 'send_offer') {
+      followUp = await handleCheckbackFollowUpSend({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+      });
+    }
+    return NextResponse.json({ success: true, followUp });
   }
 
   if (action === 'confirm_meeting' || action === 'confirm_presentation') {
@@ -659,13 +840,88 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'send_message') {
+    const content = String(body.content || '').trim();
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+
+    if (client.type === 'BUYER' && content && attachments.length === 0) {
+      const pending = await getPendingCheckback(client.id);
+      if (pending) {
+        const mapped = mapChatTextToCheckbackOption(content, pending.options);
+        if (mapped && mapped !== 'ambiguous') {
+          await sendPortalChat({
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            linkedUserId: client.linkedUserId,
+            from: 'client',
+            content,
+            clientName,
+          });
+          const result = await respondToIntelligenceCheckback({
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            activityId: pending.activityId,
+            optionId: mapped,
+          });
+          if (!result.ok) {
+            return NextResponse.json({ error: result.error || 'Nie udało się zapisać odpowiedzi.' }, { status: 400 });
+          }
+          let followUp = null;
+          if (result.followUp === 'send_offer') {
+            followUp = await handleCheckbackFollowUpSend({
+              clientId: client.id,
+              agencyUserId: client.agencyUserId,
+            });
+          }
+          const { messages, unreadCount } = await getPortalChatState(client.id, 'client');
+          return NextResponse.json({
+            success: true,
+            checkbackResolved: true,
+            optionId: mapped,
+            followUp,
+            messages,
+            unreadCount,
+          });
+        }
+
+        const prompt = buildCheckbackChoicePrompt(pending.options);
+        await sendPortalChat({
+          clientId: client.id,
+          agencyUserId: client.agencyUserId,
+          from: 'agent',
+          content: prompt,
+          checkbackQuickReplies: {
+            activityId: pending.activityId,
+            options: pending.options,
+          },
+        });
+        if (content) {
+          await sendPortalChat({
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            linkedUserId: client.linkedUserId,
+            from: 'client',
+            content,
+            clientName,
+          });
+        }
+        const { messages, unreadCount } = await getPortalChatState(client.id, 'client');
+        return NextResponse.json({
+          success: true,
+          needsCheckbackChoice: true,
+          pendingCheckback: pending,
+          messages,
+          unreadCount,
+        });
+      }
+    }
+
     const result = await sendPortalChat({
       clientId: client.id,
       agencyUserId: client.agencyUserId,
       linkedUserId: client.linkedUserId,
       from: 'client',
-      content: String(body.content || ''),
-      attachments: Array.isArray(body.attachments) ? body.attachments : [],
+      content,
+      attachments,
       clientName,
     });
     if (!result.ok) {
