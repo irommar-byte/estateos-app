@@ -6,6 +6,7 @@ export type FeedbackSignalKind =
   | 'minRooms'
   | 'maxArea'
   | 'minArea'
+  | 'maxPrice'
   | 'requireBalcony'
   | 'requireParking'
   | 'requireElevator'
@@ -29,6 +30,9 @@ const ROOMS_MIN_RE =
 const ROOMS_MIN_ALT_RE = /\b(\d)\s*[-–]?\s*pok(?:oj(?:e|ow\w*|owy)?)?\b/i;
 const AREA_MAX_RE = /\b(?:max\.?|do|maks\.?)\s*(\d{2,3})\s*m/i;
 const AREA_MIN_RE = /\b(?:min\.?|co\s+najmniej|od)\s*(\d{2,3})\s*m/i;
+const PRICE_MAX_RE =
+  /\b(?:maks(?:ymalnie)?|max\.?|do|bud[żz]et(?:em)?|nie\s+wi[eę]cej\s+ni[żz])(?:\s*(?:max\.?|do|maks\.?|ni[żz]))?\s*(\d+(?:[.,]\d+)?\s*(?:tys|tysi[eę][cć]|mln|milion\w*)|\d[\d\s]{5,8})\b/i;
+const PRICE_MAX_PLN_RE = /\b(\d[\d\s]{5,8})\s*(?:z[łl]|pln)\b/i;
 
 const STALE_WORDS = /\b(?:za\s+star\w*|stare\s+budownictwo|stary\s+budynek)\b/i;
 const FEW_ROOMS_WORDS = /\b(?:za\s+ma[łl]o\s+pokoj\w*|kawalerk\w*\s+nie|same\s+kawalerk\w*)\b/i;
@@ -94,6 +98,44 @@ export function parseMinAreaFromText(text: string): number | null {
   return Number.isFinite(area) && area >= 15 ? area : null;
 }
 
+function parsePriceToken(raw: string): number | null {
+  const normalized = raw.trim().toLowerCase().replace(/\s+/g, '');
+  if (!normalized) return null;
+  const tysMatch = normalized.match(/^(\d+(?:[.,]\d+)?)(tys|tysi[aąeę][cć]|k)$/i);
+  if (tysMatch) {
+    const base = Number(tysMatch[1].replace(',', '.'));
+    return Number.isFinite(base) && base > 0 ? Math.round(base * 1000) : null;
+  }
+  const mlnMatch = normalized.match(/^(\d+(?:[.,]\d+)?)(mln|milion\w*)$/i);
+  if (mlnMatch) {
+    const base = Number(mlnMatch[1].replace(',', '.'));
+    return Number.isFinite(base) && base > 0 ? Math.round(base * 1_000_000) : null;
+  }
+  const digits = normalized.replace(/[^\d]/g, '');
+  if (!digits) return null;
+  const value = Number(digits);
+  return Number.isFinite(value) && value >= 50_000 && value <= 50_000_000 ? value : null;
+}
+
+export function parseMaxPriceFromText(text: string): number | null {
+  const normalized = text.trim();
+  if (!normalized) return null;
+
+  const direct = normalized.match(PRICE_MAX_RE);
+  if (direct) {
+    const parsed = parsePriceToken(direct[1]);
+    if (parsed != null) return parsed;
+  }
+
+  const pln = normalized.match(PRICE_MAX_PLN_RE);
+  if (pln) {
+    const parsed = parsePriceToken(pln[1]);
+    if (parsed != null) return parsed;
+  }
+
+  return null;
+}
+
 const PHRASE_TO_SIGNAL: Record<string, FeedbackSignalKind> = {
   'Za stare': 'minYear',
   'Za mało pokoi': 'minRooms',
@@ -117,6 +159,7 @@ export function extractFeedbackSignals(feedback: ClientOfferFeedback): FeedbackS
     const signal: FeedbackSignal = { kind, phrase, source: 'phrase' };
     if (kind === 'minYear') signal.value = parseMinYearFromText(blob) ?? 2000;
     if (kind === 'minRooms') signal.value = parseMinRoomsFromText(blob) ?? 2;
+    if (kind === 'avoidExpensive') signal.value = parseMaxPriceFromText(blob) ?? undefined;
     out.push(signal);
   }
 
@@ -138,6 +181,10 @@ export function extractFeedbackSignals(feedback: ClientOfferFeedback): FeedbackS
     const minArea = parseMinAreaFromText(text);
     if (minArea != null && !out.some((s) => s.kind === 'minArea')) {
       out.push({ kind: 'minArea', value: minArea, text, source: field });
+    }
+    const maxPrice = parseMaxPriceFromText(text);
+    if (maxPrice != null && !out.some((s) => s.kind === 'maxPrice')) {
+      out.push({ kind: 'maxPrice', value: maxPrice, text, source: field });
     }
   }
 

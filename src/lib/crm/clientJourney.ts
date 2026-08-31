@@ -88,6 +88,10 @@ export type PortalChatMessage = {
   fromAgent: boolean;
   fromMe: boolean;
   attachments: PortalAttachment[];
+  checkbackQuickReplies?: {
+    activityId: number;
+    options: Array<{ id: string; label: string }>;
+  };
 };
 
 export type ActivityLike = {
@@ -404,6 +408,12 @@ export function parsePortalMessages(
         fromAgent,
         fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
         attachments: parseAttachments(meta.attachments),
+        checkbackQuickReplies:
+          meta.checkbackQuickReplies &&
+          typeof meta.checkbackQuickReplies === 'object' &&
+          !Array.isArray(meta.checkbackQuickReplies)
+            ? (meta.checkbackQuickReplies as PortalChatMessage['checkbackQuickReplies'])
+            : undefined,
       };
     });
 }

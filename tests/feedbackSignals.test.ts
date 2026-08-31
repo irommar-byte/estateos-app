@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   extractFeedbackSignals,
+  parseMaxPriceFromText,
   parseMinRoomsFromText,
   parseMinYearFromText,
 } from '../src/lib/crm/feedbackSignals';
@@ -29,6 +30,22 @@ test('extractFeedbackSignals from disliked free text', () => {
   const parsed = JSON.parse(feedback);
   const signals = extractFeedbackSignals(parsed);
   assert.ok(signals.some((s) => s.kind === 'minYear' && s.value === 2000));
+});
+
+test('parseMaxPriceFromText understands maksymalnie and tys', () => {
+  assert.equal(parseMaxPriceFromText('Maksymalnie 900000 zł'), 900_000);
+  assert.equal(parseMaxPriceFromText('Budżet max 850 tys'), 850_000);
+});
+
+test('extractFeedbackSignals from note with max price', () => {
+  const signals = extractFeedbackSignals({
+    sentiment: 'dislike',
+    liked: '',
+    disliked: '',
+    note: 'Maksymalnie 900000 zł',
+    phrases: ['Za drogo'],
+  });
+  assert.ok(signals.some((s) => s.kind === 'maxPrice' && s.value === 900_000));
 });
 
 test('extractFeedbackSignals from chip Za mało pokoi', () => {

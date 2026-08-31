@@ -41,6 +41,10 @@ import {
   respondToIntelligenceCheckback,
 } from '@/lib/crm/intelligenceCheckback';
 import {
+  buildCheckbackChoicePrompt,
+  mapChatTextToCheckbackOption,
+} from '@/lib/crm/intelligenceCheckbackChat';
+import {
   handleCheckbackFollowUpSend,
   handleIntelligenceAfterFeedback,
 } from '@/lib/crm/intelligenceFeedbackReply';
@@ -64,6 +68,9 @@ function shapeSearchCriteria(pref: AgencyClientBuyerPreference | null) {
     districts: filters.selectedDistricts,
     amenities,
     calibrationMode: filters.calibrationMode,
+    minYear: pref.minYear && pref.minYear > 1900 ? pref.minYear : null,
+    minRooms: pref.minRooms && pref.minRooms > 0 ? pref.minRooms : null,
+    maxArea: pref.maxArea && pref.maxArea > 0 ? pref.maxArea : null,
   };
 }
 
@@ -832,13 +839,88 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'send_message') {
+    const content = String(body.content || '').trim();
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+
+    if (client.type === 'BUYER' && content && attachments.length === 0) {
+      const pending = await getPendingCheckback(client.id);
+      if (pending) {
+        const mapped = mapChatTextToCheckbackOption(content, pending.options);
+        if (mapped && mapped !== 'ambiguous') {
+          await sendPortalChat({
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            linkedUserId: client.linkedUserId,
+            from: 'client',
+            content,
+            clientName,
+          });
+          const result = await respondToIntelligenceCheckback({
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            activityId: pending.activityId,
+            optionId: mapped,
+          });
+          if (!result.ok) {
+            return NextResponse.json({ error: result.error || 'Nie udało się zapisać odpowiedzi.' }, { status: 400 });
+          }
+          let followUp = null;
+          if (result.followUp === 'send_offer') {
+            followUp = await handleCheckbackFollowUpSend({
+              clientId: client.id,
+              agencyUserId: client.agencyUserId,
+            });
+          }
+          const { messages, unreadCount } = await getPortalChatState(client.id, 'client');
+          return NextResponse.json({
+            success: true,
+            checkbackResolved: true,
+            optionId: mapped,
+            followUp,
+            messages,
+            unreadCount,
+          });
+        }
+
+        const prompt = buildCheckbackChoicePrompt(pending.options);
+        await sendPortalChat({
+          clientId: client.id,
+          agencyUserId: client.agencyUserId,
+          from: 'agent',
+          content: prompt,
+          checkbackQuickReplies: {
+            activityId: pending.activityId,
+            options: pending.options,
+          },
+        });
+        if (content) {
+          await sendPortalChat({
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            linkedUserId: client.linkedUserId,
+            from: 'client',
+            content,
+            clientName,
+          });
+        }
+        const { messages, unreadCount } = await getPortalChatState(client.id, 'client');
+        return NextResponse.json({
+          success: true,
+          needsCheckbackChoice: true,
+          pendingCheckback: pending,
+          messages,
+          unreadCount,
+        });
+      }
+    }
+
     const result = await sendPortalChat({
       clientId: client.id,
       agencyUserId: client.agencyUserId,
       linkedUserId: client.linkedUserId,
       from: 'client',
-      content: String(body.content || ''),
-      attachments: Array.isArray(body.attachments) ? body.attachments : [],
+      content,
+      attachments,
       clientName,
     });
     if (!result.ok) {

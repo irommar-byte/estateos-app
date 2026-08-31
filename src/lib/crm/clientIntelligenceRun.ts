@@ -16,7 +16,7 @@ import {
 } from '@/lib/crm/clientIntelligence';
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import { buildOfferDialogueTurn } from '@/lib/crm/intelligenceDialogue';
-import { clientAcceptsScarceBudget } from '@/lib/crm/intelligenceCheckback';
+import { clientAcceptsScarceBudget, getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
 import { sendPortalChat } from '@/lib/crm/portalChat';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 
@@ -176,10 +176,40 @@ function buildAnalysis(params: {
   return [...new Set(lines)];
 }
 
+function emptyIntelligencePick(
+  skipReason: string,
+  extras: Partial<IntelligencePick> = {},
+  taste = learnFromFeedback([]),
+): IntelligencePick {
+  return {
+    ready: false,
+    skipReason,
+    tasteSummary: extras.tasteSummary ?? summarizeTaste(taste),
+    learnCount: extras.learnCount ?? taste.learnCount,
+    calibrating: extras.calibrating ?? false,
+    offerId: extras.offerId ?? null,
+    title: extras.title ?? null,
+    city: extras.city ?? null,
+    district: extras.district ?? null,
+    price: extras.price ?? null,
+    area: extras.area ?? null,
+    score: extras.score ?? null,
+    radarScore: extras.radarScore ?? null,
+    reasons: extras.reasons ?? [],
+    analysis: extras.analysis || [],
+    considered: extras.considered || 0,
+    nextSendAt: extras.nextSendAt || null,
+    correctedBalconyIds: extras.correctedBalconyIds || [],
+    clientWhy: extras.clientWhy ?? null,
+    lessons: extras.lessons || [],
+  };
+}
+
 export async function pickIntelligenceOffer(
   clientId: number,
   options: {
     force?: boolean;
+    forceScore?: boolean;
     preview?: boolean;
     ignoreInterval?: boolean;
     excludeOfferIds?: number[];
@@ -201,32 +231,7 @@ export async function pickIntelligenceOffer(
     },
   });
 
-  const empty = (
-    skipReason: string,
-    extras: Partial<IntelligencePick> = {},
-    taste = learnFromFeedback([]),
-  ): IntelligencePick => ({
-    ready: false,
-    skipReason,
-    tasteSummary: extras.tasteSummary ?? summarizeTaste(taste),
-    learnCount: extras.learnCount ?? taste.learnCount,
-    calibrating: extras.calibrating ?? false,
-    offerId: extras.offerId ?? null,
-    title: extras.title ?? null,
-    city: extras.city ?? null,
-    district: extras.district ?? null,
-    price: extras.price ?? null,
-    area: extras.area ?? null,
-    score: extras.score ?? null,
-    radarScore: extras.radarScore ?? null,
-    reasons: extras.reasons ?? [],
-    analysis: extras.analysis || [],
-    considered: extras.considered || 0,
-    nextSendAt: extras.nextSendAt || null,
-    correctedBalconyIds: extras.correctedBalconyIds || [],
-    clientWhy: extras.clientWhy ?? null,
-    lessons: extras.lessons || [],
-  });
+  const empty = emptyIntelligencePick;
 
   if (!client || !client.buyerPreference) {
     return {
@@ -319,7 +324,7 @@ export async function pickIntelligenceOffer(
   const excluded = new Set(options.excludeOfferIds || []);
   let best: Cand | null = null;
   let considered = 0;
-  const relaxScore = Boolean(options.force || options.preview || calibrating);
+  const relaxScore = Boolean(options.preview || calibrating);
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
     if (taste.rejectedOfferIds.includes(row.offerId)) continue;
@@ -392,13 +397,13 @@ export async function pickIntelligenceOffer(
     skipReason = 'Interwał jeszcze nie minął.';
   } else if (!best) {
     skipReason = 'Brak oferty z wystarczającą pewnością.';
-  } else if (!calibrating && best.score < minScore && !options.force) {
+  } else if (!calibrating && best.score < minScore && !options.forceScore) {
     skipReason = `Najlepsza oferta ma ${best.score}%, a próg to ${minScore}%.`;
   }
 
   const canSchedule = enabled && (calibrating || taste.learnCount >= minLearns);
   const qualifies = Boolean(
-    best && (calibrating || best.score >= minScore || options.force),
+    best && (calibrating || best.score >= minScore || options.forceScore),
   );
   const nextSendAt = nextSendAtIso(client.intelligenceLastSentAt, intervalHours, canSchedule && qualifies);
   const ready = !skipReason && qualifies;
@@ -490,16 +495,32 @@ export async function pickIntelligenceOffer(
 export async function sendIntelligenceOffer(params: {
   clientId: number;
   force?: boolean;
+  forceScore?: boolean;
   ignoreInterval?: boolean;
   replyToFeedback?: boolean;
   channel?: 'email' | 'manual';
 }): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
+  const pendingCheckback = await getPendingCheckback(params.clientId);
+  if (pendingCheckback) {
+    const blocked = emptyIntelligencePick('Czekam na odpowiedź klienta na pytanie asystenta.', {
+      tasteSummary: '',
+      learnCount: 0,
+      calibrating: false,
+      considered: 0,
+      nextSendAt: null,
+      correctedBalconyIds: [],
+      lessons: [],
+    });
+    return { sent: false, pick: blocked };
+  }
+
   const excludeOfferIds: number[] = [];
   let lastPick: IntelligencePick | null = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { pick, agencyUserId } = await pickIntelligenceOffer(params.clientId, {
       force: params.force,
+      forceScore: params.forceScore,
       ignoreInterval: params.ignoreInterval ?? params.replyToFeedback,
       replyToFeedback: params.replyToFeedback,
       excludeOfferIds,
@@ -507,6 +528,22 @@ export async function sendIntelligenceOffer(params: {
     lastPick = pick;
     if (!pick.ready || !pick.offerId || !agencyUserId) {
       return { sent: false, pick };
+    }
+
+    const clientRow = await prisma.agencyClient.findUnique({
+      where: { id: params.clientId },
+      select: { intelligenceMinScore: true },
+    });
+    const minScore = clientRow?.intelligenceMinScore || 92;
+    if (!pick.calibrating && (pick.score ?? 0) < minScore && !params.forceScore) {
+      return {
+        sent: false,
+        pick: {
+          ...pick,
+          ready: false,
+          skipReason: `Oferta ma ${pick.score}%, a próg to ${minScore}%.`,
+        },
+      };
     }
 
     const offer = await prisma.offer.findUnique({
@@ -602,6 +639,11 @@ export async function tickClientIntelligence(): Promise<{
   let sent = 0;
   let skipped = 0;
   for (const client of clients) {
+    const pending = await getPendingCheckback(client.id);
+    if (pending) {
+      skipped += 1;
+      continue;
+    }
     const preview = await pickIntelligenceOffer(client.id, { preview: true });
     if (
       preview.pick.offerId &&

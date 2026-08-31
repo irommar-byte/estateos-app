@@ -396,7 +396,7 @@ export async function huntNieruchomosciOnlineForClient(params: {
 
   if (params.send !== false) {
     const { sendIntelligenceOffer } = await import('@/lib/crm/clientIntelligenceRun');
-    const result = await sendIntelligenceOffer({ clientId: params.clientId, force: true });
+    const result = await sendIntelligenceOffer({ clientId: params.clientId, ignoreInterval: true });
     sent = result.sent;
     emailSent = result.emailSent;
     pick = result.pick;

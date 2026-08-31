@@ -224,6 +224,10 @@ export async function sendPortalChat(params: {
   content?: string;
   attachments?: PortalAttachment[];
   clientName?: string;
+  checkbackQuickReplies?: {
+    activityId: number;
+    options: Array<{ id: string; label: string }>;
+  };
 }) {
   const attachments = parseAttachments(params.attachments);
   const content = String(params.content || '').trim();
@@ -236,6 +240,7 @@ export async function sendPortalChat(params: {
     from: params.from,
     content,
     attachments,
+    ...(params.checkbackQuickReplies ? { checkbackQuickReplies: params.checkbackQuickReplies } : {}),
   };
   const activity = await prisma.agencyClientActivity.create({
     data: {

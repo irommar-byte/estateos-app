@@ -197,6 +197,10 @@ function passesStructuralGate(pref: Record<string, unknown>, offer: Record<strin
   const maxArea = Number(pref.maxArea || 0);
   if (maxArea > 0 && Number.isFinite(area) && area > maxArea) return false;
 
+  const price = Number(offer.price ?? 0);
+  const maxPrice = Number(pref.maxPrice || 0);
+  if (maxPrice > 0 && Number.isFinite(price) && price > 0 && price > maxPrice) return false;
+
   return true;
 }
 

@@ -3,6 +3,7 @@ import {
   learnFromFeedback,
   parseIntelligenceLocks,
   parseDistrictList,
+  effectiveMaxPrice,
   type IntelligenceLockKey,
   type IntelligenceLocks,
   type LearnedTaste,
@@ -226,6 +227,10 @@ export async function createAndDeliverCheckback(params: {
     agencyUserId: params.agencyUserId,
     from: 'agent',
     content: params.turn.body,
+    checkbackQuickReplies: {
+      activityId: activity.id,
+      options: params.turn.options || [],
+    },
   }).catch(() => {});
 
   return { activityId: activity.id };
@@ -354,7 +359,37 @@ export async function respondToIntelligenceCheckback(params: {
           followUp = 'send_offer';
         }
       } else if (type.includes('za_drogo')) {
-        followUp = 'send_offer';
+        const taste = learnFromFeedback(
+          (
+            await prisma.agencyClientMatch.findMany({
+              where: { clientId: params.clientId },
+              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
+            })
+          ).map((row) => ({
+            offerId: row.offerId,
+            clientFeedback: row.clientFeedback,
+            offer: row.offer,
+            clientFeedbackAt: row.clientFeedbackAt,
+          })),
+        );
+        const cap = effectiveMaxPrice({
+          prefMaxPrice: client.buyerPreference.maxPrice,
+          taste,
+          strictBudget: true,
+        });
+        if (locks.maxPrice) {
+          agentNote = 'Klient potwierdził „za drogo”, ale budżet ma kłódkę — agent musi zatwierdzić.';
+        } else if (cap != null && cap > 0) {
+          prefUpdate.maxPrice = cap;
+          lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { maxPrice: true });
+          followUp = 'send_offer';
+        } else if (taste.maxPriceHint != null && taste.maxPriceHint > 0) {
+          prefUpdate.maxPrice = taste.maxPriceHint;
+          lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { maxPrice: true });
+          followUp = 'send_offer';
+        } else {
+          followUp = 'send_offer';
+        }
       }
     }
   }

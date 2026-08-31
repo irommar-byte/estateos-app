@@ -145,6 +145,7 @@ export type LearnedTaste = {
   minRoomsHint: number | null;
   maxAreaHint: number | null;
   minAreaHint: number | null;
+  maxPriceHint: number | null;
 };
 
 const PHRASE_NEEDLES: Record<string, string[]> = {
@@ -244,6 +245,7 @@ function emptyTaste(): LearnedTaste {
     minRoomsHint: null,
     maxAreaHint: null,
     minAreaHint: null,
+    maxPriceHint: null,
   };
 }
 
@@ -306,6 +308,10 @@ export function learnFromFeedback(
       if (signal.kind === 'minArea' && signal.value != null) {
         taste.minAreaHint = taste.minAreaHint == null ? signal.value : Math.max(taste.minAreaHint, signal.value);
       }
+      if (signal.kind === 'maxPrice' && signal.value != null) {
+        taste.maxPriceHint =
+          taste.maxPriceHint == null ? signal.value : Math.min(taste.maxPriceHint, signal.value);
+      }
     }
     taste.phrases.push(...feedback.phrases);
     if (feedback.liked) taste.likedText.push(feedback.liked);
@@ -340,6 +346,28 @@ function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export function effectiveMaxPrice(params: {
+  prefMaxPrice?: number | null;
+  taste?: Pick<LearnedTaste, 'maxPriceHint' | 'expensivePrices' | 'phrases'> | null;
+  strictBudget?: boolean;
+}): number | null {
+  const pref = Number(params.prefMaxPrice || 0);
+  const hints: number[] = [];
+  if (pref > 0) hints.push(pref);
+  if (params.taste?.maxPriceHint != null && params.taste.maxPriceHint > 0) {
+    hints.push(params.taste.maxPriceHint);
+  }
+  const zaDrogoCount = params.taste?.phrases.filter((item) => item === 'Za drogo').length ?? 0;
+  if ((params.strictBudget || zaDrogoCount >= 2) && params.taste?.expensivePrices.length) {
+    const rejected = Math.min(...params.taste.expensivePrices.filter((item) => Number.isFinite(item) && item > 0));
+    if (Number.isFinite(rejected) && rejected > 0) {
+      hints.push(Math.floor(rejected * 0.98));
+    }
+  }
+  if (!hints.length) return null;
+  return Math.min(...hints);
 }
 
 export function intelligenceAdjustScore(params: {
@@ -397,6 +425,25 @@ export function intelligenceAdjustScore(params: {
   if (minArea > 0 && offer.area != null && Number(offer.area) < minArea) {
     score = Math.min(score, 40);
     reasons.push(`Metraż ${offer.area} m² jest poniżej oczekiwanego minimum ${minArea} m².`);
+  }
+
+  const budgetCap = effectiveMaxPrice({
+    prefMaxPrice: maxPrice,
+    taste,
+    strictBudget: phraseCount(taste, 'Za drogo') >= 2,
+  });
+  const offerPrice = offer.price != null ? Number(offer.price) : null;
+  if (
+    !acceptScarceBudget &&
+    budgetCap != null &&
+    offerPrice != null &&
+    Number.isFinite(offerPrice) &&
+    offerPrice > budgetCap
+  ) {
+    score = 0;
+    reasons.push(
+      `Cena ${offerPrice.toLocaleString('pl-PL')} zł przekracza budżet ${budgetCap.toLocaleString('pl-PL')} zł.`,
+    );
   }
 
   if (score <= 0) {
@@ -730,11 +777,28 @@ export function preferenceUpdatesFromTaste(params: {
   }
 
   if (phraseCount(taste, 'Za drogo') >= 2 && pref.maxPrice) {
-    notes.push(
-      locks.maxPrice
-        ? 'Klient sygnalizował „za drogo”, ale budżet zostaje — ustawił go agent.'
-        : `Klient sygnalizował „za drogo”. Budżet ${Number(pref.maxPrice).toLocaleString('pl-PL')} zł zostaje; mózg tylko unika droższych ofert.`,
-    );
+    const cap = effectiveMaxPrice({
+      prefMaxPrice: pref.maxPrice,
+      taste,
+      strictBudget: true,
+    });
+    if (locks.maxPrice) {
+      notes.push('Klient sygnalizował „za drogo”, ale budżet zostaje — ustawił go agent.');
+    } else if (cap != null && cap < Number(pref.maxPrice)) {
+      data.maxPrice = cap;
+      notes.push(
+        `Obniżono budżet do ${cap.toLocaleString('pl-PL')} zł — klient wielokrotnie odrzucał droższe oferty.`,
+      );
+    } else if (taste.maxPriceHint != null && taste.maxPriceHint < Number(pref.maxPrice)) {
+      data.maxPrice = taste.maxPriceHint;
+      notes.push(
+        `Dopasowano budżet do ${taste.maxPriceHint.toLocaleString('pl-PL')} zł — klient podał maksymalną kwotę w uwagach.`,
+      );
+    } else {
+      notes.push(
+        `Klient sygnalizował „za drogo”. Budżet ${Number(pref.maxPrice).toLocaleString('pl-PL')} zł — oferty powyżej tej kwoty są odrzucane.`,
+      );
+    }
   }
 
   if (phraseCount(taste, 'Nie ta dzielnica') >= 1) {

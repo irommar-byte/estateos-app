@@ -334,3 +334,40 @@ test('preferenceUpdatesFromTaste writes minYear and minRooms from repeated signa
   });
   assert.equal(yearWrite.data.minYear, 2000);
 });
+
+test('intelligenceAdjustScore rejects offer above budget after za drogo', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        phrases: ['Za drogo'],
+        note: 'Maksymalnie 900000 zł',
+      }),
+      offer: { id: 1, price: 945_000 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Za drogo'] }),
+      offer: { id: 2, price: 980_000 },
+    },
+  ]);
+  const over = intelligenceAdjustScore({
+    radarScore: 90,
+    taste,
+    maxPrice: 800_000,
+    pref: {},
+    offer: { id: 10, price: 945_000, title: 'Test' },
+  });
+  assert.equal(over.score, 0);
+  assert.ok(over.reasons.some((item) => /budżet/i.test(item)));
+
+  const under = intelligenceAdjustScore({
+    radarScore: 90,
+    taste,
+    maxPrice: 800_000,
+    pref: {},
+    offer: { id: 11, price: 780_000, title: 'Test' },
+  });
+  assert.ok(under.score > 0);
+});
