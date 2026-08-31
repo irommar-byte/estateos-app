@@ -166,8 +166,8 @@ const PHRASE_NEEDLES: Record<string, string[]> = {
   'Świetna lokalizacja': ['spokojn', 'zielon', 'metro', 'park', 'centrum'],
   'Podoba mi się układ': ['przestronn', 'funkcjonal', 'rozkład'],
   'Ładna okolica': ['spokojn', 'osiedl', 'park', 'zieleń'],
-  'Dobry metraż': [],
-  'Pasuje do budżetu': [],
+  'Dobry metraż': ['przestronn', 'funkcjonal', 'metraż', 'metrażu'],
+  'Pasuje do budżetu': ['w budżecie', 'korzystn', 'atrakcyjn', 'cena'],
   'Jasne mieszkanie': ['jasne', 'nasłoneczn', 'południe', 'duże okna'],
 };
 
@@ -423,7 +423,7 @@ export function intelligenceAdjustScore(params: {
   }
 
   if (minArea > 0 && offer.area != null && Number(offer.area) < minArea) {
-    score = Math.min(score, 40);
+    score = 0;
     reasons.push(`Metraż ${offer.area} m² jest poniżej oczekiwanego minimum ${minArea} m².`);
   }
 
@@ -696,132 +696,167 @@ export function preferenceUpdatesFromTaste(params: {
   taste: LearnedTaste;
   locks: IntelligenceLocks;
 }): { data: BuyerPrefWriteback; notes: string[] } {
-  const data: BuyerPrefWriteback = {};
   const notes: string[] = [];
   const { pref, taste, locks } = params;
 
-  if (phraseCount(taste, 'Brak balkonu') >= 2) {
-    if (locks.requireBalcony) {
-      notes.push('Klient wielokrotnie odrzucał brak balkonu, ale to kryterium jest zablokowane.');
-    } else if (!pref.requireBalcony) {
-      data.requireBalcony = true;
-      notes.push('Dopisano obowiązkowy balkon — klient dwukrotnie zaznaczał „brak balkonu”.');
+  const pendingConfirm = (phrase: string, detail: string) => {
+    if (phraseCount(taste, phrase) >= 2) {
+      notes.push(`„${phrase}” (${phraseCount(taste, phrase)}×) — zapytam klienta zanim zmienię ankietę: ${detail}`);
+    } else if (phraseCount(taste, phrase) === 1) {
+      notes.push(`„${phrase}” — uwzględniam w scoringu; ankieta bez zmian do potwierdzenia.`);
+    }
+  };
+
+  pendingConfirm('Brak balkonu', 'balkon obowiązkowy');
+  pendingConfirm('Brak parkingu', 'parking obowiązkowy');
+  pendingConfirm('Brak windy', 'winda obowiązkowa');
+  pendingConfirm('Brak ogrodu', 'ogród obowiązkowy');
+  pendingConfirm('Za stare', taste.minYearHint != null ? `min. rok ${taste.minYearHint}` : 'min. rok budowy');
+  pendingConfirm('Za mało pokoi', taste.minRoomsHint != null ? `min. ${taste.minRoomsHint} pok.` : 'min. liczba pokoi');
+  pendingConfirm('Za mały metraż', taste.minAreaHint != null ? `min. ${taste.minAreaHint} m²` : 'min. metraż');
+  pendingConfirm('Za duży metraż', taste.maxAreaHint != null ? `max. ${taste.maxAreaHint} m²` : 'max. metraż');
+  pendingConfirm('Za drogo', 'obniżenie budżetu / twardsze trzymanie ceny');
+  pendingConfirm('Nie ta dzielnica', 'wykluczenie dzielnic');
+
+  if (phraseCount(taste, 'Za drogo') >= 1 && pref.maxPrice) {
+    notes.push(
+      `Scoring uwzględnia budżet ${Number(pref.maxPrice).toLocaleString('pl-PL')} zł` +
+        (locks.maxPrice ? ' (kłódka agenta).' : '.'),
+    );
+  }
+
+  for (const key of INTELLIGENCE_LOCK_KEYS) {
+    if (!locks[key]) continue;
+    const blocked = taste.phrases.some((phrase) => {
+      if (key === 'requireBalcony') return phrase === 'Brak balkonu';
+      if (key === 'requireParking') return phrase === 'Brak parkingu';
+      if (key === 'requireElevator') return phrase === 'Brak windy';
+      if (key === 'requireGarden') return phrase === 'Brak ogrodu';
+      if (key === 'minYear') return phrase === 'Za stare';
+      if (key === 'minRooms') return phrase === 'Za mało pokoi';
+      if (key === 'minArea') return phrase === 'Za mały metraż';
+      if (key === 'maxArea') return phrase === 'Za duży metraż';
+      if (key === 'maxPrice') return phrase === 'Za drogo';
+      if (key === 'districts') return phrase === 'Nie ta dzielnica';
+      return false;
+    });
+    if (blocked) {
+      notes.push(`Pole „${key}” zablokowane przez agenta — zmiana tylko po checkbacku + zatwierdzeniu.`);
     }
   }
 
-  if (phraseCount(taste, 'Brak parkingu') >= 2) {
-    if (locks.requireParking) {
-      notes.push('Klient wielokrotnie odrzucał brak parkingu, ale to kryterium jest zablokowane.');
-    } else if (!pref.requireParking) {
-      data.requireParking = true;
-      notes.push('Dopisano obowiązkowy parking — klient dwukrotnie zaznaczał „brak parkingu”.');
-    }
+  return { data: {}, notes };
+}
+
+/** Zapis ankiety dopiero po „Tak” w checkbacku — nie wcześniej. */
+export function buildCheckbackPreferenceUpdate(params: {
+  checkbackType: string;
+  taste: LearnedTaste;
+  pref: {
+    districts?: unknown;
+    maxPrice?: number | null;
+    minArea?: number | null;
+    maxArea?: number | null;
+    minYear?: number | null;
+    minRooms?: number | null;
+    requireBalcony?: boolean | null;
+    requireGarden?: boolean | null;
+    requireElevator?: boolean | null;
+    requireParking?: boolean | null;
+  };
+  locks: IntelligenceLocks;
+}): { data: BuyerPrefWriteback; lockPatch: Partial<IntelligenceLocks> | null; agentNote?: string } {
+  const { checkbackType: type, taste, pref, locks } = params;
+  const data: BuyerPrefWriteback = {};
+  let lockPatch: Partial<IntelligenceLocks> | null = null;
+  let agentNote: string | undefined;
+
+  if (type.includes('brak_balkonu') && !locks.requireBalcony) {
+    data.requireBalcony = true;
+    lockPatch = { ...(lockPatch || {}), requireBalcony: true };
+  } else if (type.includes('brak_balkonu') && locks.requireBalcony) {
+    agentNote = 'Klient potwierdził balkon, ale kryterium ma kłódkę — agent musi zatwierdzić.';
   }
 
-  if (phraseCount(taste, 'Brak windy') >= 2) {
-    if (locks.requireElevator) {
-      notes.push('Klient wielokrotnie odrzucał brak windy, ale to kryterium jest zablokowane.');
-    } else if (!pref.requireElevator) {
-      data.requireElevator = true;
-      notes.push('Dopisano obowiązkową windę — klient dwukrotnie zaznaczał „brak windy”.');
-    }
+  if (type.includes('brak_parkingu') && !locks.requireParking) {
+    data.requireParking = true;
+    lockPatch = { ...(lockPatch || {}), requireParking: true };
+  } else if (type.includes('brak_parkingu') && locks.requireParking) {
+    agentNote = 'Klient potwierdził parking, ale kryterium ma kłódkę.';
   }
 
-  if (phraseCount(taste, 'Brak ogrodu') >= 2) {
-    if (locks.requireGarden) {
-      notes.push('Klient wielokrotnie odrzucał brak ogrodu, ale to kryterium jest zablokowane.');
-    } else if (!pref.requireGarden) {
-      data.requireGarden = true;
-      notes.push('Dopisano obowiązkowy ogród — klient dwukrotnie zaznaczał „brak ogrodu”.');
-    }
+  if (type.includes('brak_windy') && !locks.requireElevator) {
+    data.requireElevator = true;
+    lockPatch = { ...(lockPatch || {}), requireElevator: true };
+  } else if (type.includes('brak_windy') && locks.requireElevator) {
+    agentNote = 'Klient potwierdził windę, ale kryterium ma kłódkę.';
   }
 
-  if ((phraseCount(taste, 'Za stare') >= 2 || (phraseCount(taste, 'Za stare') >= 1 && taste.minYearHint != null)) && taste.minYearHint != null) {
-    const nextYear = Math.max(Number(pref.minYear || 1900), taste.minYearHint);
-    if (locks.minYear) {
-      notes.push(`Klient sygnalizował „za stare” (od ${nextYear}), ale rok budowy jest zablokowany.`);
-    } else if (!pref.minYear || nextYear > Number(pref.minYear)) {
-      data.minYear = nextYear;
-      notes.push(`Podniesiono minimalny rok budowy do ${nextYear} — sygnał „za stare”.`);
-    }
+  if (type.includes('brak_ogrodu') && !locks.requireGarden) {
+    data.requireGarden = true;
+    lockPatch = { ...(lockPatch || {}), requireGarden: true };
+  } else if (type.includes('brak_ogrodu') && locks.requireGarden) {
+    agentNote = 'Klient potwierdził ogród, ale kryterium ma kłódkę.';
   }
 
-  if ((phraseCount(taste, 'Za mało pokoi') >= 2 || (phraseCount(taste, 'Za mało pokoi') >= 1 && taste.minRoomsHint != null)) && taste.minRoomsHint != null) {
-    const nextRooms = Math.max(Number(pref.minRooms || 0), taste.minRoomsHint);
-    if (locks.minRooms) {
-      notes.push(`Klient sygnalizował za mało pokoi (min. ${nextRooms}), ale liczba pokoi jest zablokowana.`);
-    } else if (!pref.minRooms || nextRooms > Number(pref.minRooms)) {
-      data.minRooms = nextRooms;
-      notes.push(`Ustawiono minimum ${nextRooms} pokoi — sygnał „za mało pokoi”.`);
-    }
+  if (type.includes('za_stare') && !locks.minYear) {
+    data.minYear = Math.max(Number(pref.minYear || 1900), taste.minYearHint ?? 2000);
+    lockPatch = { ...(lockPatch || {}), minYear: true };
+  } else if (type.includes('za_stare') && locks.minYear) {
+    agentNote = 'Klient potwierdził rok budowy, ale pole ma kłódkę.';
   }
 
-  if (phraseCount(taste, 'Za mały metraż') >= 2 && taste.minAreaHint != null) {
-    const nextArea = Math.max(Number(pref.minArea || 0), taste.minAreaHint);
-    if (locks.minArea) {
-      notes.push(`Klient sygnalizował za mały metraż, ale minArea jest zablokowane.`);
-    } else if (!pref.minArea || nextArea > Number(pref.minArea)) {
-      data.minArea = nextArea;
-      notes.push(`Podniesiono minimalny metraż do ${nextArea} m².`);
-    }
+  if (type.includes('za_mało_pokoi') && !locks.minRooms) {
+    data.minRooms = Math.max(Number(pref.minRooms || 0), taste.minRoomsHint ?? 2);
+    lockPatch = { ...(lockPatch || {}), minRooms: true };
+  } else if (type.includes('za_mało_pokoi') && locks.minRooms) {
+    agentNote = 'Klient potwierdził min. pokoi, ale pole ma kłódkę.';
   }
 
-  if (phraseCount(taste, 'Za duży metraż') >= 2 && taste.maxAreaHint != null) {
-    const nextMax = Math.min(Number(pref.maxArea || 9999), taste.maxAreaHint);
-    if (locks.maxArea) {
-      notes.push('Klient sygnalizował za duży metraż, ale maxArea jest zablokowane.');
-    } else if (!pref.maxArea || nextMax < Number(pref.maxArea)) {
-      data.maxArea = nextMax;
-      notes.push(`Obniżono maksymalny metraż do ${nextMax} m².`);
-    }
+  if (type.includes('za_mały_metraż') && taste.minAreaHint != null && !locks.minArea) {
+    data.minArea = Math.max(Number(pref.minArea || 0), taste.minAreaHint);
+    lockPatch = { ...(lockPatch || {}), minArea: true };
+  } else if (type.includes('za_mały_metraż') && locks.minArea) {
+    agentNote = 'Klient potwierdził min. metraż, ale pole ma kłódkę.';
   }
 
-  if (phraseCount(taste, 'Za drogo') >= 2 && pref.maxPrice) {
+  if (type.includes('za_duży_metraż') && taste.maxAreaHint != null && !locks.maxArea) {
+    data.maxArea = Math.min(Number(pref.maxArea || 9999), taste.maxAreaHint);
+    lockPatch = { ...(lockPatch || {}), maxArea: true };
+  } else if (type.includes('za_duży_metraż') && locks.maxArea) {
+    agentNote = 'Klient potwierdził max. metraż, ale pole ma kłódkę.';
+  }
+
+  if (type.includes('nie_ta_dzielnica') && !locks.districts) {
+    const current = parseDistrictList(pref.districts);
+    const drop = [...new Set(taste.rejectedDistricts.filter((item) => !taste.likedDistricts.includes(item)))];
+    const next = current.filter((item) => !drop.includes(item));
+    if (next.length >= 1 && next.length < current.length) {
+      data.districts = next;
+      lockPatch = { ...(lockPatch || {}), districts: true };
+    }
+  } else if (type.includes('nie_ta_dzielnica') && locks.districts) {
+    agentNote = 'Klient potwierdził wykluczenie dzielnicy, ale lokalizacja ma kłódkę.';
+  }
+
+  if (type.includes('za_drogo')) {
     const cap = effectiveMaxPrice({
       prefMaxPrice: pref.maxPrice,
       taste,
       strictBudget: true,
     });
     if (locks.maxPrice) {
-      notes.push('Klient sygnalizował „za drogo”, ale budżet zostaje — ustawił go agent.');
-    } else if (cap != null && cap < Number(pref.maxPrice)) {
+      agentNote = 'Klient potwierdził „za drogo”, ale budżet ma kłódkę — agent musi zatwierdzić.';
+    } else if (cap != null && cap > 0) {
       data.maxPrice = cap;
-      notes.push(
-        `Obniżono budżet do ${cap.toLocaleString('pl-PL')} zł — klient wielokrotnie odrzucał droższe oferty.`,
-      );
-    } else if (taste.maxPriceHint != null && taste.maxPriceHint < Number(pref.maxPrice)) {
+      lockPatch = { ...(lockPatch || {}), maxPrice: true };
+    } else if (taste.maxPriceHint != null && taste.maxPriceHint > 0) {
       data.maxPrice = taste.maxPriceHint;
-      notes.push(
-        `Dopasowano budżet do ${taste.maxPriceHint.toLocaleString('pl-PL')} zł — klient podał maksymalną kwotę w uwagach.`,
-      );
-    } else {
-      notes.push(
-        `Klient sygnalizował „za drogo”. Budżet ${Number(pref.maxPrice).toLocaleString('pl-PL')} zł — oferty powyżej tej kwoty są odrzucane.`,
-      );
+      lockPatch = { ...(lockPatch || {}), maxPrice: true };
     }
   }
 
-  if (phraseCount(taste, 'Nie ta dzielnica') >= 1) {
-    const current = parseDistrictList(pref.districts);
-    const drop = [...new Set(taste.rejectedDistricts.filter((item) => !taste.likedDistricts.includes(item)))];
-    if (locks.districts) {
-      if (drop.length) {
-        notes.push(
-          `Klient odrzuca dzielnic${drop.length === 1 ? 'ę' : 'e'} ${drop.join(', ')}, ale lokalizacja jest zablokowana — ankieta bez zmian.`,
-        );
-      }
-    } else if (current.length && drop.length) {
-      const next = current.filter((item) => !drop.includes(item));
-      if (next.length >= 1 && next.length < current.length) {
-        data.districts = next;
-        notes.push(`Usunięto z ankiety dzielnice odrzucone przez klienta: ${drop.filter((item) => current.includes(item)).join(', ')}.`);
-      } else if (!next.length) {
-        notes.push('Nie usunięto dzielnic — zostałyby puste. Odblokuj lokalizację albo popraw ankietę ręcznie.');
-      }
-    }
-  }
-
-  return { data, notes };
+  return { data, lockPatch, agentNote };
 }
 
 export function clientFacingWhyLine(params: {

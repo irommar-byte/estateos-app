@@ -2,8 +2,7 @@ import { prisma } from '@/lib/prisma';
 import {
   learnFromFeedback,
   parseIntelligenceLocks,
-  parseDistrictList,
-  effectiveMaxPrice,
+  buildCheckbackPreferenceUpdate,
   type IntelligenceLockKey,
   type IntelligenceLocks,
   type LearnedTaste,
@@ -44,7 +43,13 @@ const CONFIRM_PHRASES = [
   'Za stare',
   'Za mało pokoi',
   'Brak parkingu',
+  'Brak windy',
+  'Brak ogrodu',
+  'Za mały metraż',
+  'Za duży metraż',
 ] as const;
+
+export { CONFIRM_PHRASES as INTELLIGENCE_CONFIRM_PHRASES };
 
 function phraseCount(taste: LearnedTaste, phrase: string): number {
   return taste.phrases.filter((item) => item === phrase).length;
@@ -295,101 +300,35 @@ export async function respondToIntelligenceCheckback(params: {
     }
   } else if (type.startsWith('confirm_')) {
     if (params.optionId === 'yes') {
-      if (type.includes('brak_balkonu') && !locks.requireBalcony) {
-        prefUpdate.requireBalcony = true;
+      const taste = learnFromFeedback(
+        (
+          await prisma.agencyClientMatch.findMany({
+            where: { clientId: params.clientId },
+            select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
+          })
+        ).map((row) => ({
+          offerId: row.offerId,
+          clientFeedback: row.clientFeedback,
+          offer: row.offer,
+          clientFeedbackAt: row.clientFeedbackAt,
+        })),
+      );
+      const confirmed = buildCheckbackPreferenceUpdate({
+        checkbackType: type,
+        taste,
+        pref: client.buyerPreference,
+        locks,
+      });
+      Object.assign(prefUpdate, confirmed.data);
+      if (confirmed.lockPatch) {
+        lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, confirmed.lockPatch);
+      }
+      if (confirmed.agentNote) {
+        agentNote = confirmed.agentNote;
+      } else if (Object.keys(confirmed.data).length) {
         followUp = 'send_offer';
-      } else if (type.includes('brak_parkingu') && !locks.requireParking) {
-        prefUpdate.requireParking = true;
-        followUp = 'send_offer';
-      } else if (type.includes('za_stare') && !locks.minYear) {
-        const taste = learnFromFeedback(
-          (
-            await prisma.agencyClientMatch.findMany({
-              where: { clientId: params.clientId },
-              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
-            })
-          ).map((row) => ({
-            offerId: row.offerId,
-            clientFeedback: row.clientFeedback,
-            offer: row.offer,
-            clientFeedbackAt: row.clientFeedbackAt,
-          })),
-        );
-        const nextYear = taste.minYearHint ?? 2000;
-        prefUpdate.minYear = nextYear;
-        lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { minYear: true });
-        followUp = 'send_offer';
-      } else if (type.includes('za_mało_pokoi') && !locks.minRooms) {
-        const taste = learnFromFeedback(
-          (
-            await prisma.agencyClientMatch.findMany({
-              where: { clientId: params.clientId },
-              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
-            })
-          ).map((row) => ({
-            offerId: row.offerId,
-            clientFeedback: row.clientFeedback,
-            offer: row.offer,
-            clientFeedbackAt: row.clientFeedbackAt,
-          })),
-        );
-        const nextRooms = taste.minRoomsHint ?? 2;
-        prefUpdate.minRooms = nextRooms;
-        lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { minRooms: true });
-        followUp = 'send_offer';
-      } else if (type.includes('nie_ta_dzielnica') && !locks.districts) {
-        const taste = learnFromFeedback(
-          (
-            await prisma.agencyClientMatch.findMany({
-              where: { clientId: params.clientId },
-              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
-            })
-          ).map((row) => ({
-            offerId: row.offerId,
-            clientFeedback: row.clientFeedback,
-            offer: row.offer,
-            clientFeedbackAt: row.clientFeedbackAt,
-          })),
-        );
-        const current = parseDistrictList(client.buyerPreference.districts);
-        const drop = [...new Set(taste.rejectedDistricts.filter((item) => !taste.likedDistricts.includes(item)))];
-        const next = current.filter((item) => !drop.includes(item));
-        if (next.length >= 1 && next.length < current.length) {
-          prefUpdate.districts = next;
-          followUp = 'send_offer';
-        }
       } else if (type.includes('za_drogo')) {
-        const taste = learnFromFeedback(
-          (
-            await prisma.agencyClientMatch.findMany({
-              where: { clientId: params.clientId },
-              select: { offerId: true, clientFeedback: true, offer: true, clientFeedbackAt: true },
-            })
-          ).map((row) => ({
-            offerId: row.offerId,
-            clientFeedback: row.clientFeedback,
-            offer: row.offer,
-            clientFeedbackAt: row.clientFeedbackAt,
-          })),
-        );
-        const cap = effectiveMaxPrice({
-          prefMaxPrice: client.buyerPreference.maxPrice,
-          taste,
-          strictBudget: true,
-        });
-        if (locks.maxPrice) {
-          agentNote = 'Klient potwierdził „za drogo”, ale budżet ma kłódkę — agent musi zatwierdzić.';
-        } else if (cap != null && cap > 0) {
-          prefUpdate.maxPrice = cap;
-          lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { maxPrice: true });
-          followUp = 'send_offer';
-        } else if (taste.maxPriceHint != null && taste.maxPriceHint > 0) {
-          prefUpdate.maxPrice = taste.maxPriceHint;
-          lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { maxPrice: true });
-          followUp = 'send_offer';
-        } else {
-          followUp = 'send_offer';
-        }
+        followUp = 'send_offer';
       }
     }
   }
@@ -462,7 +401,13 @@ export async function respondToIntelligenceCheckback(params: {
 
 export function feedbackRequestsHandoff(feedback: { phrases: string[]; note: string; liked: string; disliked: string }): string | null {
   const blob = `${feedback.note} ${feedback.liked} ${feedback.disliked} ${feedback.phrases.join(' ')}`.toLowerCase();
-  if (/\b(ogląd|prezentac|spotkan|zadzwo|telefon|umów|chcę zobaczyć|chce zobaczyc)\b/.test(blob)) {
+  const normalized = blob
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l');
+  if (
+    /(oglad|prezentac|spotkan|zadzwon|telefon|umow|zobacz|chce zobaczyc|chce zobacz)/.test(normalized)
+  ) {
     return 'Widzę, że chcesz przejść do oglądania albo rozmowy — przekazuję to agentowi.';
   }
   return null;

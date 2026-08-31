@@ -268,28 +268,17 @@ export async function pickIntelligenceOffer(
       taste,
       locks,
     });
-    if (Object.keys(writeback.data).length) {
-      await prisma.agencyClientBuyerPreference.update({
-        where: { clientId },
-        data: writeback.data,
+    if (writeback.notes.length) {
+      await prisma.agencyClientActivity.create({
+        data: {
+          clientId,
+          agencyUserId: client.agencyUserId,
+          kind: 'INTELLIGENCE_TASTE',
+          title: 'EstateOS™ Intelligence — nauka z reakcji',
+          body: writeback.notes.join('\n'),
+          metadata: { notes: writeback.notes, locks, pendingConfirm: true },
+        },
       });
-      client.buyerPreference = {
-        ...client.buyerPreference,
-        ...writeback.data,
-        districts: writeback.data.districts ?? client.buyerPreference.districts,
-      };
-      if (writeback.notes.length) {
-        await prisma.agencyClientActivity.create({
-          data: {
-            clientId,
-            agencyUserId: client.agencyUserId,
-            kind: 'INTELLIGENCE_TASTE',
-            title: 'EstateOS™ Intelligence dopisało kryteria z reakcji',
-            body: writeback.notes.join('\n'),
-            metadata: { notes: writeback.notes, locks },
-          },
-        });
-      }
     }
   }
 

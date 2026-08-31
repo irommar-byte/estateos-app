@@ -201,6 +201,18 @@ export function buildConfidenceDialogueTurn(params: {
   } else if (phrase === 'Brak parkingu') {
     question =
       'Kilka razy zaznaczałeś brak parkingu. Czy miejsce postojowe ma być obowiązkowe w każdej kolejnej propozycji?';
+  } else if (phrase === 'Brak windy') {
+    question =
+      'Kilka razy zaznaczałeś brak windy. Czy winda ma być obowiązkowa w każdej kolejnej propozycji?';
+  } else if (phrase === 'Brak ogrodu') {
+    question =
+      'Kilka razy zaznaczałeś brak ogrodu. Czy ogród ma być obowiązkowy w każdej kolejnej propozycji?';
+  } else if (phrase === 'Za mały metraż') {
+    question =
+      'Kilka razy sygnalizowałeś za mały metraż. Czy podnieść minimalny metraż i traktować to jako twardy warunek?';
+  } else if (phrase === 'Za duży metraż') {
+    question =
+      'Kilka razy sygnalizowałeś za duży metraż. Czy obniżyć maksymalny metraż i traktować to jako twardy warunek?';
   } else {
     question = `Chcę upewnić się co do Twojej ostatniej uwagi: „${phrase}”. Czy dobrze ją interpretuję?`;
   }
@@ -219,9 +231,19 @@ export function buildConfidenceDialogueTurn(params: {
             ? 'requireBalcony'
             : phrase === 'Brak parkingu'
               ? 'requireParking'
-              : phrase === 'Nie ta dzielnica'
-                ? 'districts'
-                : undefined,
+              : phrase === 'Brak windy'
+                ? 'requireElevator'
+                : phrase === 'Brak ogrodu'
+                  ? 'requireGarden'
+                  : phrase === 'Za mały metraż'
+                    ? 'minArea'
+                    : phrase === 'Za duży metraż'
+                      ? 'maxArea'
+                      : phrase === 'Nie ta dzielnica'
+                        ? 'districts'
+                        : phrase === 'Za drogo'
+                          ? 'maxPrice'
+                          : undefined,
     options: [
       { id: 'yes', label: 'Tak, zgadza się' },
       { id: 'no', label: 'Nie — poprawię' },

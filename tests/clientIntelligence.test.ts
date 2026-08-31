@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   DEFAULT_INTELLIGENCE_SETTINGS,
+  buildCheckbackPreferenceUpdate,
   buildIntelligenceLessons,
   clientFacingWhyLine,
   descriptionImpliesBalcony,
@@ -212,7 +213,7 @@ test('maybe does not reject the listing, likes pull similar rooms and price band
   assert.ok(similar.score > 80);
 });
 
-test('write-back adds balcony and keeps agent budget, but respects district lock', () => {
+test('checkback confirm applies balcony; taste notes never auto-write districts', () => {
   const taste = learnFromFeedback([
     {
       offerId: 1,
@@ -225,23 +226,30 @@ test('write-back adds balcony and keeps agent budget, but respects district lock
       offer: { ...baseOffer, id: 2, district: 'Wola', hasBalcony: false, price: 1100000 },
     },
   ]);
-  const locked = preferenceUpdatesFromTaste({
+  const lockedNotes = preferenceUpdatesFromTaste({
     pref: { districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000, requireBalcony: false },
     taste,
     locks: { ...DEFAULT_INTELLIGENCE_LOCKS, districts: true },
   });
-  assert.equal(locked.data.districts, undefined);
-  assert.equal(locked.data.requireBalcony, true);
-  assert.equal(locked.data.maxPrice, undefined);
-  assert.ok(locked.notes.some((item) => /budżet/i.test(item)));
-  assert.ok(locked.notes.some((item) => /zablokowana/.test(item)));
+  assert.deepEqual(lockedNotes.data, {});
+  assert.ok(lockedNotes.notes.some((item) => /zablokowane|zablokowana/i.test(item)));
 
-  const unlocked = preferenceUpdatesFromTaste({
-    pref: { districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000, requireBalcony: false },
+  const balconyConfirm = buildCheckbackPreferenceUpdate({
+    checkbackType: 'confirm_brak_balkonu',
     taste,
+    pref: { requireBalcony: false, districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000 },
     locks: DEFAULT_INTELLIGENCE_LOCKS,
   });
-  assert.deepEqual(unlocked.data.districts, ['Ursynów']);
+  assert.equal(balconyConfirm.data.requireBalcony, true);
+  assert.equal(balconyConfirm.data.maxPrice, undefined);
+
+  const districtConfirm = buildCheckbackPreferenceUpdate({
+    checkbackType: 'confirm_nie_ta_dzielnica',
+    taste,
+    pref: { districts: ['Ursynów', 'Mokotów'] },
+    locks: DEFAULT_INTELLIGENCE_LOCKS,
+  });
+  assert.deepEqual(districtConfirm.data.districts, ['Ursynów']);
 });
 
 test('client-facing why is a single concrete sentence', () => {
@@ -314,7 +322,7 @@ test('intelligenceAdjustScore rejects offer below minYear and minRooms', () => {
   assert.ok(good.score > 0);
 });
 
-test('preferenceUpdatesFromTaste writes minYear and minRooms from repeated signals', () => {
+test('preferenceUpdatesFromTaste writes minYear only via checkback confirm, not auto', () => {
   const taste = learnFromFeedback([
     {
       offerId: 1,
@@ -327,12 +335,20 @@ test('preferenceUpdatesFromTaste writes minYear and minRooms from repeated signa
       offer: { id: 2, yearBuilt: 1985 },
     },
   ]);
-  const yearWrite = preferenceUpdatesFromTaste({
+  const notesOnly = preferenceUpdatesFromTaste({
     pref: { minYear: 1900 },
     taste,
     locks: DEFAULT_INTELLIGENCE_LOCKS,
   });
-  assert.equal(yearWrite.data.minYear, 2000);
+  assert.deepEqual(notesOnly.data, {});
+
+  const confirmed = buildCheckbackPreferenceUpdate({
+    checkbackType: 'confirm_za_stare',
+    taste,
+    pref: { minYear: 1900 },
+    locks: DEFAULT_INTELLIGENCE_LOCKS,
+  });
+  assert.equal(confirmed.data.minYear, 2000);
 });
 
 test('intelligenceAdjustScore rejects offer above budget after za drogo', () => {

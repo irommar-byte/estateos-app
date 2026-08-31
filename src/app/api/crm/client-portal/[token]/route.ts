@@ -698,7 +698,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
       title: `Reakcja do oferty: ${match.offer.title}`,
       body: `${clientName}: ${agentSummary.slice(0, 160)}`,
     });
-    await applyIntelligenceLearning(client.id).catch(() => {});
 
     const agent = await prisma.user.findUnique({
       where: { id: client.agencyUserId },
@@ -712,6 +711,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
       matchId,
       agentFirstName,
     }).catch(() => ({ action: 'none' as const }));
+
+    await applyIntelligenceLearning(client.id).catch(() => {});
 
     return NextResponse.json({ success: true, intelligenceReply: reply });
   }

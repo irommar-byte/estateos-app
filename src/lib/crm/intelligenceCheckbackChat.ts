@@ -49,6 +49,9 @@ const NO_EXACT = new Set([
 function looksLikeYes(text: string): boolean {
   const normalized = normalizeChatReplyText(text);
   if (!normalized) return false;
+  if (/\btak\b/.test(normalized) && /\bnie\b/.test(normalized)) return false;
+  if (looksLikeNo(text)) return false;
+  if (/\bnie\s+wiem\b/.test(normalized) || normalized === 'nie wiem') return false;
   if (YES_EXACT.has(normalized)) return true;
   if (/^(tak|yes|ok|pewnie|jasne|dokladnie|zgadza)[\s,.!]*$/i.test(text.trim())) return true;
   if (/\bdokladnie\b/.test(normalized)) return true;
@@ -60,6 +63,8 @@ function looksLikeYes(text: string): boolean {
 function looksLikeNo(text: string): boolean {
   const normalized = normalizeChatReplyText(text);
   if (!normalized) return false;
+  if (/\bnie\s+wiem\b/.test(normalized)) return false;
+  if (/\btak\b/.test(normalized) && /\bnie\b/.test(normalized)) return true;
   if (NO_EXACT.has(normalized)) return true;
   if (/^nie[\s,.!-]/i.test(text.trim()) || normalized === 'nie') return true;
   if (/\bnie\s+popraw/i.test(normalized)) return true;
@@ -79,11 +84,15 @@ export function mapChatTextToCheckbackOption(
   const hasYesNo = ids.has('yes') && ids.has('no');
 
   if (hasYesNo) {
+    const normalized = normalizeChatReplyText(trimmed);
+    if (/\btak\b/.test(normalized) && /\bnie\b/.test(normalized)) return 'ambiguous';
+    if (/\bnie\s+wiem\b/.test(normalized)) return 'ambiguous';
     const yes = looksLikeYes(trimmed);
     const no = looksLikeNo(trimmed);
     if (yes && no) return 'ambiguous';
     if (yes) return 'yes';
     if (no) return 'no';
+    return null;
   }
 
   const normalized = normalizeChatReplyText(trimmed);
