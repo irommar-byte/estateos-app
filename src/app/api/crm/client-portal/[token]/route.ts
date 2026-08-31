@@ -269,7 +269,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 40,
+        take: 80,
         select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true, metadata: true },
       },
     },

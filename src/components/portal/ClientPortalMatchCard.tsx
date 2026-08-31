@@ -138,7 +138,8 @@ export default function ClientPortalMatchCard({
 
   return (
     <article
-      className={`eos-inset-frame rounded-[1.6rem] ${match.intelligenceSent ? "eos-intel-frame" : "overflow-hidden"}`}
+      id={`portal-match-${match.id}`}
+      className={`eos-inset-frame scroll-mt-28 rounded-[1.6rem] ${match.intelligenceSent ? "eos-intel-frame" : "overflow-hidden"}`}
     >
       <div className="flex gap-3 p-3 sm:gap-4 sm:p-4">
         <OfferPhotoCascade
