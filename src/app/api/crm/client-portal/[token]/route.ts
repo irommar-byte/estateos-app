@@ -36,6 +36,7 @@ import {
   formatClientFeedbackForAgent,
 } from '@/lib/crm/clientPortalFeedback';
 import { applyIntelligenceLearning, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
+import { maskEmail, bearerUserIdFromRequest } from '@/lib/crm/portalAccountLink';
 import {
   getPendingCheckback,
   respondToIntelligenceCheckback,
@@ -155,6 +156,7 @@ async function notifyAgent(params: {
 
 export async function GET(_req: Request, ctx: RouteCtx) {
   const { token } = await ctx.params;
+  const sessionUserId = bearerUserIdFromRequest(_req);
   const client = await prisma.agencyClient.findFirst({
     where: { portalToken: token, status: 'ACTIVE' },
     include: {
@@ -189,7 +191,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       matches: {
         where: { notifiedAt: { not: null } },
         orderBy: { score: 'desc' },
-        take: 50,
+        take: 80,
         include: {
           offer: {
             select: {
@@ -362,6 +364,11 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           })
         : 0,
       canChat: true,
+      account: {
+        linked: Boolean(client.linkedUserId),
+        linkedToYou: Boolean(sessionUserId && client.linkedUserId === sessionUserId),
+        emailMasked: maskEmail(client.email),
+      },
       meeting: meeting
         ? {
             ...meeting,

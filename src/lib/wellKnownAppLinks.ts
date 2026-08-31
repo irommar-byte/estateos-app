@@ -18,7 +18,7 @@ export function buildAppleAppSiteAssociation(): Record<string, unknown> {
       details: [
         {
           appID: appId,
-          paths: ['/o/*', '/offer/*', '/oferta/*'],
+          paths: ['/o/*', '/offer/*', '/oferta/*', '/klient/*'],
         },
       ],
     },

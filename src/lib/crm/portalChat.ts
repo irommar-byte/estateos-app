@@ -302,6 +302,7 @@ export async function sendPortalChat(params: {
       title: 'Nowa wiadomość od Twojego agenta',
       body: body.slice(0, 160),
       tag: `estateos-client-chat-${params.clientId}`,
+      native: !contactMirrored,
     }).catch(() => {});
   }
 
