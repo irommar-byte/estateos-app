@@ -526,7 +526,10 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 
 export async function POST(req: Request, ctx: RouteCtx) {
   const { token } = await ctx.params;
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Nieprawidłowe żądanie.' }, { status: 400 });
+  }
   const action = String(body.action || '');
 
   const client = await prisma.agencyClient.findFirst({
@@ -538,6 +541,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       linkedUserId: true,
       firstName: true,
       lastName: true,
+      buyerPreference: { select: { minMatchThreshold: true } },
       acquisition: {
         select: {
           id: true,
@@ -569,11 +573,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ success: true, offerId: intel.pick.offerId, via: 'intelligence' });
     }
 
+    const minScore = client.buyerPreference?.minMatchThreshold ?? 70;
     const topMatch = await prisma.agencyClientMatch.findFirst({
       where: {
         clientId: client.id,
         notifiedAt: null,
-        score: { gte: 70 },
+        score: { gte: minScore },
       },
       orderBy: { score: 'desc' },
       select: { offerId: true, score: true },
