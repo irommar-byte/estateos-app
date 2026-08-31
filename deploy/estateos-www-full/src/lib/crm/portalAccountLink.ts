@@ -165,6 +165,148 @@ export function resolvePortalAccountStatus(params: {
   };
 }
 
+export function phoneSuffixFromStoredPhone(phone: string | null | undefined): string | null {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
+}
+
+export function verifyPortalPhoneSuffix(
+  phone: string | null | undefined,
+  suffix: string | null | undefined,
+): boolean {
+  const expected = phoneSuffixFromStoredPhone(phone);
+  if (!expected) return true;
+  const provided = String(suffix || '').replace(/\D/g, '').slice(-4);
+  return provided.length === 4 && provided === expected;
+}
+
+export function resolvePortalActivationHint(params: {
+  clientEmail: string | null | undefined;
+  clientPhone: string | null | undefined;
+}) {
+  const clientEmail = normalizePortalEmail(params.clientEmail);
+  if (!clientEmail || isPlaceholderPortalEmail(clientEmail)) {
+    return {
+      available: false as const,
+      reason: 'missing_client_email' as const,
+    };
+  }
+  return {
+    available: true as const,
+    emailMasked: maskEmail(clientEmail),
+    phoneSuffixRequired: Boolean(phoneSuffixFromStoredPhone(params.clientPhone)),
+    phoneSuffixLabel: 'Ostatnie 4 cyfry telefonu podane agentowi',
+  };
+}
+
+export async function activatePortalAccount(params: {
+  portalToken: string;
+  email: string;
+  password: string;
+  phoneSuffix?: string | null;
+}): Promise<
+  | { ok: true; userId: number; created: boolean }
+  | { ok: false; status: number; error: string }
+> {
+  const token = String(params.portalToken || '').trim();
+  const email = normalizePortalEmail(params.email);
+  const password = String(params.password || '');
+  if (!PORTAL_TOKEN_RE.test(token)) {
+    return { ok: false, status: 400, error: 'Nieprawidłowy token panelu.' };
+  }
+  if (!email || !password) {
+    return { ok: false, status: 400, error: 'Podaj e-mail i hasło.' };
+  }
+  if (password.length < 6) {
+    return { ok: false, status: 400, error: 'Hasło musi mieć min. 6 znaków.' };
+  }
+
+  const client = await prisma.agencyClient.findFirst({
+    where: { portalToken: token, status: 'ACTIVE' },
+    select: {
+      id: true,
+      email: true,
+      phone: true,
+      firstName: true,
+      lastName: true,
+      linkedUserId: true,
+    },
+  });
+  if (!client) return { ok: false, status: 404, error: 'Panel niedostępny.' };
+
+  const clientEmail = normalizePortalEmail(client.email);
+  if (!clientEmail || isPlaceholderPortalEmail(clientEmail)) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Agent musi uzupełnić Twój e-mail w CRM — bez tego nie da się aktywować konta.',
+    };
+  }
+  if (clientEmail !== email) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'E-mail nie zgadza się z danymi od agenta. Użyj tego samego adresu co w CRM.',
+    };
+  }
+  if (!verifyPortalPhoneSuffix(client.phone, params.phoneSuffix)) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Nieprawidłowe ostatnie 4 cyfry telefonu. Sprawdź numer podany agentowi.',
+    };
+  }
+
+  const bcrypt = await import('bcryptjs');
+  const hashed = await bcrypt.hash(password, 10);
+  let userId: number;
+  let created = false;
+
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, password: true, phone: true },
+  });
+
+  if (existing) {
+    if (existing.password) {
+      const valid = await bcrypt.compare(password, existing.password);
+      if (!valid) {
+        return { ok: false, status: 401, error: 'Masz już konto — podaj poprawne hasło albo użyj „zapomniałem hasła”.' };
+      }
+    } else {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { password: hashed },
+      });
+    }
+    userId = existing.id;
+    if (client.phone && !existing.phone) {
+      await prisma.user.update({ where: { id: existing.id }, data: { phone: client.phone } }).catch(() => {});
+    }
+  } else {
+    const createdUser = await prisma.user.create({
+      data: {
+        email,
+        password: hashed,
+        name: `${client.firstName} ${client.lastName}`.trim() || 'Klient',
+        phone: client.phone || null,
+        role: 'USER',
+      },
+      select: { id: true },
+    });
+    userId = createdUser.id;
+    created = true;
+  }
+
+  const link = await linkPortalAccount({ portalToken: token, userId });
+  if (!link.ok) {
+    return { ok: false, status: link.status, error: link.error };
+  }
+
+  return { ok: true, userId, created };
+}
+
 export function bearerUserIdFromRequest(req: Request): number | null {
   const auth = req.headers.get('authorization') || req.headers.get('Authorization');
   const access = req.headers.get('x-access-token');

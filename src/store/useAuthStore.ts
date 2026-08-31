@@ -71,6 +71,8 @@ interface AuthState {
     pass: string,
     options?: { registrationPhoneE164?: string },
   ) => Promise<boolean>;
+  /** Zapis sesji po aktywacji panelu klienta (JWT z /activate). */
+  establishSession: (token: string, user: any, emailHint?: string) => Promise<boolean>;
   register: (
     email: string,
     pass: string,
@@ -424,6 +426,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       set({ error: normalizedMessage, isLoading: false });
+      return false;
+    }
+  },
+
+  establishSession: async (token: string, user: any, emailHint?: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const normUser = await hydrateWithLocalFlags(normalizeUser(user));
+      const normalizedToken = normalizeToken(token);
+      if (!normalizedToken || !normUser) {
+        throw new Error('Nie udało się zapisać sesji.');
+      }
+      await AsyncStorage.setItem('mobile_token', normalizedToken);
+      await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
+      const loginEmail = String(emailHint || normUser.email || '')
+        .trim()
+        .toLowerCase();
+      if (loginEmail) {
+        await AsyncStorage.setItem('@estateos_last_login_email', loginEmail);
+      }
+      await AsyncStorage.multiRemove(['admin_session_token', 'admin_session_user']);
+      set({ user: normUser, token: normalizedToken, adminSession: null, isLoading: false });
+      await get().refreshUser();
+      await get().refreshAgencyMembership();
+      try {
+        const { restoreLinkedClientPortals } = await import('../services/clientPortalService');
+        await restoreLinkedClientPortals(normalizedToken);
+      } catch {
+        /* best-effort */
+      }
+      return true;
+    } catch (e: any) {
+      set({ isLoading: false, error: e?.message || 'Błąd sesji' });
       return false;
     }
   },

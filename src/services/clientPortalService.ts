@@ -43,7 +43,20 @@ export type PortalAccount = {
   linkedToYou?: boolean;
   emailMasked: string | null;
   sessionEmailMasked?: string | null;
+  activation?: PortalActivationHint | null;
 };
+
+export type PortalActivationHint =
+  | {
+      available: true;
+      emailMasked: string | null;
+      phoneSuffixRequired: boolean;
+      phoneSuffixLabel: string;
+    }
+  | {
+      available: false;
+      reason: 'missing_client_email';
+    };
 
 export type ClientPortalPayload = {
   clientName: string;
@@ -163,6 +176,32 @@ export async function linkPortalAccount(token: string, authToken: string) {
   );
   if (!response.ok) {
     throw new Error(data?.error || 'Nie udało się powiązać konta.');
+  }
+  return data;
+}
+
+export async function activatePortalAccount(
+  token: string,
+  params: { email: string; password: string; phoneSuffix?: string },
+) {
+  const { response, data } = await mobileFetchJson<{
+    success?: boolean;
+    error?: string;
+    token?: string;
+    user?: Record<string, unknown>;
+    created?: boolean;
+    linkedUserId?: number;
+  }>(portalUrl(token, '/activate'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: params.email.trim().toLowerCase(),
+      password: params.password,
+      phoneSuffix: params.phoneSuffix || '',
+    }),
+  });
+  if (!response.ok || !data?.token || !data?.user) {
+    throw new Error(data?.error || 'Nie udało się aktywować panelu.');
   }
   return data;
 }

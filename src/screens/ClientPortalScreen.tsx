@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +27,7 @@ import {
   resolveAssistantPulse,
   type OfferStackId,
 } from '../lib/clientPortalBoard';
-import { rememberPortalSession, markPortalAuthReturn } from '../lib/clientPortalSession';
+import { rememberPortalSession } from '../lib/clientPortalSession';
 import { useAppActiveInterval } from '../hooks/useAppActivePoll';
 import {
   getClientPortalPushPermissionStatus,
@@ -34,6 +35,7 @@ import {
   registerClientPortalPushIfPossible,
 } from '../hooks/usePushNotifications';
 import {
+  activatePortalAccount,
   fetchClientPortal,
   linkPortalAccount,
   submitPortalCheckback,
@@ -85,6 +87,11 @@ export default function ClientPortalScreen() {
   const [pendingPhrases, setPendingPhrases] = useState<Record<number, string[]>>({});
   const [linking, setLinking] = useState(false);
   const [pushPermission, setPushPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+  const [activateEmail, setActivateEmail] = useState('');
+  const [activatePhoneSuffix, setActivatePhoneSuffix] = useState('');
+  const [activatePassword, setActivatePassword] = useState('');
+  const [activating, setActivating] = useState(false);
+  const establishSession = useAuthStore((s) => s.establishSession);
   const silent = useRef(false);
   const stacksInitialized = useRef(false);
   const autoLinkAttempted = useRef(false);
@@ -203,18 +210,53 @@ export default function ClientPortalScreen() {
 
   const openPortalAuth = useCallback(
     (intent: 'register' | 'login') => {
-      void markPortalAuthReturn(portalToken);
       navigation.navigate('MainTabs', {
         screen: 'Profil',
         params: { authIntent: intent },
       });
     },
-    [navigation, portalToken],
+    [navigation],
   );
+
+  const onActivatePortal = async () => {
+    const email = activateEmail.trim().toLowerCase();
+    const password = activatePassword;
+    const activation = portal?.account?.activation;
+    if (!email.includes('@')) {
+      Alert.alert('Aktywacja', 'Podaj pełny adres e-mail od agenta.');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Aktywacja', 'Hasło musi mieć co najmniej 6 znaków.');
+      return;
+    }
+    if (activation?.available && activation.phoneSuffixRequired && activatePhoneSuffix.replace(/\D/g, '').length < 4) {
+      Alert.alert('Aktywacja', 'Podaj ostatnie 4 cyfry telefonu podane agentowi.');
+      return;
+    }
+    setActivating(true);
+    try {
+      const data = await activatePortalAccount(portalToken, {
+        email,
+        password,
+        phoneSuffix: activatePhoneSuffix,
+      });
+      const ok = await establishSession(String(data.token), data.user, email);
+      if (!ok) throw new Error('Nie udało się zapisać sesji.');
+      patchAccountStatus('linked');
+      await registerClientPortalPushAfterLink({ prompt: true });
+      await refreshPushStatus();
+      await load('silent');
+    } catch (err: any) {
+      Alert.alert('Aktywacja panelu', err?.message || 'Nie udało się aktywować panelu.');
+    } finally {
+      setActivating(false);
+    }
+  };
 
   const onLinkAccount = async () => {
     if (!authToken) {
-      openPortalAuth('register');
+      await onActivatePortal();
       return;
     }
     await performLink({ promptPush: true });
@@ -351,19 +393,66 @@ export default function ClientPortalScreen() {
       );
     }
 
+    const activation = account?.activation;
+    if (activation && activation.available === false) {
+      return (
+        <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+          <Text style={[styles.rowTitle, { color: colors.text }]}>Brak e-maila w CRM</Text>
+          <Text style={[styles.rowSub, { color: colors.secondary, marginTop: 4 }]}>
+            Poproś agenta o uzupełnienie Twojego adresu e-mail — wtedy aktywujesz panel tutaj jednym krokiem.
+          </Text>
+        </ProfileCardShell>
+      );
+    }
+
+    const phoneRequired = activation?.available && activation.phoneSuffixRequired;
+
     return (
       <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
-        <Text style={[styles.rowTitle, { color: colors.text }]}>Załóż konto, żeby zapamiętać panel</Text>
+        <Text style={[styles.rowTitle, { color: colors.text }]}>Zapisz panel na swoim koncie</Text>
         <Text style={[styles.rowSub, { color: colors.secondary, marginTop: 4 }]}>
           {account?.emailMasked
-            ? `Pierwszy raz w EstateOS? Zarejestruj się na ${account.emailMasked} — ten sam adres co w CRM. Ustawisz hasło; „odzysk hasła” działa dopiero, gdy konto już istnieje.`
-            : 'Zarejestruj się tym samym e-mailem, który podałeś agentowi. Potem panel i powiadomienia zostaną przy Twoim koncie.'}
+            ? `Potwierdź, że to Ty — ten sam e-mail co w CRM (${account.emailMasked}), hasło (min. 6 znaków)${phoneRequired ? ' i ostatnie 4 cyfry telefonu u agenta' : ''}. Konto założy się automatycznie.`
+            : 'Podaj e-mail od agenta i ustaw hasło — konto założy się automatycznie.'}
         </Text>
-        <Pressable onPress={onLinkAccount} style={styles.primaryBtn}>
-          <Text style={styles.primaryBtnText}>Załóż konto i powiąż</Text>
+        <TextInput
+          value={activateEmail}
+          onChangeText={setActivateEmail}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          placeholder={account?.emailMasked ? `E-mail (${account.emailMasked})` : 'E-mail od agenta'}
+          placeholderTextColor={colors.secondary}
+          style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+        />
+        {phoneRequired ? (
+          <TextInput
+            value={activatePhoneSuffix}
+            onChangeText={setActivatePhoneSuffix}
+            keyboardType="number-pad"
+            maxLength={4}
+            placeholder={activation.phoneSuffixLabel}
+            placeholderTextColor={colors.secondary}
+            style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          />
+        ) : null}
+        <TextInput
+          value={activatePassword}
+          onChangeText={setActivatePassword}
+          secureTextEntry
+          placeholder="Nowe hasło (min. 6 znaków)"
+          placeholderTextColor={colors.secondary}
+          style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+        />
+        <Pressable
+          onPress={onActivatePortal}
+          disabled={activating}
+          style={[styles.primaryBtn, { opacity: activating ? 0.6 : 1 }]}
+        >
+          <Text style={styles.primaryBtnText}>{activating ? 'Aktywuję…' : 'Aktywuj i zapisz panel'}</Text>
         </Pressable>
         <Pressable onPress={() => openPortalAuth('login')} style={{ marginTop: 12, alignItems: 'center' }}>
-          <Text style={{ color: colors.green, fontWeight: '600', fontSize: 14 }}>Mam już konto — zaloguj się</Text>
+          <Text style={{ color: colors.secondary, fontSize: 13 }}>Masz już konto w apce? Zaloguj się w Profilu</Text>
         </Pressable>
       </ProfileCardShell>
     );
@@ -711,4 +800,12 @@ const styles = StyleSheet.create({
   rateRow: { flexDirection: 'row', gap: 8 },
   rateBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   rateBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
+  input: {
+    marginTop: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
 });

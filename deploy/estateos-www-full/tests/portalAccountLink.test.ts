@@ -4,7 +4,10 @@ import {
   decidePortalAccountLink,
   extractPortalTokenFromUrl,
   maskEmail,
+  phoneSuffixFromStoredPhone,
   resolvePortalAccountStatus,
+  resolvePortalActivationHint,
+  verifyPortalPhoneSuffix,
 } from '../src/lib/crm/portalAccountLink';
 
 test('extracts portal token from https, custom scheme and query', () => {
@@ -122,5 +125,31 @@ test('resolvePortalAccountStatus distinguishes linked, ready, wrong_account and 
       sessionUserEmail: null,
     }).status,
     'anonymous',
+  );
+});
+
+test('portal phone suffix verification and activation hint', () => {
+  assert.equal(phoneSuffixFromStoredPhone('+48 501 234 567'), '4567');
+  assert.equal(verifyPortalPhoneSuffix('+48 501 234 567', '4567'), true);
+  assert.equal(verifyPortalPhoneSuffix('+48 501 234 567', '1234'), false);
+  assert.equal(verifyPortalPhoneSuffix(null, ''), true);
+  assert.deepEqual(
+    resolvePortalActivationHint({
+      clientEmail: 'klient@estateos.pl',
+      clientPhone: '+48500111222',
+    }),
+    {
+      available: true,
+      emailMasked: 'k***@estateos.pl',
+      phoneSuffixRequired: true,
+      phoneSuffixLabel: 'Ostatnie 4 cyfry telefonu podane agentowi',
+    },
+  );
+  assert.equal(
+    resolvePortalActivationHint({
+      clientEmail: 'crm+48@portal.estateos.internal',
+      clientPhone: '+48500111222',
+    }).available,
+    false,
   );
 });
