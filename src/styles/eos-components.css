@@ -1391,6 +1391,127 @@ html:not(.light) .portal-upcoming-offer__badge {
     transparent 65%
   );
 }
+
+.portal-checkback {
+  border: 1.5px solid rgba(217, 119, 6, 0.42);
+  background:
+    linear-gradient(165deg, rgba(255, 247, 237, 0.96) 0%, rgba(255, 251, 235, 0.92) 48%, rgba(254, 243, 199, 0.55) 100%);
+  box-shadow:
+    0 0 0 0 rgba(245, 158, 11, 0.22),
+    0 18px 44px rgba(180, 83, 9, 0.14);
+  animation: portal-checkback-breathe 3.4s ease-in-out infinite;
+}
+.portal-checkback__glow {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(251, 191, 36, 0.28) 0%, transparent 42%),
+    radial-gradient(circle at 88% 100%, rgba(245, 158, 11, 0.16) 0%, transparent 46%);
+}
+.portal-checkback__halo {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.35) 0%, transparent 70%);
+  animation: portal-checkback-halo 3.4s ease-in-out infinite;
+}
+.portal-checkback__icon {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(217, 119, 6, 0.28);
+}
+.portal-checkback__ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 1.15rem;
+  border: 1.5px solid rgba(245, 158, 11, 0.45);
+  animation: portal-checkback-ring 2.6s ease-out infinite;
+}
+.portal-checkback__ring--delayed {
+  animation-delay: 0.9s;
+}
+.portal-checkback__badge {
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+.portal-checkback__hint {
+  color: #9a3412;
+}
+.portal-checkback__proof {
+  border: 1px solid rgba(217, 119, 6, 0.18);
+  background: rgba(255, 255, 255, 0.45);
+}
+.portal-checkback__choice {
+  border: 1.5px solid rgba(180, 83, 9, 0.22);
+  background: rgba(255, 255, 255, 0.78);
+  color: #1c1917;
+  box-shadow: 0 8px 20px rgba(180, 83, 9, 0.08);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+.portal-checkback__choice:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(5, 150, 105, 0.55);
+  box-shadow: 0 12px 28px rgba(16, 185, 129, 0.16);
+}
+.portal-checkback__choice--on {
+  border-color: rgba(5, 150, 105, 0.65);
+  background: linear-gradient(165deg, #a7f3d0 0%, #34d399 55%, #10b981 100%);
+  color: #065f46;
+}
+@keyframes portal-checkback-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 rgba(245, 158, 11, 0.18),
+      0 18px 44px rgba(180, 83, 9, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 12px rgba(245, 158, 11, 0.1),
+      0 24px 56px rgba(180, 83, 9, 0.18);
+  }
+}
+@keyframes portal-checkback-halo {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.12); }
+}
+@keyframes portal-checkback-ring {
+  0% { transform: scale(1); opacity: 0.65; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
+html:not(.light) .portal-checkback {
+  border-color: rgba(251, 191, 36, 0.38);
+  background:
+    linear-gradient(165deg, rgba(120, 53, 15, 0.35) 0%, rgba(28, 25, 23, 0.92) 48%, rgba(69, 26, 3, 0.28) 100%);
+  box-shadow:
+    0 0 0 0 rgba(251, 191, 36, 0.2),
+    0 18px 48px rgba(0, 0, 0, 0.35);
+}
+html:not(.light) .portal-checkback__badge {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.16);
+}
+html:not(.light) .portal-checkback__hint {
+  color: #fde68a;
+}
+html:not(.light) .portal-checkback__icon {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.14);
+}
+html:not(.light) .portal-checkback__choice {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  border-color: rgba(251, 191, 36, 0.28);
+}
+html:not(.light) .portal-checkback__choice--on {
+  color: #ecfdf5;
+}
+html:not(.light) .portal-checkback__proof {
+  background: rgba(0, 0, 0, 0.22);
+  border-color: rgba(251, 191, 36, 0.18);
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-checkback,
+  .portal-checkback__halo,
+  .portal-checkback__ring {
+    animation: none;
+  }
+}
 .portal-feedback-panel {
   border: 1px solid rgba(196, 163, 90, 0.18);
   background: rgba(255, 255, 255, 0.35);

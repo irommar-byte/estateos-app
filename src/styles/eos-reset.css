@@ -289,6 +289,16 @@ html:not(.light) .eos-portal-react {
   70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
+.eos-live-dot--amber {
+  background: #f59e0b;
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+  animation-name: eos-live-pulse-amber;
+}
+@keyframes eos-live-pulse-amber {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
 @media (prefers-reduced-motion: reduce) {
   .eos-live-dot { animation: none; }
 }

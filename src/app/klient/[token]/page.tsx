@@ -439,6 +439,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
 
+      {portal.type === "BUYER" && portal.pendingCheckback && token ? (
+        <ClientPortalIntelligenceCheckback
+          token={token}
+          checkback={portal.pendingCheckback}
+          onDone={() => void load()}
+        />
+      ) : null}
+
       {portal.type === "BUYER" && fromSzukam && token ? (
         <ClientPortalBuyerOnboarding
           token={token}
@@ -690,14 +698,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             />
           ) : null}
         </section>
-      ) : null}
-
-      {portal.type === "BUYER" && portal.pendingCheckback && token ? (
-        <ClientPortalIntelligenceCheckback
-          token={token}
-          checkback={portal.pendingCheckback}
-          onDone={() => void load()}
-        />
       ) : null}
 
       {portal.type === "BUYER" && token ? (
