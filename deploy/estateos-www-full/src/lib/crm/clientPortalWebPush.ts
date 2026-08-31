@@ -7,7 +7,13 @@ type PortalPushPayload = {
   body: string;
   url: string;
   tag?: string;
+  openChat?: boolean;
 };
+
+function portalSiteOrigin(): string {
+  const raw = String(process.env.NEXT_PUBLIC_SITE_URL || 'https://estateos.pl').trim();
+  return raw.replace(/\/$/, '');
+}
 
 function webPushConfig() {
   const publicKey = String(process.env.WEB_PUSH_PUBLIC_KEY || '').trim();
@@ -43,9 +49,10 @@ export async function sendClientPortalWebPush(
 
   const portalPath = `/klient/${encodeURIComponent(client.portalToken)}`;
   const portalUrl = payload.url || portalPath;
+  const origin = portalSiteOrigin();
   const absolutePortalUrl = portalUrl.startsWith('http')
     ? portalUrl
-    : `https://estateos.pl${portalUrl.startsWith('/') ? portalUrl : `/${portalUrl}`}`;
+    : `${origin}${portalUrl.startsWith('/') ? portalUrl : `/${portalUrl}`}`;
 
   if (payload.native !== false && client.linkedUserId) {
     await sendNotification({
@@ -54,7 +61,8 @@ export async function sendClientPortalWebPush(
       title: payload.title,
       body: payload.body,
       data: {
-        kind: 'CLIENT_PORTAL',
+        kind: payload.openChat ? 'CLIENT_PORTAL_MESSAGE' : 'CLIENT_PORTAL',
+        openChat: Boolean(payload.openChat),
         portalToken: client.portalToken,
         deeplink: absolutePortalUrl,
         url: absolutePortalUrl,

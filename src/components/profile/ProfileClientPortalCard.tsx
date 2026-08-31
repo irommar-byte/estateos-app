@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import ProfileCardShell from './ProfileCardShell';
 import { getActivePortalToken, listPortalSessions, type StoredPortalSession } from '../../lib/clientPortalSession';
 import { useThemeStore } from '../../store/useThemeStore';
@@ -10,14 +10,20 @@ export default function ProfileClientPortalCard() {
   const navigation = useNavigation<any>();
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const [session, setSession] = useState<StoredPortalSession | null>(null);
+  const [extraCount, setExtraCount] = useState(0);
 
-  useEffect(() => {
-    void (async () => {
-      const sessions = await listPortalSessions();
-      const active = await getActivePortalToken();
-      setSession(sessions.find((row) => row.token === active) || sessions[0] || null);
-    })();
+  const refresh = useCallback(async () => {
+    const sessions = await listPortalSessions();
+    const active = await getActivePortalToken();
+    setSession(sessions.find((row) => row.token === active) || sessions[0] || null);
+    setExtraCount(Math.max(0, sessions.length - 1));
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   if (!session) return null;
 
@@ -39,6 +45,7 @@ export default function ProfileClientPortalCard() {
             <Text style={[styles.sub, { color: muted }]} numberOfLines={1}>
               {session.agencyName || 'EstateOS'}
               {session.clientName ? ` · ${session.clientName}` : ''}
+              {extraCount > 0 ? ` · +${extraCount} inne` : ''}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={muted} />

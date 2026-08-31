@@ -134,6 +134,16 @@ export function resolvePortalAccountStatus(params: {
   }
 
   if (decision.action === 'missing_email') {
+    const userEmail = normalizePortalEmail(params.sessionUserEmail);
+    if (!userEmail || isPlaceholderPortalEmail(userEmail)) {
+      return {
+        status: 'wrong_account',
+        emailMasked,
+        sessionEmailMasked,
+        linked: Boolean(linkedUserId),
+        linkedToYou: false,
+      };
+    }
     const clientEmail = normalizePortalEmail(params.clientEmail);
     if (!clientEmail || isPlaceholderPortalEmail(clientEmail)) {
       return {
@@ -166,9 +176,13 @@ export function bearerUserIdFromRequest(req: Request): number | null {
   );
 }
 
-async function migratePortalDevices(fromUserId: number, toUserId: number) {
+async function migratePortalDevices(
+  fromUserId: number,
+  toUserId: number,
+  db: Pick<typeof prisma, 'device'> = prisma,
+) {
   if (fromUserId === toUserId) return;
-  const devices = await prisma.device.findMany({
+  const devices = await db.device.findMany({
     where: { userId: fromUserId, isActive: true },
     select: {
       id: true,
@@ -179,7 +193,7 @@ async function migratePortalDevices(fromUserId: number, toUserId: number) {
     },
   });
   for (const device of devices) {
-    await prisma.device.upsert({
+    await db.device.upsert({
       where: { userId_expoPushToken: { userId: toUserId, expoPushToken: device.expoPushToken } },
       update: {
         isActive: true,
@@ -197,7 +211,7 @@ async function migratePortalDevices(fromUserId: number, toUserId: number) {
         isActive: true,
       },
     });
-    await prisma.device.update({
+    await db.device.update({
       where: { id: device.id },
       data: { isActive: false },
     });
@@ -242,13 +256,14 @@ export async function linkPortalAccount(params: {
     return { ok: true, linkedUserId: user.id };
   }
 
-  if (decision.action === 'reassign') {
-    await migratePortalDevices(decision.fromUserId, user.id);
-  }
-
-  await prisma.agencyClient.update({
-    where: { id: client.id },
-    data: { linkedUserId: user.id },
+  await prisma.$transaction(async (tx) => {
+    if (decision.action === 'reassign') {
+      await migratePortalDevices(decision.fromUserId, user.id, tx);
+    }
+    await tx.agencyClient.update({
+      where: { id: client.id },
+      data: { linkedUserId: user.id },
+    });
   });
 
   return { ok: true, linkedUserId: user.id };

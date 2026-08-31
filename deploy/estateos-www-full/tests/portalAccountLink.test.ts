@@ -108,6 +108,15 @@ test('resolvePortalAccountStatus distinguishes linked, ready, wrong_account and 
   assert.equal(
     resolvePortalAccountStatus({
       clientEmail: 'klient@estateos.pl',
+      clientLinkedUserId: null,
+      sessionUserId: 9,
+      sessionUserEmail: 'crm+48@portal.estateos.internal',
+    }).status,
+    'wrong_account',
+  );
+  assert.equal(
+    resolvePortalAccountStatus({
+      clientEmail: 'klient@estateos.pl',
       clientLinkedUserId: 5,
       sessionUserId: null,
       sessionUserEmail: null,

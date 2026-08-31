@@ -303,6 +303,7 @@ export async function sendPortalChat(params: {
       body: body.slice(0, 160),
       tag: `estateos-client-chat-${params.clientId}`,
       native: !contactMirrored,
+      openChat: true,
     }).catch(() => {});
   }
 

@@ -1281,6 +1281,10 @@ type PushNavigationTarget =
   | {
       screen: 'ClientPortal';
       params: { portalToken: string };
+    }
+  | {
+      screen: 'ClientPortalChat';
+      params: { portalToken: string; agentName?: string };
     };
 
 const parseNumericOrStringId = (value: unknown): number | string | null => {
@@ -1412,6 +1416,20 @@ const parsePushTargetFromResponse = (
       ? extractPortalTokenFromDeeplink(deeplink)
       : null;
   if (portalToken) {
+    const openChat =
+      data.openChat === true ||
+      data.openChat === 'true' ||
+      String(firstDefined(data.kind, data.type) || '').toUpperCase() === 'CLIENT_PORTAL_MESSAGE' ||
+      String(data.tag || '').includes('client-chat');
+    if (openChat) {
+      return {
+        screen: 'ClientPortalChat',
+        params: {
+          portalToken,
+          agentName: String(data.agentName || data.title || 'Agent').trim() || 'Agent',
+        },
+      };
+    }
     return { screen: 'ClientPortal', params: { portalToken } };
   }
   const deeplinkLower = deeplink.toLowerCase();
@@ -1801,15 +1819,19 @@ export default function App() {
     if (target.screen === 'ClientPortal' && target.params?.portalToken) {
       void rememberPortalSession({ token: String(target.params.portalToken) });
     }
+    if (target.screen === 'ClientPortalChat' && target.params?.portalToken) {
+      void rememberPortalSession({ token: String(target.params.portalToken) });
+    }
     if (
       target.screen === 'OfferDetail' ||
       target.screen === 'CarDetail' ||
       target.screen === 'DealroomChat' ||
       target.screen === 'ContactChat' ||
       target.screen === 'AgencyClientDetail' ||
-      target.screen === 'ClientPortal'
+      target.screen === 'ClientPortal' ||
+      target.screen === 'ClientPortalChat'
     ) {
-      (navigationRef as any).dispatch(StackActions.push(target.screen, target.params));
+      (navigationRef as any).navigate(target.screen, target.params);
     } else {
       (navigationRef as any).navigate(target.screen, target.params);
     }

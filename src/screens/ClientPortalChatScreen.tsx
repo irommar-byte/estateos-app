@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import InstantMessageThread, { type IMThreadMessage } from '../components/messaging/InstantMessageThread';
 import { useThemeStore } from '../store/useThemeStore';
 import { getChatTheme } from '../components/messaging/chatTheme';
+import { useAppActiveInterval } from '../hooks/useAppActivePoll';
 import {
   listPortalMessages,
   markPortalMessagesRead,
@@ -41,27 +42,39 @@ export default function ClientPortalChatScreen() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const silent = useRef(false);
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
-    if (!portalToken) return;
+    if (!portalToken) {
+      setError('Brak tokenu panelu.');
+      setLoading(false);
+      return;
+    }
+    const seq = ++loadSeq.current;
     try {
       const state = await listPortalMessages(portalToken);
+      if (seq !== loadSeq.current) return;
       setMessages(state.messages.map(mapPortalMessage));
+      setError(null);
       await markPortalMessagesRead(portalToken);
+    } catch (err: any) {
+      if (seq !== loadSeq.current) return;
+      setError(err?.message || 'Nie udało się wczytać wiadomości.');
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [portalToken]);
 
   useEffect(() => {
     void load();
-    const id = setInterval(() => {
-      if (silent.current) return;
-      void load();
-    }, 5000);
-    return () => clearInterval(id);
   }, [load]);
+
+  useAppActiveInterval(() => {
+    if (silent.current) return;
+    void load();
+  }, 5000, Boolean(portalToken));
 
   const onSend = async () => {
     const content = draft.trim();
@@ -72,11 +85,21 @@ export default function ClientPortalChatScreen() {
       await sendPortalMessage(portalToken, content);
       setDraft('');
       await load();
+    } catch (err: any) {
+      Alert.alert('Wiadomość', err?.message || 'Nie udało się wysłać wiadomości.');
     } finally {
       setSending(false);
       silent.current = false;
     }
   };
+
+  if (!portalToken) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#000' : '#F2F2F7' }}>
+        <Text style={{ color: isDark ? '#FFF' : '#000' }}>Brak tokenu panelu.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: isDark ? '#000' : '#F2F2F7' }}>
@@ -92,7 +115,14 @@ export default function ClientPortalChatScreen() {
         </View>
       </View>
 
-      {loading && messages.length === 0 ? (
+      {error && messages.length === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+          <Text style={{ color: isDark ? '#FFF' : '#000', textAlign: 'center' }}>{error}</Text>
+          <Pressable onPress={() => void load()} style={{ marginTop: 12 }}>
+            <Text style={{ color: '#34C759', fontWeight: '700' }}>Spróbuj ponownie</Text>
+          </Pressable>
+        </View>
+      ) : loading && messages.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color="#34C759" />
         </View>

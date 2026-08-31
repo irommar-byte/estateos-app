@@ -27,6 +27,7 @@ import {
   type OfferStackId,
 } from '../lib/clientPortalBoard';
 import { rememberPortalSession } from '../lib/clientPortalSession';
+import { useAppActiveInterval } from '../hooks/useAppActivePoll';
 import {
   getClientPortalPushPermissionStatus,
   registerClientPortalPushAfterLink,
@@ -88,6 +89,19 @@ export default function ClientPortalScreen() {
   const silent = useRef(false);
   const stacksInitialized = useRef(false);
   const autoLinkAttempted = useRef(false);
+  const loadSeq = useRef(0);
+  const linkInFlight = useRef(false);
+
+  useEffect(() => {
+    stacksInitialized.current = false;
+    autoLinkAttempted.current = false;
+    loadSeq.current += 1;
+    setPortal(null);
+    setOpenStacks([]);
+    setOpenMatchIds([]);
+    setPendingPhrases({});
+    setError(null);
+  }, [portalToken]);
 
   const refreshPushStatus = useCallback(async () => {
     setPushPermission(await getClientPortalPushPermissionStatus());
@@ -100,10 +114,12 @@ export default function ClientPortalScreen() {
         setLoading(false);
         return;
       }
+      const seq = ++loadSeq.current;
       if (mode === 'refresh') setRefreshing(true);
       else if (mode === 'full') setLoading(true);
       try {
         const next = await fetchClientPortal(portalToken, authToken);
+        if (seq !== loadSeq.current) return;
         setPortal(next);
         setError(null);
         if (!stacksInitialized.current) {
@@ -121,10 +137,13 @@ export default function ClientPortalScreen() {
         }
         await refreshPushStatus();
       } catch (err: any) {
+        if (seq !== loadSeq.current) return;
         if (mode !== 'silent') setError(err?.message || 'Nie udało się otworzyć panelu.');
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (seq === loadSeq.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [portalToken, authToken, refreshPushStatus],
@@ -134,13 +153,10 @@ export default function ClientPortalScreen() {
     void load('full');
   }, [load]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (silent.current) return;
-      void load('silent');
-    }, 8000);
-    return () => clearInterval(id);
-  }, [load]);
+  useAppActiveInterval(() => {
+    if (silent.current) return;
+    void load('silent');
+  }, 8000, Boolean(portalToken));
 
   const stacks = useMemo(() => groupPortalOfferStacks(portal?.matches || []), [portal?.matches]);
   const pulse = useMemo(
@@ -156,10 +172,35 @@ export default function ClientPortalScreen() {
 
   const accountStatus = portal?.account?.status ?? 'anonymous';
   const canOfferPush = accountStatus === 'linked' || accountStatus === 'ready';
+  const canInteract = accountStatus !== 'wrong_account';
+  const canChat = Boolean(portal?.canChat) && canInteract;
 
   const patchAccountStatus = (status: PortalAccount['status']) => {
     setPortal((prev) => (prev ? { ...prev, account: accountFromStatus(prev.account, status) } : prev));
   };
+
+  const performLink = useCallback(
+    async (options?: { promptPush?: boolean }) => {
+      if (!authToken || !portalToken || linkInFlight.current) return false;
+      linkInFlight.current = true;
+      setLinking(true);
+      try {
+        await linkPortalAccount(portalToken, authToken);
+        patchAccountStatus('linked');
+        await registerClientPortalPushAfterLink({ prompt: options?.promptPush ?? false });
+        await refreshPushStatus();
+        await load('silent');
+        return true;
+      } catch (err: any) {
+        Alert.alert('Powiązanie', err?.message || 'Nie udało się powiązać konta.');
+        return false;
+      } finally {
+        linkInFlight.current = false;
+        setLinking(false);
+      }
+    },
+    [authToken, portalToken, load, refreshPushStatus],
+  );
 
   const onLinkAccount = async () => {
     if (!authToken) {
@@ -181,35 +222,16 @@ export default function ClientPortalScreen() {
       );
       return;
     }
-    setLinking(true);
-    try {
-      await linkPortalAccount(portalToken, authToken);
-      patchAccountStatus('linked');
-      await registerClientPortalPushAfterLink({ prompt: true });
-      await refreshPushStatus();
-      await load('silent');
-    } catch (err: any) {
-      Alert.alert('Powiązanie', err?.message || 'Nie udało się powiązać konta.');
-    } finally {
-      setLinking(false);
-    }
+    await performLink({ promptPush: true });
   };
 
   useEffect(() => {
     if (!authToken || !portalToken || accountStatus !== 'ready' || autoLinkAttempted.current) return;
     autoLinkAttempted.current = true;
-    void linkPortalAccount(portalToken, authToken)
-      .then(async () => {
-        patchAccountStatus('linked');
-        await registerClientPortalPushAfterLink({ prompt: true });
-        await refreshPushStatus();
-        await load('silent');
-      })
-      .catch((err: any) => {
-        autoLinkAttempted.current = false;
-        Alert.alert('Powiązanie', err?.message || 'Nie udało się powiązać konta.');
-      });
-  }, [authToken, portalToken, accountStatus, load, refreshPushStatus]);
+    void performLink({ promptPush: false }).then((ok) => {
+      if (!ok) autoLinkAttempted.current = false;
+    });
+  }, [authToken, portalToken, accountStatus, performLink]);
 
   const toggleStack = (id: OfferStackId) => {
     setOpenStacks((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -220,6 +242,7 @@ export default function ClientPortalScreen() {
   };
 
   const rateMatch = async (match: PortalMatch, sentiment: 'like' | 'maybe' | 'dislike') => {
+    if (!canInteract) return;
     silent.current = true;
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -227,6 +250,11 @@ export default function ClientPortalScreen() {
         matchId: match.id,
         sentiment,
         phrases: pendingPhrases[match.id] || [],
+      });
+      setPendingPhrases((prev) => {
+        const next = { ...prev };
+        delete next[match.id];
+        return next;
       });
       setOpenStacks((prev) => (prev.includes(sentiment) ? prev : [...prev, sentiment]));
       await load('silent');
@@ -238,7 +266,7 @@ export default function ClientPortalScreen() {
   };
 
   const answerCheckback = async (optionId: string) => {
-    if (!portal?.pendingCheckback) return;
+    if (!portal?.pendingCheckback || !canInteract) return;
     silent.current = true;
     try {
       await Haptics.selectionAsync();
@@ -290,9 +318,21 @@ export default function ClientPortalScreen() {
               <Text style={[styles.rowSub, { color: colors.secondary }]}>
                 Ten panel jest dla {account?.emailMasked || 'klienta z CRM'}
                 {account?.sessionEmailMasked ? ` · jesteś zalogowany jako ${account.sessionEmailMasked}` : ''}.
+                Podglądasz panel — oceny i czat są wyłączone.
               </Text>
             </View>
           </View>
+          <Pressable
+            onPress={() =>
+              navigation.navigate('MainTabs', {
+                screen: 'Profil',
+                params: { authIntent: 'login' },
+              })
+            }
+            style={[styles.primaryBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
+          >
+            <Text style={[styles.primaryBtnText, { color: colors.text }]}>Przełącz konto</Text>
+          </Pressable>
         </ProfileCardShell>
       );
     }
@@ -391,7 +431,12 @@ export default function ClientPortalScreen() {
             {portal?.clientName} · {portal?.agentName}
           </Text>
         </View>
-        <Pressable onPress={openChat} hitSlop={8} style={styles.headerBtn}>
+        <Pressable
+          onPress={canChat ? openChat : undefined}
+          disabled={!canChat}
+          hitSlop={8}
+          style={[styles.headerBtn, !canChat ? { opacity: 0.35 } : null]}
+        >
           <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.green} />
         </Pressable>
       </View>
@@ -423,7 +468,7 @@ export default function ClientPortalScreen() {
         {renderAccountSection()}
         {renderPushRow()}
 
-        {portal?.pendingCheckback ? (
+        {portal?.pendingCheckback && canInteract ? (
           <ProfileCardShell isDark={isDark} style={{ marginBottom: 12, borderWidth: 1, borderColor: colors.gold }}>
             <Text style={{ color: colors.gold, fontWeight: '800', fontSize: 11, letterSpacing: 0.5 }}>
               WYMAGA TWOJEJ ODPOWIEDZI
@@ -541,7 +586,7 @@ export default function ClientPortalScreen() {
                             >
                               <Text style={{ color: colors.green, fontWeight: '700' }}>Zobacz ogłoszenie</Text>
                             </Pressable>
-                            {stack.id === 'new' ? (
+                            {stack.id === 'new' && canInteract ? (
                               <>
                                 <View style={styles.phraseWrap}>
                                   {phrases.map((phrase) => {

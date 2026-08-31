@@ -68,16 +68,25 @@ export async function listPortalTokens(): Promise<string[]> {
 export async function restorePortalSessionsFromServer(
   portals: Array<{ portalToken?: string; clientName?: string; agencyName?: string }>,
 ): Promise<string | null> {
-  let active: string | null = null;
+  const normalized: StoredPortalSession[] = [];
   for (const portal of portals) {
     const token = normalizeToken(portal.portalToken);
     if (!token) continue;
-    await rememberPortalSession({
+    normalized.push({
       token,
       clientName: portal.clientName,
       agencyName: portal.agencyName,
     });
-    if (!active) active = token;
   }
-  return active;
+  if (normalized.length === 0) return null;
+
+  const active = normalized[0];
+  const existing = await readSessions();
+  const merged = new Map<string, StoredPortalSession>();
+  for (const row of [...normalized, ...existing]) {
+    if (row.token) merged.set(row.token, { ...merged.get(row.token), ...row });
+  }
+  await writeSessions([...merged.values()]);
+  await AsyncStorage.setItem(ACTIVE_KEY, active.token);
+  return active.token;
 }
