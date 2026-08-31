@@ -36,7 +36,7 @@ import {
   formatClientFeedbackForAgent,
 } from '@/lib/crm/clientPortalFeedback';
 import { applyIntelligenceLearning, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
-import { bearerUserIdFromRequest, resolvePortalAccountStatus } from '@/lib/crm/portalAccountLink';
+import { bearerUserIdFromRequest, resolvePortalAccountStatus, resolvePortalActivationHint } from '@/lib/crm/portalAccountLink';
 import {
   getPendingCheckback,
   respondToIntelligenceCheckback,
@@ -348,6 +348,10 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     sessionUserId,
     sessionUserEmail,
   });
+  const activation =
+    account.status === 'anonymous'
+      ? resolvePortalActivationHint({ clientEmail: client.email, clientPhone: client.phone })
+      : null;
 
   return NextResponse.json({
     success: true,
@@ -379,7 +383,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           })
         : 0,
       canChat: true,
-      account,
+      account: { ...account, activation },
       meeting: meeting
         ? {
             ...meeting,
