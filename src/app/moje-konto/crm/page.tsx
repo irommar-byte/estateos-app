@@ -681,6 +681,48 @@ export default function CRMDashboard() {
     return profileData;
   };
 
+  const loadAgencyContextForUser = async (uData: { id?: number | string }) => {
+    if (!isAgentOrAgencySeller(uData)) {
+      setAgencyMembership(null);
+      setAgencyGrowthInsight(null);
+      return;
+    }
+    try {
+      const meRes = await fetch('/api/agency-company/me', { credentials: 'include', cache: 'no-store' });
+      const meJson = await meRes.json().catch(() => ({}));
+      if (meRes.ok && meJson?.membership) {
+        setAgencyMembership(meJson.membership as AgencyMembershipUi);
+        if (
+          meJson.membership.role === 'ADMIN' &&
+          meJson.membership.status === 'ACTIVE'
+        ) {
+          try {
+            const growthRes = await fetch('/api/agency-company/growth-insight', {
+              credentials: 'include',
+              cache: 'no-store',
+            });
+            const growthJson = await growthRes.json().catch(() => ({}));
+            setAgencyGrowthInsight(
+              growthRes.ok && growthJson?.growthInsight
+                ? (growthJson.growthInsight as PartnerGrowthInsight)
+                : null,
+            );
+          } catch {
+            setAgencyGrowthInsight(null);
+          }
+        } else {
+          setAgencyGrowthInsight(null);
+        }
+      } else {
+        setAgencyMembership(null);
+        setAgencyGrowthInsight(null);
+      }
+    } catch {
+      setAgencyMembership(null);
+      setAgencyGrowthInsight(null);
+    }
+  };
+
   const initCrm = async () => {
     try {
       const authRes = await fetch('/api/auth/check');
@@ -692,10 +734,16 @@ export default function CRMDashboard() {
       }
       
       const uData = await refreshCurrentUserFromBackend();
+      const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const tabFromUrl = sParams?.get('tab');
+      const agencyUser = isAgentOrAgencySeller(uData);
+      const clientsFirst =
+        tabFromUrl === 'klienci' ||
+        (agencyUser && (!tabFromUrl || tabFromUrl === 'radar'));
 
       const fromDesk = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('from') === 'desk';
       const alreadyBooted = typeof window !== 'undefined' && Boolean(sessionStorage.getItem('pro_booted'));
-      if (uData.isPro && (!alreadyBooted || fromDesk || crmLaunch?.isLaunching)) {
+      if (uData.isPro && (!alreadyBooted || fromDesk || crmLaunch?.isLaunching) && !clientsFirst) {
         bootRepeatRef.current = alreadyBooted && !fromDesk && !crmLaunch?.isLaunching;
         setIsBooting(true);
         sessionStorage.setItem('pro_booted', 'true');
@@ -703,46 +751,33 @@ export default function CRMDashboard() {
         const bootGreetings = dict.crm.boot.greetings;
         const randGreet = bootGreetings[Math.floor(Math.random() * bootGreetings.length)].replace("{name}", rawName);
         setGreeting(randGreet);
+      } else if (uData.isPro && clientsFirst) {
+        sessionStorage.setItem('pro_booted', 'true');
+      }
+
+      const loadCrmHeavyData = async () => {
+        await fetchRadarCatalog();
+        setRadarDisplayFilters(await loadRadarFiltersForUser(uData));
+        await Promise.all([fetchData(uData.id), fetchRadarData()]);
+      };
+
+      if (clientsFirst) {
+        if (agencyUser) {
+          void loadAgencyContextForUser(uData);
+        } else {
+          setAgencyMembership(null);
+          setAgencyGrowthInsight(null);
+        }
+        setLoading(false);
+        void loadCrmHeavyData();
+        return;
       }
 
       await fetchRadarCatalog();
       setRadarDisplayFilters(await loadRadarFiltersForUser(uData));
 
-      if (isAgentOrAgencySeller(uData)) {
-        try {
-          const meRes = await fetch('/api/agency-company/me', { credentials: 'include', cache: 'no-store' });
-          const meJson = await meRes.json().catch(() => ({}));
-          if (meRes.ok && meJson?.membership) {
-            setAgencyMembership(meJson.membership as AgencyMembershipUi);
-            if (
-              meJson.membership.role === 'ADMIN' &&
-              meJson.membership.status === 'ACTIVE'
-            ) {
-              try {
-                const growthRes = await fetch('/api/agency-company/growth-insight', {
-                  credentials: 'include',
-                  cache: 'no-store',
-                });
-                const growthJson = await growthRes.json().catch(() => ({}));
-                setAgencyGrowthInsight(
-                  growthRes.ok && growthJson?.growthInsight
-                    ? (growthJson.growthInsight as PartnerGrowthInsight)
-                    : null,
-                );
-              } catch {
-                setAgencyGrowthInsight(null);
-              }
-            } else {
-              setAgencyGrowthInsight(null);
-            }
-          } else {
-            setAgencyMembership(null);
-            setAgencyGrowthInsight(null);
-          }
-        } catch {
-          setAgencyMembership(null);
-          setAgencyGrowthInsight(null);
-        }
+      if (agencyUser) {
+        await loadAgencyContextForUser(uData);
       } else {
         setAgencyMembership(null);
         setAgencyGrowthInsight(null);

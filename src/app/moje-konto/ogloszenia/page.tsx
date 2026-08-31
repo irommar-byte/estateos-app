@@ -127,7 +127,7 @@ export default function AccountListingsPage() {
   const [homeListings, setHomeListings] = useState<HomeListing[]>([]);
   const [carListings, setCarListings] = useState<CarListing[]>([]);
   const [loadingHome, setLoadingHome] = useState(true);
-  const [loadingCars, setLoadingCars] = useState(true);
+  const [loadingCars, setLoadingCars] = useState(false);
   const [deletingCarId, setDeletingCarId] = useState<number | null>(null);
   const [archivingHomeId, setArchivingHomeId] = useState<number | null>(null);
   const [isAgent, setIsAgent] = useState(false);
@@ -170,14 +170,18 @@ export default function AccountListingsPage() {
 
   useEffect(() => {
     void loadHomeListings();
-    void loadCarListings();
     void fetch("/api/user/profile", { cache: "no-store", credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         setIsAgent(isAgentOrAgencySeller(json?.user || json));
       })
       .catch(() => setIsAgent(false));
-  }, [loadHomeListings, loadCarListings]);
+  }, [loadHomeListings]);
+
+  useEffect(() => {
+    if (vertical !== "car") return;
+    void loadCarListings();
+  }, [vertical, loadCarListings]);
 
   const activeItems = useMemo(() => (vertical === "home" ? homeListings : carListings), [vertical, homeListings, carListings]);
   const homeGrouped = useMemo(() => groupListingsBySection(homeListings), [homeListings]);
