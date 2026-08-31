@@ -710,7 +710,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             intelligenceEnabled={portal.intelligenceEnabled}
             live={livePortalSync}
             unscoredCount={portal.unscoredMatchCount}
-            showUpcomingSlot={showUpcomingSlot}
+            pendingCheckback={Boolean(portal.pendingCheckback)}
             awaitingFirstOffer={awaitingFirstOffer}
             freshBanner={freshMatchBanner}
             savingId={savingId}

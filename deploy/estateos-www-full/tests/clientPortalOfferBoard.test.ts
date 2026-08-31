@@ -10,6 +10,8 @@ import {
   initialOpenMatchIds,
   matchStackId,
   phraseBarsFromMatches,
+  polishPlural,
+  resolveAssistantPulse,
 } from '../src/lib/crm/clientPortalOfferBoard';
 
 function match(partial: {
@@ -151,4 +153,57 @@ test('initial open ids keep stored cards and only auto-open first new on first v
   assert.deepEqual(initialOpenMatchIds({ matches, storedIds: [] }).sort(), [2]);
   assert.deepEqual(initialOpenMatchIds({ matches, storedIds: [3, 99] }), [3]);
   assert.deepEqual(initialOpenMatchIds({ matches, storedIds: [3], focusMatchId: 1 }).sort(), [1, 3]);
+});
+
+test('assistant pulse waits for reaction instead of promising the next card', () => {
+  assert.equal(polishPlural(1, 'dopasowanie', 'dopasowania', 'dopasowań'), 'dopasowanie');
+  assert.equal(polishPlural(2, 'dopasowanie', 'dopasowania', 'dopasowań'), 'dopasowania');
+  assert.equal(polishPlural(5, 'dopasowanie', 'dopasowania', 'dopasowań'), 'dopasowań');
+
+  const waiting = resolveAssistantPulse({
+    intelligenceEnabled: true,
+    pendingNewCount: 5,
+    unscoredCount: 2,
+    pendingCheckback: false,
+  });
+  assert.equal(waiting?.mode, 'waiting_reaction');
+  assert.match(waiting?.title || '', /oceń/i);
+  assert.match(waiting?.body || '', /5 nowych ofert/);
+  assert.doesNotMatch(waiting?.body || '', /za chwilę/);
+
+  const checkback = resolveAssistantPulse({
+    intelligenceEnabled: true,
+    pendingNewCount: 5,
+    unscoredCount: 2,
+    pendingCheckback: true,
+  });
+  assert.equal(checkback?.mode, 'waiting_checkback');
+
+  const preparing = resolveAssistantPulse({
+    intelligenceEnabled: true,
+    pendingNewCount: 0,
+    unscoredCount: 3,
+    pendingCheckback: false,
+  });
+  assert.equal(preparing?.mode, 'preparing');
+  assert.equal(preparing?.busy, true);
+
+  const watching = resolveAssistantPulse({
+    intelligenceEnabled: true,
+    pendingNewCount: 0,
+    unscoredCount: 0,
+    pendingCheckback: false,
+  });
+  assert.equal(watching?.mode, 'watching');
+  assert.equal(watching?.busy, false);
+
+  assert.equal(
+    resolveAssistantPulse({
+      intelligenceEnabled: false,
+      pendingNewCount: 0,
+      unscoredCount: 0,
+      pendingCheckback: false,
+    }),
+    null,
+  );
 });
