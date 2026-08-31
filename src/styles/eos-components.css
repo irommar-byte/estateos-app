@@ -1512,6 +1512,107 @@ html:not(.light) .portal-checkback__proof {
     animation: none;
   }
 }
+
+.portal-assistant-pulse {
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  background:
+    linear-gradient(165deg, rgba(16, 185, 129, 0.07) 0%, rgba(255, 255, 255, 0.04) 55%, rgba(16, 185, 129, 0.04) 100%);
+}
+html.light .portal-assistant-pulse {
+  background:
+    linear-gradient(165deg, rgba(236, 253, 245, 0.7) 0%, rgba(255, 255, 255, 0.78) 55%, rgba(254, 252, 232, 0.55) 100%);
+}
+.portal-assistant-pulse__glow {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(16, 185, 129, 0.12) 0%, transparent 52%),
+    radial-gradient(circle at 90% 100%, rgba(52, 211, 153, 0.08) 0%, transparent 48%);
+}
+.portal-assistant-pulse__core {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+}
+.portal-assistant-pulse__badge {
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+.portal-assistant-pulse__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.35rem;
+  border: 1.5px solid rgba(16, 185, 129, 0.35);
+  animation: portal-assistant-ring 2.8s ease-out infinite;
+}
+.portal-assistant-pulse__ring--delayed {
+  animation-delay: 1s;
+}
+.portal-assistant-pulse__cta {
+  background: #10b981;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.28);
+}
+.portal-assistant-pulse--waiting_reaction,
+.portal-assistant-pulse--waiting_checkback {
+  border-color: rgba(217, 119, 6, 0.28);
+}
+html.light .portal-assistant-pulse--waiting_reaction,
+html.light .portal-assistant-pulse--waiting_checkback {
+  background:
+    linear-gradient(165deg, rgba(255, 247, 237, 0.92) 0%, rgba(255, 255, 255, 0.8) 55%, rgba(254, 243, 199, 0.4) 100%);
+}
+.portal-assistant-pulse--waiting_reaction .portal-assistant-pulse__glow,
+.portal-assistant-pulse--waiting_checkback .portal-assistant-pulse__glow {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(251, 191, 36, 0.16) 0%, transparent 52%),
+    radial-gradient(circle at 90% 100%, rgba(245, 158, 11, 0.08) 0%, transparent 48%);
+}
+.portal-assistant-pulse--waiting_reaction .portal-assistant-pulse__core,
+.portal-assistant-pulse--waiting_checkback .portal-assistant-pulse__core {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(217, 119, 6, 0.28);
+}
+.portal-assistant-pulse--waiting_reaction .portal-assistant-pulse__badge,
+.portal-assistant-pulse--waiting_checkback .portal-assistant-pulse__badge {
+  color: #92400e;
+  border-color: rgba(217, 119, 6, 0.32);
+  background: rgba(245, 158, 11, 0.14);
+}
+.portal-assistant-pulse--waiting_reaction .portal-assistant-pulse__ring,
+.portal-assistant-pulse--waiting_checkback .portal-assistant-pulse__ring {
+  border-color: rgba(245, 158, 11, 0.4);
+  animation-duration: 3.4s;
+}
+.portal-assistant-pulse--watching .portal-assistant-pulse__ring {
+  animation-duration: 3.6s;
+}
+@keyframes portal-assistant-ring {
+  0% { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(1.38); opacity: 0; }
+}
+html:not(.light) .portal-assistant-pulse__badge {
+  color: #6ee7b7;
+}
+html:not(.light) .portal-assistant-pulse--waiting_reaction .portal-assistant-pulse__badge,
+html:not(.light) .portal-assistant-pulse--waiting_checkback .portal-assistant-pulse__badge {
+  color: #fde68a;
+}
+html:not(.light) .portal-assistant-pulse__core {
+  color: #6ee7b7;
+}
+html:not(.light) .portal-assistant-pulse--waiting_reaction .portal-assistant-pulse__core,
+html:not(.light) .portal-assistant-pulse--waiting_checkback .portal-assistant-pulse__core {
+  color: #fbbf24;
+}
+html:not(.light) .portal-assistant-pulse__cta {
+  color: #052e16;
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-assistant-pulse__ring {
+    animation: none;
+  }
+}
 .portal-feedback-panel {
   border: 1px solid rgba(196, 163, 90, 0.18);
   background: rgba(255, 255, 255, 0.35);

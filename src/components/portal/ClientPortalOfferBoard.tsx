@@ -23,6 +23,7 @@ import {
   defaultOpenStacks,
   formatPortalWhen,
   groupPortalOfferStacks,
+  resolveAssistantPulse,
   stackIdFromSentiment,
   type OfferStackId,
   type PortalBoardActivity,
@@ -182,7 +183,7 @@ export default function ClientPortalOfferBoard({
   intelligenceEnabled,
   live,
   unscoredCount,
-  showUpcomingSlot,
+  pendingCheckback,
   awaitingFirstOffer,
   freshBanner,
   savingId,
@@ -199,7 +200,7 @@ export default function ClientPortalOfferBoard({
   intelligenceEnabled: boolean;
   live: boolean;
   unscoredCount: number;
-  showUpcomingSlot: boolean;
+  pendingCheckback: boolean;
   awaitingFirstOffer: boolean;
   freshBanner: string | null;
   savingId: number | null;
@@ -227,6 +228,18 @@ export default function ClientPortalOfferBoard({
   const stacks = useMemo(() => groupPortalOfferStacks(matches), [matches]);
   const direction = useMemo(() => buildSearchDirection(criteria, matches), [criteria, matches]);
   const timeline = useMemo(() => buildPortalTimeline(matches, activities), [matches, activities]);
+  const pulse = useMemo(
+    () =>
+      resolveAssistantPulse({
+        intelligenceEnabled,
+        pendingNewCount: stats.pending,
+        unscoredCount,
+        pendingCheckback,
+      }),
+    [intelligenceEnabled, stats.pending, unscoredCount, pendingCheckback],
+  );
+  const pulseBeforeStacks = Boolean(pulse && pulse.mode !== "waiting_reaction");
+  const pulseAfterStacks = pulse?.mode === "waiting_reaction";
   const maxPhrase = Math.max(1, ...direction.phraseBars.map((bar) => bar.count));
 
   const [view, setView] = useState<ViewMode>("stacks");
@@ -257,6 +270,20 @@ export default function ClientPortalOfferBoard({
   const toggleStack = (id: OfferStackId) => {
     setOpenStacks((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   };
+
+  const focusNewOffers = () => {
+    setView("stacks");
+    if (!openStacks.includes("new")) setOpenStacks((current) => [...current, "new"]);
+    const first = stacks.new[0];
+    if (first) onEnsureMatchOpen(first.id);
+    window.setTimeout(() => {
+      document.getElementById("portal-stack-new")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  };
+
+  const pulseSlot = pulse ? (
+    <ClientPortalUpcomingOfferSlot pulse={pulse} live={live} onFocusNew={focusNewOffers} />
+  ) : null;
 
   const jumpToMatch = (matchId?: number) => {
     if (!matchId) return;
@@ -409,7 +436,9 @@ export default function ClientPortalOfferBoard({
           </div>
         )
       ) : view === "timeline" ? (
-        <div className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
+        <div className="space-y-3">
+          {pulseSlot}
+          <div className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
           <p className="eos-portal-label eos-portal-label--ok">Historia współpracy</p>
           <p className="mt-1 text-sm text-[var(--eos-muted)]">
             Kiedy poszła oferta, co odpowiedziałeś i o co pytał asystent.
@@ -441,19 +470,18 @@ export default function ClientPortalOfferBoard({
           ) : (
             <p className="mt-4 text-sm text-[var(--eos-muted)]">Historia pojawi się po pierwszej wysłanej ofercie.</p>
           )}
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
-          {showUpcomingSlot ? (
-            <ClientPortalUpcomingOfferSlot unscoredCount={unscoredCount} live={live} />
-          ) : null}
+          {pulseBeforeStacks ? pulseSlot : null}
           {OFFER_STACKS.map((stack) => {
             const rows = stacks[stack.id];
             if (!rows.length && stack.id !== "new") return null;
             const open = openStacks.includes(stack.id);
             const Icon = STACK_ICON[stack.id];
             return (
-              <div key={stack.id} className="eos-inset-frame overflow-hidden rounded-[1.6rem]">
+              <div id={`portal-stack-${stack.id}`} key={stack.id} className="eos-inset-frame scroll-mt-24 overflow-hidden rounded-[1.6rem]">
                 <button
                   type="button"
                   onClick={() => toggleStack(stack.id)}
@@ -505,6 +533,7 @@ export default function ClientPortalOfferBoard({
               </div>
             );
           })}
+          {pulseAfterStacks ? pulseSlot : null}
         </div>
       )}
     </section>
