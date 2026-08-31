@@ -26,7 +26,7 @@ import {
   resolveAssistantPulse,
   type OfferStackId,
 } from '../lib/clientPortalBoard';
-import { rememberPortalSession } from '../lib/clientPortalSession';
+import { rememberPortalSession, markPortalAuthReturn } from '../lib/clientPortalSession';
 import { useAppActiveInterval } from '../hooks/useAppActivePoll';
 import {
   getClientPortalPushPermissionStatus,
@@ -63,7 +63,6 @@ export default function ClientPortalScreen() {
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const user = useAuthStore((s) => s.user);
   const authToken = useAuthStore((s) => s.token);
-  const loginWithPasskey = useAuthStore((s) => s.loginWithPasskey);
 
   const portalToken = String(route.params?.portalToken || '').trim();
   const colors = {
@@ -202,24 +201,20 @@ export default function ClientPortalScreen() {
     [authToken, portalToken, load, refreshPushStatus],
   );
 
+  const openPortalAuth = useCallback(
+    (intent: 'register' | 'login') => {
+      void markPortalAuthReturn(portalToken);
+      navigation.navigate('MainTabs', {
+        screen: 'Profil',
+        params: { authIntent: intent },
+      });
+    },
+    [navigation, portalToken],
+  );
+
   const onLinkAccount = async () => {
     if (!authToken) {
-      Alert.alert(
-        'Powiąż z kontem',
-        'Zaloguj się tym samym e-mailem co w CRM (Passkey). Po reinstalacji panel wróci sam.',
-        [
-          { text: 'Anuluj', style: 'cancel' },
-          { text: 'Passkey', onPress: () => void loginWithPasskey(null) },
-          {
-            text: 'Zaloguj e-mailem',
-            onPress: () =>
-              navigation.navigate('MainTabs', {
-                screen: 'Profil',
-                params: { authIntent: 'login' },
-              }),
-          },
-        ],
-      );
+      openPortalAuth('register');
       return;
     }
     await performLink({ promptPush: true });
@@ -357,15 +352,18 @@ export default function ClientPortalScreen() {
     }
 
     return (
-      <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }}>
-        <Text style={[styles.rowTitle, { color: colors.text }]}>Zaloguj się, żeby zapamiętać panel</Text>
+      <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+        <Text style={[styles.rowTitle, { color: colors.text }]}>Załóż konto, żeby zapamiętać panel</Text>
         <Text style={[styles.rowSub, { color: colors.secondary, marginTop: 4 }]}>
           {account?.emailMasked
-            ? `Użyj ${account.emailMasked} — ten sam adres co w CRM.`
-            : 'Passkey albo e-mail od agenta.'}
+            ? `Pierwszy raz w EstateOS? Zarejestruj się na ${account.emailMasked} — ten sam adres co w CRM. Ustawisz hasło; „odzysk hasła” działa dopiero, gdy konto już istnieje.`
+            : 'Zarejestruj się tym samym e-mailem, który podałeś agentowi. Potem panel i powiadomienia zostaną przy Twoim koncie.'}
         </Text>
         <Pressable onPress={onLinkAccount} style={styles.primaryBtn}>
-          <Text style={styles.primaryBtnText}>Zaloguj i powiąż</Text>
+          <Text style={styles.primaryBtnText}>Załóż konto i powiąż</Text>
+        </Pressable>
+        <Pressable onPress={() => openPortalAuth('login')} style={{ marginTop: 12, alignItems: 'center' }}>
+          <Text style={{ color: colors.green, fontWeight: '600', fontSize: 14 }}>Mam już konto — zaloguj się</Text>
         </Pressable>
       </ProfileCardShell>
     );

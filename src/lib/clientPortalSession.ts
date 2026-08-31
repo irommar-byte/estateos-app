@@ -65,6 +65,25 @@ export async function listPortalTokens(): Promise<string[]> {
   return sessions.map((row) => row.token);
 }
 
+const AUTH_RETURN_KEY = '@estateos_client_portal_auth_return';
+
+/** Po rejestracji/logowaniu z panelu — wróć na ClientPortal i dokończ powiązanie. */
+export async function markPortalAuthReturn(token: string): Promise<void> {
+  const normalized = normalizeToken(token);
+  if (!normalized) return;
+  await AsyncStorage.setItem(AUTH_RETURN_KEY, normalized);
+}
+
+export async function consumePortalAuthReturn(): Promise<string | null> {
+  try {
+    const token = normalizeToken(await AsyncStorage.getItem(AUTH_RETURN_KEY));
+    await AsyncStorage.removeItem(AUTH_RETURN_KEY);
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 export async function restorePortalSessionsFromServer(
   portals: Array<{ portalToken?: string; clientName?: string; agencyName?: string }>,
 ): Promise<string | null> {

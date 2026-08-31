@@ -31,6 +31,7 @@ import { Picker } from '@react-native-picker/picker';
 import { fetchAgencyCompanyList } from '../services/agencyCompanyService';
 import type { AgencyCompanyListItem } from '../types/agencyMembership';
 import { API_URL } from '../config/network';
+import { consumePortalAuthReturn } from '../lib/clientPortalSession';
 import {
   buildE164FromNational,
   dialCodeFor,
@@ -541,7 +542,10 @@ const ForgotPasswordModal = ({ visible, onClose, theme, t }: any) => {
         setStep(2);
       } else {
         const d = await res.json();
-        Alert.alert(t('common.error'), d.message || t('auth.userNotFound'));
+        Alert.alert(
+          t('common.error'),
+          d.error || d.message || 'Na ten adres nie ma jeszcze konta. Załóż je przez rejestrację — „odzysk hasła” działa dopiero później.',
+        );
       }
     } catch { Alert.alert(t('common.error'), t('common.networkError')); }
     setLoading(false);
@@ -685,6 +689,22 @@ export default function AuthScreen({
   const store = useAuthStore() as any;
   const isDark = theme.glass === 'dark';
 
+  const tryReturnToClientPortal = async (): Promise<boolean> => {
+    const returnToken = await consumePortalAuthReturn();
+    if (!returnToken) return false;
+    try {
+      navigation.getParent()?.navigate('ClientPortal', { portalToken: returnToken });
+      return true;
+    } catch {
+      try {
+        navigation.navigate('ClientPortal', { portalToken: returnToken });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  };
+
   // 🚀 ZJAWISKOWA ANIMACJA HYPER-DRIVE 🚀
   const warpAnim = useRef(new Animated.Value(0)).current;
   const successGlowAnim = useRef(new Animated.Value(0)).current;
@@ -780,6 +800,7 @@ export default function AuthScreen({
           Alert.alert(t('auth.loginErrorTitle'), store.error || t('auth.loginFailed'));
           return;
         }
+        if (embedded && (await tryReturnToClientPortal())) return;
       } else {
         const regDigits = phone.replace(/\D/g, '');
         const regE164 = buildE164FromNational(phoneCountryIso, regDigits);
@@ -825,6 +846,7 @@ export default function AuthScreen({
         if (isRegistered) {
           const isLogged = await store.login(email, password, { registrationPhoneE164: regE164 });
           if (isLogged) {
+            if (embedded && (await tryReturnToClientPortal())) return;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             try {
               setMediaBusy(true);
@@ -892,7 +914,7 @@ export default function AuthScreen({
       if (success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (embedded) {
-          // Profil sam przełączy się na widok zalogowany — bez navigate i bez 3D (stabilność RN).
+          if (await tryReturnToClientPortal()) return;
           return;
         }
         Animated.sequence([
