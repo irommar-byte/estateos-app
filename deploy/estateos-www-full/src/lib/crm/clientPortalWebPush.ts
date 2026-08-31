@@ -1,5 +1,6 @@
 import * as webpush from 'web-push';
 import { prisma } from '@/lib/prisma';
+import { sendNotification } from '@/lib/core/notification.core';
 
 type PortalPushPayload = {
   title: string;
@@ -22,15 +23,13 @@ export function getClientPortalWebPushPublicKey(): string | null {
 
 export async function sendClientPortalWebPush(
   clientId: number,
-  payload: Omit<PortalPushPayload, 'url'> & { url?: string },
+  payload: Omit<PortalPushPayload, 'url'> & { url?: string; native?: boolean },
 ) {
-  const config = webPushConfig();
-  if (!config) return { sent: 0, skipped: 'not_configured' as const };
-
   const client = await prisma.agencyClient.findUnique({
     where: { id: clientId },
     select: {
       portalToken: true,
+      linkedUserId: true,
       portalPushSubscriptions: {
         orderBy: { updatedAt: 'desc' },
         take: 20,
@@ -38,7 +37,35 @@ export async function sendClientPortalWebPush(
       },
     },
   });
-  if (!client?.portalToken || client.portalPushSubscriptions.length === 0) {
+  if (!client?.portalToken) {
+    return { sent: 0, skipped: 'no_portal' as const };
+  }
+
+  const portalPath = `/klient/${encodeURIComponent(client.portalToken)}`;
+  const portalUrl = payload.url || portalPath;
+  const absolutePortalUrl = portalUrl.startsWith('http')
+    ? portalUrl
+    : `https://estateos.pl${portalUrl.startsWith('/') ? portalUrl : `/${portalUrl}`}`;
+
+  if (payload.native !== false && client.linkedUserId) {
+    await sendNotification({
+      userId: client.linkedUserId,
+      type: 'CRM_EVENT',
+      title: payload.title,
+      body: payload.body,
+      data: {
+        kind: 'CLIENT_PORTAL',
+        portalToken: client.portalToken,
+        deeplink: absolutePortalUrl,
+        url: absolutePortalUrl,
+        tag: payload.tag,
+      },
+    }).catch(() => {});
+  }
+
+  const config = webPushConfig();
+  if (!config) return { sent: 0, skipped: 'not_configured' as const };
+  if (client.portalPushSubscriptions.length === 0) {
     return { sent: 0, skipped: 'no_subscriptions' as const };
   }
 
@@ -46,7 +73,7 @@ export async function sendClientPortalWebPush(
   const body = JSON.stringify({
     title: payload.title,
     body: payload.body,
-    url: payload.url || `/klient/${encodeURIComponent(client.portalToken)}?chat=1`,
+    url: portalUrl,
     tag: payload.tag || `estateos-client-chat-${clientId}`,
   } satisfies PortalPushPayload);
 

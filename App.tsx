@@ -118,6 +118,7 @@ import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
 import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
 import AgencyClientCreateScreen from './src/screens/AgencyClientCreateScreen';
 import AgencyClientDetailScreen from './src/screens/AgencyClientDetailScreen';
+import ClientPortalScreen from './src/screens/ClientPortalScreen';
 import EstateOsMarketScreen from './src/screens/EstateOsMarketScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import CarsCatalogScreen from './src/screens/CarsCatalogScreen';
@@ -125,7 +126,8 @@ import CarDetailScreen from './src/screens/CarDetailScreen';
 import AddCarListingScreen from './src/screens/AddCarListingScreen';
 import MarketExploreShell from './src/navigation/MarketExploreShell';
 import EcosystemVerticalTransition from './src/components/ecosystem/EcosystemVerticalTransition';
-import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
+import { extractIdFromDeeplink, extractPortalTokenFromDeeplink } from './src/utils/deeplinkParse';
+import { rememberPortalSession } from './src/lib/clientPortalSession';
 import {
   extractPushDealAndOfferIds,
   firstDefined,
@@ -1274,6 +1276,10 @@ type PushNavigationTarget =
   | {
       screen: 'AgencyClientDetail';
       params: { clientId: number | string };
+    }
+  | {
+      screen: 'ClientPortal';
+      params: { portalToken: string };
     };
 
 const parseNumericOrStringId = (value: unknown): number | string | null => {
@@ -1285,6 +1291,10 @@ const parseNumericOrStringId = (value: unknown): number | string | null => {
 };
 
 const parseLinkToPushTarget = (url: string): PushNavigationTarget | null => {
+  const portalToken = extractPortalTokenFromDeeplink(url);
+  if (portalToken) {
+    return { screen: 'ClientPortal', params: { portalToken } };
+  }
   const crmMatch = String(url || '').match(/crm\/client\/([^/?#]+)/i);
   const crmClientId = parseNumericOrStringId(crmMatch?.[1]);
   if (crmClientId) {
@@ -1390,6 +1400,19 @@ const parsePushTargetFromResponse = (
   ).toLowerCase();
 
   const deeplink = String(firstDefined(data.deeplink, data.deepLink, data.link, data.url, data.dealroomLink) || '');
+  const fromPayload = String(data.portalToken || '').trim();
+  const pathLooksPortal =
+    /(?:^|[/:])klient\//i.test(deeplink) ||
+    String(firstDefined(data.kind, data.type) || '').toUpperCase() === 'CLIENT_PORTAL' ||
+    String(data.kind || '').toUpperCase() === 'FEEDBACK_REMINDER';
+  const portalToken = /^[a-f0-9]{32,64}$/i.test(fromPayload)
+    ? fromPayload.toLowerCase()
+    : pathLooksPortal
+      ? extractPortalTokenFromDeeplink(deeplink)
+      : null;
+  if (portalToken) {
+    return { screen: 'ClientPortal', params: { portalToken } };
+  }
   const deeplinkLower = deeplink.toLowerCase();
   const deeplinkOfferId = extractIdFromDeeplink(deeplink, 'offer');
   const deeplinkDealId = extractIdFromDeeplink(deeplink, 'deal');
@@ -1774,12 +1797,16 @@ export default function App() {
 
     lastNavigationKeyRef.current = { key: navigationKey, at: now };
     if (__DEV__) console.log('[PUSH][NAVIGATE]', navigationKey);
+    if (target.screen === 'ClientPortal' && target.params?.portalToken) {
+      void rememberPortalSession({ token: String(target.params.portalToken) });
+    }
     if (
       target.screen === 'OfferDetail' ||
       target.screen === 'CarDetail' ||
       target.screen === 'DealroomChat' ||
       target.screen === 'ContactChat' ||
-      target.screen === 'AgencyClientDetail'
+      target.screen === 'AgencyClientDetail' ||
+      target.screen === 'ClientPortal'
     ) {
       (navigationRef as any).dispatch(StackActions.push(target.screen, target.params));
     } else {
@@ -2011,6 +2038,11 @@ export default function App() {
             <AppStack.Screen
               name="AgencyClientDetail"
               component={AgencyClientDetailScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="ClientPortal"
+              component={ClientPortalScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

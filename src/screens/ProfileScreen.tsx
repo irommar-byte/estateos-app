@@ -57,6 +57,7 @@ import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import ProfileCrmSection from '../components/agency/ProfileCrmSection';
+import ProfileClientPortalCard from '../components/profile/ProfileClientPortalCard';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
@@ -4401,6 +4402,8 @@ function ProfileScreenLoggedIn({
             </View>
           ) : null}
         </ProfileCardShell>
+
+        <ProfileClientPortalCard />
 
         {isAgentProfile ? (
           <ProfileCrmSection isDark={isDark} isAgency={isAgentProfile} />

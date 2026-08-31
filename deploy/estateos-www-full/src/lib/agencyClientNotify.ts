@@ -8,6 +8,31 @@ import { appendPresentationQuery } from '@/lib/offerPresentingAgent';
 import { DISLIKE_PHRASES, LIKE_PHRASES } from '@/lib/crm/clientPortalFeedback';
 import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
+import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
+
+async function resolveClientMatchScore(params: {
+  clientId: number;
+  offerId: number;
+  matchScore?: number;
+}): Promise<number> {
+  if (Number.isFinite(params.matchScore) && Number(params.matchScore) > 0) {
+    return Math.round(Number(params.matchScore));
+  }
+
+  const existing = await prisma.agencyClientMatch.findUnique({
+    where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
+    select: { score: true },
+  });
+  if (existing && existing.score > 0) return existing.score;
+
+  await refreshAgencyClientMatches(params.clientId);
+  const refreshed = await prisma.agencyClientMatch.findUnique({
+    where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
+    select: { score: true },
+  });
+  return refreshed?.score && refreshed.score > 0 ? refreshed.score : 0;
+}
 
 function buildTransporter() {
   const smtpPort = Number(process.env.EMAIL_PORT) || 587;
@@ -182,9 +207,8 @@ function buildEmailHtml(params: {
         <tr>
           <td style="padding:18px 20px;">
             <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;">Twój prywatny panel klienta</p>
-            <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b7280;">W panelu zobaczysz każdą propozycję osobno, zostawisz reakcję przy konkretnym ogłoszeniu i zobaczysz, na jakim etapie jesteśmy. Najwygodniej otworzysz to w aplikacji EstateOS na iPhonie — wtedy dostaniesz też powiadomienia od razu.</p>
-            <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;margin:0 8px 8px 0;">Otwórz panel klienta</a>
-            <a href="https://apps.apple.com/us/app/estateos/id6762899098" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px;">Pobierz aplikację iPhone</a>
+            <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b7280;">Otwórz ten sam link na iPhonie — aplikacja EstateOS pokaże prywatny panel od agenta, zapamięta go na urządzeniu i wyśle powiadomienia jak zwykle z aplikacji (nie tylko z Safari).</p>
+            <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px;">Otwórz panel klienta</a>
           </td>
         </tr>
       </table>`
@@ -343,6 +367,7 @@ export async function notifyAgencyClientAboutOffer(params: {
   channel: 'email' | 'manual';
   customMessage?: string;
   skipIfNotified?: boolean;
+  matchScore?: number;
   intelligence?: { reason: string };
 }) {
   if (params.skipIfNotified !== false) {
@@ -376,18 +401,24 @@ export async function notifyAgencyClientAboutOffer(params: {
   }
 
   const now = new Date();
+  const score = await resolveClientMatchScore({
+    clientId: params.clientId,
+    offerId: params.offerId,
+    matchScore: params.matchScore,
+  });
   await prisma.agencyClientMatch.upsert({
     where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
     create: {
       clientId: params.clientId,
       offerId: params.offerId,
-      score: 0,
+      score,
       notifiedAt: now,
       sharedAt: now,
       intelligenceSent: Boolean(params.intelligence),
       intelligenceReason: params.intelligence?.reason ?? null,
     },
     update: {
+      score: score > 0 ? score : undefined,
       notifiedAt: now,
       sharedAt: now,
       ...(params.intelligence
@@ -415,6 +446,7 @@ export async function notifyAgencyClientAboutOffer(params: {
         emailSent,
         intelligence: Boolean(params.intelligence),
         intelligenceReason: params.intelligence?.reason || null,
+        clientWhy: params.customMessage?.trim() || null,
         offerIds: [params.offerId],
         offers: preview.offers.map((o) => ({
           id: o.id,
@@ -441,6 +473,13 @@ export async function notifyAgencyClientAboutOffer(params: {
       }),
     }).catch(() => {});
   }
+
+  await sendClientPortalWebPush(params.clientId, {
+    title: preview.offers[0]?.title ? `Nowa propozycja: ${preview.offers[0].title}` : 'Nowa propozycja od agenta',
+    body: 'Otwórz panel klienta — zdjęcia, szczegóły i ocena czekają w aplikacji.',
+    tag: `estateos-client-offer-${params.clientId}-${params.offerId}`,
+    url: preview.portalUrl || undefined,
+  }).catch(() => {});
 
   return { emailSent, offerUrl: `https://estateos.pl/oferta/${params.offerId}`, preview };
 }
@@ -545,6 +584,16 @@ export async function notifyAgencyClientAboutOffers(params: {
       },
     },
   });
+
+  await sendClientPortalWebPush(params.clientId, {
+    title:
+      toSend.length === 1
+        ? `Nowa propozycja: ${preview.offers.find((o) => o.id === toSend[0])?.title || 'oferta'}`
+        : `${toSend.length} nowe propozycje od agenta`,
+    body: 'Otwórz panel klienta w aplikacji — ocena i zdjęcia są w jednym miejscu.',
+    tag: `estateos-client-offers-${params.clientId}`,
+    url: preview.portalUrl || undefined,
+  }).catch(() => {});
 
   return { emailSent, sentCount: toSend.length, skippedCount: blockedIds.size, preview };
 }
@@ -661,9 +710,22 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         type: 'CRM_EVENT',
         title: waiting === 1 ? 'Czekamy na Twoją opinię' : `${waiting} propozycje czekają na odpowiedź`,
         body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
-        data: { kind: 'FEEDBACK_REMINDER', portalUrl },
+        data: {
+          kind: 'CLIENT_PORTAL',
+          portalToken: first.client.portalToken,
+          deeplink: portalUrl,
+          url: portalUrl,
+        },
       }).catch(() => {});
     }
+
+    await sendClientPortalWebPush(clientId, {
+      title: waiting === 1 ? 'Czekamy na Twoją opinię' : `${waiting} propozycje czekają na odpowiedź`,
+      body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
+      tag: `estateos-client-feedback-${clientId}`,
+      url: portalUrl,
+      native: !first.client.linkedUserId,
+    }).catch(() => {});
 
     await prisma.agencyClientActivity.create({
       data: {

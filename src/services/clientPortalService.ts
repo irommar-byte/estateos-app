@@ -1,0 +1,173 @@
+import { API_URL } from '../config/network';
+import { mobileFetchJson } from '../utils/mobileFetch';
+import { restorePortalSessionsFromServer } from '../lib/clientPortalSession';
+
+export type PortalOffer = {
+  id: number;
+  title: string;
+  price?: number | string | null;
+  priceCurrency?: string | null;
+  city?: string | null;
+  district?: string | null;
+  area?: number | null;
+  rooms?: number | null;
+  excerpt?: string | null;
+  imageUrl?: string | null;
+};
+
+export type PortalMatch = {
+  id: number;
+  score: number;
+  notifiedAt: string | null;
+  clientFeedback: string | null;
+  clientFeedbackAt: string | null;
+  intelligenceSent?: boolean;
+  intelligenceReason?: string | null;
+  clientWhy?: string | null;
+  offer: PortalOffer;
+};
+
+export type PortalCheckback = {
+  activityId: number;
+  type?: string;
+  body: string;
+  options: Array<{ id: string; label: string }>;
+  createdAt?: string;
+} | null;
+
+export type PortalAccount = {
+  linked: boolean;
+  linkedToYou?: boolean;
+  emailMasked: string | null;
+};
+
+export type ClientPortalPayload = {
+  clientName: string;
+  type: string;
+  agencyName: string;
+  agentName: string;
+  intelligenceEnabled: boolean;
+  pendingCheckback: PortalCheckback;
+  unscoredMatchCount: number;
+  canChat: boolean;
+  account?: PortalAccount;
+  matches: PortalMatch[];
+};
+
+export type PortalChatMessage = {
+  id: number;
+  from?: 'agent' | 'client';
+  content?: string;
+  body?: string;
+  createdAt: string;
+};
+
+function portalUrl(token: string, suffix = '') {
+  return `${API_URL}/api/crm/client-portal/${encodeURIComponent(token)}${suffix}`;
+}
+
+export async function fetchClientPortal(token: string, authToken?: string | null): Promise<ClientPortalPayload> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const { response, data } = await mobileFetchJson<{ success?: boolean; portal?: ClientPortalPayload; error?: string }>(
+    portalUrl(token),
+    { headers },
+  );
+  if (!response.ok || !data?.portal) {
+    throw new Error(data?.error || 'Nie udało się otworzyć panelu klienta.');
+  }
+  return data.portal;
+}
+
+async function postPortal<T = Record<string, unknown>>(token: string, body: Record<string, unknown>): Promise<T> {
+  const { response, data } = await mobileFetchJson<T & { error?: string; success?: boolean }>(portalUrl(token), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error((data as { error?: string })?.error || 'Nie udało się zapisać.');
+  }
+  return data as T;
+}
+
+export async function submitPortalFeedback(
+  token: string,
+  params: { matchId: number; sentiment: 'like' | 'maybe' | 'dislike'; phrases?: string[]; note?: string },
+) {
+  return postPortal(token, {
+    action: 'submit_feedback',
+    matchId: params.matchId,
+    sentiment: params.sentiment,
+    phrases: params.phrases || [],
+    note: params.note || '',
+  });
+}
+
+export async function submitPortalCheckback(token: string, params: { activityId: number; optionId: string }) {
+  return postPortal(token, {
+    action: 'intelligence_checkback',
+    activityId: params.activityId,
+    optionId: params.optionId,
+  });
+}
+
+export async function listPortalMessages(token: string): Promise<{ messages: PortalChatMessage[]; unreadCount: number }> {
+  const data = await postPortal<{ messages?: PortalChatMessage[]; unreadCount?: number }>(token, {
+    action: 'list_messages',
+  });
+  return { messages: data.messages || [], unreadCount: data.unreadCount || 0 };
+}
+
+export async function sendPortalMessage(token: string, content: string) {
+  return postPortal(token, { action: 'send_message', content });
+}
+
+export async function markPortalMessagesRead(token: string) {
+  return postPortal(token, { action: 'mark_messages_read' }).catch(() => null);
+}
+
+export async function linkPortalAccount(token: string, authToken: string) {
+  const { response, data } = await mobileFetchJson<{ success?: boolean; error?: string; linkedUserId?: number }>(
+    portalUrl(token, '/link-account'),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: '{}',
+    },
+  );
+  if (!response.ok) {
+    throw new Error(data?.error || 'Nie udało się powiązać konta.');
+  }
+  return data;
+}
+
+export async function registerPortalPushDevice(
+  token: string,
+  payload: { expoPushToken: string; platform: string; deviceModel: string; appVersion: string },
+) {
+  const { response } = await mobileFetchJson(portalUrl(token, '/device'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return response.ok;
+}
+
+export async function restoreLinkedClientPortals(authToken: string): Promise<string | null> {
+  try {
+    const { response, data } = await mobileFetchJson<{
+      success?: boolean;
+      portals?: Array<{ portalToken?: string; clientName?: string; agencyName?: string }>;
+    }>(`${API_URL}/api/mobile/v1/client-portal/mine`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!response.ok || !data?.portals?.length) return null;
+    return restorePortalSessionsFromServer(data.portals);
+  } catch {
+    return null;
+  }
+}

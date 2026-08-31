@@ -93,6 +93,11 @@
               "scheme": "https",
               "host": "estateos.pl",
               "pathPrefix": "/offer"
+            },
+            {
+              "scheme": "https",
+              "host": "estateos.pl",
+              "pathPrefix": "/klient"
             }
           ],
           "category": [

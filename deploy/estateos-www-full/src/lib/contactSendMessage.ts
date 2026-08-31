@@ -163,6 +163,7 @@ export async function sendContactThreadMessage(params: {
             title: 'Nowa wiadomość od Twojego agenta',
             body: body.slice(0, 160),
             tag: `estateos-client-chat-${client.id}`,
+            native: false,
           }).catch(() => {});
         }
       }

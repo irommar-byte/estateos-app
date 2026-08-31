@@ -82,3 +82,28 @@ export function extractIdFromDeeplink(deeplink: string, kind: 'offer' | 'deal' |
     return null;
   }
 }
+
+const PORTAL_TOKEN_RE = /^[a-f0-9]{32,64}$/i;
+
+/** Universal Link /klient/:token oraz estateos://klient/:token */
+export function extractPortalTokenFromDeeplink(raw: string): string | null {
+  const cleaned = String(raw || '').trim();
+  if (!cleaned) return null;
+  const pathMatch = cleaned.match(/(?:^|[/:])klient\/([a-f0-9]{32,64})(?:[/?#]|$)/i);
+  if (pathMatch?.[1]) return pathMatch[1].toLowerCase();
+  try {
+    const normalized = cleaned.includes('://') ? cleaned : `${API_URL.replace(/\/$/, '')}/${cleaned.replace(/^\//, '')}`;
+    const url = new URL(normalized);
+    if (url.protocol === 'estateos:' && String(url.hostname || '').toLowerCase() === 'klient') {
+      const seg = url.pathname.replace(/^\//, '').split('/')[0] || '';
+      if (PORTAL_TOKEN_RE.test(seg)) return seg.toLowerCase();
+    }
+    const fromPath = url.pathname.match(/\/klient\/([a-f0-9]{32,64})/i);
+    if (fromPath?.[1]) return fromPath[1].toLowerCase();
+    const fromQuery = String(url.searchParams.get('portalToken') || url.searchParams.get('portal') || '');
+    if (PORTAL_TOKEN_RE.test(fromQuery)) return fromQuery.toLowerCase();
+  } catch {
+    return null;
+  }
+  return null;
+}

@@ -389,6 +389,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } catch (e) {
           if (__DEV__) console.warn('[auth] car radar restore after login', e);
         }
+        try {
+          const { restoreLinkedClientPortals } = await import('../services/clientPortalService');
+          await restoreLinkedClientPortals(get().token || normalizedToken);
+        } catch (e) {
+          if (__DEV__) console.warn('[auth] client portal restore after login', e);
+        }
       }
       return true;
     } catch (err: any) {
@@ -545,6 +551,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             email: hintEmail || grantUser.email,
             firstFreePublicationUsed: readUserFirstFreePublicationUsed(grantUser),
           });
+        }
+        try {
+          const { restoreLinkedClientPortals } = await import('../services/clientPortalService');
+          await restoreLinkedClientPortals(normalizedToken);
+        } catch (e) {
+          if (__DEV__) console.warn('[auth] client portal restore after passkey', e);
         }
         return true; 
       }
@@ -1168,6 +1180,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             });
           } catch (e) {
             if (__DEV__) console.warn('[auth] car radar restore after session', e);
+          }
+          try {
+            const { restoreLinkedClientPortals } = await import('../services/clientPortalService');
+            await restoreLinkedClientPortals(get().token);
+          } catch (e) {
+            if (__DEV__) console.warn('[auth] client portal restore after session', e);
           }
         }
       }

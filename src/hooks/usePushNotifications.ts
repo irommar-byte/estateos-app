@@ -238,6 +238,51 @@ function normalizeAuthToken(authToken: string | null): string | null {
   return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
 }
 
+async function registerStoredPortalPushDevices(pushToken: string): Promise<void> {
+  try {
+    const { listPortalTokens } = await import('../lib/clientPortalSession');
+    const { registerPortalPushDevice } = await import('../services/clientPortalService');
+    const tokens = await listPortalTokens();
+    if (!tokens.length) return;
+    const payload = {
+      expoPushToken: pushToken,
+      platform: Platform.OS.toUpperCase(),
+      deviceModel: Device.modelName ?? 'Unknown',
+      appVersion: Constants.expoConfig?.version ?? '1.0',
+    };
+    await Promise.all(tokens.map((portalToken) => registerPortalPushDevice(portalToken, payload).catch(() => false)));
+  } catch {
+    /* panel push is best-effort */
+  }
+}
+
+/** Rejestracja Expo tokenu przy kliencie CRM — działa też bez logowania, jeśli jest token panelu. */
+export async function registerClientPortalPushIfPossible(options?: { prompt?: boolean }): Promise<boolean> {
+  if (!Device.isDevice) return false;
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted' && options?.prompt) {
+      if (existingStatus === 'denied') return false;
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: { allowAlert: true, allowBadge: true, allowSound: true },
+      });
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') return false;
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) return false;
+    const stored = (await AsyncStorage.getItem('pushToken')) || '';
+    const pushToken = stored || (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    if (!pushToken) return false;
+    if (pushToken) await AsyncStorage.setItem('pushToken', pushToken);
+    await registerStoredPortalPushDevices(pushToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Rejestracja tokenu push + opcjonalny systemowy prompt zgody.
  * `showPrompt: false` — tylko gdy uprawnienie już `granted` (np. start aplikacji).
@@ -368,6 +413,7 @@ export async function registerPushNotifications(
     }
 
     await AsyncStorage.setItem('pushToken', pushToken);
+    await registerStoredPortalPushDevices(pushToken);
     return true;
   } catch (e) {
     console.error('❌ Push setup error:', e);
@@ -420,6 +466,7 @@ export const usePushNotifications = function usePushNotifications(authToken: str
 
   useEffect(() => {
     void registerToken(false);
+    void registerClientPortalPushIfPossible({ prompt: false });
   }, [registerToken]);
 
   useEffect(() => {
