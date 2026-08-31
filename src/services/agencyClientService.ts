@@ -97,7 +97,9 @@ export type AgencyClientDetail = AgencyClientListItem & {
       districts: boolean;
       maxPrice: boolean;
       minArea: boolean;
+      maxArea: boolean;
       minYear: boolean;
+      minRooms: boolean;
       requireBalcony: boolean;
       requireGarden: boolean;
       requireElevator: boolean;

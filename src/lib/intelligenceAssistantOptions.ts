@@ -2,7 +2,9 @@ export type IntelligenceLockKey =
   | 'districts'
   | 'maxPrice'
   | 'minArea'
+  | 'maxArea'
   | 'minYear'
+  | 'minRooms'
   | 'requireBalcony'
   | 'requireGarden'
   | 'requireElevator'
@@ -17,7 +19,9 @@ export const DEFAULT_INTELLIGENCE_LOCKS: IntelligenceLocks = {
   districts: false,
   maxPrice: false,
   minArea: false,
+  maxArea: false,
   minYear: false,
+  minRooms: false,
   requireBalcony: false,
   requireGarden: false,
   requireElevator: false,
