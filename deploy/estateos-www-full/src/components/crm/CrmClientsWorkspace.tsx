@@ -106,6 +106,13 @@ type ClientDetail = AgencyClientListItem & {
   }>;
   buyerFilters?: WebRadarFilters | null;
   intelligence?: IntelligenceSettings | null;
+  pendingCheckback?: {
+    activityId: number;
+    type: string;
+    body: string;
+    options: Array<{ id: string; label: string }>;
+    createdAt: string;
+  } | null;
   nextStep?: ClientNextStep | null;
   activities?: Array<{
     id: number;
@@ -142,7 +149,7 @@ type Report = {
 };
 
 const ACTIVITY_GROUPS: Array<{ label: string; kinds: string[] }> = [
-  { label: "Plan i kolejka", kinds: ["INTELLIGENCE_PLANNED"] },
+  { label: "Plan i kolejka", kinds: ["INTELLIGENCE_PLANNED", "INTELLIGENCE_CHECKBACK", "INTELLIGENCE_HANDOFF"] },
   {
     label: "Wysłane i przypomnienia",
     kinds: ["INTELLIGENCE_OFFER", "CLIENT_NOTIFIED", "OFFER_SHARED", "FEEDBACK_REMINDER"],
@@ -165,13 +172,19 @@ function groupClientActivities<T extends { kind: string }>(items: T[]) {
   return groups;
 }
 
+function initialClientIdFromUrl(): number | null {
+  if (typeof window === "undefined") return null;
+  const id = Number(new URLSearchParams(window.location.search).get("clientId"));
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 export default function CrmClientsWorkspace() {
   const { dict } = useLocale();
   const cl = dict.crmClients;
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => initialClientIdFromUrl());
   const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -211,8 +224,6 @@ export default function CrmClientsWorkspace() {
   }, []);
 
   useEffect(() => {
-    const fromUrl = Number(new URLSearchParams(window.location.search).get("clientId"));
-    if (Number.isFinite(fromUrl) && fromUrl > 0) setSelectedId(fromUrl);
     const openClient = (event: Event) => {
       const id = Number((event as CustomEvent).detail?.clientId);
       if (Number.isFinite(id) && id > 0) setSelectedId(id);
@@ -252,21 +263,34 @@ export default function CrmClientsWorkspace() {
     return `/oferta/${offerId}`;
   };
 
+  const loadReport = useCallback(async () => {
+    try {
+      const reportRes = await fetch("/api/crm/clients?report=1", { cache: "no-store" });
+      const reportJson = await reportRes.json();
+      if (reportJson.success) setReport(reportJson.report);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const loadClients = useCallback(async () => {
     setLoading(true);
     try {
-      const [listRes, reportRes] = await Promise.all([
-        fetch(`/api/crm/clients`, { cache: "no-store" }),
-        fetch("/api/crm/clients?report=1", { cache: "no-store" }),
-      ]);
+      const listRes = await fetch(`/api/crm/clients`, { cache: "no-store" });
       const listJson = await listRes.json();
-      const reportJson = await reportRes.json();
-      if (listJson.success) setClients(listJson.clients || []);
-      if (reportJson.success) setReport(reportJson.report);
+      if (listJson.success) {
+        const nextClients: AgencyClientListItem[] = listJson.clients || [];
+        setClients(nextClients);
+        setSelectedId((prev) => {
+          if (prev) return prev;
+          return nextClients[0]?.id ?? null;
+        });
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+    void loadReport();
+  }, [loadReport]);
 
   useEffect(() => {
     void loadClients();
@@ -691,9 +715,11 @@ export default function CrmClientsWorkspace() {
     };
   }, [detail]);
 
+  const showOverview = !selectedId;
+
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-x-clip">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {showOverview ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: cl.statsBuyers, value: report?.buyers ?? "—", icon: ShoppingBag },
           { label: cl.statsSellers, value: report?.sellers ?? "—", icon: Home },
@@ -713,9 +739,9 @@ export default function CrmClientsWorkspace() {
             </p>
           </motion.div>
         ))}
-      </div>
+      </div> : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {showOverview ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Weryfikacja e-mail", value: `${analytics.emailPct}%` },
           { label: "Weryfikacja telefonu", value: `${analytics.phonePct}%` },
@@ -730,15 +756,15 @@ export default function CrmClientsWorkspace() {
             <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{card.value}</p>
           </div>
         ))}
-      </div>
+      </div> : null}
 
-      <div className="min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-4 text-xs text-[var(--eos-muted)] shadow-[0_10px_28px_rgba(0,0,0,0.06)]">
+      {showOverview ? <div className="min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-4 text-xs text-[var(--eos-muted)] shadow-[0_10px_28px_rgba(0,0,0,0.06)]">
         <p className="font-bold text-[var(--eos-text)]">Jak czytać analitykę CRM:</p>
         <p className="mt-1 break-words leading-relaxed">
           % e-mail/telefon = udział klientów ze zweryfikowanym kontaktem. % dopasowań = udział klientów z min. 1 aktywnym match-em.
           Status online liczony jest po ostatnim logowaniu klienta (aktywność w ciągu 10 min): teraz online {onlineCount}/{clients.length}.
         </p>
-      </div>
+      </div> : null}
 
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
@@ -1264,6 +1290,7 @@ export default function CrmClientsWorkspace() {
                     value={detail.intelligence}
                     busy={busy}
                     activities={detail.activities}
+                    pendingCheckback={detail.pendingCheckback}
                     onSave={(next) => saveIntelligence(next)}
                   />
                   <div id="crm-criteria">
@@ -1474,6 +1501,7 @@ export default function CrmClientsWorkspace() {
                           value={detail.intelligence}
                           busy={busy}
                           activities={detail.activities}
+                          pendingCheckback={detail.pendingCheckback}
                           onSave={(next) => saveIntelligence(next)}
                         />
                         <AgencyClientCriteriaEditor
@@ -1621,7 +1649,10 @@ export default function CrmClientsWorkspace() {
                           type="button"
                           disabled={busy || !portalLinkDraft.trim()}
                           onClick={async () => {
-                            const json = await clientAction("add_external_portal", { url: portalLinkDraft.trim() });
+                            const json = await clientAction("add_external_portal", {
+                              url: portalLinkDraft.trim(),
+                              visibleToClient: true,
+                            });
                             if (json?.success) {
                               setPortalLinkDraft("");
                               setToast("Zapisano portal i powiadomiono klienta.");
@@ -1699,7 +1730,7 @@ export default function CrmClientsWorkspace() {
         </div>
       </div>
 
-      {report?.topMatches?.length ? (
+      {showOverview && report?.topMatches?.length ? (
         <div className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/75 p-6 shadow-[0_18px_48px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]">
           <p className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
             <BarChart3 className="size-4 text-emerald-500" />

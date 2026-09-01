@@ -5,9 +5,10 @@ import { sendNotification } from '@/lib/core/notification.core';
 type PortalPushPayload = {
   title: string;
   body: string;
-  url: string;
+  url?: string;
   tag?: string;
   openChat?: boolean;
+  notificationType?: string;
 };
 
 function portalSiteOrigin(): string {
@@ -55,13 +56,15 @@ export async function sendClientPortalWebPush(
     : `${origin}${portalUrl.startsWith('/') ? portalUrl : `/${portalUrl}`}`;
 
   if (payload.native !== false && client.linkedUserId) {
+    const notificationType = payload.notificationType || (payload.openChat ? 'CLIENT_PORTAL_MESSAGE' : 'CLIENT_PORTAL');
     await sendNotification({
       userId: client.linkedUserId,
       type: 'CRM_EVENT',
       title: payload.title,
       body: payload.body,
       data: {
-        kind: payload.openChat ? 'CLIENT_PORTAL_MESSAGE' : 'CLIENT_PORTAL',
+        kind: notificationType,
+        notificationType,
         openChat: Boolean(payload.openChat),
         portalToken: client.portalToken,
         deeplink: absolutePortalUrl,

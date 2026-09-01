@@ -683,6 +683,18 @@ export async function activateOfferPublication(params: {
   void import('@/lib/services/radar.service').then(({ dispatchRadarForMarketEntry }) =>
     dispatchRadarForMarketEntry(params.offerId, publicationId),
   );
+  try {
+    const { notifyLinkedClientsOfferActivated } = await import(
+      '@/lib/crm/sellerSaleUpdates'
+    );
+    await notifyLinkedClientsOfferActivated({
+      offerId: params.offerId,
+      agencyUserId: params.userId,
+      endsAt: result.endsAt,
+    });
+  } catch (error) {
+    console.error('[offerPublication.sellerMarketing]', error);
+  }
 
   return result;
 }

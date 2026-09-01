@@ -1193,6 +1193,8 @@ model AgencyClient {
   portalChatState         ClientPortalChatState?
   portalPushSubscriptions ClientPortalPushSubscription[]
   acquisition             AgencyClientAcquisition?
+  sellerNextStep          SellerNextStep?
+  decisionRequests        ClientDecisionRequest[]
   deskCases               DeskCase[]
   deskTasks               DeskTask[]
 
@@ -1212,6 +1214,9 @@ model AgencyClientBuyerPreference {
   districts         Json?
   maxPrice          Float?
   minArea           Float?
+  maxArea           Float?
+  minRooms          Int?
+  maxRooms          Int?
   minYear           Int?
   requireBalcony    Boolean          @default(false)
   requireGarden     Boolean          @default(false)
@@ -1259,7 +1264,26 @@ model AgencyClientActivity {
   createdAt    DateTime @default(now())
 
   client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  marketingNotifications SellerMarketingNotification[]
 
+  @@index([clientId, createdAt])
+}
+
+/// Trwała kolejka wysyłki wpisów marketingowych widocznych dla klienta.
+model SellerMarketingNotification {
+  id         Int      @id @default(autoincrement())
+  activityId Int      @unique
+  clientId   Int
+  status     String   @default("PENDING") @db.VarChar(24)
+  attempts   Int      @default(0)
+  lastError  String?  @db.Text
+  sentAt     DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  activity AgencyClientActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
   @@index([clientId, createdAt])
 }
 
@@ -1290,6 +1314,45 @@ model ClientPortalPushSubscription {
 
   @@unique([clientId, endpointHash])
   @@index([clientId, updatedAt])
+}
+
+/// Plan kolejnych kroków widoczny dla sprzedającego w panelu klienta.
+model SellerNextStep {
+  id              Int       @id @default(autoincrement())
+  clientId        Int       @unique
+  agencyUserId    Int
+  currentStep     String    @db.VarChar(255)
+  nextAction      String    @db.VarChar(255)
+  clientMessage   String?   @db.Text
+  dueAt           DateTime?
+  visibleToClient Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyUserId, updatedAt])
+}
+
+/// Prośba agenta o decyzję klienta (cena, materiały, termin itd.).
+model ClientDecisionRequest {
+  id             Int       @id @default(autoincrement())
+  clientId       Int
+  agencyUserId   Int
+  kind           String    @db.VarChar(64)
+  title          String    @db.VarChar(255)
+  clientMessage  String    @db.Text
+  status         String    @default("PENDING") @db.VarChar(32)
+  clientResponse String?   @db.Text
+  dueAt          DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, status])
+  @@index([agencyUserId, status, updatedAt])
 }
 
 /// Prowadzony proces pozyskania nieruchomości wraz z utrwalonymi warunkami i śladem podpisu.
