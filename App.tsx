@@ -129,6 +129,7 @@ import MarketExploreShell from './src/navigation/MarketExploreShell';
 import EcosystemVerticalTransition from './src/components/ecosystem/EcosystemVerticalTransition';
 import { extractIdFromDeeplink, extractPortalTokenFromDeeplink } from './src/utils/deeplinkParse';
 import { rememberPortalSession } from './src/lib/clientPortalSession';
+import { isClientPortalPushKind } from './src/lib/clientPortalPushTarget';
 import {
   extractPushDealAndOfferIds,
   firstDefined,
@@ -1408,8 +1409,7 @@ const parsePushTargetFromResponse = (
   const fromPayload = String(data.portalToken || '').trim();
   const pathLooksPortal =
     /(?:^|[/:])klient\//i.test(deeplink) ||
-    String(firstDefined(data.kind, data.type) || '').toUpperCase() === 'CLIENT_PORTAL' ||
-    String(data.kind || '').toUpperCase() === 'FEEDBACK_REMINDER';
+    isClientPortalPushKind(firstDefined(data.kind, data.type, data.notificationType));
   const portalToken = /^[a-f0-9]{32,64}$/i.test(fromPayload)
     ? fromPayload.toLowerCase()
     : pathLooksPortal

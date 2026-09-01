@@ -50,12 +50,14 @@ import MatchImportAgentMeta from '../components/agency/MatchImportAgentMeta';
 import IntelligenceAssistantCard, {
   DEFAULT_INTELLIGENCE_SETTINGS,
 } from '../components/agency/IntelligenceAssistantCard';
+import SellerMarketingCard from '../components/agency/SellerMarketingCard';
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   type IntelligenceLocks,
 } from '../lib/intelligenceAssistantOptions';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import { buildYearBuiltPickerValues } from '../lib/offerYearBuilt';
+import { getAdditionalListingSlots } from '../utils/listingQuota';
 import {
   acquisitionAction,
   archiveAgencyClient,
@@ -353,6 +355,7 @@ export default function AgencyClientDetailScreen() {
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const clientId = Number(route.params?.clientId);
 
@@ -2689,6 +2692,20 @@ export default function AgencyClientDetailScreen() {
                     </View>
                   )}
                 </View>
+              ) : null}
+
+              {client.type === 'SELLER' && token ? (
+                <SellerMarketingCard
+                  clientId={clientId}
+                  linkedOfferId={client.linkedOfferId}
+                  token={token}
+                  isDark={isDark}
+                  creditBalance={getAdditionalListingSlots(user)}
+                  activities={client.activities || []}
+                  sellerMarketing={client.sellerMarketing || null}
+                  colors={colors}
+                  onRefresh={() => void load()}
+                />
               ) : null}
 
               {/* Dedicated Seller Buyer Radar Section */}

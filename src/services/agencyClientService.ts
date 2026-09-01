@@ -74,6 +74,66 @@ export type AgencyClientNextStep = {
   action: string;
 };
 
+export type AgencyClientActivity = {
+  id: number;
+  kind: string;
+  title: string | null;
+  body: string | null;
+  offerId?: number | null;
+  createdAt: string;
+  metadata?: Record<string, unknown> | null;
+  visibleToClient?: boolean;
+};
+
+export type SellerMarketingBundle = {
+  estateos: {
+    offerId: number;
+    status: string;
+    published: boolean;
+    featured: boolean;
+    promotedUntil: string | null;
+    publicationEndsAt: string | null;
+  } | null;
+  activeChannels: {
+    portal: string;
+    externalUrl: string | null;
+    status: string | null;
+    renewalDueAt: string | null;
+    activityId: number;
+  }[];
+  sellerNextStep: {
+    currentStep: string;
+    nextAction: string;
+    clientMessage: string | null;
+    dueAt: string | null;
+    visibleToClient: boolean;
+    updatedAt: string;
+  } | null;
+  pendingDecisions: {
+    id: number;
+    kind: string;
+    title: string;
+    clientMessage: string;
+    status: string;
+    clientResponse?: string | null;
+    dueAt: string | null;
+    createdAt: string;
+  }[];
+  marketingTimeline: {
+    id: number;
+    kind: string;
+    title: string | null;
+    body: string | null;
+    createdAt: string;
+    portal: string | null;
+    externalUrl: string | null;
+    status: string | null;
+    renewalDueAt: string | null;
+    promotedUntil: string | null;
+    visibleToClient: boolean;
+  }[];
+};
+
 export type AgencyClientDetail = AgencyClientListItem & {
   notes: string | null;
   portalUrl: string | null;
@@ -111,7 +171,7 @@ export type AgencyClientDetail = AgencyClientListItem & {
     activityId: number;
     type: string;
     body: string;
-    options: Array<{ id: string; label: string }>;
+    options: { id: string; label: string }[];
     createdAt: string;
   } | null;
   meeting?: {
@@ -130,14 +190,16 @@ export type AgencyClientDetail = AgencyClientListItem & {
     proposedBy: 'agent' | 'client';
     reason: string | null;
   } | null;
-  messages?: Array<{
+  messages?: {
     id: number;
     content: string;
     createdAt: string;
     fromAgent: boolean;
     fromMe: boolean;
-    attachments: Array<{ url: string; name: string; mimeType: string; size: number }>;
-  }>;
+    attachments: { url: string; name: string; mimeType: string; size: number }[];
+  }[];
+  activities?: AgencyClientActivity[];
+  sellerMarketing?: SellerMarketingBundle | null;
 };
 
 export type AcquisitionFormData = {
@@ -148,7 +210,7 @@ export type AcquisitionFormData = {
   cooperation: Record<string, string | boolean>;
   documents: Record<string, boolean>;
   notes: string;
-  paperContracts: Array<{ url: string; name: string; uploadedAt: string }>;
+  paperContracts: { url: string; name: string; uploadedAt: string }[];
 };
 
 export type AcquisitionRecord = {
@@ -194,13 +256,13 @@ export async function createAgencyClient(
       ok: false as const,
       code: 'DUPLICATE_CLIENT' as const,
       message: String(json?.error || 'Klient o tym e-mailu lub telefonie już jest w CRM.'),
-      matches: (Array.isArray(json?.matches) ? json.matches : []) as Array<{
+      matches: (Array.isArray(json?.matches) ? json.matches : []) as {
         id: number;
         firstName: string;
         lastName: string;
         email: string | null;
         phone: string | null;
-      }>,
+      }[],
     };
   }
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się dodać klienta.') };
@@ -374,14 +436,14 @@ export async function suggestAddresses(token: string, query: string) {
   });
   const json = await parseJson(res);
   return Array.isArray(json.suggestions)
-    ? (json.suggestions as Array<{
+    ? (json.suggestions as {
         id: string;
         label: string;
         address: string;
         city?: string | null;
         lat?: number | null;
         lng?: number | null;
-      }>)
+      }[])
     : [];
 }
 
@@ -416,6 +478,106 @@ export async function postAgencyClientAction(token: string, clientId: number, bo
   const json = await parseJson(res);
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się wykonać akcji.') };
   return { ok: true as const, message: json.message, ...json };
+}
+
+export type ExternalPortalPublicationInput = {
+  url: string;
+  portal: string;
+  status: 'active' | 'paused';
+  note?: string;
+  visibleToClient: boolean;
+  publishedAt?: string;
+  renewalDueAt?: string;
+  evidenceUrl?: string;
+  evidenceName?: string;
+  evidenceMimeType?: string;
+};
+
+export function addExternalPortalPublication(
+  token: string,
+  clientId: number,
+  input: ExternalPortalPublicationInput,
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'add_external_portal',
+    ...input,
+  });
+}
+
+export function updateExternalPortalPublication(
+  token: string,
+  clientId: number,
+  input: {
+    activityId: number;
+    status?: 'active' | 'paused' | 'expired';
+    note?: string;
+    renewalDueAt?: string;
+    visibleToClient?: boolean;
+  },
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'update_external_portal',
+    ...input,
+  });
+}
+
+export function removeExternalPortalPublication(
+  token: string,
+  clientId: number,
+  activityId: number,
+  note?: string,
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'remove_external_portal',
+    activityId,
+    note,
+  });
+}
+
+export function setMarketingActivityVisibility(
+  token: string,
+  clientId: number,
+  activityId: number,
+  visibleToClient: boolean,
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'set_marketing_visibility',
+    activityId,
+    visibleToClient,
+  });
+}
+
+export function saveSellerNextStep(
+  token: string,
+  clientId: number,
+  input: {
+    currentStep: string;
+    nextAction: string;
+    clientMessage?: string;
+    dueAt?: string;
+    visibleToClient: boolean;
+  },
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'set_seller_next_step',
+    ...input,
+  });
+}
+
+export function requestSellerClientDecision(
+  token: string,
+  clientId: number,
+  input: {
+    kind: string;
+    title: string;
+    clientMessage: string;
+    dueAt?: string;
+  },
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'request_client_decision',
+    ...input,
+  });
 }
 
 export async function uploadClientPortalAttachment(

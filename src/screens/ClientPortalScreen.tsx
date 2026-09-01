@@ -44,6 +44,7 @@ import {
   type PortalAccount,
   type PortalMatch,
 } from '../services/clientPortalService';
+import SellerPortalView from '../components/clientPortal/SellerPortalView';
 
 const LIKE_PHRASES = ['Świetna lokalizacja', 'Podoba mi się układ', 'Dobry metraż', 'Pasuje do budżetu'];
 const DISLIKE_PHRASES = ['Za drogo', 'Brak balkonu', 'Nie ta dzielnica', 'Za mało pokoi'];
@@ -473,7 +474,11 @@ export default function ClientPortalScreen() {
       >
         <Ionicons name="notifications-outline" size={18} color={colors.green} />
         <Text style={{ flex: 1, color: colors.text, fontSize: 14 }}>
-          {pushPermission === 'denied' ? 'Włącz powiadomienia w ustawieniach iPhone' : 'Włącz powiadomienia o nowych ofertach'}
+          {pushPermission === 'denied'
+            ? 'Włącz powiadomienia w ustawieniach iPhone'
+            : portal?.type === 'SELLER'
+              ? 'Włącz powiadomienia o działaniach agenta'
+              : 'Włącz powiadomienia o nowych ofertach'}
         </Text>
         <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
       </Pressable>
@@ -500,6 +505,26 @@ export default function ClientPortalScreen() {
   }
 
   const visibleStacks = OFFER_STACKS.filter((stack) => stacks[stack.id].length > 0);
+
+  if (portal?.type === 'SELLER') {
+    return (
+      <SellerPortalView
+        portal={portal}
+        portalToken={portalToken}
+        isDark={isDark}
+        colors={colors}
+        insetsTop={insets.top}
+        refreshing={refreshing}
+        onRefresh={() => void load('refresh')}
+        onOpenChat={openChat}
+        canChat={canChat}
+        canInteract={canInteract}
+        accountSection={renderAccountSection()}
+        pushSection={renderPushRow()}
+        onBack={() => navigation.goBack()}
+      />
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>

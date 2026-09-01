@@ -31,7 +31,7 @@ export type PortalCheckback = {
   activityId: number;
   type?: string;
   body: string;
-  options: Array<{ id: string; label: string }>;
+  options: { id: string; label: string }[];
   createdAt?: string;
 } | null;
 
@@ -58,17 +58,93 @@ export type PortalActivationHint =
       reason: 'missing_client_email';
     };
 
+export type PortalListing = {
+  id: number;
+  title: string;
+  price?: number | string | null;
+  priceCurrency?: string | null;
+  city?: string | null;
+  district?: string | null;
+  status?: string | null;
+  statusLabel?: string | null;
+  imageUrl?: string | null;
+  featured?: boolean;
+  promotedUntil?: string | null;
+};
+
+export type PortalListingProgress = {
+  id: string;
+  label: string;
+  done: boolean;
+};
+
+export type PortalMarketingTimelineItem = {
+  id: number;
+  kind: string;
+  title: string | null;
+  body: string | null;
+  createdAt: string;
+  portal: string | null;
+  externalUrl: string | null;
+  status: string | null;
+  renewalDueAt: string | null;
+  promotedUntil: string | null;
+  siteName?: string | null;
+  visibleToClient?: boolean;
+  evidenceUrl?: string | null;
+  evidenceName?: string | null;
+};
+
+export type PortalActiveChannel = {
+  portal: string;
+  externalUrl: string | null;
+  status: string | null;
+  renewalDueAt: string | null;
+  activityId: number;
+};
+
+export type PortalSellerNextStep = {
+  currentStep: string;
+  nextAction: string;
+  clientMessage: string | null;
+  dueAt: string | null;
+  visibleToClient: boolean;
+  updatedAt: string;
+};
+
+export type PortalDecisionRequest = {
+  id: number;
+  kind: string;
+  title: string;
+  clientMessage: string;
+  status: string;
+  clientResponse?: string | null;
+  dueAt: string | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+};
+
 export type ClientPortalPayload = {
   clientName: string;
   type: string;
   agencyName: string;
   agentName: string;
+  agentPhone?: string | null;
+  agentEmail?: string | null;
+  agentPhoto?: string | null;
+  agentTitle?: string | null;
   intelligenceEnabled: boolean;
   pendingCheckback: PortalCheckback;
   unscoredMatchCount: number;
   canChat: boolean;
   account?: PortalAccount;
   matches: PortalMatch[];
+  listing?: PortalListing | null;
+  listingProgress?: PortalListingProgress[];
+  marketingTimeline?: PortalMarketingTimelineItem[];
+  activeChannels?: PortalActiveChannel[];
+  sellerNextStep?: PortalSellerNextStep | null;
+  pendingDecisions?: PortalDecisionRequest[];
 };
 
 export type PortalChatMessage = {
@@ -147,6 +223,23 @@ export async function submitPortalCheckback(token: string, params: { activityId:
   });
 }
 
+export async function respondPortalDecision(
+  token: string,
+  params: { decisionId: number; response: 'approve' | 'reject' | 'comment'; comment?: string },
+  authToken?: string | null,
+) {
+  return postPortal(
+    token,
+    {
+      action: 'respond_decision',
+      decisionId: params.decisionId,
+      response: params.response,
+      comment: params.comment || '',
+    },
+    authToken,
+  );
+}
+
 export async function listPortalMessages(token: string): Promise<{ messages: PortalChatMessage[]; unreadCount: number }> {
   const data = await postPortal<{ messages?: PortalChatMessage[]; unreadCount?: number }>(token, {
     action: 'list_messages',
@@ -222,7 +315,7 @@ export async function restoreLinkedClientPortals(authToken: string): Promise<str
   try {
     const { response, data } = await mobileFetchJson<{
       success?: boolean;
-      portals?: Array<{ portalToken?: string; clientName?: string; agencyName?: string }>;
+      portals?: { portalToken?: string; clientName?: string; agencyName?: string }[];
     }>(`${API_URL}/api/mobile/v1/client-portal/mine`, {
       headers: portalAuthHeaders(authToken),
     });
