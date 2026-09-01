@@ -48,6 +48,18 @@ import { stampKwFromAcquisitionForm } from '@/lib/legalVerificationAgentStamp';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
+import {
+  createClientDecisionRequest,
+  loadSellerPortalMarketing,
+  MARKETING_ACTIVITY,
+  parseOptionalDate,
+  recordMarketingActivity,
+  removeExternalPortalListing,
+  setMarketingActivityVisibility,
+  upsertSellerNextStep,
+  updateExternalPortalListing,
+  isActivityVisibleToClient,
+} from '@/lib/crm/sellerMarketing';
 import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
 import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
 import { getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
@@ -119,6 +131,17 @@ export async function GET(req: Request, ctx: RouteCtx) {
   });
 
   const pendingCheckback = await getPendingCheckback(client.id);
+
+  const sellerMarketing =
+    client.type === 'SELLER'
+      ? await loadSellerPortalMarketing(client.id).catch(() => ({
+          estateos: null,
+          activeChannels: [],
+          sellerNextStep: null,
+          pendingDecisions: [],
+          marketingTimeline: [],
+        }))
+      : null;
 
   const nextStep = resolveClientNextStep({
     type: client.type,
@@ -195,7 +218,17 @@ export async function GET(req: Request, ctx: RouteCtx) {
         offerId: a.offerId,
         createdAt: a.createdAt.toISOString(),
         metadata: a.metadata,
+        visibleToClient: isActivityVisibleToClient(a.metadata),
       })),
+      sellerMarketing: sellerMarketing
+        ? {
+            estateos: sellerMarketing.estateos,
+            activeChannels: sellerMarketing.activeChannels,
+            sellerNextStep: sellerMarketing.sellerNextStep,
+            pendingDecisions: sellerMarketing.pendingDecisions,
+            marketingTimeline: sellerMarketing.marketingTimeline,
+          }
+        : null,
     },
   });
 }
@@ -533,15 +566,158 @@ export async function POST(req: Request, ctx: RouteCtx) {
         clientId,
         agencyUserId,
         preview,
+        visibleToClient: body.visibleToClient === true,
+        portal: body.portal ? String(body.portal) : null,
+        status: body.status ? String(body.status) : 'active',
+        note: body.note ? String(body.note) : null,
+        publishedAt: parseOptionalDate(body.publishedAt),
+        renewalDueAt: parseOptionalDate(body.renewalDueAt),
+        evidenceUrl: body.evidenceUrl ? String(body.evidenceUrl) : null,
+        evidenceName: body.evidenceName ? String(body.evidenceName) : null,
+        evidenceMimeType: body.evidenceMimeType ? String(body.evidenceMimeType) : null,
       });
       if (!recorded.ok) {
         return NextResponse.json({ error: recorded.error }, { status: 400 });
       }
-      return NextResponse.json({ success: true, preview, emailed: recorded.emailed });
+      return NextResponse.json({
+        success: true,
+        preview,
+        activityId: recorded.activityId,
+        visibleToClient: recorded.visibleToClient,
+        emailed: recorded.emailed,
+        pushed: recorded.pushed,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Nie udało się zapisać linku.';
       return NextResponse.json({ error: message }, { status: 400 });
     }
+  }
+
+  if (action === 'update_external_portal') {
+    const activityId = Number(body.activityId);
+    if (!Number.isFinite(activityId)) {
+      return NextResponse.json({ error: 'Brak ID publikacji.' }, { status: 400 });
+    }
+    const result = await updateExternalPortalListing({
+      clientId,
+      agencyUserId,
+      activityId,
+      url: body.url != null ? String(body.url) : undefined,
+      status: body.status != null ? String(body.status) : undefined,
+      note: body.note != null ? String(body.note) : undefined,
+      renewalDueAt: parseOptionalDate(body.renewalDueAt),
+      visibleToClient: body.visibleToClient === true ? true : body.visibleToClient === false ? false : undefined,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, activityId: result.activityId });
+  }
+
+  if (action === 'remove_external_portal') {
+    const activityId = Number(body.activityId);
+    if (!Number.isFinite(activityId)) {
+      return NextResponse.json({ error: 'Brak ID publikacji.' }, { status: 400 });
+    }
+    const result = await removeExternalPortalListing({
+      clientId,
+      agencyUserId,
+      activityId,
+      note: body.note != null ? String(body.note) : null,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, activityId: result.activityId });
+  }
+
+  if (action === 'set_marketing_visibility') {
+    const activityId = Number(body.activityId);
+    if (!Number.isFinite(activityId)) {
+      return NextResponse.json({ error: 'Brak ID wpisu.' }, { status: 400 });
+    }
+    const result = await setMarketingActivityVisibility({
+      clientId,
+      agencyUserId,
+      activityId,
+      visibleToClient: body.visibleToClient === true,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'publish_latest_estateos_promotion') {
+    const offerId = Number(body.offerId);
+    const activity = await prisma.agencyClientActivity.findFirst({
+      where: {
+        clientId,
+        agencyUserId,
+        ...(Number.isFinite(offerId) ? { offerId } : {}),
+        kind: { in: [MARKETING_ACTIVITY.ESTATEOS_PROMOTED, 'LISTING_FEATURED'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!activity) {
+      return NextResponse.json(
+        { error: 'Nie znaleziono ostatniego wyróżnienia EstateOS™.' },
+        { status: 404 },
+      );
+    }
+    const result = await setMarketingActivityVisibility({
+      clientId,
+      agencyUserId,
+      activityId: activity.id,
+      visibleToClient: true,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, activityId: activity.id, ...result });
+  }
+
+  if (action === 'add_marketing_note') {
+    const note = String(body.note || body.body || '').trim();
+    if (note.length < 3) {
+      return NextResponse.json({ error: 'Wpisz krótką notatkę marketingową.' }, { status: 400 });
+    }
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      select: { linkedOfferId: true },
+    });
+    const result = await recordMarketingActivity({
+      clientId,
+      agencyUserId,
+      kind: MARKETING_ACTIVITY.MARKETING_NOTE,
+      title: String(body.title || 'Aktualizacja promocji').slice(0, 255),
+      body: note,
+      offerId: client?.linkedOfferId,
+      visibleToClient: body.visibleToClient === true,
+      metadata: { note },
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'set_seller_next_step') {
+    const result = await upsertSellerNextStep({
+      clientId,
+      agencyUserId,
+      currentStep: String(body.currentStep || ''),
+      nextAction: String(body.nextAction || ''),
+      clientMessage: body.clientMessage != null ? String(body.clientMessage) : null,
+      dueAt: parseOptionalDate(body.dueAt),
+      visibleToClient: body.visibleToClient === true,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, sellerNextStep: result.nextStep });
+  }
+
+  if (action === 'request_client_decision') {
+    const result = await createClientDecisionRequest({
+      clientId,
+      agencyUserId,
+      kind: String(body.kind || 'other'),
+      title: String(body.title || ''),
+      clientMessage: String(body.clientMessage || body.message || ''),
+      dueAt: parseOptionalDate(body.dueAt),
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, decision: result.decision });
   }
 
   if (action === 'send_email_code') {

@@ -1649,7 +1649,10 @@ export default function CrmClientsWorkspace() {
                           type="button"
                           disabled={busy || !portalLinkDraft.trim()}
                           onClick={async () => {
-                            const json = await clientAction("add_external_portal", { url: portalLinkDraft.trim() });
+                            const json = await clientAction("add_external_portal", {
+                              url: portalLinkDraft.trim(),
+                              visibleToClient: true,
+                            });
                             if (json?.success) {
                               setPortalLinkDraft("");
                               setToast("Zapisano portal i powiadomiono klienta.");

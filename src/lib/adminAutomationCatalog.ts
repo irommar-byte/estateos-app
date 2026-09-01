@@ -26,6 +26,14 @@ export const AUTOMATION_CRON_CATALOG: AutomationCronJob[] = [
     script: 'scripts/client-intelligence.cjs',
   },
   {
+    id: 'seller-marketing-renewals',
+    name: 'Odnowienia publikacji sprzedających',
+    schedule: '25 9 * * *',
+    scheduleLabel: 'Codziennie o 09:25',
+    description: 'Przypomnienia dla agentów o wygasających publikacjach zewnętrznych.',
+    script: 'scripts/seller-marketing-renewals.cjs',
+  },
+  {
     id: 'reviews-finalization-fallback',
     name: 'Finalizacja opinii',
     schedule: '0 * * * *',

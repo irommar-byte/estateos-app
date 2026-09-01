@@ -1,12 +1,17 @@
 import { prisma } from "@/lib/prisma";
-import { logWalletCreditConsume } from "@/lib/walletLedger";
+import {
+  ensureWalletLedgerTable,
+  logWalletCreditConsume,
+} from "@/lib/walletLedger";
 import { ensureCarsStorage } from "@/lib/carsStorage";
 import { notifyLinkedClientsOfferFeatured } from "@/lib/crm/sellerSaleUpdates";
 
 export const FEATURED_PROMOTION_DAYS = 7;
 export const FEATURED_PROMOTION_MAX_CREDITS = 12;
 
-export function isPromotionActive(until: Date | string | null | undefined): boolean {
+export function isPromotionActive(
+  until: Date | string | null | undefined,
+): boolean {
   if (!until) return false;
   const date = until instanceof Date ? until : new Date(until);
   return Number.isFinite(date.getTime()) && date.getTime() > Date.now();
@@ -18,11 +23,16 @@ export function normalizePromotionCredits(raw: unknown): number {
   return Math.min(FEATURED_PROMOTION_MAX_CREDITS, n);
 }
 
-export async function consumeOnePublicationCredit(userId: number): Promise<boolean> {
+export async function consumeOnePublicationCredit(
+  userId: number,
+): Promise<boolean> {
   return consumePublicationCredits(userId, 1);
 }
 
-export async function consumePublicationCredits(userId: number, credits: number): Promise<boolean> {
+export async function consumePublicationCredits(
+  userId: number,
+  credits: number,
+): Promise<boolean> {
   const amount = normalizePromotionCredits(credits);
   const consumed = await prisma.$executeRawUnsafe(
     `
@@ -40,7 +50,10 @@ export async function consumePublicationCredits(userId: number, credits: number)
   return Number(consumed || 0) >= 1;
 }
 
-function resolvePromotedUntil(existing: Date | string | null | undefined, credits: number): Date {
+function resolvePromotedUntil(
+  existing: Date | string | null | undefined,
+  credits: number,
+): Date {
   const amount = normalizePromotionCredits(credits);
   const base =
     existing && isPromotionActive(existing)
@@ -63,37 +76,72 @@ export async function promoteOfferListing(params: {
   credits?: number;
 }) {
   const credits = normalizePromotionCredits(params.credits);
-  const offer = await prisma.offer.findUnique({
-    where: { id: params.offerId },
-    select: { id: true, userId: true, status: true, promotedUntil: true },
-  });
-  if (!offer || offer.userId !== params.userId) {
-    throw new Error("Brak dostępu do tej oferty.");
-  }
-  if (offer.status !== "ACTIVE") {
-    throw new Error("Wyróżnić można tylko aktywne ogłoszenie na rynku.");
-  }
+  await ensureWalletLedgerTable();
+  const promotedUntil = await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRawUnsafe<
+      Array<{
+        id: number;
+        userId: number;
+        status: string;
+        promotedUntil: Date | string | null;
+      }>
+    >(
+      `SELECT id, userId, status, promotedUntil FROM Offer WHERE id = ? LIMIT 1 FOR UPDATE`,
+      params.offerId,
+    );
+    const offer = rows[0];
+    if (!offer || Number(offer.userId) !== params.userId) {
+      throw new Error("Brak dostępu do tej oferty.");
+    }
+    if (offer.status !== "ACTIVE") {
+      throw new Error("Wyróżnić można tylko aktywne ogłoszenie na rynku.");
+    }
 
-  const consumed = await consumePublicationCredits(params.userId, credits);
-  if (!consumed) {
-    throw new Error("Brak aktywnego kredytu publikacji. Kup Pakiet + lub użyj kredytów z PRO.");
-  }
+    const consumed = await tx.$executeRawUnsafe(
+      `
+        UPDATE \`User\`
+        SET extraListings = GREATEST(0, extraListings - ?)
+        WHERE id = ?
+          AND extraListings >= ?
+          AND plusExpiresAt IS NOT NULL
+          AND plusExpiresAt > NOW(3)
+      `,
+      credits,
+      params.userId,
+      credits,
+    );
+    if (Number(consumed || 0) < 1) {
+      throw new Error(
+        "Brak aktywnego kredytu publikacji. Kup Pakiet + lub użyj kredytów z PRO.",
+      );
+    }
 
-  const promotedUntil = resolvePromotedUntil(offer.promotedUntil, credits);
-
-  await prisma.offer.update({
-    where: { id: params.offerId },
-    data: { promotedUntil },
-  });
-
-  await logWalletCreditConsume({
-    userId: params.userId,
-    purpose: "featured_promotion",
-    referenceType: "offer",
-    referenceId: String(params.offerId),
-    label: "Wyróżnienie ogłoszenia w katalogu",
-    meta: { days: FEATURED_PROMOTION_DAYS * credits, credits },
-    amount: credits,
+    const until = resolvePromotedUntil(offer.promotedUntil, credits);
+    const balance = await tx.user.findUnique({
+      where: { id: params.userId },
+      select: { extraListings: true },
+    });
+    await tx.offer.update({
+      where: { id: params.offerId },
+      data: { promotedUntil: until },
+    });
+    await tx.$executeRawUnsafe(
+      `
+        INSERT INTO WalletLedgerEvent
+          (userId, direction, assetType, amount, balanceAfter, purpose, referenceType, referenceId, label, meta)
+        VALUES (?, 'CONSUME', 'CREDIT', ?, ?, 'featured_promotion', 'offer', ?, ?, ?)
+      `,
+      params.userId,
+      credits,
+      Number(balance?.extraListings ?? 0),
+      String(params.offerId),
+      "Wyróżnienie ogłoszenia w katalogu",
+      JSON.stringify({
+        days: FEATURED_PROMOTION_DAYS * credits,
+        credits,
+      }),
+    );
+    return until;
   });
 
   await notifyLinkedClientsOfferFeatured({
@@ -105,7 +153,11 @@ export async function promoteOfferListing(params: {
     console.error("[listingPromotion.featured.notify]", error);
   });
 
-  return { promotedUntil: promotedUntil.toISOString(), credits, days: FEATURED_PROMOTION_DAYS * credits };
+  return {
+    promotedUntil: promotedUntil.toISOString(),
+    credits,
+    days: FEATURED_PROMOTION_DAYS * credits,
+  };
 }
 
 export async function promoteCarListing(params: {
@@ -116,8 +168,15 @@ export async function promoteCarListing(params: {
   const credits = normalizePromotionCredits(params.credits);
   await ensureCarsStorage();
   const rows = await prisma.$queryRawUnsafe<
-    Array<{ id: number; userId: number | null; promotedUntil: Date | string | null }>
-  >(`SELECT id, userId, promotedUntil FROM CarListing WHERE id = ? LIMIT 1`, params.carId);
+    Array<{
+      id: number;
+      userId: number | null;
+      promotedUntil: Date | string | null;
+    }>
+  >(
+    `SELECT id, userId, promotedUntil FROM CarListing WHERE id = ? LIMIT 1`,
+    params.carId,
+  );
   const car = rows[0];
   if (!car || Number(car.userId) !== params.userId) {
     throw new Error("Brak dostępu do tego ogłoszenia.");
@@ -125,7 +184,9 @@ export async function promoteCarListing(params: {
 
   const consumed = await consumePublicationCredits(params.userId, credits);
   if (!consumed) {
-    throw new Error("Brak aktywnego kredytu publikacji. Kup Pakiet + lub użyj kredytów z PRO.");
+    throw new Error(
+      "Brak aktywnego kredytu publikacji. Kup Pakiet + lub użyj kredytów z PRO.",
+    );
   }
 
   const promotedUntil = resolvePromotedUntil(car.promotedUntil, credits);
@@ -146,5 +207,9 @@ export async function promoteCarListing(params: {
     amount: credits,
   });
 
-  return { promotedUntil: promotedUntil.toISOString(), credits, days: FEATURED_PROMOTION_DAYS * credits };
+  return {
+    promotedUntil: promotedUntil.toISOString(),
+    credits,
+    days: FEATURED_PROMOTION_DAYS * credits,
+  };
 }

@@ -50,6 +50,13 @@ import {
   handleIntelligenceAfterFeedback,
 } from '@/lib/crm/intelligenceFeedbackReply';
 import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
+import {
+  isActivityVisibleToClient,
+  isMarketingActivityKind,
+  loadSellerPortalMarketing,
+  respondToClientDecision,
+  shapeMarketingTimelineItem,
+} from '@/lib/crm/sellerMarketing';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -262,6 +269,11 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'MARKET_REPORT_SENT',
               'LISTING_FEATURED',
               'EXTERNAL_PORTAL',
+              'ESTATEOS_ACTIVATED',
+              'ESTATEOS_PROMOTED',
+              'EXTERNAL_PORTAL_LISTED',
+              'EXTERNAL_PORTAL_UPDATED',
+              'MARKETING_NOTE',
               JOURNEY_ACTIVITY.MEETING_CHANGE,
               JOURNEY_ACTIVITY.MEETING_CONFIRMED,
               JOURNEY_ACTIVITY.PRESENTATION,
@@ -334,6 +346,17 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 
   const pendingCheckback = await getPendingCheckback(client.id);
 
+  const sellerMarketing =
+    client.type === 'SELLER'
+      ? await loadSellerPortalMarketing(client.id, { visibleOnly: true }).catch(() => ({
+          estateos: null,
+          activeChannels: [],
+          sellerNextStep: null,
+          pendingDecisions: [],
+          marketingTimeline: [],
+        }))
+      : null;
+
   let sessionUserEmail: string | null = null;
   if (sessionUserId) {
     const sessionUser = await prisma.user.findUnique({
@@ -362,7 +385,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agentName,
       agentPhone: agent.phone,
       agentEmail: agent.email,
-      agentPhoto,
+      agentPhoto: agentPhoto ? absolutizeMediaUrl(agentPhoto) : null,
       agentTitle,
       agencyLogo,
       agencySlug,
@@ -457,12 +480,30 @@ export async function GET(_req: Request, ctx: RouteCtx) {
                 JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
                 JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
                 'LISTING_FEATURED',
+                'ESTATEOS_ACTIVATED',
+                'ESTATEOS_PROMOTED',
                 'EXTERNAL_PORTAL',
+                'EXTERNAL_PORTAL_LISTED',
+                'EXTERNAL_PORTAL_UPDATED',
                 'MARKET_REPORT_SENT',
                 'LISTING_LINKED',
               ].includes(a.kind),
             )
             .filter((a) => {
+              const shaped = shapeMarketingTimelineItem(a);
+              if (
+                [
+                  'LISTING_FEATURED',
+                  'ESTATEOS_ACTIVATED',
+                  'ESTATEOS_PROMOTED',
+                  'EXTERNAL_PORTAL',
+                  'EXTERNAL_PORTAL_LISTED',
+                  'EXTERNAL_PORTAL_UPDATED',
+                  'MARKET_REPORT_SENT',
+                ].includes(a.kind)
+              ) {
+                return shaped.visibleToClient;
+              }
               const meta =
                 a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
               const oid = Number(a.offerId || meta.offerId || 0);
@@ -471,6 +512,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             .map((a) => {
               const meta =
                 a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
+              const shaped = shapeMarketingTimelineItem(a);
               return {
                 id: a.id,
                 kind: a.kind,
@@ -478,12 +520,23 @@ export async function GET(_req: Request, ctx: RouteCtx) {
                 body: a.body,
                 createdAt: a.createdAt.toISOString(),
                 startsAt: typeof meta.startsAt === 'string' ? meta.startsAt : null,
-                url: typeof meta.url === 'string' ? meta.url : null,
-                image: typeof meta.image === 'string' ? meta.image : null,
-                siteName: typeof meta.siteName === 'string' ? meta.siteName : null,
+                url: shaped.externalUrl,
+                image: shaped.image,
+                siteName: shaped.siteName,
+                status: shaped.status,
+                renewalDueAt: shaped.renewalDueAt,
+                promotedUntil: shaped.promotedUntil,
               };
             })
         : [],
+      marketingTimeline:
+        sellerMarketing?.marketingTimeline.map((item) => ({
+          ...item,
+          evidenceUrl: item.evidenceUrl ? absolutizeMediaUrl(item.evidenceUrl) : null,
+        })) || [],
+      activeChannels: sellerMarketing?.activeChannels || [],
+      sellerNextStep: sellerMarketing?.sellerNextStep || null,
+      pendingDecisions: sellerMarketing?.pendingDecisions || [],
       acquisition: client.acquisition
         ? {
             status: client.acquisition.status,
@@ -499,7 +552,14 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             updatedAt: client.acquisition.updatedAt.toISOString(),
           }
         : null,
-      activities: client.activities.map((a) => {
+      activities: client.activities
+        .filter(
+          (activity) =>
+            client.type !== 'SELLER' ||
+            !isMarketingActivityKind(activity.kind) ||
+            isActivityVisibleToClient(activity.metadata),
+        )
+        .map((a) => {
         const meta =
           a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
         const offerIds = [
@@ -523,7 +583,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(m.offer)),
           })),
         };
-      }),
+        }),
     },
   });
 }
@@ -561,6 +621,25 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   const clientName = `${client.firstName} ${client.lastName}`.trim();
+
+  if (action === 'respond_decision') {
+    if (client.type !== 'SELLER') {
+      return NextResponse.json({ error: 'Dostępne tylko dla sprzedających.' }, { status: 400 });
+    }
+    const decisionId = Number(body.decisionId);
+    const response = String(body.response || '').trim() as 'approve' | 'reject' | 'comment';
+    if (!Number.isFinite(decisionId) || !['approve', 'reject', 'comment'].includes(response)) {
+      return NextResponse.json({ error: 'Wybierz odpowiedź na prośbę agenta.' }, { status: 400 });
+    }
+    const result = await respondToClientDecision({
+      clientId: client.id,
+      decisionId,
+      response,
+      comment: body.comment != null ? String(body.comment) : null,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, decision: result.decision });
+  }
 
   if (action === 'release_first_match') {
     if (client.type !== 'BUYER') {

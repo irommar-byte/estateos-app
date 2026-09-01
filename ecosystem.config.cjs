@@ -115,5 +115,17 @@ module.exports = {
       cron_restart: "12 * * * *",
       time: true,
     },
+    {
+      name: "seller-marketing-renewals",
+      cwd: root,
+      script: "node",
+      args: "scripts/seller-marketing-renewals.cjs",
+      env_file: path.join(root, ".env"),
+      env: sharedEnv,
+      env_production: sharedEnv,
+      autorestart: false,
+      cron_restart: "25 9 * * *",
+      time: true,
+    },
   ],
 };
