@@ -28,6 +28,13 @@ test('PDF filename is a stable slug', () => {
   );
 });
 
+test('JPEG filename uses the same slug with .jpg', () => {
+  assert.equal(
+    offerSharePrintFilename({ id: 1228, title: 'Komfortowe mieszkanie Wola' } as any, 'jpeg'),
+    'estateos-oferta-1228-komfortowe-mieszkanie-wola.jpg',
+  );
+});
+
 test('short description stays intact', () => {
   assert.equal(truncateOfferShareDescription('Krótki opis', 40), 'Krótki opis');
 });

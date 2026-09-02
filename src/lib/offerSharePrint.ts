@@ -1,5 +1,11 @@
 import type { OfferShareCard } from '@/lib/offerShareLanding';
 
+export type OfferShareDownloadFormat = 'pdf' | 'jpeg';
+
+const A4_MM_WIDTH = 210;
+const A4_MM_HEIGHT = 297;
+const PRINT_CAPTURE_BG = '#efe6d2';
+
 export function truncateOfferShareDescription(text: string | null | undefined, max = 420): string {
   const plain = String(text || '').replace(/\s+/g, ' ').trim();
   if (!plain) return '';
@@ -39,13 +45,17 @@ export function buildOfferShareMapSrc(lat: number, lng: number): string {
   return `/api/map/static?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`;
 }
 
-export function offerSharePrintFilename(card: OfferShareCard): string {
+export function offerSharePrintFilename(
+  card: OfferShareCard,
+  format: OfferShareDownloadFormat = 'pdf',
+): string {
   const slug = card.title
     .toLowerCase()
     .replace(/[^a-z0-9ąćęłńóśźż]+/gi, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
-  return `estateos-oferta-${card.id}${slug ? `-${slug}` : ''}.pdf`;
+  const ext = format === 'jpeg' ? 'jpg' : 'pdf';
+  return `estateos-oferta-${card.id}${slug ? `-${slug}` : ''}.${ext}`;
 }
 
 const PRINT_BODY_CLASS = 'offer-share-printing';
@@ -84,8 +94,17 @@ function waitForImages(root: HTMLElement, timeoutMs = 10000): Promise<void> {
   ).then(() => undefined);
 }
 
-export async function downloadOfferSharePdf(root: HTMLElement, filename: string): Promise<void> {
-  const html2pdf = (await import('html2pdf.js')).default;
+type Html2CanvasFn = (
+  element: HTMLElement,
+  options?: Record<string, unknown>,
+) => Promise<HTMLCanvasElement>;
+
+async function loadHtml2Canvas(): Promise<Html2CanvasFn> {
+  const mod = await import('html2canvas');
+  return ((mod as { default?: Html2CanvasFn }).default || mod) as Html2CanvasFn;
+}
+
+async function withVisiblePrintPortal<T>(run: () => Promise<T>): Promise<T> {
   const portal = document.getElementById('offer-share-print-portal');
   const prevStyle = portal?.getAttribute('style');
   portal?.classList.add(PDF_CAPTURE_CLASS);
@@ -101,45 +120,7 @@ export async function downloadOfferSharePdf(root: HTMLElement, filename: string)
   }
 
   try {
-    await waitForImages(root);
-    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-    await html2pdf()
-      .set({
-        margin: 0,
-        filename,
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: '#f7f3ea',
-          logging: false,
-          windowWidth: 794,
-          windowHeight: 1123,
-          onclone: (doc: Document) => {
-            const clonePortal = doc.getElementById('offer-share-print-portal');
-            const cloneRoot = doc.getElementById('offer-share-print-brochure');
-            if (clonePortal) {
-              clonePortal.style.position = 'static';
-              clonePortal.style.left = '0';
-              clonePortal.style.top = '0';
-              clonePortal.style.opacity = '1';
-              clonePortal.style.pointerEvents = 'none';
-              clonePortal.style.width = '210mm';
-              clonePortal.style.zIndex = '1';
-            }
-            if (cloneRoot) {
-              cloneRoot.style.width = '210mm';
-              cloneRoot.style.minHeight = '297mm';
-              cloneRoot.style.maxHeight = '297mm';
-              cloneRoot.style.background = '#f7f3ea';
-            }
-          },
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['css'] },
-      })
-      .from(root)
-      .save();
+    return await run();
   } finally {
     if (portal) {
       if (prevStyle == null) portal.removeAttribute('style');
@@ -148,4 +129,95 @@ export async function downloadOfferSharePdf(root: HTMLElement, filename: string)
     portal?.classList.remove(PDF_CAPTURE_CLASS);
     document.body.classList.remove(PDF_CAPTURE_CLASS);
   }
+}
+
+function lockBrochureToA4(el: HTMLElement): void {
+  el.style.width = '210mm';
+  el.style.height = '297mm';
+  el.style.minHeight = '297mm';
+  el.style.maxHeight = '297mm';
+  el.style.overflow = 'hidden';
+  el.style.margin = '0';
+  el.style.boxSizing = 'border-box';
+}
+
+async function captureOfferShareCanvas(root: HTMLElement): Promise<HTMLCanvasElement> {
+  const html2canvas = await loadHtml2Canvas();
+  await waitForImages(root);
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+  lockBrochureToA4(root);
+  const width = Math.max(1, root.offsetWidth);
+  const height = Math.max(1, root.offsetHeight);
+  return html2canvas(root, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: PRINT_CAPTURE_BG,
+    logging: false,
+    width,
+    height,
+    windowWidth: width,
+    windowHeight: height,
+    scrollX: 0,
+    scrollY: 0,
+    x: 0,
+    y: 0,
+    onclone: (doc: Document) => {
+      const clonePortal = doc.getElementById('offer-share-print-portal');
+      const cloneRoot = doc.getElementById('offer-share-print-brochure');
+      if (clonePortal) {
+        clonePortal.style.position = 'static';
+        clonePortal.style.left = '0';
+        clonePortal.style.top = '0';
+        clonePortal.style.opacity = '1';
+        clonePortal.style.pointerEvents = 'none';
+        clonePortal.style.width = '210mm';
+        clonePortal.style.height = '297mm';
+        clonePortal.style.overflow = 'hidden';
+      }
+      if (cloneRoot) lockBrochureToA4(cloneRoot);
+    },
+  });
+}
+
+function triggerBrowserDownload(href: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+export async function downloadOfferSharePdf(root: HTMLElement, filename: string): Promise<void> {
+  await withVisiblePrintPortal(async () => {
+    const canvas = await captureOfferShareCanvas(root);
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    const img = canvas.toDataURL('image/jpeg', 0.95);
+    pdf.addImage(img, 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
+    pdf.save(filename);
+  });
+}
+
+export async function downloadOfferShareJpeg(root: HTMLElement, filename: string): Promise<void> {
+  await withVisiblePrintPortal(async () => {
+    const canvas = await captureOfferShareCanvas(root);
+    await new Promise<void>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Nie udało się zbudować JPEG.'));
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          triggerBrowserDownload(url, filename);
+          window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+          resolve();
+        },
+        'image/jpeg',
+        0.92,
+      );
+    });
+  });
 }

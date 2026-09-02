@@ -26,8 +26,6 @@ function AgentPrintCard({ card }: { card: OfferShareCard }) {
       ? 'Agent nieruchomości'
       : 'Kontakt do wystawcy';
   const initial = (primary.charAt(0) || 'E').toUpperCase();
-  const agentProfileUrl = publisher.profileUrl || card.canonicalUrl;
-  const qrSrc = buildOfferShareQrSrc(agentProfileUrl, 220);
 
   return (
     <section className="offer-share-agent-print-card" aria-label="Wizytówka agenta">
@@ -53,11 +51,6 @@ function AgentPrintCard({ card }: { card: OfferShareCard }) {
           <p className="offer-share-agent-print-ref">
             Ref. #{card.id} · estateos.pl/o/{card.id}
           </p>
-        </div>
-        <div className="offer-share-agent-print-qr-col">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qrSrc} alt="Kod QR wizytówki agenta" className="offer-share-agent-print-qr" />
-          <p className="offer-share-agent-print-qr-label">Wizytówka agenta</p>
         </div>
         <div className="offer-share-agent-print-brand">
           <span className="offer-share-agent-print-badge">EstateOS™</span>
@@ -99,7 +92,7 @@ function PrintMapPanel({ card }: { card: OfferShareCard }) {
 export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochureProps) {
   const [mounted, setMounted] = useState(false);
   const hero = card.imageUrl || card.images[0] || '';
-  const description = truncateOfferShareDescription(card.description, 480);
+  const description = truncateOfferShareDescription(card.description, 420);
   const qrSrc = buildOfferShareQrSrc(card.canonicalUrl, 240);
 
   useEffect(() => {
@@ -120,100 +113,104 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
   return createPortal(
     <div id="offer-share-print-portal" className="offer-share-print-portal" aria-hidden="true">
       <article id="offer-share-print-brochure" className="offer-share-print-brochure">
-        <header className="offer-share-print-header">
-          <div className="offer-share-print-brand-left">
-            <strong>EstateOS™</strong>
-            <span>Karta nieruchomości</span>
-          </div>
-          <span className="offer-share-print-ref">
-            <span className="offer-share-print-ref-label">Oferta</span>
-            <strong className="offer-share-print-ref-value">#{card.id}</strong>
-          </span>
-        </header>
-
-        <div className="offer-share-print-hero">
-          {hero ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={hero} alt={card.title} crossOrigin="anonymous" />
-          ) : (
-            <div className="offer-share-print-hero-placeholder">Brak zdjęcia</div>
-          )}
-          <div className="offer-share-print-hero-overlay">
-            <div className="offer-share-print-badges">
-              <span>{card.transactionLabel}</span>
-              <span>{card.propertyTypeLabel}</span>
+        <div className="offer-share-print-plate">
+          <span className="offer-share-print-corner offer-share-print-corner--bl" aria-hidden />
+          <span className="offer-share-print-corner offer-share-print-corner--br" aria-hidden />
+          <header className="offer-share-print-header">
+            <div className="offer-share-print-brand-left">
+              <strong>EstateOS™</strong>
+              <span>Karta nieruchomości</span>
             </div>
-            <p className="offer-share-print-price">{card.priceLabel}</p>
-          </div>
-        </div>
+            <span className="offer-share-print-ref">
+              <span className="offer-share-print-ref-label">Oferta</span>
+              <strong className="offer-share-print-ref-value">#{card.id}</strong>
+            </span>
+          </header>
 
-        <div className="offer-share-print-main">
-          <div className="offer-share-print-copy">
-            <h1>{card.title}</h1>
-            <p className="offer-share-print-location">{card.addressLine || card.locationLabel}</p>
-            <p className="offer-share-print-summary">{card.detailLine}</p>
-
-            {specs.length ? (
-              <div className="offer-share-print-spec-grid">
-                {specs.map((spec) => (
-                  <div key={spec.label} className="offer-share-print-spec">
-                    <span className="offer-share-print-spec-label">{spec.label}</span>
-                    <strong className="offer-share-print-spec-value">{spec.value}</strong>
-                  </div>
-                ))}
+          <div className="offer-share-print-hero">
+            {hero ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={hero} alt={card.title} crossOrigin="anonymous" />
+            ) : (
+              <div className="offer-share-print-hero-placeholder">Brak zdjęcia</div>
+            )}
+            <div className="offer-share-print-hero-overlay">
+              <div className="offer-share-print-badges">
+                <span>{card.transactionLabel}</span>
+                <span>{card.propertyTypeLabel}</span>
               </div>
-            ) : null}
-
-            {card.amenities.length ? (
-              <div className="offer-share-print-amenities">
-                {card.amenities.map((item) => (
-                  <span key={item} className="offer-share-print-amenity">
-                    {item}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            {description ? (
-              <section className="offer-share-print-description">
-                <p className="offer-share-print-section-title">Opis</p>
-                <p className="offer-share-print-description-body">{description}</p>
-              </section>
-            ) : null}
-          </div>
-
-          <aside className="offer-share-print-side">
-            <PrintMapPanel card={card} />
-
-            {card.gallery.length ? (
-              <div className="offer-share-print-gallery">
-                {card.gallery.map((src) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={src} src={src} alt="" crossOrigin="anonymous" />
-                ))}
-              </div>
-            ) : null}
-
-            <div className="offer-share-print-qr-row">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrSrc} alt="Kod QR oferty" className="offer-share-print-qr" />
-              <div>
-                <p className="offer-share-print-qr-title">Kod QR oferty</p>
-                <p className="offer-share-print-qr-caption">
-                  Zeskanuj telefonem — otworzy wizytówkę lub aplikację EstateOS™.
-                </p>
-                <p className="offer-share-print-qr-url">{card.canonicalUrl}</p>
-              </div>
+              <p className="offer-share-print-price">{card.priceLabel}</p>
             </div>
-          </aside>
+          </div>
+
+          <div className="offer-share-print-main">
+            <div className="offer-share-print-copy">
+              <h1>{card.title}</h1>
+              <p className="offer-share-print-location">{card.addressLine || card.locationLabel}</p>
+              <p className="offer-share-print-summary">{card.detailLine}</p>
+
+              {specs.length ? (
+                <div className="offer-share-print-spec-grid">
+                  {specs.map((spec) => (
+                    <div key={spec.label} className="offer-share-print-spec">
+                      <span className="offer-share-print-spec-label">{spec.label}</span>
+                      <strong className="offer-share-print-spec-value">{spec.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {card.amenities.length ? (
+                <div className="offer-share-print-amenities">
+                  {card.amenities.map((item) => (
+                    <span key={item} className="offer-share-print-amenity">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {description ? (
+                <section className="offer-share-print-description">
+                  <p className="offer-share-print-section-title">Opis</p>
+                  <p className="offer-share-print-description-body">{description}</p>
+                </section>
+              ) : null}
+            </div>
+
+            <aside className="offer-share-print-side">
+              <PrintMapPanel card={card} />
+
+              {card.gallery.length ? (
+                <div className="offer-share-print-gallery">
+                  {card.gallery.map((src) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={src} src={src} alt="" crossOrigin="anonymous" />
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="offer-share-print-qr-row">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrSrc} alt="Kod QR oferty" className="offer-share-print-qr" />
+                <div>
+                  <p className="offer-share-print-qr-title">Kod QR oferty</p>
+                  <p className="offer-share-print-qr-caption">
+                    Zeskanuj telefonem — otworzy wizytówkę lub aplikację EstateOS™.
+                  </p>
+                  <p className="offer-share-print-qr-url">{card.canonicalUrl}</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <AgentPrintCard card={card} />
+
+          <footer className="offer-share-print-foot">
+            <span>estateos.pl</span>
+            <span>Radar · Deal Room · zweryfikowany rynek</span>
+          </footer>
         </div>
-
-        <AgentPrintCard card={card} />
-
-        <footer className="offer-share-print-foot">
-          <span>estateos.pl</span>
-          <span>Radar · Deal Room · zweryfikowany rynek</span>
-        </footer>
       </article>
     </div>,
     document.body,

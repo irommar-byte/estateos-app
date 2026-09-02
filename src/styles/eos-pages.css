@@ -3118,18 +3118,89 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .offer-share-print-brochure {
   box-sizing: border-box;
   width: 210mm;
+  height: 297mm;
   min-height: 297mm;
   max-height: 297mm;
   margin: 0;
-  padding: 8mm 9mm 7mm;
+  padding: 3.4mm;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f7f3ea;
+  background:
+    linear-gradient(180deg, #e4d19a 0%, #c4a046 38%, #a98428 72%, #d7c07a 100%);
   color: #1a1916;
   font-family: 'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia, serif;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+.offer-share-print-plate {
+  position: relative;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 6mm 7mm 5mm;
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgba(255, 252, 244, 0.92) 0%, rgba(247, 243, 234, 0) 46%),
+    linear-gradient(180deg, #f8f4ea 0%, #f3ead8 100%);
+  border: 0.22mm solid rgba(255, 248, 230, 0.78);
+  box-shadow:
+    inset 0 0 0 1.1mm #f7f3ea,
+    inset 0 0 0 1.48mm rgba(168, 132, 40, 0.55);
+}
+
+.offer-share-print-plate::before,
+.offer-share-print-plate::after {
+  content: '';
+  position: absolute;
+  width: 6.4mm;
+  height: 6.4mm;
+  pointer-events: none;
+  border-color: rgba(168, 132, 40, 0.82);
+  border-style: solid;
+  border-width: 0;
+}
+
+.offer-share-print-plate::before {
+  top: 2mm;
+  left: 2mm;
+  border-top-width: 0.28mm;
+  border-left-width: 0.28mm;
+}
+
+.offer-share-print-plate::after {
+  top: 2mm;
+  right: 2mm;
+  border-top-width: 0.28mm;
+  border-right-width: 0.28mm;
+}
+
+.offer-share-print-corner {
+  position: absolute;
+  width: 6.4mm;
+  height: 6.4mm;
+  pointer-events: none;
+  border-color: rgba(168, 132, 40, 0.82);
+  border-style: solid;
+  border-width: 0;
+}
+
+.offer-share-print-corner--bl {
+  bottom: 2mm;
+  left: 2mm;
+  border-bottom-width: 0.28mm;
+  border-left-width: 0.28mm;
+}
+
+.offer-share-print-corner--br {
+  bottom: 2mm;
+  right: 2mm;
+  border-bottom-width: 0.28mm;
+  border-right-width: 0.28mm;
 }
 
 .offer-share-print-header {
@@ -3137,9 +3208,9 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
   align-items: center;
   justify-content: space-between;
   gap: 4mm;
-  padding-bottom: 3mm;
-  margin-bottom: 3mm;
-  border-bottom: 0.35mm solid #d4c08a;
+  padding-bottom: 2.8mm;
+  margin-bottom: 2.8mm;
+  border-bottom: 0.28mm solid rgba(168, 132, 40, 0.45);
 }
 
 .offer-share-print-brand-left {
@@ -3182,17 +3253,18 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .offer-share-print-ref-label,
 .offer-share-print-spec-label {
   display: block;
-  width: 100%;
   box-sizing: border-box;
   margin: 0;
+  padding: 0;
   text-align: center;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   font-size: 6pt;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  padding-left: 0.16em;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
   text-transform: uppercase;
   color: #6a5418;
+  line-height: 1.15;
   text-shadow:
     0 0.6px 0 rgba(255, 255, 255, 0.82),
     0 -0.4px 0.35px rgba(70, 50, 15, 0.28);
@@ -3201,15 +3273,15 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .offer-share-print-ref-value,
 .offer-share-print-spec-value {
   display: block;
-  width: 100%;
   box-sizing: border-box;
-  margin: 0.4mm 0 0;
+  margin: 0;
+  padding: 0;
   text-align: center;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   font-size: 11pt;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: 0;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
   color: #2c2412;
   text-shadow:
@@ -3219,10 +3291,13 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 
 .offer-share-print-hero {
   position: relative;
-  height: 88mm;
+  height: 82mm;
   overflow: hidden;
-  border-radius: 2.5mm;
+  border-radius: 1.8mm;
   background: #e8e0d0;
+  box-shadow:
+    0 0 0 0.28mm rgba(168, 132, 40, 0.42),
+    0 2.5mm 6mm rgba(62, 44, 12, 0.12);
 }
 
 .offer-share-print-hero img {
@@ -3331,8 +3406,8 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  gap: 2.2mm;
-  margin-top: 4mm;
+  gap: 2mm;
+  margin-top: 3.6mm;
 }
 
 .offer-share-print-spec {
@@ -3341,29 +3416,34 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 21mm;
+  gap: 1.6mm;
+  min-height: 19.5mm;
   min-width: 0;
-  padding: 3.2mm 1.4mm 3mm;
+  padding: 2.2mm 1mm;
   text-align: center;
-  border-radius: 2.6mm;
+  border-radius: 2.2mm;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0) 42%),
     linear-gradient(180deg, #fbf7ec 0%, #e7d8b6 48%, #f2e6ce 100%);
-  border: 0.32mm solid rgba(138, 109, 31, 0.4);
+  border: 0.28mm solid rgba(138, 109, 31, 0.42);
   box-shadow:
-    0 3px 7px rgba(62, 44, 12, 0.16),
+    0 2px 6px rgba(62, 44, 12, 0.12),
     0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 -2px 4px rgba(110, 80, 20, 0.18) inset;
+    0 -2px 4px rgba(110, 80, 20, 0.16) inset;
 }
 
 .offer-share-print-spec-label {
-  margin-bottom: 1.6mm;
+  width: max-content;
+  max-width: calc(100% + 0.14em);
+  margin: 0 auto;
 }
 
 .offer-share-print-spec-value {
-  margin: 0;
-  font-size: 13pt;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+  font-size: 12.5pt;
 }
 
 .offer-share-print-amenities {
@@ -3422,6 +3502,8 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
   font-size: 8.8pt;
   line-height: 1.45;
   color: #3d3a32;
+  text-align: justify;
+  hyphens: auto;
 }
 
 .offer-share-print-map {
@@ -3434,7 +3516,7 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .offer-share-print-map img,
 .offer-share-print-map-fallback {
   width: 100%;
-  height: 58mm;
+  height: 52mm;
   object-fit: cover;
   display: block;
 }
@@ -3487,13 +3569,17 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 
 .offer-share-print-qr-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 3mm;
   margin-top: auto;
-  padding: 2.5mm;
-  border: 1px solid rgba(184, 146, 46, 0.28);
-  border-radius: 2mm;
-  background: rgba(255, 255, 255, 0.5);
+  padding: 2.6mm 2.8mm;
+  border: 0.28mm solid rgba(168, 132, 40, 0.42);
+  border-radius: 2.2mm;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 252, 244, 0.42) 100%);
+  box-shadow:
+    inset 0 0 0 0.9mm rgba(247, 243, 234, 0.9),
+    0 1.5mm 4mm rgba(62, 44, 12, 0.08);
 }
 
 .offer-share-print-qr {
@@ -3534,9 +3620,9 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
   justify-content: space-between;
   align-items: center;
   gap: 4mm;
-  margin-top: 3mm;
-  padding-top: 2.4mm;
-  border-top: 0.35mm solid #d4c08a;
+  margin-top: 2.6mm;
+  padding-top: 2.2mm;
+  border-top: 0.28mm solid rgba(168, 132, 40, 0.45);
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 7pt;
   letter-spacing: 0.14em;
@@ -3545,32 +3631,40 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 }
 
 .offer-share-agent-print-card {
-  margin-top: 3mm;
+  margin-top: 2.8mm;
   page-break-inside: avoid;
+  flex: 0 0 auto;
 }
 
 .offer-share-agent-print-inner {
   display: grid;
-  grid-template-columns: 22mm 1fr 20mm auto;
-  gap: 3mm;
+  grid-template-columns: 21mm minmax(0, 1fr) auto;
+  gap: 3.2mm;
   align-items: center;
-  padding: 4mm 5mm;
-  border-radius: 4mm;
-  border: 1px solid #d4c08a;
-  background: linear-gradient(135deg, #fffdf7 0%, #f8f4ea 55%, #f3efe6 100%);
+  padding: 3.4mm 4.4mm;
+  border-radius: 3.2mm;
+  border: 0.28mm solid rgba(168, 132, 40, 0.5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0) 46%),
+    linear-gradient(135deg, #fffdf7 0%, #f8f4ea 55%, #f3efe6 100%);
   color: #1a1a1e;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+  box-shadow:
+    inset 0 0 0 0.95mm rgba(255, 252, 244, 0.88),
+    0 1.6mm 4mm rgba(62, 44, 12, 0.08);
 }
 
 .offer-share-agent-print-photo {
-  width: 22mm;
-  height: 22mm;
-  border-radius: 3mm;
+  width: 21mm;
+  height: 21mm;
+  border-radius: 50%;
   overflow: hidden;
-  border: 1px solid rgba(184, 146, 46, 0.35);
+  border: 0.42mm solid #c9a227;
   background: #ece7dc;
   display: grid;
   place-items: center;
+  box-shadow:
+    0 0 0 0.7mm #f7f3ea,
+    0 0 0 1.05mm rgba(168, 132, 40, 0.45);
 }
 
 .offer-share-agent-print-photo img {
@@ -3619,39 +3713,11 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 }
 
 .offer-share-agent-print-ref {
-  margin-top: 2mm;
+  margin-top: 1.6mm;
   font-size: 6.5pt;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #8a6d1f;
-}
-
-.offer-share-agent-print-qr-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1mm;
-}
-
-.offer-share-agent-print-qr {
-  width: 18mm;
-  height: 18mm;
-  border-radius: 2mm;
-  border: 1px solid rgba(20, 20, 22, 0.12);
-  background: #fff;
-  object-fit: contain;
-}
-
-.offer-share-agent-print-qr-label {
-  font-size: 5.5pt;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #6b6b76;
-  text-align: center;
-  line-height: 1.25;
-  max-width: 20mm;
-  margin: 0;
 }
 
 .offer-share-agent-print-brand {
@@ -3713,8 +3779,18 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 
   body.offer-share-printing .offer-share-print-brochure {
     width: 210mm;
+    height: 297mm;
     min-height: 297mm;
     max-height: 297mm;
+    overflow: hidden;
+    page-break-after: avoid;
+    break-after: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.offer-share-printing .offer-share-print-plate {
+    height: 100%;
+    overflow: hidden;
   }
 
   @page {
