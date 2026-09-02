@@ -71,6 +71,8 @@ export type MarketingMetadata = {
   groupName?: string | null;
   groupUrl?: string | null;
   groupId?: string | null;
+  reportId?: number | null;
+  emails?: string[];
 };
 
 export type MarketingTimelineItem = {
@@ -352,6 +354,7 @@ export async function recordMarketingActivity(params: {
   metadata?: MarketingMetadata;
   visibleToClient?: boolean;
   notifyEmail?: boolean;
+  skipClientNotify?: boolean;
 }) {
   const client = await prisma.agencyClient.findFirst({
     where: {
@@ -364,6 +367,7 @@ export async function recordMarketingActivity(params: {
   if (!client) return { ok: false as const, error: "Nie znaleziono klienta." };
 
   const visibleToClient = params.visibleToClient === true;
+  const shouldNotify = visibleToClient && params.skipClientNotify !== true;
   const metadata = buildMarketingMetadata(
     {
       ...(params.metadata || {}),
@@ -386,7 +390,7 @@ export async function recordMarketingActivity(params: {
         metadata,
       },
     });
-    if (visibleToClient) {
+    if (shouldNotify) {
       await tx.sellerMarketingNotification.create({
         data: {
           activityId: created.id,
@@ -398,7 +402,7 @@ export async function recordMarketingActivity(params: {
     return created;
   });
 
-  const notification = visibleToClient
+  const notification = shouldNotify
     ? await deliverMarketingNotification(activity.id)
     : { emailed: false, pushed: 0 };
 
@@ -1010,6 +1014,7 @@ export type SellerListingPathItem = {
   status: string | null;
   renewalDueAt: string | null;
   promotedUntil: string | null;
+  reportId: number | null;
 };
 
 export function buildSellerListingPath(params: {
@@ -1054,6 +1059,7 @@ export function buildSellerListingPath(params: {
       groupUrl: shaped.groupUrl,
       title: shaped.title,
     });
+    const reportIdRaw = Number(meta.reportId);
     items.push({
       id: activity.id,
       kind: activity.kind,
@@ -1078,6 +1084,7 @@ export function buildSellerListingPath(params: {
       status: shaped.status,
       renewalDueAt: shaped.renewalDueAt,
       promotedUntil: shaped.promotedUntil,
+      reportId: Number.isFinite(reportIdRaw) && reportIdRaw > 0 ? reportIdRaw : null,
     });
   }
   return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));

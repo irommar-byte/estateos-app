@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import ListingPathEventCard, {
-  type ListingPathEvent,
-} from "@/components/portal/ListingPathEventCard";
+import PortalPathStacks from "@/components/portal/PortalPathStacks";
+import { type ListingPathEvent } from "@/components/portal/ListingPathEventCard";
 
 type Channel = {
   portal: string;
@@ -204,7 +203,15 @@ export default function SellerPortalCollaboration({
         </section>
       ) : null}
 
-      {activeChannels.length ? (
+      {activeChannels.length > 0 && !listingPath.some((item) => {
+        const kind = String(item.kind || "").toUpperCase();
+        return (
+          kind === "ESTATEOS_ACTIVATED" ||
+          kind === "ESTATEOS_PROMOTED" ||
+          kind === "LISTING_FEATURED" ||
+          kind.startsWith("EXTERNAL_PORTAL")
+        );
+      }) ? (
         <section className="eos-lux-panel rounded-[1.75rem] p-6">
           <p className="eos-portal-label eos-portal-label--ok">Aktywne kanały</p>
           <div className="mt-4 space-y-2">
@@ -240,14 +247,16 @@ export default function SellerPortalCollaboration({
       {listingPath.length ? (
         <section className="eos-lux-panel rounded-[1.75rem] p-6">
           <p className="eos-portal-label eos-portal-label--ok">Ścieżka oferty</p>
-          <div className="mt-4 space-y-3">
-            {listingPath.map((item) => (
-              <ListingPathEventCard
-                key={item.id}
-                item={item}
-                fallbackImage={listingImage}
-              />
-            ))}
+          <p className="mt-1 text-sm leading-relaxed text-[var(--eos-muted)]">
+            Promocje, raporty i pozostałe kroki są zebrane w stosy — rozwiń kartę, żeby zobaczyć każdy wpis.
+          </p>
+          <div className="mt-4">
+            <PortalPathStacks
+              token={token}
+              listingPath={listingPath}
+              listingImage={listingImage}
+              activePortals={activeChannels.map((channel) => channel.portal)}
+            />
           </div>
         </section>
       ) : null}

@@ -1584,6 +1584,99 @@ html:not(.light) .listing-path-card--otodom .listing-path-card__link {
   background: #64748b;
 }
 
+.listing-path-stack {
+  border-radius: 1.35rem;
+  border: 1px solid rgba(196, 163, 90, 0.22);
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.92) 0%, rgba(250, 247, 240, 0.88) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 14px 32px rgba(28, 20, 8, 0.06);
+  overflow: hidden;
+}
+html:not(.light) .listing-path-stack {
+  border-color: rgba(196, 163, 90, 0.18);
+  background: linear-gradient(165deg, rgba(28, 24, 18, 0.92) 0%, rgba(18, 16, 12, 0.88) 100%);
+}
+.listing-path-stack__toggle {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  text-align: left;
+  padding: 16px 18px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+}
+.listing-path-stack__kicker {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8a7040;
+  margin: 0 0 4px;
+}
+.listing-path-stack__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--eos-text);
+}
+.listing-path-stack__summary {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--eos-muted);
+}
+.listing-path-stack__meta {
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a7040;
+}
+.listing-path-stack__chevron {
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  flex: none;
+  color: #8a7040;
+  transition: transform 0.18s ease;
+}
+.listing-path-stack__chevron--open {
+  transform: rotate(180deg);
+}
+.listing-path-stack__body {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+.listing-path-stack__open {
+  display: inline-flex;
+  margin: 0 18px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f766e;
+  text-decoration: none;
+}
+.listing-path-stack--reports {
+  border-color: rgba(15, 118, 110, 0.28);
+}
+.listing-path-stack--reports .listing-path-stack__kicker,
+.listing-path-stack--reports .listing-path-stack__meta,
+.listing-path-stack--reports .listing-path-stack__chevron {
+  color: #0f766e;
+}
+.listing-path-stack--promotions {
+  border-color: rgba(201, 162, 39, 0.34);
+}
+
 .portal-offer-search__glow {
   background:
     radial-gradient(circle at 50% 35%, rgba(16, 185, 129, 0.14) 0%, transparent 58%),

@@ -24,6 +24,7 @@ export type ListingPathEvent = {
   portal?: string | null;
   status?: string | null;
   promotedUntil?: string | null;
+  reportId?: number | null;
 };
 
 function FacebookMark() {
@@ -50,9 +51,11 @@ function whenLabel(item: ListingPathEvent) {
 export default function ListingPathEventCard({
   item,
   fallbackImage,
+  token,
 }: {
   item: ListingPathEvent;
   fallbackImage?: string | null;
+  token?: string;
 }) {
   const channel = resolveMarketingChannel({
     kind: item.kind,
@@ -69,16 +72,19 @@ export default function ListingPathEventCard({
     channelId: channel.id,
     listingImage: fallbackImage,
   });
+  const isReport = item.kind === "MARKET_REPORT_SENT";
   const headline =
     channel.id === "facebook" && item.groupName
       ? `Facebook · ${item.groupName}`
       : item.title || channel.label;
-  const linkHref =
-    channel.id === "facebook"
+  const linkHref = isReport && token
+    ? `/klient/${encodeURIComponent(token)}/raport/${item.id}`
+    : channel.id === "facebook"
       ? facebookClientOpenHref({ url: item.url, groupUrl: item.groupUrl })
       : item.url || item.groupUrl || null;
-  const linkLabel =
-    channel.id === "facebook"
+  const linkLabel = isReport
+    ? "Otwórz raport"
+    : channel.id === "facebook"
       ? facebookOpenLabel({ href: linkHref, groupName: item.groupName })
       : `Zobacz publikację · ${channel.label}`;
 

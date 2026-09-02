@@ -27,6 +27,7 @@ export async function recordSellerSaleUpdate(params: {
   emailSubject?: string;
   emailHtml?: string;
   visibleToClient?: boolean;
+  skipClientNotify?: boolean;
 }) {
   const meta = (params.metadata || {}) as Record<string, unknown>;
   const visibleToClient =
@@ -43,6 +44,7 @@ export async function recordSellerSaleUpdate(params: {
     metadata: meta,
     visibleToClient,
     notifyEmail: visibleToClient && Boolean(params.emailHtml && params.emailSubject),
+    skipClientNotify: params.skipClientNotify,
   });
 }
 
@@ -132,6 +134,7 @@ export async function recordMarketReportForClient(params: {
   summary: string;
   mid: number;
   score?: number | null;
+  reportId?: number | null;
   visibleToClient?: boolean;
 }) {
   const emailsLabel = params.emails.join(', ');
@@ -139,13 +142,14 @@ export async function recordMarketReportForClient(params: {
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     kind: SELLER_SALE_ACTIVITY.MARKET_REPORT,
-    title: 'Wysłaliśmy raport z aktów notarialnych',
-    body: `Dostałeś analizę EstateOS™ Market na ${emailsLabel}. ${params.summary} To nie jest ogólnik z portali ogłoszeniowych — porównanie z Rejestrem Cen Nieruchomości, czyli rzeczywistymi transakcjami.`,
+    title: 'Raport z Rejestru Cen Nieruchomości',
+    body: `Przekazaliśmy Państwu analizę wartości nieruchomości na podstawie rzeczywistych aktów notarialnych (GUGiK). Dokument jest dostępny w panelu i można go odczytać w każdej chwili.${emailsLabel ? ` Wysłano na: ${emailsLabel}.` : ''}`,
     metadata: {
       emails: params.emails,
-      mid: params.mid,
+      reportId: params.reportId ?? null,
       score: params.score ?? null,
     },
-    visibleToClient: params.visibleToClient,
+    visibleToClient: params.visibleToClient !== false,
+    skipClientNotify: true,
   });
 }

@@ -486,8 +486,6 @@ export default function MarketValuationPanel({
               <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Wygenerować raport tej nieruchomości?</h3>
               <p className="mt-3 text-sm font-semibold text-[var(--eos-text)]">{propertyLabel}</p>
               {propertyMeta ? <p className="mt-0.5 text-[12px] text-[var(--eos-muted)]">{propertyMeta}</p> : null}
-              <p className="mt-3 text-2xl font-black tabular-nums text-[var(--eos-text)]">{pln(result.estimated.mid)}</p>
-              <p className="mt-1 text-[12px] text-[var(--eos-muted)]">Najbardziej prawdopodobna wartość z aktów RCN</p>
               <p className="mt-4 text-sm leading-relaxed text-[var(--eos-muted)]">
                 Potwierdzenie zużyje <span className="font-bold text-[var(--eos-text)]">1 punkt z limitu</span>
                 {quota && quota.cap != null ? ` — zostanie ${Math.max(0, quota.remaining - 1)} z ${quota.cap}` : ""}.
