@@ -51,6 +51,9 @@ export type ScheduleSlot = {
   reason: string | null;
   previousStartsAt: string | null;
   prepItems: ClientPrepItemId[];
+  offerId: number | null;
+  buyerClientId: number | null;
+  sellerClientId: number | null;
 };
 
 export type JourneyStageId =
@@ -100,6 +103,7 @@ export type ActivityLike = {
   title: string | null;
   body: string | null;
   createdAt: Date | string;
+  offerId?: number | null;
   metadata?: unknown;
 };
 
@@ -192,7 +196,16 @@ export function parseAttachments(raw: unknown): PortalAttachment[] {
     .filter((item): item is PortalAttachment => Boolean(item));
 }
 
-function slotFromMeta(meta: Record<string, unknown>, fallback: Partial<ScheduleSlot>): ScheduleSlot | null {
+function positiveId(raw: unknown): number | null {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function slotFromMeta(
+  meta: Record<string, unknown>,
+  fallback: Partial<ScheduleSlot>,
+  offerIdFromRow?: number | null,
+): ScheduleSlot | null {
   const startsAt = parseIso(meta.startsAt);
   if (!startsAt) return null;
   return {
@@ -204,6 +217,13 @@ function slotFromMeta(meta: Record<string, unknown>, fallback: Partial<ScheduleS
     reason: meta.reason ? String(meta.reason) : null,
     previousStartsAt: parseIso(meta.previousStartsAt),
     prepItems: normalizePrepItemIds(meta.prepItems ?? fallback.prepItems),
+    offerId:
+      positiveId(meta.offerId) ||
+      positiveId(offerIdFromRow) ||
+      fallback.offerId ||
+      null,
+    buyerClientId: positiveId(meta.buyerClientId) || fallback.buyerClientId || null,
+    sellerClientId: positiveId(meta.sellerClientId) || fallback.sellerClientId || null,
   };
 }
 
@@ -226,11 +246,15 @@ export function resolveSchedule(
   let current: ScheduleSlot | null = null;
   for (const row of relevant) {
     const meta = asMeta(row.metadata);
-    const next = slotFromMeta(meta, current || {});
+    const next = slotFromMeta(meta, current || {}, row.offerId);
     if (!next) continue;
     const prev = slotBits(current);
     if (row.kind === kinds.seed) {
-      current = { ...next, status: 'confirmed', proposedBy: parseActor(meta.proposedBy, 'agent') };
+      current = {
+        ...next,
+        proposedBy: parseActor(meta.proposedBy, 'agent'),
+        status: meta.status === 'pending' ? 'pending' : 'confirmed',
+      };
     } else if (row.kind === kinds.change) {
       current = {
         ...next,
@@ -355,7 +379,9 @@ export function buildJourneyStages(params: {
             id: 'presentation',
             label: 'Prezentacje',
             done: params.hasPresentation && params.presentationConfirmed,
-            hint: 'Pokazywanie nieruchomości kupującym. Termin prezentacji widać poniżej, gdy jest ustalony.',
+            hint: params.hasPresentation
+              ? 'Pokaz mieszkania kupującemu — termin jest na osobnej karcie poniżej. To nie jest spotkanie z agentem.'
+              : 'Gdy kupujący chce obejrzeć, agent zaproponuje termin. Właściciel i kupujący widzą ten sam pokaz.',
           },
           {
             id: 'done',
