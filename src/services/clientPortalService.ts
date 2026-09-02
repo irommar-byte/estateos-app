@@ -144,6 +144,23 @@ export type ClientPortalPayload = {
   matches: PortalMatch[];
   listing?: PortalListing | null;
   listingProgress?: PortalListingProgress[];
+  listingPath?: Array<{
+    id: number;
+    kind: string;
+    title: string | null;
+    body: string | null;
+    createdAt: string;
+    startsAt?: string | null;
+    url?: string | null;
+    image?: string | null;
+    siteName?: string | null;
+    groupName?: string | null;
+    groupUrl?: string | null;
+    portal?: string | null;
+    status?: string | null;
+    promotedUntil?: string | null;
+    renewalDueAt?: string | null;
+  }>;
   marketingTimeline?: PortalMarketingTimelineItem[];
   activeChannels?: PortalActiveChannel[];
   sellerNextStep?: PortalSellerNextStep | null;

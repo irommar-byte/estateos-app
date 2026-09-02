@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractFacebookDestinations,
+  listingThumbnailFallback,
   parseFacebookDestination,
   publicationHeadline,
   resolveMarketingChannel,
@@ -38,4 +39,26 @@ test("mobile extractFacebookDestinations keeps unique groups", () => {
   ]);
   assert.equal(dest.length, 1);
   assert.equal(dest[0].postCount, 2);
+});
+
+test("facebook channel keeps group name when listing url is EstateOS", () => {
+  const channel = resolveMarketingChannel({
+    kind: "EXTERNAL_PORTAL_LISTED",
+    url: "https://estateos.pl/oferta/12",
+    groupName: "Warszawa mieszkania",
+    groupUrl: "https://www.facebook.com/groups/warszawa.mieszkania/",
+  });
+  assert.equal(channel.id, "facebook");
+  assert.equal(channel.label, "Warszawa mieszkania");
+});
+
+test("listing thumbnail falls back for Facebook", () => {
+  assert.equal(
+    listingThumbnailFallback({
+      image: null,
+      channelId: "facebook",
+      listingImage: "https://cdn.example/a.jpg",
+    }),
+    "https://cdn.example/a.jpg",
+  );
 });

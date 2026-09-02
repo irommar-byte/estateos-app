@@ -17,6 +17,7 @@ import AcquisitionDatePickerModal from "./AcquisitionDatePickerModal";
 import {
   postAgencyClientAction,
   recordFacebookGroupPost,
+  prepareFacebookGroupShare,
   uploadClientPortalAttachment,
 } from "../../services/agencyClientService";
 import { promoteMobileOfferListing } from "../../utils/mobileOfferPromote";
@@ -79,6 +80,23 @@ export type SellerMarketingState = {
     renewalDueAt: string | null;
     promotedUntil: string | null;
     visibleToClient: boolean;
+  }[];
+  facebookGroups?: {
+    key: string;
+    groupName: string;
+    groupUrl: string | null;
+    lastPostedAt: string;
+    lastPostUrl: string | null;
+    postCount: number;
+    lastOfferId: number | null;
+  }[];
+  facebookShareOffers?: {
+    id: number;
+    title: string;
+    city: string | null;
+    price: number | null;
+    imageUrl: string | null;
+    linkedClientId: number | null;
   }[];
 } | null;
 
@@ -202,6 +220,14 @@ export default function SellerMarketingCard({
   const [pickedFbOfferId, setPickedFbOfferId] = useState<number | null>(
     linkedOfferId,
   );
+  const [facebookPending, setFacebookPending] = useState<{
+    groupName: string;
+    groupUrl: string | null;
+    offerId: number;
+  } | null>(null);
+  const [fbGroupNameDraft, setFbGroupNameDraft] = useState("");
+  const [fbPostUrl, setFbPostUrl] = useState("");
+  const [fbShowClient, setFbShowClient] = useState(true);
 
   useEffect(() => {
     const next = sellerMarketing?.sellerNextStep;
@@ -256,11 +282,10 @@ export default function SellerMarketingCard({
       return;
     }
     setBusy("facebook");
-    const res = await recordFacebookGroupPost(token, clientId, {
+    const res = await prepareFacebookGroupShare(token, clientId, {
       offerId,
       groupName: group.groupName,
       groupUrl: group.groupUrl,
-      visibleToClient: true,
     });
     setBusy("");
     if (!res.ok) {
@@ -277,6 +302,34 @@ export default function SellerMarketingCard({
         sheetTitle: group.groupName || "Facebook",
       }).catch(() => {});
     }
+    setFacebookPending({
+      groupName: group.groupName,
+      groupUrl: group.groupUrl,
+      offerId,
+    });
+    setFbGroupNameDraft(group.groupName);
+    setFbPostUrl("");
+    setFbShowClient(true);
+  };
+
+  const confirmFacebookShare = async () => {
+    if (!facebookPending) return;
+    setBusy("facebook");
+    const res = await recordFacebookGroupPost(token, clientId, {
+      offerId: facebookPending.offerId,
+      groupName: fbGroupNameDraft.trim() || facebookPending.groupName,
+      groupUrl: facebookPending.groupUrl,
+      postUrl: fbPostUrl.trim() || undefined,
+      confirmed: true,
+      visibleToClient: fbShowClient,
+    });
+    setBusy("");
+    if (!res.ok) {
+      Alert.alert("Facebook", res.message);
+      return;
+    }
+    setFacebookPending(null);
+    setFbPostUrl("");
     onRefresh();
   };
 
@@ -904,9 +957,71 @@ export default function SellerMarketingCard({
             GRUPY FACEBOOK
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
-            Wystaw tę albo inną ofertę na grupie, która już była używana. Otworzy
-            się Facebook z kartą ogłoszenia.
+            Otworzy się Facebook z kartą ogłoszenia. Klient zobaczy publikację dopiero
+            po Twoim potwierdzeniu albo wklejeniu linku do posta.
           </Text>
+          {facebookPending ? (
+            <View
+              style={[
+                styles.channelRow,
+                {
+                  borderColor: "rgba(24,119,242,0.45)",
+                  backgroundColor: "rgba(24,119,242,0.12)",
+                  marginTop: 10,
+                },
+              ]}
+            >
+              <View style={{ flex: 1, gap: 8 }}>
+                <Text style={{ color: colors.text, fontWeight: "800" }}>
+                  Potwierdź wrzucenie na „{facebookPending.groupName}”
+                </Text>
+                <TextInput
+                  value={fbGroupNameDraft}
+                  onChangeText={setFbGroupNameDraft}
+                  placeholder="Nazwa grupy"
+                  placeholderTextColor={colors.secondary}
+                  style={[
+                    styles.input,
+                    { color: colors.text, borderColor: colors.border },
+                  ]}
+                />
+                <TextInput
+                  value={fbPostUrl}
+                  onChangeText={setFbPostUrl}
+                  placeholder="Link do posta (opcjonalnie)"
+                  placeholderTextColor={colors.secondary}
+                  autoCapitalize="none"
+                  style={[
+                    styles.input,
+                    { color: colors.text, borderColor: colors.border },
+                  ]}
+                />
+                <View style={styles.switchRow}>
+                  <Text style={{ color: colors.text, flex: 1 }}>
+                    Pokaż klientowi
+                  </Text>
+                  <Switch
+                    value={fbShowClient}
+                    onValueChange={setFbShowClient}
+                  />
+                </View>
+                <Pressable
+                  disabled={Boolean(busy)}
+                  onPress={() => void confirmFacebookShare()}
+                  style={styles.fbShareBtn}
+                >
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
+                    ZAPISZ W ŚCIEŻCE
+                  </Text>
+                </Pressable>
+                <Pressable onPress={() => setFacebookPending(null)}>
+                  <Text style={{ color: colors.secondary, fontWeight: "700" }}>
+                    Nie teraz
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
           {(sellerMarketing?.facebookShareOffers?.length || 0) > 1 ? (
             <View style={styles.chips}>
               {sellerMarketing?.facebookShareOffers?.slice(0, 8).map((offer) => (

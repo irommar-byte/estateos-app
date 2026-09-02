@@ -20,11 +20,12 @@ import {
   type ClientPortalPayload,
 } from "../../services/clientPortalService";
 import {
-  filterVisibleMarketingTimeline,
   isSafeSellerPortalUrl,
+  resolveSellerPortalTimeline,
 } from "../../lib/sellerPortalContract";
 import {
   formatPublicationStatus,
+  listingThumbnailFallback,
   resolveMarketingChannel,
 } from "../../lib/marketingChannel";
 
@@ -87,7 +88,7 @@ export default function SellerPortalView({
 
   const listing = portal.listing;
   const progress = portal.listingProgress || [];
-  const timeline = filterVisibleMarketingTimeline(portal.marketingTimeline);
+  const timeline = resolveSellerPortalTimeline(portal);
   const visibleTimeline = timeline.slice(0, historyLimit);
   const channels = portal.activeChannels || [];
   const nextStep = portal.sellerNextStep;
@@ -618,6 +619,11 @@ export default function SellerPortalView({
                       ? "#00A651"
                       : colors.green;
               const status = formatPublicationStatus(item.status);
+              const preview = listingThumbnailFallback({
+                image: item.image,
+                channelId: channel.id,
+                listingImage: listing?.imageUrl,
+              });
               return (
                 <View
                   key={item.id}
@@ -677,6 +683,12 @@ export default function SellerPortalView({
                       </Text>
                     </View>
                   </View>
+                  {preview ? (
+                    <Image
+                      source={{ uri: preview }}
+                      style={styles.timelinePreview}
+                    />
+                  ) : null}
                   <Text
                     style={{
                       color: colors.text,
@@ -891,6 +903,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
     marginTop: 10,
+  },
+  timelinePreview: {
+    width: "100%",
+    height: 112,
+    borderRadius: 12,
+    marginTop: 10,
+    backgroundColor: "#ccc",
   },
   timelineHead: {
     flexDirection: "row",

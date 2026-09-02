@@ -5,6 +5,7 @@ import {
   filterVisibleMarketingTimeline,
   isSafeSellerPortalUrl,
   isSellerPortalPayload,
+  resolveSellerPortalTimeline,
   summarizeSellerPortal,
 } from "../src/lib/sellerPortalContract";
 import { isClientPortalPushKind } from "../src/lib/clientPortalPushTarget";
@@ -24,7 +25,7 @@ test("filterVisibleMarketingTimeline hides agent-only entries", () => {
       createdAt: "",
       portal: null,
       externalUrl: null,
-      status: null,
+      status: "active",
       renewalDueAt: null,
       promotedUntil: null,
       visibleToClient: true,
@@ -37,10 +38,35 @@ test("filterVisibleMarketingTimeline hides agent-only entries", () => {
       createdAt: "",
       portal: null,
       externalUrl: null,
-      status: null,
+      status: "active",
       renewalDueAt: null,
       promotedUntil: null,
       visibleToClient: false,
+    },
+    {
+      id: 3,
+      kind: "MARKETING_NOTE",
+      title: "C",
+      body: "",
+      createdAt: "",
+      portal: null,
+      externalUrl: null,
+      status: "pending",
+      renewalDueAt: null,
+      promotedUntil: null,
+      visibleToClient: true,
+    },
+    {
+      id: 4,
+      kind: "MARKETING_NOTE",
+      title: "D",
+      body: "",
+      createdAt: "",
+      portal: null,
+      externalUrl: null,
+      status: "active",
+      renewalDueAt: null,
+      promotedUntil: null,
     },
   ]);
   assert.equal(items.length, 1);
@@ -117,4 +143,40 @@ test("seller portal accepts only web links", () => {
   assert.equal(isSafeSellerPortalUrl("/uploads/evidence.pdf"), false);
   assert.equal(isSafeSellerPortalUrl("javascript:alert(1)"), false);
   assert.equal(isSafeSellerPortalUrl(null), false);
+});
+
+test("listingPath is the client-visible feed when present", () => {
+  const timeline = resolveSellerPortalTimeline({
+    listingPath: [
+      {
+        id: 9,
+        kind: "EXTERNAL_PORTAL_LISTED",
+        title: "Facebook · Warszawa",
+        body: "posted",
+        createdAt: "2026-09-02T00:00:00.000Z",
+        url: "https://facebook.com/groups/a/posts/1",
+        groupName: "Warszawa",
+        status: "active",
+        image: "https://cdn.example/a.jpg",
+      },
+    ],
+    marketingTimeline: [
+      {
+        id: 1,
+        kind: "MARKETING_NOTE",
+        title: "private",
+        body: "",
+        createdAt: "",
+        portal: null,
+        externalUrl: null,
+        status: "active",
+        renewalDueAt: null,
+        promotedUntil: null,
+        visibleToClient: false,
+      },
+    ],
+  });
+  assert.equal(timeline.length, 1);
+  assert.equal(timeline[0].id, 9);
+  assert.equal(timeline[0].groupName, "Warszawa");
 });

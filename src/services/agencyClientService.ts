@@ -525,6 +525,21 @@ export function addExternalPortalPublication(
   });
 }
 
+export function prepareFacebookGroupShare(
+  token: string,
+  clientId: number,
+  input: {
+    offerId: number;
+    groupName?: string | null;
+    groupUrl?: string | null;
+  },
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'prepare_facebook_group_share',
+    ...input,
+  });
+}
+
 export function recordFacebookGroupPost(
   token: string,
   clientId: number,
@@ -533,6 +548,7 @@ export function recordFacebookGroupPost(
     groupName?: string | null;
     groupUrl?: string | null;
     postUrl?: string | null;
+    confirmed?: boolean;
     visibleToClient?: boolean;
     renewalDueAt?: string;
   },
