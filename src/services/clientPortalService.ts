@@ -93,6 +93,9 @@ export type PortalMarketingTimelineItem = {
   visibleToClient?: boolean;
   evidenceUrl?: string | null;
   evidenceName?: string | null;
+  groupName?: string | null;
+  groupUrl?: string | null;
+  image?: string | null;
 };
 
 export type PortalActiveChannel = {

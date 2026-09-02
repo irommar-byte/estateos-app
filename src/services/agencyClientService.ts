@@ -131,6 +131,26 @@ export type SellerMarketingBundle = {
     renewalDueAt: string | null;
     promotedUntil: string | null;
     visibleToClient: boolean;
+    groupName?: string | null;
+    groupUrl?: string | null;
+    image?: string | null;
+  }[];
+  facebookGroups?: {
+    key: string;
+    groupName: string;
+    groupUrl: string | null;
+    lastPostedAt: string;
+    lastPostUrl: string | null;
+    postCount: number;
+    lastOfferId: number | null;
+  }[];
+  facebookShareOffers?: {
+    id: number;
+    title: string;
+    city: string | null;
+    price: number | null;
+    imageUrl: string | null;
+    linkedClientId: number | null;
   }[];
 };
 
@@ -491,6 +511,7 @@ export type ExternalPortalPublicationInput = {
   evidenceUrl?: string;
   evidenceName?: string;
   evidenceMimeType?: string;
+  groupName?: string;
 };
 
 export function addExternalPortalPublication(
@@ -500,6 +521,24 @@ export function addExternalPortalPublication(
 ) {
   return postAgencyClientAction(token, clientId, {
     action: 'add_external_portal',
+    ...input,
+  });
+}
+
+export function recordFacebookGroupPost(
+  token: string,
+  clientId: number,
+  input: {
+    offerId: number;
+    groupName?: string | null;
+    groupUrl?: string | null;
+    postUrl?: string | null;
+    visibleToClient?: boolean;
+    renewalDueAt?: string;
+  },
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'record_facebook_group_post',
     ...input,
   });
 }

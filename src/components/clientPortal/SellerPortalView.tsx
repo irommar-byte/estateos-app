@@ -23,6 +23,10 @@ import {
   filterVisibleMarketingTimeline,
   isSafeSellerPortalUrl,
 } from "../../lib/sellerPortalContract";
+import {
+  formatPublicationStatus,
+  resolveMarketingChannel,
+} from "../../lib/marketingChannel";
 
 type Props = {
   portal: ClientPortalPayload;
@@ -595,65 +599,157 @@ export default function SellerPortalView({
               wyróżnienia i aktualizacje.
             </Text>
           ) : (
-            visibleTimeline.map((item) => (
-              <View
-                key={item.id}
-                style={[styles.timelineRow, { borderColor: colors.border }]}
-              >
-                <Text style={{ color: colors.secondary, fontSize: 11 }}>
-                  {formatDate(item.createdAt)}
-                </Text>
-                <Text
-                  style={{
-                    color: colors.text,
-                    fontWeight: "800",
-                    marginTop: 4,
-                  }}
+            visibleTimeline.map((item) => {
+              const channel = resolveMarketingChannel({
+                kind: item.kind,
+                portal: item.portal,
+                siteName: item.siteName,
+                url: item.externalUrl,
+                groupName: item.groupName,
+                groupUrl: item.groupUrl,
+                title: item.title,
+              });
+              const accent =
+                channel.id === "estateos"
+                  ? "#C9A227"
+                  : channel.id === "facebook"
+                    ? "#1877F2"
+                    : channel.id === "otodom"
+                      ? "#00A651"
+                      : colors.green;
+              const status = formatPublicationStatus(item.status);
+              return (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.timelineRow,
+                    {
+                      borderColor: accent,
+                      backgroundColor:
+                        channel.id === "estateos"
+                          ? isDark
+                            ? "rgba(201,162,39,0.16)"
+                            : "rgba(253,230,138,0.35)"
+                          : channel.id === "facebook"
+                            ? isDark
+                              ? "rgba(24,119,242,0.14)"
+                              : "rgba(24,119,242,0.08)"
+                            : colors.card,
+                      shadowColor: accent,
+                      shadowOpacity: 0.22,
+                      shadowRadius: 12,
+                      shadowOffset: { width: 0, height: 6 },
+                      elevation: 4,
+                    },
+                  ]}
                 >
-                  {item.title || item.kind}
-                </Text>
-                {item.body ? (
+                  <View style={styles.timelineHead}>
+                    <View
+                      style={[styles.channelMark, { backgroundColor: accent }]}
+                    >
+                      <Ionicons
+                        name={
+                          channel.id === "estateos"
+                            ? "star"
+                            : channel.id === "facebook"
+                              ? "logo-facebook"
+                              : channel.id === "otodom"
+                                ? "home"
+                                : "globe-outline"
+                        }
+                        size={14}
+                        color={channel.id === "estateos" ? "#1c1408" : "#fff"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          color: accent,
+                          fontSize: 10,
+                          fontWeight: "900",
+                          letterSpacing: 0.6,
+                        }}
+                      >
+                        {channel.badge.toUpperCase()}
+                      </Text>
+                      <Text style={{ color: colors.secondary, fontSize: 11 }}>
+                        {formatDate(item.createdAt)}
+                      </Text>
+                    </View>
+                  </View>
                   <Text
                     style={{
-                      color: colors.secondary,
-                      marginTop: 4,
-                      lineHeight: 20,
+                      color: colors.text,
+                      fontWeight: "800",
+                      marginTop: 8,
                     }}
                   >
-                    {item.body}
+                    {channel.id === "facebook" && item.groupName
+                      ? `Facebook · ${item.groupName}`
+                      : item.title || channel.label}
                   </Text>
-                ) : null}
-                {item.externalUrl ? (
-                  <Pressable
-                    accessibilityRole="link"
-                    onPress={() => void openSafeLink(item.externalUrl!)}
-                    style={{ marginTop: 8 }}
-                  >
-                    <Text style={{ color: colors.green, fontWeight: "700" }}>
-                      {item.portal || item.siteName || "Zobacz ogłoszenie"}
+                  {item.body ? (
+                    <Text
+                      style={{
+                        color: colors.secondary,
+                        marginTop: 4,
+                        lineHeight: 20,
+                      }}
+                    >
+                      {item.body}
                     </Text>
-                  </Pressable>
-                ) : null}
-                {item.evidenceUrl ? (
-                  <Pressable
-                    accessibilityRole="link"
-                    onPress={() => void openSafeLink(item.evidenceUrl!)}
-                    style={{ marginTop: 8 }}
-                  >
-                    <Text style={{ color: colors.green, fontWeight: "700" }}>
-                      Potwierdzenie: {item.evidenceName || "otwórz plik"}
+                  ) : null}
+                  {status ? (
+                    <Text
+                      style={{
+                        color: colors.secondary,
+                        fontSize: 11,
+                        fontWeight: "800",
+                        marginTop: 6,
+                      }}
+                    >
+                      {status}
                     </Text>
-                  </Pressable>
-                ) : null}
-                {item.promotedUntil ? (
-                  <Text
-                    style={{ color: colors.gold, fontSize: 12, marginTop: 6 }}
-                  >
-                    Wyróżnienie do {formatDate(item.promotedUntil)}
-                  </Text>
-                ) : null}
-              </View>
-            ))
+                  ) : null}
+                  {item.externalUrl || item.groupUrl ? (
+                    <Pressable
+                      accessibilityRole="link"
+                      onPress={() =>
+                        void openSafeLink(
+                          (item.externalUrl || item.groupUrl) as string,
+                        )
+                      }
+                      style={{ marginTop: 8 }}
+                    >
+                      <Text style={{ color: accent, fontWeight: "800" }}>
+                        {item.groupName ||
+                          item.portal ||
+                          item.siteName ||
+                          "Zobacz ogłoszenie"}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  {item.evidenceUrl ? (
+                    <Pressable
+                      accessibilityRole="link"
+                      onPress={() => void openSafeLink(item.evidenceUrl!)}
+                      style={{ marginTop: 8 }}
+                    >
+                      <Text style={{ color: colors.green, fontWeight: "700" }}>
+                        Potwierdzenie: {item.evidenceName || "otwórz plik"}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  {item.promotedUntil ? (
+                    <Text
+                      style={{ color: "#C9A227", fontSize: 12, marginTop: 6, fontWeight: "800" }}
+                    >
+                      Wyróżnienie do {formatDate(item.promotedUntil)}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })
           )}
           {timeline.length > visibleTimeline.length ? (
             <Pressable
@@ -792,9 +888,21 @@ const styles = StyleSheet.create({
   },
   timelineRow: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
     marginTop: 10,
+  },
+  timelineHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  channelMark: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
   loadMoreBtn: {
     marginTop: 12,

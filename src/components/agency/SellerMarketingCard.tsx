@@ -16,9 +16,11 @@ import FeaturedPromoteSheet from "../offer/FeaturedPromoteSheet";
 import AcquisitionDatePickerModal from "./AcquisitionDatePickerModal";
 import {
   postAgencyClientAction,
+  recordFacebookGroupPost,
   uploadClientPortalAttachment,
 } from "../../services/agencyClientService";
 import { promoteMobileOfferListing } from "../../utils/mobileOfferPromote";
+import { shareListingLink } from "../../utils/offerShareUrls";
 
 export type MarketingActivity = {
   id: number;
@@ -157,6 +159,7 @@ export default function SellerMarketingCard({
   const [busy, setBusy] = useState("");
   const [portalUrl, setPortalUrl] = useState("");
   const [portalNote, setPortalNote] = useState("");
+  const [portalGroupName, setPortalGroupName] = useState("");
   const [portalPreset, setPortalPreset] = useState("Otodom");
   const [portalStatus, setPortalStatus] = useState<"active" | "paused">(
     "active",
@@ -196,6 +199,9 @@ export default function SellerMarketingCard({
     "external" | "plan" | "decision" | null
   >(null);
   const [feedLimit, setFeedLimit] = useState(12);
+  const [pickedFbOfferId, setPickedFbOfferId] = useState<number | null>(
+    linkedOfferId,
+  );
 
   useEffect(() => {
     const next = sellerMarketing?.sellerNextStep;
@@ -239,6 +245,39 @@ export default function SellerMarketingCard({
     }
     onRefresh();
     return true;
+  };
+
+  const shareToFacebookGroup = async (
+    group: { groupName: string; groupUrl: string | null },
+    offerId: number,
+  ) => {
+    if (!offerId) {
+      Alert.alert("Facebook", "Wybierz ogłoszenie do wystawienia.");
+      return;
+    }
+    setBusy("facebook");
+    const res = await recordFacebookGroupPost(token, clientId, {
+      offerId,
+      groupName: group.groupName,
+      groupUrl: group.groupUrl,
+      visibleToClient: true,
+    });
+    setBusy("");
+    if (!res.ok) {
+      Alert.alert("Facebook", res.message);
+      return;
+    }
+    const shareUrl = String(res.shareUrl || "");
+    if (group.groupUrl) {
+      await Linking.openURL(group.groupUrl).catch(() => {});
+    }
+    if (shareUrl) {
+      await shareListingLink({
+        url: shareUrl,
+        sheetTitle: group.groupName || "Facebook",
+      }).catch(() => {});
+    }
+    onRefresh();
   };
 
   const pickEvidence = async () => {
@@ -297,6 +336,7 @@ export default function SellerMarketingCard({
         portal: portalPreset,
         status: portalStatus,
         note: portalNote.trim() || undefined,
+        groupName: portalGroupName.trim() || undefined,
         visibleToClient: showClientPortal,
         publishedAt: dateToIso(publishedDate),
         renewalDueAt,
@@ -309,6 +349,7 @@ export default function SellerMarketingCard({
     if (ok) {
       setPortalUrl("");
       setPortalNote("");
+      setPortalGroupName("");
       setRenewalDate("");
       setPublishedDate(todayYmd());
       setEvidence(null);
@@ -654,7 +695,11 @@ export default function SellerMarketingCard({
           <TextInput
             value={portalUrl}
             onChangeText={setPortalUrl}
-            placeholder="https://www.otodom.pl/pl/oferta/..."
+            placeholder={
+              portalPreset === "Facebook"
+                ? "https://www.facebook.com/groups/..."
+                : "https://www.otodom.pl/pl/oferta/..."
+            }
             placeholderTextColor={colors.secondary}
             autoCapitalize="none"
             style={[
@@ -666,6 +711,22 @@ export default function SellerMarketingCard({
               },
             ]}
           />
+          {portalPreset === "Facebook" ? (
+            <TextInput
+              value={portalGroupName}
+              onChangeText={setPortalGroupName}
+              placeholder="Nazwa grupy Facebook (opcjonalnie)"
+              placeholderTextColor={colors.secondary}
+              style={[
+                styles.input,
+                {
+                  color: colors.text,
+                  borderColor: colors.border,
+                  backgroundColor: colors.input,
+                },
+              ]}
+            />
+          ) : null}
           <TextInput
             value={portalNote}
             onChangeText={setPortalNote}
@@ -835,6 +896,105 @@ export default function SellerMarketingCard({
             )}
           </Pressable>
         </>
+      ) : null}
+
+      {(sellerMarketing?.facebookGroups?.length || 0) > 0 ? (
+        <View style={{ marginTop: 14 }}>
+          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
+            GRUPY FACEBOOK
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
+            Wystaw tę albo inną ofertę na grupie, która już była używana. Otworzy
+            się Facebook z kartą ogłoszenia.
+          </Text>
+          {(sellerMarketing?.facebookShareOffers?.length || 0) > 1 ? (
+            <View style={styles.chips}>
+              {sellerMarketing?.facebookShareOffers?.slice(0, 8).map((offer) => (
+                <Pressable
+                  key={offer.id}
+                  onPress={() => setPickedFbOfferId(offer.id)}
+                  style={[
+                    styles.chip,
+                    {
+                      borderColor:
+                        (pickedFbOfferId || linkedOfferId) === offer.id
+                          ? "#1877F2"
+                          : colors.border,
+                      backgroundColor:
+                        (pickedFbOfferId || linkedOfferId) === offer.id
+                          ? "rgba(24,119,242,0.16)"
+                          : colors.input,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 11,
+                      fontWeight: "700",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {offer.id === linkedOfferId ? "Ta oferta" : offer.title}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {sellerMarketing?.facebookGroups.map((group) => (
+            <View
+              key={group.key}
+              style={[
+                styles.channelRow,
+                {
+                  borderColor: "rgba(24,119,242,0.35)",
+                  backgroundColor: "rgba(24,119,242,0.08)",
+                },
+              ]}
+            >
+              <View
+                style={[styles.channelIcon, { backgroundColor: "#1877F2" }]}
+              >
+                <Ionicons name="logo-facebook" size={17} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: "800" }}>
+                  {group.groupName}
+                </Text>
+                <Text
+                  style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}
+                >
+                  {group.postCount}× · {formatDateLabel(group.lastPostedAt)}
+                </Text>
+              </View>
+              {linkedOfferId ? (
+                <Pressable
+                  disabled={Boolean(busy)}
+                  onPress={() =>
+                    void shareToFacebookGroup(group, linkedOfferId)
+                  }
+                  hitSlop={8}
+                >
+                  <Ionicons name="refresh-outline" size={19} color="#1877F2" />
+                </Pressable>
+              ) : null}
+              <Pressable
+                disabled={Boolean(busy)}
+                onPress={() =>
+                  void shareToFacebookGroup(
+                    group,
+                    pickedFbOfferId || linkedOfferId || 0,
+                  )
+                }
+                style={[styles.fbShareBtn, { opacity: busy === "facebook" ? 0.6 : 1 }]}
+              >
+                <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
+                  WYSTAW
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
       ) : null}
 
       {(sellerMarketing?.activeChannels?.length || 0) > 0 ? (
@@ -1461,6 +1621,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+  },
+  fbShareBtn: {
+    backgroundColor: "#1877F2",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   pendingRow: {
     flexDirection: "row",
