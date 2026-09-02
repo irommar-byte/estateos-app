@@ -47,6 +47,7 @@ import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { stampKwFromAcquisitionForm } from '@/lib/legalVerificationAgentStamp';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
+import { facebookShareRecordGate } from '@/lib/crm/marketingChannel';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 import {
   createClientDecisionRequest,
@@ -643,14 +644,28 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if (!Number.isFinite(offerId) || offerId <= 0) {
       return NextResponse.json({ error: 'Wybierz ogłoszenie do wystawienia.' }, { status: 400 });
     }
+    const postUrl = body.postUrl ? String(body.postUrl).trim() : '';
+    const confirmed = body.confirmed === true || Boolean(postUrl);
+    if (
+      !facebookShareRecordGate({
+        confirmed,
+        postUrl,
+      })
+    ) {
+      return NextResponse.json(
+        { error: 'Potwierdź wrzucenie albo wklej link do posta na grupie.' },
+        { status: 400 },
+      );
+    }
     const result = await recordFacebookGroupShare({
       agencyUserId,
       clientId,
       offerId,
       groupName: body.groupName ? String(body.groupName) : null,
       groupUrl: body.groupUrl ? String(body.groupUrl) : null,
-      postUrl: body.postUrl ? String(body.postUrl) : null,
-      visibleToClient: body.visibleToClient !== false,
+      postUrl: postUrl || null,
+      confirmed: true,
+      visibleToClient: body.visibleToClient === true,
       renewalDueAt: parseOptionalDate(body.renewalDueAt),
     });
     if (!result.ok) {
@@ -683,6 +698,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
       note: body.note != null ? String(body.note) : undefined,
       renewalDueAt: parseOptionalDate(body.renewalDueAt),
       visibleToClient: body.visibleToClient === true ? true : body.visibleToClient === false ? false : undefined,
+      groupName: body.groupName != null ? String(body.groupName) : undefined,
+      groupUrl: body.groupUrl != null ? String(body.groupUrl) : undefined,
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
     return NextResponse.json({ success: true, activityId: result.activityId });

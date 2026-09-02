@@ -3,6 +3,7 @@
 import { ExternalLink, Star } from "lucide-react";
 import {
   formatPublicationStatus,
+  listingThumbnailFallback,
   resolveMarketingChannel,
 } from "@/lib/crm/marketingChannel";
 
@@ -61,7 +62,11 @@ export default function ListingPathEventCard({
     title: item.title,
   });
   const status = formatPublicationStatus(item.status);
-  const image = item.image || (channel.id === "estateos" ? fallbackImage : null);
+  const image = listingThumbnailFallback({
+    image: item.image,
+    channelId: channel.id,
+    listingImage: fallbackImage,
+  });
   const headline =
     channel.id === "facebook" && item.groupName
       ? `Facebook · ${item.groupName}`

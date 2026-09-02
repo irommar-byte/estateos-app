@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractFacebookDestinations,
+  facebookShareRecordGate,
   formatPublicationStatus,
+  listingThumbnailFallback,
   parseFacebookDestination,
   publicationHeadline,
   resolveMarketingChannel,
@@ -82,4 +84,43 @@ test("extractFacebookDestinations groups by group url", () => {
 test("formatPublicationStatus maps waiting states", () => {
   assert.equal(formatPublicationStatus("active"), "Aktywna");
   assert.equal(formatPublicationStatus("pending"), "Czeka na aktywację");
+});
+
+test("facebook share is recorded only after confirm or post url", () => {
+  assert.equal(facebookShareRecordGate({}), false);
+  assert.equal(facebookShareRecordGate({ confirmed: true }), true);
+  assert.equal(
+    facebookShareRecordGate({ postUrl: "https://facebook.com/groups/a/posts/1" }),
+    true,
+  );
+});
+
+test("facebook channel keeps group name even when url is the listing share page", () => {
+  const channel = resolveMarketingChannel({
+    kind: "EXTERNAL_PORTAL_LISTED",
+    url: "https://estateos.pl/oferta/12",
+    groupName: "Warszawa mieszkania",
+    groupUrl: "https://www.facebook.com/groups/warszawa.mieszkania/",
+  });
+  assert.equal(channel.id, "facebook");
+  assert.equal(channel.label, "Warszawa mieszkania");
+});
+
+test("listing thumbnail falls back for EstateOS and Facebook", () => {
+  assert.equal(
+    listingThumbnailFallback({
+      image: null,
+      channelId: "facebook",
+      listingImage: "https://cdn.example/a.jpg",
+    }),
+    "https://cdn.example/a.jpg",
+  );
+  assert.equal(
+    listingThumbnailFallback({
+      image: null,
+      channelId: "otodom",
+      listingImage: "https://cdn.example/a.jpg",
+    }),
+    null,
+  );
 });

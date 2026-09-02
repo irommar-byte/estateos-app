@@ -52,7 +52,7 @@ import { type ClientNextStep } from "@/lib/crm/clientNextStep";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 import MatchImportAgentMeta, { type MatchImportBrief } from "@/components/crm/MatchImportAgentMeta";
-import FacebookGroupPromotePanel from "@/components/crm/FacebookGroupPromotePanel";
+import CrmSellerCollaborationPanel from "@/components/crm/CrmSellerCollaborationPanel";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -124,6 +124,13 @@ type ClientDetail = AgencyClientListItem & {
     metadata?: Record<string, unknown> | null;
   }>;
   sellerMarketing?: {
+    sellerNextStep?: {
+      currentStep: string;
+      nextAction: string;
+      clientMessage: string | null;
+      dueAt: string | null;
+      visibleToClient: boolean;
+    } | null;
     facebookGroups?: Array<{
       key: string;
       groupName: string;
@@ -224,7 +231,6 @@ export default function CrmClientsWorkspace() {
   const [selectedClientIds, setSelectedClientIds] = useState<Set<number>>(new Set());
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
-  const [portalLinkDraft, setPortalLinkDraft] = useState("");
   const [sellerFilters, setSellerFilters] = useState<WebRadarFilters>(() => ({
     ...defaultWebRadarFilters(),
     pushNotifications: false,
@@ -1653,54 +1659,14 @@ export default function CrmClientsWorkspace() {
                     ) : (
                       <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelEmpty}</p>
                     )}
-                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4">
-                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">Inny portal</p>
-                      <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
-                        Wklej link z Otodom, OLX, Gratki albo z grupy Facebook. Klient zobaczy kartę kanału w ścieżce oferty.
-                      </p>
-                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                        <input
-                          value={portalLinkDraft}
-                          onChange={(e) => setPortalLinkDraft(e.target.value)}
-                          placeholder="https://www.otodom.pl/pl/oferta/… albo facebook.com/groups/…"
-                          className="min-w-0 flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
-                        />
-                        <button
-                          type="button"
-                          disabled={busy || !portalLinkDraft.trim()}
-                          onClick={async () => {
-                            const json = await clientAction("add_external_portal", {
-                              url: portalLinkDraft.trim(),
-                              visibleToClient: true,
-                            });
-                            if (json?.success) {
-                              setPortalLinkDraft("");
-                              setToast("Zapisano portal i powiadomiono klienta.");
-                            }
-                          }}
-                          className="rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
-                        >
-                          Dodaj i pokaż klientowi
-                        </button>
-                      </div>
-                    </div>
-                    <FacebookGroupPromotePanel
-                      groups={detail.sellerMarketing?.facebookGroups || []}
-                      offers={detail.sellerMarketing?.facebookShareOffers || []}
-                      currentOfferId={detail.linkedOfferId || null}
+                    <CrmSellerCollaborationPanel
+                      linkedOfferId={detail.linkedOfferId || null}
                       busy={busy}
-                      onShare={async (payload) => {
-                        const json = await clientAction("record_facebook_group_post", {
-                          offerId: payload.offerId,
-                          groupName: payload.groupName,
-                          groupUrl: payload.groupUrl,
-                          renewalDueAt: payload.renewalDueAt,
-                          visibleToClient: true,
-                        });
-                        if (!json?.success) return null;
-                        setToast("Otwarto Facebook. Wklej skopiowany link w grupie — klient zobaczy to w ścieżce oferty.");
-                        return json;
-                      }}
+                      sellerNextStep={detail.sellerMarketing?.sellerNextStep || null}
+                      facebookGroups={detail.sellerMarketing?.facebookGroups || []}
+                      facebookShareOffers={detail.sellerMarketing?.facebookShareOffers || []}
+                      onAction={clientAction}
+                      onToast={setToast}
                     />
                     <div className="flex flex-wrap gap-2">
                       <button
