@@ -238,7 +238,10 @@ function normalizeAuthToken(authToken: string | null): string | null {
   return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
 }
 
-async function registerStoredPortalPushDevices(pushToken: string): Promise<void> {
+async function registerStoredPortalPushDevices(
+  pushToken: string,
+  authToken?: string | null,
+): Promise<void> {
   try {
     const { listPortalTokens } = await import('../lib/clientPortalSession');
     const { registerPortalPushDevice } = await import('../services/clientPortalService');
@@ -250,7 +253,11 @@ async function registerStoredPortalPushDevices(pushToken: string): Promise<void>
       deviceModel: Device.modelName ?? 'Unknown',
       appVersion: Constants.expoConfig?.version ?? '1.0',
     };
-    await Promise.all(tokens.map((portalToken) => registerPortalPushDevice(portalToken, payload).catch(() => false)));
+    await Promise.all(
+      tokens.map((portalToken) =>
+        registerPortalPushDevice(portalToken, payload, authToken).catch(() => false),
+      ),
+    );
   } catch {
     /* panel push is best-effort */
   }
@@ -264,12 +271,18 @@ export async function getClientPortalPushPermissionStatus(): Promise<'granted' |
 }
 
 /** Po powiązaniu konta — ponownie zarejestruj device na linkedUserId. */
-export async function registerClientPortalPushAfterLink(options?: { prompt?: boolean }): Promise<boolean> {
+export async function registerClientPortalPushAfterLink(options?: {
+  prompt?: boolean;
+  authToken?: string | null;
+}): Promise<boolean> {
   return registerClientPortalPushIfPossible(options);
 }
 
 /** Rejestracja Expo tokenu przy kliencie CRM — działa też bez logowania, jeśli jest token panelu. */
-export async function registerClientPortalPushIfPossible(options?: { prompt?: boolean }): Promise<boolean> {
+export async function registerClientPortalPushIfPossible(options?: {
+  prompt?: boolean;
+  authToken?: string | null;
+}): Promise<boolean> {
   if (!Device.isDevice) return false;
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -288,7 +301,7 @@ export async function registerClientPortalPushIfPossible(options?: { prompt?: bo
     const pushToken = stored || (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     if (!pushToken) return false;
     if (pushToken) await AsyncStorage.setItem('pushToken', pushToken);
-    await registerStoredPortalPushDevices(pushToken);
+    await registerStoredPortalPushDevices(pushToken, options?.authToken);
     return true;
   } catch {
     return false;
@@ -425,7 +438,7 @@ export async function registerPushNotifications(
     }
 
     await AsyncStorage.setItem('pushToken', pushToken);
-    await registerStoredPortalPushDevices(pushToken);
+    await registerStoredPortalPushDevices(pushToken, normalizedAuthToken);
     return true;
   } catch (e) {
     console.error('❌ Push setup error:', e);
@@ -468,8 +481,12 @@ export const usePushNotifications = function usePushNotifications(authToken: str
     isRegisteredRef.current = false;
   }, [normalizedAuthToken]);
 
-  const registerToken = useCallback(async (showPrompt = false) => {
-    if ((isRegisteredRef.current && !showPrompt) || !Device.isDevice || !normalizedAuthToken) return false;
+  const registerToken = useCallback(async (showPrompt = false, forceRefresh = false) => {
+    if (
+      (isRegisteredRef.current && !showPrompt && !forceRefresh) ||
+      !Device.isDevice ||
+      !normalizedAuthToken
+    ) return false;
 
     const ok = await registerPushNotifications(normalizedAuthToken, { showPrompt });
     if (ok) isRegisteredRef.current = true;
@@ -478,12 +495,15 @@ export const usePushNotifications = function usePushNotifications(authToken: str
 
   useEffect(() => {
     void registerToken(false);
-    void registerClientPortalPushIfPossible({ prompt: false });
-  }, [registerToken]);
+    void registerClientPortalPushIfPossible({
+      prompt: false,
+      authToken: normalizedAuthToken,
+    });
+  }, [normalizedAuthToken, registerToken]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void registerToken(false);
+      if (state === 'active') void registerToken(false, true);
     });
     return () => sub.remove();
   }, [registerToken]);

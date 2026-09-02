@@ -141,7 +141,7 @@ export default function ClientPortalScreen() {
           agencyName: next.agencyName,
         });
         if (next.account?.status !== 'wrong_account') {
-          void registerClientPortalPushIfPossible({ prompt: false });
+          void registerClientPortalPushIfPossible({ prompt: false, authToken });
         }
         await refreshPushStatus();
       } catch (err: any) {
@@ -195,7 +195,10 @@ export default function ClientPortalScreen() {
       try {
         await linkPortalAccount(portalToken, authToken);
         patchAccountStatus('linked');
-        await registerClientPortalPushAfterLink({ prompt: options?.promptPush ?? false });
+        await registerClientPortalPushAfterLink({
+          prompt: options?.promptPush ?? false,
+          authToken,
+        });
         await refreshPushStatus();
         await load('silent');
         return true;
@@ -246,7 +249,10 @@ export default function ClientPortalScreen() {
       const ok = await establishSession(String(data.token), data.user, email);
       if (!ok) throw new Error('Nie udało się zapisać sesji.');
       patchAccountStatus('linked');
-      await registerClientPortalPushAfterLink({ prompt: true });
+      await registerClientPortalPushAfterLink({
+        prompt: true,
+        authToken: String(data.token),
+      });
       await refreshPushStatus();
       await load('silent');
     } catch (err: any) {
@@ -469,7 +475,7 @@ export default function ClientPortalScreen() {
             void Linking.openSettings();
             return;
           }
-          void registerClientPortalPushAfterLink({ prompt: true }).then(refreshPushStatus);
+          void registerClientPortalPushAfterLink({ prompt: true, authToken }).then(refreshPushStatus);
         }}
         style={[styles.pushRow, { backgroundColor: colors.card, borderColor: colors.border }]}
       >

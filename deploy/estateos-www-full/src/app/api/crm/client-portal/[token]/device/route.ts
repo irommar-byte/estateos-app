@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { registerPortalDevice } from '@/lib/crm/portalAccountLink';
+import { bearerUserIdFromRequest, registerPortalDevice } from '@/lib/crm/portalAccountLink';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -12,6 +12,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
     platform: String(body?.platform || ''),
     deviceModel: String(body?.deviceModel || ''),
     appVersion: String(body?.appVersion || ''),
+    requesterUserId: bearerUserIdFromRequest(req),
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });

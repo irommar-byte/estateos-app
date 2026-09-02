@@ -376,10 +376,14 @@ export async function activatePortalAccount(
 export async function registerPortalPushDevice(
   token: string,
   payload: { expoPushToken: string; platform: string; deviceModel: string; appVersion: string },
+  authToken?: string | null,
 ) {
   const { response } = await mobileFetchJson(portalUrl(token, '/device'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authToken ? portalAuthHeaders(authToken) : {}),
+    },
     body: JSON.stringify(payload),
   });
   return response.ok;

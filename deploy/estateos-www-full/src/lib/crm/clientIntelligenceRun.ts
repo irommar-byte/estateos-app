@@ -14,6 +14,42 @@ import {
   type IntelligenceLesson,
   type LearnedTaste,
 } from '@/lib/crm/clientIntelligence';
+import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
+import { buildOfferDialogueTurn } from '@/lib/crm/intelligenceDialogue';
+import { clientAcceptsScarceBudget, getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
+import { sendPortalChat } from '@/lib/crm/portalChat';
+import { resolveSellerPersonName } from '@/lib/sellerDisplay';
+import { sendNotification } from '@/lib/core/notification.core';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
+
+function lastFeedbackLesson(
+  matches: Array<{
+    offerId: number;
+    clientFeedback: string | null;
+    clientFeedbackAt?: Date | string | null;
+    offer: OfferRow;
+  }>,
+): { prevOffer: OfferRow; prevFeedbackRaw: string } | null {
+  const withFeedback = matches
+    .filter((row) => row.clientFeedback)
+    .map((row) => ({
+      row,
+      at: row.clientFeedbackAt ? new Date(row.clientFeedbackAt).getTime() : 0,
+    }))
+    .sort((a, b) => b.at - a.at);
+  for (const { row } of withFeedback) {
+    const parsed = parseClientOfferFeedback(row.clientFeedback);
+    if (!parsed.sentiment && !parsed.phrases.length && !parsed.note) continue;
+    return { prevOffer: row.offer, prevFeedbackRaw: row.clientFeedback! };
+  }
+  return null;
+}
+
+function agentFirstNameFromUser(user: { name?: string | null } | null | undefined): string | null {
+  const full = resolveSellerPersonName(user) || user?.name || '';
+  const first = full.trim().split(/\s+/)[0];
+  return first || null;
+}
 
 const OFFER_SELECT = {
   id: true,
@@ -25,6 +61,7 @@ const OFFER_SELECT = {
   price: true,
   area: true,
   rooms: true,
+  yearBuilt: true,
   hasBalcony: true,
   hasGarden: true,
   hasElevator: true,
@@ -43,6 +80,7 @@ type OfferRow = {
   price: number | null;
   area: number | null;
   rooms: number | null;
+  yearBuilt: number | null;
   hasBalcony: boolean | null;
   hasGarden: boolean | null;
   hasElevator: boolean | null;
@@ -140,34 +178,12 @@ function buildAnalysis(params: {
   return [...new Set(lines)];
 }
 
-export async function pickIntelligenceOffer(
-  clientId: number,
-  options: {
-    force?: boolean;
-    preview?: boolean;
-    ignoreInterval?: boolean;
-    excludeOfferIds?: number[];
-    portalSupplyAttempted?: boolean;
-  } = {},
-): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null }> {
-  await ensureIntelligenceLockedFieldsColumn();
-
-  const client = await prisma.agencyClient.findUnique({
-    where: { id: clientId },
-    include: {
-      buyerPreference: true,
-      matches: {
-        include: { offer: { select: OFFER_SELECT } },
-        orderBy: { score: 'desc' },
-      },
-    },
-  });
-
-  const empty = (
-    skipReason: string,
-    extras: Partial<IntelligencePick> = {},
-    taste = learnFromFeedback([]),
-  ): IntelligencePick => ({
+function emptyIntelligencePick(
+  skipReason: string,
+  extras: Partial<IntelligencePick> = {},
+  taste = learnFromFeedback([]),
+): IntelligencePick {
+  return {
     ready: false,
     skipReason,
     tasteSummary: extras.tasteSummary ?? summarizeTaste(taste),
@@ -188,16 +204,49 @@ export async function pickIntelligenceOffer(
     correctedBalconyIds: extras.correctedBalconyIds || [],
     clientWhy: extras.clientWhy ?? null,
     lessons: extras.lessons || [],
+  };
+}
+
+export async function pickIntelligenceOffer(
+  clientId: number,
+  options: {
+    force?: boolean;
+    forceScore?: boolean;
+    preview?: boolean;
+    ignoreInterval?: boolean;
+    excludeOfferIds?: number[];
+    portalSupplyAttempted?: boolean;
+    replyToFeedback?: boolean;
+  } = {},
+): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null; agentFirstName: string | null }> {
+  await ensureIntelligenceLockedFieldsColumn();
+
+  const client = await prisma.agencyClient.findUnique({
+    where: { id: clientId },
+    include: {
+      buyerPreference: true,
+      agencyUser: { select: { name: true, companyName: true } },
+      matches: {
+        include: { offer: { select: OFFER_SELECT } },
+        orderBy: { score: 'desc' },
+      },
+    },
   });
+
+  const empty = emptyIntelligencePick;
 
   if (!client || !client.buyerPreference) {
     return {
       agencyUserId: client?.agencyUserId || 0,
       maxPrice: null,
       taste: learnFromFeedback([]),
+      agentFirstName: null,
       pick: empty('Brak kryteriów radaru.'),
     };
   }
+
+  const agentFirstName = agentFirstNameFromUser(client.agencyUser);
+  const acceptScarceBudget = await clientAcceptsScarceBudget(clientId);
 
   const taste = learnFromFeedback(
     client.matches.map((row) => ({
@@ -221,25 +270,22 @@ export async function pickIntelligenceOffer(
       taste,
       locks,
     });
-    if (Object.keys(writeback.data).length) {
-      await prisma.agencyClientBuyerPreference.update({
-        where: { clientId },
-        data: writeback.data,
+    if (writeback.notes.length) {
+      const body = writeback.notes.join('\n');
+      const latest = await prisma.agencyClientActivity.findFirst({
+        where: { clientId, kind: 'INTELLIGENCE_TASTE' },
+        orderBy: { createdAt: 'desc' },
+        select: { body: true },
       });
-      client.buyerPreference = {
-        ...client.buyerPreference,
-        ...writeback.data,
-        districts: writeback.data.districts ?? client.buyerPreference.districts,
-      };
-      if (writeback.notes.length) {
+      if (latest?.body !== body) {
         await prisma.agencyClientActivity.create({
           data: {
             clientId,
             agencyUserId: client.agencyUserId,
             kind: 'INTELLIGENCE_TASTE',
-            title: 'EstateOS™ Intelligence dopisało kryteria z reakcji',
-            body: writeback.notes.join('\n'),
-            metadata: { notes: writeback.notes, locks },
+            title: 'EstateOS™ Intelligence — nauka z reakcji',
+            body,
+            metadata: { notes: writeback.notes, locks, pendingConfirm: true },
           },
         });
       }
@@ -277,7 +323,7 @@ export async function pickIntelligenceOffer(
   const excluded = new Set(options.excludeOfferIds || []);
   let best: Cand | null = null;
   let considered = 0;
-  const relaxScore = Boolean(options.force || options.preview || calibrating);
+  const relaxScore = Boolean(options.preview || calibrating);
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
     if (taste.rejectedOfferIds.includes(row.offerId)) continue;
@@ -289,7 +335,16 @@ export async function pickIntelligenceOffer(
       offer: row.offer,
       taste,
       maxPrice: client.buyerPreference.maxPrice,
+      acceptScarceBudget,
+      pref: {
+        minYear: client.buyerPreference.minYear,
+        minRooms: client.buyerPreference.minRooms,
+        maxArea: client.buyerPreference.maxArea,
+        minArea: client.buyerPreference.minArea,
+      },
     });
+    const passesStructural = adjusted.score > 0;
+    if (!passesStructural) continue;
     if (adjusted.score < minScore && !relaxScore) continue;
     const cheaperTie =
       best &&
@@ -341,12 +396,14 @@ export async function pickIntelligenceOffer(
     skipReason = 'Interwał jeszcze nie minął.';
   } else if (!best) {
     skipReason = 'Brak oferty z wystarczającą pewnością.';
-  } else if (!calibrating && best.score < minScore && !options.force) {
+  } else if (!calibrating && best.score < minScore && !options.forceScore) {
     skipReason = `Najlepsza oferta ma ${best.score}%, a próg to ${minScore}%.`;
   }
 
   const canSchedule = enabled && (calibrating || taste.learnCount >= minLearns);
-  const qualifies = Boolean(best && (calibrating || best.score >= minScore || options.force));
+  const qualifies = Boolean(
+    best && (calibrating || best.score >= minScore || options.forceScore),
+  );
   const nextSendAt = nextSendAtIso(client.intelligenceLastSentAt, intervalHours, canSchedule && qualifies);
   const ready = !skipReason && qualifies;
 
@@ -355,6 +412,7 @@ export async function pickIntelligenceOffer(
       agencyUserId: client.agencyUserId,
       maxPrice: client.buyerPreference.maxPrice,
       taste,
+      agentFirstName,
       pick: empty(skipReason || 'Brak oferty z wystarczającą pewnością.', {
         tasteSummary: summarizeTaste(taste),
         learnCount: taste.learnCount,
@@ -367,6 +425,31 @@ export async function pickIntelligenceOffer(
     };
   }
 
+  const feedbackLesson = lastFeedbackLesson(
+    matches.map((row) => ({
+      offerId: row.offerId,
+      clientFeedback: row.clientFeedback,
+      clientFeedbackAt: row.clientFeedbackAt,
+      offer: row.offer,
+    })),
+  );
+  const dialogueWhy = buildOfferDialogueTurn({
+    prevOffer: feedbackLesson?.prevOffer ?? null,
+    prevFeedback: feedbackLesson ? parseClientOfferFeedback(feedbackLesson.prevFeedbackRaw) : null,
+    nextOffer: nextOffer,
+    reasons: best.reasons,
+    city: best.city,
+    district: best.district,
+    calibrating,
+    agentFirstName,
+  }).body;
+  const clientWhy = dialogueWhy || clientFacingWhyLine({
+    reasons: best.reasons,
+    city: best.city,
+    district: best.district,
+    calibrating,
+  });
+
   const analysis = buildAnalysis({
     tasteSummary: summarizeTaste(taste),
     radarScore: best.radarScore,
@@ -377,17 +460,12 @@ export async function pickIntelligenceOffer(
     correctedBalcony: correctedBalconyIds.includes(best.offerId),
     calibrating,
   });
-  const clientWhy = clientFacingWhyLine({
-    reasons: best.reasons,
-    city: best.city,
-    district: best.district,
-    calibrating,
-  });
 
   return {
     agencyUserId: client.agencyUserId,
     maxPrice: client.buyerPreference.maxPrice,
     taste,
+    agentFirstName,
     pick: {
       ready,
       skipReason: ready ? null : skipReason,
@@ -416,21 +494,55 @@ export async function pickIntelligenceOffer(
 export async function sendIntelligenceOffer(params: {
   clientId: number;
   force?: boolean;
+  forceScore?: boolean;
   ignoreInterval?: boolean;
+  replyToFeedback?: boolean;
   channel?: 'email' | 'manual';
 }): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
+  const pendingCheckback = await getPendingCheckback(params.clientId);
+  if (pendingCheckback) {
+    const blocked = emptyIntelligencePick('Czekam na odpowiedź klienta na pytanie asystenta.', {
+      tasteSummary: '',
+      learnCount: 0,
+      calibrating: false,
+      considered: 0,
+      nextSendAt: null,
+      correctedBalconyIds: [],
+      lessons: [],
+    });
+    return { sent: false, pick: blocked };
+  }
+
   const excludeOfferIds: number[] = [];
   let lastPick: IntelligencePick | null = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { pick, agencyUserId } = await pickIntelligenceOffer(params.clientId, {
       force: params.force,
-      ignoreInterval: params.ignoreInterval,
+      forceScore: params.forceScore,
+      ignoreInterval: params.ignoreInterval ?? params.replyToFeedback,
+      replyToFeedback: params.replyToFeedback,
       excludeOfferIds,
     });
     lastPick = pick;
     if (!pick.ready || !pick.offerId || !agencyUserId) {
       return { sent: false, pick };
+    }
+
+    const clientRow = await prisma.agencyClient.findUnique({
+      where: { id: params.clientId },
+      select: { intelligenceMinScore: true },
+    });
+    const minScore = clientRow?.intelligenceMinScore || 92;
+    if (!pick.calibrating && (pick.score ?? 0) < minScore && !params.forceScore) {
+      return {
+        sent: false,
+        pick: {
+          ...pick,
+          ready: false,
+          skipReason: `Oferta ma ${pick.score}%, a próg to ${minScore}%.`,
+        },
+      };
     }
 
     const offer = await prisma.offer.findUnique({
@@ -451,20 +563,31 @@ export async function sendIntelligenceOffer(params: {
       .filter(Boolean)
       .join('\n');
 
+    const customMessage =
+      pick.clientWhy ||
+      clientFacingWhyLine({
+        reasons: pick.reasons,
+        city: pick.city,
+        district: pick.district,
+        calibrating: pick.calibrating,
+      });
+
     const notified = await notifyAgencyClientAboutOffer({
       clientId: params.clientId,
       offerId: pick.offerId,
       agencyUserId,
       channel: params.channel ?? 'email',
       matchScore: pick.radarScore ?? undefined,
-      customMessage: pick.clientWhy || clientFacingWhyLine({
-        reasons: pick.reasons,
-        city: pick.city,
-        district: pick.district,
-        calibrating: pick.calibrating,
-      }),
+      customMessage,
       intelligence: { reason },
     });
+
+    await sendPortalChat({
+      clientId: params.clientId,
+      agencyUserId,
+      from: 'agent',
+      content: customMessage,
+    }).catch(() => {});
 
     await prisma.agencyClient.update({
       where: { id: params.clientId },
@@ -515,6 +638,11 @@ export async function tickClientIntelligence(): Promise<{
   let sent = 0;
   let skipped = 0;
   for (const client of clients) {
+    const pending = await getPendingCheckback(client.id);
+    if (pending) {
+      skipped += 1;
+      continue;
+    }
     const preview = await pickIntelligenceOffer(client.id, { preview: true });
     if (
       preview.pick.offerId &&
@@ -562,6 +690,51 @@ export async function tickClientIntelligence(): Promise<{
         sent += 1;
         sentForClient += 1;
       } else {
+        if (
+          result.pick.skipReason?.includes('Brak oferty') ||
+          result.pick.skipReason?.includes('próg')
+        ) {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const recentStall = await prisma.agencyClientActivity.findFirst({
+            where: {
+              clientId: client.id,
+              kind: 'INTELLIGENCE_STALLED',
+              createdAt: { gte: since },
+            },
+            select: { id: true },
+          });
+          if (!recentStall) {
+            const body = [
+              result.pick.skipReason,
+              result.pick.considered
+                ? `Sprawdziłem ${result.pick.considered} niewysłanych dopasowań, ale żadne nie przeszło potwierdzonych kryteriów i nauki z reakcji.`
+                : 'W aktualnej puli nie ma nowej oferty do bezpiecznej wysyłki.',
+              'Sprawdź pytania klienta albo kryteria; asystent nadal obserwuje rynek.',
+            ].join(' ');
+            await prisma.agencyClientActivity.create({
+              data: {
+                clientId: client.id,
+                agencyUserId: client.agencyUserId,
+                kind: 'INTELLIGENCE_STALLED',
+                title: 'Asystent nie ma bezpiecznej oferty',
+                body,
+                metadata: {
+                  agentStatus: 'pending',
+                  skipReason: result.pick.skipReason,
+                  considered: result.pick.considered,
+                },
+              },
+            });
+            await sendNotification({
+              userId: client.agencyUserId,
+              type: 'CRM_EVENT',
+              title: 'Radar klienta wymaga decyzji',
+              body,
+              data: crmAgentPushData(client.id, { kind: 'INTELLIGENCE_STALLED' }),
+              idempotencyKey: `intelligence-stalled-${client.id}-${new Date().toISOString().slice(0, 10)}`,
+            }).catch(() => {});
+          }
+        }
         break;
       }
     }

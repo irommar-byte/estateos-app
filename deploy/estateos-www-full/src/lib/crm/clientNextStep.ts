@@ -8,6 +8,7 @@ export type ClientNextStep = {
     | 'refresh_matches'
     | 'send_offers'
     | 'collect_feedback'
+    | 'respond_to_client'
     | 'propose_presentation'
     | 'accept_schedule'
     | 'open_portal'
@@ -27,10 +28,14 @@ export function resolveClientNextStep(input: {
   matchCount: number;
   sentCount: number;
   feedbackCount: number;
+  viewingIntentCount?: number;
+  pendingAgentTaskCount?: number;
+  pendingAgentTaskHint?: string | null;
   meetingStatus?: 'confirmed' | 'pending' | null;
   presentationStatus?: 'confirmed' | 'pending' | null;
   acquisitionStatus?: string | null;
   linkedOfferId?: number | null;
+  pendingIntelligenceCheckback?: boolean;
 }): ClientNextStep {
   if (!input.email && !input.phone) {
     return {
@@ -91,6 +96,24 @@ export function resolveClientNextStep(input: {
       action: 'set_criteria',
     };
   }
+  if (input.pendingIntelligenceCheckback) {
+    return {
+      id: 'await_checkback',
+      label: 'Klient ma pytanie od asystenta',
+      hint: 'Asystent czeka na tak/nie w panelu — dopiero potem poleci kolejna oferta.',
+      action: 'open_portal',
+    };
+  }
+  if ((input.pendingAgentTaskCount || 0) > 0) {
+    return {
+      id: 'respond_to_client',
+      label: 'Odpowiedz klientowi',
+      hint:
+        input.pendingAgentTaskHint ||
+        'Klient zostawił reakcję albo pytanie do oferty i czeka na Twój konkretny ruch.',
+      action: 'respond_to_client',
+    };
+  }
   if (input.matchCount === 0) {
     return {
       id: 'refresh_matches',
@@ -115,11 +138,11 @@ export function resolveClientNextStep(input: {
       action: 'open_portal',
     };
   }
-  if (!input.presentationStatus) {
+  if (!input.presentationStatus && (input.viewingIntentCount || 0) > 0) {
     return {
       id: 'propose_presentation',
       label: 'Umów prezentację',
-      hint: 'Jest feedback. Wybierz ofertę z listy i zaproponuj termin obu stronom.',
+      hint: 'Klient kliknął „Chcę oglądać”. Wybierz tę ofertę i zaproponuj termin obu stronom.',
       action: 'propose_presentation',
     };
   }

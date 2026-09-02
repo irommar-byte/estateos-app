@@ -85,6 +85,18 @@ export type AgencyClientActivity = {
   visibleToClient?: boolean;
 };
 
+export type BuyerAgentTask = {
+  id: string;
+  activityId: number;
+  kind: 'viewing' | 'question' | 'handoff' | 'stalled';
+  priority: 'high' | 'normal';
+  title: string;
+  body: string;
+  createdAt: string;
+  matchId: number | null;
+  offerId: number | null;
+};
+
 export type SellerMarketingBundle = {
   estateos: {
     offerId: number;
@@ -194,6 +206,7 @@ export type AgencyClientDetail = AgencyClientListItem & {
     options: { id: string; label: string }[];
     createdAt: string;
   } | null;
+  buyerAgentTasks?: BuyerAgentTask[];
   meeting?: {
     startsAt: string;
     location: string | null;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   DEFAULT_INTELLIGENCE_SETTINGS,
+  buildCheckbackPreferenceUpdate,
   buildIntelligenceLessons,
   clientFacingWhyLine,
   descriptionImpliesBalcony,
@@ -212,7 +213,7 @@ test('maybe does not reject the listing, likes pull similar rooms and price band
   assert.ok(similar.score > 80);
 });
 
-test('write-back adds balcony and keeps agent budget, but respects district lock', () => {
+test('checkback confirm applies balcony; taste notes never auto-write districts', () => {
   const taste = learnFromFeedback([
     {
       offerId: 1,
@@ -225,23 +226,30 @@ test('write-back adds balcony and keeps agent budget, but respects district lock
       offer: { ...baseOffer, id: 2, district: 'Wola', hasBalcony: false, price: 1100000 },
     },
   ]);
-  const locked = preferenceUpdatesFromTaste({
+  const lockedNotes = preferenceUpdatesFromTaste({
     pref: { districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000, requireBalcony: false },
     taste,
     locks: { ...DEFAULT_INTELLIGENCE_LOCKS, districts: true },
   });
-  assert.equal(locked.data.districts, undefined);
-  assert.equal(locked.data.requireBalcony, true);
-  assert.equal(locked.data.maxPrice, undefined);
-  assert.ok(locked.notes.some((item) => /budżet/i.test(item)));
-  assert.ok(locked.notes.some((item) => /zablokowana/.test(item)));
+  assert.deepEqual(lockedNotes.data, {});
+  assert.ok(lockedNotes.notes.some((item) => /zablokowane|zablokowana/i.test(item)));
 
-  const unlocked = preferenceUpdatesFromTaste({
-    pref: { districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000, requireBalcony: false },
+  const balconyConfirm = buildCheckbackPreferenceUpdate({
+    checkbackType: 'confirm_brak_balkonu',
     taste,
+    pref: { requireBalcony: false, districts: ['Ursynów', 'Mokotów'], maxPrice: 1000000 },
     locks: DEFAULT_INTELLIGENCE_LOCKS,
   });
-  assert.deepEqual(unlocked.data.districts, ['Ursynów']);
+  assert.equal(balconyConfirm.data.requireBalcony, true);
+  assert.equal(balconyConfirm.data.maxPrice, undefined);
+
+  const districtConfirm = buildCheckbackPreferenceUpdate({
+    checkbackType: 'confirm_nie_ta_dzielnica',
+    taste,
+    pref: { districts: ['Ursynów', 'Mokotów'] },
+    locks: DEFAULT_INTELLIGENCE_LOCKS,
+  });
+  assert.deepEqual(districtConfirm.data.districts, ['Ursynów']);
 });
 
 test('client-facing why is a single concrete sentence', () => {
@@ -273,4 +281,150 @@ test('lesson ledger compares sent reaction against the next listing', () => {
   assert.match(lessons[0].said, /Nie pasuje/i);
   assert.match(lessons[0].vsNext, /balkon/i);
   assert.match(lessons[0].vsNext, /Taniej/i);
+});
+
+test('intelligenceAdjustScore rejects offer below minYear and minRooms', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        disliked: 'Za stare',
+        note: 'Od 2000 roku poproszę.',
+        phrases: ['Za stare'],
+      }),
+      offer: { id: 1, yearBuilt: 1994, rooms: 2 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        disliked: 'Conajmniej 2 pokojowe',
+        phrases: ['Za mało pokoi'],
+      }),
+      offer: { id: 2, rooms: 1 },
+    },
+  ]);
+  const oldBuilding = intelligenceAdjustScore({
+    radarScore: 95,
+    taste,
+    pref: { minYear: 2000, minRooms: 2 },
+    offer: { id: 10, yearBuilt: 1977, rooms: 1, title: 'Test' },
+  });
+  assert.equal(oldBuilding.score, 0);
+
+  const good = intelligenceAdjustScore({
+    radarScore: 93,
+    taste,
+    pref: { minYear: 2000, minRooms: 2 },
+    offer: { id: 11, yearBuilt: 2015, rooms: 2, title: 'Test' },
+  });
+  assert.ok(good.score > 0);
+});
+
+test('unconfirmed taste hints do not become hard room or price limits', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        phrases: ['Za mało pokoi', 'Za drogo'],
+        note: 'Dwa oddzielne pokoje albo trzy pokoje.',
+      }),
+      offer: { id: 1, rooms: 2, price: 850_000 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        phrases: ['Za drogo'],
+      }),
+      offer: { id: 2, rooms: 3, price: 900_000 },
+    },
+  ]);
+  taste.minRoomsHint = 3;
+  taste.maxPriceHint = 800_000;
+
+  const adjusted = intelligenceAdjustScore({
+    radarScore: 95,
+    taste,
+    maxPrice: 1_000_000,
+    pref: { minRooms: null },
+    offer: {
+      ...baseOffer,
+      id: 99,
+      rooms: 2,
+      price: 820_000,
+      description: 'Dwa oddzielne pokoje, osobna kuchnia, balkon i miejsce postojowe.',
+    },
+  });
+
+  assert.ok(adjusted.score > 0);
+  assert.equal(adjusted.reasons.some((item) => /minimum 3|budżet 800/.test(item)), false);
+});
+
+test('preferenceUpdatesFromTaste writes minYear only via checkback confirm, not auto', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Za stare'], note: 'od 2000' }),
+      offer: { id: 1, yearBuilt: 1990 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Za stare'], note: 'od 2000' }),
+      offer: { id: 2, yearBuilt: 1985 },
+    },
+  ]);
+  const notesOnly = preferenceUpdatesFromTaste({
+    pref: { minYear: 1900 },
+    taste,
+    locks: DEFAULT_INTELLIGENCE_LOCKS,
+  });
+  assert.deepEqual(notesOnly.data, {});
+
+  const confirmed = buildCheckbackPreferenceUpdate({
+    checkbackType: 'confirm_za_stare',
+    taste,
+    pref: { minYear: 1900 },
+    locks: DEFAULT_INTELLIGENCE_LOCKS,
+  });
+  assert.equal(confirmed.data.minYear, 2000);
+});
+
+test('intelligenceAdjustScore rejects offer above budget after za drogo', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        phrases: ['Za drogo'],
+        note: 'Maksymalnie 900000 zł',
+      }),
+      offer: { id: 1, price: 945_000 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({ sentiment: 'dislike', phrases: ['Za drogo'] }),
+      offer: { id: 2, price: 980_000 },
+    },
+  ]);
+  const over = intelligenceAdjustScore({
+    radarScore: 90,
+    taste,
+    maxPrice: 800_000,
+    pref: {},
+    offer: { id: 10, price: 945_000, title: 'Test' },
+  });
+  assert.equal(over.score, 0);
+  assert.ok(over.reasons.some((item) => /budżet/i.test(item)));
+
+  const under = intelligenceAdjustScore({
+    radarScore: 90,
+    taste,
+    maxPrice: 800_000,
+    pref: {},
+    offer: { id: 11, price: 780_000, title: 'Test' },
+  });
+  assert.ok(under.score > 0);
 });

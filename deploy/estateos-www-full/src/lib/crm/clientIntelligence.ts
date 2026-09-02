@@ -4,6 +4,7 @@ import {
   sentimentLabel,
   type ClientOfferFeedback,
 } from '@/lib/crm/clientPortalFeedback';
+import { extractFeedbackSignals } from '@/lib/crm/feedbackSignals';
 import { descriptionImpliesAmenity, offerHasAmenityFromBrain } from '@/lib/intelligenceAmenityBrain';
 import { plainOfferDescription } from '@/lib/offerDescriptionHtml';
 
@@ -11,7 +12,9 @@ export type IntelligenceLockKey =
   | 'districts'
   | 'maxPrice'
   | 'minArea'
+  | 'maxArea'
   | 'minYear'
+  | 'minRooms'
   | 'requireBalcony'
   | 'requireGarden'
   | 'requireElevator'
@@ -24,7 +27,9 @@ export const INTELLIGENCE_LOCK_KEYS: IntelligenceLockKey[] = [
   'districts',
   'maxPrice',
   'minArea',
+  'maxArea',
   'minYear',
+  'minRooms',
   'requireBalcony',
   'requireGarden',
   'requireElevator',
@@ -78,7 +83,9 @@ export const DEFAULT_INTELLIGENCE_LOCKS: IntelligenceLocks = {
   districts: false,
   maxPrice: false,
   minArea: false,
+  maxArea: false,
   minYear: false,
+  minRooms: false,
   requireBalcony: false,
   requireGarden: false,
   requireElevator: false,
@@ -106,6 +113,7 @@ type OfferLike = {
   price?: number | null;
   area?: number | null;
   rooms?: number | null;
+  yearBuilt?: number | null;
   hasBalcony?: boolean | null;
   hasGarden?: boolean | null;
   hasElevator?: boolean | null;
@@ -133,12 +141,24 @@ export type LearnedTaste = {
   maybeRooms: number[];
   maybePrices: number[];
   expensivePrices: number[];
+  minYearHint: number | null;
+  minRoomsHint: number | null;
+  maxAreaHint: number | null;
+  minAreaHint: number | null;
+  maxPriceHint: number | null;
 };
 
 const PHRASE_NEEDLES: Record<string, string[]> = {
   'Za mała kuchnia': ['mała kuchnia', 'aneks kuchenny', 'kuchnia 4', 'kuchnia 5', 'kuchnia 6 m', 'ciasna kuchnia'],
   'Brak balkonu': ['bez balkonu', 'brak balkonu'],
+  'Brak parkingu': ['bez parkingu', 'brak parkingu', 'brak miejsca postojowego'],
+  'Brak windy': ['bez windy', 'brak windy'],
+  'Brak ogrodu': ['bez ogrodu', 'brak ogrodu'],
   'Za drogo': [],
+  'Za stare': ['rocznik', 'przedwojen', 'kamienic', 'stare budownictwo'],
+  'Za mało pokoi': ['kawalerka', 'jednopokoj', '1-pokoj', '1 pokoj'],
+  'Za mały metraż': ['ciasne', 'małe mieszkanie', 'mały metraż'],
+  'Za duży metraż': ['zbyt duże', 'za duży metraż'],
   'Hałas / ruchliwa ulica': ['hałas', 'ruchliw', 'arteria', 'przy al.', 'przy ul. ', 'duży ruch'],
   'Nie ta dzielnica': [],
   'Słabe doświetlenie': ['północ', 'ciemne', 'słabe doświetl', 'zacienion'],
@@ -146,8 +166,8 @@ const PHRASE_NEEDLES: Record<string, string[]> = {
   'Świetna lokalizacja': ['spokojn', 'zielon', 'metro', 'park', 'centrum'],
   'Podoba mi się układ': ['przestronn', 'funkcjonal', 'rozkład'],
   'Ładna okolica': ['spokojn', 'osiedl', 'park', 'zieleń'],
-  'Dobry metraż': [],
-  'Pasuje do budżetu': [],
+  'Dobry metraż': ['przestronn', 'funkcjonal', 'metraż', 'metrażu'],
+  'Pasuje do budżetu': ['w budżecie', 'korzystn', 'atrakcyjn', 'cena'],
   'Jasne mieszkanie': ['jasne', 'nasłoneczn', 'południe', 'duże okna'],
 };
 
@@ -221,6 +241,11 @@ function emptyTaste(): LearnedTaste {
     maybeRooms: [],
     maybePrices: [],
     expensivePrices: [],
+    minYearHint: null,
+    minRoomsHint: null,
+    maxAreaHint: null,
+    minAreaHint: null,
+    maxPriceHint: null,
   };
 }
 
@@ -269,6 +294,25 @@ export function learnFromFeedback(
     if (feedback.phrases.includes('Za drogo') && row.offer?.price) {
       taste.expensivePrices.push(Number(row.offer.price));
     }
+    const signals = extractFeedbackSignals(feedback);
+    for (const signal of signals) {
+      if (signal.kind === 'minYear' && signal.value != null) {
+        taste.minYearHint = taste.minYearHint == null ? signal.value : Math.max(taste.minYearHint, signal.value);
+      }
+      if (signal.kind === 'minRooms' && signal.value != null) {
+        taste.minRoomsHint = taste.minRoomsHint == null ? signal.value : Math.max(taste.minRoomsHint, signal.value);
+      }
+      if (signal.kind === 'maxArea' && signal.value != null) {
+        taste.maxAreaHint = taste.maxAreaHint == null ? signal.value : Math.min(taste.maxAreaHint, signal.value);
+      }
+      if (signal.kind === 'minArea' && signal.value != null) {
+        taste.minAreaHint = taste.minAreaHint == null ? signal.value : Math.max(taste.minAreaHint, signal.value);
+      }
+      if (signal.kind === 'maxPrice' && signal.value != null) {
+        taste.maxPriceHint =
+          taste.maxPriceHint == null ? signal.value : Math.min(taste.maxPriceHint, signal.value);
+      }
+    }
     taste.phrases.push(...feedback.phrases);
     if (feedback.liked) taste.likedText.push(feedback.liked);
     if (feedback.disliked) taste.dislikedText.push(feedback.disliked);
@@ -304,16 +348,96 @@ function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+export function effectiveMaxPrice(params: {
+  prefMaxPrice?: number | null;
+  taste?: Pick<LearnedTaste, 'maxPriceHint' | 'expensivePrices' | 'phrases'> | null;
+  strictBudget?: boolean;
+}): number | null {
+  const pref = Number(params.prefMaxPrice || 0);
+  const hints: number[] = [];
+  if (pref > 0) hints.push(pref);
+  if (params.taste?.maxPriceHint != null && params.taste.maxPriceHint > 0) {
+    hints.push(params.taste.maxPriceHint);
+  }
+  const zaDrogoCount = params.taste?.phrases.filter((item) => item === 'Za drogo').length ?? 0;
+  if ((params.strictBudget || zaDrogoCount >= 2) && params.taste?.expensivePrices.length) {
+    const rejected = Math.min(...params.taste.expensivePrices.filter((item) => Number.isFinite(item) && item > 0));
+    if (Number.isFinite(rejected) && rejected > 0) {
+      hints.push(Math.floor(rejected * 0.98));
+    }
+  }
+  if (!hints.length) return null;
+  return Math.min(...hints);
+}
+
 export function intelligenceAdjustScore(params: {
   radarScore: number;
   offer: OfferLike;
   taste: LearnedTaste;
   maxPrice?: number | null;
+  acceptScarceBudget?: boolean;
+  pref?: {
+    minYear?: number | null;
+    minRooms?: number | null;
+    maxArea?: number | null;
+    minArea?: number | null;
+  } | null;
 }): { score: number; reasons: string[] } {
-  const { offer, taste, maxPrice } = params;
+  const { offer, taste, maxPrice, acceptScarceBudget, pref } = params;
   let score = params.radarScore;
   const reasons: string[] = [];
   const text = haystack(offer);
+
+  // Twarde odcięcie bierze wyłącznie potwierdzoną ankietę. Sygnał z jednej
+  // reakcji pozostaje lekcją scoringu do czasu checkbacku — nie może po cichu
+  // zamienić np. „2 pokoje bez aneksu lub 3 pokoje” w bezwzględne min. 3 pokoje.
+  const minYear = Number(pref?.minYear || 0);
+  const minRooms = Number(pref?.minRooms || 0);
+  const maxArea = pref?.maxArea ?? null;
+  const minArea = Number(pref?.minArea || 0);
+
+  const yearBuilt = offer.yearBuilt != null ? Number(offer.yearBuilt) : null;
+  if (minYear > 1900 && yearBuilt != null && Number.isFinite(yearBuilt) && yearBuilt < minYear) {
+    score = 0;
+    reasons.push(`Budynek z ${yearBuilt} r. — poniżej progu ${minYear}.`);
+  }
+
+  const rooms = offer.rooms != null ? Number(offer.rooms) : null;
+  if (minRooms > 0 && rooms != null && Number.isFinite(rooms) && rooms < minRooms) {
+    score = 0;
+    reasons.push(`Układ ${rooms} pok. — poniżej oczekiwanego minimum ${minRooms}.`);
+  }
+
+  if (maxArea != null && offer.area != null && Number(offer.area) > Number(maxArea)) {
+    score = 0;
+    reasons.push(`Metraż ${offer.area} m² przekracza limit ${maxArea} m².`);
+  }
+
+  if (minArea > 0 && offer.area != null && Number(offer.area) < minArea) {
+    score = 0;
+    reasons.push(`Metraż ${offer.area} m² jest poniżej oczekiwanego minimum ${minArea} m².`);
+  }
+
+  // Tak samo budżet z reakcji staje się twardym limitem dopiero po
+  // potwierdzeniu i zapisie. Wcześniej działa niżej jako kara punktowa.
+  const budgetCap = maxPrice != null && Number(maxPrice) > 0 ? Number(maxPrice) : null;
+  const offerPrice = offer.price != null ? Number(offer.price) : null;
+  if (
+    !acceptScarceBudget &&
+    budgetCap != null &&
+    offerPrice != null &&
+    Number.isFinite(offerPrice) &&
+    offerPrice > budgetCap
+  ) {
+    score = 0;
+    reasons.push(
+      `Cena ${offerPrice.toLocaleString('pl-PL')} zł przekracza budżet ${budgetCap.toLocaleString('pl-PL')} zł.`,
+    );
+  }
+
+  if (score <= 0) {
+    return { score: 0, reasons: [...new Set(reasons)].slice(0, 6) };
+  }
   const phraseCounts = new Map<string, number>();
   for (const phrase of taste.phrases) {
     phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
@@ -336,7 +460,7 @@ export function intelligenceAdjustScore(params: {
   const expensiveNearBudget = taste.expensivePrices.filter(
     (price) => maxPrice != null && Number.isFinite(price) && price >= maxPrice * 0.85,
   );
-  if (expensiveNearBudget.length && maxPrice && Number(offer.price) > maxPrice * 0.92) {
+  if (!acceptScarceBudget && expensiveNearBudget.length && maxPrice && Number(offer.price) > maxPrice * 0.92) {
     score -= 16;
     reasons.push('Cena jest blisko lub powyżej budżetu, a klientka sygnalizowała „za drogo” przy podobnych kwotach.');
   }
@@ -365,8 +489,8 @@ export function intelligenceAdjustScore(params: {
   if (dislikedBlob) {
     for (const token of dislikedBlob
       .split(/[\s,.;:!?/]+/)
-      .filter((item) => item.length >= 6 && !FEEDBACK_STOPWORDS.has(item))
-      .slice(0, 12)) {
+      .filter((item) => item.length >= 4 && !FEEDBACK_STOPWORDS.has(item))
+      .slice(0, 16)) {
       if (text.includes(token)) {
         score -= 5;
         reasons.push(`W opisie wraca słowo z zastrzeżeń: „${token}”.`);
@@ -408,6 +532,29 @@ export function intelligenceAdjustScore(params: {
     }
   }
 
+  if (minRooms > 0 && rooms != null && rooms >= minRooms) {
+    score += 5;
+    reasons.push(`Ma co najmniej ${minRooms} pokoje — zgodnie z Twoimi uwagami.`);
+  }
+
+  if (minYear > 1900 && yearBuilt != null && yearBuilt >= minYear) {
+    score += 4;
+    reasons.push(`Budynek z ${yearBuilt} r. — spełnia oczekiwanie co do roku budowy.`);
+  }
+
+  if (phraseCounts.get('Brak parkingu') && offerHasAmenityFromBrain(offer, 'hasParking')) {
+    score += 5;
+    reasons.push('Ma parking lub miejsce postojowe.');
+  }
+  if (phraseCounts.get('Brak windy') && offerHasAmenityFromBrain(offer, 'hasElevator')) {
+    score += 4;
+    reasons.push('Jest winda w budynku.');
+  }
+  if (phraseCounts.get('Brak ogrodu') && offerHasAmenityFromBrain(offer, 'hasGarden')) {
+    score += 4;
+    reasons.push('Jest ogródek lub dostęp do zieleni.');
+  }
+
   const likedPriceMid = median(taste.likedPrices);
   if (likedPriceMid && offer.price && Math.abs(Number(offer.price) - likedPriceMid) / likedPriceMid <= 0.12) {
     score += 5;
@@ -444,11 +591,11 @@ export function summarizeTaste(taste: LearnedTaste): string {
   return bits.join(' · ');
 }
 
-function phraseCount(taste: LearnedTaste, phrase: string): number {
+export function phraseCount(taste: LearnedTaste, phrase: string): number {
   return taste.phrases.filter((item) => item === phrase).length;
 }
 
-function parseDistrictList(raw: unknown): string[] {
+export function parseDistrictList(raw: unknown): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map((item) => String(item).trim()).filter(Boolean);
   if (typeof raw === 'string') {
@@ -468,6 +615,10 @@ function parseDistrictList(raw: unknown): string[] {
 export function defaultIntelligenceLocks(pref?: {
   districts?: unknown;
   maxPrice?: number | null;
+  minArea?: number | null;
+  maxArea?: number | null;
+  minYear?: number | null;
+  minRooms?: number | null;
   requireBalcony?: boolean | null;
   requireGarden?: boolean | null;
   requireElevator?: boolean | null;
@@ -477,8 +628,10 @@ export function defaultIntelligenceLocks(pref?: {
   return {
     districts: parseDistrictList(pref?.districts).length > 0,
     maxPrice: pref?.maxPrice != null && Number(pref.maxPrice) > 0,
-    minArea: false,
-    minYear: false,
+    minArea: pref?.minArea != null && Number(pref.minArea) > 0,
+    maxArea: pref?.maxArea != null && Number(pref.maxArea) > 0,
+    minYear: pref?.minYear != null && Number(pref.minYear) > 1900,
+    minRooms: pref?.minRooms != null && Number(pref.minRooms) > 0,
     requireBalcony: Boolean(pref?.requireBalcony),
     requireGarden: Boolean(pref?.requireGarden),
     requireElevator: Boolean(pref?.requireElevator),
@@ -504,6 +657,10 @@ export function parseIntelligenceLocks(
 export type BuyerPrefWriteback = {
   districts?: string[];
   maxPrice?: number | null;
+  minArea?: number | null;
+  maxArea?: number | null;
+  minYear?: number | null;
+  minRooms?: number | null;
   requireBalcony?: boolean;
   requireGarden?: boolean;
   requireElevator?: boolean;
@@ -515,6 +672,10 @@ export function preferenceUpdatesFromTaste(params: {
   pref: {
     districts?: unknown;
     maxPrice?: number | null;
+    minArea?: number | null;
+    maxArea?: number | null;
+    minYear?: number | null;
+    minRooms?: number | null;
     requireBalcony?: boolean | null;
     requireGarden?: boolean | null;
     requireElevator?: boolean | null;
@@ -524,48 +685,167 @@ export function preferenceUpdatesFromTaste(params: {
   taste: LearnedTaste;
   locks: IntelligenceLocks;
 }): { data: BuyerPrefWriteback; notes: string[] } {
-  const data: BuyerPrefWriteback = {};
   const notes: string[] = [];
   const { pref, taste, locks } = params;
 
-  if (phraseCount(taste, 'Brak balkonu') >= 2) {
-    if (locks.requireBalcony) {
-      notes.push('Klient wielokrotnie odrzucał brak balkonu, ale to kryterium jest zablokowane.');
-    } else if (!pref.requireBalcony) {
-      data.requireBalcony = true;
-      notes.push('Dopisano obowiązkowy balkon — klient dwukrotnie zaznaczał „brak balkonu”.');
+  const pendingConfirm = (phrase: string, detail: string) => {
+    if (phraseCount(taste, phrase) >= 2) {
+      notes.push(`„${phrase}” (${phraseCount(taste, phrase)}×) — zapytam klienta zanim zmienię ankietę: ${detail}`);
+    } else if (phraseCount(taste, phrase) === 1) {
+      notes.push(`„${phrase}” — uwzględniam w scoringu; ankieta bez zmian do potwierdzenia.`);
     }
-  }
+  };
 
-  if (phraseCount(taste, 'Za drogo') >= 2 && pref.maxPrice) {
+  pendingConfirm('Brak balkonu', 'balkon obowiązkowy');
+  pendingConfirm('Brak parkingu', 'parking obowiązkowy');
+  pendingConfirm('Brak windy', 'winda obowiązkowa');
+  pendingConfirm('Brak ogrodu', 'ogród obowiązkowy');
+  pendingConfirm('Za stare', taste.minYearHint != null ? `min. rok ${taste.minYearHint}` : 'min. rok budowy');
+  pendingConfirm('Za mało pokoi', taste.minRoomsHint != null ? `min. ${taste.minRoomsHint} pok.` : 'min. liczba pokoi');
+  pendingConfirm('Za mały metraż', taste.minAreaHint != null ? `min. ${taste.minAreaHint} m²` : 'min. metraż');
+  pendingConfirm('Za duży metraż', taste.maxAreaHint != null ? `max. ${taste.maxAreaHint} m²` : 'max. metraż');
+  pendingConfirm('Za drogo', 'obniżenie budżetu / twardsze trzymanie ceny');
+  pendingConfirm('Nie ta dzielnica', 'wykluczenie dzielnic');
+
+  if (phraseCount(taste, 'Za drogo') >= 1 && pref.maxPrice) {
     notes.push(
-      locks.maxPrice
-        ? 'Klient sygnalizował „za drogo”, ale budżet zostaje — ustawił go agent.'
-        : `Klient sygnalizował „za drogo”. Budżet ${Number(pref.maxPrice).toLocaleString('pl-PL')} zł zostaje; mózg tylko unika droższych ofert.`,
+      `Scoring uwzględnia budżet ${Number(pref.maxPrice).toLocaleString('pl-PL')} zł` +
+        (locks.maxPrice ? ' (kłódka agenta).' : '.'),
     );
   }
 
-  if (phraseCount(taste, 'Nie ta dzielnica') >= 1) {
-    const current = parseDistrictList(pref.districts);
-    const drop = [...new Set(taste.rejectedDistricts.filter((item) => !taste.likedDistricts.includes(item)))];
-    if (locks.districts) {
-      if (drop.length) {
-        notes.push(
-          `Klient odrzuca dzielnic${drop.length === 1 ? 'ę' : 'e'} ${drop.join(', ')}, ale lokalizacja jest zablokowana — ankieta bez zmian.`,
-        );
-      }
-    } else if (current.length && drop.length) {
-      const next = current.filter((item) => !drop.includes(item));
-      if (next.length >= 1 && next.length < current.length) {
-        data.districts = next;
-        notes.push(`Usunięto z ankiety dzielnice odrzucone przez klienta: ${drop.filter((item) => current.includes(item)).join(', ')}.`);
-      } else if (!next.length) {
-        notes.push('Nie usunięto dzielnic — zostałyby puste. Odblokuj lokalizację albo popraw ankietę ręcznie.');
-      }
+  for (const key of INTELLIGENCE_LOCK_KEYS) {
+    if (!locks[key]) continue;
+    const blocked = taste.phrases.some((phrase) => {
+      if (key === 'requireBalcony') return phrase === 'Brak balkonu';
+      if (key === 'requireParking') return phrase === 'Brak parkingu';
+      if (key === 'requireElevator') return phrase === 'Brak windy';
+      if (key === 'requireGarden') return phrase === 'Brak ogrodu';
+      if (key === 'minYear') return phrase === 'Za stare';
+      if (key === 'minRooms') return phrase === 'Za mało pokoi';
+      if (key === 'minArea') return phrase === 'Za mały metraż';
+      if (key === 'maxArea') return phrase === 'Za duży metraż';
+      if (key === 'maxPrice') return phrase === 'Za drogo';
+      if (key === 'districts') return phrase === 'Nie ta dzielnica';
+      return false;
+    });
+    if (blocked) {
+      notes.push(`Pole „${key}” zablokowane przez agenta — zmiana tylko po checkbacku + zatwierdzeniu.`);
     }
   }
 
-  return { data, notes };
+  return { data: {}, notes };
+}
+
+/** Zapis ankiety dopiero po „Tak” w checkbacku — nie wcześniej. */
+export function buildCheckbackPreferenceUpdate(params: {
+  checkbackType: string;
+  taste: LearnedTaste;
+  pref: {
+    districts?: unknown;
+    maxPrice?: number | null;
+    minArea?: number | null;
+    maxArea?: number | null;
+    minYear?: number | null;
+    minRooms?: number | null;
+    requireBalcony?: boolean | null;
+    requireGarden?: boolean | null;
+    requireElevator?: boolean | null;
+    requireParking?: boolean | null;
+  };
+  locks: IntelligenceLocks;
+}): { data: BuyerPrefWriteback; lockPatch: Partial<IntelligenceLocks> | null; agentNote?: string } {
+  const { checkbackType: type, taste, pref, locks } = params;
+  const data: BuyerPrefWriteback = {};
+  let lockPatch: Partial<IntelligenceLocks> | null = null;
+  let agentNote: string | undefined;
+
+  if (type.includes('brak_balkonu') && !locks.requireBalcony) {
+    data.requireBalcony = true;
+    lockPatch = { ...(lockPatch || {}), requireBalcony: true };
+  } else if (type.includes('brak_balkonu') && locks.requireBalcony) {
+    agentNote = 'Klient potwierdził balkon, ale kryterium ma kłódkę — agent musi zatwierdzić.';
+  }
+
+  if (type.includes('brak_parkingu') && !locks.requireParking) {
+    data.requireParking = true;
+    lockPatch = { ...(lockPatch || {}), requireParking: true };
+  } else if (type.includes('brak_parkingu') && locks.requireParking) {
+    agentNote = 'Klient potwierdził parking, ale kryterium ma kłódkę.';
+  }
+
+  if (type.includes('brak_windy') && !locks.requireElevator) {
+    data.requireElevator = true;
+    lockPatch = { ...(lockPatch || {}), requireElevator: true };
+  } else if (type.includes('brak_windy') && locks.requireElevator) {
+    agentNote = 'Klient potwierdził windę, ale kryterium ma kłódkę.';
+  }
+
+  if (type.includes('brak_ogrodu') && !locks.requireGarden) {
+    data.requireGarden = true;
+    lockPatch = { ...(lockPatch || {}), requireGarden: true };
+  } else if (type.includes('brak_ogrodu') && locks.requireGarden) {
+    agentNote = 'Klient potwierdził ogród, ale kryterium ma kłódkę.';
+  }
+
+  if (type.includes('za_stare') && !locks.minYear) {
+    data.minYear = Math.max(Number(pref.minYear || 1900), taste.minYearHint ?? 2000);
+    lockPatch = { ...(lockPatch || {}), minYear: true };
+  } else if (type.includes('za_stare') && locks.minYear) {
+    agentNote = 'Klient potwierdził rok budowy, ale pole ma kłódkę.';
+  }
+
+  if (type.includes('za_mało_pokoi') && !locks.minRooms) {
+    data.minRooms = Math.max(Number(pref.minRooms || 0), taste.minRoomsHint ?? 2);
+    lockPatch = { ...(lockPatch || {}), minRooms: true };
+  } else if (type.includes('za_mało_pokoi') && locks.minRooms) {
+    agentNote = 'Klient potwierdził min. pokoi, ale pole ma kłódkę.';
+  }
+
+  if (type.includes('za_mały_metraż') && taste.minAreaHint != null && !locks.minArea) {
+    data.minArea = Math.max(Number(pref.minArea || 0), taste.minAreaHint);
+    lockPatch = { ...(lockPatch || {}), minArea: true };
+  } else if (type.includes('za_mały_metraż') && locks.minArea) {
+    agentNote = 'Klient potwierdził min. metraż, ale pole ma kłódkę.';
+  }
+
+  if (type.includes('za_duży_metraż') && taste.maxAreaHint != null && !locks.maxArea) {
+    data.maxArea = Math.min(Number(pref.maxArea || 9999), taste.maxAreaHint);
+    lockPatch = { ...(lockPatch || {}), maxArea: true };
+  } else if (type.includes('za_duży_metraż') && locks.maxArea) {
+    agentNote = 'Klient potwierdził max. metraż, ale pole ma kłódkę.';
+  }
+
+  if (type.includes('nie_ta_dzielnica') && !locks.districts) {
+    const current = parseDistrictList(pref.districts);
+    const drop = [...new Set(taste.rejectedDistricts.filter((item) => !taste.likedDistricts.includes(item)))];
+    const next = current.filter((item) => !drop.includes(item));
+    if (next.length >= 1 && next.length < current.length) {
+      data.districts = next;
+      lockPatch = { ...(lockPatch || {}), districts: true };
+    }
+  } else if (type.includes('nie_ta_dzielnica') && locks.districts) {
+    agentNote = 'Klient potwierdził wykluczenie dzielnicy, ale lokalizacja ma kłódkę.';
+  }
+
+  if (type.includes('za_drogo')) {
+    const cap = effectiveMaxPrice({
+      prefMaxPrice: pref.maxPrice,
+      taste,
+      strictBudget: true,
+    });
+    if (locks.maxPrice) {
+      agentNote = 'Klient potwierdził „za drogo”, ale budżet ma kłódkę — agent musi zatwierdzić.';
+    } else if (cap != null && cap > 0) {
+      data.maxPrice = cap;
+      lockPatch = { ...(lockPatch || {}), maxPrice: true };
+    } else if (taste.maxPriceHint != null && taste.maxPriceHint > 0) {
+      data.maxPrice = taste.maxPriceHint;
+      lockPatch = { ...(lockPatch || {}), maxPrice: true };
+    }
+  }
+
+  return { data, lockPatch, agentNote };
 }
 
 export function clientFacingWhyLine(params: {
@@ -573,7 +853,14 @@ export function clientFacingWhyLine(params: {
   city?: string | null;
   district?: string | null;
   calibrating?: boolean;
+  prevOffer?: OfferLike | null;
+  prevFeedbackRaw?: string | null;
+  nextOffer?: OfferLike | null;
+  agentFirstName?: string | null;
 }): string {
+  if (params.prevOffer || params.prevFeedbackRaw || params.nextOffer || params.agentFirstName) {
+    // Pełny dialog budowany w clientIntelligenceRun — tu fallback krótki.
+  }
   if (params.calibrating) {
     const loc = [params.city, params.district].filter(Boolean).join(', ');
     return loc
@@ -694,8 +981,19 @@ export function compareLessonToNext(
   const bits: string[] = [];
   const phrases = new Set(feedback.phrases);
   const note = `${feedback.disliked} ${feedback.note}`.toLowerCase();
+  const signals = extractFeedbackSignals(feedback);
+
   if ((phrases.has("Brak balkonu") || note.includes("balkon")) && next.hasBalcony) {
     bits.push("Ma balkon");
+  }
+  if ((phrases.has("Brak parkingu") || note.includes("parking")) && next.hasParking) {
+    bits.push("Ma parking");
+  }
+  if ((phrases.has("Brak windy") || note.includes("wind")) && next.hasElevator) {
+    bits.push("Ma windę");
+  }
+  if ((phrases.has("Brak ogrodu") || note.includes("ogród")) && next.hasGarden) {
+    bits.push("Ma ogród");
   }
   if (
     (phrases.has("Za drogo") || note.includes("drogo")) &&
@@ -716,9 +1014,34 @@ export function compareLessonToNext(
   if (phrases.has("Za wysoko albo za nisko") && next.floor != null && String(next.floor) !== String(prev.floor ?? "")) {
     bits.push(`Inne piętro (${next.floor})`);
   }
-  if (next.rooms && prev.rooms && Number(next.rooms) !== Number(prev.rooms)) {
-    bits.push(`${next.rooms} pok. zamiast ${prev.rooms}`);
+
+  const minRoomsSignal = signals.find((s) => s.kind === "minRooms")?.value;
+  const minYearSignal = signals.find((s) => s.kind === "minYear")?.value;
+  const nextRooms = next.rooms != null ? Number(next.rooms) : null;
+  const prevRooms = prev.rooms != null ? Number(prev.rooms) : null;
+
+  if (minRoomsSignal && nextRooms != null && nextRooms >= minRoomsSignal) {
+    bits.push(`Co najmniej ${nextRooms} pok. (minimum ${minRoomsSignal})`);
+  } else if (nextRooms && prevRooms && nextRooms !== prevRooms) {
+    bits.push(`${nextRooms} pok. zamiast ${prevRooms}`);
   }
+
+  const nextYear = next.yearBuilt != null ? Number(next.yearBuilt) : null;
+  const prevYear = prev.yearBuilt != null ? Number(prev.yearBuilt) : null;
+  if (minYearSignal && nextYear != null && nextYear >= minYearSignal) {
+    bits.push(`Budynek z ${nextYear} r. (minimum ${minYearSignal})`);
+  } else if (nextYear && prevYear && nextYear !== prevYear) {
+    bits.push(`Rok ${nextYear} zamiast ${prevYear}`);
+  }
+
+  if (next.area && prev.area && Number(next.area) !== Number(prev.area)) {
+    if (phrases.has("Za mały metraż") && Number(next.area) > Number(prev.area)) {
+      bits.push(`Większy metraż (${next.area} m²)`);
+    } else if (phrases.has("Za duży metraż") && Number(next.area) < Number(prev.area)) {
+      bits.push(`Mniejszy metraż (${next.area} m²)`);
+    }
+  }
+
   return bits.join(" · ");
 }
 

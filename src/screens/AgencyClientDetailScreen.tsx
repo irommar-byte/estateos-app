@@ -19,7 +19,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
@@ -457,11 +457,11 @@ export default function AgencyClientDetailScreen() {
     }
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!token || !clientId) return;
     const detail = await fetchAgencyClient(token, clientId);
     if (!detail.ok) {
-      Alert.alert('Klient', detail.message);
+      if (!options?.silent) Alert.alert('Klient', detail.message);
       return;
     }
     setClient(detail.client);
@@ -566,6 +566,14 @@ export default function AgencyClientDetailScreen() {
     savedSnapshotRef.current = '';
     void load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load({ silent: true });
+      const interval = setInterval(() => void load({ silent: true }), 12_000);
+      return () => clearInterval(interval);
+    }, [load]),
+  );
 
   useEffect(() => {
     setForm((current) => {
@@ -1040,6 +1048,7 @@ export default function AgencyClientDetailScreen() {
   const sentMatches = matches
     .filter((item) => Boolean(item.notifiedAt || item.sharedAt))
     .sort((a, b) => b.score - a.score);
+  const buyerAgentTasks = client?.buyerAgentTasks || [];
   const showRadarSurvey = Boolean(client && (client.type === 'BUYER' || sellerRadarSearching));
   const portalMessages = client?.messages || [];
   const latestPortalMessage = portalMessages[portalMessages.length - 1];
@@ -1138,6 +1147,21 @@ export default function AgencyClientDetailScreen() {
     void load();
   };
 
+  const resolveBuyerAgentTask = async (activityId: number) => {
+    if (!token) return;
+    setBusy('resolve_buyer_task');
+    const res = await postAgencyClientAction(token, clientId, {
+      action: 'resolve_buyer_agent_task',
+      activityId,
+    });
+    setBusy('');
+    if (!res.ok) {
+      Alert.alert('Reakcja klienta', res.message);
+      return;
+    }
+    await load({ silent: true });
+  };
+
   const runNextStep = () => {
     if (!client?.nextStep) return;
     const action = client.nextStep.action;
@@ -1159,6 +1183,13 @@ export default function AgencyClientDetailScreen() {
     }
     if (action === 'propose_presentation') {
       Alert.alert('Prezentacja', 'Wybierz ofertę z listy poniżej i zaproponuj termin.');
+      setPresentationExpanded(true);
+      return;
+    }
+    if (action === 'respond_to_client') {
+      setChatExpanded(true);
+      const task = buyerAgentTasks[0];
+      if (task) Alert.alert(task.title, task.body);
       return;
     }
     if (action === 'accept_schedule') {
@@ -1424,6 +1455,107 @@ export default function AgencyClientDetailScreen() {
                   ) : null}
                 </LinearGradient>
               </View>
+
+              {client.type === 'BUYER' && buyerAgentTasks.length ? (
+                <View
+                  style={[
+                    styles.card,
+                    {
+                      backgroundColor: isDark ? 'rgba(92,55,0,0.38)' : '#FFF8E8',
+                      borderColor: '#FF9F0A',
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 12,
+                        backgroundColor: 'rgba(255,159,10,0.18)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="notifications" size={18} color="#FF9F0A" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#FF9F0A', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 }}>
+                        WYMAGA TWOJEJ REAKCJI · {buyerAgentTasks.length}
+                      </Text>
+                      <Text style={{ color: colors.text, fontSize: 12, marginTop: 3 }}>
+                        Komentarz klienta jest tutaj od razu — nie trzeba szukać go w liście ofert.
+                      </Text>
+                    </View>
+                  </View>
+
+                  {buyerAgentTasks.slice(0, 3).map((task) => (
+                    <View
+                      key={task.id}
+                      style={{
+                        marginTop: 12,
+                        borderRadius: 14,
+                        borderWidth: StyleSheet.hairlineWidth,
+                        borderColor: colors.border,
+                        backgroundColor: colors.card,
+                        padding: 12,
+                      }}
+                    >
+                      <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', lineHeight: 19 }}>
+                        {task.title}
+                      </Text>
+                      <Text style={{ color: colors.text, fontSize: 13, lineHeight: 18, marginTop: 6 }}>
+                        {task.body}
+                      </Text>
+                      <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 6 }}>
+                        {new Date(task.createdAt).toLocaleString('pl-PL')}
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                        {task.offerId ? (
+                          <Pressable
+                            onPress={() => navigation.navigate('OfferDetail', { offerId: task.offerId })}
+                            style={[styles.taskButton, { backgroundColor: colors.input, borderColor: colors.border }]}
+                          >
+                            <Text style={{ color: colors.text, fontSize: 11, fontWeight: '900' }}>Otwórz ofertę</Text>
+                          </Pressable>
+                        ) : null}
+                        {task.kind === 'viewing' && task.offerId ? (
+                          <Pressable
+                            onPress={() => {
+                              setPresentationOfferId(String(task.offerId));
+                              setPresentationExpanded(true);
+                            }}
+                            style={[styles.taskButton, { backgroundColor: '#34C759', borderColor: '#34C759' }]}
+                          >
+                            <Text style={{ color: '#052e16', fontSize: 11, fontWeight: '900' }}>Umów prezentację</Text>
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            onPress={() => setChatExpanded(true)}
+                            style={[styles.taskButton, { backgroundColor: colors.input, borderColor: colors.border }]}
+                          >
+                            <Text style={{ color: colors.text, fontSize: 11, fontWeight: '900' }}>Otwórz czat</Text>
+                          </Pressable>
+                        )}
+                        <Pressable
+                          disabled={busy === 'resolve_buyer_task'}
+                          onPress={() => void resolveBuyerAgentTask(task.activityId)}
+                          style={[
+                            styles.taskButton,
+                            {
+                              backgroundColor: colors.input,
+                              borderColor: colors.border,
+                              opacity: busy === 'resolve_buyer_task' ? 0.5 : 1,
+                            },
+                          ]}
+                        >
+                          <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '900' }}>Załatwione</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
 
               {/* Acquisition Card (For Sellers) */}
               {client.type === 'SELLER' && form ? (
@@ -3084,6 +3216,15 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     marginBottom: 16,
+  },
+  taskButton: {
+    minHeight: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   primary: {
     backgroundColor: '#34C759',
