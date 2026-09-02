@@ -52,6 +52,7 @@ import { type ClientNextStep } from "@/lib/crm/clientNextStep";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 import MatchImportAgentMeta, { type MatchImportBrief } from "@/components/crm/MatchImportAgentMeta";
+import FacebookGroupPromotePanel from "@/components/crm/FacebookGroupPromotePanel";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -122,6 +123,25 @@ type ClientDetail = AgencyClientListItem & {
     createdAt: string;
     metadata?: Record<string, unknown> | null;
   }>;
+  sellerMarketing?: {
+    facebookGroups?: Array<{
+      key: string;
+      groupName: string;
+      groupUrl: string | null;
+      lastPostedAt: string;
+      lastPostUrl: string | null;
+      postCount: number;
+      lastOfferId: number | null;
+    }>;
+    facebookShareOffers?: Array<{
+      id: number;
+      title: string;
+      city: string | null;
+      price: number | null;
+      imageUrl: string | null;
+      linkedClientId: number | null;
+    }>;
+  } | null;
 };
 
 type EmailPreview = {
@@ -1636,13 +1656,13 @@ export default function CrmClientsWorkspace() {
                     <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4">
                       <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">Inny portal</p>
                       <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
-                        Wklej link z Otodom, OLX, Gratki. Klient zobaczy podgląd karty w swoim panelu i dostanie maila, że ogłoszenie już tam wisi.
+                        Wklej link z Otodom, OLX, Gratki albo z grupy Facebook. Klient zobaczy kartę kanału w ścieżce oferty.
                       </p>
                       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                         <input
                           value={portalLinkDraft}
                           onChange={(e) => setPortalLinkDraft(e.target.value)}
-                          placeholder="https://www.otodom.pl/pl/oferta/..."
+                          placeholder="https://www.otodom.pl/pl/oferta/… albo facebook.com/groups/…"
                           className="min-w-0 flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
                         />
                         <button
@@ -1664,6 +1684,24 @@ export default function CrmClientsWorkspace() {
                         </button>
                       </div>
                     </div>
+                    <FacebookGroupPromotePanel
+                      groups={detail.sellerMarketing?.facebookGroups || []}
+                      offers={detail.sellerMarketing?.facebookShareOffers || []}
+                      currentOfferId={detail.linkedOfferId || null}
+                      busy={busy}
+                      onShare={async (payload) => {
+                        const json = await clientAction("record_facebook_group_post", {
+                          offerId: payload.offerId,
+                          groupName: payload.groupName,
+                          groupUrl: payload.groupUrl,
+                          renewalDueAt: payload.renewalDueAt,
+                          visibleToClient: true,
+                        });
+                        if (!json?.success) return null;
+                        setToast("Otwarto Facebook. Wklej skopiowany link w grupie — klient zobaczy to w ścieżce oferty.");
+                        return json;
+                      }}
+                    />
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
