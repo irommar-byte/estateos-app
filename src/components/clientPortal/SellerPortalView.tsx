@@ -601,7 +601,7 @@ export default function SellerPortalView({
               zobaczysz tutaj portal, termin odnowienia i bezpieczny link.
             </Text>
           </ProfileCardShell>
-        )}
+        ) : null}
 
         <ProfileCardShell
           isDark={isDark}
