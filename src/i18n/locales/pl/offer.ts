@@ -507,7 +507,7 @@ export const offer = {
       capacityFree: 'wolne {{free}} MB',
       videoUrl: 'Film (link)',
       footer:
-        'Dodane zdjęcie od razu ląduje na serwerze (pasek postępu). Usunięcie zwalnia miejsce w limicie 20 MB — wtedy możesz dodać kolejne.',
+        'Dodane zdjęcie od razu ląduje na serwerze (pasek postępu). Usunięcie zwalnia miejsce w limicie 30 MB — wtedy możesz dodać kolejne.',
     },
     floorPlan: {
       sectionTitle: 'PLAN NIERUCHOMOŚCI',

@@ -507,7 +507,7 @@ export const offer = {
       capacityFree: '{{free}} MB free',
       videoUrl: 'Video (link)',
       footer:
-        'New photos upload immediately (progress bar). Deleting frees space in the 20 MB folder limit so you can add another.',
+        'New photos upload immediately (progress bar). Deleting frees space in the 30 MB folder limit so you can add another.',
     },
     floorPlan: {
       sectionTitle: 'FLOOR PLAN',

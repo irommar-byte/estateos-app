@@ -2,13 +2,13 @@ import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 
 /** Limit wysyłki na serwer (zgodny z backendem / Step6 upload). */
-export const OFFER_MEDIA_UPLOAD_CAP_MB = 20;
+export const OFFER_MEDIA_UPLOAD_CAP_MB = 30;
 export const OFFER_MEDIA_UPLOAD_CAP_BYTES = OFFER_MEDIA_UPLOAD_CAP_MB * 1024 * 1024;
 
 /**
  * Rezerwa tylko na urządzeniu przy dobieraniu zdjęć (konwersja HEIC→JPEG).
  * Nie zwiększa limitu na serwerze — pozwala dodać cięższe pliki źródłowe,
- * które po kompresji zmieszczą się w 20 MB.
+ * które po kompresji zmieszczą się w limicie folderu oferty.
  */
 export const OFFER_MEDIA_CONVERSION_RESERVE_MB = 5;
 export const OFFER_MEDIA_CONVERSION_RESERVE_BYTES =
