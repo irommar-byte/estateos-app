@@ -83,6 +83,31 @@ test("extractActiveChannels skips expired listings", () => {
   assert.equal(channels[0].portal, "Otodom");
 });
 
+test("facebook active channel opens the post permalink not the group home", () => {
+  const channels = extractActiveChannels([
+    shapeMarketingTimelineItem({
+      id: 1,
+      kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
+      title: "Facebook",
+      body: "posted",
+      offerId: 12,
+      createdAt: new Date("2026-09-01T00:00:00.000Z"),
+      metadata: {
+        siteName: "Facebook",
+        url: "https://www.facebook.com/groups/abc/posts/999/",
+        groupUrl: "https://www.facebook.com/groups/abc/",
+        groupName: "Warszawa",
+        status: "active",
+        visibleToClient: true,
+      },
+    }),
+  ]);
+  assert.equal(
+    channels[0].externalUrl,
+    "https://www.facebook.com/groups/abc/posts/999/",
+  );
+});
+
 test("latest channel event wins and removed channel is not active", () => {
   const timeline = [
     shapeMarketingTimelineItem({

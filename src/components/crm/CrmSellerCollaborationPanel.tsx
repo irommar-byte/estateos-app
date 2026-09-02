@@ -291,8 +291,8 @@ export default function CrmSellerCollaborationPanel({
           if (!json?.success) return false;
           onToast(
             payload.visibleToClient
-              ? "Zapisano publikację Facebook. Klient widzi ją w ścieżce oferty."
-              : "Zapisano publikację Facebook jako szkic.",
+              ? "Zapisano link do posta na Facebooku. Klient otworzy ogłoszenie, nie samą grupę."
+              : "Zapisano link do posta na Facebooku jako szkic.",
           );
           return true;
         }}

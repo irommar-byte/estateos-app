@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CalendarDays, Facebook, Repeat2 } from "lucide-react";
-import { facebookSharerHref } from "@/lib/crm/marketingChannel";
+import { facebookSharerHref, isFacebookPostPermalink } from "@/lib/crm/marketingChannel";
 import type { FacebookGroupDestination } from "@/lib/crm/marketingChannel";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 
@@ -103,6 +103,7 @@ export default function FacebookGroupPromotePanel({
 
   const saveConfirmed = async () => {
     if (!pending) return;
+    if (!isFacebookPostPermalink(postUrl)) return;
     setSaving(true);
     const ok = await onConfirm({
       offerId: pending.offerId,
@@ -128,8 +129,8 @@ export default function FacebookGroupPromotePanel({
         </p>
         <p className="mt-2 text-xs leading-relaxed text-[var(--eos-muted)]">
           Gdy zapiszesz pierwszą publikację z linkiem do grupy Facebook, pojawi się tu
-          jednoklikowe otwieranie tych samych grup. Klient zobaczy wpis dopiero po Twoim
-          potwierdzeniu albo wklejeniu linku do posta.
+          jednoklikowe otwieranie tych samych grup. Żeby klient otwierał ogłoszenie,
+          a nie samą grupę, po wrzuceniu wklej link do konkretnego posta.
         </p>
       </div>
     );
@@ -141,8 +142,8 @@ export default function FacebookGroupPromotePanel({
         <Facebook className="size-3.5" /> Szybkie wystawianie na grupach
       </p>
       <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
-        Otwiera grupę i okno Facebooka z kartą ogłoszenia. Link kopiujemy do schowka.
-        Klient zobaczy publikację dopiero gdy potwierdzisz wrzucenie albo wkleisz link do posta.
+        Otwiera grupę i okno Facebooka z kartą ogłoszenia. Po wrzuceniu skopiuj link
+        do samego posta (⋯ → Kopiuj link) — bez tego klik w panelu otworzy tylko grupę.
       </p>
 
       {offers.length > 1 ? (
@@ -181,7 +182,11 @@ export default function FacebookGroupPromotePanel({
       {pending ? (
         <div className="mt-3 space-y-2 rounded-2xl border border-[#1877F2]/40 bg-[var(--eos-card)] p-3">
           <p className="text-xs font-black text-[var(--eos-text)]">
-            Potwierdź wrzucenie na „{pending.group.groupName}”
+            Wklej link do posta na „{pending.group.groupName}”
+          </p>
+          <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">
+            Facebook nie oddaje adresu ogłoszenia. Pod wrzuconym postem: ⋯ → Kopiuj link.
+            Link do samej grupy nie wystarczy.
           </p>
           <input
             value={groupNameDraft}
@@ -192,7 +197,7 @@ export default function FacebookGroupPromotePanel({
           <input
             value={postUrl}
             onChange={(e) => setPostUrl(e.target.value)}
-            placeholder="Link do posta (opcjonalnie, ale najlepszy)"
+            placeholder="https://www.facebook.com/groups/…/posts/…"
             className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
           />
           <label className="flex items-center gap-2 text-xs text-[var(--eos-text)]">
@@ -206,7 +211,7 @@ export default function FacebookGroupPromotePanel({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={saving || busy}
+              disabled={saving || busy || !isFacebookPostPermalink(postUrl)}
               onClick={() => void saveConfirmed()}
               className="rounded-full bg-[#1877F2] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white disabled:opacity-50"
             >
