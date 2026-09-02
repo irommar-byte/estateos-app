@@ -361,6 +361,23 @@ test('unconfirmed taste hints do not become hard room or price limits', () => {
 
   assert.ok(adjusted.score > 0);
   assert.equal(adjusted.reasons.some((item) => /minimum 3|budżet 800/.test(item)), false);
+
+  const preferred = intelligenceAdjustScore({
+    radarScore: 95,
+    taste,
+    maxPrice: 1_000_000,
+    pref: { minRooms: null },
+    offer: {
+      ...baseOffer,
+      id: 100,
+      rooms: 3,
+      price: 750_000,
+      description: 'Trzy pokoje, osobna kuchnia, balkon i miejsce postojowe.',
+    },
+  });
+
+  assert.ok(preferred.score > adjusted.score);
+  assert.match(adjusted.reasons.join(' '), /karę|silna kara/i);
 });
 
 test('preferenceUpdatesFromTaste writes minYear only via checkback confirm, not auto', () => {
