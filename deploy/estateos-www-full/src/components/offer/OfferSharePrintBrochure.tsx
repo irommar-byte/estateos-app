@@ -53,7 +53,6 @@ function AgentPrintCard({ card }: { card: OfferShareCard }) {
           </p>
         </div>
         <div className="offer-share-agent-print-brand">
-          <span className="offer-share-agent-print-badge">EstateOS™</span>
           <strong>EstateOS™</strong>
           <p>Zweryfikowany rynek nieruchomości</p>
         </div>
@@ -92,7 +91,10 @@ function PrintMapPanel({ card }: { card: OfferShareCard }) {
 export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochureProps) {
   const [mounted, setMounted] = useState(false);
   const hero = card.imageUrl || card.images[0] || '';
-  const description = truncateOfferShareDescription(card.description, 420);
+  const description = truncateOfferShareDescription(
+    card.description,
+    card.roomAreas?.length ? 280 : 420,
+  );
   const qrSrc = buildOfferShareQrSrc(card.canonicalUrl, 240);
 
   useEffect(() => {
@@ -160,17 +162,31 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
                 </div>
               ) : null}
 
-              {card.amenities.length ? (
-                <div className="offer-share-print-amenities">
-                  {card.amenities.map((item) => (
-                    <span key={item} className="offer-share-print-amenity">
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+            {card.amenities.length ? (
+              <div className="offer-share-print-amenities">
+                {card.amenities.map((item) => (
+                  <span key={item} className="offer-share-print-amenity">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
-              {description ? (
+            {card.roomAreas?.length ? (
+              <section className="offer-share-print-rooms">
+                <p className="offer-share-print-section-title">Układ</p>
+                <ul className="offer-share-print-rooms-list">
+                  {card.roomAreas.map((room) => (
+                    <li key={`${room.name}-${room.areaLabel}`}>
+                      <span>{room.name}</span>
+                      <strong>{room.areaLabel}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {description ? (
                 <section className="offer-share-print-description">
                   <p className="offer-share-print-section-title">Opis</p>
                   <p className="offer-share-print-description-body">{description}</p>

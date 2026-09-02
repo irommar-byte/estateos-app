@@ -9,6 +9,7 @@ import { formatRoomScanRoomCount } from '@/lib/roomScan/roomScanLabels';
 import { resolvePublicAssetUrl } from '@/lib/roomScan/parseFloorPlanScanMeta';
 import FloorPlan3dWalkthrough from '@/components/offers/FloorPlan3dWalkthrough';
 import FloorPlanScanArtboard from '@/components/offers/FloorPlanScanArtboard';
+import { formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { cropScanMetaToRoom, roomsFromScanMeta } from '@/lib/roomScan/refineScanSections';
 
 type OfferFloorPlanPanelProps = {
@@ -286,65 +287,69 @@ export default function OfferFloorPlanPanel({
 
       {roomScans.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 border-t border-[var(--eos-border)] p-4 sm:grid-cols-2 md:grid-cols-3">
-          {roomScans.map((room) => (
-            <button
-              key={room.id || room.name}
-              type="button"
-              onClick={() => {
-                setPlanKey(room.id);
-                onEnlarge?.();
-              }}
-              className={`flex items-start gap-3 rounded-2xl border p-3 text-left transition-colors ${
-                planKey === room.id
-                  ? 'border-sky-400/40 bg-sky-500/10'
-                  : 'border-[var(--eos-border)] hover:bg-[var(--eos-surface-strong)]'
-              }`}
-            >
-              {(() => {
-                const cropped = cropScanMetaToRoom(scanMeta, room);
-                if (cropped?.walls?.length) {
-                  return (
-                    <div className="h-[72px] w-[88px] shrink-0 overflow-hidden rounded-xl bg-[#f4f7fb]">
-                      <FloorPlanScanArtboard
-                        walls={cropped.walls}
-                        meta={cropped}
-                        width={88}
-                        height={72}
-                        locale={locale}
-                        compact
-                      />
-                    </div>
-                  );
-                }
-                if (room.floorPlanPngUri) {
-                  return (
-                    <img
-                      src={assetUrl(room.floorPlanPngUri)}
-                      alt=""
-                      className="h-[72px] w-[88px] shrink-0 rounded-xl object-cover bg-black/20"
+          {roomScans.map((room) => {
+            const cropped = cropScanMetaToRoom(scanMeta, room);
+            const areaLabel = room.areaM2 ? `${formatListingAreaSqm(room.areaM2)} m²` : null;
+            const selected = planKey === room.id;
+            return (
+              <button
+                key={room.id || room.name}
+                type="button"
+                onClick={() => {
+                  setPlanKey(room.id);
+                  onEnlarge?.();
+                }}
+                className={`flex items-stretch overflow-hidden rounded-[1.15rem] border text-left transition ${
+                  selected
+                    ? 'border-[#c9a227]/60 bg-[#f7f1e4] shadow-[inset_0_0_0_1px_rgba(201,162,39,0.2)] dark:border-amber-400/35 dark:bg-amber-500/10'
+                    : 'border-[#e4d7b8] bg-[#fffdf8] hover:border-[#c9a227]/45 dark:border-[var(--eos-border)] dark:bg-[var(--eos-surface)]'
+                }`}
+              >
+                {cropped?.walls?.length ? (
+                  <div className="h-[76px] w-[88px] shrink-0 overflow-hidden bg-[#f3ead8]">
+                    <FloorPlanScanArtboard
+                      walls={cropped.walls}
+                      meta={cropped}
+                      width={88}
+                      height={76}
+                      locale={locale}
+                      compact
                     />
-                  );
-                }
-                return (
-                  <div className="flex h-[72px] w-[88px] shrink-0 items-center justify-center rounded-xl bg-[var(--eos-surface-strong)] text-[var(--eos-muted)]">
-                    <FileImage size={18} />
                   </div>
-                );
-              })()}
-              <div className="min-w-0">
-              <p className="text-sm font-bold text-[var(--eos-text)]">{room.name}</p>
-              <p className="mt-1 text-[11px] text-[var(--eos-muted)]">
-                {[
-                  room.widthM && room.lengthM ? `${room.widthM} × ${room.lengthM} m` : null,
-                  room.areaM2 ? `${room.areaM2} m²` : null,
-                  room.heightM ? `H ${room.heightM} m` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-              </div>
-            </button>
-          ))}
+                ) : room.floorPlanPngUri ? (
+                  <img
+                    src={assetUrl(room.floorPlanPngUri)}
+                    alt=""
+                    className="h-[76px] w-[88px] shrink-0 object-cover bg-[#f3ead8]"
+                  />
+                ) : (
+                  <div className="flex h-[76px] w-[88px] shrink-0 flex-col items-center justify-center bg-[#f3ead8] text-[#8a6d1f]">
+                    <span className="font-[Georgia,serif] text-lg font-semibold leading-none tracking-tight">
+                      {areaLabel ? formatListingAreaSqm(room.areaM2) : '—'}
+                    </span>
+                    {areaLabel ? (
+                      <span className="mt-1 text-[8px] font-semibold uppercase tracking-[0.16em]">m²</span>
+                    ) : null}
+                  </div>
+                )}
+                <div className="flex min-w-0 flex-1 flex-col justify-center px-3.5 py-3">
+                  {areaLabel ? (
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8a6d1f]">
+                      {areaLabel}
+                    </p>
+                  ) : null}
+                  <p className="mt-0.5 text-sm font-semibold leading-snug tracking-[-0.01em] text-[#1a1916] dark:text-[var(--eos-text)]">
+                    {room.name}
+                  </p>
+                  {room.widthM && room.lengthM ? (
+                    <p className="mt-1 text-[11px] text-[#8a8170] dark:text-[var(--eos-muted)]">
+                      {room.widthM} × {room.lengthM} m
+                    </p>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
         </div>
       ) : extraFloorPlanSrcs.filter((src) => src && src !== floorPlanSrc).length > 0 ? (
         <div className="grid grid-cols-2 gap-3 border-t border-[var(--eos-border)] p-4 md:grid-cols-3">

@@ -200,6 +200,10 @@ function buildDescriptionDraftFromForm(
     hasGarden: amenityPatch.hasGarden,
     isTwoLevel: amenityPatch.isDuplex,
     hasElevator: amenityPatch.hasElevator,
+    floorPlanScanMeta: data.floorPlanScanMeta,
+    propertyRoomScans: data.propertyRoomScans,
+    roomScans: data.roomScans,
+    roomAreas: data.roomAreas,
   };
 }
 
@@ -2734,7 +2738,7 @@ export default function ClientForm({
       {/* 1. STANDARDOWE OKNA (BŁĄD, LIMIT, SUKCES ZWYKŁY) */}
       <AnimatePresence>
         {actionModal === "verify" && (
-          <div className="fixed inset-0 z-[999999] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="fixed inset-0 eos-z-modal flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.98, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -2787,7 +2791,7 @@ export default function ClientForm({
           </div>
         )}
         {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && actionModal !== "verify" && actionModal !== "success" && actionModal !== "limit" && (
-          <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 bg-black/90 backdrop-blur-xl">
+          <div className="fixed inset-0 eos-z-modal flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 bg-black/90 backdrop-blur-xl">
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="eos-themed-modal relative w-full max-w-lg rounded-[3rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-10 text-center shadow-[var(--eos-shadow-strong)]">
               <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-[var(--eos-subtle)] transition-colors hover:text-[var(--eos-text)]"><X size={24} /></button>
 {actionModal === "error" && (
@@ -2823,7 +2827,7 @@ export default function ClientForm({
 
       {/* 2. RYTUAŁ PRO (ROLLS ROYCE) */}
       {actionModal === "payment_success" && (
-        <div className="fixed inset-0 z-[999999] flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center bg-black font-sans m-0 p-0" style={{ margin: '-40px' }}>
+        <div className="fixed inset-0 eos-z-cinematic flex flex-col items-center justify-center bg-black font-sans overflow-hidden p-0 m-0">
           
           {/* FAZA 1: Kosmiczne Zaćmienie (Apple Keynote Style) */}
           <AnimatePresence mode="wait">
@@ -2924,7 +2928,7 @@ export default function ClientForm({
       )}
 
       {actionModal === "oferta_plus" && (
-        <div className="fixed inset-0 z-[999999] flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center bg-[#030712] overflow-hidden font-sans m-0 p-0" style={{ margin: '-40px' }}>
+        <div className="fixed inset-0 eos-z-cinematic flex flex-col items-center justify-center bg-[#030712] overflow-hidden font-sans p-0 m-0">
           <AnimatePresence mode="wait">
             <motion.div initial={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1, delay: 3.5 }} className="absolute inset-0 flex items-center justify-center z-10">
               <motion.div animate={{ opacity: [0, 0.4, 0] }} transition={{ duration: 3, ease: "easeInOut" }} className="absolute inset-0 bg-blue-600/30 blur-[150px] rounded-full" />

@@ -1523,6 +1523,8 @@ export default function EditOfferScreen({ route }: any) {
         condition,
         heating: heating.trim() || null,
         isExactLocation,
+        propertyRoomScans,
+        floorPlanScanMeta: floorPlanScanMetaLocal,
         ...amenities,
       };
       const { description: generated } = await generateListingDescriptionWithGpt(token, draftPayload, locale);
