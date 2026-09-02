@@ -1,3 +1,5 @@
+import { parseFacebookDestination } from '@/lib/crm/marketingChannel';
+
 const BLOCKED_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
 
 function isPrivateHostname(host: string) {
@@ -48,7 +50,27 @@ export type PublicLinkPreview = {
   title: string;
   description: string | null;
   image: string | null;
+  groupName?: string | null;
+  groupUrl?: string | null;
 };
+
+function withFacebookGroup(preview: PublicLinkPreview): PublicLinkPreview {
+  const dest = parseFacebookDestination(preview.url);
+  if (!dest) return preview;
+  const ogLooksGeneric = /^(facebook|facebook.com)$/i.test(preview.title.trim());
+  return {
+    ...preview,
+    host: 'facebook.com',
+    siteName: 'Facebook',
+    title: dest.groupName && ogLooksGeneric ? dest.groupName : preview.title,
+    description:
+      dest.groupName
+        ? `Grupa Facebook: ${dest.groupName}`
+        : preview.description,
+    groupName: dest.groupName,
+    groupUrl: dest.groupUrl,
+  };
+}
 
 const PORTAL_NAMES: Record<string, string> = {
   'otodom.pl': 'Otodom',
@@ -63,6 +85,11 @@ const PORTAL_NAMES: Record<string, string> = {
   'www.morizon.pl': 'Morizon',
   'domiporta.pl': 'Domiporta',
   'www.domiporta.pl': 'Domiporta',
+  'facebook.com': 'Facebook',
+  'www.facebook.com': 'Facebook',
+  'm.facebook.com': 'Facebook',
+  'fb.com': 'Facebook',
+  'www.fb.com': 'Facebook',
 };
 
 export async function fetchPublicLinkPreview(raw: string): Promise<PublicLinkPreview> {
@@ -100,24 +127,24 @@ export async function fetchPublicLinkPreview(raw: string): Promise<PublicLinkPre
       decode(attr(html, 'og:title')) ||
       html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ||
       fallbackName;
-    return {
+    return withFacebookGroup({
       url,
       host,
       siteName: decode(attr(html, 'og:site_name')) || fallbackName,
       title: title.slice(0, 180),
       description: (decode(attr(html, 'og:description')) || decode(attr(html, 'description')))?.slice(0, 280) || null,
       image: absoluteUrl(url, decode(attr(html, 'og:image'))),
-    };
+    });
   } catch (error) {
     if (error instanceof Error && /Wklej|Dozwolone|podglądany/.test(error.message)) throw error;
-    return {
+    return withFacebookGroup({
       url,
       host,
       siteName: fallbackName,
       title: fallbackName,
       description: 'Ogłoszenie na portalu zewnętrznym — otwórz podgląd, żeby zobaczyć kartę.',
       image: null,
-    };
+    });
   } finally {
     clearTimeout(timer);
   }

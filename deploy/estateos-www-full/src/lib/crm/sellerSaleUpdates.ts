@@ -120,6 +120,7 @@ export async function recordExternalPortalListing(params: {
   evidenceUrl?: string | null;
   evidenceName?: string | null;
   evidenceMimeType?: string | null;
+  groupName?: string | null;
 }) {
   return addExternalPortalListing(params);
 }

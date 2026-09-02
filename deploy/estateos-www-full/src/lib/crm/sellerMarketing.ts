@@ -4,6 +4,15 @@ import { sendClientPortalWebPush } from "@/lib/crm/clientPortalWebPush";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { buildPortalUrl } from "@/lib/agencyClientNotify";
 import type { PublicLinkPreview } from "@/lib/crm/publicLinkPreview";
+import {
+  extractFacebookDestinations,
+  parseFacebookDestination,
+  publicationHeadline,
+  type FacebookGroupDestination,
+} from "@/lib/crm/marketingChannel";
+import { offerSharePath } from "@/lib/publicListingPath";
+import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
+import { absolutizeMediaUrl, resolvePublicAppOrigin } from "@/lib/offerShareLanding";
 
 export const MARKETING_ACTIVITY = {
   ESTATEOS_ACTIVATED: "ESTATEOS_ACTIVATED",
@@ -54,6 +63,9 @@ export type MarketingMetadata = {
   days?: number | null;
   until?: string | null;
   activityId?: number | null;
+  groupName?: string | null;
+  groupUrl?: string | null;
+  groupId?: string | null;
 };
 
 export type MarketingTimelineItem = {
@@ -75,6 +87,8 @@ export type MarketingTimelineItem = {
   sourceActivityId: number | null;
   evidenceUrl: string | null;
   evidenceName: string | null;
+  groupName: string | null;
+  groupUrl: string | null;
 };
 
 export type SellerNextStepPayload = {
@@ -240,6 +254,14 @@ export function shapeMarketingTimelineItem(activity: {
     evidenceUrl: typeof meta.evidenceUrl === "string" ? meta.evidenceUrl : null,
     evidenceName:
       typeof meta.evidenceName === "string" ? meta.evidenceName : null,
+    groupName:
+      typeof meta.groupName === "string"
+        ? meta.groupName
+        : parseFacebookDestination(externalUrl)?.groupName || null,
+    groupUrl:
+      typeof meta.groupUrl === "string"
+        ? meta.groupUrl
+        : parseFacebookDestination(externalUrl)?.groupUrl || null,
   };
 }
 
@@ -456,6 +478,7 @@ export async function addExternalPortalListing(params: {
   evidenceUrl?: string | null;
   evidenceName?: string | null;
   evidenceMimeType?: string | null;
+  groupName?: string | null;
 }) {
   const client = await prisma.agencyClient.findFirst({
     where: {
@@ -469,16 +492,35 @@ export async function addExternalPortalListing(params: {
 
   const publishedAt = params.publishedAt || new Date();
   const renewalDueAt = params.renewalDueAt || null;
+  const facebook = parseFacebookDestination(params.preview.url);
+  const groupName =
+    params.groupName?.trim() ||
+    params.preview.groupName ||
+    facebook?.groupName ||
+    null;
+  const groupUrl = params.preview.groupUrl || facebook?.groupUrl || null;
+  const headline = publicationHeadline({
+    kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
+    portal: params.portal || params.preview.host,
+    siteName: params.preview.siteName,
+    host: params.preview.host,
+    url: params.preview.url,
+    groupName,
+    groupUrl,
+    title: params.preview.title,
+  });
 
   return recordMarketingActivity({
     clientId: client.id,
     agencyUserId: params.agencyUserId,
     kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
     offerId: client.linkedOfferId,
-    title: `Opublikowano na ${params.preview.siteName}`,
+    title: headline,
     body: params.note?.trim()
       ? params.note.trim()
-      : `Twoja nieruchomość jest widoczna na ${params.preview.siteName}. Link do ogłoszenia znajdziesz w panelu.`,
+      : groupName
+        ? `Ogłoszenie jest widoczne na Facebooku w grupie „${groupName}”.`
+        : `Twoja nieruchomość jest widoczna na ${params.preview.siteName}. Link do ogłoszenia znajdziesz w panelu.`,
     visibleToClient: params.visibleToClient === true,
     metadata: {
       portal: params.portal || params.preview.host,
@@ -496,6 +538,9 @@ export async function addExternalPortalListing(params: {
       evidenceUrl: params.evidenceUrl || null,
       evidenceName: params.evidenceName || null,
       evidenceMimeType: params.evidenceMimeType || null,
+      groupName,
+      groupUrl,
+      groupId: facebook?.groupId || facebook?.groupSlug || null,
     },
   });
 }
@@ -894,8 +939,8 @@ export function extractActiveChannels(
       continue;
     }
     channels.push({
-      portal: item.portal || item.siteName || "Portal",
-      externalUrl: item.externalUrl,
+      portal: item.groupName || item.portal || item.siteName || "Portal",
+      externalUrl: item.groupUrl || item.externalUrl,
       status: item.status,
       renewalDueAt: item.renewalDueAt,
       activityId: item.id,
@@ -1005,6 +1050,7 @@ export async function loadSellerPortalMarketing(
         ? shapeSellerNextStep(nextStep)
         : null,
     pendingDecisions: pendingDecisions.map(shapeClientDecision),
+    facebookGroups: extractFacebookDestinations(allTimeline),
   };
 }
 
@@ -1086,4 +1132,183 @@ export async function retryPendingMarketingNotifications(limit = 100) {
     if (result.emailed || result.pushed > 0) delivered += 1;
   }
   return { queued: pending.length, delivered };
+}
+
+export type FacebookShareOffer = {
+  id: number;
+  title: string;
+  city: string | null;
+  price: number | null;
+  imageUrl: string | null;
+  linkedClientId: number | null;
+};
+
+export function listingFacebookShareUrl(offerId: number, agencyUserId: number) {
+  return `${resolvePublicAppOrigin()}${offerSharePath(offerId, { presentingAgentId: agencyUserId })}`;
+}
+
+export async function loadAgentFacebookDestinations(
+  agencyUserId: number,
+): Promise<FacebookGroupDestination[]> {
+  const rows = await prisma.agencyClientActivity.findMany({
+    where: {
+      agencyUserId,
+      kind: { in: [...EXTERNAL_PORTAL_KINDS] },
+      client: { status: "ACTIVE" },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 400,
+    select: {
+      kind: true,
+      offerId: true,
+      createdAt: true,
+      metadata: true,
+    },
+  });
+  return extractFacebookDestinations(
+    rows.map((row) => {
+      const meta = parseMarketingMetadata(row.metadata);
+      return {
+        kind: row.kind,
+        offerId: row.offerId,
+        createdAt: row.createdAt.toISOString(),
+        portal: meta.portal,
+        siteName: meta.siteName,
+        host: meta.host,
+        externalUrl: meta.externalUrl || meta.url,
+        groupName: meta.groupName,
+        groupUrl: meta.groupUrl,
+      };
+    }),
+  );
+}
+
+export async function loadAgentShareOffers(
+  agencyUserId: number,
+): Promise<FacebookShareOffer[]> {
+  const [offers, clients] = await Promise.all([
+    prisma.offer.findMany({
+      where: {
+        userId: agencyUserId,
+        status: "ACTIVE",
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 24,
+      select: {
+        id: true,
+        title: true,
+        city: true,
+        price: true,
+        images: true,
+      },
+    }),
+    prisma.agencyClient.findMany({
+      where: {
+        agencyUserId,
+        status: "ACTIVE",
+        type: "SELLER",
+        linkedOfferId: { not: null },
+      },
+      select: { id: true, linkedOfferId: true },
+    }),
+  ]);
+  const clientByOffer = new Map(
+    clients
+      .filter((row) => row.linkedOfferId)
+      .map((row) => [row.linkedOfferId as number, row.id]),
+  );
+  return offers.map((offer) => ({
+    id: offer.id,
+    title: offer.title,
+    city: offer.city || null,
+    price: offer.price == null ? null : Number(offer.price),
+    imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || null,
+    linkedClientId: clientByOffer.get(offer.id) || null,
+  }));
+}
+
+export async function recordFacebookGroupShare(params: {
+  agencyUserId: number;
+  clientId: number;
+  offerId: number;
+  groupName?: string | null;
+  groupUrl?: string | null;
+  postUrl?: string | null;
+  visibleToClient?: boolean;
+  renewalDueAt?: Date | null;
+}) {
+  const offer = await prisma.offer.findFirst({
+    where: { id: params.offerId, userId: params.agencyUserId },
+    select: { id: true, title: true },
+  });
+  if (!offer) {
+    return { ok: false as const, error: "Nie znaleziono ogłoszenia do wystawienia." };
+  }
+
+  const linkedClient = await prisma.agencyClient.findFirst({
+    where: {
+      agencyUserId: params.agencyUserId,
+      status: "ACTIVE",
+      type: "SELLER",
+      linkedOfferId: offer.id,
+    },
+    select: { id: true },
+  });
+  const currentClient = await prisma.agencyClient.findFirst({
+    where: { id: params.clientId, agencyUserId: params.agencyUserId },
+    select: { id: true, linkedOfferId: true },
+  });
+  const targetClientId =
+    linkedClient?.id ||
+    (currentClient?.linkedOfferId === offer.id ? currentClient.id : null);
+  const facebook = parseFacebookDestination(params.postUrl || params.groupUrl);
+  const groupName = params.groupName?.trim() || facebook?.groupName || "Facebook";
+  const groupUrl = params.groupUrl || facebook?.groupUrl || null;
+  const shareUrl = listingFacebookShareUrl(offer.id, params.agencyUserId);
+  const recordedUrl = params.postUrl || groupUrl || shareUrl;
+
+  if (!targetClientId) {
+    return {
+      ok: true as const,
+      activityId: null,
+      visibleToClient: false,
+      emailed: false,
+      pushed: 0,
+      shareUrl,
+      groupUrl,
+      groupName,
+      offerId: offer.id,
+      clientId: null,
+    };
+  }
+
+  const recorded = await addExternalPortalListing({
+    clientId: targetClientId,
+    agencyUserId: params.agencyUserId,
+    preview: {
+      url: recordedUrl,
+      host: "facebook.com",
+      siteName: "Facebook",
+      title: groupName,
+      description: `Grupa Facebook: ${groupName}`,
+      image: null,
+      groupName,
+      groupUrl,
+    },
+    portal: "Facebook",
+    status: "active",
+    note: `Wystawiono ogłoszenie „${offer.title}” na Facebooku${groupName ? ` · ${groupName}` : ""}.`,
+    visibleToClient: params.visibleToClient === true,
+    renewalDueAt: params.renewalDueAt,
+    groupName,
+  });
+
+  return {
+    ...recorded,
+    shareUrl,
+    groupUrl,
+    groupName,
+    offerId: offer.id,
+    clientId: targetClientId,
+  };
 }

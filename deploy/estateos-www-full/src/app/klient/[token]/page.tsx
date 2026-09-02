@@ -23,6 +23,7 @@ import ClientPortalSetupPrompt from "@/components/portal/ClientPortalSetupPrompt
 import ClientPortalBuyerOnboarding from "@/components/portal/ClientPortalBuyerOnboarding";
 import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
+import ListingPathEventCard from "@/components/portal/ListingPathEventCard";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { buyerOnboardingStorageKey, isBuyerOnboardingDismissed } from "@/lib/clientPortalPath";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
@@ -139,6 +140,11 @@ type PortalData = {
     url?: string | null;
     image?: string | null;
     siteName?: string | null;
+    groupName?: string | null;
+    groupUrl?: string | null;
+    portal?: string | null;
+    status?: string | null;
+    promotedUntil?: string | null;
   }>;
   acquisition: {
     status: string;
@@ -647,23 +653,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             <div className="mt-6 space-y-3">
               <p className="eos-portal-label eos-portal-label--ok">Ścieżka oferty</p>
               {portal.listingPath!.map((item) => (
-                <div key={item.id} className="eos-inset-well rounded-2xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-black text-[var(--eos-text)]">{item.title || item.kind}</p>
-                    <p className="text-[11px] text-[var(--eos-muted)]">
-                      {item.startsAt
-                        ? formatMeetingWhenPl(item.startsAt)
-                        : new Date(item.createdAt).toLocaleString("pl-PL")}
-                    </p>
-                  </div>
-                  {item.body ? <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">{item.body}</p> : null}
-                  {item.siteName ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{item.siteName}</p> : null}
-                  {item.url ? (
-                    <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
-                      Zobacz publikację <ExternalLink className="size-3.5" />
-                    </a>
-                  ) : null}
-                </div>
+                <ListingPathEventCard
+                  key={item.id}
+                  item={item}
+                  fallbackImage={portal.listing?.imageUrl}
+                />
               ))}
             </div>
           ) : null}

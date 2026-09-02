@@ -51,9 +51,13 @@ import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 import {
   createClientDecisionRequest,
   loadSellerPortalMarketing,
+  listingFacebookShareUrl,
+  loadAgentFacebookDestinations,
+  loadAgentShareOffers,
   MARKETING_ACTIVITY,
   parseOptionalDate,
   recordMarketingActivity,
+  recordFacebookGroupShare,
   removeExternalPortalListing,
   setMarketingActivityVisibility,
   upsertSellerNextStep,
@@ -140,8 +144,17 @@ export async function GET(req: Request, ctx: RouteCtx) {
           sellerNextStep: null,
           pendingDecisions: [],
           marketingTimeline: [],
+          facebookGroups: [],
         }))
       : null;
+
+  const [facebookNetwork, facebookShareOffers] =
+    client.type === 'SELLER'
+      ? await Promise.all([
+          loadAgentFacebookDestinations(agencyUserId).catch(() => []),
+          loadAgentShareOffers(agencyUserId).catch(() => []),
+        ])
+      : [[], []];
 
   const nextStep = resolveClientNextStep({
     type: client.type,
@@ -227,6 +240,11 @@ export async function GET(req: Request, ctx: RouteCtx) {
             sellerNextStep: sellerMarketing.sellerNextStep,
             pendingDecisions: sellerMarketing.pendingDecisions,
             marketingTimeline: sellerMarketing.marketingTimeline,
+            facebookGroups:
+              facebookNetwork.length > 0
+                ? facebookNetwork
+                : sellerMarketing.facebookGroups,
+            facebookShareOffers,
           }
         : null,
     },
@@ -575,6 +593,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         evidenceUrl: body.evidenceUrl ? String(body.evidenceUrl) : null,
         evidenceName: body.evidenceName ? String(body.evidenceName) : null,
         evidenceMimeType: body.evidenceMimeType ? String(body.evidenceMimeType) : null,
+        groupName: body.groupName ? String(body.groupName) : null,
       });
       if (!recorded.ok) {
         return NextResponse.json({ error: recorded.error }, { status: 400 });
@@ -591,6 +610,63 @@ export async function POST(req: Request, ctx: RouteCtx) {
       const message = error instanceof Error ? error.message : 'Nie udało się zapisać linku.';
       return NextResponse.json({ error: message }, { status: 400 });
     }
+  }
+
+  if (action === 'prepare_facebook_group_share') {
+    const offerId = Number(body.offerId);
+    if (!Number.isFinite(offerId) || offerId <= 0) {
+      return NextResponse.json({ error: 'Wybierz ogłoszenie do wystawienia.' }, { status: 400 });
+    }
+    const offer = await prisma.offer.findFirst({
+      where: { id: offerId, userId: agencyUserId },
+      select: { id: true, title: true },
+    });
+    if (!offer) {
+      return NextResponse.json({ error: 'Nie znaleziono ogłoszenia.' }, { status: 404 });
+    }
+    const groupUrl = body.groupUrl ? String(body.groupUrl).trim() : '';
+    const groupName = body.groupName ? String(body.groupName).trim() : '';
+    const shareUrl = listingFacebookShareUrl(offer.id, agencyUserId);
+    return NextResponse.json({
+      success: true,
+      shareUrl,
+      facebookHref: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`,
+      groupUrl: groupUrl || null,
+      groupName: groupName || null,
+      offerId: offer.id,
+      offerTitle: offer.title,
+    });
+  }
+
+  if (action === 'record_facebook_group_post') {
+    const offerId = Number(body.offerId);
+    if (!Number.isFinite(offerId) || offerId <= 0) {
+      return NextResponse.json({ error: 'Wybierz ogłoszenie do wystawienia.' }, { status: 400 });
+    }
+    const result = await recordFacebookGroupShare({
+      agencyUserId,
+      clientId,
+      offerId,
+      groupName: body.groupName ? String(body.groupName) : null,
+      groupUrl: body.groupUrl ? String(body.groupUrl) : null,
+      postUrl: body.postUrl ? String(body.postUrl) : null,
+      visibleToClient: body.visibleToClient !== false,
+      renewalDueAt: parseOptionalDate(body.renewalDueAt),
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({
+      success: true,
+      activityId: result.activityId,
+      shareUrl: result.shareUrl,
+      facebookHref: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(result.shareUrl)}`,
+      groupUrl: result.groupUrl,
+      groupName: result.groupName,
+      offerId: result.offerId,
+      clientId: result.clientId,
+      visibleToClient: result.visibleToClient,
+    });
   }
 
   if (action === 'update_external_portal') {
