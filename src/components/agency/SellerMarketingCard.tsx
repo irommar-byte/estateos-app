@@ -22,6 +22,7 @@ import {
 } from "../../services/agencyClientService";
 import { promoteMobileOfferListing } from "../../utils/mobileOfferPromote";
 import { shareListingLink } from "../../utils/offerShareUrls";
+import { isFacebookPostPermalink } from "../../lib/marketingChannel";
 
 export type MarketingActivity = {
   id: number;
@@ -314,6 +315,13 @@ export default function SellerMarketingCard({
 
   const confirmFacebookShare = async () => {
     if (!facebookPending) return;
+    if (!isFacebookPostPermalink(fbPostUrl)) {
+      Alert.alert(
+        "Facebook",
+        "Wklej link do konkretnego posta na grupie, nie do samej grupy. Na Facebooku: ⋯ przy poście → Kopiuj link.",
+      );
+      return;
+    }
     setBusy("facebook");
     const res = await recordFacebookGroupPost(token, clientId, {
       offerId: facebookPending.offerId,
@@ -957,8 +965,8 @@ export default function SellerMarketingCard({
             GRUPY FACEBOOK
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
-            Otworzy się Facebook z kartą ogłoszenia. Klient zobaczy publikację dopiero
-            po Twoim potwierdzeniu albo wklejeniu linku do posta.
+            Otworzy się Facebook z kartą ogłoszenia. Żeby klik w panelu otwierał
+            ogłoszenie, a nie samą grupę, wklej link do konkretnego posta (⋯ → Kopiuj link).
           </Text>
           {facebookPending ? (
             <View
@@ -973,7 +981,10 @@ export default function SellerMarketingCard({
             >
               <View style={{ flex: 1, gap: 8 }}>
                 <Text style={{ color: colors.text, fontWeight: "800" }}>
-                  Potwierdź wrzucenie na „{facebookPending.groupName}”
+                  Wklej link do posta na „{facebookPending.groupName}”
+                </Text>
+                <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
+                  Facebook nie oddaje adresu ogłoszenia. Pod wrzuconym postem: ⋯ → Kopiuj link.
                 </Text>
                 <TextInput
                   value={fbGroupNameDraft}
@@ -988,7 +999,7 @@ export default function SellerMarketingCard({
                 <TextInput
                   value={fbPostUrl}
                   onChangeText={setFbPostUrl}
-                  placeholder="Link do posta (opcjonalnie)"
+                  placeholder="https://www.facebook.com/groups/…/posts/…"
                   placeholderTextColor={colors.secondary}
                   autoCapitalize="none"
                   style={[
@@ -1006,9 +1017,12 @@ export default function SellerMarketingCard({
                   />
                 </View>
                 <Pressable
-                  disabled={Boolean(busy)}
+                  disabled={Boolean(busy) || !isFacebookPostPermalink(fbPostUrl)}
                   onPress={() => void confirmFacebookShare()}
-                  style={styles.fbShareBtn}
+                  style={[
+                    styles.fbShareBtn,
+                    !isFacebookPostPermalink(fbPostUrl) ? { opacity: 0.45 } : null,
+                  ]}
                 >
                   <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
                     ZAPISZ W ŚCIEŻCE

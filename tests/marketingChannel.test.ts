@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractFacebookDestinations,
+  facebookClientOpenHref,
+  isFacebookPostPermalink,
   listingThumbnailFallback,
   parseFacebookDestination,
   publicationHeadline,
@@ -60,5 +62,21 @@ test("listing thumbnail falls back for Facebook", () => {
       listingImage: "https://cdn.example/a.jpg",
     }),
     "https://cdn.example/a.jpg",
+  );
+});
+
+test("mobile facebook client link prefers the post over the group home", () => {
+  assert.equal(
+    isFacebookPostPermalink(
+      "https://www.facebook.com/groups/abc/posts/1234567890/",
+    ),
+    true,
+  );
+  assert.equal(
+    facebookClientOpenHref({
+      url: "https://www.facebook.com/groups/abc/",
+      groupUrl: "https://www.facebook.com/groups/abc/posts/1234567890/",
+    }),
+    "https://www.facebook.com/groups/abc/posts/1234567890/",
   );
 });

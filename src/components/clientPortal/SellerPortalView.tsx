@@ -24,6 +24,8 @@ import {
   resolveSellerPortalTimeline,
 } from "../../lib/sellerPortalContract";
 import {
+  facebookClientOpenHref,
+  facebookOpenLabel,
   formatPublicationStatus,
   listingThumbnailFallback,
   resolveMarketingChannel,
@@ -624,6 +626,23 @@ export default function SellerPortalView({
                 channelId: channel.id,
                 listingImage: listing?.imageUrl,
               });
+              const openHref =
+                channel.id === "facebook"
+                  ? facebookClientOpenHref({
+                      url: item.externalUrl,
+                      groupUrl: item.groupUrl,
+                    })
+                  : item.externalUrl || item.groupUrl || null;
+              const openLabel =
+                channel.id === "facebook"
+                  ? facebookOpenLabel({
+                      href: openHref,
+                      groupName: item.groupName,
+                    })
+                  : item.groupName ||
+                    item.portal ||
+                    item.siteName ||
+                    "Zobacz ogłoszenie";
               return (
                 <View
                   key={item.id}
@@ -723,21 +742,14 @@ export default function SellerPortalView({
                       {status}
                     </Text>
                   ) : null}
-                  {item.externalUrl || item.groupUrl ? (
+                  {openHref ? (
                     <Pressable
                       accessibilityRole="link"
-                      onPress={() =>
-                        void openSafeLink(
-                          (item.externalUrl || item.groupUrl) as string,
-                        )
-                      }
+                      onPress={() => void openSafeLink(openHref)}
                       style={{ marginTop: 8 }}
                     >
                       <Text style={{ color: accent, fontWeight: "800" }}>
-                        {item.groupName ||
-                          item.portal ||
-                          item.siteName ||
-                          "Zobacz ogłoszenie"}
+                        {openLabel}
                       </Text>
                     </Pressable>
                   ) : null}
