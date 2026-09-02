@@ -45,6 +45,7 @@ import {
   type PortalMatch,
 } from '../services/clientPortalService';
 import SellerPortalView from '../components/clientPortal/SellerPortalView';
+import PortalScheduleCard from '../components/clientPortal/PortalScheduleCard';
 
 const LIKE_PHRASES = ['Świetna lokalizacja', 'Podoba mi się układ', 'Dobry metraż', 'Pasuje do budżetu'];
 const DISLIKE_PHRASES = ['Za drogo', 'Brak balkonu', 'Nie ta dzielnica', 'Za mało pokoi'];
@@ -579,6 +580,19 @@ export default function ClientPortalScreen() {
       >
         {renderAccountSection()}
         {renderPushRow()}
+
+        {portal?.presentation ? (
+          <PortalScheduleCard
+            portalToken={portalToken}
+            kind="presentation"
+            slot={portal.presentation}
+            role={portal.type}
+            canInteract={canInteract}
+            isDark={isDark}
+            colors={colors}
+            onDone={() => void load('silent')}
+          />
+        ) : null}
 
         {portal?.pendingCheckback && canInteract ? (
           <ProfileCardShell isDark={isDark} style={{ marginBottom: 12, borderWidth: 1, borderColor: colors.gold }}>

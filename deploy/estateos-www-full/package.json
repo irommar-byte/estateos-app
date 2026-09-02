@@ -21,7 +21,7 @@
     "release:ship": "npm run check && npm run db:seller-marketing && npm run build && npm run pm2:reload && npm run pm2:save",
     "lint": "eslint .",
     "type-check": "tsc --noEmit --incremental false",
-    "test:seller-marketing": "tsx --test tests/sellerMarketing.test.ts tests/marketingChannel.test.ts tests/crm/portalActivityStacks.test.ts tests/market/comp-similarity.test.ts tests/market/reportHtml.test.ts",
+    "test:seller-marketing": "tsx --test tests/sellerMarketing.test.ts tests/marketingChannel.test.ts tests/crm/portalActivityStacks.test.ts tests/crm/presentation-schedule.test.ts tests/market/comp-similarity.test.ts tests/market/reportHtml.test.ts",
     "test:pakiet-plus": "node scripts/regression-pakiet-plus.cjs",
     "check": "npm run type-check && npm run test:seller-marketing",
     "smoke:postdeploy": "node scripts/postdeploy-smoke.cjs",

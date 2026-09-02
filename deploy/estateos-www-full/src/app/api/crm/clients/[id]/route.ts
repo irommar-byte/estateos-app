@@ -46,6 +46,7 @@ import {
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { stampKwFromAcquisitionForm } from '@/lib/legalVerificationAgentStamp';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
+import { findPresentationCounterpartId, mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { facebookShareRecordGate } from '@/lib/crm/marketingChannel';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
@@ -969,16 +970,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     let counterpartId: number | null = null;
     if (!isMeeting && offerId) {
-      if (client.type === 'BUYER') {
-        const seller = await prisma.agencyClient.findFirst({
-          where: { agencyUserId, type: 'SELLER', linkedOfferId: offerId, status: 'ACTIVE' },
-          select: { id: true },
-        });
-        counterpartId = seller?.id || null;
-      } else if (client.type === 'SELLER') {
-        const buyerId = Number(body.buyerClientId || 0);
-        if (Number.isFinite(buyerId) && buyerId > 0) counterpartId = buyerId;
-      }
+      counterpartId = await findPresentationCounterpartId({
+        agencyUserId,
+        actorClientId: client.id,
+        actorType: client.type,
+        offerId,
+        metadata: { buyerClientId: body.buyerClientId, offerId },
+      });
     }
 
     const metadata = {
@@ -1062,23 +1060,42 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if (!slot || slot.status !== 'pending') {
       return NextResponse.json({ error: 'Brak oczekującej propozycji zmiany.' }, { status: 400 });
     }
+    const metadata = {
+      startsAt: slot.startsAt,
+      location: slot.location,
+      notes: slot.notes,
+      prepItems: slot.prepItems,
+      proposedBy: 'agent',
+      status: 'confirmed',
+      offerId: slot.offerId,
+      buyerClientId: slot.buyerClientId,
+      sellerClientId: slot.sellerClientId,
+    };
     await prisma.agencyClientActivity.create({
       data: {
         clientId,
         agencyUserId,
+        offerId: slot.offerId,
         kind: kind === 'presentation' ? JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED : JOURNEY_ACTIVITY.MEETING_CONFIRMED,
         title: kind === 'presentation' ? 'Zaakceptowano nowy termin prezentacji' : 'Zaakceptowano nowy termin spotkania',
         body: new Date(slot.startsAt).toLocaleString('pl-PL'),
-        metadata: {
-          startsAt: slot.startsAt,
-          location: slot.location,
-          notes: slot.notes,
-          prepItems: slot.prepItems,
-          proposedBy: 'agent',
-          status: 'confirmed',
-        },
+        metadata,
       },
     });
+    if (kind === 'presentation') {
+      await mirrorPresentationActivity({
+        agencyUserId,
+        sourceClientId: client.id,
+        sourceClientType: client.type,
+        sourceClientName: `${client.firstName} ${client.lastName}`.trim(),
+        kind: JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+        title: 'Agent potwierdził nowy termin prezentacji',
+        body: new Date(slot.startsAt).toLocaleString('pl-PL'),
+        offerId: slot.offerId,
+        metadata,
+        emailMode: 'confirmed',
+      });
+    }
     await emailClientSchedule({
       clientId,
       kind,

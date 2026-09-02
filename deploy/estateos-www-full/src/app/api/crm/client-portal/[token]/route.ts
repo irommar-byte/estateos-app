@@ -57,6 +57,7 @@ import {
   loadSellerPortalMarketing,
   respondToClientDecision,
 } from '@/lib/crm/sellerMarketing';
+import { mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -139,7 +140,7 @@ async function loadJourneyActivities(clientId: number) {
       },
     },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, kind: true, title: true, body: true, createdAt: true, metadata: true },
+    select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true, metadata: true },
   });
 }
 
@@ -813,23 +814,42 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: 'Brak terminu do potwierdzenia.' }, { status: 400 });
     }
     const startsAt = parseStartsAtInput(body.startsAt) || new Date(slot.startsAt);
+    const metadata = {
+      startsAt: startsAt.toISOString(),
+      location: slot.location,
+      notes: slot.notes,
+      prepItems: slot.prepItems,
+      proposedBy: 'client',
+      status: 'confirmed',
+      offerId: slot.offerId,
+      buyerClientId: slot.buyerClientId,
+      sellerClientId: slot.sellerClientId,
+    };
     await prisma.agencyClientActivity.create({
       data: {
         clientId: client.id,
         agencyUserId: client.agencyUserId,
+        offerId: slot.offerId,
         kind: isMeeting ? JOURNEY_ACTIVITY.MEETING_CONFIRMED : JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
         title: isMeeting ? 'Klient potwierdził spotkanie' : 'Klient potwierdził prezentację',
         body: startsAt.toLocaleString('pl-PL'),
-        metadata: {
-          startsAt: startsAt.toISOString(),
-          location: slot.location,
-          notes: slot.notes,
-          prepItems: slot.prepItems,
-          proposedBy: 'client',
-          status: 'confirmed',
-        },
+        metadata,
       },
     });
+    if (!isMeeting) {
+      await mirrorPresentationActivity({
+        agencyUserId: client.agencyUserId,
+        sourceClientId: client.id,
+        sourceClientType: client.type,
+        sourceClientName: clientName,
+        kind: JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+        title: 'Druga strona potwierdziła prezentację',
+        body: startsAt.toLocaleString('pl-PL'),
+        offerId: slot.offerId,
+        metadata,
+        emailMode: 'confirmed',
+      });
+    }
     await notifyAgent({
       agencyUserId: client.agencyUserId,
       clientId: client.id,
@@ -851,25 +871,44 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
     const activities = await loadJourneyActivities(client.id);
     const slot = isMeeting ? resolveMeeting(activities) : resolvePresentation(activities);
+    const metadata = {
+      startsAt: startsAt.toISOString(),
+      location: body.location ? String(body.location).trim() : slot?.location || null,
+      notes: slot?.notes || null,
+      prepItems: slot?.prepItems || [],
+      proposedBy: 'client',
+      status: 'pending',
+      reason,
+      previousStartsAt: slot?.startsAt || null,
+      offerId: slot?.offerId || null,
+      buyerClientId: slot?.buyerClientId || null,
+      sellerClientId: slot?.sellerClientId || null,
+    };
     await prisma.agencyClientActivity.create({
       data: {
         clientId: client.id,
         agencyUserId: client.agencyUserId,
+        offerId: slot?.offerId || null,
         kind: isMeeting ? JOURNEY_ACTIVITY.MEETING_CHANGE : JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
         title: isMeeting ? 'Klient proponuje inny termin spotkania' : 'Klient proponuje inny termin prezentacji',
         body: `${startsAt.toLocaleString('pl-PL')} · ${reason}`,
-        metadata: {
-          startsAt: startsAt.toISOString(),
-          location: body.location ? String(body.location).trim() : slot?.location || null,
-          notes: slot?.notes || null,
-          prepItems: slot?.prepItems || [],
-          proposedBy: 'client',
-          status: 'pending',
-          reason,
-          previousStartsAt: slot?.startsAt || null,
-        },
+        metadata,
       },
     });
+    if (!isMeeting) {
+      await mirrorPresentationActivity({
+        agencyUserId: client.agencyUserId,
+        sourceClientId: client.id,
+        sourceClientType: client.type,
+        sourceClientName: clientName,
+        kind: JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
+        title: 'Druga strona prosi o inny termin prezentacji',
+        body: `${startsAt.toLocaleString('pl-PL')} · ${reason}`,
+        offerId: slot?.offerId || null,
+        metadata,
+        emailMode: 'changed',
+      });
+    }
     await notifyAgent({
       agencyUserId: client.agencyUserId,
       clientId: client.id,

@@ -25,6 +25,7 @@ import {
 } from "../../lib/sellerPortalContract";
 import { portalStackKind } from "../../lib/portalActivityStacks";
 import PortalActivityStacks from "./PortalActivityStacks";
+import PortalScheduleCard from "./PortalScheduleCard";
 
 type Props = {
   portal: ClientPortalPayload;
@@ -187,6 +188,33 @@ export default function SellerPortalView({
       >
         {accountSection}
         {pushSection}
+
+        {portal.presentation ? (
+          <PortalScheduleCard
+            portalToken={portalToken}
+            kind="presentation"
+            slot={portal.presentation}
+            role={portal.type}
+            canInteract={canInteract}
+            isDark={isDark}
+            colors={colors}
+            onDone={onRefresh}
+          />
+        ) : null}
+
+        {portal.meeting ? (
+          <PortalScheduleCard
+            portalToken={portalToken}
+            kind="meeting"
+            slot={portal.meeting}
+            role={portal.type}
+            compact={Boolean(portal.presentation) || portal.acquisition?.status === "SIGNED"}
+            canInteract={canInteract}
+            isDark={isDark}
+            colors={colors}
+            onDone={onRefresh}
+          />
+        ) : null}
 
         {listing ? (
           <ProfileCardShell

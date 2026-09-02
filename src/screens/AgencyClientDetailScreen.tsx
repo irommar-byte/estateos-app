@@ -2268,23 +2268,55 @@ export default function AgencyClientDetailScreen() {
                   </View>
                 ) : null}
 
+                {client.presentation ? (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>
+                    {client.type === 'SELLER' ? 'POKAZ DLA KUPUJĄCEGO' : 'PREZENTACJA OFERTY'}
+                  </Text>
+                  <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
+                    {new Date(client.presentation.startsAt).toLocaleString('pl-PL')}
+                  </Text>
+                  <Text style={{ color: client.presentation.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
+                    {client.presentation.status === 'pending'
+                      ? client.presentation.reason
+                        ? `Propozycja zmiany: ${client.presentation.reason}`
+                        : 'Propozycja wysłana obu stronom'
+                      : 'Potwierdzona'}
+                  </Text>
+                  {client.presentation.status === 'pending' && client.presentation.reason ? (
+                    <Pressable
+                      onPress={async () => {
+                        if (!token) return;
+                        setBusy('accept_pres');
+                        const res = await postAgencyClientAction(token, clientId, {
+                          action: 'accept_schedule_change',
+                          kind: 'presentation',
+                        });
+                        setBusy('');
+                        if (!res.ok) Alert.alert('Termin', res.message);
+                        else void load();
+                      }}
+                      style={[styles.secondary, { borderColor: colors.accent, marginTop: 8 }]}
+                    >
+                      <Text style={{ color: colors.accent, fontWeight: '800', textAlign: 'center' }}>
+                        {busy === 'accept_pres' ? '…' : 'Akceptuj nowy termin pokazu'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                ) : client.type === 'SELLER' ? (
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 14 }}>
+                    Termin pokazu pojawi się tu, gdy zaproponujesz go z karty kupującego — właściciel i kupujący dostaną ten sam termin.
+                  </Text>
+                ) : null}
+
                 {client.type === 'BUYER' ? (
                 <View style={{ marginTop: 14 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>PREZENTACJA OFERTY</Text>
-                  {client.presentation ? (
-                    <>
-                      <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
-                        {new Date(client.presentation.startsAt).toLocaleString('pl-PL')}
-                      </Text>
-                      <Text style={{ color: client.presentation.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
-                        {client.presentation.status === 'pending' ? 'Propozycja wysłana obu stronom' : 'Potwierdzona'}
-                      </Text>
-                    </>
-                  ) : (
+                  {!client.presentation ? (
                     <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
                       Wybierz ofertę z dopasowań i zaproponuj termin — dostaną go kupujący i sprzedający.
                     </Text>
-                  )}
+                  ) : null}
                   {(client.matches || []).length > 0 ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                       {[...(client.matches || [])]

@@ -127,6 +127,26 @@ export type PortalDecisionRequest = {
   resolvedAt?: string | null;
 };
 
+export type PortalScheduleSlot = {
+  startsAt: string;
+  location?: string | null;
+  notes?: string | null;
+  status: 'confirmed' | 'pending';
+  proposedBy?: 'agent' | 'client';
+  reason?: string | null;
+  previousStartsAt?: string | null;
+  prepLabels?: string[];
+};
+
+export type PortalJourneyStage = {
+  id: string;
+  label: string;
+  done: boolean;
+  current: boolean;
+  hint?: string;
+  at?: string | null;
+};
+
 export type ClientPortalPayload = {
   clientName: string;
   type: string;
@@ -166,6 +186,10 @@ export type ClientPortalPayload = {
   activeChannels?: PortalActiveChannel[];
   sellerNextStep?: PortalSellerNextStep | null;
   pendingDecisions?: PortalDecisionRequest[];
+  meeting?: PortalScheduleSlot | null;
+  presentation?: PortalScheduleSlot | null;
+  journey?: PortalJourneyStage[];
+  acquisition?: { status?: string | null } | null;
 };
 
 export type PortalChatMessage = {
@@ -270,6 +294,35 @@ export async function listPortalMessages(token: string): Promise<{ messages: Por
 
 export async function sendPortalMessage(token: string, content: string) {
   return postPortal(token, { action: 'send_message', content });
+}
+
+export async function confirmPortalSchedule(
+  token: string,
+  kind: 'meeting' | 'presentation',
+  authToken?: string | null,
+) {
+  return postPortal(
+    token,
+    { action: kind === 'meeting' ? 'confirm_meeting' : 'confirm_presentation' },
+    authToken,
+  );
+}
+
+export async function proposePortalScheduleChange(
+  token: string,
+  kind: 'meeting' | 'presentation',
+  params: { startsAt: string; reason: string },
+  authToken?: string | null,
+) {
+  return postPortal(
+    token,
+    {
+      action: kind === 'meeting' ? 'propose_meeting_change' : 'propose_presentation_change',
+      startsAt: params.startsAt,
+      reason: params.reason,
+    },
+    authToken,
+  );
 }
 
 export async function markPortalMessagesRead(token: string) {
