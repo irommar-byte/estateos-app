@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCompsMapSvg, streetStem } from "../../src/lib/market/reportMap";
+import { buildCompsMapHtml, layoutCompsMap, streetStem } from "../../src/lib/market/reportMap";
 import type { ValuationResult } from "../../src/lib/market/types";
 
 test("street stem ignores ul. and the unit number", () => {
@@ -9,8 +9,8 @@ test("street stem ignores ul. and the unit number", () => {
   assert.notEqual(streetStem("Targowa 44"), streetStem("Radzymińska 34"));
 });
 
-test("comps map keeps the subject at the centre and numbers nearby deeds", () => {
-  const result: ValuationResult = {
+function sampleResult(): ValuationResult {
+  return {
     ok: true,
     subject: {
       city: "Warszawa",
@@ -72,10 +72,26 @@ test("comps map keeps the subject at the centre and numbers nearby deeds", () =>
       disclaimer: "test",
     },
   };
-  const svg = buildCompsMapSvg(result, 8);
-  assert.match(svg, /MAPA TRANSAKCJI/);
-  assert.match(svg, /Przedmiot/);
-  assert.match(svg, />1</);
-  assert.match(svg, /pierwotny/);
-  assert.match(svg, /52\.26000/);
+}
+
+test("comps map layout keeps real coordinates and flags the same street", () => {
+  const layout = layoutCompsMap(sampleResult(), 8);
+  assert.equal(layout.mapped[0].sameStreet, true);
+  assert.equal(layout.mapped[1].primary, true);
+  assert.deepEqual(layout.mapped[0].geo, { lat: 52.2604, lng: 21.0403 });
+  assert.equal(layout.mapped[1].geo?.lat, 52.257);
+});
+
+test("comps map numbers deeds in the legend, without radar rings or overlapping street captions", async () => {
+  const html = await buildCompsMapHtml(sampleResult(), 8);
+  assert.match(html, /MAPA TRANSAKCJI/);
+  assert.match(html, /Przedmiot/);
+  assert.match(html, />1</);
+  assert.match(html, /pierwotny/);
+  assert.match(html, /52\.26000/);
+  assert.match(html, /Radzymińska 32/);
+  assert.match(html, /ta sama ulica/);
+  assert.doesNotMatch(html, /stroke-dasharray/);
+  assert.doesNotMatch(html, /<text[^>]*>Radzymińska/);
+  assert.doesNotMatch(html, /<text[^>]*>Targowa/);
 });

@@ -518,9 +518,9 @@ export default function MarketValuationPanel({
       ) : null}
 
       {previewHtml || previewHtmlPro ? (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
-          <div className="eos-lux-panel flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] shadow-2xl">
-            <div className="border-b border-[rgba(196,163,90,0.2)] px-5 py-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="eos-lux-panel flex h-[min(92dvh,900px)] max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] shadow-2xl">
+            <div className="shrink-0 border-b border-[rgba(196,163,90,0.2)] px-5 py-4">
               <p className="eos-portal-label eos-portal-label--ok">Dwie wersje raportu</p>
               <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Wybierz, którą wysłać klientowi</h3>
               <p className="mt-1 text-sm text-[var(--eos-muted)]">
@@ -528,18 +528,18 @@ export default function MarketValuationPanel({
                   ? `Wyślemy na: ${[email, alternateEmail, reportEmail].filter(Boolean).join(", ")}.`
                   : "Wpisz e-mail poniżej albo zamknij i wyślij później."}
               </p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-nowrap gap-2 overflow-x-auto">
                 <button
                   type="button"
                   onClick={() => setPreviewVariant("pro")}
-                  className={previewVariant === "pro" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}
+                  className={`!w-auto shrink-0 ${previewVariant === "pro" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}`}
                 >
                   Dla klienta · mapa i rekomendacja
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewVariant("classic")}
-                  className={previewVariant === "classic" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}
+                  className={`!w-auto shrink-0 ${previewVariant === "classic" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}`}
                 >
                   Wersja dotychczasowa
                 </button>
@@ -548,16 +548,16 @@ export default function MarketValuationPanel({
             <iframe
               title={previewVariant === "pro" ? "Podgląd raportu dla klienta" : "Podgląd dotychczasowego raportu"}
               srcDoc={previewVariant === "pro" ? (previewHtmlPro || previewHtml || "") : (previewHtml || previewHtmlPro || "")}
-              className="min-h-[52vh] w-full flex-1 bg-white"
+              className="min-h-0 w-full flex-1 bg-white"
             />
-            <div className="flex flex-wrap justify-end gap-2 border-t border-[rgba(196,163,90,0.2)] px-5 py-4">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-[rgba(196,163,90,0.2)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <button
                 type="button"
                 onClick={() => {
                   setPreviewHtml(null);
                   setPreviewHtmlPro(null);
                 }}
-                className="eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"
+                className="eos-lux-btn eos-lux-btn--platinum !w-auto px-4 py-2 text-[11px]"
               >
                 Zostaw bez wysyłki
               </button>
@@ -565,7 +565,7 @@ export default function MarketValuationPanel({
                 type="button"
                 disabled={reportState === "sending"}
                 onClick={() => void confirmSend()}
-                className="eos-lux-btn eos-lux-btn--primary px-5 py-2 text-[11px] disabled:opacity-50"
+                className="eos-lux-btn eos-lux-btn--primary !w-auto px-5 py-2 text-[11px] disabled:opacity-50"
               >
                 {reportState === "sending"
                   ? "Wysyłam…"
