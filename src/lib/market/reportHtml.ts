@@ -1,7 +1,7 @@
 import type { MarketComp, MarketReportVariant, ValuationResult } from '@/lib/market/types';
 import { sortCompsBySimilarity } from '@/lib/market/compSimilarity';
 import { formatPln, formatPpsm, formatSignedPct } from '@/lib/market/format';
-import { buildCompsMapSvg, formatMarketType, streetStem } from '@/lib/market/reportMap';
+import { buildCompsMapHtml, formatMarketType, streetStem } from '@/lib/market/reportMap';
 
 export const REPORT_PAGE1_COMPS = 8;
 
@@ -211,6 +211,9 @@ function sharedPageCss() {
     .stats td { width: 25%; padding: 10px 8px 10px 0; border-bottom: 1px solid #ece8df; }
     .stats b { display: block; font-size: 16px; }
     .stats span { color: #6b6b70; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .map-block { margin: 0 0 14px; }
+    .map-photo { display: block; width: 100%; height: auto; border: 1px solid #e4e0d6; }
+    .map-legend { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     @media print {
       body { background: #fff; padding: 0; }
       .page { border: 0; margin: 0; padding: 0; page-break-after: always; }
@@ -318,7 +321,7 @@ export function buildClassicMarketReportHtml(result: ValuationResult, opts: Repo
 </html>`;
 }
 
-export function buildProfessionalMarketReportHtml(result: ValuationResult, opts: ReportHtmlOpts = {}) {
+export async function buildProfessionalMarketReportHtml(result: ValuationResult, opts: ReportHtmlOpts = {}) {
   const s = result.subject;
   const comps = sortCompsBySimilarity(result.comps || [], s);
   const page1Comps = comps.slice(0, REPORT_PAGE1_COMPS);
@@ -421,8 +424,8 @@ export function buildProfessionalMarketReportHtml(result: ValuationResult, opts:
     </table>
     <p class="muted">Filtr próby: lokale mieszkalne, udział zbliżony do 1/1, metraż ±15%, pokoje ±1. Promień poszerzany 400 → 800 → 1500 → 2500 m, aż zbierze się próba. Okno liczone wstecz od ostatniego kompletnego miesiąca aktów, nie od daty tego pisma.</p>
     <h2>Gdzie leżą te akty</h2>
-    <p class="muted" style="margin:0 0 8px">Numery na mapie odpowiadają wierszom tabeli. Teal — ta sama ulica. Pomarańcz — rynek pierwotny.</p>
-    ${buildCompsMapSvg(result, REPORT_PAGE1_COMPS)}
+    <p class="muted" style="margin:0 0 8px">Mapa ulic okolicy. Numery pinezek odpowiadają wierszom tabeli; adresy są w legendzie pod mapą, żeby etykiety się nie nakładały. Teal — ta sama ulica. Pomarańcz — rynek pierwotny.</p>
+    ${await buildCompsMapHtml(result, REPORT_PAGE1_COMPS)}
     ${buildPriceCompareChartHtml(result)}
     ${listingBlock}
     <h2>Najbliższe parametrami transakcje</h2>
@@ -435,15 +438,15 @@ export function buildProfessionalMarketReportHtml(result: ValuationResult, opts:
 </html>`;
 }
 
-export function buildMarketReportHtml(result: ValuationResult, opts: ReportHtmlOpts = {}) {
+export async function buildMarketReportHtml(result: ValuationResult, opts: ReportHtmlOpts = {}) {
   if (opts.variant === 'pro') return buildProfessionalMarketReportHtml(result, opts);
   return buildClassicMarketReportHtml(result, opts);
 }
 
-export function buildMarketReportPair(result: ValuationResult, opts: ReportHtmlOpts = {}) {
+export async function buildMarketReportPair(result: ValuationResult, opts: ReportHtmlOpts = {}) {
   return {
     html: buildClassicMarketReportHtml(result, opts),
-    htmlPro: buildProfessionalMarketReportHtml(result, opts),
+    htmlPro: await buildProfessionalMarketReportHtml(result, opts),
   };
 }
 

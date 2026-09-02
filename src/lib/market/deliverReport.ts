@@ -99,7 +99,7 @@ export async function recordMarketReportGeneration(params: {
     },
   });
   const letter = reportLetterOpts({ name: params.name, emails, variant: 'classic' });
-  const pair = buildMarketReportPair(result, letter);
+  const pair = await buildMarketReportPair(result, letter);
   return { reportId: row.id, html: pair.html, htmlPro: pair.htmlPro, emails, result };
 }
 
@@ -111,7 +111,7 @@ export async function emailMarketReport(params: {
 }) {
   const emails = uniqEmails(params.emails);
   if (!emails.length) return { emailed: false, emails: [] as string[], html: '' };
-  const html = buildMarketReportHtml(
+  const html = await buildMarketReportHtml(
     params.result,
     reportLetterOpts({ name: params.name, emails, variant: params.variant || 'classic' }),
   );

@@ -63,8 +63,8 @@ function resultWithComps(count: number): ValuationResult {
   };
 }
 
-test("client report uses official language and keeps the market value in the document", () => {
-  const html = buildMarketReportHtml(resultWithComps(4), { recipientName: "Jan Kowalski" });
+test("client report uses official language and keeps the market value in the document", async () => {
+  const html = await buildMarketReportHtml(resultWithComps(4), { recipientName: "Jan Kowalski" });
   assert.match(html, /Szanowni Państwo/);
   assert.match(html, /Szacowana wartość rynkowa/);
   assert.match(html, /891/);
@@ -74,8 +74,8 @@ test("client report uses official language and keeps the market value in the doc
   assert.match(html, /dokument dla klienta/i);
 });
 
-test("enough comparable sales add a second page", () => {
-  const html = buildMarketReportHtml(resultWithComps(REPORT_PAGE1_COMPS + 5), {
+test("enough comparable sales add a second page", async () => {
+  const html = await buildMarketReportHtml(resultWithComps(REPORT_PAGE1_COMPS + 5), {
     recipientName: "Anna Nowak",
   });
   assert.match(html, /Załącznik nr 1/);
@@ -83,13 +83,13 @@ test("enough comparable sales add a second page", () => {
   assert.match(html, /page-break-after/);
 });
 
-test("few comparable sales stay on one sheet", () => {
-  const html = buildMarketReportHtml(resultWithComps(3));
+test("few comparable sales stay on one sheet", async () => {
+  const html = await buildMarketReportHtml(resultWithComps(3));
   assert.doesNotMatch(html, /Załącznik nr 1/);
 });
 
-test("professional report addresses the client, not the agent email, and highlights the ask", () => {
-  const html = buildMarketReportHtml(resultWithComps(4), {
+test("professional report addresses the client, not the agent email, and highlights the ask", async () => {
+  const html = await buildMarketReportHtml(resultWithComps(4), {
     recipientName: "Mariusz Solarz",
     recipientEmail: "mariusz@example.com",
     variant: "pro",
@@ -107,8 +107,8 @@ test("professional report addresses the client, not the agent email, and highlig
   assert.doesNotMatch(html, /Klient wycenia/);
 });
 
-test("professional report does not put an e-mail in the greeting line as if it were a name", () => {
-  const html = buildMarketReportHtml(resultWithComps(3), {
+test("professional report does not put an e-mail in the greeting line as if it were a name", async () => {
+  const html = await buildMarketReportHtml(resultWithComps(3), {
     recipientName: "agent@estateos.pl",
     recipientEmail: "wlasciciel@example.com",
     variant: "pro",

@@ -57,7 +57,7 @@ export async function loadPortalMarketReport(params: {
   const variant = parseReportVariant(meta.reportVariant);
   return {
     status: 200,
-    html: buildMarketReportHtml(stored.result, {
+    html: await buildMarketReportHtml(stored.result, {
       recipientName: name,
       recipientEmail: client.email,
       generatedAt: stored.row.createdAt,
