@@ -69,7 +69,7 @@ const formatNum = (val: string) => val.replace(/\D/g, "").replace(/\B(?=(\d{3})+
 
 /** Zgodne z limitem w `/api/upload`. */
 const OFFER_MAX_IMAGES = 20;
-const OFFER_MAX_FOLDER_MB = 20;
+const OFFER_MAX_FOLDER_MB = 30;
 
 type MediaQuota = {
   usedBytes: number;
@@ -519,12 +519,24 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     });
     if (!offerId) return;
     try {
-      await fetch(`/api/offers/${offerId}/image`, {
+      const res = await fetch(`/api/offers/${offerId}/image`, {
         method: 'DELETE',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && typeof json.usedBytes === 'number') {
+        setMediaQuota({
+          usedBytes: Number(json.usedBytes) || 0,
+          maxBytes: Number(json.maxBytes) || OFFER_MAX_FOLDER_MB * 1024 * 1024,
+          remainingBytes: Number(json.remainingBytes) || 0,
+          usedImages: Number(json.usedImages) ?? n.length,
+          maxImages: Number(json.maxImages) || OFFER_MAX_IMAGES,
+          remainingImages: Number(json.remainingImages) || 0,
+        });
+        return;
+      }
     } catch {
       /* best-effort — PATCH diff też usuwa przy zapisie */
     }

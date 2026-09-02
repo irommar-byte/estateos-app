@@ -16,8 +16,25 @@ export const OFFER_UPLOAD_BASE_FS =
 export const OFFER_UPLOAD_PUBLIC_PREFIX = '/uploads/offers';
 
 export const MAX_OFFER_FILE_BYTES = 15 * 1024 * 1024;
-export const MAX_OFFER_MEDIA_FOLDER_BYTES = 20 * 1024 * 1024;
+export const MAX_OFFER_MEDIA_FOLDER_BYTES = 30 * 1024 * 1024;
 export const MAX_IMAGES_PER_OFFER = 20;
+
+/** Akceptuje `/uploads/offers/...` oraz pełny URL z domeną — do usuwania i quota. */
+export function normalizeOfferPublicUrl(url: string): string {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('/')) return raw;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname.startsWith(OFFER_UPLOAD_PUBLIC_PREFIX)) {
+      return parsed.pathname;
+    }
+  } catch {
+    const idx = raw.indexOf(OFFER_UPLOAD_PUBLIC_PREFIX);
+    if (idx >= 0) return raw.slice(idx);
+  }
+  return raw;
+}
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
 const MIME_TO_EXT: Record<string, string> = {
@@ -112,7 +129,7 @@ export async function processOfferImageWebp(
     const metadata = await image.metadata();
 
     // Ujednolicenie rozdzielczości zdjęć z telefonów:
-    // ograniczamy dłuższy bok, żeby nie marnować limitu 20 MB na kilka gigantycznych kadrów.
+    // ograniczamy dłuższy bok, żeby nie marnować limitu folderu na kilka gigantycznych kadrów.
     const width = Number(metadata.width || 0);
     const height = Number(metadata.height || 0);
     if (width > 0 && height > 0 && (width > maxEdge || height > maxEdge)) {
