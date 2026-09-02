@@ -1,6 +1,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { OFFER_UPLOAD_BASE_FS, OFFER_UPLOAD_PUBLIC_PREFIX } from '@/lib/upload/offerMediaUpload';
+import {
+  OFFER_UPLOAD_BASE_FS,
+  OFFER_UPLOAD_PUBLIC_PREFIX,
+  normalizeOfferPublicUrl,
+} from '@/lib/upload/offerMediaUpload';
 import { readOfferImageMeta, stemFromPublicUrlForDelete } from '@/lib/upload/offerImageMeta';
 
 const MASTER_SUFFIXES = ['.heic', '.heif', '.jpg', '.jpeg', '.png'] as const;
@@ -11,7 +15,7 @@ function offerDirFs(offerId: number): string {
 
 /** Validates public URL belongs to offer and returns safe absolute FS path inside offer folder. */
 export function resolveOfferImageFsPath(offerId: number, publicUrl: string): string | null {
-  const url = String(publicUrl || '').trim();
+  const url = normalizeOfferPublicUrl(publicUrl);
   if (!url.startsWith('/')) return null;
 
   const expectedPrefix = `${OFFER_UPLOAD_PUBLIC_PREFIX}/${offerId}/`;

@@ -121,6 +121,7 @@ async function loadKeepStems(offerId: number): Promise<{
 }
 
 export async function getOfferMediaQuota(offerId: number): Promise<OfferMediaQuota> {
+  await pruneUnreferencedOfferPhotos(offerId);
   const { gallery } = await loadKeepStems(offerId);
   const usedBytes = await getOfferPhotoQuotaBytes(offerId);
   const usedImages = gallery.length;
