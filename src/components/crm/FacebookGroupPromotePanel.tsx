@@ -15,21 +15,33 @@ export type FacebookShareOffer = {
   linkedClientId: number | null;
 };
 
+type PrepareResult = {
+  shareUrl?: string;
+  facebookHref?: string;
+  groupUrl?: string | null;
+} | null;
+
+type ConfirmPayload = {
+  offerId: number;
+  groupName: string;
+  groupUrl: string | null;
+  postUrl: string;
+  confirmed: true;
+  visibleToClient: boolean;
+  renewalDueAt?: string;
+};
+
 type Props = {
   groups: FacebookGroupDestination[];
   offers: FacebookShareOffer[];
   currentOfferId: number | null;
   busy: boolean;
-  onShare: (payload: {
+  onPrepare: (payload: {
     offerId: number;
     groupName: string;
     groupUrl: string | null;
-    renewalDueAt?: string;
-  }) => Promise<{
-    shareUrl?: string;
-    facebookHref?: string;
-    groupUrl?: string | null;
-  } | null>;
+  }) => Promise<PrepareResult>;
+  onConfirm: (payload: ConfirmPayload) => Promise<boolean>;
 };
 
 function formatWhen(iso: string) {
@@ -43,13 +55,22 @@ export default function FacebookGroupPromotePanel({
   offers,
   currentOfferId,
   busy,
-  onShare,
+  onPrepare,
+  onConfirm,
 }: Props) {
   const [pickedOfferId, setPickedOfferId] = useState<number | "">(
     currentOfferId || offers[0]?.id || "",
   );
   const [renewalDate, setRenewalDate] = useState("");
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [pending, setPending] = useState<{
+    group: FacebookGroupDestination;
+    offerId: number;
+  } | null>(null);
+  const [groupNameDraft, setGroupNameDraft] = useState("");
+  const [postUrl, setPostUrl] = useState("");
+  const [showToClient, setShowToClient] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const selectedOffer = useMemo(
     () => offers.find((item) => item.id === Number(pickedOfferId)) || null,
@@ -58,11 +79,10 @@ export default function FacebookGroupPromotePanel({
 
   const launchShare = async (group: FacebookGroupDestination, offerId: number) => {
     setActiveKey(group.key);
-    const result = await onShare({
+    const result = await onPrepare({
       offerId,
       groupName: group.groupName,
       groupUrl: group.groupUrl,
-      renewalDueAt: renewalDate ? new Date(`${renewalDate}T12:00:00`).toISOString() : undefined,
     });
     setActiveKey(null);
     if (!result?.shareUrl) return;
@@ -75,6 +95,29 @@ export default function FacebookGroupPromotePanel({
     const facebookHref = result.facebookHref || facebookSharerHref(result.shareUrl);
     if (groupHref) window.open(groupHref, "_blank", "noopener,noreferrer");
     window.open(facebookHref, "_blank", "noopener,noreferrer");
+    setPending({ group, offerId });
+    setGroupNameDraft(group.groupName);
+    setPostUrl("");
+    setShowToClient(true);
+  };
+
+  const saveConfirmed = async () => {
+    if (!pending) return;
+    setSaving(true);
+    const ok = await onConfirm({
+      offerId: pending.offerId,
+      groupName: groupNameDraft.trim() || pending.group.groupName,
+      groupUrl: pending.group.groupUrl,
+      postUrl: postUrl.trim(),
+      confirmed: true,
+      visibleToClient: showToClient,
+      renewalDueAt: renewalDate ? new Date(`${renewalDate}T12:00:00`).toISOString() : undefined,
+    });
+    setSaving(false);
+    if (ok) {
+      setPending(null);
+      setPostUrl("");
+    }
   };
 
   if (!groups.length) {
@@ -85,7 +128,8 @@ export default function FacebookGroupPromotePanel({
         </p>
         <p className="mt-2 text-xs leading-relaxed text-[var(--eos-muted)]">
           Gdy zapiszesz pierwszą publikację z linkiem do grupy Facebook, pojawi się tu
-          jednoklikowe wystawianie kolejnych ogłoszeń na tych samych grupach.
+          jednoklikowe otwieranie tych samych grup. Klient zobaczy wpis dopiero po Twoim
+          potwierdzeniu albo wklejeniu linku do posta.
         </p>
       </div>
     );
@@ -97,8 +141,8 @@ export default function FacebookGroupPromotePanel({
         <Facebook className="size-3.5" /> Szybkie wystawianie na grupach
       </p>
       <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
-        Otwiera grupę i okno Facebooka z kartą ogłoszenia. Link wizytówki kopiujemy do schowka —
-        wrzucasz go w grupie, a klient widzi to w ścieżce oferty.
+        Otwiera grupę i okno Facebooka z kartą ogłoszenia. Link kopiujemy do schowka.
+        Klient zobaczy publikację dopiero gdy potwierdzisz wrzucenie albo wkleisz link do posta.
       </p>
 
       {offers.length > 1 ? (
@@ -124,7 +168,7 @@ export default function FacebookGroupPromotePanel({
       <label className="mt-3 flex items-center gap-2">
         <CalendarDays className="size-3.5 text-[#1877F2]" />
         <span className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
-          Ponownie wystaw
+          Przypomnij o odnowieniu
         </span>
         <input
           type="date"
@@ -134,44 +178,83 @@ export default function FacebookGroupPromotePanel({
         />
       </label>
 
+      {pending ? (
+        <div className="mt-3 space-y-2 rounded-2xl border border-[#1877F2]/40 bg-[var(--eos-card)] p-3">
+          <p className="text-xs font-black text-[var(--eos-text)]">
+            Potwierdź wrzucenie na „{pending.group.groupName}”
+          </p>
+          <input
+            value={groupNameDraft}
+            onChange={(e) => setGroupNameDraft(e.target.value)}
+            placeholder="Nazwa grupy"
+            className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+          />
+          <input
+            value={postUrl}
+            onChange={(e) => setPostUrl(e.target.value)}
+            placeholder="Link do posta (opcjonalnie, ale najlepszy)"
+            className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+          />
+          <label className="flex items-center gap-2 text-xs text-[var(--eos-text)]">
+            <input
+              type="checkbox"
+              checked={showToClient}
+              onChange={(e) => setShowToClient(e.target.checked)}
+            />
+            Pokaż klientowi w ścieżce oferty
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={saving || busy}
+              onClick={() => void saveConfirmed()}
+              className="rounded-full bg-[#1877F2] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white disabled:opacity-50"
+            >
+              {saving ? "Zapisuję…" : "Zapisz w ścieżce"}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setPending(null)}
+              className={eosBtn("secondary", { size: "sm" })}
+            >
+              Nie teraz
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-3 space-y-2">
-        {groups.map((group) => (
-          <div
-            key={group.key}
-            className="flex flex-col gap-2 rounded-2xl border border-[#1877F2]/20 bg-[var(--eos-card)]/80 px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-black text-[var(--eos-text)]">{group.groupName}</p>
-              <p className="text-[11px] text-[var(--eos-muted)]">
-                {group.postCount}× · ostatnio {formatWhen(group.lastPostedAt)}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {currentOfferId ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void launchShare(group, currentOfferId)}
-                  className={eosBtn("secondary", { size: "sm" })}
-                >
-                  <Repeat2 className="size-3.5" />
-                  {activeKey === group.key ? "Otwieram…" : "Tę ofertę"}
-                </button>
-              ) : null}
+        {groups.map((group) => {
+          const offerId = selectedOffer?.id || currentOfferId;
+          const isCurrent = Boolean(currentOfferId && offerId === currentOfferId);
+          return (
+            <div
+              key={group.key}
+              className="flex flex-col gap-2 rounded-2xl border border-[#1877F2]/20 bg-[var(--eos-card)]/80 px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black text-[var(--eos-text)]">{group.groupName}</p>
+                <p className="text-[11px] text-[var(--eos-muted)]">
+                  {group.postCount}× · ostatnio {formatWhen(group.lastPostedAt)}
+                </p>
+              </div>
               <button
                 type="button"
-                disabled={busy || !selectedOffer}
-                onClick={() => selectedOffer && void launchShare(group, selectedOffer.id)}
+                disabled={busy || !offerId}
+                onClick={() => offerId && void launchShare(group, offerId)}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#1877F2] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white disabled:opacity-50"
               >
-                <Facebook className="size-3.5" />
-                {selectedOffer && selectedOffer.id !== currentOfferId
-                  ? "Inna oferta"
-                  : "Wystaw"}
+                {isCurrent ? <Repeat2 className="size-3.5" /> : <Facebook className="size-3.5" />}
+                {activeKey === group.key
+                  ? "Otwieram…"
+                  : isCurrent
+                    ? "Wystaw tę ofertę"
+                    : "Wystaw wybraną"}
               </button>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

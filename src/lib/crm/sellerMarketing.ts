@@ -6,8 +6,12 @@ import { buildPortalUrl } from "@/lib/agencyClientNotify";
 import type { PublicLinkPreview } from "@/lib/crm/publicLinkPreview";
 import {
   extractFacebookDestinations,
+  facebookShareRecordGate,
+  isPendingPublicationStatus,
+  listingThumbnailFallback,
   parseFacebookDestination,
   publicationHeadline,
+  resolveMarketingChannel,
   type FacebookGroupDestination,
 } from "@/lib/crm/marketingChannel";
 import { offerSharePath } from "@/lib/publicListingPath";
@@ -554,6 +558,8 @@ export async function updateExternalPortalListing(params: {
   note?: string | null;
   renewalDueAt?: Date | null;
   visibleToClient?: boolean;
+  groupName?: string | null;
+  groupUrl?: string | null;
 }) {
   const activity = await prisma.agencyClientActivity.findFirst({
     where: {
@@ -586,11 +592,22 @@ export async function updateExternalPortalListing(params: {
     params.visibleToClient ?? isActivityVisibleToClient(activity.metadata);
   const sourceActivityId = meta.sourceActivityId || activity.id;
   const nextStatus = params.status || meta.status || "active";
+  const facebook = parseFacebookDestination(nextUrl || params.groupUrl || meta.groupUrl);
+  const groupName =
+    params.groupName?.trim() ||
+    meta.groupName ||
+    facebook?.groupName ||
+    null;
+  const groupUrl =
+    params.groupUrl ||
+    meta.groupUrl ||
+    facebook?.groupUrl ||
+    null;
   const updated = await recordMarketingActivity({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_UPDATED,
-    title: `${nextStatus === "removed" ? "Usunięto" : "Zaktualizowano"} publikację na ${meta.portal || meta.siteName || "portalu"}`,
+    title: `${nextStatus === "removed" ? "Usunięto" : "Zaktualizowano"} publikację na ${groupName || meta.portal || meta.siteName || "portalu"}`,
     body:
       params.note?.trim() ||
       activity.body ||
@@ -609,6 +626,9 @@ export async function updateExternalPortalListing(params: {
       publishedBy: params.agencyUserId,
       publishedAt: new Date().toISOString(),
       renewalReminderSentAt: null,
+      groupName,
+      groupUrl,
+      groupId: facebook?.groupId || facebook?.groupSlug || meta.groupId || null,
     },
   });
 
@@ -930,10 +950,11 @@ export function extractActiveChannels(
     const key = `source:${item.sourceActivityId || item.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (options.visibleOnly && !item.visibleToClient) continue;
+    if (options.visibleOnly && !isClientVisibleMarketingItem(item)) continue;
     if (
       item.status === "expired" ||
       item.status === "removed" ||
+      isPendingPublicationStatus(item.status) ||
       (item.status === "paused" && options.includePaused === false)
     ) {
       continue;
@@ -950,10 +971,107 @@ export function extractActiveChannels(
   return channels;
 }
 
+export function isClientVisibleMarketingItem(item: MarketingTimelineItem) {
+  if (!item.visibleToClient) return false;
+  return !isPendingPublicationStatus(item.status);
+}
+
 export function filterClientMarketingTimeline(
   timeline: MarketingTimelineItem[],
 ) {
-  return timeline.filter((item) => item.visibleToClient);
+  return timeline.filter(isClientVisibleMarketingItem);
+}
+
+export const SELLER_LISTING_PATH_JOURNEY_KINDS = [
+  "PRESENTATION",
+  "PRESENTATION_CHANGE",
+  "PRESENTATION_CONFIRMED",
+  "LISTING_LINKED",
+] as const;
+
+export type SellerListingPathItem = {
+  id: number;
+  kind: string;
+  title: string | null;
+  body: string | null;
+  createdAt: string;
+  startsAt: string | null;
+  url: string | null;
+  image: string | null;
+  siteName: string | null;
+  groupName: string | null;
+  groupUrl: string | null;
+  portal: string | null;
+  status: string | null;
+  renewalDueAt: string | null;
+  promotedUntil: string | null;
+};
+
+export function buildSellerListingPath(params: {
+  activities: Array<{
+    id: number;
+    kind: string;
+    title: string | null;
+    body: string | null;
+    offerId: number | null;
+    createdAt: Date;
+    metadata: unknown;
+  }>;
+  linkedOfferId: number | null;
+  listingImage?: string | null;
+}): SellerListingPathItem[] {
+  const items: SellerListingPathItem[] = [];
+  for (const activity of params.activities) {
+    const meta =
+      activity.metadata && typeof activity.metadata === "object"
+        ? (activity.metadata as Record<string, unknown>)
+        : {};
+    const shaped = shapeMarketingTimelineItem(activity);
+    if (isMarketingActivityKind(activity.kind)) {
+      if (!isClientVisibleMarketingItem(shaped)) continue;
+    } else if (
+      !(SELLER_LISTING_PATH_JOURNEY_KINDS as readonly string[]).includes(
+        activity.kind,
+      )
+    ) {
+      continue;
+    } else {
+      const oid = Number(activity.offerId || meta.offerId || 0);
+      if (oid && params.linkedOfferId && oid !== params.linkedOfferId) continue;
+    }
+
+    const channel = resolveMarketingChannel({
+      kind: shaped.kind,
+      portal: shaped.portal,
+      siteName: shaped.siteName,
+      url: shaped.externalUrl,
+      groupName: shaped.groupName,
+      groupUrl: shaped.groupUrl,
+      title: shaped.title,
+    });
+    items.push({
+      id: activity.id,
+      kind: activity.kind,
+      title: activity.title,
+      body: activity.body,
+      createdAt: activity.createdAt.toISOString(),
+      startsAt: typeof meta.startsAt === "string" ? meta.startsAt : null,
+      url: shaped.externalUrl,
+      image: listingThumbnailFallback({
+        image: shaped.image,
+        channelId: channel.id,
+        listingImage: params.listingImage,
+      }),
+      siteName: shaped.siteName,
+      groupName: shaped.groupName,
+      groupUrl: shaped.groupUrl,
+      portal: shaped.portal,
+      status: shaped.status,
+      renewalDueAt: shaped.renewalDueAt,
+      promotedUntil: shaped.promotedUntil,
+    });
+  }
+  return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 export function shouldSendRenewalReminder(
@@ -1041,6 +1159,7 @@ export async function loadSellerPortalMarketing(
         }
       : null,
     marketingTimeline,
+    facebookGroups: extractFacebookDestinations(allTimeline),
     activeChannels: extractActiveChannels(allTimeline, {
       includePaused: !options.visibleOnly,
       visibleOnly: options.visibleOnly,
@@ -1050,7 +1169,6 @@ export async function loadSellerPortalMarketing(
         ? shapeSellerNextStep(nextStep)
         : null,
     pendingDecisions: pendingDecisions.map(shapeClientDecision),
-    facebookGroups: extractFacebookDestinations(allTimeline),
   };
 }
 
@@ -1234,12 +1352,25 @@ export async function recordFacebookGroupShare(params: {
   groupName?: string | null;
   groupUrl?: string | null;
   postUrl?: string | null;
+  confirmed?: boolean;
   visibleToClient?: boolean;
   renewalDueAt?: Date | null;
 }) {
+  if (
+    !facebookShareRecordGate({
+      confirmed: params.confirmed,
+      postUrl: params.postUrl,
+    })
+  ) {
+    return {
+      ok: false as const,
+      error: "Potwierdź wrzucenie albo wklej link do posta na grupie.",
+    };
+  }
+
   const offer = await prisma.offer.findFirst({
     where: { id: params.offerId, userId: params.agencyUserId },
-    select: { id: true, title: true },
+    select: { id: true, title: true, images: true },
   });
   if (!offer) {
     return { ok: false as const, error: "Nie znaleziono ogłoszenia do wystawienia." };
@@ -1266,6 +1397,8 @@ export async function recordFacebookGroupShare(params: {
   const groupUrl = params.groupUrl || facebook?.groupUrl || null;
   const shareUrl = listingFacebookShareUrl(offer.id, params.agencyUserId);
   const recordedUrl = params.postUrl || groupUrl || shareUrl;
+  const listingImage =
+    absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || null;
 
   if (!targetClientId) {
     return {
@@ -1291,7 +1424,7 @@ export async function recordFacebookGroupShare(params: {
       siteName: "Facebook",
       title: groupName,
       description: `Grupa Facebook: ${groupName}`,
-      image: null,
+      image: listingImage,
       groupName,
       groupUrl,
     },

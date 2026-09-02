@@ -23,7 +23,7 @@ import ClientPortalSetupPrompt from "@/components/portal/ClientPortalSetupPrompt
 import ClientPortalBuyerOnboarding from "@/components/portal/ClientPortalBuyerOnboarding";
 import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
-import ListingPathEventCard from "@/components/portal/ListingPathEventCard";
+import SellerPortalCollaboration from "@/components/portal/SellerPortalCollaboration";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { buyerOnboardingStorageKey, isBuyerOnboardingDismissed } from "@/lib/clientPortalPath";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
@@ -145,6 +145,28 @@ type PortalData = {
     portal?: string | null;
     status?: string | null;
     promotedUntil?: string | null;
+  }>;
+  activeChannels?: Array<{
+    portal: string;
+    externalUrl: string | null;
+    status: string | null;
+    renewalDueAt: string | null;
+    activityId: number;
+  }>;
+  sellerNextStep?: {
+    currentStep: string;
+    nextAction: string;
+    clientMessage: string | null;
+    dueAt: string | null;
+    visibleToClient: boolean;
+    updatedAt: string;
+  } | null;
+  pendingDecisions?: Array<{
+    id: number;
+    title: string;
+    clientMessage: string;
+    clientResponse?: string | null;
+    dueAt: string | null;
   }>;
   acquisition: {
     status: string;
@@ -589,7 +611,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </section>
       ) : null}
 
-      {portal.type === "SELLER" && (portal.listing || portal.listingProgress?.length) ? (
+      {portal.type === "SELLER" ? (
         <section className="eos-lux-panel rounded-[1.75rem] p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -649,19 +671,19 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               Po podpisaniu umowy agent przygotuje ogłoszenie. Szkic, zdjęcia i publikacja pojawią się tutaj.
             </p>
           )}
-          {(portal.listingPath || []).length ? (
-            <div className="mt-6 space-y-3">
-              <p className="eos-portal-label eos-portal-label--ok">Ścieżka oferty</p>
-              {portal.listingPath!.map((item) => (
-                <ListingPathEventCard
-                  key={item.id}
-                  item={item}
-                  fallbackImage={portal.listing?.imageUrl}
-                />
-              ))}
-            </div>
-          ) : null}
         </section>
+      ) : null}
+
+      {portal.type === "SELLER" && token ? (
+        <SellerPortalCollaboration
+          token={token}
+          listingImage={portal.listing?.imageUrl}
+          listingPath={portal.listingPath || []}
+          activeChannels={portal.activeChannels || []}
+          sellerNextStep={portal.sellerNextStep || null}
+          pendingDecisions={portal.pendingDecisions || []}
+          onDone={() => void load()}
+        />
       ) : null}
 
       {portal.presentation && portal.type === "BUYER" ? (

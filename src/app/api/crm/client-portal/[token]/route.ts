@@ -51,11 +51,11 @@ import {
 } from '@/lib/crm/intelligenceFeedbackReply';
 import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 import {
+  buildSellerListingPath,
   isActivityVisibleToClient,
   isMarketingActivityKind,
   loadSellerPortalMarketing,
   respondToClientDecision,
-  shapeMarketingTimelineItem,
 } from '@/lib/crm/sellerMarketing';
 
 type RouteCtx = { params: Promise<{ token: string }> };
@@ -354,6 +354,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           sellerNextStep: null,
           pendingDecisions: [],
           marketingTimeline: [],
+          facebookGroups: [],
         }))
       : null;
 
@@ -472,66 +473,16 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             offer: client.linkedOffer,
           })
         : [],
-      listingPath: listingVisible
-        ? client.activities
-            .filter((a) =>
-              [
-                JOURNEY_ACTIVITY.PRESENTATION,
-                JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
-                JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
-                'LISTING_FEATURED',
-                'ESTATEOS_ACTIVATED',
-                'ESTATEOS_PROMOTED',
-                'EXTERNAL_PORTAL',
-                'EXTERNAL_PORTAL_LISTED',
-                'EXTERNAL_PORTAL_UPDATED',
-                'MARKET_REPORT_SENT',
-                'LISTING_LINKED',
-              ].includes(a.kind),
-            )
-            .filter((a) => {
-              const shaped = shapeMarketingTimelineItem(a);
-              if (
-                [
-                  'LISTING_FEATURED',
-                  'ESTATEOS_ACTIVATED',
-                  'ESTATEOS_PROMOTED',
-                  'EXTERNAL_PORTAL',
-                  'EXTERNAL_PORTAL_LISTED',
-                  'EXTERNAL_PORTAL_UPDATED',
-                  'MARKET_REPORT_SENT',
-                ].includes(a.kind)
-              ) {
-                return shaped.visibleToClient;
-              }
-              const meta =
-                a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
-              const oid = Number(a.offerId || meta.offerId || 0);
-              return !oid || oid === client.linkedOffer?.id;
+      listingPath:
+        client.type === 'SELLER'
+          ? buildSellerListingPath({
+              activities: client.activities,
+              linkedOfferId: client.linkedOffer?.id ?? null,
+              listingImage: client.linkedOffer
+                ? absolutizeMediaUrl(resolveOfferPrimaryImage(client.linkedOffer))
+                : null,
             })
-            .map((a) => {
-              const meta =
-                a.metadata && typeof a.metadata === 'object' ? (a.metadata as Record<string, unknown>) : {};
-              const shaped = shapeMarketingTimelineItem(a);
-              return {
-                id: a.id,
-                kind: a.kind,
-                title: a.title,
-                body: a.body,
-                createdAt: a.createdAt.toISOString(),
-                startsAt: typeof meta.startsAt === 'string' ? meta.startsAt : null,
-                url: shaped.externalUrl,
-                image: shaped.image,
-                siteName: shaped.siteName,
-                groupName: shaped.groupName,
-                groupUrl: shaped.groupUrl,
-                portal: shaped.portal,
-                status: shaped.status,
-                renewalDueAt: shaped.renewalDueAt,
-                promotedUntil: shaped.promotedUntil,
-              };
-            })
-        : [],
+          : [],
       marketingTimeline:
         sellerMarketing?.marketingTimeline.map((item) => ({
           ...item,

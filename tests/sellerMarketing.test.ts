@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildSellerListingPath,
   clientDecisionResolution,
   extractActiveChannels,
   filterClientMarketingTimeline,
@@ -246,4 +247,94 @@ test("comment keeps a client decision pending", () => {
     status: "REJECTED",
     resolved: true,
   });
+});
+
+test("pending marketing items stay out of the client feed", () => {
+  const timeline = [
+    shapeMarketingTimelineItem({
+      id: 1,
+      kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
+      title: "Pending FB",
+      body: "not yet",
+      offerId: 12,
+      createdAt: new Date("2026-09-01T10:00:00.000Z"),
+      metadata: {
+        siteName: "Facebook",
+        url: "https://facebook.com/groups/a",
+        status: "pending",
+        visibleToClient: true,
+      },
+    }),
+    shapeMarketingTimelineItem({
+      id: 2,
+      kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
+      title: "Otodom",
+      body: "live",
+      offerId: 12,
+      createdAt: new Date("2026-09-02T10:00:00.000Z"),
+      metadata: {
+        siteName: "Otodom",
+        url: "https://otodom.pl/a",
+        status: "active",
+        visibleToClient: true,
+      },
+    }),
+  ];
+  assert.equal(filterClientMarketingTimeline(timeline).length, 1);
+  assert.equal(filterClientMarketingTimeline(timeline)[0].id, 2);
+  assert.deepEqual(
+    extractActiveChannels(timeline, { visibleOnly: true }).map((item) => item.portal),
+    ["Otodom"],
+  );
+});
+
+test("seller listing path is shared for signed and unsigned sellers", () => {
+  const path = buildSellerListingPath({
+    activities: [
+      {
+        id: 1,
+        kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
+        title: "Hidden draft",
+        body: "private",
+        offerId: 12,
+        createdAt: new Date("2026-09-01T10:00:00.000Z"),
+        metadata: {
+          siteName: "Otodom",
+          url: "https://otodom.pl/a",
+          status: "active",
+        },
+      },
+      {
+        id: 2,
+        kind: MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
+        title: "Facebook",
+        body: "posted",
+        offerId: 12,
+        createdAt: new Date("2026-09-02T10:00:00.000Z"),
+        metadata: {
+          portal: "Facebook",
+          url: "https://estateos.pl/oferta/12",
+          groupName: "Warszawa mieszkania",
+          groupUrl: "https://www.facebook.com/groups/warszawa.mieszkania/",
+          status: "active",
+          visibleToClient: true,
+        },
+      },
+      {
+        id: 3,
+        kind: "LISTING_LINKED",
+        title: "Powiązano ogłoszenie",
+        body: "linked",
+        offerId: 12,
+        createdAt: new Date("2026-09-03T10:00:00.000Z"),
+        metadata: {},
+      },
+    ],
+    linkedOfferId: 12,
+    listingImage: "https://cdn.example/listing.jpg",
+  });
+  assert.equal(path.length, 2);
+  assert.equal(path[0].kind, "LISTING_LINKED");
+  assert.equal(path[1].groupName, "Warszawa mieszkania");
+  assert.equal(path[1].image, "https://cdn.example/listing.jpg");
 });

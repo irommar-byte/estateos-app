@@ -63,6 +63,7 @@ function haystack(input: MarketingChannelInput): string {
     input.siteName,
     input.host,
     input.url,
+    input.groupName,
     input.groupUrl,
     input.title,
   ]
@@ -168,11 +169,13 @@ export function resolveMarketingChannel(
 
   const text = haystack(input);
   const host = hostnameFromUrl(input.url) || hostnameFromUrl(input.groupUrl) || "";
+  const kindLooksExternal = kind.startsWith("EXTERNAL_PORTAL");
   if (
     isFacebookHost(host) ||
     isFacebookHost(input.portal) ||
     isFacebookHost(input.siteName) ||
-    text.includes("facebook")
+    text.includes("facebook") ||
+    Boolean(input.groupName && kindLooksExternal)
   ) {
     const dest = parseFacebookDestination(input.url || input.groupUrl);
     return {
@@ -208,6 +211,32 @@ export function publicationHeadline(input: MarketingChannelInput): string {
   }
   if (channel.id === "estateos") return channel.label;
   return `Opublikowano na ${channel.label}`;
+}
+
+export function listingThumbnailFallback(params: {
+  image?: string | null;
+  channelId: MarketingChannelId;
+  listingImage?: string | null;
+}): string | null {
+  if (params.image) return params.image;
+  if (params.channelId === "estateos" || params.channelId === "facebook") {
+    return params.listingImage || null;
+  }
+  return null;
+}
+
+export function isPendingPublicationStatus(
+  status: string | null | undefined,
+): boolean {
+  const key = String(status || "").trim().toLowerCase();
+  return key === "pending" || key === "waiting";
+}
+
+export function facebookShareRecordGate(params: {
+  confirmed?: boolean;
+  postUrl?: string | null;
+}): boolean {
+  return params.confirmed === true || Boolean(String(params.postUrl || "").trim());
 }
 
 export function formatPublicationStatus(status: string | null | undefined): string | null {
