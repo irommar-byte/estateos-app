@@ -43,5 +43,9 @@ export function buildListingDescriptionDraftFromEdit(input: {
     hasGarden: amenityPatch.hasGarden,
     isTwoLevel: amenityPatch.isDuplex,
     hasElevator: amenityPatch.hasElevator,
+    floorPlanScanMeta: data.floorPlanScanMeta,
+    propertyRoomScans: data.propertyRoomScans,
+    roomScans: data.roomScans,
+    roomAreas: data.roomAreas,
   };
 }

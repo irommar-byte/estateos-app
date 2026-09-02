@@ -1,4 +1,5 @@
 import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
+import { extractListingRoomAreas, formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { callOpenAiText, getOpenAiApiKey, openAiErrorMessage, resolveOpenAiModel } from '@/lib/openAiClient';
 
 export type ListingDescriptionDraftInput = {
@@ -31,6 +32,12 @@ export type ListingDescriptionDraftInput = {
   hasGarden?: boolean;
   isTwoLevel?: boolean;
   isFurnished?: boolean;
+  propertyRoomScans?: unknown;
+  roomScans?: unknown;
+  roomAreas?: unknown;
+  roomsBreakdown?: unknown;
+  floorPlanScanMeta?: unknown;
+  scanMeta?: unknown;
 };
 
 type NeighborhoodContext = {
@@ -174,6 +181,10 @@ function buildDraftFacts(draft: ListingDescriptionDraftInput): Record<string, un
     yearBuilt: String(draft.yearBuilt ?? '').trim() || null,
     heating: String(draft.heating ?? '').trim() || null,
     amenities,
+    roomAreas: extractListingRoomAreas(draft).map((room) => ({
+      name: room.name,
+      area: `${formatListingAreaSqm(room.areaSqm)} m²`,
+    })),
     existingDescription: String(draft.existingDescription || '').trim() || null,
     userNotes: String(draft.userNotes || '').trim() || null,
   };
@@ -204,10 +215,13 @@ FORMAT REDAKCYJNY (zwykły tekst):
 - Obowiązkowa struktura sekcji (każda sekcja = nagłówek w osobnej linii, potem treść):
   1) Akapit wprowadzający (2–3 zdania lifestyle, bez nagłówka)
   2) Nagłówek: Atuty lokalu → lista z "• " (3–6 punktów)
-  3) (opcjonalnie) linia "——————"
-  4) Nagłówek: Okolica i komunikacja → lista z "• " lub krótki akapit + 2–3 punkty
-  5) (opcjonalnie) Nagłówek: Dla kogo → 2–3 punkty z "✓ " dla potwierdzonych cech
-  6) Krótkie zaproszenie do kontaktu (1–2 zdania)
+  3) Jeśli JSON.roomAreas nie jest puste — Nagłówek: Układ pomieszczeń
+     najpierw 1 zdanie narracyjne (np. przestronny salon z aneksem), potem lista:
+     • Salon z aneksem kuchennym — 18,5 m²
+  4) (opcjonalnie) linia "——————"
+  5) Nagłówek: Okolica i komunikacja → lista z "• " lub krótki akapit + 2–3 punkty
+  6) (opcjonalnie) Nagłówek: Dla kogo → 2–3 punkty z "✓ " dla potwierdzonych cech
+  7) Krótkie zaproszenie do kontaktu (1–2 zdania)
 - Akapity oddzielone pustą linią.
 - Nagłówki sekcji: krótkie, Title Case (np. Atuty lokalu, Okolica i komunikacja) — bez CAPS lock.
 - Lista atutów: każda linia zaczyna się od "• ".
@@ -224,7 +238,9 @@ ZASADY:
 - Nie wymyślaj konkretnych metrów/minut dojścia, chyba że wynikają wprost z POI (wtedy ostrożnie: "w pobliżu", "w zasięgu spaceru").
 - Nie podawaj dokładnego adresu ulicy, gdy locationPrecision = approximate_circle.
 - Nie powtarzaj tytułu oferty w pierwszym zdaniu dosłownie.
-- Długość: ok. 900–1600 znaków.
+- Długość: ok. 900–1700 znaków (gdy jest Układ pomieszczeń — do 1900).
+- roomAreas: jeśli tablica ma elementy, MUSISZ wypisać każde pomieszczenie z dokładnie tą nazwą i metrażem (np. 18,5 m²). Nie zgaduj, nie zaokrąglaj inaczej, nie pomijaj. Nie wymyślaj pomieszczeń, których nie ma w JSON.
+- Jeśli roomAreas jest puste — nie podawaj metraży poszczególnych pokoi.
 - Jeśli podano existingDescription lub userNotes — wykorzystaj je jako bazę (przepisz / rozwiń / ujednolić styl). Nie ignoruj faktów z notatek.
 - NIGDY nie podawaj ceny oferty (ceny sprzedaży / czynszu głównego), kaucji ani prowizji w zł/€ — cena główna jest poza opisem.
 - WYJĄTEK: jeśli w userNotes sprzedawca podał ceny przyległości (garaż, komórka, parking, dodatkowe pomieszczenie, opłaty za media poza czynszem) — możesz je naturalnie zawrzeć.
@@ -268,13 +284,14 @@ export async function generateListingDescriptionWithGpt(
   const model = resolveOpenAiModel('OPENAI_LISTING_MODEL');
   const system = buildSystemPrompt(locale);
   const user = buildUserPrompt(facts, neighborhood, locale);
+  const hasRoomAreas = Array.isArray(facts.roomAreas) && (facts.roomAreas as unknown[]).length > 0;
 
   const { text, model: usedModel } = await callOpenAiText({
     apiKey,
     model,
     system,
     user,
-    maxOutputTokens: 1200,
+    maxOutputTokens: hasRoomAreas ? 1600 : 1200,
     logPrefix: 'listing-description-ai',
   });
   if (!text || text.length < 120) {

@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
-import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
+import { extractListingRoomAreas, formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { stripHtmlToPlain, stripInternalOfferDescriptionMarkers } from '@/lib/offerDescriptionHtml';
 import { getUserDisplayAvatar } from '@/lib/agencyCompany';
@@ -15,6 +15,7 @@ import {
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { formatPublicAddressLine, formatPublicOfferLocation } from '@/lib/publicOfferLocation';
 import { offerOgImagePath } from '@/lib/ogCardVersion';
+import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 
 export function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://estateos.pl').replace(
@@ -127,6 +128,7 @@ export type OfferShareCard = {
   amenities: string[];
   gallery: string[];
   mapImageUrl: string | null;
+  roomAreas: Array<{ name: string; areaLabel: string }>;
 };
 
 export async function loadOfferShareCard(
@@ -293,5 +295,9 @@ export async function loadOfferShareCard(
     mapImageUrl: hasCoords
       ? `/api/map/static?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}&v=2`
       : null,
+    roomAreas: extractListingRoomAreas(row.floorPlanScanMeta).map((room) => ({
+      name: room.name,
+      areaLabel: `${formatListingAreaSqm(room.areaSqm)} m²`,
+    })),
   };
 }
