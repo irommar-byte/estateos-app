@@ -169,7 +169,7 @@ export default function MarketValuationCard({
           : '';
     Alert.alert(
       'Wygenerować raport?',
-      `Czy chcesz wygenerować raport dla:\n${propertyLabel}${propertyMeta ? `\n${propertyMeta}` : ''}\nWartość rynkowa: ${formatPln(result.estimated.mid)}\n\nTo zużyje 1 punkt z limitu.${remainingHint}\nWysyłka e-mail później nic już nie zdejmie.`,
+      `Czy chcesz wygenerować raport dla:\n${propertyLabel}${propertyMeta ? `\n${propertyMeta}` : ''}\n\nTo zużyje 1 punkt z limitu.${remainingHint}\nWysyłka e-mail później nic już nie zdejmie.`,
       [
         { text: 'Nie', style: 'cancel' },
         { text: 'Tak, wygeneruj', onPress: doGenerate },

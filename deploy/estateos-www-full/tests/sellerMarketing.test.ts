@@ -363,3 +363,27 @@ test("seller listing path is shared for signed and unsigned sellers", () => {
   assert.equal(path[1].groupName, "Warszawa mieszkania");
   assert.equal(path[1].image, "https://cdn.example/listing.jpg");
 });
+
+test("visible market report lands on the seller listing path with reportId", () => {
+  const path = buildSellerListingPath({
+    activities: [
+      {
+        id: 9,
+        kind: MARKETING_ACTIVITY.MARKET_REPORT,
+        title: "Raport z Rejestru Cen Nieruchomości",
+        body: "Dokument",
+        offerId: 12,
+        createdAt: new Date("2026-09-02T10:00:00.000Z"),
+        metadata: {
+          visibleToClient: true,
+          reportId: 77,
+          emails: ["owner@example.com"],
+        },
+      },
+    ],
+    linkedOfferId: 12,
+  });
+  assert.equal(path.length, 1);
+  assert.equal(path[0].kind, "MARKET_REPORT_SENT");
+  assert.equal(path[0].reportId, 77);
+});

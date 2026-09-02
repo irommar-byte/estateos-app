@@ -17,6 +17,7 @@ export type PortalListingPathItem = {
   status?: string | null;
   promotedUntil?: string | null;
   renewalDueAt?: string | null;
+  reportId?: number | null;
 };
 
 export function filterVisibleMarketingTimeline(

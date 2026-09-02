@@ -17,7 +17,7 @@ export const INGEST_MONTHS = 36;
 export const COMPS_RADIUS_STEPS_M = [400, 800, 1500, 2500];
 export const COMPS_MIN_COUNT = 8;
 export const COMPS_TARGET_COUNT = 16;
-export const COMPS_MAX_RETURN = 24;
+export const COMPS_MAX_RETURN = 32;
 export const AREA_TOLERANCE = 0.15;
 export const ROOMS_TOLERANCE = 1;
 

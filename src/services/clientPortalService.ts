@@ -160,6 +160,7 @@ export type ClientPortalPayload = {
     status?: string | null;
     promotedUntil?: string | null;
     renewalDueAt?: string | null;
+    reportId?: number | null;
   }>;
   marketingTimeline?: PortalMarketingTimelineItem[];
   activeChannels?: PortalActiveChannel[];

@@ -145,6 +145,7 @@ type PortalData = {
     portal?: string | null;
     status?: string | null;
     promotedUntil?: string | null;
+    reportId?: number | null;
   }>;
   activeChannels?: Array<{
     portal: string;

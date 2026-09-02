@@ -23,13 +23,8 @@ import {
   isSafeSellerPortalUrl,
   resolveSellerPortalTimeline,
 } from "../../lib/sellerPortalContract";
-import {
-  facebookClientOpenHref,
-  facebookOpenLabel,
-  formatPublicationStatus,
-  listingThumbnailFallback,
-  resolveMarketingChannel,
-} from "../../lib/marketingChannel";
+import { portalStackKind } from "../../lib/portalActivityStacks";
+import PortalActivityStacks from "./PortalActivityStacks";
 
 type Props = {
   portal: ClientPortalPayload;
@@ -86,13 +81,14 @@ export default function SellerPortalView({
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>(
     {},
   );
-  const [historyLimit, setHistoryLimit] = useState(20);
 
   const listing = portal.listing;
   const progress = portal.listingProgress || [];
   const timeline = resolveSellerPortalTimeline(portal);
-  const visibleTimeline = timeline.slice(0, historyLimit);
   const channels = portal.activeChannels || [];
+  const hasPromotionEvents = timeline.some(
+    (item) => portalStackKind(item.kind) === "promotions",
+  );
   const nextStep = portal.sellerNextStep;
   const decisions = portal.pendingDecisions || [];
 
@@ -503,7 +499,7 @@ export default function SellerPortalView({
           </ProfileCardShell>
         ) : null}
 
-        {channels.length > 0 ? (
+        {channels.length > 0 && !hasPromotionEvents ? (
           <ProfileCardShell
             isDark={isDark}
             style={{ marginBottom: 12 }}
@@ -554,7 +550,7 @@ export default function SellerPortalView({
               </View>
             ))}
           </ProfileCardShell>
-        ) : (
+        ) : !hasPromotionEvents && timeline.length === 0 ? (
           <ProfileCardShell
             isDark={isDark}
             style={{ marginBottom: 12 }}
@@ -599,192 +595,19 @@ export default function SellerPortalView({
               style={{ color: colors.secondary, marginTop: 10, lineHeight: 20 }}
             >
               Agent udostępni tu kolejne kroki promocji — publikacje,
-              wyróżnienia i aktualizacje.
+              wyróżnienia, raporty i aktualizacje. Karty można zwijać.
             </Text>
           ) : (
-            visibleTimeline.map((item) => {
-              const channel = resolveMarketingChannel({
-                kind: item.kind,
-                portal: item.portal,
-                siteName: item.siteName,
-                url: item.externalUrl,
-                groupName: item.groupName,
-                groupUrl: item.groupUrl,
-                title: item.title,
-              });
-              const accent =
-                channel.id === "estateos"
-                  ? "#C9A227"
-                  : channel.id === "facebook"
-                    ? "#1877F2"
-                    : channel.id === "otodom"
-                      ? "#00A651"
-                      : colors.green;
-              const status = formatPublicationStatus(item.status);
-              const preview = listingThumbnailFallback({
-                image: item.image,
-                channelId: channel.id,
-                listingImage: listing?.imageUrl,
-              });
-              const openHref =
-                channel.id === "facebook"
-                  ? facebookClientOpenHref({
-                      url: item.externalUrl,
-                      groupUrl: item.groupUrl,
-                    })
-                  : item.externalUrl || item.groupUrl || null;
-              const openLabel =
-                channel.id === "facebook"
-                  ? facebookOpenLabel({
-                      href: openHref,
-                      groupName: item.groupName,
-                    })
-                  : item.groupName ||
-                    item.portal ||
-                    item.siteName ||
-                    "Zobacz ogłoszenie";
-              return (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.timelineRow,
-                    {
-                      borderColor: accent,
-                      backgroundColor:
-                        channel.id === "estateos"
-                          ? isDark
-                            ? "rgba(201,162,39,0.16)"
-                            : "rgba(253,230,138,0.35)"
-                          : channel.id === "facebook"
-                            ? isDark
-                              ? "rgba(24,119,242,0.14)"
-                              : "rgba(24,119,242,0.08)"
-                            : colors.card,
-                      shadowColor: accent,
-                      shadowOpacity: 0.22,
-                      shadowRadius: 12,
-                      shadowOffset: { width: 0, height: 6 },
-                      elevation: 4,
-                    },
-                  ]}
-                >
-                  <View style={styles.timelineHead}>
-                    <View
-                      style={[styles.channelMark, { backgroundColor: accent }]}
-                    >
-                      <Ionicons
-                        name={
-                          channel.id === "estateos"
-                            ? "star"
-                            : channel.id === "facebook"
-                              ? "logo-facebook"
-                              : channel.id === "otodom"
-                                ? "home"
-                                : "globe-outline"
-                        }
-                        size={14}
-                        color={channel.id === "estateos" ? "#1c1408" : "#fff"}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          color: accent,
-                          fontSize: 10,
-                          fontWeight: "900",
-                          letterSpacing: 0.6,
-                        }}
-                      >
-                        {channel.badge.toUpperCase()}
-                      </Text>
-                      <Text style={{ color: colors.secondary, fontSize: 11 }}>
-                        {formatDate(item.createdAt)}
-                      </Text>
-                    </View>
-                  </View>
-                  {preview ? (
-                    <Image
-                      source={{ uri: preview }}
-                      style={styles.timelinePreview}
-                    />
-                  ) : null}
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontWeight: "800",
-                      marginTop: 8,
-                    }}
-                  >
-                    {channel.id === "facebook" && item.groupName
-                      ? `Facebook · ${item.groupName}`
-                      : item.title || channel.label}
-                  </Text>
-                  {item.body ? (
-                    <Text
-                      style={{
-                        color: colors.secondary,
-                        marginTop: 4,
-                        lineHeight: 20,
-                      }}
-                    >
-                      {item.body}
-                    </Text>
-                  ) : null}
-                  {status ? (
-                    <Text
-                      style={{
-                        color: colors.secondary,
-                        fontSize: 11,
-                        fontWeight: "800",
-                        marginTop: 6,
-                      }}
-                    >
-                      {status}
-                    </Text>
-                  ) : null}
-                  {openHref ? (
-                    <Pressable
-                      accessibilityRole="link"
-                      onPress={() => void openSafeLink(openHref)}
-                      style={{ marginTop: 8 }}
-                    >
-                      <Text style={{ color: accent, fontWeight: "800" }}>
-                        {openLabel}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  {item.evidenceUrl ? (
-                    <Pressable
-                      accessibilityRole="link"
-                      onPress={() => void openSafeLink(item.evidenceUrl!)}
-                      style={{ marginTop: 8 }}
-                    >
-                      <Text style={{ color: colors.green, fontWeight: "700" }}>
-                        Potwierdzenie: {item.evidenceName || "otwórz plik"}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  {item.promotedUntil ? (
-                    <Text
-                      style={{ color: "#C9A227", fontSize: 12, marginTop: 6, fontWeight: "800" }}
-                    >
-                      Wyróżnienie do {formatDate(item.promotedUntil)}
-                    </Text>
-                  ) : null}
-                </View>
-              );
-            })
+            <PortalActivityStacks
+              items={timeline}
+              listingImage={listing?.imageUrl}
+              activePortals={channels.map((channel) => channel.portal)}
+              portalToken={portalToken}
+              isDark={isDark}
+              colors={colors}
+              onOpenUrl={(url) => void openSafeLink(url)}
+            />
           )}
-          {timeline.length > visibleTimeline.length ? (
-            <Pressable
-              onPress={() => setHistoryLimit((current) => current + 20)}
-              style={[styles.loadMoreBtn, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.green, fontWeight: "800" }}>
-                Pokaż starsze działania
-              </Text>
-            </Pressable>
-          ) : null}
         </ProfileCardShell>
 
         <ProfileCardShell

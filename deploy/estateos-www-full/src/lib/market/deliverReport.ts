@@ -61,7 +61,7 @@ export async function emailMarketReport(params: {
   for (const to of emails) {
     const ok = await sendTransactionalEmail({
       to,
-      subject: `EstateOS™ Market — analiza wartości (${params.result.subject.city})`,
+      subject: `Analiza wartości nieruchomości — ${params.result.subject.city}${params.result.subject.address ? `, ${params.result.subject.address}` : ''}`,
       html,
     });
     if (ok) emailed = true;

@@ -15,6 +15,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
 import { marketPriceScore } from '@/lib/market/format';
+import { sortCompsBySimilarity } from '@/lib/market/compSimilarity';
 import { haversineMeters } from '@/lib/market/warsawDistricts';
 import type { MarketComp, PriceScore, ValuationResult, ValuationSubject } from '@/lib/market/types';
 
@@ -155,22 +156,20 @@ async function loadCandidates(
 }
 
 function toComps(rows: Candidate[], subject: ValuationSubject): MarketComp[] {
-  return rows
-    .map((r) => ({
-      id: r.id,
-      deedAt: r.deedAt ? r.deedAt.toISOString().slice(0, 10) : null,
-      area: r.areaM2,
-      rooms: r.rooms,
-      floor: r.floor,
-      price: Math.round(r.priceGross),
-      ppsm: Math.round(r.pricePerM2),
-      address: r.address,
-      district: r.district,
-      distanceM: Math.round(haversineMeters(subject.lat, subject.lng, r.lat, r.lng)),
-      marketType: r.marketType,
-    }))
-    .sort((a, b) => a.distanceM - b.distanceM)
-    .slice(0, COMPS_MAX_RETURN);
+  const comps = rows.map((r) => ({
+    id: r.id,
+    deedAt: r.deedAt ? r.deedAt.toISOString().slice(0, 10) : null,
+    area: r.areaM2,
+    rooms: r.rooms,
+    floor: r.floor,
+    price: Math.round(r.priceGross),
+    ppsm: Math.round(r.pricePerM2),
+    address: r.address,
+    district: r.district,
+    distanceM: Math.round(haversineMeters(subject.lat, subject.lng, r.lat, r.lng)),
+    marketType: r.marketType,
+  }));
+  return sortCompsBySimilarity(comps, subject).slice(0, COMPS_MAX_RETURN);
 }
 
 async function districtOrCityMedian(subject: ValuationSubject, since: Date) {
