@@ -26,6 +26,19 @@ export type MarketComp = {
   district: string | null;
   distanceM: number;
   marketType: string | null;
+  lat?: number | null;
+  lng?: number | null;
+};
+
+export type MarketReportVariant = 'classic' | 'pro';
+
+export type MarketReportContext = {
+  asOf: string | null;
+  listingPpsm: number | null;
+  listingDeedPpsm: number | null;
+  listingVsDeedsPct: number | null;
+  listingCount: number | null;
+  listingScope: string | null;
 };
 
 export type PriceScore = {
@@ -64,6 +77,7 @@ export type ValuationResult = {
     transactionCount: number;
     disclaimer: string;
   };
+  reportContext?: MarketReportContext | null;
 };
 
 export type ValuationErrorBody = {

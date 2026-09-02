@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { MARKETING_ACTIVITY, isActivityVisibleToClient, parseMarketingMetadata } from '@/lib/crm/sellerMarketing';
 import { buildMarketReportHtml } from '@/lib/market/reportHtml';
-import { loadUserMarketReport } from '@/lib/market/deliverReport';
+import { loadUserMarketReport, parseReportVariant } from '@/lib/market/deliverReport';
 
 function notFoundHtml(message: string) {
   return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>Raport · EstateOS™</title></head>
@@ -24,7 +24,7 @@ export async function loadPortalMarketReport(params: {
 
   const client = await prisma.agencyClient.findFirst({
     where: { portalToken: token, status: 'ACTIVE' },
-    select: { id: true, agencyUserId: true, firstName: true, lastName: true },
+    select: { id: true, agencyUserId: true, firstName: true, lastName: true, email: true },
   });
   if (!client) {
     return { status: 404, html: notFoundHtml('Panel klienta jest niedostępny.') };
@@ -54,11 +54,14 @@ export async function loadPortalMarketReport(params: {
   }
 
   const name = `${client.firstName} ${client.lastName}`.trim();
+  const variant = parseReportVariant(meta.reportVariant);
   return {
     status: 200,
     html: buildMarketReportHtml(stored.result, {
       recipientName: name,
+      recipientEmail: client.email,
       generatedAt: stored.row.createdAt,
+      variant,
     }),
   };
 }

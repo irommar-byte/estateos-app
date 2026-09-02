@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {
   fetchMarketReportQuota,
   fetchMarketValuation,
@@ -10,6 +10,7 @@ import {
   type MarketReportQuota,
   type ValuationResult,
 } from '../../services/marketService';
+import { getSafeWebView } from '../messaging/safeWebView';
 
 type Props = {
   token: string | null;
@@ -55,6 +56,9 @@ export default function MarketValuationCard({
   const [quota, setQuota] = useState<MarketReportQuota | null>(null);
   const [busy, setBusy] = useState(false);
   const [reportId, setReportId] = useState<number | null>(null);
+  const [htmlClassic, setHtmlClassic] = useState('');
+  const [htmlPro, setHtmlPro] = useState('');
+  const [previewVariant, setPreviewVariant] = useState<'classic' | 'pro' | null>(null);
 
   useEffect(() => {
     setEmail(reportEmail || '');
@@ -108,18 +112,19 @@ export default function MarketValuationCard({
   const propertyLabel = [address, district, city].filter(Boolean).join(', ') || 'tej nieruchomości';
   const propertyMeta = [area ? `${area} m²` : null, rooms ? `${rooms} pok.` : null].filter(Boolean).join(' · ');
 
-  const sendExisting = (id: number) => {
+  const sendExisting = (id: number, variant: 'classic' | 'pro') => {
     if (!destLabel) {
       setReportMsg('Wpisz e-mail, żeby wysłać. Wysyłka nie zużyje kolejnego punktu.');
       return;
     }
     setBusy(true);
-    void sendMarketReport(token, { ...payload, reportId: id }).then((sent) => {
+    void sendMarketReport(token, { ...payload, reportId: id, variant }).then((sent) => {
       setBusy(false);
       if (sent.json?.quota) setQuota(sent.json.quota);
+      setPreviewVariant(null);
       setReportMsg(
         sent.ok
-          ? `Raport wysłany na ${destLabel}.${sent.json?.clientRecorded ? ' Zapisano w panelu klienta.' : ''} Limit się nie zmienił.`
+          ? `Wysłano ${variant === 'pro' ? 'wersję z mapą' : 'wersję dotychczasową'} na ${destLabel}.${sent.json?.clientRecorded ? ' Zapisano w panelu klienta.' : ''} Limit się nie zmienił.`
           : String(sent.json?.message || 'Nie wysłano raportu.'),
       );
     });
@@ -138,20 +143,10 @@ export default function MarketValuationCard({
       const id = Number(r.json?.reportId);
       const storedId = Number.isFinite(id) && id > 0 ? id : null;
       setReportId(storedId);
-      setReportMsg('Raport wygenerowany — 1 punkt z limitu już pobrany. Wysyłka e-mail nic więcej nie zdejmie.');
+      setHtmlClassic(String(r.json?.html || ''));
+      setHtmlPro(String(r.json?.htmlPro || r.json?.html || ''));
+      setReportMsg('Wygenerowano dwie wersje — 1 punkt z limitu. Wybierz, którą wysłać. Wysyłka nic więcej nie zdejmie.');
       if (!storedId) return;
-      if (!destLabel) {
-        Alert.alert('Raport gotowy', 'Wpisz e-mail i wyślij — to nie zużyje kolejnego punktu z limitu.');
-        return;
-      }
-      Alert.alert(
-        'Raport gotowy',
-        `Wysłać na ${destLabel}? To nie zużyje kolejnego punktu z limitu.`,
-        [
-          { text: 'Nie teraz', style: 'cancel' },
-          { text: 'Wyślij', onPress: () => sendExisting(storedId) },
-        ],
-      );
     });
   };
 
@@ -178,6 +173,7 @@ export default function MarketValuationCard({
   };
 
   return (
+    <>
     <View style={{ borderRadius: 18, borderWidth: 1, borderColor: 'rgba(52,199,89,0.28)', backgroundColor: colors.card, overflow: 'hidden', marginBottom: 14 }}>
       <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 10, letterSpacing: 1.2 }}>ESTATEOS™ MARKET</Text>
@@ -264,11 +260,39 @@ export default function MarketValuationCard({
               </Text>
             </Pressable>
             {reportId ? (
-              <Pressable onPress={() => sendExisting(reportId)} disabled={busy}>
-                <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 13 }}>
-                  Wyślij e-mail (bez limitu)
+              <View style={{ gap: 8 }}>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>
+                  Dwie wersje gotowe — wybierz, którą wysłać
                 </Text>
-              </Pressable>
+                <View style={{ borderWidth: 1, borderColor: colors.accent, borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: colors.text, fontWeight: '800' }}>Dla klienta · mapa i rekomendacja</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                    List na właściciela, wyróżniona cena ofertowa i z metra, mapa aktów.
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+                    <Pressable onPress={() => setPreviewVariant('pro')}>
+                      <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 13 }}>Podgląd</Text>
+                    </Pressable>
+                    <Pressable onPress={() => sendExisting(reportId, 'pro')} disabled={busy}>
+                      <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>Wyślij tę wersję</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: colors.text, fontWeight: '800' }}>Wersja dotychczasowa</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                    Obecny list z tabelą transakcji, bez mapy.
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+                    <Pressable onPress={() => setPreviewVariant('classic')}>
+                      <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 13 }}>Podgląd</Text>
+                    </Pressable>
+                    <Pressable onPress={() => sendExisting(reportId, 'classic')} disabled={busy}>
+                      <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>Wyślij tę wersję</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
             ) : null}
             {reportMsg ? <Text style={{ color: colors.secondary, fontSize: 12 }}>{reportMsg}</Text> : null}
             <Text style={{ color: colors.secondary, fontSize: 10, lineHeight: 14 }}>{result.coverage.disclaimer}</Text>
@@ -276,5 +300,69 @@ export default function MarketValuationCard({
         ) : null}
       </View>
     </View>
+    <ReportPreviewModal
+      visible={previewVariant != null}
+      html={previewVariant === 'pro' ? htmlPro || htmlClassic : htmlClassic || htmlPro}
+      title={previewVariant === 'pro' ? 'Wersja dla klienta' : 'Wersja dotychczasowa'}
+      colors={colors}
+      onClose={() => setPreviewVariant(null)}
+      onSend={() => {
+        if (reportId && previewVariant) sendExisting(reportId, previewVariant);
+      }}
+      busy={busy}
+    />
+    </>
+  );
+}
+
+function ReportPreviewModal({
+  visible,
+  html,
+  title,
+  colors,
+  onClose,
+  onSend,
+  busy,
+}: {
+  visible: boolean;
+  html: string;
+  title: string;
+  colors: Props['colors'];
+  onClose: () => void;
+  onSend: () => void;
+  busy: boolean;
+}) {
+  const WebView = getSafeWebView();
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 54 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>{title}</Text>
+          <Pressable onPress={onClose} hitSlop={10}>
+            <Text style={{ color: colors.accent, fontWeight: '800' }}>Zamknij</Text>
+          </Pressable>
+        </View>
+        {WebView && html ? (
+          <WebView
+            source={{ html } as { uri: string }}
+            style={{ flex: 1, backgroundColor: '#fff' }}
+            originWhitelist={['*']}
+          />
+        ) : (
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <Text style={{ color: colors.secondary, lineHeight: 20 }}>
+              Podgląd HTML jest dostępny na www. Tu możesz od razu wysłać wybraną wersję.
+            </Text>
+          </ScrollView>
+        )}
+        <Pressable
+          onPress={onSend}
+          disabled={busy}
+          style={{ margin: 16, backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}
+        >
+          <Text style={{ color: '#000', fontWeight: '900' }}>{busy ? 'Wysyłam…' : 'Wyślij tę wersję'}</Text>
+        </Pressable>
+      </View>
+    </Modal>
   );
 }

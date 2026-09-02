@@ -23,6 +23,7 @@ import {
 import { promoteMobileOfferListing } from "../../utils/mobileOfferPromote";
 import { shareListingLink } from "../../utils/offerShareUrls";
 import { isFacebookPostPermalink } from "../../lib/marketingChannel";
+import { groupPortalPath } from "../../lib/portalActivityStacks";
 
 export type MarketingActivity = {
   id: number;
@@ -215,9 +216,11 @@ export default function SellerMarketingCard({
   const [decisionKind, setDecisionKind] = useState("price");
   const [decisionDueAt, setDecisionDueAt] = useState("");
   const [openSection, setOpenSection] = useState<
-    "external" | "plan" | "decision" | null
+    "external" | "plan" | "decision" | "facebook" | "channels" | "feed" | null
   >(null);
-  const [feedLimit, setFeedLimit] = useState(12);
+  const [feedLimit, setFeedLimit] = useState(5);
+  const [fbListLimit, setFbListLimit] = useState(4);
+  const [openFeedStack, setOpenFeedStack] = useState<string | null>(null);
   const [pickedFbOfferId, setPickedFbOfferId] = useState<number | null>(
     linkedOfferId,
   );
@@ -253,7 +256,41 @@ export default function SellerMarketingCard({
     ]);
     return activities.filter((item) => kinds.has(item.kind));
   }, [activities]);
-  const marketingFeed = allMarketingFeed.slice(0, feedLimit);
+  const feedStacks = useMemo(
+    () =>
+      groupPortalPath(
+        allMarketingFeed.map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          title: item.title,
+          body: item.body,
+          createdAt: item.createdAt,
+          portal:
+            typeof item.metadata?.portal === "string"
+              ? item.metadata.portal
+              : null,
+          siteName:
+            typeof item.metadata?.siteName === "string"
+              ? item.metadata.siteName
+              : null,
+          groupName:
+            typeof item.metadata?.groupName === "string"
+              ? item.metadata.groupName
+              : null,
+        })),
+        {
+          activePortals: (sellerMarketing?.activeChannels || []).map(
+            (channel) => channel.portal,
+          ),
+        },
+      ),
+    [allMarketingFeed, sellerMarketing?.activeChannels],
+  );
+  const renewalSoon = (sellerMarketing?.activeChannels || []).filter((channel) => {
+    if (!channel.renewalDueAt) return false;
+    const due = new Date(channel.renewalDueAt).getTime();
+    return Number.isFinite(due) && due - Date.now() < 7 * 86400000;
+  }).length;
 
   const runAction = async (
     action: string,
@@ -597,34 +634,65 @@ export default function SellerMarketingCard({
           lineHeight: 18,
         }}
       >
-        Rejestruj publikacje zewnętrzne, podbijaj EstateOS i wybieraj, co klient
-        widzi w panelu.
+        Rejestruj publikacje, podbijaj EstateOS i otwieraj jedną sekcję na raz — bez ściany wpisów.
       </Text>
       <View style={styles.metricsRow}>
-        <View style={[styles.metric, { backgroundColor: colors.input }]}>
+        <Pressable
+          onPress={() =>
+            setOpenSection((current) => (current === "channels" ? null : "channels"))
+          }
+          style={[styles.metric, { backgroundColor: colors.input }]}
+        >
           <Text style={[styles.metricValue, { color: colors.text }]}>
             {sellerMarketing?.activeChannels.length || 0}
           </Text>
           <Text style={[styles.metricLabel, { color: colors.secondary }]}>
             kanały
           </Text>
-        </View>
-        <View style={[styles.metric, { backgroundColor: colors.input }]}>
+        </Pressable>
+        <Pressable
+          onPress={() =>
+            setOpenSection((current) =>
+              current === "facebook" ? null : "facebook",
+            )
+          }
+          style={[styles.metric, { backgroundColor: colors.input }]}
+        >
           <Text style={[styles.metricValue, { color: colors.text }]}>
-            {allMarketingFeed.filter((item) => item.visibleToClient).length}
+            {sellerMarketing?.facebookGroups?.length || 0}
           </Text>
           <Text style={[styles.metricLabel, { color: colors.secondary }]}>
-            dla klienta
+            grupy FB
           </Text>
-        </View>
-        <View style={[styles.metric, { backgroundColor: colors.input }]}>
-          <Text style={[styles.metricValue, { color: colors.text }]}>
-            {sellerMarketing?.pendingDecisions.length || 0}
+        </Pressable>
+        <Pressable
+          onPress={() =>
+            setOpenSection((current) =>
+              current === "channels" ? null : "channels",
+            )
+          }
+          style={[styles.metric, { backgroundColor: colors.input }]}
+        >
+          <Text style={[styles.metricValue, { color: renewalSoon ? "#F59E0B" : colors.text }]}>
+            {renewalSoon}
           </Text>
           <Text style={[styles.metricLabel, { color: colors.secondary }]}>
-            decyzje
+            do odnowienia
           </Text>
-        </View>
+        </Pressable>
+        <Pressable
+          onPress={() =>
+            setOpenSection((current) => (current === "feed" ? null : "feed"))
+          }
+          style={[styles.metric, { backgroundColor: colors.input }]}
+        >
+          <Text style={[styles.metricValue, { color: colors.text }]}>
+            {allMarketingFeed.length}
+          </Text>
+          <Text style={[styles.metricLabel, { color: colors.secondary }]}>
+            historia
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.row}>
@@ -959,14 +1027,38 @@ export default function SellerMarketingCard({
         </>
       ) : null}
 
-      {(sellerMarketing?.facebookGroups?.length || 0) > 0 ? (
-        <View style={{ marginTop: 14 }}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-            GRUPY FACEBOOK
-          </Text>
-          <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
+      {(sellerMarketing?.facebookGroups?.length || 0) > 0 || facebookPending ? (
+        <View style={{ marginTop: 6 }}>
+          <Pressable
+            onPress={() =>
+              setOpenSection((current) =>
+                current === "facebook" ? null : "facebook",
+              )
+            }
+            style={[styles.sectionToggle, { borderColor: "rgba(24,119,242,0.35)" }]}
+          >
+            <Ionicons name="logo-facebook" size={18} color="#1877F2" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "800" }}>
+                Grupy Facebook · {sellerMarketing?.facebookGroups?.length || 0}
+              </Text>
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                {facebookPending
+                  ? `Dokończ wpis na „${facebookPending.groupName}”`
+                  : "Wystaw ogłoszenie, potem wklej link do posta"}
+              </Text>
+            </View>
+            <Ionicons
+              name={openSection === "facebook" || facebookPending ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.secondary}
+            />
+          </Pressable>
+          {openSection === "facebook" || facebookPending ? (
+        <View>
+          <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18, marginTop: 8 }}>
             Otworzy się Facebook z kartą ogłoszenia. Żeby klik w panelu otwierał
-            ogłoszenie, a nie samą grupę, wklej link do konkretnego posta (⋯ → Kopiuj link).
+            ogłoszenie, wklej link do konkretnego posta (⋯ → Kopiuj link).
           </Text>
           {facebookPending ? (
             <View
@@ -1070,7 +1162,7 @@ export default function SellerMarketingCard({
               ))}
             </View>
           ) : null}
-          {sellerMarketing?.facebookGroups.map((group) => (
+          {(sellerMarketing?.facebookGroups || []).slice(0, fbListLimit).map((group) => (
             <View
               key={group.key}
               style={[
@@ -1123,14 +1215,50 @@ export default function SellerMarketingCard({
               </Pressable>
             </View>
           ))}
+          {(sellerMarketing?.facebookGroups?.length || 0) > fbListLimit ? (
+            <Pressable
+              onPress={() => setFbListLimit((current) => current + 8)}
+              style={[styles.secondaryBtn, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.accent, fontWeight: "800" }}>
+                Pokaż pozostałe {(sellerMarketing?.facebookGroups?.length || 0) - fbListLimit} grup
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+          ) : null}
         </View>
       ) : null}
 
       {(sellerMarketing?.activeChannels?.length || 0) > 0 ? (
-        <View style={{ marginTop: 14 }}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-            AKTYWNE KANAŁY
-          </Text>
+        <View style={{ marginTop: 6 }}>
+          <Pressable
+            onPress={() =>
+              setOpenSection((current) =>
+                current === "channels" ? null : "channels",
+              )
+            }
+            style={[styles.sectionToggle, { borderColor: colors.border }]}
+          >
+            <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "800" }}>
+                Aktywne kanały · {sellerMarketing?.activeChannels.length}
+              </Text>
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                {renewalSoon
+                  ? `${renewalSoon} do odnowienia w tym tygodniu`
+                  : "Otodom, grupy i terminy odnowienia"}
+              </Text>
+            </View>
+            <Ionicons
+              name={openSection === "channels" ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.secondary}
+            />
+          </Pressable>
+          {openSection === "channels" ? (
+          <>
           {sellerMarketing?.activeChannels.map((channel) => {
             const tone = renewalTone(channel.renewalDueAt);
             return (
@@ -1205,6 +1333,8 @@ export default function SellerMarketingCard({
               </View>
             );
           })}
+          </>
+          ) : null}
         </View>
       ) : null}
 
@@ -1506,83 +1636,104 @@ export default function SellerMarketingCard({
         </View>
       ) : null}
 
-      {marketingFeed.length > 0 ? (
-        <View style={{ marginTop: 14 }}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-            OSTATNIE DZIAŁANIA
-          </Text>
-          {marketingFeed.map((item) => (
-            <View
-              key={item.id}
-              style={[styles.feedRow, { borderColor: colors.border }]}
-            >
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    color: colors.text,
-                    fontWeight: "800",
-                    fontSize: 13,
-                  }}
-                >
-                  {item.title || item.kind}
-                </Text>
-                {item.body ? (
-                  <Text
-                    style={{
-                      color: colors.secondary,
-                      fontSize: 12,
-                      marginTop: 2,
-                    }}
-                    numberOfLines={2}
-                  >
-                    {item.body}
-                  </Text>
-                ) : null}
-                {typeof item.metadata?.portal === "string" ||
-                typeof item.metadata?.siteName === "string" ? (
-                  <Text
-                    style={{
-                      color: colors.secondary,
-                      fontSize: 11,
-                      marginTop: 4,
-                    }}
-                  >
-                    {String(
-                      item.metadata?.portal || item.metadata?.siteName || "",
-                    )}
-                    {typeof item.metadata?.renewalDueAt === "string"
-                      ? ` · odnowienie ${formatDateLabel(item.metadata.renewalDueAt)}`
-                      : ""}
-                  </Text>
-                ) : null}
-                <Text
-                  style={{
-                    color: colors.secondary,
-                    fontSize: 10,
-                    marginTop: 4,
-                  }}
-                >
-                  {formatDateLabel(item.createdAt)} ·{" "}
-                  {item.visibleToClient ? "widoczne" : "tylko agent"}
-                </Text>
-              </View>
-              <Switch
-                value={Boolean(item.visibleToClient)}
-                disabled={Boolean(busy)}
-                onValueChange={(value) => void toggleVisibility(item.id, value)}
-              />
-            </View>
-          ))}
-          {allMarketingFeed.length > marketingFeed.length ? (
-            <Pressable
-              onPress={() => setFeedLimit((current) => current + 20)}
-              style={[styles.secondaryBtn, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.accent, fontWeight: "800" }}>
-                Pokaż starsze działania
+      {allMarketingFeed.length > 0 ? (
+        <View style={{ marginTop: 6 }}>
+          <Pressable
+            onPress={() =>
+              setOpenSection((current) => (current === "feed" ? null : "feed"))
+            }
+            style={[styles.sectionToggle, { borderColor: colors.border }]}
+          >
+            <Ionicons name="time-outline" size={18} color={colors.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "800" }}>
+                Historia · {allMarketingFeed.length}
               </Text>
-            </Pressable>
-          ) : null}
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                {allMarketingFeed[0]?.title || "Ostatnie publikacje i raporty"}
+              </Text>
+            </View>
+            <Ionicons
+              name={openSection === "feed" ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.secondary}
+            />
+          </Pressable>
+          {openSection === "feed"
+            ? feedStacks.map((stack) => {
+                const open = openFeedStack === stack.kind;
+                const items = stack.items.slice(0, open ? feedLimit : 0);
+                return (
+                  <View key={stack.kind} style={{ marginTop: 8 }}>
+                    <Pressable
+                      onPress={() =>
+                        setOpenFeedStack((current) =>
+                          current === stack.kind ? null : stack.kind,
+                        )
+                      }
+                      style={[
+                        styles.feedRow,
+                        { borderColor: colors.border, backgroundColor: colors.input },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontWeight: "800", fontSize: 13 }}>
+                          {stack.label} · {stack.items.length}
+                        </Text>
+                        <Text
+                          style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}
+                          numberOfLines={2}
+                        >
+                          {stack.summary}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={open ? "chevron-up" : "chevron-down"}
+                        size={16}
+                        color={colors.secondary}
+                      />
+                    </Pressable>
+                    {open
+                      ? items.map((item) => {
+                          const full = allMarketingFeed.find((row) => row.id === item.id);
+                          if (!full) return null;
+                          return (
+                            <View
+                              key={item.id}
+                              style={[styles.feedRow, { borderColor: colors.border, marginLeft: 10 }]}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: colors.text, fontWeight: "800", fontSize: 13 }}>
+                                  {full.title || full.kind}
+                                </Text>
+                                <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }}>
+                                  {formatDateLabel(full.createdAt)} ·{" "}
+                                  {full.visibleToClient ? "widoczne" : "tylko agent"}
+                                </Text>
+                              </View>
+                              <Switch
+                                value={Boolean(full.visibleToClient)}
+                                disabled={Boolean(busy)}
+                                onValueChange={(value) => void toggleVisibility(full.id, value)}
+                              />
+                            </View>
+                          );
+                        })
+                      : null}
+                    {open && stack.items.length > items.length ? (
+                      <Pressable
+                        onPress={() => setFeedLimit((current) => current + 8)}
+                        style={[styles.secondaryBtn, { borderColor: colors.border }]}
+                      >
+                        <Text style={{ color: colors.accent, fontWeight: "800" }}>
+                          Pokaż starsze w tej grupie
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })
+            : null}
         </View>
       ) : null}
 

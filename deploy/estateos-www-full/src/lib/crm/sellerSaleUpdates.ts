@@ -135,6 +135,7 @@ export async function recordMarketReportForClient(params: {
   mid: number;
   score?: number | null;
   reportId?: number | null;
+  reportVariant?: 'classic' | 'pro' | null;
   visibleToClient?: boolean;
 }) {
   const emailsLabel = params.emails.join(', ');
@@ -147,6 +148,7 @@ export async function recordMarketReportForClient(params: {
     metadata: {
       emails: params.emails,
       reportId: params.reportId ?? null,
+      reportVariant: params.reportVariant || 'classic',
       score: params.score ?? null,
     },
     visibleToClient: params.visibleToClient !== false,
