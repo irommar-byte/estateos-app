@@ -49,6 +49,7 @@ import AgencyClientCriteriaEditor from "@/components/crm/AgencyClientCriteriaEdi
 import { defaultWebRadarFilters, type WebRadarFilters } from "@/lib/radarCalibrationWeb";
 import { formatClientFeedbackForAgent, parseClientOfferFeedback, sentimentLabel } from "@/lib/crm/clientPortalFeedback";
 import { type ClientNextStep } from "@/lib/crm/clientNextStep";
+import type { BuyerAgentTask } from "@/lib/crm/buyerAgentTasks";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 import MatchImportAgentMeta, { type MatchImportBrief } from "@/components/crm/MatchImportAgentMeta";
@@ -115,6 +116,7 @@ type ClientDetail = AgencyClientListItem & {
     createdAt: string;
   } | null;
   nextStep?: ClientNextStep | null;
+  buyerAgentTasks?: BuyerAgentTask[];
   activities?: Array<{
     id: number;
     kind: string;
@@ -322,23 +324,32 @@ export default function CrmClientsWorkspace() {
     void loadClients();
   }, [loadClients]);
 
-  const loadDetail = useCallback(async (id: number) => {
-    setDetailLoading(true);
+  const loadDetail = useCallback(async (id: number, options?: { silent?: boolean }) => {
+    if (!options?.silent) setDetailLoading(true);
     try {
       const res = await fetch(`/api/crm/clients/${id}`, { cache: "no-store" });
       const json = await res.json();
       if (json.success) {
         setDetail(json.client);
-        setSelectedOffers(new Set());
+        if (!options?.silent) setSelectedOffers(new Set());
       }
     } finally {
-      setDetailLoading(false);
+      if (!options?.silent) setDetailLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId);
     else setDetail(null);
+  }, [selectedId, loadDetail]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const interval = window.setInterval(
+      () => void loadDetail(selectedId, { silent: true }),
+      12_000,
+    );
+    return () => window.clearInterval(interval);
   }, [selectedId, loadDetail]);
 
   useEffect(() => {
@@ -385,6 +396,25 @@ export default function CrmClientsWorkspace() {
     } finally {
       setCardBusyId(null);
       window.setTimeout(() => setToast(""), 4500);
+    }
+  };
+
+  const resolveBuyerAgentTask = async (activityId: number) => {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${detail.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve_buyer_agent_task", activityId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json?.error || "Nie udało się zamknąć zadania."));
+      await loadDetail(detail.id, { silent: true });
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Nie udało się zamknąć zadania.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -677,6 +707,10 @@ export default function CrmClientsWorkspace() {
     }
     if (action === "propose_presentation") {
       document.getElementById("crm-matches")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (action === "respond_to_client") {
+      document.getElementById("crm-agent-tasks")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     if (action === "finish_acquisition" || action === "create_offer") {
@@ -1129,6 +1163,80 @@ export default function CrmClientsWorkspace() {
                   className={eosBtn("secondary", { size: "sm" })}
                 />
               </div>
+
+              {detail.type === "BUYER" && (detail.buyerAgentTasks || []).length ? (
+                <section
+                  id="crm-agent-tasks"
+                  className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">
+                        Wymaga Twojej reakcji · {detail.buyerAgentTasks?.length}
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--eos-muted)]">
+                        Komentarze i decyzje klienta pojawiają się tutaj na bieżąco.
+                      </p>
+                    </div>
+                    <CrmClientLiveChat
+                      clientId={detail.id}
+                      clientName={`${detail.firstName} ${detail.lastName}`.trim()}
+                      className={eosBtn("home", { size: "sm" })}
+                    />
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {(detail.buyerAgentTasks || []).slice(0, 3).map((task) => (
+                      <article
+                        key={task.id}
+                        className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-[var(--eos-text)]">{task.title}</p>
+                            <p className="mt-1 text-sm leading-relaxed text-[var(--eos-text)]">{task.body}</p>
+                            <p className="mt-1 text-[10px] font-semibold text-[var(--eos-muted)]">
+                              {new Date(task.createdAt).toLocaleString("pl-PL")}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            {task.offerId ? (
+                              <Link
+                                href={`/oferta/${task.offerId}`}
+                                target="_blank"
+                                className={eosBtn("secondary", { size: "sm" })}
+                              >
+                                Otwórz ofertę
+                              </Link>
+                            ) : null}
+                            {task.kind === "viewing" ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  document
+                                    .getElementById("crm-matches")
+                                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                                }
+                                className={eosBtn("home", { size: "sm" })}
+                              >
+                                Umów prezentację
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void resolveBuyerAgentTask(task.activityId)}
+                              className={eosBtn("secondary", { size: "sm" })}
+                            >
+                              <Check className="size-3.5" />
+                              Załatwione
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-3">
                 <a

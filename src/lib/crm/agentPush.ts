@@ -7,6 +7,7 @@ export function crmAgentPushData(clientId: number, extra: Record<string, unknown
     notificationType: 'crm_client',
     href: `/moje-konto/crm?tab=klienci&clientId=${clientId}`,
     deeplink: `estateos://crm/client/${clientId}`,
+    threadIdentifier: crmClientChatThreadId(clientId),
     ...extra,
     clientId,
   };

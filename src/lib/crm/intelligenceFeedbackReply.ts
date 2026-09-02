@@ -44,7 +44,7 @@ export async function handleIntelligenceAfterFeedback(params: {
 
   const match = await prisma.agencyClientMatch.findFirst({
     where: { id: params.matchId, clientId: params.clientId },
-    select: { clientFeedback: true },
+    select: { clientFeedback: true, offerId: true },
   });
   const feedback = parseClientOfferFeedback(match?.clientFeedback);
   const handoffReason = feedbackRequestsHandoff(feedback);
@@ -57,7 +57,8 @@ export async function handleIntelligenceAfterFeedback(params: {
         kind: INTELLIGENCE_ACTIVITY.HANDOFF,
         title: 'Przekazanie do agenta',
         body: turn.body,
-        metadata: { matchId: params.matchId },
+        offerId: match?.offerId || null,
+        metadata: { matchId: params.matchId, reason: handoffReason },
       },
     });
     await sendPortalChat({
@@ -67,21 +68,25 @@ export async function handleIntelligenceAfterFeedback(params: {
       content: turn.body,
     }).catch(() => {});
     await notifyAgentHandoff(params.agencyUserId, params.clientId, handoffReason);
-    return { action: 'handoff', message: handoffReason };
+    if (feedback.sentiment === 'like') {
+      return { action: 'handoff', message: handoffReason };
+    }
   }
 
-  const extreme = await detectExtremeCheckback({
-    clientId: params.clientId,
-    agencyUserId: params.agencyUserId,
-    agentFirstName: params.agentFirstName,
-  });
-  if (extreme) {
-    await createAndDeliverCheckback({
+  if (!handoffReason) {
+    const extreme = await detectExtremeCheckback({
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
-      turn: extreme,
+      agentFirstName: params.agentFirstName,
     });
-    return { action: 'checkback', message: extreme.body };
+    if (extreme) {
+      await createAndDeliverCheckback({
+        clientId: params.clientId,
+        agencyUserId: params.agencyUserId,
+        turn: extreme,
+      });
+      return { action: 'checkback', message: extreme.body };
+    }
   }
 
   let result = await sendIntelligenceOffer({
@@ -116,6 +121,9 @@ export async function handleIntelligenceAfterFeedback(params: {
 
   if (result.sent) {
     return { action: 'sent', emailSent: result.emailSent };
+  }
+  if (handoffReason) {
+    return { action: 'handoff', message: handoffReason };
   }
   return { action: 'none', message: result.pick.skipReason || undefined };
 }

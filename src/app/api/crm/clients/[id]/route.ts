@@ -69,6 +69,7 @@ import {
 import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
 import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
 import { getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
+import { buildBuyerAgentTasks } from '@/lib/crm/buyerAgentTasks';
 import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
 import { attachMatchImportBrief, listMatchImportBriefs } from '@/lib/crm/matchImportProvenance';
 
@@ -137,6 +138,10 @@ export async function GET(req: Request, ctx: RouteCtx) {
   });
 
   const pendingCheckback = await getPendingCheckback(client.id);
+  const buyerAgentTasks =
+    client.type === 'BUYER'
+      ? buildBuyerAgentTasks(client.matches, client.activities)
+      : [];
 
   const sellerMarketing =
     client.type === 'SELLER'
@@ -171,6 +176,11 @@ export async function GET(req: Request, ctx: RouteCtx) {
     feedbackCount: client.matches.filter((m) =>
       clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)),
     ).length,
+    viewingIntentCount: client.matches.filter(
+      (m) => parseClientOfferFeedback(m.clientFeedback).sentiment === 'like',
+    ).length,
+    pendingAgentTaskCount: buyerAgentTasks.length,
+    pendingAgentTaskHint: buyerAgentTasks[0]?.body || null,
     meetingStatus: meeting?.status ?? null,
     presentationStatus: presentation?.status ?? null,
     acquisitionStatus: acquisition?.status ?? null,
@@ -220,6 +230,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
       ),
       intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
       pendingCheckback,
+      buyerAgentTasks,
       meeting,
       presentation,
       journey,
@@ -428,6 +439,41 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const clientId = Number(id);
   const body = await req.json();
   const action = String(body.action || '');
+
+  if (action === 'resolve_buyer_agent_task') {
+    const activityId = Number(body.activityId);
+    if (!Number.isFinite(activityId) || activityId <= 0) {
+      return NextResponse.json({ error: 'Nieprawidłowe zadanie.' }, { status: 400 });
+    }
+    const activity = await prisma.agencyClientActivity.findFirst({
+      where: {
+        id: activityId,
+        clientId,
+        agencyUserId,
+        kind: { in: ['CLIENT_FEEDBACK', 'INTELLIGENCE_HANDOFF', 'INTELLIGENCE_STALLED'] },
+      },
+      select: { id: true, metadata: true },
+    });
+    if (!activity) {
+      return NextResponse.json({ error: 'Nie znaleziono zadania klienta.' }, { status: 404 });
+    }
+    const metadata =
+      activity.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)
+        ? (activity.metadata as Record<string, unknown>)
+        : {};
+    await prisma.agencyClientActivity.update({
+      where: { id: activity.id },
+      data: {
+        metadata: {
+          ...metadata,
+          agentStatus: 'done',
+          agentHandledAt: new Date().toISOString(),
+          agentHandledBy: agencyUserId,
+        },
+      },
+    });
+    return NextResponse.json({ success: true });
+  }
 
   if (action === 'refresh_matches') {
     const client = await prisma.agencyClient.findFirst({

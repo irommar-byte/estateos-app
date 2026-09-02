@@ -322,6 +322,47 @@ test('intelligenceAdjustScore rejects offer below minYear and minRooms', () => {
   assert.ok(good.score > 0);
 });
 
+test('unconfirmed taste hints do not become hard room or price limits', () => {
+  const taste = learnFromFeedback([
+    {
+      offerId: 1,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        phrases: ['Za mało pokoi', 'Za drogo'],
+        note: 'Dwa oddzielne pokoje albo trzy pokoje.',
+      }),
+      offer: { id: 1, rooms: 2, price: 850_000 },
+    },
+    {
+      offerId: 2,
+      clientFeedback: serializeClientOfferFeedback({
+        sentiment: 'dislike',
+        phrases: ['Za drogo'],
+      }),
+      offer: { id: 2, rooms: 3, price: 900_000 },
+    },
+  ]);
+  taste.minRoomsHint = 3;
+  taste.maxPriceHint = 800_000;
+
+  const adjusted = intelligenceAdjustScore({
+    radarScore: 95,
+    taste,
+    maxPrice: 1_000_000,
+    pref: { minRooms: null },
+    offer: {
+      ...baseOffer,
+      id: 99,
+      rooms: 2,
+      price: 820_000,
+      description: 'Dwa oddzielne pokoje, osobna kuchnia, balkon i miejsce postojowe.',
+    },
+  });
+
+  assert.ok(adjusted.score > 0);
+  assert.equal(adjusted.reasons.some((item) => /minimum 3|budżet 800/.test(item)), false);
+});
+
 test('preferenceUpdatesFromTaste writes minYear only via checkback confirm, not auto', () => {
   const taste = learnFromFeedback([
     {

@@ -497,6 +497,7 @@ export async function registerPortalDevice(params: {
   platform?: string;
   deviceModel?: string;
   appVersion?: string;
+  requesterUserId?: number | null;
 }): Promise<{ ok: true; linkedUserId: number } | { ok: false; status: number; error: string }> {
   const token = String(params.portalToken || '').trim();
   const expoPushToken = String(params.expoPushToken || '').replace(/\s+/g, '').trim();
@@ -536,6 +537,43 @@ export async function registerPortalDevice(params: {
   }
   if (!linkedUserId) {
     return { ok: false, status: 409, error: 'Nie można powiązać urządzenia — brak e-maila lub telefonu w CRM.' };
+  }
+
+  if (params.requesterUserId && params.requesterUserId !== linkedUserId) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'To urządzenie jest zalogowane na inne konto niż klient tego panelu.',
+    };
+  }
+
+  const existingOwners = await prisma.device.findMany({
+    where: {
+      expoPushToken,
+      isActive: true,
+      userId: { not: linkedUserId },
+    },
+    select: {
+      user: {
+        select: {
+          role: true,
+          agencyMembership: { select: { status: true } },
+        },
+      },
+    },
+  });
+  const belongsToActiveAgent = existingOwners.some(
+    ({ user }) =>
+      user.role === 'AGENT' ||
+      user.role === 'ADMIN' ||
+      user.agencyMembership?.status === 'ACTIVE',
+  );
+  if (belongsToActiveAgent) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Token powiadomień należy do aktywnego konta agenta i nie może zostać przeniesiony do panelu klienta.',
+    };
   }
 
   const platform = parseDevicePlatform(params.platform);

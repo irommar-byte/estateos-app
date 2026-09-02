@@ -19,6 +19,8 @@ import { buildOfferDialogueTurn } from '@/lib/crm/intelligenceDialogue';
 import { clientAcceptsScarceBudget, getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
 import { sendPortalChat } from '@/lib/crm/portalChat';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
+import { sendNotification } from '@/lib/core/notification.core';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 
 function lastFeedbackLesson(
   matches: Array<{
@@ -269,16 +271,24 @@ export async function pickIntelligenceOffer(
       locks,
     });
     if (writeback.notes.length) {
-      await prisma.agencyClientActivity.create({
-        data: {
-          clientId,
-          agencyUserId: client.agencyUserId,
-          kind: 'INTELLIGENCE_TASTE',
-          title: 'EstateOS™ Intelligence — nauka z reakcji',
-          body: writeback.notes.join('\n'),
-          metadata: { notes: writeback.notes, locks, pendingConfirm: true },
-        },
+      const body = writeback.notes.join('\n');
+      const latest = await prisma.agencyClientActivity.findFirst({
+        where: { clientId, kind: 'INTELLIGENCE_TASTE' },
+        orderBy: { createdAt: 'desc' },
+        select: { body: true },
       });
+      if (latest?.body !== body) {
+        await prisma.agencyClientActivity.create({
+          data: {
+            clientId,
+            agencyUserId: client.agencyUserId,
+            kind: 'INTELLIGENCE_TASTE',
+            title: 'EstateOS™ Intelligence — nauka z reakcji',
+            body,
+            metadata: { notes: writeback.notes, locks, pendingConfirm: true },
+          },
+        });
+      }
     }
   }
 
@@ -680,6 +690,51 @@ export async function tickClientIntelligence(): Promise<{
         sent += 1;
         sentForClient += 1;
       } else {
+        if (
+          result.pick.skipReason?.includes('Brak oferty') ||
+          result.pick.skipReason?.includes('próg')
+        ) {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const recentStall = await prisma.agencyClientActivity.findFirst({
+            where: {
+              clientId: client.id,
+              kind: 'INTELLIGENCE_STALLED',
+              createdAt: { gte: since },
+            },
+            select: { id: true },
+          });
+          if (!recentStall) {
+            const body = [
+              result.pick.skipReason,
+              result.pick.considered
+                ? `Sprawdziłem ${result.pick.considered} niewysłanych dopasowań, ale żadne nie przeszło potwierdzonych kryteriów i nauki z reakcji.`
+                : 'W aktualnej puli nie ma nowej oferty do bezpiecznej wysyłki.',
+              'Sprawdź pytania klienta albo kryteria; asystent nadal obserwuje rynek.',
+            ].join(' ');
+            await prisma.agencyClientActivity.create({
+              data: {
+                clientId: client.id,
+                agencyUserId: client.agencyUserId,
+                kind: 'INTELLIGENCE_STALLED',
+                title: 'Asystent nie ma bezpiecznej oferty',
+                body,
+                metadata: {
+                  agentStatus: 'pending',
+                  skipReason: result.pick.skipReason,
+                  considered: result.pick.considered,
+                },
+              },
+            });
+            await sendNotification({
+              userId: client.agencyUserId,
+              type: 'CRM_EVENT',
+              title: 'Radar klienta wymaga decyzji',
+              body,
+              data: crmAgentPushData(client.id, { kind: 'INTELLIGENCE_STALLED' }),
+              idempotencyKey: `intelligence-stalled-${client.id}-${new Date().toISOString().slice(0, 10)}`,
+            }).catch(() => {});
+          }
+        }
         break;
       }
     }

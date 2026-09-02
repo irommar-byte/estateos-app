@@ -388,22 +388,13 @@ export function intelligenceAdjustScore(params: {
   const reasons: string[] = [];
   const text = haystack(offer);
 
-  const minYear = Math.max(
-    Number(pref?.minYear || 0),
-    Number(taste.minYearHint || 0),
-  );
-  const minRooms = Math.max(
-    Number(pref?.minRooms || 0),
-    Number(taste.minRoomsHint || 0),
-  );
-  const maxArea =
-    pref?.maxArea != null && taste.maxAreaHint != null
-      ? Math.min(Number(pref.maxArea), Number(taste.maxAreaHint))
-      : pref?.maxArea ?? taste.maxAreaHint ?? null;
-  const minArea = Math.max(
-    Number(pref?.minArea || 0),
-    Number(taste.minAreaHint || 0),
-  );
+  // Twarde odcięcie bierze wyłącznie potwierdzoną ankietę. Sygnał z jednej
+  // reakcji pozostaje lekcją scoringu do czasu checkbacku — nie może po cichu
+  // zamienić np. „2 pokoje bez aneksu lub 3 pokoje” w bezwzględne min. 3 pokoje.
+  const minYear = Number(pref?.minYear || 0);
+  const minRooms = Number(pref?.minRooms || 0);
+  const maxArea = pref?.maxArea ?? null;
+  const minArea = Number(pref?.minArea || 0);
 
   const yearBuilt = offer.yearBuilt != null ? Number(offer.yearBuilt) : null;
   if (minYear > 1900 && yearBuilt != null && Number.isFinite(yearBuilt) && yearBuilt < minYear) {
@@ -427,11 +418,9 @@ export function intelligenceAdjustScore(params: {
     reasons.push(`Metraż ${offer.area} m² jest poniżej oczekiwanego minimum ${minArea} m².`);
   }
 
-  const budgetCap = effectiveMaxPrice({
-    prefMaxPrice: maxPrice,
-    taste,
-    strictBudget: phraseCount(taste, 'Za drogo') >= 2,
-  });
+  // Tak samo budżet z reakcji staje się twardym limitem dopiero po
+  // potwierdzeniu i zapisie. Wcześniej działa niżej jako kara punktowa.
+  const budgetCap = maxPrice != null && Number(maxPrice) > 0 ? Number(maxPrice) : null;
   const offerPrice = offer.price != null ? Number(offer.price) : null;
   if (
     !acceptScarceBudget &&

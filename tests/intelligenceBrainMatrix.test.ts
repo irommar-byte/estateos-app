@@ -392,6 +392,29 @@ test('handoff detects Polish viewing intent (spotkanie, umówmy, zobaczyć)', ()
   assert.match(handoff!, /agentowi/i);
 });
 
+test('handoff detects the viewing button and a concrete question for the agent', () => {
+  assert.match(
+    feedbackRequestsHandoff({
+      sentiment: 'like',
+      phrases: [],
+      note: '',
+      liked: '',
+      disliked: '',
+    }) || '',
+    /Chcę oglądać/i,
+  );
+  assert.match(
+    feedbackRequestsHandoff({
+      sentiment: 'maybe',
+      phrases: [],
+      note: 'Sprawdź proszę, czy można dokupić miejsce postojowe.',
+      liked: '',
+      disliked: '',
+    }) || '',
+    /czeka na konkretną odpowiedź/i,
+  );
+});
+
 test('long unrelated text returns null for checkback mapping', () => {
   assert.equal(
     mapChatTextToCheckbackOption('Chciałbym umówić spotkanie w środę o 17:00 i omówić finansowanie', yesNo),

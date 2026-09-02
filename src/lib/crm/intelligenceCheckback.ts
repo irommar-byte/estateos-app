@@ -17,6 +17,8 @@ import {
 } from '@/lib/crm/intelligenceDialogue';
 import { sendPortalChat } from '@/lib/crm/portalChat';
 import { ensureIntelligenceLockedFieldsColumn } from '@/lib/crm/clientIntelligenceRun';
+import { sendNotification } from '@/lib/core/notification.core';
+import { crmAgentPushData } from '@/lib/crm/agentPush';
 
 export const INTELLIGENCE_ACTIVITY = {
   CHECKBACK: 'INTELLIGENCE_CHECKBACK',
@@ -325,6 +327,7 @@ export async function respondToIntelligenceCheckback(params: {
       }
       if (confirmed.agentNote) {
         agentNote = confirmed.agentNote;
+        followUp = 'send_offer';
       } else if (Object.keys(confirmed.data).length) {
         followUp = 'send_offer';
       } else if (type.includes('za_drogo')) {
@@ -377,11 +380,23 @@ export async function respondToIntelligenceCheckback(params: {
       : []),
   ]);
 
+  if (agentNote) {
+    await sendNotification({
+      userId: params.agencyUserId,
+      type: 'CRM_EVENT',
+      title: 'Klient czeka na Twoją decyzję',
+      body: agentNote,
+      data: crmAgentPushData(params.clientId, {
+        kind: INTELLIGENCE_ACTIVITY.HANDOFF,
+      }),
+    }).catch(() => {});
+  }
+
   const ack =
     params.optionId === 'no'
       ? 'Dzięki — poprawię zrozumienie. Możesz doprecyzować przy następnej ofercie.'
       : agentNote
-        ? 'Zostaję przy ustaleniach z agentem — wróci z konkretem.'
+        ? 'Przekazuję to agentowi i równolegle szukam dalej w ustalonych kryteriach.'
         : 'Dzięki — biorę to pod uwagę i szukam dalej.';
 
   await sendPortalChat({
@@ -396,10 +411,19 @@ export async function respondToIntelligenceCheckback(params: {
     await refreshAgencyClientMatches(params.clientId).catch(() => {});
   }
 
-  return { ok: true, followUp: agentNote ? 'none' : followUp };
+  return { ok: true, followUp };
 }
 
-export function feedbackRequestsHandoff(feedback: { phrases: string[]; note: string; liked: string; disliked: string }): string | null {
+export function feedbackRequestsHandoff(feedback: {
+  sentiment?: 'like' | 'maybe' | 'dislike' | null;
+  phrases: string[];
+  note: string;
+  liked: string;
+  disliked: string;
+}): string | null {
+  if (feedback.sentiment === 'like') {
+    return 'Klient kliknął „Chcę oglądać” — wybierz termin prezentacji i skontaktuj się z nim.';
+  }
   const blob = `${feedback.note} ${feedback.liked} ${feedback.disliked} ${feedback.phrases.join(' ')}`.toLowerCase();
   const normalized = blob
     .normalize('NFD')
@@ -409,6 +433,11 @@ export function feedbackRequestsHandoff(feedback: { phrases: string[]; note: str
     /(oglad|prezentac|spotkan|zadzwon|telefon|umow|zobacz|chce zobaczyc|chce zobacz)/.test(normalized)
   ) {
     return 'Widzę, że chcesz przejść do oglądania albo rozmowy — przekazuję to agentowi.';
+  }
+  if (
+    /(sprawdz|dowiedz|dopytaj|zapytaj|potwierdz|czy mozna|czy jest|dokupic|dostepnosc)/.test(normalized)
+  ) {
+    return 'Klient prosi o sprawdzenie szczegółu oferty i czeka na konkretną odpowiedź agenta.';
   }
   return null;
 }
