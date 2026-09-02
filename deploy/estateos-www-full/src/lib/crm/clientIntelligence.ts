@@ -453,8 +453,13 @@ export function intelligenceAdjustScore(params: {
     );
   }
 
-  const learnedMaxPrice = Number(taste.maxPriceHint || 0);
+  const learnedMaxPrice = effectiveMaxPrice({
+    prefMaxPrice: maxPrice,
+    taste,
+    strictBudget: false,
+  });
   if (
+    learnedMaxPrice != null &&
     learnedMaxPrice > 0 &&
     (budgetCap == null || learnedMaxPrice < budgetCap) &&
     offerPrice != null &&
@@ -462,7 +467,7 @@ export function intelligenceAdjustScore(params: {
     offerPrice > learnedMaxPrice
   ) {
     const overRatio = (offerPrice - learnedMaxPrice) / learnedMaxPrice;
-    const penalty = Math.min(32, 12 + Math.round(overRatio * 60));
+    const penalty = Math.min(45, 28 + Math.round(overRatio * 80));
     score -= penalty;
     reasons.push(
       `Cena przekracza roboczy poziom ${learnedMaxPrice.toLocaleString('pl-PL')} zł wyuczony z reakcji; to silna kara do czasu potwierdzenia budżetu.`,
