@@ -149,6 +149,8 @@ export default function MarketValuationPanel({
   const [alternateEmail, setAlternateEmail] = useState("");
   const [quota, setQuota] = useState<ReportQuota | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewHtmlPro, setPreviewHtmlPro] = useState<string | null>(null);
+  const [previewVariant, setPreviewVariant] = useState<"classic" | "pro">("pro");
   const [generatedReportId, setGeneratedReportId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -270,8 +272,10 @@ export default function MarketValuationPanel({
       const id = Number(json.reportId);
       setGeneratedReportId(Number.isFinite(id) && id > 0 ? id : null);
       setPreviewHtml(String(json.html || ""));
+      setPreviewHtmlPro(String(json.htmlPro || json.html || ""));
+      setPreviewVariant("pro");
       setReportState("idle");
-      setReportMsg("Raport wygenerowany — 1 punkt z limitu już pobrany. Wysyłka e-mail nic więcej nie zdejmie.");
+      setReportMsg("Wygenerowano dwie wersje — 1 punkt z limitu. Wybierz, którą wysłać klientowi. Wysyłka nic więcej nie zdejmie.");
       void loadQuota();
     } catch {
       setReportState("idle");
@@ -294,7 +298,7 @@ export default function MarketValuationPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ...reportBody(), reportId: generatedReportId }),
+        body: JSON.stringify({ ...reportBody(), reportId: generatedReportId, variant: previewVariant }),
       });
       const json = await res.json();
       if (json?.quota) setQuota(json.quota);
@@ -304,6 +308,7 @@ export default function MarketValuationPanel({
         return;
       }
       setPreviewHtml(null);
+      setPreviewHtmlPro(null);
       setReportState("sent");
       const dest = Array.isArray(json.emails) ? json.emails.join(", ") : email;
       setReportMsg(
@@ -512,28 +517,46 @@ export default function MarketValuationPanel({
         </div>
       ) : null}
 
-      {previewHtml ? (
+      {previewHtml || previewHtmlPro ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center">
           <div className="eos-lux-panel flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] shadow-2xl">
             <div className="border-b border-[rgba(196,163,90,0.2)] px-5 py-4">
-              <p className="eos-portal-label eos-portal-label--ok">Raport wygenerowany</p>
-              <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Limit już pobrany — możesz wysłać e-mail</h3>
+              <p className="eos-portal-label eos-portal-label--ok">Dwie wersje raportu</p>
+              <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Wybierz, którą wysłać klientowi</h3>
               <p className="mt-1 text-sm text-[var(--eos-muted)]">
-                {email.trim() || alternateEmail.trim() || reportEmail
-                  ? `Wyślemy na: ${[email, alternateEmail, reportEmail].filter(Boolean).join(", ")}`
+                Limit już pobrany. {email.trim() || alternateEmail.trim() || reportEmail
+                  ? `Wyślemy na: ${[email, alternateEmail, reportEmail].filter(Boolean).join(", ")}.`
                   : "Wpisz e-mail poniżej albo zamknij i wyślij później."}
-                {" · wysyłka nie zdejmie kolejnego punktu"}
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewVariant("pro")}
+                  className={previewVariant === "pro" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}
+                >
+                  Dla klienta · mapa i rekomendacja
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewVariant("classic")}
+                  className={previewVariant === "classic" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}
+                >
+                  Wersja dotychczasowa
+                </button>
+              </div>
             </div>
             <iframe
-              title="Podgląd raportu EstateOS Market"
-              srcDoc={previewHtml}
+              title={previewVariant === "pro" ? "Podgląd raportu dla klienta" : "Podgląd dotychczasowego raportu"}
+              srcDoc={previewVariant === "pro" ? (previewHtmlPro || previewHtml || "") : (previewHtml || previewHtmlPro || "")}
               className="min-h-[52vh] w-full flex-1 bg-white"
             />
             <div className="flex flex-wrap justify-end gap-2 border-t border-[rgba(196,163,90,0.2)] px-5 py-4">
               <button
                 type="button"
-                onClick={() => setPreviewHtml(null)}
+                onClick={() => {
+                  setPreviewHtml(null);
+                  setPreviewHtmlPro(null);
+                }}
                 className="eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"
               >
                 Zostaw bez wysyłki
@@ -544,7 +567,11 @@ export default function MarketValuationPanel({
                 onClick={() => void confirmSend()}
                 className="eos-lux-btn eos-lux-btn--primary px-5 py-2 text-[11px] disabled:opacity-50"
               >
-                {reportState === "sending" ? "Wysyłam…" : "Wyślij e-mail"}
+                {reportState === "sending"
+                  ? "Wysyłam…"
+                  : previewVariant === "pro"
+                    ? "Wyślij wersję z mapą"
+                    : "Wyślij wersję dotychczasową"}
               </button>
             </div>
           </div>

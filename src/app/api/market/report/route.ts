@@ -8,10 +8,10 @@ import {
   collectReportEmails,
   emailMarketReport,
   loadUserMarketReport,
+  parseReportVariant,
   recordMarketReportGeneration,
   stampReportEmails,
 } from '@/lib/market/deliverReport';
-import { buildMarketReportHtml } from '@/lib/market/reportHtml';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
 import {
   consumeMarketReportQuota,
@@ -79,7 +79,8 @@ export async function POST(req: Request) {
 
     const client = await resolveClient(user.id, body);
     const emails = collectReportEmails(body, client?.email);
-    const name = recipientName(body, client, user.email);
+    const name = recipientName(body, client, '');
+    const variant = parseReportVariant(body.variant ?? body.reportVariant);
 
     if (previewOnly && !generateOnly && !sendExisting) {
       const quota = await getMarketReportQuota(user);
@@ -115,7 +116,7 @@ export async function POST(req: Request) {
           { status: 404 },
         );
       }
-      const sent = await emailMarketReport({ emails, name, result: stored.result });
+      const sent = await emailMarketReport({ emails, name, result: stored.result, variant });
       await stampReportEmails(reportId, emails);
       if (client) {
         await recordMarketReportForClient({
@@ -123,6 +124,7 @@ export async function POST(req: Request) {
           agencyUserId: user.id,
           emails,
           reportId,
+          reportVariant: variant,
           mid: stored.result.estimated.mid,
           score: stored.result.vsListing?.score ?? null,
           summary: `Najbardziej prawdopodobna wartość: ${Math.round(stored.result.estimated.mid).toLocaleString('pl-PL')} zł (${stored.result.stats.count} aktów, ${stored.result.stats.windowMonths} mies.).`,
@@ -172,7 +174,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let recorded: { reportId: number; html: string; emails: string[] };
+    let recorded: { reportId: number; html: string; htmlPro: string; emails: string[]; result: typeof result };
     try {
       recorded = await recordMarketReportGeneration({
         userId: user.id,
@@ -189,7 +191,10 @@ export async function POST(req: Request) {
       throw error;
     }
 
-    const html = recorded.html || buildMarketReportHtml(result, { recipientName: name });
+    const pair = {
+      html: recorded.html,
+      htmlPro: recorded.htmlPro,
+    };
     const nextQuota = await getMarketReportQuota(user);
 
     if (generateOnly) {
@@ -197,24 +202,26 @@ export async function POST(req: Request) {
         ok: true,
         generated: true,
         reportId: recorded.reportId,
-        html,
+        html: pair.html,
+        htmlPro: pair.htmlPro,
         emails,
         creditUsed: consumed.creditUsed,
         quota: nextQuota,
-        result,
+        result: recorded.result,
       });
     }
 
-    const sent = await emailMarketReport({ emails, name, result });
+    const sent = await emailMarketReport({ emails, name, result: recorded.result, variant });
     if (client) {
       await recordMarketReportForClient({
         clientId: client.id,
         agencyUserId: user.id,
         emails,
         reportId: recorded.reportId,
-        mid: result.estimated.mid,
-        score: result.vsListing?.score ?? null,
-        summary: `Najbardziej prawdopodobna wartość: ${Math.round(result.estimated.mid).toLocaleString('pl-PL')} zł (${result.stats.count} aktów, ${result.stats.windowMonths} mies.).`,
+        reportVariant: variant,
+        mid: recorded.result.estimated.mid,
+        score: recorded.result.vsListing?.score ?? null,
+        summary: `Najbardziej prawdopodobna wartość: ${Math.round(recorded.result.estimated.mid).toLocaleString('pl-PL')} zł (${recorded.result.stats.count} aktów, ${recorded.result.stats.windowMonths} mies.).`,
       });
     }
 

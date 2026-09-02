@@ -72,6 +72,7 @@ export type MarketingMetadata = {
   groupUrl?: string | null;
   groupId?: string | null;
   reportId?: number | null;
+  reportVariant?: string | null;
   emails?: string[];
 };
 

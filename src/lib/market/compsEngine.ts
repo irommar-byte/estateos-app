@@ -168,6 +168,8 @@ function toComps(rows: Candidate[], subject: ValuationSubject): MarketComp[] {
     district: r.district,
     distanceM: Math.round(haversineMeters(subject.lat, subject.lng, r.lat, r.lng)),
     marketType: r.marketType,
+    lat: r.lat,
+    lng: r.lng,
   }));
   return sortCompsBySimilarity(comps, subject).slice(0, COMPS_MAX_RETURN);
 }

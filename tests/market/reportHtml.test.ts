@@ -87,3 +87,34 @@ test("few comparable sales stay on one sheet", () => {
   const html = buildMarketReportHtml(resultWithComps(3));
   assert.doesNotMatch(html, /Załącznik nr 1/);
 });
+
+test("professional report addresses the client, not the agent email, and highlights the ask", () => {
+  const html = buildMarketReportHtml(resultWithComps(4), {
+    recipientName: "Mariusz Solarz",
+    recipientEmail: "mariusz@example.com",
+    variant: "pro",
+  });
+  assert.match(html, /Adresat/);
+  assert.match(html, /Mariusz Solarz/);
+  assert.match(html, /mariusz@example\.com/);
+  assert.match(html, /Szanowny Panie,/);
+  assert.match(html, /Rekomendowana cena ofertowa/);
+  assert.match(html, /Cena z metra/);
+  assert.match(html, /910/);
+  assert.match(html, /MAPA TRANSAKCJI/);
+  assert.match(html, /ta sama ulica/);
+  assert.doesNotMatch(html, /agent@/);
+  assert.doesNotMatch(html, /Klient wycenia/);
+});
+
+test("professional report does not put an e-mail in the greeting line as if it were a name", () => {
+  const html = buildMarketReportHtml(resultWithComps(3), {
+    recipientName: "agent@estateos.pl",
+    recipientEmail: "wlasciciel@example.com",
+    variant: "pro",
+  });
+  assert.doesNotMatch(html, /Szanowny Panie agent@/);
+  assert.doesNotMatch(html, />agent@estateos\.pl</);
+  assert.match(html, /wlasciciel@example\.com/);
+});
+
