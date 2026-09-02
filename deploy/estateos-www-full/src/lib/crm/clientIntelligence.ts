@@ -438,6 +438,37 @@ export function intelligenceAdjustScore(params: {
   if (score <= 0) {
     return { score: 0, reasons: [...new Set(reasons)].slice(0, 6) };
   }
+
+  const learnedMinRooms = Number(taste.minRoomsHint || 0);
+  if (
+    learnedMinRooms > minRooms &&
+    rooms != null &&
+    Number.isFinite(rooms) &&
+    rooms < learnedMinRooms
+  ) {
+    const penalty = Math.min(30, 14 + (learnedMinRooms - rooms) * 8);
+    score -= penalty;
+    reasons.push(
+      `Nauka z reakcji wskazuje ${learnedMinRooms} pokoje; układ ${rooms} pok. dostaje karę, ale nie jest automatycznie odrzucany.`,
+    );
+  }
+
+  const learnedMaxPrice = Number(taste.maxPriceHint || 0);
+  if (
+    learnedMaxPrice > 0 &&
+    (budgetCap == null || learnedMaxPrice < budgetCap) &&
+    offerPrice != null &&
+    Number.isFinite(offerPrice) &&
+    offerPrice > learnedMaxPrice
+  ) {
+    const overRatio = (offerPrice - learnedMaxPrice) / learnedMaxPrice;
+    const penalty = Math.min(32, 12 + Math.round(overRatio * 60));
+    score -= penalty;
+    reasons.push(
+      `Cena przekracza roboczy poziom ${learnedMaxPrice.toLocaleString('pl-PL')} zł wyuczony z reakcji; to silna kara do czasu potwierdzenia budżetu.`,
+    );
+  }
+
   const phraseCounts = new Map<string, number>();
   for (const phrase of taste.phrases) {
     phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
