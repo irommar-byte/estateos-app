@@ -653,7 +653,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       })
     ) {
       return NextResponse.json(
-        { error: 'Potwierdź wrzucenie albo wklej link do posta na grupie.' },
+        { error: 'Wklej link do konkretnego posta na grupie, nie do samej grupy.' },
         { status: 400 },
       );
     }

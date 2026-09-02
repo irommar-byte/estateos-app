@@ -2,6 +2,8 @@
 
 import { ExternalLink, Star } from "lucide-react";
 import {
+  facebookClientOpenHref,
+  facebookOpenLabel,
   formatPublicationStatus,
   listingThumbnailFallback,
   resolveMarketingChannel,
@@ -71,7 +73,14 @@ export default function ListingPathEventCard({
     channel.id === "facebook" && item.groupName
       ? `Facebook · ${item.groupName}`
       : item.title || channel.label;
-  const linkHref = item.url || item.groupUrl || null;
+  const linkHref =
+    channel.id === "facebook"
+      ? facebookClientOpenHref({ url: item.url, groupUrl: item.groupUrl })
+      : item.url || item.groupUrl || null;
+  const linkLabel =
+    channel.id === "facebook"
+      ? facebookOpenLabel({ href: linkHref, groupName: item.groupName })
+      : `Zobacz publikację · ${channel.label}`;
 
   return (
     <article className={`listing-path-card listing-path-card--${channel.id}`}>
@@ -112,11 +121,7 @@ export default function ListingPathEventCard({
           rel="noreferrer"
           className="listing-path-card__link"
         >
-          {channel.id === "facebook"
-            ? item.groupName
-              ? `Otwórz grupę ${item.groupName}`
-              : "Zobacz publikację na Facebooku"
-            : `Zobacz publikację · ${channel.label}`}
+          {linkLabel}
           <ExternalLink className="size-3.5" />
         </a>
       ) : null}

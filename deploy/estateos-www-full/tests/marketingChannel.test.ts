@@ -2,8 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractFacebookDestinations,
+  facebookClientOpenHref,
+  facebookOpenLabel,
   facebookShareRecordGate,
   formatPublicationStatus,
+  isFacebookGroupHomeUrl,
+  isFacebookPostPermalink,
   listingThumbnailFallback,
   parseFacebookDestination,
   publicationHeadline,
@@ -86,12 +90,45 @@ test("formatPublicationStatus maps waiting states", () => {
   assert.equal(formatPublicationStatus("pending"), "Czeka na aktywację");
 });
 
-test("facebook share is recorded only after confirm or post url", () => {
+test("facebook share is recorded only with a post permalink", () => {
   assert.equal(facebookShareRecordGate({}), false);
-  assert.equal(facebookShareRecordGate({ confirmed: true }), true);
+  assert.equal(facebookShareRecordGate({ confirmed: true }), false);
+  assert.equal(
+    facebookShareRecordGate({
+      postUrl: "https://www.facebook.com/groups/abc/",
+    }),
+    false,
+  );
   assert.equal(
     facebookShareRecordGate({ postUrl: "https://facebook.com/groups/a/posts/1" }),
     true,
+  );
+});
+
+test("facebook client link prefers the post over the group home", () => {
+  assert.equal(
+    isFacebookPostPermalink(
+      "https://www.facebook.com/groups/abc/posts/1234567890/",
+    ),
+    true,
+  );
+  assert.equal(
+    isFacebookGroupHomeUrl("https://www.facebook.com/groups/abc/"),
+    true,
+  );
+  assert.equal(
+    facebookClientOpenHref({
+      url: "https://www.facebook.com/groups/abc/posts/1234567890/",
+      groupUrl: "https://www.facebook.com/groups/abc/",
+    }),
+    "https://www.facebook.com/groups/abc/posts/1234567890/",
+  );
+  assert.equal(
+    facebookOpenLabel({
+      href: "https://www.facebook.com/groups/abc/posts/1234567890/",
+      groupName: "Warszawa",
+    }),
+    "Zobacz ogłoszenie w grupie Warszawa",
   );
 });
 

@@ -6,6 +6,7 @@ import { buildPortalUrl } from "@/lib/agencyClientNotify";
 import type { PublicLinkPreview } from "@/lib/crm/publicLinkPreview";
 import {
   extractFacebookDestinations,
+  facebookClientOpenHref,
   facebookShareRecordGate,
   isPendingPublicationStatus,
   listingThumbnailFallback,
@@ -961,7 +962,11 @@ export function extractActiveChannels(
     }
     channels.push({
       portal: item.groupName || item.portal || item.siteName || "Portal",
-      externalUrl: item.groupUrl || item.externalUrl,
+      externalUrl:
+        facebookClientOpenHref({
+          url: item.externalUrl,
+          groupUrl: item.groupUrl,
+        }) || item.externalUrl,
       status: item.status,
       renewalDueAt: item.renewalDueAt,
       activityId: item.id,
@@ -1056,7 +1061,11 @@ export function buildSellerListingPath(params: {
       body: activity.body,
       createdAt: activity.createdAt.toISOString(),
       startsAt: typeof meta.startsAt === "string" ? meta.startsAt : null,
-      url: shaped.externalUrl,
+      url:
+        facebookClientOpenHref({
+          url: shaped.externalUrl,
+          groupUrl: shaped.groupUrl,
+        }) || shaped.externalUrl,
       image: listingThumbnailFallback({
         image: shaped.image,
         channelId: channel.id,
@@ -1364,7 +1373,8 @@ export async function recordFacebookGroupShare(params: {
   ) {
     return {
       ok: false as const,
-      error: "Potwierdź wrzucenie albo wklej link do posta na grupie.",
+      error:
+        "Wklej link do konkretnego posta na grupie, nie do samej grupy. Na Facebooku: ⋯ przy poście → Kopiuj link.",
     };
   }
 
@@ -1394,9 +1404,9 @@ export async function recordFacebookGroupShare(params: {
     (currentClient?.linkedOfferId === offer.id ? currentClient.id : null);
   const facebook = parseFacebookDestination(params.postUrl || params.groupUrl);
   const groupName = params.groupName?.trim() || facebook?.groupName || "Facebook";
-  const groupUrl = params.groupUrl || facebook?.groupUrl || null;
+  const groupUrl = facebook?.groupUrl || params.groupUrl || null;
   const shareUrl = listingFacebookShareUrl(offer.id, params.agencyUserId);
-  const recordedUrl = params.postUrl || groupUrl || shareUrl;
+  const recordedUrl = String(params.postUrl || "").trim();
   const listingImage =
     absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || null;
 
