@@ -51,6 +51,7 @@ import IntelligenceAssistantCard, {
   DEFAULT_INTELLIGENCE_SETTINGS,
 } from '../components/agency/IntelligenceAssistantCard';
 import SellerMarketingCard from '../components/agency/SellerMarketingCard';
+import ClientPersonHub from '../components/agency/ClientPersonHub';
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   type IntelligenceLocks,
@@ -76,6 +77,7 @@ import {
   type AcquisitionRecord,
   type AgencyClientDetail,
   type AgencyClientMatch,
+  type ClientPersonProject,
 } from '../services/agencyClientService';
 import { formatCurrencyPLN, formatPhoneNumber, formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
 import { storeCommissionPercent } from '../types/leadTransfer';
@@ -380,6 +382,12 @@ export default function AgencyClientDetailScreen() {
   const [pendingChatFile, setPendingChatFile] = useState<{ uri: string; name: string; mimeType: string } | null>(null);
   const [chatFocused, setChatFocused] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
+  const [crmLevel, setCrmLevel] = useState<'person' | 'lane' | 'project'>(
+    route.params?.startAt === 'project' ? 'project' : 'person',
+  );
+  const [crmLane, setCrmLane] = useState<'SELL' | 'BUY' | null>(
+    route.params?.startAt === 'project' ? (route.params?.lane === 'BUY' ? 'BUY' : 'SELL') : null,
+  );
   const [radarExpanded, setRadarExpanded] = useState(false);
   const [presentationExpanded, setPresentationExpanded] = useState(false);
   const chatScrollRef = useRef<ScrollView | null>(null);
@@ -1051,6 +1059,68 @@ export default function AgencyClientDetailScreen() {
   const buyerAgentTasks = client?.buyerAgentTasks || [];
   const showRadarSurvey = Boolean(client && (client.type === 'BUYER' || sellerRadarSearching));
   const portalMessages = client?.messages || [];
+  const relatedProjects = client?.relatedProjects || {
+    selling:
+      client?.type === 'SELLER'
+        ? [
+            {
+              id: client.id,
+              type: 'SELLER' as const,
+              title: `${client.firstName} ${client.lastName}`,
+              subtitle: client.sellerCity || 'Pozysk sprzedaży',
+              statusLabel: 'W toku',
+              portalUnreadCount: client.portalUnreadCount || 0,
+              linkedOfferId: client.linkedOfferId,
+              matchCount: 0,
+              updatedAt: client.updatedAt,
+            } satisfies ClientPersonProject,
+          ]
+        : [],
+    buying:
+      client?.type === 'BUYER'
+        ? [
+            {
+              id: client.id,
+              type: 'BUYER' as const,
+              title: `${client.firstName} ${client.lastName}`,
+              subtitle: 'Poszukiwanie',
+              statusLabel: 'Radar',
+              portalUnreadCount: client.portalUnreadCount || 0,
+              linkedOfferId: null,
+              matchCount: client.matchCount || 0,
+              updatedAt: client.updatedAt,
+            } satisfies ClientPersonProject,
+          ]
+        : [],
+  };
+
+  const openPersonProject = (projectId: number) => {
+    const project =
+      relatedProjects.selling.find((item) => item.id === projectId) ||
+      relatedProjects.buying.find((item) => item.id === projectId);
+    setCrmLane(project?.type === 'BUYER' ? 'BUY' : 'SELL');
+    if (projectId !== clientId) {
+      navigation.setParams({ clientId: projectId, startAt: 'project', lane: project?.type === 'BUYER' ? 'BUY' : 'SELL' });
+    }
+    setCrmLevel('project');
+  };
+
+  const addPersonProject = async (type: 'BUYER' | 'SELLER') => {
+    if (!token) return;
+    setBusy('project');
+    const res = await postAgencyClientAction(token, clientId, { action: 'create_person_project', type });
+    setBusy('');
+    if (!res.ok) {
+      Alert.alert('Projekt', res.message);
+      return;
+    }
+    const nextId = Number(res.clientId);
+    if (Number.isFinite(nextId) && nextId > 0) {
+      navigation.setParams({ clientId: nextId, startAt: 'project', lane: type === 'BUYER' ? 'BUY' : 'SELL' });
+      setCrmLane(type === 'BUYER' ? 'BUY' : 'SELL');
+      setCrmLevel('project');
+    }
+  };
   const latestPortalMessage = portalMessages[portalMessages.length - 1];
   const latestPortalText = latestPortalMessage
     ? cleanAttachmentOnlyMessage(latestPortalMessage.content, latestPortalMessage.attachments)
@@ -1249,7 +1319,22 @@ export default function AgencyClientDetailScreen() {
 
       {/* Top Navbar */}
       <View style={[styles.nav, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.navBtn}>
+        <Pressable
+          onPress={() => {
+            if (crmLevel === 'project') {
+              setCrmLevel('lane');
+              return;
+            }
+            if (crmLevel === 'lane') {
+              setCrmLevel('person');
+              setCrmLane(null);
+              return;
+            }
+            navigation.goBack();
+          }}
+          hitSlop={12}
+          style={styles.navBtn}
+        >
           <Ionicons name="chevron-back" size={28} color="#007AFF" />
         </Pressable>
         <Text style={[styles.navTitle, { color: colors.text }]} numberOfLines={1}>
@@ -1456,6 +1541,27 @@ export default function AgencyClientDetailScreen() {
                 </LinearGradient>
               </View>
 
+              {crmLevel !== 'project' ? (
+                <ClientPersonHub
+                  selling={relatedProjects.selling}
+                  buying={relatedProjects.buying}
+                  view={crmLevel === 'lane' ? 'lane' : 'person'}
+                  lane={crmLane}
+                  busy={busy === 'project'}
+                  colors={colors}
+                  onOpenLane={(next) => {
+                    setCrmLane(next);
+                    setCrmLevel('lane');
+                  }}
+                  onBackToPerson={() => {
+                    setCrmLevel('person');
+                    setCrmLane(null);
+                  }}
+                  onOpenProject={openPersonProject}
+                  onAddProject={(type) => void addPersonProject(type)}
+                />
+              ) : (
+              <>
               {client.type === 'BUYER' && buyerAgentTasks.length ? (
                 <View
                   style={[
@@ -3103,6 +3209,8 @@ export default function AgencyClientDetailScreen() {
                   </View>
                 ) : null}
               </View>
+            </>
+              )}
             </>
           )}
         </ScrollView>

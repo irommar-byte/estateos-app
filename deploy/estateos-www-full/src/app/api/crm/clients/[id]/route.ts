@@ -72,6 +72,7 @@ import { getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
 import { buildBuyerAgentTasks } from '@/lib/crm/buyerAgentTasks';
 import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
 import { attachMatchImportBrief, listMatchImportBriefs } from '@/lib/crm/matchImportProvenance';
+import { createPersonProject, loadClientPersonProjects } from '@/lib/crm/clientPersonProjects';
 
 export const maxDuration = 300;
 
@@ -188,6 +189,17 @@ export async function GET(req: Request, ctx: RouteCtx) {
     pendingIntelligenceCheckback: Boolean(pendingCheckback),
   });
 
+  const relatedProjects = await loadClientPersonProjects({
+    agencyUserId,
+    client: {
+      id: client.id,
+      email: client.email,
+      phone: client.phone,
+      peselHash: client.peselHash,
+      linkedUserId: client.linkedUserId,
+    },
+  });
+
   return NextResponse.json({
     success: true,
     client: {
@@ -260,6 +272,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
             facebookShareOffers,
           }
         : null,
+      relatedProjects,
     },
   });
 }
@@ -1151,6 +1164,24 @@ export async function POST(req: Request, ctx: RouteCtx) {
       notes: slot.notes,
     });
     return NextResponse.json({ success: true });
+  }
+
+  if (action === 'create_person_project') {
+    const type = String(body.type || '').toUpperCase();
+    if (type !== 'BUYER' && type !== 'SELLER') {
+      return NextResponse.json({ error: 'Wybierz Sprzedaje albo Kupuje.' }, { status: 400 });
+    }
+    const owned = await getAgencyClientForUser(clientId, agencyUserId);
+    if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    const created = await createPersonProject({
+      agencyUserId,
+      sourceClientId: clientId,
+      type,
+    });
+    if (!created.ok) {
+      return NextResponse.json({ error: created.error }, { status: created.status });
+    }
+    return NextResponse.json({ success: true, clientId: created.clientId });
   }
 
   return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });

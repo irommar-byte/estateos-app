@@ -245,12 +245,20 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           setIsTyping(Boolean(data.isTyping));
         })
         .catch(() => undefined);
+      void loadThreads();
       void loadAttachmentsInfo(activeThreadId);
     }, 3500);
     return () => {
       if (pollRef.current != null) window.clearInterval(pollRef.current);
     };
-  }, [activeThreadId, loadAttachmentsInfo]);
+  }, [activeThreadId, loadAttachmentsInfo, loadThreads]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadThreads();
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [loadThreads]);
 
   useEffect(() => {
     const currentCount = messages.length;

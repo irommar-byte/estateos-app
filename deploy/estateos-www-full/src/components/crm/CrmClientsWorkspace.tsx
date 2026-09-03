@@ -36,6 +36,7 @@ import EosModal from "@/components/ui/EosModal";
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import CrmClientLiveChat from "@/components/crm/CrmClientLiveChat";
+import CrmClientPersonHub from "@/components/crm/CrmClientPersonHub";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import CrmIntelligenceAssistant from "@/components/crm/CrmIntelligenceAssistant";
 import { timelineKindLabel } from "@/lib/desk/timeline";
@@ -116,6 +117,7 @@ type ClientDetail = AgencyClientListItem & {
     createdAt: string;
   } | null;
   nextStep?: ClientNextStep | null;
+  portalUnreadCount?: number;
   buyerAgentTasks?: BuyerAgentTask[];
   activities?: Array<{
     id: number;
@@ -151,6 +153,22 @@ type ClientDetail = AgencyClientListItem & {
       linkedClientId: number | null;
     }>;
   } | null;
+  relatedProjects?: {
+    selling: ClientPersonProject[];
+    buying: ClientPersonProject[];
+  };
+};
+
+type ClientPersonProject = {
+  id: number;
+  type: "BUYER" | "SELLER";
+  title: string;
+  subtitle: string;
+  statusLabel: string;
+  portalUnreadCount: number;
+  linkedOfferId: number | null;
+  matchCount: number;
+  updatedAt: string;
 };
 
 type EmailPreview = {
@@ -244,6 +262,9 @@ export default function CrmClientsWorkspace() {
     strictCityDistricts: Record<string, string[]>;
   }>({ strictCities: [], strictCityDistricts: {} });
   const hadClientSelection = useRef(false);
+  const skipPersonReset = useRef(false);
+  const [workspaceView, setWorkspaceView] = useState<"person" | "lane" | "project">("person");
+  const [workspaceLane, setWorkspaceLane] = useState<"SELL" | "BUY" | null>(null);
 
   useEffect(() => {
     const open = () => setFormOpen(true);
@@ -341,6 +362,12 @@ export default function CrmClientsWorkspace() {
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId);
     else setDetail(null);
+    if (skipPersonReset.current) {
+      skipPersonReset.current = false;
+      return;
+    }
+    setWorkspaceView("person");
+    setWorkspaceLane(null);
   }, [selectedId, loadDetail]);
 
   useEffect(() => {
@@ -355,12 +382,21 @@ export default function CrmClientsWorkspace() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && selectedId && !formOpen && !previewOpen) {
+        if (workspaceView === "project") {
+          setWorkspaceView("lane");
+          return;
+        }
+        if (workspaceView === "lane") {
+          setWorkspaceView("person");
+          setWorkspaceLane(null);
+          return;
+        }
         setSelectedId(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, formOpen, previewOpen]);
+  }, [selectedId, formOpen, previewOpen, workspaceView]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -679,6 +715,64 @@ export default function CrmClientsWorkspace() {
     } catch (e) {
       alert(e instanceof Error ? e.message : "Błąd");
       return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const relatedProjects = detail?.relatedProjects || {
+    selling: detail?.type === "SELLER"
+      ? [{
+          id: detail.id,
+          type: "SELLER" as const,
+          title: `${detail.firstName} ${detail.lastName}`,
+          subtitle: detail.sellerCity || "Pozysk sprzedaży",
+          statusLabel: "W toku",
+          portalUnreadCount: detail.portalUnreadCount || 0,
+          linkedOfferId: detail.linkedOfferId || null,
+          matchCount: 0,
+          updatedAt: detail.updatedAt,
+        }]
+      : [],
+    buying: detail?.type === "BUYER"
+      ? [{
+          id: detail.id,
+          type: "BUYER" as const,
+          title: `${detail.firstName} ${detail.lastName}`,
+          subtitle: "Poszukiwanie",
+          statusLabel: "Radar",
+          portalUnreadCount: detail.portalUnreadCount || 0,
+          linkedOfferId: null,
+          matchCount: detail.matchCount || 0,
+          updatedAt: detail.updatedAt,
+        }]
+      : [],
+  };
+
+  const openPersonProject = (projectId: number) => {
+    if (projectId !== selectedId) {
+      skipPersonReset.current = true;
+      setSelectedId(projectId);
+    }
+    setWorkspaceView("project");
+  };
+
+  const addPersonProject = async (type: "BUYER" | "SELLER") => {
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${selectedId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create_person_project", type }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Nie udało się dodać projektu");
+      skipPersonReset.current = true;
+      setSelectedId(Number(json.clientId));
+      setWorkspaceView("project");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd");
     } finally {
       setBusy(false);
     }
@@ -1116,8 +1210,27 @@ export default function CrmClientsWorkspace() {
               </div>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
+                  {workspaceView !== "person" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (workspaceView === "project") setWorkspaceView("lane");
+                        else {
+                          setWorkspaceView("person");
+                          setWorkspaceLane(null);
+                        }
+                      }}
+                      className="mb-2 text-[11px] font-bold text-emerald-600"
+                    >
+                      ← Wróć
+                    </button>
+                  ) : null}
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
-                    {detail.type === "BUYER" ? cl.buyerBadge : cl.sellerBadge}
+                    {workspaceView === "project"
+                      ? detail.type === "BUYER"
+                        ? cl.buyerBadge
+                        : cl.sellerBadge
+                      : "Klient"}
                   </p>
                   <h3 className="mt-1 break-words text-xl font-bold text-[var(--eos-text)] sm:text-2xl">
                     {detail.firstName} {detail.lastName}
@@ -1157,13 +1270,36 @@ export default function CrmClientsWorkspace() {
                     <ExternalLink className="size-3.5" />
                   </Link>
                 ) : null}
-                <CrmClientLiveChat
-                  clientId={detail.id}
-                  clientName={`${detail.firstName} ${detail.lastName}`.trim()}
-                  className={eosBtn("secondary", { size: "sm" })}
-                />
+                {workspaceView === "project" ? (
+                  <CrmClientLiveChat
+                    clientId={detail.id}
+                    clientName={`${detail.firstName} ${detail.lastName}`.trim()}
+                    className={eosBtn("secondary", { size: "sm" })}
+                  />
+                ) : null}
               </div>
 
+              {workspaceView !== "project" ? (
+                <CrmClientPersonHub
+                  selling={relatedProjects.selling}
+                  buying={relatedProjects.buying}
+                  view={workspaceView === "lane" ? "lane" : "person"}
+                  lane={workspaceLane}
+                  currentId={detail.id}
+                  busy={busy}
+                  onOpenLane={(next) => {
+                    setWorkspaceLane(next);
+                    setWorkspaceView("lane");
+                  }}
+                  onBackToPerson={() => {
+                    setWorkspaceView("person");
+                    setWorkspaceLane(null);
+                  }}
+                  onOpenProject={openPersonProject}
+                  onAddProject={(type) => void addPersonProject(type)}
+                />
+              ) : (
+              <>
               {detail.type === "BUYER" && (detail.buyerAgentTasks || []).length ? (
                 <section
                   id="crm-agent-tasks"
@@ -1837,6 +1973,8 @@ export default function CrmClientsWorkspace() {
                   </div>
                 </div>
               ) : null}
+              </>
+              )}
             </div>
           ) : null}
         </div>

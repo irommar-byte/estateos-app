@@ -19,6 +19,7 @@ export async function sendContactThreadMessage(params: {
   content?: string;
   attachment?: ContactAttachmentMeta | null;
   mirrorToClientPortal?: boolean;
+  skipReceiverNotify?: boolean;
 }) {
   const thread = await prisma.contactThread.findUnique({
     where: { id: params.threadId },
@@ -92,34 +93,36 @@ export async function sendContactThreadMessage(params: {
     ? attachmentMeta.name || '📎 Załącznik'
     : content.replace(/\[\[CONTACT_ATTACHMENT\]\][\s\S]*/, '').slice(0, 120) || '📎 Załącznik';
 
-  try {
-    await prisma.notification.create({
-      data: {
-        userId: receiverId,
-        idempotencyKey: `contact_msg:thread:${params.threadId}:msg:${newMessage.id}`,
-        title: 'EstateOS™ Contact',
-        body: `${senderName}: ${shortPreview}`,
-        type: 'MESSAGE',
-        targetType: 'CHAT',
-        targetId: String(params.threadId),
-      },
-    });
-  } catch {
-    /* idempotency duplicate */
-  }
+  if (!params.skipReceiverNotify) {
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: receiverId,
+          idempotencyKey: `contact_msg:thread:${params.threadId}:msg:${newMessage.id}`,
+          title: 'EstateOS™ Contact',
+          body: `${senderName}: ${shortPreview}`,
+          type: 'MESSAGE',
+          targetType: 'CHAT',
+          targetId: String(params.threadId),
+        },
+      });
+    } catch {
+      /* idempotency duplicate */
+    }
 
-  try {
-    await notificationService.sendPushToUser(
-      receiverId,
-      buildContactMessagePushPayload({
-        senderName,
-        preview: shortPreview,
-        threadId: params.threadId,
-        senderUserId: params.userId,
-      }),
-    );
-  } catch (pushErr) {
-    console.error('[CONTACT MSG PUSH]', pushErr);
+    try {
+      await notificationService.sendPushToUser(
+        receiverId,
+        buildContactMessagePushPayload({
+          senderName,
+          preview: shortPreview,
+          threadId: params.threadId,
+          senderUserId: params.userId,
+        }),
+      );
+    } catch (pushErr) {
+      console.error('[CONTACT MSG PUSH]', pushErr);
+    }
   }
 
   if (createdFresh && params.mirrorToClientPortal !== false) {

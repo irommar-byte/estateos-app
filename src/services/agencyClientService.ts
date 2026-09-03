@@ -233,6 +233,22 @@ export type AgencyClientDetail = AgencyClientListItem & {
   }[];
   activities?: AgencyClientActivity[];
   sellerMarketing?: SellerMarketingBundle | null;
+  relatedProjects?: {
+    selling: ClientPersonProject[];
+    buying: ClientPersonProject[];
+  };
+};
+
+export type ClientPersonProject = {
+  id: number;
+  type: 'BUYER' | 'SELLER';
+  title: string;
+  subtitle: string;
+  statusLabel: string;
+  portalUnreadCount: number;
+  linkedOfferId: number | null;
+  matchCount: number;
+  updatedAt: string;
 };
 
 export type AcquisitionFormData = {
