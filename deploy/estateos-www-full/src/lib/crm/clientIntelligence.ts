@@ -387,6 +387,7 @@ export function intelligenceAdjustScore(params: {
   let score = params.radarScore;
   const reasons: string[] = [];
   const text = haystack(offer);
+  let learnedRoomScoreCap: number | null = null;
 
   // Twarde odcięcie bierze wyłącznie potwierdzoną ankietę. Sygnał z jednej
   // reakcji pozostaje lekcją scoringu do czasu checkbacku — nie może po cichu
@@ -446,7 +447,9 @@ export function intelligenceAdjustScore(params: {
     Number.isFinite(rooms) &&
     rooms < learnedMinRooms
   ) {
-    const penalty = Math.min(30, 14 + (learnedMinRooms - rooms) * 8);
+    const roomDeficit = learnedMinRooms - rooms;
+    const penalty = Math.min(60, 20 + roomDeficit * 18);
+    learnedRoomScoreCap = roomDeficit >= 2 ? 74 : 88;
     score -= penalty;
     reasons.push(
       `Nauka z reakcji wskazuje ${learnedMinRooms} pokoje; układ ${rooms} pok. dostaje karę, ale nie jest automatycznie odrzucany.`,
@@ -602,7 +605,11 @@ export function intelligenceAdjustScore(params: {
     reasons.push('Ta oferta już dostała negatywną reakcję.');
   }
 
-  return { score: Math.max(0, Math.min(100, Math.round(score))), reasons: [...new Set(reasons)].slice(0, 6) };
+  const roundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  return {
+    score: learnedRoomScoreCap == null ? roundedScore : Math.min(roundedScore, learnedRoomScoreCap),
+    reasons: [...new Set(reasons)].slice(0, 6),
+  };
 }
 
 export function summarizeTaste(taste: LearnedTaste): string {
