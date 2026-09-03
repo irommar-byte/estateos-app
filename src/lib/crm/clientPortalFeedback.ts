@@ -129,3 +129,10 @@ export function formatClientFeedbackForAgent(raw: unknown): string {
   if (feedback.note) parts.push(feedback.note);
   return parts.join(' — ');
 }
+
+export function clientFeedbackChatMessage(raw: unknown, offerTitle: string): string | null {
+  const feedback = parseClientOfferFeedback(raw);
+  if (!feedback.note) return null;
+  const title = String(offerTitle || 'oferty').trim();
+  return `Reakcja do oferty „${title}”:\n${feedback.note}`;
+}
