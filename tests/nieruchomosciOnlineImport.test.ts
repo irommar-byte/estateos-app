@@ -18,7 +18,7 @@ const NIER_ONLINE_LISTING_HTML = `
 <strong>Media:</strong> <span>ogrzewanie: miejskie</span>
 <span class="fheader body-sm">Miejsce parkingowe:</span><br/><span class="fsize-c">w garażu podziemnym</span>
 <div class="estate-desc-less">Skrót z loggią (...) Rozwiń opis</div>
-<div class="estate-desc-more">Idealne mieszkanie na Bemowie. ul. Szeligowska, Bemowo, Warszawa. Przedpokój i loggia, miejsce parkingowe w garażu podziemnym plus box.</div>
+<div class="estate-desc-more">Idealne mieszkanie na Bemowie. Lokal składa się z salonu i dwóch sypialni. ul. Szeligowska, Bemowo, Warszawa. Przedpokój i loggia, miejsce parkingowe w garażu podziemnym plus box.</div>
 <script type="application/ld+json">{"@type":"Offer","price":846000,"itemOffered":{"address":{"streetAddress":"Szeligowska","addressLocality":"Warszawa"}}}</script>
 </body></html>
 `;
@@ -33,6 +33,7 @@ test('N-O parser reads estate-desc-more, balcony and garage fields', () => {
   assert.ok(draft.features.some((item) => /balkon/i.test(item)));
   assert.ok(draft.features.some((item) => /parking|gara/i.test(item)));
   assert.equal(draft.district, 'Bemowo');
+  assert.equal(draft.propertyType, 'FLAT');
 });
 
 test('N-O import smart-add marks balcony, parking and furnished like other portals', () => {
