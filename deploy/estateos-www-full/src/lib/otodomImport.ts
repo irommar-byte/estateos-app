@@ -1326,11 +1326,17 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
         : /wynajem|do wynajęcia|na wynajem/i.test(normalizedHtml)
           ? 'RENT'
           : 'SALE';
+  const propertyText = `${title} ${descriptionText}`;
+  const looksLikeFlat = /mieszkan|apartament|kawaler|(?:^|\s)\d+[\s-]*pokoj/i.test(propertyText);
+  const looksCommercial =
+    /lokal\s+(?:u[żz]ytkow|handlow|biurow|us[łl]ugow)|powierzchni[ae]\s+(?:handlow|biurow|magazyn|us[łl]ugow)|magazyn/i.test(
+      propertyText,
+    );
   const propertyType = /dom/i.test(title)
     ? 'HOUSE'
     : /dzia[łl]k/i.test(title)
       ? 'PLOT'
-      : /lokal|u[żz]ytkow|handlow|biurow|magazyn|us[łl]ugow/i.test(`${title} ${descriptionText}`)
+      : looksCommercial && !looksLikeFlat
         ? 'COMMERCIAL'
         : 'FLAT';
 
