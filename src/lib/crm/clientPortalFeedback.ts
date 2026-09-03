@@ -6,6 +6,8 @@ export type ClientOfferFeedback = {
   disliked: string;
   phrases: string[];
   note: string;
+  agentReply?: string | null;
+  agentReplyAt?: string | null;
 };
 
 export const LIKE_PHRASES = [
@@ -89,6 +91,8 @@ function normalizeFeedbackObject(raw: Record<string, unknown>): ClientOfferFeedb
     disliked: String(raw.disliked || '').trim(),
     phrases,
     note: String(raw.note || raw.feedback || '').trim(),
+    agentReply: raw.agentReply ? String(raw.agentReply) : null,
+    agentReplyAt: raw.agentReplyAt ? String(raw.agentReplyAt) : null,
   };
 }
 

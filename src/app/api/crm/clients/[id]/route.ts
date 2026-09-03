@@ -488,6 +488,45 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ success: true });
   }
 
+  if (action === 'reply_to_offer_feedback') {
+    const matchId = Number(body.matchId);
+    const replyText = String(body.reply || '').trim();
+    const activityId = Number(body.activityId) || 0;
+    if (!Number.isFinite(matchId) || matchId <= 0 || !replyText) {
+      return NextResponse.json({ error: 'Podaj matchId i treść odpowiedzi.' }, { status: 400 });
+    }
+    const match = await prisma.agencyClientMatch.findFirst({
+      where: { id: matchId, clientId },
+      select: { id: true, clientFeedback: true },
+    });
+    if (!match) {
+      return NextResponse.json({ error: 'Nie znaleziono dopasowania.' }, { status: 404 });
+    }
+    const existingFeedback = parseClientOfferFeedback(match.clientFeedback);
+    const updatedFeedback = JSON.stringify({
+      ...existingFeedback,
+      agentReply: replyText,
+      agentReplyAt: new Date().toISOString(),
+    });
+    await prisma.agencyClientMatch.update({
+      where: { id: match.id },
+      data: { clientFeedback: updatedFeedback },
+    });
+    if (activityId > 0) {
+      await prisma.agencyClientActivity.updateMany({
+        where: { id: activityId, clientId, agencyUserId },
+        data: {
+          metadata: {
+            agentStatus: 'done',
+            agentHandledAt: new Date().toISOString(),
+            agentReply: replyText,
+          },
+        },
+      });
+    }
+    return NextResponse.json({ success: true });
+  }
+
   if (action === 'refresh_matches') {
     const client = await prisma.agencyClient.findFirst({
       where: { id: clientId, agencyUserId },

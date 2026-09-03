@@ -155,6 +155,11 @@ export default function ClientPortalMatchCard({
                 Intelligence
               </span>
             ) : null}
+            {saved.agentReply ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--eos-accent,#34C759)]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent,#34C759)]">
+                💬 1 odpowiedź agenta
+              </span>
+            ) : null}
           </div>
           <p className="mt-1 line-clamp-2 text-sm font-black leading-snug text-[var(--eos-text)] sm:text-base">
             {match.offer.title}
@@ -364,6 +369,22 @@ export default function ClientPortalMatchCard({
               <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
                 Ostatnia reakcja: {new Date(match.clientFeedbackAt).toLocaleString("pl-PL")}
               </p>
+            ) : null}
+
+            {saved.agentReply ? (
+              <div className="mt-4 rounded-xl border border-[var(--eos-accent,#34C759)]/30 bg-[var(--eos-accent,#34C759)]/8 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-accent,#34C759)]">
+                  💬 Odpowiedź agenta
+                </p>
+                <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--eos-text)]">
+                  {String(saved.agentReply)}
+                </p>
+                {saved.agentReplyAt ? (
+                  <p className="mt-1 text-[10px] text-[var(--eos-muted)]">
+                    {new Date(String(saved.agentReplyAt)).toLocaleString("pl-PL")}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>

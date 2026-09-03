@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { JOURNEY_ACTIVITY } from '@/lib/crm/clientJourney';
 import { generatePortalToken } from '@/lib/agencyClientNotify';
 import { seedAcquisitionForm } from '@/lib/crm/acquisitionOffer';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 export type ClientPersonProject = {
   id: number;
@@ -13,6 +14,8 @@ export type ClientPersonProject = {
   linkedOfferId: number | null;
   matchCount: number;
   updatedAt: string;
+  createdAt: string;
+  coverImageUrl: string | null;
 };
 
 function identityWhere(client: {
@@ -58,6 +61,11 @@ function buyerTitle(row: {
   return bits.join(' · ');
 }
 
+function extractCoverImage(offer: { images?: string | null } | null): string | null {
+  if (!offer) return null;
+  return resolveOfferPrimaryImage({ images: offer.images }) || null;
+}
+
 export async function loadClientPersonProjects(params: {
   agencyUserId: number;
   client: {
@@ -83,7 +91,8 @@ export async function loadClientPersonProjects(params: {
       sellerRooms: true,
       sellerPrice: true,
       linkedOfferId: true,
-      linkedOffer: { select: { title: true, status: true } },
+      linkedOffer: { select: { title: true, status: true, images: true } },
+      createdAt: true,
       buyerPreference: { select: { city: true, minRooms: true, maxPrice: true } },
       acquisition: { select: { status: true, currentStep: true } },
       _count: { select: { matches: true } },
@@ -139,6 +148,8 @@ export async function loadClientPersonProjects(params: {
       linkedOfferId: row.linkedOfferId,
       matchCount: row._count.matches,
       updatedAt: row.updatedAt.toISOString(),
+      createdAt: row.createdAt.toISOString(),
+      coverImageUrl: extractCoverImage(row.linkedOffer),
     };
     if (row.type === 'SELLER') selling.push(project);
     else buying.push(project);
