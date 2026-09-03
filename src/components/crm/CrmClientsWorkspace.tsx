@@ -265,6 +265,8 @@ export default function CrmClientsWorkspace() {
   const skipPersonReset = useRef(false);
   const [workspaceView, setWorkspaceView] = useState<"person" | "lane" | "project">("person");
   const [workspaceLane, setWorkspaceLane] = useState<"SELL" | "BUY" | null>(null);
+  const [taskReplyDrafts, setTaskReplyDrafts] = useState<Record<string, string>>({});
+  const [taskReplyingId, setTaskReplyingId] = useState<string | null>(null);
 
   useEffect(() => {
     const open = () => setFormOpen(true);
@@ -431,6 +433,37 @@ export default function CrmClientsWorkspace() {
       setToast(e instanceof Error ? e.message : "Błąd wysyłki wizytówki.");
     } finally {
       setCardBusyId(null);
+      window.setTimeout(() => setToast(""), 4500);
+    }
+  };
+
+  const replyToOfferFeedback = async (task: BuyerAgentTask) => {
+    if (!detail) return;
+    const reply = String(taskReplyDrafts[task.id] || "").trim();
+    if (!reply) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${detail.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reply_to_offer_feedback",
+          matchId: task.matchId,
+          offerId: task.offerId,
+          activityId: task.activityId,
+          reply,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json?.error || "Nie udało się wysłać odpowiedzi."));
+      setTaskReplyDrafts((prev) => ({ ...prev, [task.id]: "" }));
+      setTaskReplyingId(null);
+      setToast("Odpowiedź jest już przy ofercie w panelu klienta.");
+      await loadDetail(detail.id, { silent: true });
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Nie udało się wysłać odpowiedzi.");
+    } finally {
+      setBusy(false);
       window.setTimeout(() => setToast(""), 4500);
     }
   };
@@ -1360,6 +1393,14 @@ export default function CrmClientsWorkspace() {
                             <button
                               type="button"
                               disabled={busy}
+                              onClick={() => setTaskReplyingId(task.id)}
+                              className={eosBtn("home", { size: "sm" })}
+                            >
+                              Odpowiedz
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
                               onClick={() => void resolveBuyerAgentTask(task.activityId)}
                               className={eosBtn("secondary", { size: "sm" })}
                             >
@@ -1368,6 +1409,36 @@ export default function CrmClientsWorkspace() {
                             </button>
                           </div>
                         </div>
+                        {taskReplyingId === task.id ? (
+                          <div className="mt-3 space-y-2">
+                            <textarea
+                              value={taskReplyDrafts[task.id] || ""}
+                              onChange={(event) =>
+                                setTaskReplyDrafts((prev) => ({ ...prev, [task.id]: event.target.value }))
+                              }
+                              rows={3}
+                              placeholder="Odpowiedź pojawi się przy tej ofercie w panelu klienta…"
+                              className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busy || !String(taskReplyDrafts[task.id] || "").trim()}
+                                onClick={() => void replyToOfferFeedback(task)}
+                                className={eosBtn("home", { size: "sm" })}
+                              >
+                                {busy ? "Wysyłam…" : "Wyślij przy ofercie"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setTaskReplyingId(null)}
+                                className={eosBtn("secondary", { size: "sm" })}
+                              >
+                                Anuluj
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </article>
                     ))}
                   </div>

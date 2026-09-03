@@ -8,6 +8,7 @@ import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/Offe
 import {
   DISLIKE_PHRASES,
   LIKE_PHRASES,
+  hasUnreadAgentReply,
   mergeFeedbackPhrases,
   parseClientOfferFeedback,
   splitFeedbackPhrases,
@@ -67,6 +68,7 @@ export default function ClientPortalMatchCard({
   onToggle,
   prefill,
   onSubmit,
+  onAckReply,
 }: {
   match: Match;
   token: string;
@@ -81,6 +83,7 @@ export default function ClientPortalMatchCard({
     phrases: string[];
     note: string;
   }) => Promise<void>;
+  onAckReply?: (matchId: number) => Promise<void>;
 }) {
   const saved = useMemo(() => parseClientOfferFeedback(match.clientFeedback), [match.clientFeedback]);
   const initialPhrases = useMemo(() => splitFeedbackPhrases(saved.phrases), [saved.phrases]);
@@ -156,8 +159,14 @@ export default function ClientPortalMatchCard({
               </span>
             ) : null}
             {saved.agentReply ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--eos-accent,#34C759)]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent,#34C759)]">
-                💬 1 odpowiedź agenta
+              <span
+                className={
+                  hasUnreadAgentReply(saved)
+                    ? "inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-amber-800"
+                    : "inline-flex items-center gap-1 rounded-full bg-[var(--eos-accent,#34C759)]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent,#34C759)]"
+                }
+              >
+                {hasUnreadAgentReply(saved) ? "1 do przeczytania" : "Odpowiedź agenta"}
               </span>
             ) : null}
           </div>
@@ -352,6 +361,37 @@ export default function ClientPortalMatchCard({
               className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
             />
 
+            {saved.agentReply ? (
+              <div
+                className={`mt-3 rounded-2xl border px-4 py-3 ${
+                  hasUnreadAgentReply(saved)
+                    ? "border-amber-400/70 bg-amber-500/12"
+                    : "border-[var(--eos-border)] bg-[rgba(15,23,42,0.03)]"
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
+                  {hasUnreadAgentReply(saved) ? "Do przeczytania · odpowiedź agenta" : "Odpowiedź agenta"}
+                </p>
+                <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--eos-text)]">
+                  {String(saved.agentReply)}
+                </p>
+                {saved.agentReplyAt ? (
+                  <p className="mt-1 text-[10px] text-[var(--eos-muted)]">
+                    {new Date(String(saved.agentReplyAt)).toLocaleString("pl-PL")}
+                  </p>
+                ) : null}
+                {hasUnreadAgentReply(saved) && onAckReply ? (
+                  <button
+                    type="button"
+                    onClick={() => void onAckReply(match.id)}
+                    className="mt-3 inline-flex min-h-9 items-center rounded-full bg-amber-500 px-3 text-[11px] font-black text-black"
+                  >
+                    Przeczytałem
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
             <SendPlaneButton
               sending={saving}
               disabled={saving || !canSend}
@@ -369,22 +409,6 @@ export default function ClientPortalMatchCard({
               <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
                 Ostatnia reakcja: {new Date(match.clientFeedbackAt).toLocaleString("pl-PL")}
               </p>
-            ) : null}
-
-            {saved.agentReply ? (
-              <div className="mt-4 rounded-xl border border-[var(--eos-accent,#34C759)]/30 bg-[var(--eos-accent,#34C759)]/8 px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-accent,#34C759)]">
-                  💬 Odpowiedź agenta
-                </p>
-                <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--eos-text)]">
-                  {String(saved.agentReply)}
-                </p>
-                {saved.agentReplyAt ? (
-                  <p className="mt-1 text-[10px] text-[var(--eos-muted)]">
-                    {new Date(String(saved.agentReplyAt)).toLocaleString("pl-PL")}
-                  </p>
-                ) : null}
-              </div>
             ) : null}
           </div>
         </div>

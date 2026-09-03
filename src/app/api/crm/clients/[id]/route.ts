@@ -66,7 +66,11 @@ import {
   updateExternalPortalListing,
   isActivityVisibleToClient,
 } from '@/lib/crm/sellerMarketing';
-import { parseClientOfferFeedback, clientFeedbackHasContent } from '@/lib/crm/clientPortalFeedback';
+import {
+  parseClientOfferFeedback,
+  clientFeedbackHasContent,
+  serializeClientOfferFeedback,
+} from '@/lib/crm/clientPortalFeedback';
 import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
 import { getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
 import { buildBuyerAgentTasks } from '@/lib/crm/buyerAgentTasks';
@@ -489,34 +493,63 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'reply_to_offer_feedback') {
-    const matchId = Number(body.matchId);
-    const replyText = String(body.reply || '').trim();
+    const replyText = String(body.reply || body.content || '').trim();
     const activityId = Number(body.activityId) || 0;
-    if (!Number.isFinite(matchId) || matchId <= 0 || !replyText) {
-      return NextResponse.json({ error: 'Podaj matchId i treść odpowiedzi.' }, { status: 400 });
+    let matchId = Number(body.matchId) || 0;
+    const offerIdHint = Number(body.offerId) || 0;
+    if (!replyText) {
+      return NextResponse.json({ error: 'Wpisz treść odpowiedzi.' }, { status: 400 });
+    }
+
+    let activityMeta: Record<string, unknown> = {};
+    let activityOfferId: number | null = null;
+    if (activityId > 0) {
+      const activity = await prisma.agencyClientActivity.findFirst({
+        where: { id: activityId, clientId, agencyUserId },
+        select: { metadata: true, offerId: true },
+      });
+      if (activity?.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)) {
+        activityMeta = activity.metadata as Record<string, unknown>;
+      }
+      activityOfferId = activity?.offerId || null;
+      if (matchId <= 0) matchId = Number(activityMeta.matchId) || 0;
+    }
+
+    const matchWhere = [
+      matchId > 0 ? { id: matchId } : null,
+      offerIdHint > 0 ? { offerId: offerIdHint } : null,
+      activityOfferId ? { offerId: activityOfferId } : null,
+    ].filter(Boolean) as Array<{ id?: number; offerId?: number }>;
+    if (!matchWhere.length) {
+      return NextResponse.json({ error: 'Nie znaleziono oferty do odpowiedzi.' }, { status: 400 });
     }
     const match = await prisma.agencyClientMatch.findFirst({
-      where: { id: matchId, clientId },
-      select: { id: true, clientFeedback: true },
+      where: { clientId, OR: matchWhere },
+      select: { id: true, offerId: true, clientFeedback: true },
     });
     if (!match) {
-      return NextResponse.json({ error: 'Nie znaleziono dopasowania.' }, { status: 404 });
+      return NextResponse.json({ error: 'Nie znaleziono oferty do odpowiedzi.' }, { status: 404 });
     }
+
     const existingFeedback = parseClientOfferFeedback(match.clientFeedback);
-    const updatedFeedback = JSON.stringify({
-      ...existingFeedback,
-      agentReply: replyText,
-      agentReplyAt: new Date().toISOString(),
-    });
     await prisma.agencyClientMatch.update({
       where: { id: match.id },
-      data: { clientFeedback: updatedFeedback },
+      data: {
+        clientFeedback: serializeClientOfferFeedback({
+          ...existingFeedback,
+          agentReply: replyText,
+          agentReplyAt: new Date().toISOString(),
+          agentReplyReadAt: null,
+        }),
+      },
     });
     if (activityId > 0) {
       await prisma.agencyClientActivity.updateMany({
         where: { id: activityId, clientId, agencyUserId },
         data: {
           metadata: {
+            ...activityMeta,
+            matchId: match.id,
             agentStatus: 'done',
             agentHandledAt: new Date().toISOString(),
             agentReply: replyText,
@@ -524,7 +557,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         },
       });
     }
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, matchId: match.id });
   }
 
   if (action === 'refresh_matches') {
