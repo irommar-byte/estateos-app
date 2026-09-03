@@ -20,7 +20,14 @@ export const LIKE_PHRASES = [
 export const DISLIKE_PHRASES = [
   'Za mała kuchnia',
   'Brak balkonu',
+  'Brak parkingu',
+  'Brak windy',
+  'Brak ogrodu',
   'Za drogo',
+  'Za stare',
+  'Za mało pokoi',
+  'Za mały metraż',
+  'Za duży metraż',
   'Hałas / ruchliwa ulica',
   'Nie ta dzielnica',
   'Słabe doświetlenie',
@@ -31,6 +38,23 @@ const SENTIMENTS = new Set<ClientOfferSentiment>(['like', 'maybe', 'dislike']);
 
 export function emptyClientOfferFeedback(): ClientOfferFeedback {
   return { sentiment: null, liked: '', disliked: '', phrases: [], note: '' };
+}
+
+const LIKE_PHRASE_SET = new Set<string>(LIKE_PHRASES);
+const DISLIKE_PHRASE_SET = new Set<string>(DISLIKE_PHRASES);
+
+export function splitFeedbackPhrases(phrases: string[]): { likedPhrases: string[]; dislikedPhrases: string[] } {
+  const likedPhrases: string[] = [];
+  const dislikedPhrases: string[] = [];
+  for (const phrase of phrases) {
+    if (LIKE_PHRASE_SET.has(phrase)) likedPhrases.push(phrase);
+    else if (DISLIKE_PHRASE_SET.has(phrase)) dislikedPhrases.push(phrase);
+  }
+  return { likedPhrases, dislikedPhrases };
+}
+
+export function mergeFeedbackPhrases(likedPhrases: string[], dislikedPhrases: string[]): string[] {
+  return [...likedPhrases, ...dislikedPhrases];
 }
 
 export function parseClientOfferFeedback(raw: unknown): ClientOfferFeedback {
@@ -104,4 +128,11 @@ export function formatClientFeedbackForAgent(raw: unknown): string {
   if (feedback.phrases.length) parts.push(feedback.phrases.join(' · '));
   if (feedback.note) parts.push(feedback.note);
   return parts.join(' — ');
+}
+
+export function clientFeedbackChatMessage(raw: unknown, offerTitle: string): string | null {
+  const feedback = parseClientOfferFeedback(raw);
+  if (!feedback.note) return null;
+  const title = String(offerTitle || 'oferty').trim();
+  return `Reakcja do oferty „${title}”:\n${feedback.note}`;
 }

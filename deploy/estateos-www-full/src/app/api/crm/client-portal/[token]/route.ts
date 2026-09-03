@@ -34,6 +34,7 @@ import {
   serializeClientOfferFeedback,
   clientFeedbackHasContent,
   formatClientFeedbackForAgent,
+  clientFeedbackChatMessage,
 } from '@/lib/crm/clientPortalFeedback';
 import { applyIntelligenceLearning, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import { bearerUserIdFromRequest, resolvePortalAccountStatus, resolvePortalActivationHint } from '@/lib/crm/portalAccountLink';
@@ -150,6 +151,7 @@ async function notifyAgent(params: {
   title: string;
   body: string;
   type?: 'CRM_EVENT' | 'CHAT_MESSAGE';
+  data?: Record<string, unknown>;
 }) {
   await sendNotification({
     userId: params.agencyUserId,
@@ -157,6 +159,7 @@ async function notifyAgent(params: {
     title: params.title,
     body: params.body,
     data: crmAgentPushData(params.clientId, {
+      ...params.data,
       notificationType: params.type === 'CHAT_MESSAGE' ? 'crm_client_message' : 'crm_client',
     }),
   }).catch(() => {});
@@ -758,7 +761,29 @@ export async function POST(req: Request, ctx: RouteCtx) {
       clientId: client.id,
       title: `Reakcja do oferty: ${match.offer.title}`,
       body: `${clientName}: ${agentSummary.slice(0, 160)}`,
+      data: {
+        kind: 'CLIENT_FEEDBACK',
+        matchId,
+        offerId: match.offerId,
+      },
     });
+
+    const feedbackChatMessage = clientFeedbackChatMessage(stored, match.offer.title);
+    if (feedbackChatMessage) {
+      await sendPortalChat({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        from: 'client',
+        content: feedbackChatMessage,
+        clientName,
+        activityOnly: true,
+        activityMetadata: {
+          source: 'client_feedback',
+          matchId,
+          offerId: match.offerId,
+        },
+      });
+    }
 
     const agent = await prisma.user.findUnique({
       where: { id: client.agencyUserId },

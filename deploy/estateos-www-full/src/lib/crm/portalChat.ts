@@ -228,6 +228,8 @@ export async function sendPortalChat(params: {
     activityId: number;
     options: Array<{ id: string; label: string }>;
   };
+  activityOnly?: boolean;
+  activityMetadata?: Record<string, unknown>;
 }) {
   const attachments = parseAttachments(params.attachments);
   const content = String(params.content || '').trim();
@@ -237,6 +239,7 @@ export async function sendPortalChat(params: {
 
   const body = content || attachments.map((item) => contactAttachmentPreviewLabel(item)).join(', ');
   const metadata = {
+    ...params.activityMetadata,
     from: params.from,
     content,
     attachments,
@@ -255,7 +258,7 @@ export async function sendPortalChat(params: {
   });
 
   let contactMirrored = false;
-  if (params.linkedUserId) {
+  if (!params.activityOnly && params.linkedUserId) {
     try {
       const thread = await ensureAgencyClientThread(params.agencyUserId, params.linkedUserId);
       const senderId = params.from === 'agent' ? params.agencyUserId : params.linkedUserId;
@@ -284,7 +287,7 @@ export async function sendPortalChat(params: {
     }
   }
 
-  if (params.from === 'client' && !contactMirrored) {
+  if (!params.activityOnly && params.from === 'client' && !contactMirrored) {
     const thread = crmClientChatThreadId(params.clientId);
     await sendNotification({
       userId: params.agencyUserId,
@@ -297,7 +300,7 @@ export async function sendPortalChat(params: {
         iosThreadId: thread,
       },
     }).catch(() => {});
-  } else {
+  } else if (!params.activityOnly) {
     await sendClientPortalWebPush(params.clientId, {
       title: 'Nowa wiadomość od Twojego agenta',
       body: body.slice(0, 160),
