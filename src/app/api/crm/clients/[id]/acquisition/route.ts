@@ -22,6 +22,7 @@ import {
   buildAcquisitionClientEmailHtml,
 } from "@/lib/crm/acquisitionDocument";
 import { stampKwFromAcquisitionForm } from "@/lib/legalVerificationAgentStamp";
+import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -42,6 +43,7 @@ function serializeLinkedOffer(raw: {
   title?: string | null;
   status?: string | null;
   officeReviewStatus?: string | null;
+  images?: string | null;
   landRegistryNumber?: string | null;
   apartmentNumber?: string | null;
   isLegalSafeVerified?: boolean | null;
@@ -53,6 +55,7 @@ function serializeLinkedOffer(raw: {
     title: raw.title,
     status: raw.status,
     officeReviewStatus: raw.officeReviewStatus ?? null,
+    imageUrl: resolveOfferPrimaryImage({ images: raw.images }) || null,
     landRegistryNumber: raw.landRegistryNumber ?? null,
     apartmentNumber: raw.apartmentNumber ?? null,
     isLegalSafeVerified: Boolean(raw.isLegalSafeVerified),
