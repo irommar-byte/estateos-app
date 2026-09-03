@@ -98,3 +98,20 @@ test('handoff replaces a duplicate feedback task for the same match', () => {
   assert.equal(tasks[0].activityId, 47);
   assert.equal(tasks[0].kind, 'handoff');
 });
+
+test('keeps only the newest duplicate handoff', () => {
+  const common = {
+    kind: 'INTELLIGENCE_HANDOFF',
+    title: 'Asystent czeka na agenta',
+    body: 'Klient potwierdził „za drogo”, ale budżet ma kłódkę — agent musi zatwierdzić.',
+    offerId: null,
+    metadata: {},
+  };
+  const tasks = buildBuyerAgentTasks([], [
+    { ...common, id: 52, createdAt: '2026-09-02T12:00:00.000Z' },
+    { ...common, id: 51, createdAt: '2026-09-01T12:00:00.000Z' },
+  ]);
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].activityId, 52);
+});

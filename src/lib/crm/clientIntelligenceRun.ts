@@ -594,6 +594,38 @@ export async function sendIntelligenceOffer(params: {
       data: { intelligenceLastSentAt: new Date() },
     });
 
+    const openStalls = await prisma.agencyClientActivity.findMany({
+      where: { clientId: params.clientId, kind: 'INTELLIGENCE_STALLED' },
+      select: { id: true, metadata: true },
+    });
+    await Promise.all(
+      openStalls
+        .filter((activity) => {
+          const metadata =
+            activity.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)
+              ? (activity.metadata as Record<string, unknown>)
+              : {};
+          return metadata.agentStatus !== 'done' && !metadata.agentHandledAt;
+        })
+        .map((activity) => {
+          const metadata =
+            activity.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)
+              ? (activity.metadata as Record<string, unknown>)
+              : {};
+          return prisma.agencyClientActivity.update({
+            where: { id: activity.id },
+            data: {
+              metadata: {
+                ...metadata,
+                agentStatus: 'done',
+                autoResolvedAt: new Date().toISOString(),
+                autoResolvedByOfferId: pick.offerId,
+              },
+            },
+          });
+        }),
+    );
+
     return { sent: true, pick, emailSent: notified.emailSent };
   }
 

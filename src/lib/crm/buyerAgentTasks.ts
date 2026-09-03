@@ -52,11 +52,26 @@ export function buildBuyerAgentTasks(
   matches: TaskMatch[],
   activities: TaskActivity[],
 ): BuyerAgentTask[] {
-  const openHandoffs = activities.filter(
-    (activity) =>
-      (activity.kind === 'INTELLIGENCE_HANDOFF' || activity.kind === 'INTELLIGENCE_STALLED') &&
-      !isHandled(activity),
-  );
+  const handoffKeys = new Set<string>();
+  const openHandoffs = activities
+    .filter(
+      (activity) =>
+        (activity.kind === 'INTELLIGENCE_HANDOFF' || activity.kind === 'INTELLIGENCE_STALLED') &&
+        !isHandled(activity),
+    )
+    .sort((a, b) => iso(b.createdAt).localeCompare(iso(a.createdAt)) || b.id - a.id)
+    .filter((activity) => {
+      const metadata = record(activity.metadata);
+      const key = [
+        activity.kind,
+        Number(metadata.matchId) || '',
+        activity.offerId || '',
+        activity.body || '',
+      ].join('|');
+      if (handoffKeys.has(key)) return false;
+      handoffKeys.add(key);
+      return true;
+    });
   const handoffMatchIds = new Set(
     openHandoffs
       .map((activity) => Number(record(activity.metadata).matchId))
