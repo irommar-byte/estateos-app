@@ -27,6 +27,8 @@ import {
 } from '@/lib/crm/clientJourney';
 import { crmAgentPushData, crmClientChatThreadId } from '@/lib/crm/agentPush';
 import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
+import { portalChatNotifyTarget } from '@/lib/crm/portalChatNotify';
+import { touchPortalLinkedPresence } from '@/lib/crm/portalPresence';
 
 const SAFE_NAME_RE = /[^a-zA-Z0-9._-]+/g;
 
@@ -268,6 +270,7 @@ export async function sendPortalChat(params: {
         content: content || (attachments[0] ? contactAttachmentPreviewLabel(attachments[0]) : ''),
         attachment: attachments[0] || null,
         mirrorToClientPortal: false,
+        skipReceiverNotify: params.from === 'client',
       });
       if (contactResult.ok) {
         contactMirrored = true;
@@ -287,7 +290,15 @@ export async function sendPortalChat(params: {
     }
   }
 
-  if (!params.activityOnly && params.from === 'client' && !contactMirrored) {
+  const notifyTarget = portalChatNotifyTarget({
+    from: params.from,
+    activityOnly: params.activityOnly,
+    contactMirrored,
+  });
+  if (params.from === 'client') {
+    await touchPortalLinkedPresence(params.linkedUserId, { force: true });
+  }
+  if (notifyTarget === 'agent') {
     const thread = crmClientChatThreadId(params.clientId);
     await sendNotification({
       userId: params.agencyUserId,
@@ -300,7 +311,7 @@ export async function sendPortalChat(params: {
         iosThreadId: thread,
       },
     }).catch(() => {});
-  } else if (!params.activityOnly) {
+  } else if (notifyTarget === 'client') {
     await sendClientPortalWebPush(params.clientId, {
       title: 'Nowa wiadomość od Twojego agenta',
       body: body.slice(0, 160),

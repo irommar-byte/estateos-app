@@ -27,6 +27,7 @@ import {
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { touchPortalLinkedPresence } from '@/lib/crm/portalPresence';
 import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
 import { isPromotionActive } from '@/lib/listingPromotion';
 import {
@@ -296,6 +297,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   if (!client) {
     return NextResponse.json({ error: 'Nie znaleziono panelu klienta.' }, { status: 404 });
   }
+
+  await touchPortalLinkedPresence(client.linkedUserId);
 
   const agent = client.agencyUser;
   const member = agent.agencyMembership;
@@ -577,6 +580,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (!client) {
     return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
   }
+
+  await touchPortalLinkedPresence(client.linkedUserId, {
+    force: action === 'send_message' || action === 'typing',
+  });
 
   const clientName = `${client.firstName} ${client.lastName}`.trim();
 
