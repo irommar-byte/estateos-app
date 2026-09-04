@@ -2,7 +2,12 @@ import React from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPeselDecode } from '../../lib/pesel';
-import { dialCodeFor, flagEmojiFromIso2, formatNationalAsYouType, parseStoredPhoneToLine } from '../../utils/phoneRegions';
+import {
+  dialCodeFor,
+  flagEmojiFromIso2,
+  formatNationalAsYouType,
+  parseStoredPhoneToLine,
+} from '../../utils/phoneRegions';
 
 const appleType = Platform.select({
   ios: { fontFamily: 'System' as const },
@@ -20,20 +25,19 @@ type Colors = {
   input: string;
 };
 
-function PhoneValue({ phone, color }: { phone: string; color: string }) {
+function formatPhoneParts(phone: string) {
   const line = parseStoredPhoneToLine(phone, 'PL');
   const iso = line.iso || 'PL';
+  const digits = line.nationalDigits || '';
   const national =
-    line.nationalDigits
-      ? formatNationalAsYouType(iso, line.nationalDigits) || line.nationalDigits
-      : phone.trim();
-  return (
-    <View style={styles.phoneValue}>
-      <Text style={styles.flag}>{flagEmojiFromIso2(iso)}</Text>
-      <Text style={[styles.dial, appleType, { color }]}>+{dialCodeFor(iso)}</Text>
-      <Text style={[styles.national, appleType, { color }]}>{national}</Text>
-    </View>
-  );
+    iso === 'PL' && digits.length === 9
+      ? `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`
+      : formatNationalAsYouType(iso, digits) || digits || phone.trim();
+  return {
+    flag: flagEmojiFromIso2(iso),
+    dial: `+${dialCodeFor(iso)}`,
+    national,
+  };
 }
 
 function FactRow({
@@ -41,23 +45,18 @@ function FactRow({
   last,
   colors,
   onPress,
-  link,
   children,
 }: {
   label: string;
   last?: boolean;
   colors: Colors;
   onPress?: () => void;
-  link?: boolean;
   children: React.ReactNode;
 }) {
   const inner = (
     <View style={[styles.row, !last ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null]}>
-      <View style={styles.rowBody}>
-        <Text style={[styles.rowLabel, appleType, { color: colors.secondary }]}>{label}</Text>
-        {children}
-      </View>
-      {link ? <Ionicons name="chevron-forward" size={13} color="#C7C7CC" /> : null}
+      <Text style={[styles.rowLabel, appleType, { color: colors.secondary }]}>{label}</Text>
+      {children}
     </View>
   );
   if (onPress) {
@@ -107,9 +106,16 @@ export default function ClientPersonCard({
 }) {
   const personRoles = roles?.length ? roles : [type];
   const dual = personRoles.includes('BUYER') && personRoles.includes('SELLER');
-  const accent = dual ? '#C9A227' : type === 'BUYER' ? '#FF9500' : '#34C759';
+  const ink = dual ? '#8A7A4A' : type === 'BUYER' ? '#A15C12' : '#1F6B45';
   const initials = `${firstName.trim().charAt(0)}${lastName.trim().charAt(0)}`.toUpperCase() || 'K';
   const peselHint = pesel ? formatPeselDecode(pesel) : null;
+  const phoneParts = phone ? formatPhoneParts(phone) : null;
+  const roleLabel = [
+    personRoles.includes('SELLER') ? 'Sprzedający' : null,
+    personRoles.includes('BUYER') ? 'Kupujący' : null,
+  ]
+    .filter(Boolean)
+    .join('  ·  ');
 
   return (
     <View
@@ -117,63 +123,55 @@ export default function ClientPersonCard({
         styles.card,
         {
           backgroundColor: colors.card,
-          borderColor: colors.border,
-          shadowColor: '#000',
-          shadowOpacity: isDark ? 0.45 : 0.08,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 10 },
+          borderColor: isDark ? colors.border : 'rgba(60,60,67,0.08)',
+          shadowColor: '#1C1917',
+          shadowOpacity: isDark ? 0.5 : 0.07,
+          shadowRadius: 28,
+          shadowOffset: { width: 0, height: 14 },
         },
       ]}
     >
-      <View
-        style={[
-          styles.monogram,
-          {
-            backgroundColor: dual
-              ? 'rgba(201,162,39,0.16)'
-              : type === 'BUYER'
-                ? 'rgba(255,149,0,0.16)'
-                : 'rgba(52,199,89,0.16)',
-          },
-        ]}
-      >
-        <Text style={[styles.monogramText, appleType, { color: accent }]}>{initials}</Text>
-      </View>
-      <Text style={[styles.name, appleType, { color: colors.text }]}>
-        {firstName} {lastName}
-      </Text>
-      <Text style={[styles.clientId, appleType, { color: colors.secondary }]}>ID {clientId}</Text>
-      <View style={styles.roleRow}>
-        {personRoles.includes('SELLER') ? (
-          <Text style={[styles.role, appleType, { color: colors.secondary }]}>Sprzedający</Text>
-        ) : null}
-        {dual ? <Text style={[styles.roleSep, appleType, { color: colors.secondary }]}>·</Text> : null}
-        {personRoles.includes('BUYER') ? (
-          <Text style={[styles.role, appleType, { color: colors.secondary }]}>Kupujący</Text>
-        ) : null}
+      <View style={styles.identity}>
+        <View style={[styles.monogram, { borderColor: colors.border }]}>
+          <Text style={[styles.monogramText, appleType, { color: ink }]}>{initials}</Text>
+        </View>
+        <View style={styles.identityCopy}>
+          <Text style={[styles.name, appleType, { color: colors.text }]} numberOfLines={2}>
+            {firstName} {lastName}
+          </Text>
+          <Text style={[styles.meta, appleType, { color: colors.secondary }]}>
+            {roleLabel}
+            <Text style={styles.metaDot}>  ·  </Text>
+            Nr {clientId}
+          </Text>
+          {portalUrl ? (
+            <Pressable
+              onPress={() =>
+                Linking.openURL(portalUrl.startsWith('http') ? portalUrl : `https://estateos.pl${portalUrl}`)
+              }
+              style={({ pressed }) => [styles.portalLink, { opacity: pressed ? 0.55 : 1 }]}
+            >
+              <Text style={[styles.portalText, appleType]}>Panel klienta</Text>
+              <Ionicons name="open-outline" size={13} color="#8A8A8E" />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
-      {portalUrl ? (
-        <Pressable
-          onPress={() =>
-            Linking.openURL(portalUrl.startsWith('http') ? portalUrl : `https://estateos.pl${portalUrl}`)
-          }
-          style={[styles.portalBtn, { backgroundColor: colors.input, borderColor: colors.border }]}
-        >
-          <Ionicons name="person-circle-outline" size={16} color="#007AFF" />
-          <Text style={[styles.portalText, appleType]}>Panel klienta</Text>
-        </Pressable>
-      ) : null}
+      <View style={[styles.rule, { backgroundColor: colors.border }]} />
 
-      <View style={[styles.group, { backgroundColor: colors.input }]}>
+      <View style={styles.facts}>
         <FactRow
           label="Telefon"
           colors={colors}
           onPress={phone ? () => Linking.openURL(`tel:${phone}`) : undefined}
-          link={Boolean(phone)}
         >
-          {phone ? (
-            <PhoneValue phone={phone} color="#007AFF" />
+          {phoneParts ? (
+            <View style={styles.phoneValue}>
+              <Text style={styles.flag}>{phoneParts.flag}</Text>
+              <Text style={[styles.dial, appleType, { color: colors.secondary }]}>{phoneParts.dial}</Text>
+              <Text style={[styles.national, appleType, { color: colors.text }]}>{phoneParts.national}</Text>
+            </View>
           ) : (
             <Text style={[styles.rowValue, appleType, { color: colors.secondary, fontWeight: '400' }]}>Brak</Text>
           )}
@@ -182,10 +180,9 @@ export default function ClientPersonCard({
           label="E-mail"
           colors={colors}
           onPress={email ? () => Linking.openURL(`mailto:${email}`) : undefined}
-          link={Boolean(email)}
         >
           <Text
-            style={[styles.rowValue, appleType, { color: email ? '#007AFF' : colors.secondary, fontWeight: email ? '600' : '400' }]}
+            style={[styles.rowValue, appleType, { color: email ? colors.text : colors.secondary, fontWeight: email ? '500' : '400' }]}
             numberOfLines={2}
           >
             {email || 'Brak'}
@@ -193,7 +190,7 @@ export default function ClientPersonCard({
         </FactRow>
         <FactRow label="PESEL" colors={colors} last={!kwNumbers.length}>
           {pesel ? (
-            <View style={styles.peselValue}>
+            <View>
               <Text style={[styles.rowValue, appleType, { color: colors.text }]}>{pesel}</Text>
               {peselHint ? (
                 <Text style={[styles.peselHint, appleType, { color: colors.secondary }]}>{peselHint}</Text>
@@ -210,23 +207,24 @@ export default function ClientPersonCard({
             last={index === kwNumbers.length - 1}
             colors={colors}
             onPress={() => onOpenKw(item.kw)}
-            link
           >
-            <Text style={[styles.rowValue, appleType, { color: '#007AFF' }]}>{item.kw}</Text>
+            <Text style={[styles.rowValue, appleType, { color: colors.text }]}>{item.kw}</Text>
           </FactRow>
         ))}
       </View>
 
-      <View style={styles.stats}>
-        <View style={[styles.stat, { backgroundColor: colors.input }]}>
+      <View style={[styles.stats, { borderTopColor: colors.border }]}>
+        <View style={styles.stat}>
           <Text style={[styles.statValue, appleType, { color: colors.text }]}>{sentCount}</Text>
           <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Wysłane</Text>
         </View>
-        <View style={[styles.stat, { backgroundColor: colors.input }]}>
+        <View style={[styles.statRule, { backgroundColor: colors.border }]} />
+        <View style={styles.stat}>
           <Text style={[styles.statValue, appleType, { color: colors.text }]}>{opinionCount}</Text>
           <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Z opinią</Text>
         </View>
-        <View style={[styles.stat, { backgroundColor: colors.input }]}>
+        <View style={[styles.statRule, { backgroundColor: colors.border }]} />
+        <View style={styles.stat}>
           <Text style={[styles.statValue, appleType, { color: colors.text }]}>{chatCount}</Text>
           <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Czat</Text>
         </View>
@@ -237,150 +235,143 @@ export default function ClientPersonCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 26,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 18,
+    paddingHorizontal: 22,
+    paddingTop: 20,
+    paddingBottom: 8,
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  identity: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
   },
   monogram: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
   },
   monogramText: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    fontSize: 20,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+  },
+  identityCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   name: {
-    marginTop: 14,
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.6,
-    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '600',
+    letterSpacing: -0.44,
+    lineHeight: 26,
   },
-  clientId: {
+  meta: {
     marginTop: 4,
     fontSize: 13,
     fontWeight: '400',
     letterSpacing: -0.08,
   },
-  roleRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  role: {
-    fontSize: 13,
+  metaDot: {
     fontWeight: '400',
   },
-  roleSep: {
-    fontSize: 13,
-    fontWeight: '400',
-  },
-  portalBtn: {
-    marginTop: 12,
+  portalLink: {
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
+    alignSelf: 'flex-start',
+    gap: 4,
   },
   portalText: {
-    color: '#007AFF',
+    color: '#6C6C70',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
+    letterSpacing: -0.08,
   },
-  group: {
-    alignSelf: 'stretch',
+  rule: {
+    height: StyleSheet.hairlineWidth,
     marginTop: 18,
-    borderRadius: 14,
-    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  facts: {
+    alignSelf: 'stretch',
   },
   row: {
-    minHeight: 52,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rowBody: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'flex-start',
+    paddingVertical: 13,
   },
   rowLabel: {
-    fontSize: 13,
-    fontWeight: '400',
-    letterSpacing: -0.08,
-    marginBottom: 3,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 0.6,
+    marginBottom: 4,
   },
   rowValue: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '500',
     letterSpacing: -0.41,
     textAlign: 'left',
     fontVariant: ['tabular-nums'],
   },
   phoneValue: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    alignItems: 'baseline',
+    gap: 7,
   },
   flag: {
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
   },
   dial: {
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.41,
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: -0.2,
   },
   national: {
     fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.41,
+    fontWeight: '500',
+    letterSpacing: 0.4,
     fontVariant: ['tabular-nums'],
   },
-  peselValue: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'baseline',
-    gap: 8,
-  },
   peselHint: {
-    fontSize: 15,
+    marginTop: 3,
+    fontSize: 13,
     fontWeight: '400',
-    letterSpacing: -0.24,
+    letterSpacing: -0.08,
   },
   stats: {
     alignSelf: 'stretch',
-    marginTop: 12,
+    marginTop: 4,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
   },
   stat: {
     flex: 1,
-    borderRadius: 14,
-    paddingVertical: 10,
-    alignItems: 'center',
+    alignItems: 'flex-start',
+  },
+  statRule: {
+    width: StyleSheet.hairlineWidth,
+    height: 28,
+    marginHorizontal: 12,
   },
   statValue: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
+    letterSpacing: -0.32,
+    fontVariant: ['tabular-nums'],
   },
   statLabel: {
     marginTop: 2,
     fontSize: 11,
     fontWeight: '400',
+    letterSpacing: 0.2,
   },
 });

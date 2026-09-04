@@ -160,8 +160,8 @@ export default function ClientPersonHub({
         <View style={styles.iconWrap}>
           <Ionicons name="home-outline" size={22} color="#34C759" />
         </View>
-        <Text style={{ color: '#34C759', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginTop: 14 }}>SPRZEDAJE</Text>
-        <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 4 }}>
+        <Text style={{ color: '#34C759', fontSize: 11, fontWeight: '500', letterSpacing: 0.8, marginTop: 14 }}>Sprzedaje</Text>
+        <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, marginTop: 4 }}>
           {selling.length ? `${selling.length} ${selling.length === 1 ? 'pozysk' : 'pozyski'}` : 'Brak pozysku'}
         </Text>
         <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>
@@ -176,8 +176,8 @@ export default function ClientPersonHub({
           <View style={[styles.iconWrap, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
             <Ionicons name="search-outline" size={22} color="#FF9500" />
           </View>
-          <Text style={{ color: '#FF9500', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginTop: 14 }}>KUPUJE</Text>
-          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 4 }}>
+          <Text style={{ color: '#C47A12', fontSize: 11, fontWeight: '500', letterSpacing: 0.8, marginTop: 14 }}>Kupuje</Text>
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, marginTop: 4 }}>
             {buying.length ? `${buying.length} ${buying.length === 1 ? 'poszukiwanie' : 'poszukiwania'}` : 'Brak poszukiwania'}
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>
@@ -221,7 +221,7 @@ export default function ClientPersonHub({
 const styles = StyleSheet.create({
   lane: {
     borderRadius: 22,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 18,
   },
   card: {
