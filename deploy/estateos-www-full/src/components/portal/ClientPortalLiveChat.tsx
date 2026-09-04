@@ -19,12 +19,22 @@ type PortalMessage = {
   createdAt: string;
   fromAgent: boolean;
   fromMe: boolean;
+  kind?: "chat" | "client_step" | "agent_note" | "checkback";
+  offerTitle?: string | null;
+  sentiment?: string | null;
   attachments?: ContactAttachmentMeta[];
   checkbackQuickReplies?: {
     activityId: number;
     options: Array<{ id: string; label: string }>;
   };
 };
+
+function sentimentChip(value?: string | null) {
+  if (value === "like") return "Chcę oglądać";
+  if (value === "maybe") return "Do przemyślenia";
+  if (value === "dislike") return "Nie pasuje";
+  return null;
+}
 
 function messageTime(value: string) {
   const date = new Date(value);
@@ -321,12 +331,14 @@ export default function ClientPortalLiveChat({
                 <MessageSquare className="size-8 text-emerald-500/60" />
                 <p className="mt-3 text-sm font-bold text-[var(--eos-text)]">Tu zaczyna się Wasza rozmowa</p>
                 <p className="mt-1 max-w-sm text-xs text-[var(--eos-muted)]">
-                  Wiadomość pojawi się agentowi w CRM, a odpowiedź wróci dokładnie tutaj.
+                  Gdy dostaniesz ofertę, oceń ją przyciskami na karcie. Tutaj piszesz tylko wtedy, gdy chcesz dodać godzinę, pytanie albo doprecyzowanie.
                 </p>
               </div>
             ) : (
               messages.map((message) => {
                 const visibleContent = cleanAttachmentOnlyMessage(message.content, message.attachments);
+                const isStep = message.kind === "client_step" || message.kind === "checkback";
+                const sentiment = sentimentChip(message.sentiment);
                 return (
                   <div
                   key={message.id}
@@ -349,18 +361,39 @@ export default function ClientPortalLiveChat({
                   className={`max-w-[88%] rounded-2xl px-3 py-2.5 text-sm shadow-sm ${
                     message.fromMe
                       ? "ml-auto bg-emerald-500/16 text-[var(--eos-text)]"
-                      : "mr-auto border border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
+                      : isStep
+                        ? "mr-auto border border-emerald-400/45 bg-emerald-500/8 text-[var(--eos-text)]"
+                        : "mr-auto border border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)]"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="eos-portal-label">{message.fromMe ? "Ty" : agentName}</p>
+                    <p className="eos-portal-label">
+                      {message.fromMe ? "Ty" : isStep ? "Co teraz zrób" : agentName}
+                    </p>
                     <time className="shrink-0 text-[9px] text-[var(--eos-muted)]">
                       {messageTime(message.createdAt)}
                     </time>
                   </div>
+                  {message.offerTitle || sentiment ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {message.offerTitle ? (
+                        <span className="rounded-full bg-[var(--eos-input)] px-2 py-0.5 text-[10px] font-semibold text-[var(--eos-muted)]">
+                          Oferta · {message.offerTitle}
+                        </span>
+                      ) : null}
+                      {sentiment ? (
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          {sentiment}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {visibleContent ? <p className="mt-1 whitespace-pre-wrap leading-relaxed">{visibleContent}</p> : null}
                   {message.checkbackQuickReplies?.options?.length ? (
                     <div className="mt-3 flex flex-col gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
+                        Wybierz jedną opcję
+                      </p>
                       {message.checkbackQuickReplies.options.map((option) => (
                         <button
                           key={`${message.id}-${option.id}`}
@@ -431,7 +464,7 @@ export default function ClientPortalLiveChat({
                   void sendChat();
                 }
               }}
-              placeholder="Napisz wiadomość do agenta…"
+                  placeholder="Np. jutro o 12:00 albo pytanie do oferty…"
               className="eos-field-inset min-w-0 flex-1 rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
             />
             <SendPlaneButton

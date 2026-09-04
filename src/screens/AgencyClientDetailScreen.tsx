@@ -2863,15 +2863,23 @@ export default function AgencyClientDetailScreen() {
                           })
                           .filter((attachment): attachment is NonNullable<typeof attachment> => Boolean(attachment));
                         const visibleContent = cleanAttachmentOnlyMessage(msg.content, attachments);
+                        const isAgentNote = msg.kind === 'agent_note';
+                        const isStep = msg.kind === 'client_step' || msg.kind === 'checkback';
                         return (
                           <View
                           key={msg.id}
                           style={{
-                            alignSelf: msg.fromMe ? 'flex-end' : 'flex-start',
-                            backgroundColor: msg.fromMe ? 'rgba(52,199,89,0.16)' : colors.input,
+                            alignSelf: isAgentNote || msg.fromMe ? 'flex-end' : 'flex-start',
+                            backgroundColor: isAgentNote
+                              ? 'rgba(245, 158, 11, 0.16)'
+                              : msg.fromMe
+                                ? 'rgba(52,199,89,0.16)'
+                                : colors.input,
                             borderRadius: 16,
-                            borderBottomRightRadius: msg.fromMe ? 6 : 16,
-                            borderBottomLeftRadius: msg.fromMe ? 16 : 6,
+                            borderBottomRightRadius: msg.fromMe || isAgentNote ? 6 : 16,
+                            borderBottomLeftRadius: msg.fromMe || isAgentNote ? 16 : 6,
+                            borderWidth: isAgentNote || isStep ? 1 : 0,
+                            borderColor: isAgentNote ? 'rgba(245, 158, 11, 0.4)' : isStep ? 'rgba(16,185,129,0.35)' : 'transparent',
                             paddingHorizontal: 12,
                             paddingVertical: 10,
                             marginBottom: 8,
@@ -2880,7 +2888,13 @@ export default function AgencyClientDetailScreen() {
                         >
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                             <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800' }}>
-                              {msg.fromMe ? 'Ty' : client.firstName}
+                              {isAgentNote
+                                ? 'Tylko Ty · instrukcja'
+                                : isStep && msg.fromMe
+                                  ? 'Klient to widzi'
+                                  : msg.fromMe
+                                    ? 'Ty'
+                                    : client.firstName}
                             </Text>
                             <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '600' }}>
                               {new Date(msg.createdAt).toLocaleString('pl-PL', {
@@ -2891,6 +2905,11 @@ export default function AgencyClientDetailScreen() {
                               })}
                             </Text>
                           </View>
+                          {msg.offerTitle ? (
+                            <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                              Oferta · {msg.offerTitle}
+                            </Text>
+                          ) : null}
                           {visibleContent ? (
                             <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
                               {visibleContent}

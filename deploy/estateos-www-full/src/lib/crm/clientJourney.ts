@@ -1,3 +1,5 @@
+import { presentPortalChatFields } from '@/lib/crm/portalChatCopy';
+
 export const CLIENT_PREP_ITEMS = [
   { id: 'photo_ready', label: 'Przygotować mieszkanie do sesji zdjęciowej' },
   { id: 'ownership_deed', label: 'Podstawa nabycia / akt notarialny' },
@@ -84,6 +86,9 @@ export type PortalAttachment = {
   size: number;
 };
 
+export type PortalChatKind = 'chat' | 'client_step' | 'agent_note' | 'checkback';
+export type PortalChatAudience = 'client' | 'agent' | 'both';
+
 export type PortalChatMessage = {
   id: number;
   content: string;
@@ -91,6 +96,11 @@ export type PortalChatMessage = {
   fromAgent: boolean;
   fromMe: boolean;
   attachments: PortalAttachment[];
+  kind?: PortalChatKind;
+  audience?: PortalChatAudience;
+  offerTitle?: string | null;
+  offerId?: number | null;
+  sentiment?: string | null;
   checkbackQuickReplies?: {
     activityId: number;
     options: Array<{ id: string; label: string }>;
@@ -423,24 +433,41 @@ export function parsePortalMessages(
     .filter((row) => row.kind === JOURNEY_ACTIVITY.PORTAL_MESSAGE)
     .slice()
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((row) => {
+    .flatMap((row) => {
       const meta = asMeta(row.metadata);
       const from = resolvePortalMessageFrom(meta, row.title);
       const fromAgent = from === 'agent';
-      return {
-        id: row.id,
+      const presented = presentPortalChatFields({
         content: String(meta.content || row.body || ''),
-        createdAt: typeof row.createdAt === 'string' ? row.createdAt : row.createdAt.toISOString(),
         fromAgent,
-        fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
-        attachments: parseAttachments(meta.attachments),
-        checkbackQuickReplies:
-          meta.checkbackQuickReplies &&
-          typeof meta.checkbackQuickReplies === 'object' &&
-          !Array.isArray(meta.checkbackQuickReplies)
-            ? (meta.checkbackQuickReplies as PortalChatMessage['checkbackQuickReplies'])
-            : undefined,
-      };
+        viewer,
+        audience: meta.audience,
+        kind: meta.kind,
+        offerTitle: meta.offerTitle,
+      });
+      if (!presented.visible) return [];
+      const offerId = positiveId(meta.offerId) || positiveId(row.offerId);
+      return [
+        {
+          id: row.id,
+          content: presented.content,
+          createdAt: typeof row.createdAt === 'string' ? row.createdAt : row.createdAt.toISOString(),
+          fromAgent,
+          fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
+          attachments: parseAttachments(meta.attachments),
+          kind: presented.kind,
+          audience: presented.audience,
+          offerTitle: presented.offerTitle,
+          offerId,
+          sentiment: meta.sentiment ? String(meta.sentiment) : null,
+          checkbackQuickReplies:
+            meta.checkbackQuickReplies &&
+            typeof meta.checkbackQuickReplies === 'object' &&
+            !Array.isArray(meta.checkbackQuickReplies)
+              ? (meta.checkbackQuickReplies as PortalChatMessage['checkbackQuickReplies'])
+              : undefined,
+        },
+      ];
     });
 }
 

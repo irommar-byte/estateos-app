@@ -223,6 +223,8 @@ export type PortalChatMessage = {
   content?: string;
   body?: string;
   createdAt: string;
+  kind?: 'chat' | 'client_step' | 'agent_note' | 'checkback';
+  offerTitle?: string | null;
 };
 
 function portalUrl(token: string, suffix = '') {

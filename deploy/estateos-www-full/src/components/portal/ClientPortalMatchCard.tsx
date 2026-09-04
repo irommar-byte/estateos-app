@@ -254,7 +254,7 @@ export default function ClientPortalMatchCard({
                 <p className="mt-1 text-sm leading-snug text-[var(--eos-text)]">
                   {match.clientFeedback
                     ? "Możesz doprecyzować — agent nadal widzi tę samą nieruchomość."
-                    : "Wybierz decyzję, potem zaznacz plusy i minusy w osobnych sekcjach."}
+                    : "Krok 1: wybierz jedną decyzję. Krok 2 (opcjonalnie): plusy, minusy i krótka notatka."}
                 </p>
               </div>
             </div>

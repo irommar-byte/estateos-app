@@ -5,7 +5,7 @@ import {
   serializeClientOfferFeedback,
 } from '../src/lib/crm/clientPortalFeedback';
 
-test('mirrors a client note into chat with offer context', () => {
+test('mirrors a client note into chat without repeating the offer title in the body', () => {
   const feedback = serializeClientOfferFeedback({
     sentiment: 'maybe',
     note: 'Sprawdź proszę, czy można dokupić miejsce postojowe.',
@@ -13,8 +13,8 @@ test('mirrors a client note into chat with offer context', () => {
 
   const message = clientFeedbackChatMessage(feedback, 'Mieszkanie na Bemowie');
 
-  assert.match(message || '', /Mieszkanie na Bemowie/);
-  assert.match(message || '', /miejsce postojowe/);
+  assert.equal(message, 'Sprawdź proszę, czy można dokupić miejsce postojowe.');
+  assert.doesNotMatch(message || '', /Reakcja do oferty/);
 });
 
 test('does not add chip-only feedback to live chat', () => {

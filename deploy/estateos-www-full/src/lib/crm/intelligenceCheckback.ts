@@ -16,6 +16,7 @@ import {
   type CheckbackOption,
 } from '@/lib/crm/intelligenceDialogue';
 import { sendPortalChat } from '@/lib/crm/portalChat';
+import { wrapCheckbackQuestion, checkbackAckForClient } from '@/lib/crm/portalChatCopy';
 import { ensureIntelligenceLockedFieldsColumn } from '@/lib/crm/clientIntelligenceRun';
 import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
@@ -341,10 +342,15 @@ export async function createAndDeliverCheckback(params: {
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     from: 'agent',
-    content: params.turn.body,
+    content: wrapCheckbackQuestion(params.turn.body),
     checkbackQuickReplies: {
       activityId: activity.id,
       options: params.turn.options || [],
+    },
+    activityMetadata: {
+      audience: 'both',
+      kind: 'checkback',
+      source: 'intelligence_checkback',
     },
   }).catch(() => {});
 
@@ -496,18 +502,21 @@ export async function respondToIntelligenceCheckback(params: {
     }).catch(() => {});
   }
 
-  const ack =
-    params.optionId === 'no'
-      ? 'Dzięki — poprawię zrozumienie. Możesz doprecyzować przy następnej ofercie.'
-      : agentNote
-        ? 'Przekazuję to agentowi i równolegle szukam dalej w ustalonych kryteriach.'
-        : 'Dzięki — biorę to pod uwagę i szukam dalej.';
+  const ack = checkbackAckForClient({
+    optionId: params.optionId,
+    handedToAgent: Boolean(agentNote),
+  });
 
   await sendPortalChat({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     from: 'agent',
     content: ack,
+    activityMetadata: {
+      audience: 'both',
+      kind: 'client_step',
+      source: 'intelligence_checkback_ack',
+    },
   }).catch(() => {});
 
   if (Object.keys(prefUpdate).length) {

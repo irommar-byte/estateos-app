@@ -269,6 +269,9 @@ export type AgencyClientDetail = AgencyClientListItem & {
     createdAt: string;
     fromAgent: boolean;
     fromMe: boolean;
+    kind?: 'chat' | 'client_step' | 'agent_note' | 'checkback';
+    offerTitle?: string | null;
+    sentiment?: string | null;
     attachments: { url: string; name: string; mimeType: string; size: number }[];
   }[];
   activities?: AgencyClientActivity[];
