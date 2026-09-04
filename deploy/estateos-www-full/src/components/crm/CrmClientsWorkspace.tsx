@@ -8,7 +8,6 @@ import {
   ShoppingBag,
   Home,
   Mail,
-  Phone,
   Search,
   Target,
   Send,
@@ -37,6 +36,7 @@ import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import CrmClientLiveChat from "@/components/crm/CrmClientLiveChat";
 import CrmClientPersonHub from "@/components/crm/CrmClientPersonHub";
+import { formatCrmRoleLabel, groupCrmClientsByPerson } from "@/lib/crm/personGroups";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
 import CrmIntelligenceAssistant from "@/components/crm/CrmIntelligenceAssistant";
 import { timelineKindLabel } from "@/lib/desk/timeline";
@@ -182,6 +182,15 @@ type ClientDetail = AgencyClientListItem & {
     selling: ClientPersonProject[];
     buying: ClientPersonProject[];
   };
+  managedOffers?: Array<{
+    id: number;
+    title: string;
+    city: string | null;
+    price: number | null;
+    imageUrl: string | null;
+    linkedClientId: number | null;
+    status?: string;
+  }>;
   meeting?: {
     startsAt: string;
     location: string | null;
@@ -291,6 +300,11 @@ export default function CrmClientsWorkspace() {
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [presentationOfferId, setPresentationOfferId] = useState("");
   const [presentationAt, setPresentationAt] = useState("");
+  const [guestAgencyMode, setGuestAgencyMode] = useState(false);
+  const [guestAgencyName, setGuestAgencyName] = useState("");
+  const [guestAgencyEmail, setGuestAgencyEmail] = useState("");
+  const [guestAgencyPhone, setGuestAgencyPhone] = useState("");
+  const [guestVisitorName, setGuestVisitorName] = useState("");
   const [sellerFilters, setSellerFilters] = useState<WebRadarFilters>(() => ({
     ...defaultWebRadarFilters(),
     pushNotifications: false,
@@ -394,6 +408,10 @@ export default function CrmClientsWorkspace() {
       const json = await res.json();
       if (json.success) {
         setDetail(json.client);
+        const linkedId = Number(json.client?.linkedOfferId || 0);
+        if (linkedId > 0) {
+          setPresentationOfferId((current) => current || String(linkedId));
+        }
         if (!options?.silent) setSelectedOffers(new Set());
       }
     } finally {
@@ -553,17 +571,10 @@ export default function CrmClientsWorkspace() {
     });
   }, [clients, onlyAttention, query, sortBy]);
 
-  const toggleClientSelection = (clientId: number) => {
-    setSelectedClientIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(clientId)) next.delete(clientId);
-      else next.add(clientId);
-      return next;
-    });
-  };
+  const personRows = useMemo(() => groupCrmClientsByPerson(filtered), [filtered]);
 
   const toggleAllFiltered = () => {
-    const ids = filtered.map((client) => client.id);
+    const ids = personRows.flatMap((group) => group.ids);
     setSelectedClientIds((prev) => {
       const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
       if (allSelected) {
@@ -1087,15 +1098,15 @@ export default function CrmClientsWorkspace() {
                       <button
                         type="button"
                         onClick={toggleAllFiltered}
-                        disabled={filtered.length === 0}
+                        disabled={personRows.length === 0}
                         aria-label="Zaznacz wszystkich widocznych klientów"
                         className={`flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-30 ${
-                          filtered.length > 0 && filtered.every((client) => selectedClientIds.has(client.id))
+                          personRows.length > 0 && personRows.every((group) => group.ids.every((id) => selectedClientIds.has(id)))
                             ? "border-emerald-500 bg-emerald-500"
                             : "border-[var(--eos-border)] hover:border-emerald-500/40"
                         }`}
                       >
-                        {filtered.length > 0 && filtered.every((client) => selectedClientIds.has(client.id)) ? (
+                        {personRows.length > 0 && personRows.every((group) => group.ids.every((id) => selectedClientIds.has(id))) ? (
                           <Check className="size-3.5 text-black" />
                         ) : null}
                       </button>
@@ -1107,35 +1118,61 @@ export default function CrmClientsWorkspace() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((client) => (
+                  {personRows.map((group) => {
+                    const client = group.primary;
+                    const selectedInGroup = group.ids.some((id) => selectedClientIds.has(id));
+                    const active = selectedId != null && group.ids.includes(selectedId);
+                    return (
                     <tr
-                      key={client.id}
+                      key={group.key}
                       onClick={() => setSelectedId(client.id)}
                       className={`cursor-pointer border-b border-[var(--eos-border)]/60 text-sm transition hover:bg-[var(--eos-input)]/60 ${
-                        selectedId === client.id ? "bg-emerald-500/10" : ""
-                      } ${selectedClientIds.has(client.id) ? "bg-rose-500/5" : ""}`}
+                        active ? "bg-emerald-500/10" : ""
+                      } ${selectedInGroup ? "bg-rose-500/5" : ""}`}
                     >
                       <td className="px-2 py-3 align-top" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          onClick={() => toggleClientSelection(client.id)}
+                          onClick={() => {
+                            const allSelected = group.ids.every((id) => selectedClientIds.has(id));
+                            setSelectedClientIds((prev) => {
+                              const next = new Set(prev);
+                              group.ids.forEach((id) => {
+                                if (allSelected) next.delete(id);
+                                else next.add(id);
+                              });
+                              return next;
+                            });
+                          }}
                           aria-label={`Zaznacz ${client.firstName} ${client.lastName}`}
                           className={`flex h-7 w-7 items-center justify-center rounded-lg border transition ${
-                            selectedClientIds.has(client.id)
+                            selectedInGroup
                               ? "border-emerald-500 bg-emerald-500"
                               : "border-[var(--eos-border)] hover:border-emerald-500/40"
                           }`}
                         >
-                          {selectedClientIds.has(client.id) ? <Check className="size-3.5 text-black" /> : null}
+                          {selectedInGroup ? <Check className="size-3.5 text-black" /> : null}
                         </button>
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <p className="break-words font-semibold text-[var(--eos-text)]">{client.firstName} {client.lastName}</p>
+                        <p className="break-words font-semibold text-[var(--eos-text)]">
+                          {client.firstName} {client.lastName}
+                          <span className="ml-2 text-[11px] font-bold tracking-wide text-[var(--eos-muted)]">ID {client.id}</span>
+                        </p>
                         <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{client.email || "—"}{client.phone ? ` · ${client.phone}` : ""}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-full bg-[var(--eos-input)] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
-                            {client.type === "BUYER" ? "Kupujący" : "Sprzedający"}
+                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+                            group.types.length > 1
+                              ? "bg-amber-500/15 text-amber-800"
+                              : "bg-[var(--eos-input)] text-[var(--eos-muted)]"
+                          }`}>
+                            {formatCrmRoleLabel(group.types)}
                           </span>
+                          {group.ids.length > 1 ? (
+                            <span className="rounded-full bg-[var(--eos-input)] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+                              {group.ids.length} sprawy
+                            </span>
+                          ) : null}
                           {client.type === "BUYER" && client.matchCount > 0 ? (
                             <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
                               {client.matchCount} dopasowań{client.topMatchScore ? ` · ${client.topMatchScore}%` : ""}
@@ -1212,7 +1249,8 @@ export default function CrmClientsWorkspace() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1306,7 +1344,19 @@ export default function CrmClientsWorkspace() {
                   </p>
                   <h3 className="mt-1 break-words text-xl font-bold text-[var(--eos-text)] sm:text-2xl">
                     {detail.firstName} {detail.lastName}
+                    <span className="ml-2 text-sm font-semibold tracking-[0.14em] text-[var(--eos-muted)]">ID {detail.id}</span>
                   </h3>
+                  <p className="mt-1 text-sm font-semibold">
+                    {relatedProjects.selling.length || detail.type === "SELLER" ? (
+                      <span className="text-emerald-600">Sprzedający</span>
+                    ) : null}
+                    {(relatedProjects.selling.length || detail.type === "SELLER") && (relatedProjects.buying.length || detail.type === "BUYER") ? (
+                      <span className="text-[var(--eos-muted)]"> / </span>
+                    ) : null}
+                    {relatedProjects.buying.length || detail.type === "BUYER" ? (
+                      <span className="text-orange-500">Kupujący</span>
+                    ) : null}
+                  </p>
                 </div>
               </div>
 
@@ -1352,6 +1402,35 @@ export default function CrmClientsWorkspace() {
               </div>
 
               {workspaceView !== "project" ? (
+                <>
+              <div className="overflow-hidden rounded-[1.6rem] border border-[#d9c7a3]/70 bg-[#f7f3ec] p-5 dark:border-[#8a6a32]/40 dark:bg-[#2a241c]">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <a
+                    href={detail.phone ? `tel:${detail.phone}` : "#"}
+                    onClick={(e) => {
+                      if (!detail.phone) e.preventDefault();
+                    }}
+                    className="block min-w-0"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">Telefon</p>
+                    <p className="mt-2 font-serif text-[28px] leading-tight tracking-wide text-[var(--eos-text)]">
+                      {detail.phone || "Brak numeru"}
+                    </p>
+                  </a>
+                  <a
+                    href={detail.email ? `mailto:${detail.email}` : "#"}
+                    onClick={(e) => {
+                      if (!detail.email) e.preventDefault();
+                    }}
+                    className="block min-w-0"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">E-mail</p>
+                    <p className="mt-2 break-all font-serif text-[20px] leading-snug text-[var(--eos-text)]">
+                      {detail.email || "Brak e-maila"}
+                    </p>
+                  </a>
+                </div>
+              </div>
                 <CrmClientPersonHub
                   selling={relatedProjects.selling}
                   buying={relatedProjects.buying}
@@ -1369,7 +1448,15 @@ export default function CrmClientsWorkspace() {
                   }}
                   onOpenProject={openPersonProject}
                   onAddProject={(type) => void addPersonProject(type)}
+                  onSchedulePresentation={() => {
+                    if (detail.linkedOfferId && !presentationOfferId) {
+                      setPresentationOfferId(String(detail.linkedOfferId));
+                    }
+                    setWorkspaceView("project");
+                    document.getElementById("crm-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
                 />
+                </>
               ) : (
               <>
               {detail.type === "BUYER" && (detail.buyerAgentTasks || []).length ? (
@@ -1484,49 +1571,42 @@ export default function CrmClientsWorkspace() {
                 </section>
               ) : null}
 
-              <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-3">
-                <a
-                  href={detail.phone ? `sms:${detail.phone}` : "#"}
-                  onClick={(e) => {
-                    if (!detail.phone) e.preventDefault();
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-sm ${
-                    detail.phone
-                      ? "border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40"
-                      : "border-[var(--eos-border)]/40 text-[var(--eos-muted)] opacity-60"
-                  }`}
-                >
-                  <p className="inline-flex items-center gap-2 font-semibold"><MessageCircle className="size-4" /> SMS</p>
-                  <p className="mt-1 text-xs">{detail.phone || "Brak numeru"}</p>
-                </a>
-                <a
-                  href={detail.phone ? `tel:${detail.phone}` : "#"}
-                  onClick={(e) => {
-                    if (!detail.phone) e.preventDefault();
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-sm ${
-                    detail.phone
-                      ? "border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40"
-                      : "border-[var(--eos-border)]/40 text-[var(--eos-muted)] opacity-60"
-                  }`}
-                >
-                  <p className="inline-flex items-center gap-2 font-semibold"><Phone className="size-4" /> Telefon</p>
-                  <p className="mt-1 text-xs">{detail.phone || "Brak numeru"}</p>
-                </a>
-                <a
-                  href={detail.email ? `mailto:${detail.email}` : "#"}
-                  onClick={(e) => {
-                    if (!detail.email) e.preventDefault();
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-sm ${
-                    detail.email
-                      ? "border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40"
-                      : "border-[var(--eos-border)]/40 text-[var(--eos-muted)] opacity-60"
-                  }`}
-                >
-                  <p className="inline-flex items-center gap-2 font-semibold"><Mail className="size-4" /> E-mail</p>
-                  <p className="mt-1 text-xs">{detail.email || "Brak e-maila"}</p>
-                </a>
+              <div className="overflow-hidden rounded-[1.6rem] border border-[#d9c7a3]/70 bg-[#f7f3ec] p-5 dark:border-[#8a6a32]/40 dark:bg-[#2a241c]">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <a
+                    href={detail.phone ? `tel:${detail.phone}` : "#"}
+                    onClick={(e) => {
+                      if (!detail.phone) e.preventDefault();
+                    }}
+                    className="block min-w-0"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">Telefon</p>
+                    <p className="mt-2 font-serif text-[28px] leading-tight tracking-wide text-[var(--eos-text)]">
+                      {detail.phone || "Brak numeru"}
+                    </p>
+                  </a>
+                  <a
+                    href={detail.email ? `mailto:${detail.email}` : "#"}
+                    onClick={(e) => {
+                      if (!detail.email) e.preventDefault();
+                    }}
+                    className="block min-w-0"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">E-mail</p>
+                    <p className="mt-2 break-all font-serif text-[20px] leading-snug text-[var(--eos-text)]">
+                      {detail.email || "Brak e-maila"}
+                    </p>
+                  </a>
+                </div>
+                {detail.phone ? (
+                  <a
+                    href={`sms:${detail.phone}`}
+                    className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#8a6a32]"
+                  >
+                    <MessageCircle className="size-3.5" />
+                    SMS
+                  </a>
+                ) : null}
               </div>
 
               <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-2">
@@ -1720,12 +1800,72 @@ export default function CrmClientsWorkspace() {
                   </div>
                 ) : null}
 
-                {detail.type === "BUYER" ? (
-                  <div className="mt-3 space-y-2">
-                    {!detail.presentation ? (
-                      <p className="text-xs text-[var(--eos-muted)]">
-                        Wybierz ofertę z dopasowań i zaproponuj termin — dostaną go kupujący i sprzedający.
-                      </p>
+                <div className="mt-3 space-y-2">
+                    <p className="text-xs text-[var(--eos-muted)]">
+                      {guestAgencyMode
+                        ? "Wybierz nieruchomość z portfela i wyślij termin właścicielowi oraz agentowi gościowi."
+                        : "Wybierz nieruchomość z listy agenta albo wpisz ID oferty — kupujący i sprzedający dostaną ten sam termin na e-mail."}
+                    </p>
+                    {detail.type === "SELLER" || guestAgencyMode ? (
+                      <button
+                        type="button"
+                        onClick={() => setGuestAgencyMode((open) => !open)}
+                        className={`w-full rounded-xl border px-3 py-2 text-left ${
+                          guestAgencyMode
+                            ? "border-emerald-500/50 bg-emerald-500/10"
+                            : "border-[var(--eos-border)] bg-[var(--eos-input)]"
+                        }`}
+                      >
+                        <p className="text-[11px] font-black text-[var(--eos-text)]">
+                          {guestAgencyMode ? "Inna agencja pokazuje naszą nieruchomość" : "Tryb: inna agencja u naszego klienta"}
+                        </p>
+                        <p className="mt-1 text-[10px] text-[var(--eos-muted)]">
+                          Mail idzie do sprzedającego i do agenta gościa. Nie tworzy drugiego klienta.
+                        </p>
+                      </button>
+                    ) : null}
+                    {guestAgencyMode ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <input
+                          value={guestAgencyName}
+                          onChange={(e) => setGuestAgencyName(e.target.value)}
+                          placeholder="Nazwa agencji gościa"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                        />
+                        <input
+                          value={guestAgencyEmail}
+                          onChange={(e) => setGuestAgencyEmail(e.target.value)}
+                          placeholder="E-mail agenta gościa"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                        />
+                        <input
+                          value={guestVisitorName}
+                          onChange={(e) => setGuestVisitorName(e.target.value)}
+                          placeholder="Imię agenta (opcjonalnie)"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                        />
+                        <input
+                          value={guestAgencyPhone}
+                          onChange={(e) => setGuestAgencyPhone(e.target.value)}
+                          placeholder="Telefon agenta (opcjonalnie)"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                        />
+                      </div>
+                    ) : null}
+                    {(detail.managedOffers || []).length > 0 ? (
+                      <select
+                        value={presentationOfferId}
+                        onChange={(e) => setPresentationOfferId(e.target.value)}
+                        className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                      >
+                        <option value="">Wybierz nieruchomość agenta</option>
+                        {(detail.managedOffers || []).map((offer) => (
+                          <option key={offer.id} value={String(offer.id)}>
+                            #{offer.id} · {offer.title}
+                            {offer.city ? ` · ${offer.city}` : ""}
+                          </option>
+                        ))}
+                      </select>
                     ) : null}
                     {(detail.matches || []).length > 0 ? (
                       <div className="flex flex-wrap gap-2">
@@ -1755,14 +1895,13 @@ export default function CrmClientsWorkspace() {
                             );
                           })}
                       </div>
-                    ) : (
-                      <input
-                        value={presentationOfferId}
-                        onChange={(e) => setPresentationOfferId(e.target.value.replace(/[^\d]/g, ""))}
-                        placeholder="ID oferty do prezentacji"
-                        className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
-                      />
-                    )}
+                    ) : null}
+                    <input
+                      value={presentationOfferId}
+                      onChange={(e) => setPresentationOfferId(e.target.value.replace(/[^\d]/g, ""))}
+                      placeholder="Albo wpisz ID oferty"
+                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                    />
                     <input
                       type="datetime-local"
                       value={presentationAt}
@@ -1771,29 +1910,41 @@ export default function CrmClientsWorkspace() {
                     />
                     <button
                       type="button"
-                      disabled={busy || !presentationAt || !presentationOfferId.trim()}
+                      disabled={
+                        busy ||
+                        !presentationAt ||
+                        !presentationOfferId.trim() ||
+                        (guestAgencyMode && (!guestAgencyName.trim() || !guestAgencyEmail.includes("@")))
+                      }
                       onClick={() => {
                         if (!presentationAt || !presentationOfferId.trim()) return;
                         void clientAction("propose_presentation", {
                           startsAt: new Date(presentationAt).toISOString(),
                           offerId: Number(presentationOfferId),
+                          guestAgency: guestAgencyMode
+                            ? {
+                                name: guestAgencyName.trim(),
+                                email: guestAgencyEmail.trim(),
+                                phone: guestAgencyPhone.trim() || undefined,
+                                visitorName: guestVisitorName.trim() || undefined,
+                              }
+                            : undefined,
                         }).then((json) => {
                           if (json?.success) {
                             setPresentationAt("");
-                            setToast("Wysłano propozycję prezentacji obu stronom.");
+                            setToast(
+                              guestAgencyMode
+                                ? "Wysłano termin do właściciela i do agencji gościa."
+                                : "Wysłano propozycję prezentacji obu stronom.",
+                            );
                           }
                         });
                       }}
                       className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                     >
-                      Zaproponuj termin obu stronom
+                      {guestAgencyMode ? "Wyślij termin właścicielowi i agencji gościa" : "Zaproponuj termin obu stronom"}
                     </button>
                   </div>
-                ) : !detail.presentation ? (
-                  <p className="mt-3 text-xs text-[var(--eos-muted)]">
-                    Termin pokazu pojawi się tu, gdy zaproponujesz go z karty kupującego.
-                  </p>
-                ) : null}
               </div>
 
               {detail.type === "BUYER" ? (

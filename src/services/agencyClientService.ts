@@ -16,6 +16,7 @@ export type AgencyClientListItem = {
   email: string | null;
   phone: string | null;
   pesel?: string | null;
+  linkedUserId?: number | null;
   matchCount: number;
   topMatchScore: number | null;
   sentCount?: number;
@@ -194,6 +195,16 @@ export type SellerMarketingBundle = {
   }[];
 };
 
+export type ManagedOfferOption = {
+  id: number;
+  title: string;
+  city: string | null;
+  price: number | null;
+  imageUrl: string | null;
+  linkedClientId: number | null;
+  status?: string;
+};
+
 export type AgencyClientDetail = AgencyClientListItem & {
   notes: string | null;
   portalUrl: string | null;
@@ -266,6 +277,7 @@ export type AgencyClientDetail = AgencyClientListItem & {
     selling: ClientPersonProject[];
     buying: ClientPersonProject[];
   };
+  managedOffers?: ManagedOfferOption[];
 };
 
 export type ClientPersonProject = {

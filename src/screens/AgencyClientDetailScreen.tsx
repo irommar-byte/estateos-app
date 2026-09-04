@@ -53,6 +53,7 @@ import IntelligenceAssistantCard, {
 import SellerMarketingCard from '../components/agency/SellerMarketingCard';
 import ClientPersonHub from '../components/agency/ClientPersonHub';
 import ClientPersonCard from '../components/agency/ClientPersonCard';
+import ClientPresentationComposer from '../components/agency/ClientPresentationComposer';
 import OfferProjectCard from '../components/agency/OfferProjectCard';
 import { fetchPublicOfferCover } from '../lib/offerCoverUrl';
 import { resolveMediaUrl } from '../utils/userAvatar';
@@ -403,6 +404,11 @@ export default function AgencyClientDetailScreen() {
   const chatPinnedToEndRef = useRef(true);
   const [presentationAt, setPresentationAt] = useState('');
   const [presentationOfferId, setPresentationOfferId] = useState('');
+  const [guestAgencyMode, setGuestAgencyMode] = useState(false);
+  const [guestAgencyName, setGuestAgencyName] = useState('');
+  const [guestAgencyEmail, setGuestAgencyEmail] = useState('');
+  const [guestAgencyPhone, setGuestAgencyPhone] = useState('');
+  const [guestVisitorName, setGuestVisitorName] = useState('');
 
   // Seller Buyer Radar Controls
   const [sellerRadarSearching, setSellerRadarSearching] = useState(false);
@@ -482,6 +488,9 @@ export default function AgencyClientDetailScreen() {
       return;
     }
     setClient(detail.client);
+    setPresentationOfferId((current) =>
+      current || (detail.client.linkedOfferId ? String(detail.client.linkedOfferId) : current),
+    );
     if (Number(detail.client.portalUnreadCount || 0) > 0) {
       void postAgencyClientAction(token, clientId, { action: 'mark_portal_messages_read' });
     }
@@ -1403,7 +1412,7 @@ export default function AgencyClientDetailScreen() {
           <Ionicons name="chevron-back" size={28} color="#007AFF" />
         </Pressable>
         <Text style={[styles.navTitle, { color: colors.text }]} numberOfLines={1}>
-          {client ? `${client.firstName} ${client.lastName}` : 'Klient'}
+          {client ? `${client.firstName} ${client.lastName} · ID ${client.id}` : 'Klient'}
         </Text>
         <Pressable
           onPress={() => {
@@ -1445,9 +1454,14 @@ export default function AgencyClientDetailScreen() {
           ) : (
             <>
               <ClientPersonCard
+                clientId={client.id}
                 firstName={client.firstName}
                 lastName={client.lastName}
                 type={client.type}
+                roles={[
+                  ...(relatedProjects.selling.length || client.type === 'SELLER' ? (['SELLER'] as const) : []),
+                  ...(relatedProjects.buying.length || client.type === 'BUYER' ? (['BUYER'] as const) : []),
+                ]}
                 phone={client.phone}
                 email={client.email}
                 pesel={client.pesel}
@@ -1480,6 +1494,14 @@ export default function AgencyClientDetailScreen() {
                   }}
                   onOpenProject={openPersonProject}
                   onAddProject={(type) => void addPersonProject(type)}
+                  onSchedulePresentation={() => {
+                    if (client.linkedOfferId && !presentationOfferId) {
+                      setPresentationOfferId(String(client.linkedOfferId));
+                    }
+                    if (client.type === 'SELLER') setGuestAgencyMode(false);
+                    setCrmLevel('project');
+                    setPresentationExpanded(true);
+                  }}
                 />
               ) : (
               <>
@@ -2604,97 +2626,68 @@ export default function AgencyClientDetailScreen() {
                     </Pressable>
                   ) : null}
                 </View>
-                ) : client.type === 'SELLER' ? (
-                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 14 }}>
-                    Termin pokazu pojawi się tu, gdy zaproponujesz go z karty kupującego — właściciel i kupujący dostaną ten sam termin.
-                  </Text>
                 ) : null}
 
-                {client.type === 'BUYER' ? (
-                <View style={{ marginTop: 14 }}>
-                  {!client.presentation ? (
-                    <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
-                      Wybierz ofertę z dopasowań i zaproponuj termin — dostaną go kupujący i sprzedający.
-                    </Text>
-                  ) : null}
-                  {(client.matches || []).length > 0 ? (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                      {[...(client.matches || [])]
-                        .sort((a, b) => Number(Boolean(b.notifiedAt)) - Number(Boolean(a.notifiedAt)) || b.score - a.score)
-                        .slice(0, 8)
-                        .map((m) => {
-                          const selected = presentationOfferId === String(m.offer.id);
-                          return (
-                            <Pressable
-                              key={m.id}
-                              onPress={() => setPresentationOfferId(String(m.offer.id))}
-                              style={{
-                                maxWidth: '100%',
-                                borderRadius: 10,
-                                borderWidth: 1,
-                                borderColor: selected ? colors.accent : colors.border,
-                                backgroundColor: selected ? 'rgba(52,199,89,0.14)' : colors.input,
-                                paddingHorizontal: 10,
-                                paddingVertical: 8,
-                              }}
-                            >
-                              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 11 }} numberOfLines={1}>
-                                #{m.offer.id} · {m.offer.title}
-                              </Text>
-                              <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 2 }}>
-                                {m.notifiedAt ? 'Wysłana' : 'Match'} · {m.score}%
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                    </View>
-                  ) : (
-                    <TextInput
-                      value={presentationOfferId}
-                      onChangeText={setPresentationOfferId}
-                      keyboardType="number-pad"
-                      placeholder="ID oferty do prezentacji"
-                      placeholderTextColor={colors.secondary}
-                      style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 8 }]}
-                    />
-                  )}
-                  <Pressable
-                    onPress={() => setDateModalField('presentation')}
-                    style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
-                  >
-                    <Text style={{ color: presentationAt ? colors.text : colors.secondary, fontWeight: '700' }}>
-                      {presentationAt || 'Wybierz termin prezentacji'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={!presentationAt || !presentationOfferId.trim() || busy === 'propose_pres'}
-                    onPress={async () => {
-                      if (!token || !presentationAt) return;
-                      const m = presentationAt.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-                      if (!m) {
-                        Alert.alert('Prezentacja', 'Wybierz kompletny termin.');
-                        return;
-                      }
-                      setBusy('propose_pres');
-                      const startsAt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
-                      const res = await postAgencyClientAction(token, clientId, {
-                        action: 'propose_presentation',
-                        startsAt,
-                        offerId: Number(presentationOfferId),
-                      });
-                      setBusy('');
-                      if (!res.ok) Alert.alert('Prezentacja', res.message);
-                      else {
-                        setPresentationAt('');
-                        void load();
-                      }
-                    }}
-                    style={[styles.primary, { marginTop: 8, opacity: presentationAt && presentationOfferId.trim() ? 1 : 0.5 }]}
-                  >
-                    <Text style={styles.primaryText}>{busy === 'propose_pres' ? 'Wysyłam…' : 'Zaproponuj termin obu stronom'}</Text>
-                  </Pressable>
-                </View>
-                ) : null}
+                <ClientPresentationComposer
+                  clientType={client.type}
+                  matches={client.matches || []}
+                  managedOffers={client.managedOffers || []}
+                  presentationOfferId={presentationOfferId}
+                  presentationAt={presentationAt}
+                  guestMode={guestAgencyMode}
+                  guestName={guestAgencyName}
+                  guestEmail={guestAgencyEmail}
+                  guestPhone={guestAgencyPhone}
+                  guestVisitor={guestVisitorName}
+                  busy={busy === 'propose_pres'}
+                  colors={colors}
+                  onChangeOfferId={setPresentationOfferId}
+                  onPickDate={() => setDateModalField('presentation')}
+                  onChangeGuestMode={setGuestAgencyMode}
+                  onChangeGuestName={setGuestAgencyName}
+                  onChangeGuestEmail={setGuestAgencyEmail}
+                  onChangeGuestPhone={setGuestAgencyPhone}
+                  onChangeGuestVisitor={setGuestVisitorName}
+                  onSubmit={async () => {
+                    if (!token || !presentationAt) return;
+                    const m = presentationAt.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+                    if (!m) {
+                      Alert.alert('Prezentacja', 'Wybierz kompletny termin.');
+                      return;
+                    }
+                    if (guestAgencyMode && (!guestAgencyName.trim() || !guestAgencyEmail.includes('@'))) {
+                      Alert.alert('Prezentacja', 'Podaj nazwę agencji gościa i e-mail agenta.');
+                      return;
+                    }
+                    setBusy('propose_pres');
+                    const startsAt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
+                    const res = await postAgencyClientAction(token, clientId, {
+                      action: 'propose_presentation',
+                      startsAt,
+                      offerId: Number(presentationOfferId),
+                      guestAgency: guestAgencyMode
+                        ? {
+                            name: guestAgencyName.trim(),
+                            email: guestAgencyEmail.trim(),
+                            phone: guestAgencyPhone.trim() || undefined,
+                            visitorName: guestVisitorName.trim() || undefined,
+                          }
+                        : undefined,
+                    });
+                    setBusy('');
+                    if (!res.ok) Alert.alert('Prezentacja', res.message);
+                    else {
+                      setPresentationAt('');
+                      Alert.alert(
+                        'Prezentacja',
+                        guestAgencyMode
+                          ? 'Wysłano termin do właściciela i do agencji gościa.'
+                          : 'Wysłano propozycję prezentacji obu stronom na e-mail.',
+                      );
+                      void load();
+                    }
+                  }}
+                />
                 </View>
                 ) : null}
 

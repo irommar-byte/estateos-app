@@ -5,11 +5,11 @@ import {
   Linking,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import DraggableFlatList, { ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +21,13 @@ import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBa
 import { useSellerClientPipelines } from '../hooks/useSellerClientPipelines';
 import { hasLiveMeetingCountdown, computeBuyerPipeline } from '../lib/sellerClientPipeline';
 import { formatPolishDateTime } from '../lib/polishText';
+import {
+  applyCrmPersonOrder,
+  formatCrmRoleLabel,
+  groupCrmClientsByPerson,
+  type CrmPersonGroup,
+} from '../lib/crmPersonGroups';
+import { loadCrmPersonOrder, saveCrmPersonOrder } from '../lib/crmClientListOrder';
 
 function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso: string; location?: string | null; isDark?: boolean }) {
   const [now, setNow] = useState(Date.now());
@@ -63,10 +70,13 @@ function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso:
   );
 }
 
+type PersonCard = CrmPersonGroup<AgencyClientListItem>;
+
 export default function AgencyClientsScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
+  const userId = useAuthStore((s) => s.user?.id || 0);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'ALL' | 'BUYER' | 'SELLER'>('ALL');
@@ -74,6 +84,7 @@ export default function AgencyClientsScreen() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [personOrder, setPersonOrder] = useState<string[]>([]);
   const { pipelines, portalUrls } = useSellerClientPipelines(token, clients);
 
   const colors = {
@@ -105,16 +116,24 @@ export default function AgencyClientsScreen() {
     }, [load]),
   );
 
-  const visible = useMemo(
-    () => (filter === 'ALL' ? clients : clients.filter((c) => c.type === filter)),
-    [clients, filter],
-  );
+  useEffect(() => {
+    if (!userId) return;
+    void loadCrmPersonOrder(userId).then(setPersonOrder);
+  }, [userId]);
 
-  const toggleSelection = (clientId: number) => {
+  const visible = useMemo(() => {
+    const grouped = groupCrmClientsByPerson(clients);
+    const scoped =
+      filter === 'ALL' ? grouped : grouped.filter((group) => group.types.includes(filter));
+    return applyCrmPersonOrder(scoped, personOrder);
+  }, [clients, filter, personOrder]);
+
+  const toggleSelection = (ids: number[]) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(clientId)) next.delete(clientId);
-      else next.add(clientId);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
       return next;
     });
   };
@@ -154,6 +173,124 @@ export default function AgencyClientsScreen() {
           },
         },
       ],
+    );
+  };
+
+  const persistOrder = (next: PersonCard[]) => {
+    const keys = next.map((item) => item.key);
+    setPersonOrder(keys);
+    if (userId) void saveCrmPersonOrder(userId, keys);
+  };
+
+  const renderCard = ({ item, drag, isActive }: RenderItemParams<PersonCard>) => {
+    const client = item.primary;
+    const sellerMember = item.members.find((row) => row.type === 'SELLER') || client;
+    const buyerMember = item.members.find((row) => row.type === 'BUYER') || client;
+    const showMeeting =
+      item.members.some((row) => row.upcomingMeetingStartsAt && hasLiveMeetingCountdown(row.upcomingMeetingStartsAt));
+    const meetingClient = item.members.find((row) => row.upcomingMeetingStartsAt && hasLiveMeetingCountdown(row.upcomingMeetingStartsAt));
+    const pipeline =
+      item.types.includes('SELLER') && pipelines[sellerMember.id]
+        ? pipelines[sellerMember.id]
+        : item.types.includes('BUYER')
+          ? computeBuyerPipeline({
+              hasCriteria: (buyerMember.matchCount || 0) > 0 || Boolean(buyerMember.buyerMaxPrice),
+              hasMatches: (buyerMember.matchCount || 0) > 0,
+              hasSent: (buyerMember.sentCount || 0) > 0,
+              presentationConfirmed: buyerMember.presentationConfirmed === true,
+              dealClosed: buyerMember.dealClosed === true,
+            })
+          : undefined;
+    const portalUrl = client.portalUrl || portalUrls[client.id] || item.members.find((row) => row.portalUrl)?.portalUrl;
+    const isSelected = item.ids.some((id) => selectedIds.has(id));
+    const dual = item.types.length > 1;
+    const roleColor = dual ? '#C9A227' : client.type === 'BUYER' ? '#FF9500' : '#34C759';
+
+    return (
+      <ScaleDecorator>
+        <Pressable
+          disabled={isActive}
+          onLongPress={selectMode ? undefined : drag}
+          delayLongPress={220}
+          onPress={() => {
+            if (selectMode) {
+              toggleSelection(item.ids);
+              return;
+            }
+            navigation.navigate('AgencyClientDetail', { clientId: client.id });
+          }}
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: isSelected ? '#34C759' : colors.border,
+              shadowColor: isDark ? '#000' : '#1a1612',
+              opacity: isActive ? 0.92 : 1,
+            },
+            isSelected ? styles.cardSelected : null,
+          ]}
+        >
+          {selectMode ? (
+            <View
+              style={[
+                styles.selectMark,
+                {
+                  borderColor: isSelected ? '#34C759' : colors.border,
+                  backgroundColor: isSelected ? '#34C759' : 'transparent',
+                },
+              ]}
+            >
+              {isSelected ? <Ionicons name="checkmark" size={14} color="#000" /> : null}
+            </View>
+          ) : (
+            <View style={styles.dragHandle}>
+              <Ionicons name="reorder-three-outline" size={22} color={colors.secondary} />
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: roleColor, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>
+              {formatCrmRoleLabel(item.types)}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+              <Text style={{ color: colors.text, fontSize: 19, fontWeight: '900', letterSpacing: -0.3 }}>
+                {client.firstName} {client.lastName}
+              </Text>
+              <Text style={{ color: colors.secondary, fontSize: 12, fontWeight: '700', letterSpacing: 0.4 }}>
+                ID {client.id}
+                {item.ids.length > 1 ? ` · ${item.ids.length} sprawy` : ''}
+              </Text>
+            </View>
+            <Text style={{ color: colors.secondary, marginTop: 4, fontSize: 13 }}>
+              {client.email || client.phone || 'Brak kontaktu'}
+            </Text>
+
+            {showMeeting && meetingClient?.upcomingMeetingStartsAt ? (
+              <MeetingCountdownBadge
+                startsAtIso={meetingClient.upcomingMeetingStartsAt}
+                location={meetingClient.upcomingMeetingLocation}
+                isDark={isDark}
+              />
+            ) : null}
+            {pipeline ? <SellerClientPipelineBar stages={pipeline} isDark={isDark} compact /> : null}
+
+            {portalUrl ? (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  const url = portalUrl.startsWith('http') ? portalUrl : `https://estateos.pl${portalUrl}`;
+                  void Linking.openURL(url);
+                }}
+                style={[styles.portalBtn, { borderColor: colors.border, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F6F4EE' }]}
+              >
+                <Ionicons name="eye-outline" size={15} color="#007AFF" />
+                <Text style={styles.portalBtnText}>Zobacz panel klienta</Text>
+                <Ionicons name="open-outline" size={13} color="#007AFF" />
+              </Pressable>
+            ) : null}
+          </View>
+          {!selectMode ? <Ionicons name="chevron-forward" size={18} color={colors.secondary} /> : null}
+        </Pressable>
+      </ScaleDecorator>
     );
   };
 
@@ -229,108 +366,30 @@ export default function AgencyClientsScreen() {
         </View>
       ) : null}
 
-      <ScrollView
+      <DraggableFlatList
+        data={visible}
+        extraData={`${selectMode}:${[...selectedIds].join(',')}:${isDark}:${filter}`}
+        keyExtractor={(item) => item.key}
+        onDragEnd={({ data }) => persistOrder(data)}
+        activationDistance={selectMode ? 10_000 : 12}
+        renderItem={renderCard}
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-      >
-        {loading && clients.length === 0 ? <ActivityIndicator color="#34C759" /> : null}
-        {visible.map((client) => {
-          const showMeeting =
-            client.upcomingMeetingStartsAt && hasLiveMeetingCountdown(client.upcomingMeetingStartsAt);
-          const pipeline = client.type === 'SELLER'
-            ? pipelines[client.id]
-            : client.type === 'BUYER'
-              ? computeBuyerPipeline({
-                  hasCriteria: (client.matchCount || 0) > 0 || Boolean(client.buyerMaxPrice),
-                  hasMatches: (client.matchCount || 0) > 0,
-                  hasSent: (client.sentCount || 0) > 0,
-                  presentationConfirmed: client.presentationConfirmed === true,
-                  dealClosed: client.dealClosed === true,
-                })
-              : undefined;
-          const portalUrl = client.portalUrl || portalUrls[client.id];
-          const isSelected = selectedIds.has(client.id);
-
-          return (
-            <Pressable
-              key={client.id}
-              onPress={() => {
-                if (selectMode) {
-                  toggleSelection(client.id);
-                  return;
-                }
-                navigation.navigate('AgencyClientDetail', { clientId: client.id });
-              }}
-              style={[
-                styles.card,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: isSelected ? '#34C759' : colors.border,
-                  shadowColor: isDark ? '#000' : '#1a1612',
-                },
-                isSelected ? styles.cardSelected : null,
-              ]}
-            >
-              {selectMode ? (
-                <View
-                  style={[
-                    styles.selectMark,
-                    {
-                      borderColor: isSelected ? '#34C759' : colors.border,
-                      backgroundColor: isSelected ? '#34C759' : 'transparent',
-                    },
-                  ]}
-                >
-                  {isSelected ? <Ionicons name="checkmark" size={14} color="#000" /> : null}
-                </View>
-              ) : null}
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: client.type === 'BUYER' ? '#FF9500' : '#34C759', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>
-                  {client.type === 'BUYER' ? 'KUPUJĄCY' : 'SPRZEDAJĄCY'}
-                </Text>
-                <Text style={{ color: colors.text, fontSize: 19, fontWeight: '900', marginTop: 4, letterSpacing: -0.3 }}>
-                  {client.firstName} {client.lastName}
-                </Text>
-                <Text style={{ color: colors.secondary, marginTop: 4, fontSize: 13 }}>
-                  {client.email || client.phone || 'Brak kontaktu'}
-                </Text>
-
-                {showMeeting && client.upcomingMeetingStartsAt ? (
-                  <MeetingCountdownBadge
-                    startsAtIso={client.upcomingMeetingStartsAt}
-                    location={client.upcomingMeetingLocation}
-                    isDark={isDark}
-                  />
-                ) : null}
-                {pipeline ? (
-                  <SellerClientPipelineBar stages={pipeline} isDark={isDark} compact />
-                ) : null}
-
-                {portalUrl ? (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation?.();
-                      const url = portalUrl.startsWith('http')
-                        ? portalUrl
-                        : `https://estateos.pl${portalUrl}`;
-                      void Linking.openURL(url);
-                    }}
-                    style={[styles.portalBtn, { borderColor: colors.border, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F6F4EE' }]}
-                  >
-                    <Ionicons name="eye-outline" size={15} color="#007AFF" />
-                    <Text style={styles.portalBtnText}>Zobacz panel klienta</Text>
-                    <Ionicons name="open-outline" size={13} color="#007AFF" />
-                  </Pressable>
-                ) : null}
-              </View>
-              {!selectMode ? <Ionicons name="chevron-forward" size={18} color={colors.secondary} /> : null}
-            </Pressable>
-          );
-        })}
-        {!loading && visible.length === 0 ? (
-          <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 40 }}>Brak klientów w tej grupie.</Text>
-        ) : null}
-      </ScrollView>
+        ListHeaderComponent={
+          !loading && visible.length ? (
+            <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '600', marginBottom: 10 }}>
+              Przytrzymaj kartę, żeby ułożyć kolejność. Ta sama osoba nie dubluje się — sprzedający, który też szuka, ma obie role.
+            </Text>
+          ) : null
+        }
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator color="#34C759" />
+          ) : (
+            <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 40 }}>Brak klientów w tej grupie.</Text>
+          )
+        }
+      />
     </View>
   );
 }
@@ -404,6 +463,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
+  },
+  dragHandle: {
+    width: 22,
+    alignItems: 'center',
     marginTop: 2,
   },
   portalBtn: {

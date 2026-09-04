@@ -1396,6 +1396,10 @@ export type FacebookShareOffer = {
   linkedClientId: number | null;
 };
 
+export type ManagedOfferOption = FacebookShareOffer & {
+  status: string;
+};
+
 export function listingFacebookShareUrl(offerId: number, agencyUserId: number) {
   return `${resolvePublicAppOrigin()}${offerSharePath(offerId, { presentingAgentId: agencyUserId })}`;
 }
@@ -1477,6 +1481,52 @@ export async function loadAgentShareOffers(
     price: offer.price == null ? null : Number(offer.price),
     imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || null,
     linkedClientId: clientByOffer.get(offer.id) || null,
+  }));
+}
+
+export async function loadAgentManagedOffers(
+  agencyUserId: number,
+): Promise<ManagedOfferOption[]> {
+  const [offers, clients] = await Promise.all([
+    prisma.offer.findMany({
+      where: {
+        userId: agencyUserId,
+        status: { in: ["ACTIVE", "PENDING", "IN_DEAL"] },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 80,
+      select: {
+        id: true,
+        title: true,
+        city: true,
+        price: true,
+        images: true,
+        status: true,
+      },
+    }),
+    prisma.agencyClient.findMany({
+      where: {
+        agencyUserId,
+        status: "ACTIVE",
+        type: "SELLER",
+        linkedOfferId: { not: null },
+      },
+      select: { id: true, linkedOfferId: true },
+    }),
+  ]);
+  const clientByOffer = new Map(
+    clients
+      .filter((row) => row.linkedOfferId)
+      .map((row) => [row.linkedOfferId as number, row.id]),
+  );
+  return offers.map((offer) => ({
+    id: offer.id,
+    title: offer.title,
+    city: offer.city || null,
+    price: offer.price == null ? null : Number(offer.price),
+    imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || null,
+    linkedClientId: clientByOffer.get(offer.id) || null,
+    status: String(offer.status || "ACTIVE"),
   }));
 }
 

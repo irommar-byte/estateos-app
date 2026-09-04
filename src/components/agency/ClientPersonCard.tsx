@@ -2,6 +2,7 @@ import React from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPhoneNumber } from '../../utils/crmFormatters';
+import { formatCrmRoleLabel } from '../../lib/crmPersonGroups';
 
 type KwRow = { kw: string; verified: boolean };
 
@@ -14,9 +15,11 @@ type Colors = {
 };
 
 export default function ClientPersonCard({
+  clientId,
   firstName,
   lastName,
   type,
+  roles,
   phone,
   email,
   pesel,
@@ -29,9 +32,11 @@ export default function ClientPersonCard({
   isDark,
   onOpenKw,
 }: {
+  clientId: number;
   firstName: string;
   lastName: string;
   type: 'BUYER' | 'SELLER';
+  roles?: Array<'BUYER' | 'SELLER'>;
   phone?: string | null;
   email?: string | null;
   pesel?: string | null;
@@ -44,39 +49,12 @@ export default function ClientPersonCard({
   isDark: boolean;
   onOpenKw: (kw: string) => void;
 }) {
-  const isBuyer = type === 'BUYER';
-  const accent = isBuyer ? '#FF9500' : '#34C759';
+  const personRoles = roles?.length ? roles : [type];
+  const dual = personRoles.includes('BUYER') && personRoles.includes('SELLER');
+  const accent = dual ? '#C9A227' : type === 'BUYER' ? '#FF9500' : '#34C759';
   const initials = `${firstName.trim().charAt(0)}${lastName.trim().charAt(0)}`.toUpperCase() || 'K';
-  const rows: { key: string; icon: keyof typeof Ionicons.glyphMap; label: string; value: string; onPress?: () => void; verified?: boolean }[] = [];
-  if (phone) {
-    rows.push({
-      key: 'phone',
-      icon: 'call-outline',
-      label: 'telefon',
-      value: formatPhoneNumber(phone),
-      onPress: () => Linking.openURL(`tel:${phone}`),
-    });
-  }
-  rows.push({
-    key: 'email',
-    icon: 'mail-outline',
-    label: 'mail',
-    value: email || 'Brak e-maila',
-    onPress: email ? () => Linking.openURL(`mailto:${email}`) : undefined,
-  });
-  if (pesel) {
-    rows.push({ key: 'pesel', icon: 'card-outline', label: 'PESEL', value: pesel });
-  }
-  kwNumbers.forEach((item) => {
-    rows.push({
-      key: `kw-${item.kw}`,
-      icon: item.verified ? 'shield-checkmark' : 'document-text-outline',
-      label: 'KW',
-      value: item.kw,
-      verified: item.verified,
-      onPress: () => onOpenKw(item.kw),
-    });
-  });
+  const gold = isDark ? '#E8D5A3' : '#8A6A32';
+  const luxuryBg = isDark ? 'rgba(232,213,163,0.08)' : '#F7F3EC';
 
   return (
     <View
@@ -92,11 +70,38 @@ export default function ClientPersonCard({
         },
       ]}
     >
-      <View style={[styles.monogram, { backgroundColor: isBuyer ? 'rgba(255,149,0,0.16)' : 'rgba(52,199,89,0.16)' }]}>
+      <View
+        style={[
+          styles.monogram,
+          {
+            backgroundColor: dual
+              ? 'rgba(201,162,39,0.16)'
+              : type === 'BUYER'
+                ? 'rgba(255,149,0,0.16)'
+                : 'rgba(52,199,89,0.16)',
+          },
+        ]}
+      >
         <Text style={[styles.monogramText, { color: accent }]}>{initials}</Text>
       </View>
-      <Text style={[styles.name, { color: colors.text }]}>{firstName} {lastName}</Text>
-      <Text style={[styles.role, { color: accent }]}>{isBuyer ? 'Kupujący' : 'Sprzedający'}</Text>
+      <Text style={[styles.name, { color: colors.text }]}>
+        {firstName} {lastName}
+      </Text>
+      <Text style={[styles.clientId, { color: gold }]}>ID {clientId}</Text>
+      <View style={styles.roleRow}>
+        {personRoles.includes('SELLER') ? (
+          <Text style={[styles.role, { color: '#34C759' }]}>Sprzedający</Text>
+        ) : null}
+        {dual ? <Text style={[styles.roleSep, { color: colors.secondary }]}>/</Text> : null}
+        {personRoles.includes('BUYER') ? (
+          <Text style={[styles.role, { color: '#FF9500' }]}>Kupujący</Text>
+        ) : null}
+      </View>
+      {dual ? (
+        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
+          {formatCrmRoleLabel(personRoles)}
+        </Text>
+      ) : null}
 
       {portalUrl ? (
         <Pressable
@@ -110,29 +115,58 @@ export default function ClientPersonCard({
         </Pressable>
       ) : null}
 
-      <View style={[styles.group, { backgroundColor: colors.input }]}>
-        {rows.map((row, index) => {
-          const content = (
-            <View style={[styles.row, index < rows.length - 1 ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null]}>
-              <Text style={[styles.rowLabel, { color: colors.secondary }]}>{row.label}</Text>
-              <Text
-                style={[styles.rowValue, { color: row.onPress ? '#007AFF' : colors.text }]}
-                numberOfLines={1}
-              >
-                {row.value}
-              </Text>
-              {row.key.startsWith('kw-') ? <Ionicons name="open-outline" size={13} color="#007AFF" /> : null}
-            </View>
-          );
-          return row.onPress ? (
-            <Pressable key={row.key} onPress={row.onPress}>
-              {content}
-            </Pressable>
-          ) : (
-            <View key={row.key}>{content}</View>
-          );
-        })}
+      <View style={[styles.luxuryWrap, { backgroundColor: luxuryBg, borderColor: isDark ? 'rgba(232,213,163,0.18)' : 'rgba(138,106,50,0.18)' }]}>
+        {phone ? (
+          <Pressable onPress={() => Linking.openURL(`tel:${phone}`)} style={styles.luxuryBlock}>
+            <Text style={[styles.luxuryKicker, { color: gold }]}>Telefon</Text>
+            <Text style={[styles.luxuryValue, { color: colors.text }]}>{formatPhoneNumber(phone)}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.luxuryBlock}>
+            <Text style={[styles.luxuryKicker, { color: gold }]}>Telefon</Text>
+            <Text style={[styles.luxuryMuted, { color: colors.secondary }]}>Brak numeru</Text>
+          </View>
+        )}
+        <View style={[styles.luxuryRule, { backgroundColor: isDark ? 'rgba(232,213,163,0.18)' : 'rgba(138,106,50,0.16)' }]} />
+        {email ? (
+          <Pressable onPress={() => Linking.openURL(`mailto:${email}`)} style={styles.luxuryBlock}>
+            <Text style={[styles.luxuryKicker, { color: gold }]}>E-mail</Text>
+            <Text style={[styles.luxuryEmail, { color: colors.text }]}>{email}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.luxuryBlock}>
+            <Text style={[styles.luxuryKicker, { color: gold }]}>E-mail</Text>
+            <Text style={[styles.luxuryMuted, { color: colors.secondary }]}>Brak e-maila</Text>
+          </View>
+        )}
       </View>
+
+      {(pesel || kwNumbers.length > 0) ? (
+        <View style={[styles.group, { backgroundColor: colors.input }]}>
+          {pesel ? (
+            <View style={[styles.row, kwNumbers.length ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null]}>
+              <Text style={[styles.rowLabel, { color: colors.secondary }]}>PESEL</Text>
+              <Text style={[styles.rowValue, { color: colors.text }]}>{pesel}</Text>
+            </View>
+          ) : null}
+          {kwNumbers.map((item, index) => (
+            <Pressable key={`kw-${item.kw}`} onPress={() => onOpenKw(item.kw)}>
+              <View
+                style={[
+                  styles.row,
+                  index < kwNumbers.length - 1 ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null,
+                ]}
+              >
+                <Text style={[styles.rowLabel, { color: colors.secondary }]}>KW</Text>
+                <Text style={[styles.rowValue, { color: '#007AFF' }]} numberOfLines={1}>
+                  {item.kw}
+                </Text>
+                <Ionicons name="open-outline" size={13} color="#007AFF" />
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       <View style={styles.stats}>
         <View style={[styles.stat, { backgroundColor: colors.input }]}>
@@ -181,11 +215,27 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
     textAlign: 'center',
   },
-  role: {
+  clientId: {
     marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
+  roleRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  role: {
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  roleSep: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   portalBtn: {
     marginTop: 12,
@@ -202,9 +252,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  luxuryWrap: {
+    alignSelf: 'stretch',
+    marginTop: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  luxuryBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  luxuryKicker: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
+  },
+  luxuryValue: {
+    marginTop: 6,
+    fontSize: 28,
+    fontFamily: 'Georgia',
+    letterSpacing: 0.6,
+  },
+  luxuryEmail: {
+    marginTop: 6,
+    fontSize: 18,
+    fontFamily: 'Georgia',
+    letterSpacing: 0.2,
+  },
+  luxuryMuted: {
+    marginTop: 6,
+    fontSize: 16,
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
+  },
+  luxuryRule: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+  },
   group: {
     alignSelf: 'stretch',
-    marginTop: 16,
+    marginTop: 12,
     borderRadius: 16,
     overflow: 'hidden',
   },

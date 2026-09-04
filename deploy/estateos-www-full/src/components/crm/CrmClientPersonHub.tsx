@@ -1,6 +1,7 @@
 "use client";
 
-import { Building2, ChevronRight, MessageSquare, Plus, Search } from "lucide-react";
+import { useState } from "react";
+import { Building2, ChevronRight, MessageSquare, Plus, Search, CalendarDays } from "lucide-react";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 export type CrmPersonProject = {
@@ -26,6 +27,7 @@ export default function CrmClientPersonHub({
   onBackToPerson,
   onOpenProject,
   onAddProject,
+  onSchedulePresentation,
 }: {
   selling: CrmPersonProject[];
   buying: CrmPersonProject[];
@@ -37,7 +39,10 @@ export default function CrmClientPersonHub({
   onBackToPerson: () => void;
   onOpenProject: (projectId: number) => void;
   onAddProject: (type: "BUYER" | "SELLER") => void;
+  onSchedulePresentation: () => void;
 }) {
+  const [buyActionsOpen, setBuyActionsOpen] = useState(false);
+
   if (view === "lane" && lane) {
     const items = lane === "SELL" ? selling : buying;
     const isSell = lane === "SELL";
@@ -83,15 +88,38 @@ export default function CrmClientPersonHub({
               {isSell ? "Brak pozysku sprzedaży." : "Brak aktywnego poszukiwania."}
             </p>
           ) : null}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onAddProject(isSell ? "SELLER" : "BUYER")}
-            className={eosBtn("home", { size: "sm" })}
-          >
-            <Plus className="size-3.5" />
-            {isSell ? "Nowy pozysk" : "Nowe poszukiwanie"}
-          </button>
+          {isSell ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAddProject("SELLER")}
+              className={eosBtn("home", { size: "sm" })}
+            >
+              <Plus className="size-3.5" />
+              Nowy pozysk
+            </button>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onAddProject("BUYER")}
+                className={eosBtn("home", { size: "sm" })}
+              >
+                <Plus className="size-3.5" />
+                Nowe poszukiwanie
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onSchedulePresentation}
+                className={eosBtn("secondary", { size: "sm" })}
+              >
+                <CalendarDays className="size-3.5" />
+                Nowa prezentacja
+              </button>
+            </div>
+          )}
         </div>
       </section>
     );
@@ -118,31 +146,60 @@ export default function CrmClientPersonHub({
           {selling[0]?.title || "Umowa, ogłoszenie, promocje i czat w jednym projekcie."}
         </p>
       </button>
-      <button
-        type="button"
-        onClick={() => onOpenLane("BUY")}
-        className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 text-left transition hover:border-emerald-400/40"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex size-11 items-center justify-center rounded-2xl bg-sky-500/12 text-sky-600">
-            <Search className="size-5" />
-          </span>
-          <ChevronRight className="size-4 text-[var(--eos-muted)]" />
-        </div>
-        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-sky-600">Kupuje</p>
-        <h4 className="mt-1 text-lg font-bold text-[var(--eos-text)]">
-          {buying.length ? `${buying.length} ${buying.length === 1 ? "poszukiwanie" : "poszukiwania"}` : "Brak poszukiwania"}
-        </h4>
-        <p className="mt-1 text-sm text-[var(--eos-muted)]">
-          {buying[0]?.title || "Kryteria, radar i live chat jako osobny projekt."}
-        </p>
+      <div className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 text-left">
+        <button type="button" onClick={() => setBuyActionsOpen((open) => !open)} className="w-full text-left">
+          <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex size-11 items-center justify-center rounded-2xl bg-orange-500/12 text-orange-500">
+              <Search className="size-5" />
+            </span>
+            <ChevronRight className={`size-4 text-[var(--eos-muted)] transition ${buyActionsOpen ? "rotate-90" : ""}`} />
+          </div>
+          <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">Kupuje</p>
+          <h4 className="mt-1 text-lg font-bold text-[var(--eos-text)]">
+            {buying.length ? `${buying.length} ${buying.length === 1 ? "poszukiwanie" : "poszukiwania"}` : "Brak poszukiwania"}
+          </h4>
+          <p className="mt-1 text-sm text-[var(--eos-muted)]">
+            {buying[0]?.title || "Kryteria, radar i live chat jako osobny projekt."}
+          </p>
+        </button>
+        {buyActionsOpen ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAddProject("BUYER")}
+              className={eosBtn("home", { size: "sm" })}
+            >
+              <Plus className="size-3.5" />
+              Nowe poszukiwanie
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onSchedulePresentation}
+              className={eosBtn("secondary", { size: "sm" })}
+            >
+              <CalendarDays className="size-3.5" />
+              Nowa prezentacja
+            </button>
+            {buying.length ? (
+              <button type="button" onClick={() => onOpenLane("BUY")} className={eosBtn("secondary", { size: "sm" })}>
+                Zobacz poszukiwania
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-3 text-[11px] text-[var(--eos-muted)]">
+            Kliknij, żeby dodać poszukiwanie albo umówić prezentację.
+          </p>
+        )}
         {buying.some((item) => item.id === currentId || item.portalUnreadCount) ? (
           <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--eos-muted)]">
             <MessageSquare className="size-3.5" />
             Czat przy konkretnym poszukiwaniu
           </p>
         ) : null}
-      </button>
+      </div>
     </section>
   );
 }
