@@ -77,6 +77,10 @@ import { buildBuyerAgentTasks } from '@/lib/crm/buyerAgentTasks';
 import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
 import { attachMatchImportBrief, listMatchImportBriefs } from '@/lib/crm/matchImportProvenance';
 import { createPersonProject, loadClientPersonProjects } from '@/lib/crm/clientPersonProjects';
+import {
+  proposeAuctionToSeller,
+  proposeOpenHouseToSeller,
+} from '@/lib/crm/sellerEventProposals';
 
 export const maxDuration = 300;
 
@@ -157,6 +161,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
           pendingDecisions: [],
           marketingTimeline: [],
           facebookGroups: [],
+          sellerEvents: null,
         }))
       : null;
 
@@ -269,6 +274,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
             sellerNextStep: sellerMarketing.sellerNextStep,
             pendingDecisions: sellerMarketing.pendingDecisions,
             marketingTimeline: sellerMarketing.marketingTimeline,
+            sellerEvents: sellerMarketing.sellerEvents,
             facebookGroups:
               facebookNetwork.length > 0
                 ? facebookNetwork
@@ -940,6 +946,38 @@ export async function POST(req: Request, ctx: RouteCtx) {
       title: String(body.title || ''),
       clientMessage: String(body.clientMessage || body.message || ''),
       dueAt: parseOptionalDate(body.dueAt),
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, decision: result.decision });
+  }
+
+  if (action === 'propose_open_house') {
+    const result = await proposeOpenHouseToSeller({
+      clientId,
+      agencyUserId,
+      startsAt: String(body.startsAt || ''),
+      endsAt: String(body.endsAt || ''),
+      capacity: body.capacity != null ? Number(body.capacity) : 8,
+      visitMode:
+        body.visitMode === 'SLOT_30' || body.visitMode === 'SLOT_60' ? body.visitMode : 'FLEX',
+      clientMessage: body.clientMessage != null ? String(body.clientMessage) : null,
+      title: body.title != null ? String(body.title) : null,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, decision: result.decision });
+  }
+
+  if (action === 'propose_auction') {
+    const result = await proposeAuctionToSeller({
+      clientId,
+      agencyUserId,
+      startsAt: String(body.startsAt || ''),
+      endsAt: String(body.endsAt || ''),
+      startPrice: Number(body.startPrice),
+      reservePrice: body.reservePrice != null ? Number(body.reservePrice) : null,
+      minIncrement: body.minIncrement != null ? Number(body.minIncrement) : null,
+      clientMessage: body.clientMessage != null ? String(body.clientMessage) : null,
+      title: body.title != null ? String(body.title) : null,
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
     return NextResponse.json({ success: true, decision: result.decision });

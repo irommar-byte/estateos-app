@@ -1344,6 +1344,8 @@ model ClientDecisionRequest {
   clientMessage  String    @db.Text
   status         String    @default("PENDING") @db.VarChar(32)
   clientResponse String?   @db.Text
+  /// Structured proposal (open_house / auction terms). Nullable for legacy decisions.
+  payload        Json?
   dueAt          DateTime?
   resolvedAt     DateTime?
   createdAt      DateTime  @default(now())

@@ -135,6 +135,30 @@ type ClientDetail = AgencyClientListItem & {
       dueAt: string | null;
       visibleToClient: boolean;
     } | null;
+    sellerEvents?: {
+      openHouse: {
+        proposal: { id: number; title: string; status: string } | null;
+        event: {
+          id: number;
+          status: string;
+          startsAt: string | null;
+          endsAt: string | null;
+          title?: string | null;
+        } | null;
+      };
+      auction: {
+        proposal: { id: number; title: string; status: string } | null;
+        event: {
+          id: number;
+          status: string;
+          startsAt: string | null;
+          endsAt: string | null;
+          startPrice: number;
+          title?: string | null;
+        } | null;
+      };
+      stage: { id: string; label: string; kind: "open_house" | "auction" | null } | null;
+    } | null;
     facebookGroups?: Array<{
       key: string;
       groupName: string;
@@ -165,6 +189,7 @@ type ClientPersonProject = {
   title: string;
   subtitle: string;
   statusLabel: string;
+  eventStage?: { id: string; label: string; kind: "open_house" | "auction" | null } | null;
   portalUnreadCount: number;
   linkedOfferId: number | null;
   matchCount: number;
@@ -1964,12 +1989,24 @@ export default function CrmClientsWorkspace() {
                     {detail.linkedOfferId ? (
                       <div className="rounded-xl bg-[var(--eos-input)]/50 p-4">
                         <p className="text-sm font-semibold text-[var(--eos-text)]">{cl.viewLinkedListing}</p>
-                        <Link
-                          href={`/oferta/${detail.linkedOfferId}`}
-                          className="mt-2 inline-flex items-center gap-2 text-sm font-bold text-emerald-600"
-                        >
-                          #{detail.linkedOfferId}
-                        </Link>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/oferta/${detail.linkedOfferId}`}
+                            className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600"
+                          >
+                            #{detail.linkedOfferId}
+                          </Link>
+                          {detail.sellerMarketing?.sellerEvents?.stage ? (
+                            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-amber-800">
+                              {detail.sellerMarketing.sellerEvents.stage.kind === "auction"
+                                ? "Licytacja"
+                                : detail.sellerMarketing.sellerEvents.stage.kind === "open_house"
+                                  ? "Dzień otwarty"
+                                  : "Wydarzenie"}{" "}
+                              · {detail.sellerMarketing.sellerEvents.stage.label}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelEmpty}</p>
@@ -1978,6 +2015,7 @@ export default function CrmClientsWorkspace() {
                       linkedOfferId={detail.linkedOfferId || null}
                       busy={busy}
                       sellerNextStep={detail.sellerMarketing?.sellerNextStep || null}
+                      sellerEvents={detail.sellerMarketing?.sellerEvents || null}
                       facebookGroups={detail.sellerMarketing?.facebookGroups || []}
                       facebookShareOffers={detail.sellerMarketing?.facebookShareOffers || []}
                       onAction={clientAction}

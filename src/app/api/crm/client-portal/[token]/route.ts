@@ -362,6 +362,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           pendingDecisions: [],
           marketingTimeline: [],
           facebookGroups: [],
+          sellerEvents: null,
         }))
       : null;
 
@@ -498,6 +499,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       activeChannels: sellerMarketing?.activeChannels || [],
       sellerNextStep: sellerMarketing?.sellerNextStep || null,
       pendingDecisions: sellerMarketing?.pendingDecisions || [],
+      sellerEvents: sellerMarketing?.sellerEvents || null,
       acquisition: client.acquisition
         ? {
             status: client.acquisition.status,
@@ -603,7 +605,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
       comment: body.comment != null ? String(body.comment) : null,
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
-    return NextResponse.json({ success: true, decision: result.decision });
+    return NextResponse.json({
+      success: true,
+      decision: result.decision,
+      fulfillError: result.fulfillError || null,
+    });
   }
 
   if (action === 'release_first_match') {

@@ -3,6 +3,11 @@ import { JOURNEY_ACTIVITY } from '@/lib/crm/clientJourney';
 import { generatePortalToken } from '@/lib/agencyClientNotify';
 import { seedAcquisitionForm } from '@/lib/crm/acquisitionOffer';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import {
+  computeSellerEventStage,
+  type SellerEventKind,
+  type SellerEventStage,
+} from '@/lib/crm/sellerEventStage';
 
 export type ClientPersonProject = {
   id: number;
@@ -10,6 +15,7 @@ export type ClientPersonProject = {
   title: string;
   subtitle: string;
   statusLabel: string;
+  eventStage?: SellerEventStage | null;
   portalUnreadCount: number;
   linkedOfferId: number | null;
   matchCount: number;
@@ -110,9 +116,92 @@ export async function loadClientPersonProjects(params: {
   });
   const unreadByClient = new Map(unreadRows.map((row) => [row.clientId, row._count._all]));
 
+  const sellerIds = rows.filter((row) => row.type === 'SELLER').map((row) => row.id);
+  const offerIds = rows
+    .filter((row) => row.type === 'SELLER' && row.linkedOfferId)
+    .map((row) => row.linkedOfferId!) as number[];
+
+  const [pendingDecisions, rejectedDecisions, openHouses, auctions] = await Promise.all([
+    sellerIds.length
+      ? prisma.clientDecisionRequest.findMany({
+          where: {
+            clientId: { in: sellerIds },
+            status: 'PENDING',
+            kind: { in: ['open_house', 'auction'] },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { clientId: true, kind: true },
+        })
+      : Promise.resolve([]),
+    sellerIds.length
+      ? prisma.clientDecisionRequest.findMany({
+          where: {
+            clientId: { in: sellerIds },
+            status: 'REJECTED',
+            kind: { in: ['open_house', 'auction'] },
+          },
+          orderBy: { updatedAt: 'desc' },
+          select: { clientId: true, kind: true },
+        })
+      : Promise.resolve([]),
+    offerIds.length
+      ? prisma.openHouseEvent.findMany({
+          where: { offerId: { in: offerIds }, status: { in: ['PUBLISHED', 'COMPLETED', 'CANCELLED'] } },
+          orderBy: { updatedAt: 'desc' },
+          include: { slots: { orderBy: { startsAt: 'asc' }, take: 1 } },
+        })
+      : Promise.resolve([]),
+    offerIds.length
+      ? prisma.auctionEvent.findMany({
+          where: {
+            offerId: { in: offerIds },
+            status: { in: ['SCHEDULED', 'LIVE', 'ENDED', 'SETTLED', 'CANCELLED'] },
+          },
+          orderBy: { updatedAt: 'desc' },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const pendingByClient = new Map<number, SellerEventKind>();
+  for (const row of pendingDecisions) {
+    if (!pendingByClient.has(row.clientId)) {
+      pendingByClient.set(row.clientId, row.kind as SellerEventKind);
+    }
+  }
+  const rejectedByClient = new Map<number, SellerEventKind>();
+  for (const row of rejectedDecisions) {
+    if (!rejectedByClient.has(row.clientId)) {
+      rejectedByClient.set(row.clientId, row.kind as SellerEventKind);
+    }
+  }
+  const ohByOffer = new Map<number, (typeof openHouses)[number]>();
+  for (const row of openHouses) {
+    if (!ohByOffer.has(row.offerId)) ohByOffer.set(row.offerId, row);
+  }
+  const auctionByOffer = new Map<number, (typeof auctions)[number]>();
+  for (const row of auctions) {
+    if (!auctionByOffer.has(row.offerId)) auctionByOffer.set(row.offerId, row);
+  }
+
   const selling: ClientPersonProject[] = [];
   const buying: ClientPersonProject[] = [];
   for (const row of rows) {
+    let eventStage: SellerEventStage | null = null;
+    if (row.type === 'SELLER') {
+      const oh = row.linkedOfferId ? ohByOffer.get(row.linkedOfferId) : null;
+      const auction = row.linkedOfferId ? auctionByOffer.get(row.linkedOfferId) : null;
+      const lastOhSlot = oh?.slots?.[0] || null;
+      eventStage = computeSellerEventStage({
+        pendingKind: pendingByClient.get(row.id) || null,
+        rejectedKind: rejectedByClient.get(row.id) || null,
+        openHouseStatus: oh?.status || null,
+        openHouseStartsAt: lastOhSlot?.startsAt?.toISOString() || null,
+        openHouseEndsAt: lastOhSlot?.endsAt?.toISOString() || null,
+        auctionStatus: auction?.status || null,
+        auctionStartsAt: auction?.startsAt?.toISOString() || null,
+        auctionEndsAt: (auction?.extendedEndsAt || auction?.endsAt)?.toISOString() || null,
+      });
+    }
     const project: ClientPersonProject = {
       id: row.id,
       type: row.type,
@@ -144,6 +233,7 @@ export async function loadClientPersonProjects(params: {
           : row._count.matches
             ? 'Radar aktywny'
             : 'Ustal kryteria',
+      eventStage,
       portalUnreadCount: unreadByClient.get(row.id) || 0,
       linkedOfferId: row.linkedOfferId,
       matchCount: row._count.matches,
