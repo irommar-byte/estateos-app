@@ -1449,11 +1449,20 @@ export default function CrmClientsWorkspace() {
                   onOpenProject={openPersonProject}
                   onAddProject={(type) => void addPersonProject(type)}
                   onSchedulePresentation={() => {
+                    const buyer = relatedProjects.buying[0];
                     if (detail.linkedOfferId && !presentationOfferId) {
                       setPresentationOfferId(String(detail.linkedOfferId));
+                    } else if (buyer?.linkedOfferId && !presentationOfferId) {
+                      setPresentationOfferId(String(buyer.linkedOfferId));
+                    }
+                    if (buyer && buyer.id !== detail.id) {
+                      skipPersonReset.current = true;
+                      setSelectedId(buyer.id);
                     }
                     setWorkspaceView("project");
-                    document.getElementById("crm-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    window.setTimeout(() => {
+                      document.getElementById("crm-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 400);
                   }}
                 />
                 </>
@@ -1817,7 +1826,7 @@ export default function CrmClientsWorkspace() {
                         }`}
                       >
                         <p className="text-[11px] font-black text-[var(--eos-text)]">
-                          {guestAgencyMode ? "Inna agencja pokazuje naszą nieruchomość" : "Tryb: inna agencja u naszego klienta"}
+                          {guestAgencyMode ? "Inna agencja pokazuje naszą nieruchomość" : "Inna agencja chce pokazać naszą nieruchomość"}
                         </p>
                         <p className="mt-1 text-[10px] text-[var(--eos-muted)]">
                           Mail idzie do sprzedającego i do agenta gościa. Nie tworzy drugiego klienta.
