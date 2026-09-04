@@ -43,6 +43,7 @@ test('buildOfferDialogueTurn references last objection and lesson bits', () => {
   assert.match(turn.body, /Anna/);
   assert.match(turn.body, /Za stare|2000|star/i);
   assert.match(turn.body, /balkon/i);
+  assert.match(turn.body, /Co teraz zrób:/);
   assert.ok(turn.body.split('\n\n').length >= 3, 'expected multi-paragraph agent letter');
 });
 

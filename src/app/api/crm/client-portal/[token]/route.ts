@@ -856,6 +856,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
           source: 'client_feedback',
           matchId,
           offerId: match.offerId,
+          offerTitle: match.offer.title,
+          sentiment: parsed.sentiment,
+          kind: 'chat',
+          audience: 'both',
         },
       });
     }
@@ -1112,6 +1116,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
           checkbackQuickReplies: {
             activityId: pending.activityId,
             options: pending.options,
+          },
+          activityMetadata: {
+            audience: 'both',
+            kind: 'checkback',
+            source: 'intelligence_checkback_prompt',
           },
         });
         if (content) {

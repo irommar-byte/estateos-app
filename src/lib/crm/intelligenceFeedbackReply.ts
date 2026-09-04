@@ -11,6 +11,11 @@ import {
   INTELLIGENCE_ACTIVITY,
 } from '@/lib/crm/intelligenceCheckback';
 import { buildHandoffDialogueTurn } from '@/lib/crm/intelligenceDialogue';
+import {
+  buildHandoffAgentNote,
+  buildHandoffClientMessage,
+  handoffClientKindFromReason,
+} from '@/lib/crm/portalChatCopy';
 import { sendPortalChat } from '@/lib/crm/portalChat';
 import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
@@ -62,11 +67,33 @@ export async function handleIntelligenceAfterFeedback(params: {
         metadata: { matchId: params.matchId, reason: handoffReason },
       },
     });
+    const clientKind = handoffClientKindFromReason(handoffReason);
     await sendPortalChat({
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
       from: 'agent',
-      content: turn.body,
+      content: buildHandoffClientMessage(clientKind),
+      activityMetadata: {
+        audience: 'both',
+        kind: 'client_step',
+        source: 'intelligence_handoff',
+        matchId: params.matchId,
+        offerId: match?.offerId || null,
+      },
+    }).catch(() => {});
+    await sendPortalChat({
+      clientId: params.clientId,
+      agencyUserId: params.agencyUserId,
+      from: 'agent',
+      content: buildHandoffAgentNote(handoffReason, params.agentFirstName),
+      activityOnly: true,
+      activityMetadata: {
+        audience: 'agent',
+        kind: 'agent_note',
+        source: 'intelligence_handoff',
+        matchId: params.matchId,
+        offerId: match?.offerId || null,
+      },
     }).catch(() => {});
     await notifyAgentHandoff(params.agencyUserId, params.clientId, handoffReason);
     return { action: 'handoff', message: handoffReason };
@@ -157,6 +184,12 @@ export async function mirrorIntelligenceOfferToChat(params: {
     agencyUserId: params.agencyUserId,
     from: 'agent',
     content: params.body,
+    activityMetadata: {
+      audience: 'both',
+      kind: 'client_step',
+      source: 'intelligence_offer',
+      offerId: params.offerId,
+    },
   }).catch(() => {});
 }
 

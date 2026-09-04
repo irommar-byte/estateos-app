@@ -17,6 +17,9 @@ type PortalMessage = {
   content: string;
   createdAt: string;
   fromMe: boolean;
+  kind?: "chat" | "client_step" | "agent_note" | "checkback";
+  offerTitle?: string | null;
+  sentiment?: string | null;
   attachments?: ContactAttachmentMeta[];
 };
 
@@ -157,7 +160,7 @@ export default function CrmClientLiveChat({
                   </p>
                   <h3 className="truncate text-base font-black text-[var(--eos-text)]">{clientName}</h3>
                   <p className="text-[11px] text-[var(--eos-muted)]">
-                    Ta sama historia jest widoczna w CRM, Contact i panelu klienta.
+                    Klient widzi tylko rozmowę i konkretne kroki. Żółte notatki zostają u Ciebie.
                   </p>
                 </div>
                 <button
@@ -189,18 +192,28 @@ export default function CrmClientLiveChat({
                 ) : (
                   messages.map((message) => {
                     const visibleContent = cleanAttachmentOnlyMessage(message.content, message.attachments);
+                    const isAgentNote = message.kind === "agent_note";
+                    const isStep = message.kind === "client_step" || message.kind === "checkback";
                     return (
                       <div
                       key={message.id}
                       className={`max-w-[86%] rounded-2xl px-3 py-2.5 text-sm ${
-                        message.fromMe
-                          ? "ml-auto bg-emerald-500/16"
-                          : "mr-auto border border-[var(--eos-border)] bg-[var(--eos-input)]"
+                        isAgentNote
+                          ? "ml-auto border border-amber-400/40 bg-amber-500/12"
+                          : message.fromMe
+                            ? "ml-auto bg-emerald-500/16"
+                            : "mr-auto border border-[var(--eos-border)] bg-[var(--eos-input)]"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
-                          {message.fromMe ? "Ty" : clientName}
+                          {isAgentNote
+                            ? "Tylko Ty · instrukcja"
+                            : isStep && message.fromMe
+                              ? "Klient to widzi"
+                              : message.fromMe
+                                ? "Ty"
+                                : clientName}
                         </p>
                         <time className="text-[9px] text-[var(--eos-muted)]">
                           {new Date(message.createdAt).toLocaleString("pl-PL", {
@@ -211,6 +224,11 @@ export default function CrmClientLiveChat({
                           })}
                         </time>
                       </div>
+                      {message.offerTitle ? (
+                        <p className="mt-1 text-[10px] font-semibold text-[var(--eos-muted)]">
+                          Oferta · {message.offerTitle}
+                        </p>
+                      ) : null}
                       {visibleContent ? <p className="mt-1 whitespace-pre-wrap leading-relaxed">{visibleContent}</p> : null}
                       {(message.attachments || []).map((attachment) => (
                         <ContactAttachmentBubble key={attachment.url} attachment={attachment} isMe={message.fromMe} />

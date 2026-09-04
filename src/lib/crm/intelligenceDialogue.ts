@@ -9,6 +9,7 @@ import {
 import type { MarketRealitySnapshot } from '@/lib/crm/buyerMarketReality';
 import { formatPln, formatPpsm } from '@/lib/market/format';
 import { buildRichAgentFollowUpLetter, lessonBitsToRichFacts } from '@/lib/crm/agentOfferFollowUp';
+import { appendOfferEvaluationSteps } from '@/lib/crm/portalChatCopy';
 
 export type DialogueTurnKind =
   | 'offer'
@@ -72,7 +73,7 @@ export function buildOfferDialogueTurn(params: {
         : 'Wysyłam pierwszą propozycję dopasowaną do Twojej ankiety — chcę sprawdzić, czy kierunek poszukiwań jest właściwy.',
       'Proszę o szczerą ocenę: co pasuje, a co należy skorygować. Każda uwaga pomoże mi precyzyjniej dobierać kolejne oferty.',
     ].join('\n\n');
-    return { kind: 'offer', body, facts: ['kalibracja ankiety'] };
+    return { kind: 'offer', body: appendOfferEvaluationSteps(body), facts: ['kalibracja ankiety'] };
   }
 
   const facts: string[] = [];
@@ -128,7 +129,7 @@ export function buildOfferDialogueTurn(params: {
         next,
       });
 
-  return { kind: 'offer', body, facts };
+  return { kind: 'offer', body: appendOfferEvaluationSteps(body), facts };
 }
 
 function buildFirstOfferLetter(params: {
@@ -328,7 +329,7 @@ export function buildHandoffDialogueTurn(params: {
   const lead = agentLead(params.agentFirstName);
   return {
     kind: 'handoff',
-    body: `${lead}${params.reason} Wrócę z konkretem po rozmowie — na ten moment wstrzymuję automatyczne dokładanie kolejnej oferty.`,
+    body: `${lead}${params.reason} Wstrzymuję automatyczne dokładanie kolejnej oferty, aż skontaktujesz się z klientem.`,
     facts: ['handoff'],
   };
 }

@@ -192,9 +192,9 @@ export function formatClientFeedbackForAgent(raw: unknown): string {
   return parts.join(' — ');
 }
 
-export function clientFeedbackChatMessage(raw: unknown, offerTitle: string): string | null {
+/** Treść bąbelka klienta = sama notatka. Tytuł oferty idzie do metadanych / chipa, nie do tekstu. */
+export function clientFeedbackChatMessage(raw: unknown, _offerTitle?: string): string | null {
   const feedback = parseClientOfferFeedback(raw);
   if (!feedback.note) return null;
-  const title = String(offerTitle || 'oferty').trim();
-  return `Reakcja do oferty „${title}”:\n${feedback.note}`;
+  return feedback.note;
 }

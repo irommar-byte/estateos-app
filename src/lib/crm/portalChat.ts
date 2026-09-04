@@ -28,6 +28,7 @@ import {
 import { crmAgentPushData, crmClientChatThreadId } from '@/lib/crm/agentPush';
 import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
 import { portalChatNotifyTarget } from '@/lib/crm/portalChatNotify';
+import { parsePortalChatAudience, presentPortalChatFields } from '@/lib/crm/portalChatCopy';
 import { touchPortalLinkedPresence } from '@/lib/crm/portalPresence';
 
 const SAFE_NAME_RE = /[^a-zA-Z0-9._-]+/g;
@@ -97,23 +98,31 @@ export async function listPortalChat(clientId: number, viewer: 'client' | 'agent
     const parts = parseContactMessageParts(contact);
     const fromAgent = contact.senderId === client.agencyUserId;
     const attachmentUrl = parts.attachment?.url || '';
+    const attachments = parts.attachment ? [parts.attachment] : [];
+    const presented = presentPortalChatFields({
+      content: cleanAttachmentOnlyMessage(parts.text, attachments),
+      fromAgent,
+      viewer,
+    });
     const representedByLegacyActivity = portalMessages.some((message) => {
       if (message.fromAgent !== fromAgent) return false;
       if (Math.abs(new Date(message.createdAt).getTime() - contact.createdAt.getTime()) > 15_000) return false;
-      if (normalizedMessageText(message.content) !== normalizedMessageText(parts.text)) return false;
+      if (normalizedMessageText(message.content) !== normalizedMessageText(presented.content)) return false;
       const portalAttachmentUrl = message.attachments[0]?.url || '';
       return portalAttachmentUrl === attachmentUrl;
     });
     if (representedByLegacyActivity) continue;
-
-    const attachments = parts.attachment ? [parts.attachment] : [];
+    if (!presented.visible) continue;
     merged.push({
       id: -contact.id,
-      content: cleanAttachmentOnlyMessage(parts.text, attachments),
+      content: presented.content,
       createdAt: contact.createdAt.toISOString(),
       fromAgent,
       fromMe: viewer === 'agent' ? fromAgent : !fromAgent,
       attachments,
+      kind: presented.kind,
+      audience: presented.audience,
+      offerTitle: presented.offerTitle,
     });
   }
 
@@ -239,9 +248,13 @@ export async function sendPortalChat(params: {
     return { ok: false as const, status: 400, error: 'Wpisz treść wiadomości albo dodaj załącznik.' };
   }
 
+  const audience = parsePortalChatAudience(params.activityMetadata?.audience);
+  const agentOnly = audience === 'agent';
+  const activityOnly = Boolean(params.activityOnly || agentOnly);
   const body = content || attachments.map((item) => contactAttachmentPreviewLabel(item)).join(', ');
   const metadata = {
     ...params.activityMetadata,
+    audience,
     from: params.from,
     content,
     attachments,
@@ -252,7 +265,11 @@ export async function sendPortalChat(params: {
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
       kind: JOURNEY_ACTIVITY.PORTAL_MESSAGE,
-      title: params.from === 'client' ? 'Wiadomość od klienta' : 'Wiadomość do klienta',
+      title: agentOnly
+        ? 'Notatka dla agenta'
+        : params.from === 'client'
+          ? 'Wiadomość od klienta'
+          : 'Wiadomość do klienta',
       body: body.slice(0, 280),
       metadata,
     },
@@ -260,7 +277,7 @@ export async function sendPortalChat(params: {
   });
 
   let contactMirrored = false;
-  if (!params.activityOnly && params.linkedUserId) {
+  if (!activityOnly && params.linkedUserId) {
     try {
       const thread = await ensureAgencyClientThread(params.agencyUserId, params.linkedUserId);
       const senderId = params.from === 'agent' ? params.agencyUserId : params.linkedUserId;
@@ -292,8 +309,9 @@ export async function sendPortalChat(params: {
 
   const notifyTarget = portalChatNotifyTarget({
     from: params.from,
-    activityOnly: params.activityOnly,
+    activityOnly,
     contactMirrored,
+    audience,
   });
   if (params.from === 'client') {
     await touchPortalLinkedPresence(params.linkedUserId, { force: true });

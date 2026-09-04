@@ -17,9 +17,9 @@ test('agent replies still notify the client portal', () => {
   assert.equal(portalChatNotifyTarget({ from: 'agent' }), 'client');
 });
 
-test('activity-only feedback mirror does not send a second push', () => {
+test('agent-only notes never notify the client', () => {
   assert.equal(
-    portalChatNotifyTarget({ from: 'client', activityOnly: true }),
+    portalChatNotifyTarget({ from: 'agent', audience: 'agent' }),
     'none',
   );
 });

@@ -682,6 +682,12 @@ async function sendIntelligenceOfferUnlocked(params: {
       agencyUserId,
       from: 'agent',
       content: customMessage,
+      activityMetadata: {
+        audience: 'both',
+        kind: 'client_step',
+        source: 'intelligence_offer',
+        offerId: pick.offerId,
+      },
     }).catch(() => {});
 
     await prisma.agencyClient.update({
