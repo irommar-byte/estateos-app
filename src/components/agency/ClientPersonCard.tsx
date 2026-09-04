@@ -1,8 +1,7 @@
 import React from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPhoneNumber } from '../../utils/crmFormatters';
-import { formatCrmRoleLabel } from '../../lib/crmPersonGroups';
 
 type KwRow = { kw: string; verified: boolean };
 
@@ -97,11 +96,6 @@ export default function ClientPersonCard({
           <Text style={[styles.role, { color: '#FF9500' }]}>Kupujący</Text>
         ) : null}
       </View>
-      {dual ? (
-        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
-          {formatCrmRoleLabel(personRoles)}
-        </Text>
-      ) : null}
 
       {portalUrl ? (
         <Pressable
@@ -119,7 +113,9 @@ export default function ClientPersonCard({
         {phone ? (
           <Pressable onPress={() => Linking.openURL(`tel:${phone}`)} style={styles.luxuryBlock}>
             <Text style={[styles.luxuryKicker, { color: gold }]}>Telefon</Text>
-            <Text style={[styles.luxuryValue, { color: colors.text }]}>{formatPhoneNumber(phone)}</Text>
+            <Text style={[styles.luxuryValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>
+              {formatPhoneNumber(phone)}
+            </Text>
           </Pressable>
         ) : (
           <View style={styles.luxuryBlock}>
@@ -131,7 +127,9 @@ export default function ClientPersonCard({
         {email ? (
           <Pressable onPress={() => Linking.openURL(`mailto:${email}`)} style={styles.luxuryBlock}>
             <Text style={[styles.luxuryKicker, { color: gold }]}>E-mail</Text>
-            <Text style={[styles.luxuryEmail, { color: colors.text }]}>{email}</Text>
+            <Text style={[styles.luxuryEmail, { color: colors.text }]} numberOfLines={2}>
+              {email}
+            </Text>
           </Pressable>
         ) : (
           <View style={styles.luxuryBlock}>
@@ -273,19 +271,19 @@ const styles = StyleSheet.create({
   luxuryValue: {
     marginTop: 6,
     fontSize: 28,
-    fontFamily: 'Georgia',
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
     letterSpacing: 0.6,
   },
   luxuryEmail: {
     marginTop: 6,
     fontSize: 18,
-    fontFamily: 'Georgia',
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
     letterSpacing: 0.2,
   },
   luxuryMuted: {
     marginTop: 6,
     fontSize: 16,
-    fontFamily: 'Georgia',
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
     fontStyle: 'italic',
   },
   luxuryRule: {

@@ -25,6 +25,7 @@ import {
   applyCrmPersonOrder,
   formatCrmRoleLabel,
   groupCrmClientsByPerson,
+  mergeCrmPersonOrder,
   type CrmPersonGroup,
 } from '../lib/crmPersonGroups';
 import { loadCrmPersonOrder, saveCrmPersonOrder } from '../lib/crmClientListOrder';
@@ -177,9 +178,12 @@ export default function AgencyClientsScreen() {
   };
 
   const persistOrder = (next: PersonCard[]) => {
-    const keys = next.map((item) => item.key);
-    setPersonOrder(keys);
-    if (userId) void saveCrmPersonOrder(userId, keys);
+    const merged = mergeCrmPersonOrder(
+      personOrder,
+      next.map((item) => item.key),
+    );
+    setPersonOrder(merged);
+    if (userId) void saveCrmPersonOrder(userId, merged);
   };
 
   const renderCard = ({ item, drag, isActive }: RenderItemParams<PersonCard>) => {

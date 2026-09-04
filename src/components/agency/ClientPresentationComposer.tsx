@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { AgencyClientMatch, ManagedOfferOption } from '../../services/agencyClientService';
 
 type Colors = {
@@ -55,6 +55,22 @@ export default function ClientPresentationComposer({
   onSubmit: () => void;
 }) {
   const selectedId = Number(presentationOfferId);
+  const selectedOffer = useMemo(
+    () =>
+      managedOffers.find((offer) => offer.id === selectedId) ||
+      matches.find((item) => item.offer.id === selectedId)?.offer ||
+      null,
+    [managedOffers, matches, selectedId],
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const filteredOffers = useMemo(() => {
+    const q = pickerQuery.trim().toLowerCase();
+    if (!q) return managedOffers;
+    return managedOffers.filter((offer) =>
+      `#${offer.id} ${offer.title} ${offer.city || ''}`.toLowerCase().includes(q),
+    );
+  }, [managedOffers, pickerQuery]);
   const canSubmit =
     Boolean(presentationAt) &&
     Boolean(presentationOfferId.trim()) &&
@@ -80,7 +96,7 @@ export default function ClientPresentationComposer({
           ]}
         >
           <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>
-            {guestMode ? 'Inna agencja pokazuje naszą nieruchomość' : 'Tryb: inna agencja u naszego klienta'}
+            {guestMode ? 'Inna agencja pokazuje naszą nieruchomość' : 'Inna agencja chce pokazać naszą nieruchomość'}
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }}>
             {guestMode
@@ -131,35 +147,66 @@ export default function ClientPresentationComposer({
           <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>
             NIERUCHOMOŚCI AGENTA
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-            {managedOffers.map((offer) => {
-              const selected = selectedId === offer.id;
-              return (
-                <Pressable
-                  key={offer.id}
-                  onPress={() => onChangeOfferId(String(offer.id))}
-                  style={{
-                    maxWidth: '100%',
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: selected ? colors.accent : colors.border,
-                    backgroundColor: selected ? 'rgba(52,199,89,0.14)' : colors.input,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Text style={{ color: colors.text, fontWeight: '800', fontSize: 11 }} numberOfLines={1}>
-                    #{offer.id} · {offer.title}
-                  </Text>
-                  <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 2 }}>
-                    {[offer.city, offer.linkedClientId ? `klient ${offer.linkedClientId}` : null]
-                      .filter(Boolean)
-                      .join(' · ') || 'W portfelu'}
-                  </Text>
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
+          >
+            <Text style={{ color: selectedOffer ? colors.text : colors.secondary, fontWeight: '700' }} numberOfLines={2}>
+              {selectedOffer
+                ? `#${selectedOffer.id} · ${selectedOffer.title}`
+                : 'Wybierz nieruchomość z listy agenta'}
+            </Text>
+          </Pressable>
+          <Modal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
+            <View style={styles.modalBackdrop}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerOpen(false)} />
+              <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
+                <Text style={{ color: colors.text, fontSize: 17, fontWeight: '900' }}>Nieruchomości agenta</Text>
+                <TextInput
+                  value={pickerQuery}
+                  onChangeText={setPickerQuery}
+                  placeholder="Szukaj tytułu, miasta albo ID"
+                  placeholderTextColor={colors.secondary}
+                  style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 12 }]}
+                />
+                <ScrollView style={{ maxHeight: 420, marginTop: 10 }}>
+                  {filteredOffers.map((offer) => {
+                    const selected = selectedId === offer.id;
+                    return (
+                      <Pressable
+                        key={offer.id}
+                        onPress={() => {
+                          onChangeOfferId(String(offer.id));
+                          setPickerOpen(false);
+                          setPickerQuery('');
+                        }}
+                        style={{
+                          paddingVertical: 12,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderBottomColor: colors.border,
+                        }}
+                      >
+                        <Text style={{ color: selected ? colors.accent : colors.text, fontWeight: '800', fontSize: 13 }}>
+                          #{offer.id} · {offer.title}
+                        </Text>
+                        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                          {[offer.city, offer.linkedClientId ? `klient ${offer.linkedClientId}` : null]
+                            .filter(Boolean)
+                            .join(' · ') || 'W portfelu'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  {!filteredOffers.length ? (
+                    <Text style={{ color: colors.secondary, paddingVertical: 16 }}>Brak oferty w tej liście.</Text>
+                  ) : null}
+                </ScrollView>
+                <Pressable onPress={() => setPickerOpen(false)} style={{ marginTop: 12, minHeight: 44, justifyContent: 'center' }}>
+                  <Text style={{ color: colors.accent, fontWeight: '800', textAlign: 'center' }}>Zamknij</Text>
                 </Pressable>
-              );
-            })}
-          </View>
+              </View>
+            </View>
+          </Modal>
         </View>
       ) : null}
 
@@ -240,6 +287,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   toggle: {
     marginTop: 12,
@@ -260,5 +308,17 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 13,
     textAlign: 'center',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 18,
+    paddingBottom: 28,
+    maxHeight: '86%',
   },
 });

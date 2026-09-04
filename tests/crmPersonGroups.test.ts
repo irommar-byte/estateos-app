@@ -5,6 +5,7 @@ import {
   crmPersonKey,
   formatCrmRoleLabel,
   groupCrmClientsByPerson,
+  mergeCrmPersonOrder,
 } from '../src/lib/crmPersonGroups';
 
 test('same email and phone collapse into one person card', () => {
@@ -105,4 +106,9 @@ test('saved order is applied before recency', () => {
   ]);
   const ordered = applyCrmPersonOrder(groups, [crmPersonKey(groups[1].primary), crmPersonKey(groups[0].primary)]);
   assert.equal(ordered[0].primary.firstName, 'Bartek');
+});
+
+test('filtered reorder does not drop people outside the visible slice', () => {
+  const merged = mergeCrmPersonOrder(['a', 'b', 'c', 'd'], ['d', 'b']);
+  assert.deepEqual(merged, ['a', 'd', 'b', 'c']);
 });

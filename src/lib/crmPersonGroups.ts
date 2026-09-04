@@ -77,3 +77,29 @@ export function applyCrmPersonOrder<T extends CrmPersonIdentity>(
     return new Date(b.primary.updatedAt).getTime() - new Date(a.primary.updatedAt).getTime();
   });
 }
+
+/** Keep people outside the current filter in place when the visible slice is reordered. */
+export function mergeCrmPersonOrder(existing: string[], visibleNewOrder: string[]): string[] {
+  if (!visibleNewOrder.length) return existing;
+  if (!existing.length) return visibleNewOrder;
+  const visible = new Set(visibleNewOrder);
+  const result: string[] = [];
+  let inserted = false;
+  for (const key of existing) {
+    if (visible.has(key)) {
+      if (!inserted) {
+        result.push(...visibleNewOrder);
+        inserted = true;
+      }
+      continue;
+    }
+    result.push(key);
+  }
+  if (!inserted) result.push(...visibleNewOrder);
+  else {
+    for (const key of visibleNewOrder) {
+      if (!result.includes(key)) result.push(key);
+    }
+  }
+  return result;
+}

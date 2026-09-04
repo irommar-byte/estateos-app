@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  findNodeHandle,
   LayoutAnimation,
   Linking,
   Platform,
@@ -409,6 +410,9 @@ export default function AgencyClientDetailScreen() {
   const [guestAgencyEmail, setGuestAgencyEmail] = useState('');
   const [guestAgencyPhone, setGuestAgencyPhone] = useState('');
   const [guestVisitorName, setGuestVisitorName] = useState('');
+  const [presentationFocus, setPresentationFocus] = useState(false);
+  const pageScrollRef = useRef<ScrollView>(null);
+  const presentationAnchorRef = useRef<View>(null);
 
   // Seller Buyer Radar Controls
   const [sellerRadarSearching, setSellerRadarSearching] = useState(false);
@@ -424,6 +428,25 @@ export default function AgencyClientDetailScreen() {
     input: isDark ? '#2C2C2E' : '#F2F2F7',
     accent: '#34C759',
   };
+
+  const scrollToPresentation = useCallback(() => {
+    const run = () => {
+      const scroll = pageScrollRef.current;
+      const anchor = presentationAnchorRef.current;
+      if (!scroll || !anchor) return;
+      const node = findNodeHandle(scroll);
+      if (node == null) return;
+      anchor.measureLayout(
+        node as never,
+        (_x, y) => {
+          scroll.scrollTo({ y: Math.max(0, y - 16), animated: true });
+        },
+        () => {},
+      );
+    };
+    setTimeout(run, 80);
+    setTimeout(run, 420);
+  }, []);
 
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [showOfferErrors, setShowOfferErrors] = useState(false);
@@ -1117,6 +1140,7 @@ export default function AgencyClientDetailScreen() {
   };
 
   const openPersonProject = (projectId: number) => {
+    setPresentationFocus(false);
     const project =
       relatedProjects.selling.find((item) => item.id === projectId) ||
       relatedProjects.buying.find((item) => item.id === projectId);
@@ -1396,7 +1420,9 @@ export default function AgencyClientDetailScreen() {
         <Pressable
           onPress={() => {
             if (crmLevel === 'project') {
-              setCrmLevel('lane');
+              setCrmLevel(presentationFocus ? 'person' : 'lane');
+              if (presentationFocus) setCrmLane(null);
+              setPresentationFocus(false);
               return;
             }
             if (crmLevel === 'lane') {
@@ -1443,6 +1469,7 @@ export default function AgencyClientDetailScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView
+          ref={pageScrollRef}
           scrollEnabled={!isSigning && !chatFocused}
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
@@ -1485,6 +1512,7 @@ export default function AgencyClientDetailScreen() {
                   colors={colors}
                   coverOverrides={offerCovers}
                   onOpenLane={(next) => {
+                    setPresentationFocus(false);
                     setCrmLane(next);
                     setCrmLevel('lane');
                   }}
@@ -1495,12 +1523,23 @@ export default function AgencyClientDetailScreen() {
                   onOpenProject={openPersonProject}
                   onAddProject={(type) => void addPersonProject(type)}
                   onSchedulePresentation={() => {
-                    if (client.linkedOfferId && !presentationOfferId) {
-                      setPresentationOfferId(String(client.linkedOfferId));
+                    const buyer = relatedProjects.buying[0];
+                    const linked = client.linkedOfferId || buyer?.linkedOfferId;
+                    if (linked && !presentationOfferId) setPresentationOfferId(String(linked));
+                    if (buyer && buyer.id !== clientId) {
+                      setPresentationFocus(false);
+                      navigation.setParams({ clientId: buyer.id, startAt: 'project', lane: 'BUY' });
+                      setCrmLane('BUY');
+                      setCrmLevel('project');
+                    } else if (client.type === 'BUYER') {
+                      setPresentationFocus(false);
+                      setCrmLevel('project');
+                    } else {
+                      setPresentationFocus(true);
+                      setCrmLevel('project');
                     }
-                    if (client.type === 'SELLER') setGuestAgencyMode(false);
-                    setCrmLevel('project');
                     setPresentationExpanded(true);
+                    scrollToPresentation();
                   }}
                 />
               ) : (
@@ -1566,6 +1605,15 @@ export default function AgencyClientDetailScreen() {
               {/* ═══ PIPELINE BAR ═══ */}
               {pipelineStages.length > 0 ? (
                 <SellerClientPipelineBar stages={pipelineStages} isDark={isDark} />
+              ) : null}
+
+              {presentationFocus ? (
+                <Pressable
+                  onPress={() => setPresentationFocus(false)}
+                  style={{ marginBottom: 12 }}
+                >
+                  <Text style={{ color: '#34C759', fontWeight: '800', fontSize: 13 }}>← Wróć do pozysku</Text>
+                </Pressable>
               ) : null}
 
               {/* ═══ SECTION: WYMAGA REAKCJI ═══ */}
@@ -1747,7 +1795,7 @@ export default function AgencyClientDetailScreen() {
               ) : null}
 
               {/* ═══ SECTION: POZYSKANIE ═══ */}
-              {client.type === 'SELLER' && form ? (
+              {client.type === 'SELLER' && form && !presentationFocus ? (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '900', letterSpacing: 1.2, textAlign: 'center' }}>
                     PRZEWODNIK POZYSKANIA
@@ -2466,6 +2514,8 @@ export default function AgencyClientDetailScreen() {
 
               {/* ═══ SECTION: WSPÓŁPRACA / PREZENTACJE ═══ */}
               <View
+                ref={presentationAnchorRef}
+                collapsable={false}
                 style={[
                   styles.card,
                   { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden', padding: 0 },
@@ -3002,7 +3052,7 @@ export default function AgencyClientDetailScreen() {
               ) : null}
 
               {/* ═══ SECTION: PROMOCJA I DYSTRYBUCJA ═══ */}
-              {client.type === 'SELLER' && token ? (
+              {client.type === 'SELLER' && token && !presentationFocus ? (
                 <SellerMarketingCard
                   clientId={clientId}
                   linkedOfferId={client.linkedOfferId}

@@ -168,61 +168,52 @@ export default function ClientPersonHub({
           {selling[0]?.title || 'Umowa, ogłoszenie, promocje i czat w jednym projekcie.'}
         </Text>
       </Pressable>
-      <Pressable
-        onPress={() => setBuyActionsOpen((open) => !open)}
-        style={[styles.lane, { backgroundColor: colors.card, borderColor: buyActionsOpen ? '#FF9500' : colors.border }]}
-      >
-        <View style={[styles.iconWrap, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
-          <Ionicons name="search-outline" size={22} color="#FF9500" />
-        </View>
-        <Text style={{ color: '#FF9500', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginTop: 14 }}>KUPUJE</Text>
-        <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 4 }}>
-          {buying.length ? `${buying.length} ${buying.length === 1 ? 'poszukiwanie' : 'poszukiwania'}` : 'Brak poszukiwania'}
-        </Text>
-        <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>
-          {buying[0]?.title || 'Kryteria, radar i live chat jako osobny projekt.'}
-        </Text>
+      <View>
+        <Pressable
+          onPress={() => setBuyActionsOpen((open) => !open)}
+          style={[styles.lane, { backgroundColor: colors.card, borderColor: buyActionsOpen ? '#FF9500' : colors.border }]}
+        >
+          <View style={[styles.iconWrap, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
+            <Ionicons name="search-outline" size={22} color="#FF9500" />
+          </View>
+          <Text style={{ color: '#FF9500', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginTop: 14 }}>KUPUJE</Text>
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 4 }}>
+            {buying.length ? `${buying.length} ${buying.length === 1 ? 'poszukiwanie' : 'poszukiwania'}` : 'Brak poszukiwania'}
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>
+            {buying[0]?.title || 'Kryteria, radar i live chat jako osobny projekt.'}
+          </Text>
+          {!buyActionsOpen ? (
+            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 10 }}>
+              Dotknij, żeby dodać poszukiwanie albo umówić prezentację.
+            </Text>
+          ) : null}
+        </Pressable>
         {buyActionsOpen ? (
           <View style={styles.buyActions}>
             <Pressable
               disabled={busy}
-              onPress={(e) => {
-                e.stopPropagation?.();
-                onAddProject('BUYER');
-              }}
+              onPress={() => onAddProject('BUYER')}
               style={[styles.buyBtn, { opacity: busy ? 0.5 : 1 }]}
             >
               <Text style={styles.buyBtnText}>Nowe poszukiwanie</Text>
             </Pressable>
             <Pressable
               disabled={busy}
-              onPress={(e) => {
-                e.stopPropagation?.();
-                onSchedulePresentation();
-              }}
+              onPress={onSchedulePresentation}
               style={[styles.buyBtnGhost, { borderColor: colors.border, opacity: busy ? 0.5 : 1 }]}
             >
               <Text style={[styles.buyBtnGhostText, { color: colors.text }]}>Nowa prezentacja</Text>
             </Pressable>
             {buying.length ? (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  onOpenLane('BUY');
-                }}
-                style={styles.buyLink}
-              >
+              <Pressable onPress={() => onOpenLane('BUY')} style={styles.buyLink}>
                 <Text style={styles.buyLinkText}>Zobacz poszukiwania</Text>
                 <Ionicons name="chevron-forward" size={14} color="#FF9500" />
               </Pressable>
             ) : null}
           </View>
-        ) : (
-          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 10 }}>
-            Dotknij, żeby dodać poszukiwanie albo umówić prezentację.
-          </Text>
-        )}
-      </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -274,15 +265,20 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   buyActions: {
-    marginTop: 14,
+    marginTop: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   buyBtn: {
+    flexGrow: 1,
+    minWidth: '46%',
     minHeight: 44,
     borderRadius: 14,
     backgroundColor: '#FF9500',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 10,
   },
   buyBtnText: {
     color: '#3b2200',
@@ -290,18 +286,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   buyBtnGhost: {
+    flexGrow: 1,
+    minWidth: '46%',
     minHeight: 44,
     borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 10,
   },
   buyBtnGhostText: {
     fontWeight: '900',
     fontSize: 13,
   },
   buyLink: {
-    marginTop: 2,
+    width: '100%',
     minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
