@@ -45,6 +45,11 @@ function authHeaders(token?: string | null) {
     : { 'Content-Type': 'application/json' };
 }
 
+export type MarketStatusResult = {
+  ok: true;
+  status: 'bargain' | 'market' | 'luxury';
+};
+
 export async function fetchMarketValuation(
   token: string | null,
   body: Record<string, unknown>,
@@ -59,6 +64,31 @@ export async function fetchMarketValuation(
     return { ok: false, message: String(json?.message || 'Nie udało się policzyć wyceny.'), code: json?.code };
   }
   return json as ValuationResult;
+}
+
+/** Redacted RCN status for non-Pro — no recommended price in the payload. */
+export async function fetchMarketPriceStatus(
+  token: string | null,
+  body: Record<string, unknown>,
+): Promise<MarketStatusResult | { ok: false; message: string; code?: string }> {
+  const res = await fetch(`${API_URL}/api/market/valuation`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ ...body, purpose: 'status' }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.ok) {
+    return {
+      ok: false,
+      message: String(json?.message || 'Nie udało się sprawdzić statusu ceny.'),
+      code: json?.code,
+    };
+  }
+  const status = String(json.status || '');
+  if (status !== 'bargain' && status !== 'market' && status !== 'luxury') {
+    return { ok: false, message: 'Brak statusu ceny.', code: 'NO_STATUS' };
+  }
+  return { ok: true, status };
 }
 
 export async function sendMarketReport(token: string | null, body: Record<string, unknown>) {

@@ -1,6 +1,9 @@
 export type MarketTypeFilter = 'all' | 'pierwotny' | 'wtorny';
 
-export type ValuationPurpose = 'crm' | 'listing' | 'consumer' | 'hub';
+export type ValuationPurpose = 'crm' | 'listing' | 'consumer' | 'hub' | 'status';
+
+/** Redacted RCN badge for logged-in non-Pro users — no recommended price leaked. */
+export type MarketStatusKind = 'bargain' | 'market' | 'luxury';
 
 export type ValuationSubject = {
   city: string;

@@ -327,6 +327,12 @@ export const offer = {
       label: 'EstateOS™ ROI',
       sub: 'roczna stopa',
     },
+    rcnScale: {
+      below: 'poniżej',
+      recommended: 'rekomendowana',
+      above: 'powyżej',
+      beyond: 'ponad 30%',
+    },
     seller: {
       agentLoading: 'Profil agenta · ładowanie…',
       agentCard: 'Profil agenta · wizytówka',

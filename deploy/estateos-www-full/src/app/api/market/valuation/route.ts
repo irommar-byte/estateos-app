@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
 import { valueProperty } from '@/lib/market/compsEngine';
-import { parsePurpose, parseValuationSubject } from '@/lib/market/parseSubject';
+import {
+  marketStatusFromVsMedianPct,
+  parsePurpose,
+  parseValuationSubject,
+} from '@/lib/market/parseSubject';
 import { parseLooseNumber } from '@/lib/market/format';
 import {
   canUseAgentMarket,
@@ -33,6 +37,14 @@ export async function POST(req: Request) {
     }
 
     const user = userId ? await loadMarketUser(userId) : null;
+    if (purpose === 'status') {
+      if (!user) {
+        return NextResponse.json(
+          { ok: false, code: 'AUTH', message: 'Zaloguj się, żeby sprawdzić status ceny.' },
+          { status: 401 },
+        );
+      }
+    }
     if (purpose === 'consumer') {
       if (!user) {
         return NextResponse.json(
@@ -93,6 +105,21 @@ export async function POST(req: Request) {
       const status = result.code === 'SYNCING' ? 503 : 422;
       return NextResponse.json(result, { status });
     }
+
+    if (purpose === 'status') {
+      const vs = result.vsListing?.vsMedianPct;
+      if (vs == null || !Number.isFinite(vs)) {
+        return NextResponse.json(
+          { ok: false, code: 'NO_STATUS', message: 'Brak porównania ceny z aktami.' },
+          { status: 422 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        status: marketStatusFromVsMedianPct(vs),
+      });
+    }
+
     const quota = user ? await getMarketReportQuota(user) : null;
     return NextResponse.json({
       ...result,

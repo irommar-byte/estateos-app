@@ -27,6 +27,13 @@ export function parseValuationSubject(body: Record<string, unknown>): ValuationS
 
 export function parsePurpose(raw: unknown): ValuationPurpose {
   const s = String(raw || 'crm').toLowerCase();
-  if (s === 'listing' || s === 'consumer' || s === 'hub' || s === 'crm') return s;
+  if (s === 'listing' || s === 'consumer' || s === 'hub' || s === 'crm' || s === 'status') return s;
   return 'crm';
+}
+
+/** Map RCN vs-median % to the same ±5% banners used in the mobile UI. */
+export function marketStatusFromVsMedianPct(vsMedianPct: number): 'bargain' | 'market' | 'luxury' {
+  if (vsMedianPct <= -5) return 'bargain';
+  if (vsMedianPct >= 5) return 'luxury';
+  return 'market';
 }

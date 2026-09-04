@@ -26,6 +26,7 @@ type Props = {
   purpose?: 'crm' | 'listing' | 'consumer' | 'hub';
   colors: { card: string; text: string; secondary: string; border: string; accent: string };
   onApply?: (price: number) => void;
+  onResultChange?: (result: ValuationResult | null) => void;
   reportEmail?: string | null;
   clientId?: number | null;
 };
@@ -44,6 +45,7 @@ export default function MarketValuationCard({
   purpose = 'crm',
   colors,
   onApply,
+  onResultChange,
   reportEmail,
   clientId,
 }: Props) {
@@ -73,6 +75,7 @@ export default function MarketValuationCard({
   useEffect(() => {
     if (lat == null || lng == null || !area) {
       setResult(null);
+      onResultChange?.(null);
       setError('Uzupełnij adres na mapie i powierzchnię.');
       return;
     }
@@ -86,9 +89,11 @@ export default function MarketValuationCard({
         if (cancelled) return;
         if (!json.ok) {
           setResult(null);
+          onResultChange?.(null);
           setError(json.message);
         } else {
           setResult(json);
+          onResultChange?.(json);
           if (json.access?.quota) setQuota(json.access.quota);
         }
       }).finally(() => {
@@ -99,7 +104,7 @@ export default function MarketValuationCard({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [token, lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose]);
+  }, [token, lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose, onResultChange]);
 
   const payload = {
     lat, lng, area, rooms, floor, city, district, address, listingPrice,

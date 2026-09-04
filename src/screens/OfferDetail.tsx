@@ -81,6 +81,17 @@ import { isPartnerIdentity } from '../utils/partnerIdentity';
 import { requestInvestorProUpsell } from '../services/investorProUpsell';
 import { hasMarketProPrivileges } from '../utils/investorProMembership';
 import MarketValuationCard from '../components/market/MarketValuationCard';
+import OfferPriceRcnScale from '../components/offer/OfferPriceRcnScale';
+import {
+  fetchMarketPriceStatus,
+  type ValuationResult,
+} from '../services/marketService';
+import {
+  cityFallbackVsMedianPct,
+  marketStatusColors,
+  marketStatusFromVsMedianPct,
+  type RcnMarketStatusKind,
+} from '../lib/offerRcnMarketStatus';
 import { describeOfferAgentCommission, parseOfferNumeric, formatCommissionAmountForDisplay } from '../lib/agentCommission';
 import ReportSheet from '../components/ReportSheet';
 import BlockUserSheet from '../components/BlockUserSheet';
@@ -241,6 +252,11 @@ export default function OfferDetail({ route, navigation }: any) {
   const isPlatformAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
   const isProUser = hasMarketProPrivileges(user);
   const [timeLeftMs, setTimeLeftMs] = useState(0);
+  const [marketValuation, setMarketValuation] = useState<ValuationResult | null>(null);
+  const [rcnStatusKind, setRcnStatusKind] = useState<RcnMarketStatusKind | null>(null);
+  const onMarketValuationChange = useCallback((result: ValuationResult | null) => {
+    setMarketValuation(result);
+  }, []);
 
   const createdAtMs = offer?.createdAt ? new Date(offer.createdAt).getTime() : null;
   const unlockAtMs = createdAtMs ? createdAtMs + (24 * 60 * 60 * 1000) : null;
@@ -838,40 +854,124 @@ export default function OfferDetail({ route, navigation }: any) {
     Number.isFinite(areaNumForStats) && areaNumForStats > 0
       ? Math.round(priceNumForStats / areaNumForStats)
       : 0;
-  const avgPricePerSqmForCity =
-    cityForStats === 'Warszawa' ? 16500 : (cityForStats === 'Łódź' ? 8500 : 12000);
-  const marketDiffPercent =
-    offerPricePerSqm > 0 && avgPricePerSqmForCity > 0
-      ? Math.round(((offerPricePerSqm - avgPricePerSqmForCity) / avgPricePerSqmForCity) * 100)
-      : null;
+  const listingPricePln = useMemo(() => {
+    if (Number.isFinite(listingPrice.plnAmount) && listingPrice.plnAmount > 0) return listingPrice.plnAmount;
+    return Number.isFinite(priceNumForStats) && priceNumForStats > 0 ? priceNumForStats : 0;
+  }, [listingPrice.plnAmount, priceNumForStats]);
+
+  useEffect(() => {
+    setMarketValuation(null);
+    setRcnStatusKind(null);
+  }, [offer?.id, offer?.lat, offer?.lng, areaNumForStats]);
+
+  useEffect(() => {
+    if (isProUser || isRentForStats) {
+      setRcnStatusKind(null);
+      return;
+    }
+    if (!token) {
+      const fallbackPct = cityFallbackVsMedianPct({
+        pricePerSqm: offerPricePerSqm,
+        city: cityForStats,
+      });
+      setRcnStatusKind(
+        fallbackPct == null ? null : marketStatusFromVsMedianPct(fallbackPct),
+      );
+      return;
+    }
+    const lat = parseOfferNumeric(offer?.lat);
+    const lng = parseOfferNumeric(offer?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !areaNumForStats || listingPricePln <= 0) {
+      setRcnStatusKind(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void fetchMarketPriceStatus(token, {
+        lat,
+        lng,
+        area: areaNumForStats,
+        rooms: parseOfferNumeric(offer?.rooms),
+        floor: parseOfferNumeric(offer?.floor),
+        city: cityForStats || 'Warszawa',
+        district: offer?.district ? String(offer.district) : null,
+        address: [offer?.street, offer?.city].filter(Boolean).join(', '),
+        listingPrice: listingPricePln,
+      }).then((json) => {
+        if (cancelled) return;
+        if (json.ok) {
+          setRcnStatusKind(json.status);
+          return;
+        }
+        const fallbackPct = cityFallbackVsMedianPct({
+          pricePerSqm: offerPricePerSqm,
+          city: cityForStats,
+        });
+        setRcnStatusKind(
+          fallbackPct == null ? null : marketStatusFromVsMedianPct(fallbackPct),
+        );
+      });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    isProUser,
+    isRentForStats,
+    token,
+    offer?.lat,
+    offer?.lng,
+    offer?.rooms,
+    offer?.floor,
+    offer?.district,
+    offer?.street,
+    offer?.city,
+    areaNumForStats,
+    listingPricePln,
+    offerPricePerSqm,
+    cityForStats,
+  ]);
+
+  const marketDiffPercent = useMemo(() => {
+    if (rcnStatusKind) {
+      if (rcnStatusKind === 'bargain') return -10;
+      if (rcnStatusKind === 'luxury') return 10;
+      return 0;
+    }
+    return cityFallbackVsMedianPct({
+      pricePerSqm: offerPricePerSqm,
+      city: cityForStats,
+    });
+  }, [rcnStatusKind, offerPricePerSqm, cityForStats]);
+
   const marketStatus = (() => {
-    if (marketDiffPercent === null) {
+    if (marketDiffPercent === null && !rcnStatusKind) {
       return {
         label: t('offer.shared.market.noData'),
         color: '#9ca3af',
         bg: isDark ? 'rgba(156,163,175,0.15)' : 'rgba(156,163,175,0.12)',
       };
     }
-    if (marketDiffPercent <= -5) {
-      return {
-        label: t('offer.shared.market.bargain'),
-        color: '#10b981',
-        bg: isDark ? 'rgba(16,185,129,0.18)' : 'rgba(16,185,129,0.13)',
-      };
-    }
-    if (marketDiffPercent >= 5) {
-      return {
-        label: t('offer.shared.market.luxury'),
-        color: '#ef4444',
-        bg: isDark ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.13)',
-      };
-    }
-    return {
-      label: t('offer.shared.market.market'),
-      color: '#f59e0b',
-      bg: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.13)',
-    };
+    const kind: RcnMarketStatusKind =
+      rcnStatusKind ||
+      marketStatusFromVsMedianPct(marketDiffPercent ?? 0);
+    const colors = marketStatusColors(kind, isDark);
+    const label =
+      kind === 'bargain'
+        ? t('offer.shared.market.bargain')
+        : kind === 'luxury'
+          ? t('offer.shared.market.luxury')
+          : t('offer.shared.market.market');
+    return { label, color: colors.color, bg: colors.bg };
   })();
+  const showMarketStatusBadge = !isProUser && !isRentForStats && marketDiffPercent !== null;
+  const showRcnScale =
+    isProUser &&
+    !isRentForStats &&
+    marketValuation?.estimated?.recommendedAsk != null &&
+    listingPricePln > 0;
+  const recommendedAsk = marketValuation?.estimated?.recommendedAsk ?? 0;
   const estimatedRoi: number | null = (() => {
     if (isRentForStats) return null;
     if (!Number.isFinite(priceNumForStats) || priceNumForStats <= 0) return null;
@@ -2209,8 +2309,9 @@ export default function OfferDetail({ route, navigation }: any) {
                   city={String(offer?.city || 'Warszawa')}
                   district={offer?.district ? String(offer.district) : null}
                   address={[offer?.street, offer?.city].filter(Boolean).join(', ')}
-                  listingPrice={priceNumForStats}
+                  listingPrice={listingPricePln || priceNumForStats}
                   purpose="consumer"
+                  onResultChange={onMarketValuationChange}
                   colors={{
                     card: isDark ? '#1c1c1e' : '#ffffff',
                     text: isDark ? '#ffffff' : '#111827',
@@ -2716,45 +2817,27 @@ export default function OfferDetail({ route, navigation }: any) {
                     {displayOffer.priceSecondary}
                   </Text>
                 ) : null}
-                {(marketDiffPercent !== null || hasAdminFee) ? (
+                {hasAdminFee ? (
                   <View style={styles.ownerStatusFeeRow}>
-                    {hasAdminFee ? (
-                      <View
+                    <View
+                      style={[
+                        styles.adminFeeMiniPill,
+                        {
+                          backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
+                          borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
+                        },
+                      ]}
+                    >
+                      <Text
                         style={[
-                          styles.adminFeeMiniPill,
-                          {
-                            backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
-                            borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
-                          },
+                          styles.adminFeeMiniPillText,
+                          { color: isDark ? '#34d399' : '#15803d' },
                         ]}
+                        numberOfLines={1}
                       >
-                        <Text
-                          style={[
-                            styles.adminFeeMiniPillText,
-                            { color: isDark ? '#34d399' : '#15803d' },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {marketDiffPercent !== null ? (
-                      <View
-                        style={[
-                          styles.marketStatusPill,
-                          { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
-                        ]}
-                      >
-                        <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
-                        <Text
-                          style={[styles.marketStatusPillText, { color: marketStatus.color }]}
-                          numberOfLines={1}
-                        >
-                          {marketStatus.label}
-                        </Text>
-                      </View>
-                    ) : null}
+                        {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
+                      </Text>
+                    </View>
                   </View>
                 ) : null}
                 {!isRentForStats && Number(offer?.lat) && Number(offer?.lng) ? (
@@ -2767,7 +2850,7 @@ export default function OfferDetail({ route, navigation }: any) {
                         rooms: Number(offer.rooms) || undefined,
                         floor: Number(offer.floor) || undefined,
                         district: offer.district,
-                        price: priceNumForStats,
+                        price: listingPricePln || priceNumForStats,
                       })
                     }
                     style={{ marginTop: 8 }}
@@ -2777,29 +2860,61 @@ export default function OfferDetail({ route, navigation }: any) {
                     </Text>
                   </Pressable>
                 ) : null}
+                {showRcnScale ? (
+                  <OfferPriceRcnScale
+                    listingPrice={listingPricePln}
+                    recommendedAsk={recommendedAsk}
+                    isDark={isDark}
+                    compact
+                    labels={{
+                      below: t('offer.detail.rcnScale.below'),
+                      recommended: t('offer.detail.rcnScale.recommended'),
+                      above: t('offer.detail.rcnScale.above'),
+                      beyond: t('offer.detail.rcnScale.beyond'),
+                    }}
+                  />
+                ) : null}
               </View>
-              {estimatedRoi !== null ? (
-                <View
-                  style={[
-                    styles.roiPillCard,
-                    styles.ownerRoiOnly,
-                    {
-                      backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
-                      borderColor: '#3b82f6',
-                    },
-                  ]}
-                >
-                  <Text style={styles.roiPillLabel} numberOfLines={1}>
-                    {t('offer.detail.roi.label')}
-                  </Text>
-                  <Text style={styles.roiPillValue} numberOfLines={1}>
-                    {estimatedRoi}%
-                  </Text>
-                  <Text style={styles.roiPillSub} numberOfLines={1}>
-                    {t('offer.detail.roi.sub')}
-                  </Text>
-                </View>
-              ) : null}
+              <View style={styles.ownerStatsColumn}>
+                {estimatedRoi !== null ? (
+                  <View
+                    style={[
+                      styles.roiPillCard,
+                      styles.ownerRoiOnly,
+                      {
+                        backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
+                        borderColor: '#3b82f6',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.roiPillLabel} numberOfLines={1}>
+                      {t('offer.detail.roi.label')}
+                    </Text>
+                    <Text style={styles.roiPillValue} numberOfLines={1}>
+                      {estimatedRoi}%
+                    </Text>
+                    <Text style={styles.roiPillSub} numberOfLines={1}>
+                      {t('offer.detail.roi.sub')}
+                    </Text>
+                  </View>
+                ) : null}
+                {showMarketStatusBadge ? (
+                  <View
+                    style={[
+                      styles.marketStatusPill,
+                      { backgroundColor: marketStatus.bg, borderColor: marketStatus.color, marginTop: 6 },
+                    ]}
+                  >
+                    <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                    <Text
+                      style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                      numberOfLines={1}
+                    >
+                      {marketStatus.label}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
           ) : (
             <>
@@ -2854,24 +2969,6 @@ export default function OfferDetail({ route, navigation }: any) {
                       {displayOffer.priceSecondary}
                     </Text>
                   ) : null}
-                  {marketDiffPercent !== null ? (
-                    <View style={styles.viewerStatusFeeRow}>
-                      <View
-                        style={[
-                          styles.marketStatusPill,
-                          { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
-                        ]}
-                      >
-                        <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
-                        <Text
-                          style={[styles.marketStatusPillText, { color: marketStatus.color }]}
-                          numberOfLines={1}
-                        >
-                          {marketStatus.label}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
                   {!isRentForStats && Number(offer?.lat) && Number(offer?.lng) ? (
                     <Pressable
                       onPress={() =>
@@ -2882,7 +2979,7 @@ export default function OfferDetail({ route, navigation }: any) {
                           rooms: Number(offer.rooms) || undefined,
                           floor: Number(offer.floor) || undefined,
                           district: offer.district,
-                          price: priceNumForStats,
+                          price: listingPricePln || priceNumForStats,
                         })
                       }
                       style={{ marginTop: 8 }}
@@ -2892,30 +2989,61 @@ export default function OfferDetail({ route, navigation }: any) {
                       </Text>
                     </Pressable>
                   ) : null}
+                  {showRcnScale ? (
+                    <OfferPriceRcnScale
+                      listingPrice={listingPricePln}
+                      recommendedAsk={recommendedAsk}
+                      isDark={isDark}
+                      compact
+                      labels={{
+                        below: t('offer.detail.rcnScale.below'),
+                        recommended: t('offer.detail.rcnScale.recommended'),
+                        above: t('offer.detail.rcnScale.above'),
+                        beyond: t('offer.detail.rcnScale.beyond'),
+                      }}
+                    />
+                  ) : null}
                 </View>
-                {estimatedRoi !== null ? (
-                  <View
-                    style={[
-                      styles.roiPillCard,
-                      styles.roiPillCardCompact,
-                      styles.viewerRoiAlign,
-                      {
-                        backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
-                        borderColor: '#3b82f6',
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.roiPillLabel, styles.roiPillLabelCompact]} numberOfLines={1}>
-                      {t('offer.detail.roi.label')}
-                    </Text>
-                    <Text style={[styles.roiPillValue, styles.roiPillValueCompact]} numberOfLines={1}>
-                      {estimatedRoi}%
-                    </Text>
-                    <Text style={[styles.roiPillSub, styles.roiPillSubCompact]} numberOfLines={1}>
-                      {t('offer.detail.roi.sub')}
-                    </Text>
-                  </View>
-                ) : null}
+                <View style={[styles.ownerStatsColumn, styles.viewerRoiAlign]}>
+                  {estimatedRoi !== null ? (
+                    <View
+                      style={[
+                        styles.roiPillCard,
+                        styles.roiPillCardCompact,
+                        {
+                          backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
+                          borderColor: '#3b82f6',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.roiPillLabel, styles.roiPillLabelCompact]} numberOfLines={1}>
+                        {t('offer.detail.roi.label')}
+                      </Text>
+                      <Text style={[styles.roiPillValue, styles.roiPillValueCompact]} numberOfLines={1}>
+                        {estimatedRoi}%
+                      </Text>
+                      <Text style={[styles.roiPillSub, styles.roiPillSubCompact]} numberOfLines={1}>
+                        {t('offer.detail.roi.sub')}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {showMarketStatusBadge ? (
+                    <View
+                      style={[
+                        styles.marketStatusPill,
+                        { backgroundColor: marketStatus.bg, borderColor: marketStatus.color, marginTop: 6 },
+                      ]}
+                    >
+                      <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                      <Text
+                        style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                        numberOfLines={1}
+                      >
+                        {marketStatus.label}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
 
               <View

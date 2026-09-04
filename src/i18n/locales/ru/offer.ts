@@ -324,6 +324,12 @@ export const offer = {
       label: 'Окупаемость инвестиций EstateOS™',
       sub: 'годовая доходность',
     },
+    rcnScale: {
+      below: 'ниже',
+      recommended: 'рекомендация',
+      above: 'выше',
+      beyond: 'свыше 30%',
+    },
     seller: {
       agentLoading: 'Профиль агента · загрузка…',
       agentCard: 'Профиль агента · карточка',

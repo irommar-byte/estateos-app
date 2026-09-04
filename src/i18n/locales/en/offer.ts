@@ -327,6 +327,12 @@ export const offer = {
       label: 'EstateOS™ ROI',
       sub: 'annual yield',
     },
+    rcnScale: {
+      below: 'below',
+      recommended: 'recommended',
+      above: 'above',
+      beyond: 'over 30%',
+    },
     seller: {
       agentLoading: 'Agent profile · loading…',
       agentCard: 'Agent profile · card',

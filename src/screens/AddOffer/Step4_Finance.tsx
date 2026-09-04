@@ -52,6 +52,18 @@ import {
 import { useI18n } from '../../i18n';
 import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
 import MarketValuationCard from '../../components/market/MarketValuationCard';
+import OfferPriceRcnScale from '../../components/offer/OfferPriceRcnScale';
+import {
+  fetchMarketPriceStatus,
+  type ValuationResult,
+} from '../../services/marketService';
+import {
+  cityFallbackVsMedianPct,
+  marketStatusColors,
+  marketStatusFromVsMedianPct,
+  marketStatusIcon,
+  type RcnMarketStatusKind,
+} from '../../lib/offerRcnMarketStatus';
 
 const Colors = { primary: '#10b981', danger: '#ef4444', warning: '#f59e0b' };
 
@@ -73,6 +85,11 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   const [bottomPad, setBottomPad] = useState(220);
   const [fxRate, setFxRate] = useState(4.32);
   const [fxDate, setFxDate] = useState('');
+  const [rcnStatusKind, setRcnStatusKind] = useState<RcnMarketStatusKind | null>(null);
+  const [marketValuation, setMarketValuation] = useState<ValuationResult | null>(null);
+  const onMarketValuationChange = useCallback((result: ValuationResult | null) => {
+    setMarketValuation(result);
+  }, []);
 
   const listingCurrency = normalizeListingCurrency(draft.priceCurrency);
 
@@ -129,27 +146,101 @@ export default function Step4_Finance({ theme }: { theme: any }) {
     : 0;
   
   const pricePerSqm = areaNum > 0 ? Math.round(priceNum / areaNum) : 0;
-  const avgPrice = draft.city === 'Warszawa' ? 16500 : (draft.city === 'Łódź' ? 8500 : 12000); 
-  const diff = pricePerSqm - avgPrice;
-  const diffPercent = avgPrice > 0 ? Math.round((diff / avgPrice) * 100) : 0;
-  
-  let statusText = t('addOffer.step4.analytics.marketStatus.market');
-  let statusColor = Colors.warning;
-  let statusIcon = 'swap-vertical-outline';
-  let sign = '';
-  if (diffPercent <= -5) {
-    statusText = t('addOffer.step4.analytics.marketStatus.bargain');
-    statusColor = Colors.primary;
-    statusIcon = 'trending-down-outline';
-    sign = '';
-  } else if (diffPercent >= 5) {
-    statusText = t('addOffer.step4.analytics.marketStatus.overpriced');
-    statusColor = Colors.danger;
-    statusIcon = 'trending-up-outline';
-    sign = '+';
-  } else {
-    sign = diffPercent > 0 ? '+' : '';
-  }
+  const listingPricePln =
+    listingCurrency === 'PLN'
+      ? priceNum
+      : priceNum > 0
+        ? convertBetweenCurrencies(priceNum, listingCurrency, 'PLN', fxRate)
+        : 0;
+  const pricePerSqmPln =
+    areaNum > 0 && listingPricePln > 0 ? Math.round(listingPricePln / areaNum) : 0;
+
+  useEffect(() => {
+    setMarketValuation(null);
+    setRcnStatusKind(null);
+  }, [draft.lat, draft.lng, draft.city, areaNum]);
+
+  useEffect(() => {
+    if (isRent || isProActive) {
+      setRcnStatusKind(null);
+      return;
+    }
+    if (!token || !Number(draft.lat) || !Number(draft.lng) || areaNum <= 0 || listingPricePln <= 0) {
+      const fallbackPct = cityFallbackVsMedianPct({
+        pricePerSqm: pricePerSqmPln,
+        city: draft.city,
+      });
+      setRcnStatusKind(
+        fallbackPct == null ? null : marketStatusFromVsMedianPct(fallbackPct),
+      );
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void fetchMarketPriceStatus(token, {
+        lat: Number(draft.lat),
+        lng: Number(draft.lng),
+        area: areaNum,
+        rooms: parseFloat(String(draft.rooms || '').replace(',', '.')) || null,
+        floor: parseFloat(String(draft.floor || '').replace(',', '.')) || null,
+        city: draft.city || 'Warszawa',
+        district: draft.district,
+        address: draft.street || draft.address,
+        listingPrice: listingPricePln,
+      }).then((json) => {
+        if (cancelled) return;
+        if (json.ok) {
+          setRcnStatusKind(json.status);
+          return;
+        }
+        const fallbackPct = cityFallbackVsMedianPct({
+          pricePerSqm: pricePerSqmPln,
+          city: draft.city,
+        });
+        setRcnStatusKind(
+          fallbackPct == null ? null : marketStatusFromVsMedianPct(fallbackPct),
+        );
+      });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    isRent,
+    isProActive,
+    token,
+    draft.lat,
+    draft.lng,
+    draft.city,
+    draft.district,
+    draft.street,
+    draft.address,
+    draft.rooms,
+    draft.floor,
+    areaNum,
+    listingPricePln,
+    pricePerSqmPln,
+  ]);
+
+  const statusKind: RcnMarketStatusKind =
+    rcnStatusKind ||
+    marketStatusFromVsMedianPct(
+      cityFallbackVsMedianPct({ pricePerSqm: pricePerSqmPln, city: draft.city }) ?? 0,
+    );
+  const statusPalette = marketStatusColors(statusKind, isDark);
+  const statusColor = statusPalette.color;
+  const statusIcon = marketStatusIcon(statusKind);
+  const statusText =
+    statusKind === 'bargain'
+      ? t('addOffer.step4.analytics.marketStatus.bargain')
+      : statusKind === 'luxury'
+        ? t('addOffer.step4.analytics.marketStatus.overpriced')
+        : t('addOffer.step4.analytics.marketStatus.market');
+  const showStatusBanners = !isProActive && priceNum > 0 && areaNum > 0;
+  const recommendedAsk = marketValuation?.estimated?.recommendedAsk ?? 0;
+  const showRcnScale =
+    isProActive && !isRent && recommendedAsk > 0 && listingPricePln > 0;
   
   // LOGIKA ROI (Szacowanie przychodów)
   let estimatedRentPerSqm = 60;
@@ -368,29 +459,84 @@ export default function Step4_Finance({ theme }: { theme: any }) {
         {!isRent && (
           <View style={styles.analyticsWrapper}>
             {priceNum > 0 && areaNum > 0 ? (
-              <View style={[styles.analyticsCard, { backgroundColor: cardBg, borderColor: statusColor, shadowColor: statusColor, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: {width:0, height:4}, elevation: 3 }]}>
-                <View style={styles.analyticsRow}>
-                  <Ionicons name="cash-outline" size={24} color={theme.text} />
-                  <View style={{ marginLeft: 12 }}>
-                    <Text style={[styles.analyticsLabel, { color: theme.subtitle }]}>{t('addOffer.step4.analytics.pricePerSqm')}</Text>
-                    <View style={styles.sqmController}>
-                      <Pressable onPress={handleDecreaseSqm} style={[styles.sqmBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}><Ionicons name="remove" size={14} color={theme.text} /></Pressable>
-                      <Text style={[styles.analyticsValue, { color: theme.text, marginHorizontal: 8 }]}>
-                        {formatNumber(pricePerSqm.toString())} {listingCurrency}
+              <View
+                style={[
+                  styles.analyticsCard,
+                  {
+                    backgroundColor: cardBg,
+                    borderColor: showStatusBanners ? statusColor : cardBorder,
+                    shadowColor: showStatusBanners ? statusColor : '#000',
+                    shadowOpacity: showStatusBanners ? 0.15 : shadowOpacity,
+                    shadowRadius: 10,
+                    shadowOffset: { width: 0, height: 4 },
+                    elevation: 3,
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                  },
+                ]}
+              >
+                <View style={[styles.analyticsRow, { justifyContent: 'space-between' }]}>
+                  <View style={styles.analyticsRow}>
+                    <Ionicons name="cash-outline" size={24} color={theme.text} />
+                    <View style={{ marginLeft: 12 }}>
+                      <Text style={[styles.analyticsLabel, { color: theme.subtitle }]}>
+                        {t('addOffer.step4.analytics.pricePerSqm')}
                       </Text>
-                      <Pressable onPress={handleIncreaseSqm} style={[styles.sqmBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}><Ionicons name="add" size={14} color={theme.text} /></Pressable>
+                      <View style={styles.sqmController}>
+                        <Pressable
+                          onPress={handleDecreaseSqm}
+                          style={[
+                            styles.sqmBtn,
+                            { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' },
+                          ]}
+                        >
+                          <Ionicons name="remove" size={14} color={theme.text} />
+                        </Pressable>
+                        <Text
+                          style={[
+                            styles.analyticsValue,
+                            { color: theme.text, marginHorizontal: 8 },
+                          ]}
+                        >
+                          {formatNumber(pricePerSqm.toString())} {listingCurrency}
+                        </Text>
+                        <Pressable
+                          onPress={handleIncreaseSqm}
+                          style={[
+                            styles.sqmBtn,
+                            { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' },
+                          ]}
+                        >
+                          <Ionicons name="add" size={14} color={theme.text} />
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
+                  {showStatusBanners ? (
+                    <View style={{ alignItems: 'flex-end', maxWidth: '42%' }}>
+                      <Text style={[styles.statusTitle, { color: statusColor }]}>{statusText}</Text>
+                      <View style={[styles.badge, { backgroundColor: `${statusColor}20` }]}>
+                        <Ionicons name={statusIcon as any} size={14} color={statusColor} />
+                        <Text style={[styles.badgeText, { color: statusColor }]}>
+                          {statusText}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.statusTitle, { color: statusColor }]}>{statusText}</Text>
-                  <View style={[styles.badge, { backgroundColor: `${statusColor}20` }]}>
-                    <Ionicons name={statusIcon as any} size={14} color={statusColor} />
-                    <Text style={[styles.badgeText, { color: statusColor }]}>
-                      {t('addOffer.step4.analytics.diffFromAverage', { sign, percent: diffPercent })}
-                    </Text>
-                  </View>
-                </View>
+                {showRcnScale ? (
+                  <OfferPriceRcnScale
+                    listingPrice={listingPricePln}
+                    recommendedAsk={recommendedAsk}
+                    isDark={isDark}
+                    labels={{
+                      below: t('offer.detail.rcnScale.below'),
+                      recommended: t('offer.detail.rcnScale.recommended'),
+                      above: t('offer.detail.rcnScale.above'),
+                      beyond: t('offer.detail.rcnScale.beyond'),
+                    }}
+                  />
+                ) : null}
               </View>
             ) : (
               <View style={[styles.analyticsCard, { backgroundColor: cardBg, borderColor: cardBorder, borderStyle: 'dashed' }]}>
@@ -413,8 +559,9 @@ export default function Step4_Finance({ theme }: { theme: any }) {
               city={draft.city || 'Warszawa'}
               district={draft.district}
               address={draft.street || draft.address}
-              listingPrice={listingCurrency === 'PLN' ? priceNum : null}
+              listingPrice={listingPricePln > 0 ? listingPricePln : null}
               purpose="listing"
+              onResultChange={onMarketValuationChange}
               colors={{
                 card: cardBg,
                 text: theme.text,
