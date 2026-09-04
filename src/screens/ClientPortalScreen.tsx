@@ -589,6 +589,19 @@ export default function ClientPortalScreen() {
         {renderAccountSection()}
         {renderPushRow()}
 
+        {portal?.presentation ? (
+          <PortalScheduleCard
+            portalToken={portalToken}
+            kind="presentation"
+            slot={portal.presentation}
+            role={portal.type}
+            canInteract={canInteract}
+            isDark={isDark}
+            colors={colors}
+            onDone={() => void load('silent')}
+          />
+        ) : null}
+
         {portal ? (
           <ClientPortalAgentReplyInbox
             portalToken={portalToken}
@@ -599,19 +612,6 @@ export default function ClientPortalScreen() {
               setOpenMatchIds((prev) => (prev.includes(matchId) ? prev : [...prev, matchId]));
               setOpenStacks((prev) => (prev.includes('new') ? prev : [...prev, 'new']));
             }}
-            onDone={() => void load('silent')}
-          />
-        ) : null}
-
-        {portal?.presentation ? (
-          <PortalScheduleCard
-            portalToken={portalToken}
-            kind="presentation"
-            slot={portal.presentation}
-            role={portal.type}
-            canInteract={canInteract}
-            isDark={isDark}
-            colors={colors}
             onDone={() => void load('silent')}
           />
         ) : null}

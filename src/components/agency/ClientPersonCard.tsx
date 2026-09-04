@@ -3,6 +3,12 @@ import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { formatPhoneNumber } from '../../utils/crmFormatters';
 
+const appleType = Platform.select({
+  ios: { fontFamily: 'System' as const },
+  android: { fontFamily: 'sans-serif' as const },
+  default: {},
+});
+
 type KwRow = { kw: string; verified: boolean };
 
 type Colors = {
@@ -12,6 +18,52 @@ type Colors = {
   border: string;
   input: string;
 };
+
+function FactRow({
+  label,
+  value,
+  muted,
+  last,
+  colors,
+  onPress,
+  link,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  last?: boolean;
+  colors: Colors;
+  onPress?: () => void;
+  link?: boolean;
+}) {
+  const inner = (
+    <View style={[styles.row, !last ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null]}>
+      <Text style={[styles.rowLabel, appleType, { color: colors.secondary }]}>{label}</Text>
+      <Text
+        style={[
+          styles.rowValue,
+          appleType,
+          {
+            color: muted ? colors.secondary : link ? '#007AFF' : colors.text,
+            fontWeight: muted ? '400' : '600',
+          },
+        ]}
+        numberOfLines={2}
+      >
+        {value}
+      </Text>
+      {link ? <Ionicons name="chevron-forward" size={13} color="#C7C7CC" /> : null}
+    </View>
+  );
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.55 : 1 })}>
+        {inner}
+      </Pressable>
+    );
+  }
+  return inner;
+}
 
 export default function ClientPersonCard({
   clientId,
@@ -52,8 +104,6 @@ export default function ClientPersonCard({
   const dual = personRoles.includes('BUYER') && personRoles.includes('SELLER');
   const accent = dual ? '#C9A227' : type === 'BUYER' ? '#FF9500' : '#34C759';
   const initials = `${firstName.trim().charAt(0)}${lastName.trim().charAt(0)}`.toUpperCase() || 'K';
-  const gold = isDark ? '#E8D5A3' : '#8A6A32';
-  const luxuryBg = isDark ? 'rgba(232,213,163,0.08)' : '#F7F3EC';
 
   return (
     <View
@@ -63,7 +113,7 @@ export default function ClientPersonCard({
           backgroundColor: colors.card,
           borderColor: colors.border,
           shadowColor: '#000',
-          shadowOpacity: isDark ? 0.45 : 0.1,
+          shadowOpacity: isDark ? 0.45 : 0.08,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 10 },
         },
@@ -81,19 +131,19 @@ export default function ClientPersonCard({
           },
         ]}
       >
-        <Text style={[styles.monogramText, { color: accent }]}>{initials}</Text>
+        <Text style={[styles.monogramText, appleType, { color: accent }]}>{initials}</Text>
       </View>
-      <Text style={[styles.name, { color: colors.text }]}>
+      <Text style={[styles.name, appleType, { color: colors.text }]}>
         {firstName} {lastName}
       </Text>
-      <Text style={[styles.clientId, { color: gold }]}>ID {clientId}</Text>
+      <Text style={[styles.clientId, appleType, { color: colors.secondary }]}>ID {clientId}</Text>
       <View style={styles.roleRow}>
         {personRoles.includes('SELLER') ? (
-          <Text style={[styles.role, { color: '#34C759' }]}>Sprzedający</Text>
+          <Text style={[styles.role, appleType, { color: colors.secondary }]}>Sprzedający</Text>
         ) : null}
-        {dual ? <Text style={[styles.roleSep, { color: colors.secondary }]}>/</Text> : null}
+        {dual ? <Text style={[styles.roleSep, appleType, { color: colors.secondary }]}>·</Text> : null}
         {personRoles.includes('BUYER') ? (
-          <Text style={[styles.role, { color: '#FF9500' }]}>Kupujący</Text>
+          <Text style={[styles.role, appleType, { color: colors.secondary }]}>Kupujący</Text>
         ) : null}
       </View>
 
@@ -105,79 +155,59 @@ export default function ClientPersonCard({
           style={[styles.portalBtn, { backgroundColor: colors.input, borderColor: colors.border }]}
         >
           <Ionicons name="person-circle-outline" size={16} color="#007AFF" />
-          <Text style={styles.portalText}>Panel klienta</Text>
+          <Text style={[styles.portalText, appleType]}>Panel klienta</Text>
         </Pressable>
       ) : null}
 
-      <View style={[styles.luxuryWrap, { backgroundColor: luxuryBg, borderColor: isDark ? 'rgba(232,213,163,0.18)' : 'rgba(138,106,50,0.18)' }]}>
-        {phone ? (
-          <Pressable onPress={() => Linking.openURL(`tel:${phone}`)} style={styles.luxuryBlock}>
-            <Text style={[styles.luxuryKicker, { color: gold }]}>Telefon</Text>
-            <Text style={[styles.luxuryValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>
-              {formatPhoneNumber(phone)}
-            </Text>
-          </Pressable>
-        ) : (
-          <View style={styles.luxuryBlock}>
-            <Text style={[styles.luxuryKicker, { color: gold }]}>Telefon</Text>
-            <Text style={[styles.luxuryMuted, { color: colors.secondary }]}>Brak numeru</Text>
-          </View>
-        )}
-        <View style={[styles.luxuryRule, { backgroundColor: isDark ? 'rgba(232,213,163,0.18)' : 'rgba(138,106,50,0.16)' }]} />
-        {email ? (
-          <Pressable onPress={() => Linking.openURL(`mailto:${email}`)} style={styles.luxuryBlock}>
-            <Text style={[styles.luxuryKicker, { color: gold }]}>E-mail</Text>
-            <Text style={[styles.luxuryEmail, { color: colors.text }]} numberOfLines={2}>
-              {email}
-            </Text>
-          </Pressable>
-        ) : (
-          <View style={styles.luxuryBlock}>
-            <Text style={[styles.luxuryKicker, { color: gold }]}>E-mail</Text>
-            <Text style={[styles.luxuryMuted, { color: colors.secondary }]}>Brak e-maila</Text>
-          </View>
-        )}
+      <View style={[styles.group, { backgroundColor: colors.input }]}>
+        <FactRow
+          label="Telefon"
+          value={phone ? formatPhoneNumber(phone) : 'Brak'}
+          muted={!phone}
+          colors={colors}
+          onPress={phone ? () => Linking.openURL(`tel:${phone}`) : undefined}
+          link={Boolean(phone)}
+        />
+        <FactRow
+          label="E-mail"
+          value={email || 'Brak'}
+          muted={!email}
+          colors={colors}
+          onPress={email ? () => Linking.openURL(`mailto:${email}`) : undefined}
+          link={Boolean(email)}
+        />
+        <FactRow
+          label="PESEL"
+          value={pesel || 'Brak'}
+          muted={!pesel}
+          colors={colors}
+          last={!kwNumbers.length}
+        />
+        {kwNumbers.map((item, index) => (
+          <FactRow
+            key={`kw-${item.kw}`}
+            label="KW"
+            value={item.kw}
+            last={index === kwNumbers.length - 1}
+            colors={colors}
+            onPress={() => onOpenKw(item.kw)}
+            link
+          />
+        ))}
       </View>
-
-      {(pesel || kwNumbers.length > 0) ? (
-        <View style={[styles.group, { backgroundColor: colors.input }]}>
-          {pesel ? (
-            <View style={[styles.row, kwNumbers.length ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null]}>
-              <Text style={[styles.rowLabel, { color: colors.secondary }]}>PESEL</Text>
-              <Text style={[styles.rowValue, { color: colors.text }]}>{pesel}</Text>
-            </View>
-          ) : null}
-          {kwNumbers.map((item, index) => (
-            <Pressable key={`kw-${item.kw}`} onPress={() => onOpenKw(item.kw)}>
-              <View
-                style={[
-                  styles.row,
-                  index < kwNumbers.length - 1 ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null,
-                ]}
-              >
-                <Text style={[styles.rowLabel, { color: colors.secondary }]}>KW</Text>
-                <Text style={[styles.rowValue, { color: '#007AFF' }]} numberOfLines={1}>
-                  {item.kw}
-                </Text>
-                <Ionicons name="open-outline" size={13} color="#007AFF" />
-              </View>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
 
       <View style={styles.stats}>
         <View style={[styles.stat, { backgroundColor: colors.input }]}>
-          <Text style={[styles.statValue, { color: colors.text }]}>{sentCount}</Text>
-          <Text style={[styles.statLabel, { color: colors.secondary }]}>Wysłane</Text>
+          <Text style={[styles.statValue, appleType, { color: colors.text }]}>{sentCount}</Text>
+          <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Wysłane</Text>
         </View>
         <View style={[styles.stat, { backgroundColor: colors.input }]}>
-          <Text style={[styles.statValue, { color: colors.text }]}>{opinionCount}</Text>
-          <Text style={[styles.statLabel, { color: colors.secondary }]}>Z opinią</Text>
+          <Text style={[styles.statValue, appleType, { color: colors.text }]}>{opinionCount}</Text>
+          <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Z opinią</Text>
         </View>
         <View style={[styles.stat, { backgroundColor: colors.input }]}>
-          <Text style={[styles.statValue, { color: colors.text }]}>{chatCount}</Text>
-          <Text style={[styles.statLabel, { color: colors.secondary }]}>Czat</Text>
+          <Text style={[styles.statValue, appleType, { color: colors.text }]}>{chatCount}</Text>
+          <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Czat</Text>
         </View>
       </View>
     </View>
@@ -203,37 +233,35 @@ const styles = StyleSheet.create({
   },
   monogramText: {
     fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   name: {
     marginTop: 14,
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.4,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.6,
     textAlign: 'center',
   },
   clientId: {
     marginTop: 4,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
+    fontSize: 13,
+    fontWeight: '400',
+    letterSpacing: -0.08,
   },
   roleRow: {
-    marginTop: 8,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   role: {
     fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontWeight: '400',
   },
   roleSep: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '400',
   },
   portalBtn: {
     marginTop: 12,
@@ -248,71 +276,33 @@ const styles = StyleSheet.create({
   portalText: {
     color: '#007AFF',
     fontSize: 13,
-    fontWeight: '700',
-  },
-  luxuryWrap: {
-    alignSelf: 'stretch',
-    marginTop: 18,
-    borderRadius: 22,
-    borderWidth: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  luxuryBlock: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  luxuryKicker: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 2.4,
-    textTransform: 'uppercase',
-  },
-  luxuryValue: {
-    marginTop: 6,
-    fontSize: 28,
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
-    letterSpacing: 0.6,
-  },
-  luxuryEmail: {
-    marginTop: 6,
-    fontSize: 18,
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
-    letterSpacing: 0.2,
-  },
-  luxuryMuted: {
-    marginTop: 6,
-    fontSize: 16,
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
-    fontStyle: 'italic',
-  },
-  luxuryRule: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
+    fontWeight: '600',
   },
   group: {
     alignSelf: 'stretch',
-    marginTop: 12,
-    borderRadius: 16,
+    marginTop: 18,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   row: {
     minHeight: 44,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
   rowLabel: {
-    width: 58,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+    fontSize: 15,
+    fontWeight: '400',
+    letterSpacing: -0.24,
   },
   rowValue: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '600',
+    letterSpacing: -0.41,
+    textAlign: 'right',
     fontVariant: ['tabular-nums'],
   },
   stats: {
@@ -328,13 +318,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '600',
   },
   statLabel: {
     marginTop: 2,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontSize: 11,
+    fontWeight: '400',
   },
 });

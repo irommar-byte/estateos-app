@@ -137,6 +137,14 @@ export type PortalScheduleSlot = {
   reason?: string | null;
   previousStartsAt?: string | null;
   prepLabels?: string[];
+  offer?: {
+    id: number;
+    title: string;
+    city?: string | null;
+    street?: string | null;
+    imageUrl?: string | null;
+    imageUrls?: string[] | null;
+  } | null;
 };
 
 export type PortalJourneyStage = {

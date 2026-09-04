@@ -17,7 +17,7 @@ import {
   type FacebookGroupDestination,
 } from "@/lib/crm/marketingChannel";
 import { offerSharePath } from "@/lib/publicListingPath";
-import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
+import { resolveOfferImageUrls, resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import { absolutizeMediaUrl, resolvePublicAppOrigin } from "@/lib/offerShareLanding";
 
 export const MARKETING_ACTIVITY = {
@@ -1398,6 +1398,9 @@ export type FacebookShareOffer = {
 
 export type ManagedOfferOption = FacebookShareOffer & {
   status: string;
+  imageUrls?: string[];
+  street?: string | null;
+  area?: number | null;
 };
 
 export function listingFacebookShareUrl(offerId: number, agencyUserId: number) {
@@ -1499,6 +1502,8 @@ export async function loadAgentManagedOffers(
         id: true,
         title: true,
         city: true,
+        street: true,
+        area: true,
         price: true,
         images: true,
         status: true,
@@ -1519,15 +1524,22 @@ export async function loadAgentManagedOffers(
       .filter((row) => row.linkedOfferId)
       .map((row) => [row.linkedOfferId as number, row.id]),
   );
-  return offers.map((offer) => ({
-    id: offer.id,
-    title: offer.title,
-    city: offer.city || null,
-    price: offer.price == null ? null : Number(offer.price),
-    imageUrl: absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || null,
-    linkedClientId: clientByOffer.get(offer.id) || null,
-    status: String(offer.status || "ACTIVE"),
-  }));
+  return offers.map((offer) => {
+    const imageUrls = resolveOfferImageUrls(offer).map(absolutizeMediaUrl).filter(Boolean).slice(0, 6);
+    const imageUrl = absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || imageUrls[0] || null;
+    return {
+      id: offer.id,
+      title: offer.title,
+      city: offer.city || null,
+      street: offer.street || null,
+      area: offer.area == null ? null : Number(offer.area),
+      price: offer.price == null ? null : Number(offer.price),
+      imageUrl,
+      imageUrls,
+      linkedClientId: clientByOffer.get(offer.id) || null,
+      status: String(offer.status || "ACTIVE"),
+    };
+  });
 }
 
 export async function recordFacebookGroupShare(params: {

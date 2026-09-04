@@ -20,7 +20,6 @@ import {
   BadgeCheck,
   ShieldAlert,
   ExternalLink,
-  MessageCircle,
   PhoneCall,
   Clock3,
   SlidersHorizontal,
@@ -35,6 +34,8 @@ import EosModal from "@/components/ui/EosModal";
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import CrmClientLiveChat from "@/components/crm/CrmClientLiveChat";
+import CrmPresentationOfferPick from "@/components/crm/CrmPresentationOfferPick";
+import CrmPersonFacts from "@/components/crm/CrmPersonFacts";
 import CrmClientPersonHub from "@/components/crm/CrmClientPersonHub";
 import { formatCrmRoleLabel, groupCrmClientsByPerson } from "@/lib/crm/personGroups";
 import { OfferDescriptionToggle, OfferPhotoCascade } from "@/components/crm/OfferPreviewExpand";
@@ -186,8 +187,11 @@ type ClientDetail = AgencyClientListItem & {
     id: number;
     title: string;
     city: string | null;
+    street?: string | null;
+    area?: number | null;
     price: number | null;
     imageUrl: string | null;
+    imageUrls?: string[] | null;
     linkedClientId: number | null;
     status?: string;
   }>;
@@ -1403,34 +1407,27 @@ export default function CrmClientsWorkspace() {
 
               {workspaceView !== "project" ? (
                 <>
-              <div className="overflow-hidden rounded-[1.6rem] border border-[#d9c7a3]/70 bg-[#f7f3ec] p-5 dark:border-[#8a6a32]/40 dark:bg-[#2a241c]">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <a
-                    href={detail.phone ? `tel:${detail.phone}` : "#"}
-                    onClick={(e) => {
-                      if (!detail.phone) e.preventDefault();
-                    }}
-                    className="block min-w-0"
-                  >
-                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">Telefon</p>
-                    <p className="mt-2 font-serif text-[28px] leading-tight tracking-wide text-[var(--eos-text)]">
-                      {detail.phone || "Brak numeru"}
-                    </p>
-                  </a>
-                  <a
-                    href={detail.email ? `mailto:${detail.email}` : "#"}
-                    onClick={(e) => {
-                      if (!detail.email) e.preventDefault();
-                    }}
-                    className="block min-w-0"
-                  >
-                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">E-mail</p>
-                    <p className="mt-2 break-all font-serif text-[20px] leading-snug text-[var(--eos-text)]">
-                      {detail.email || "Brak e-maila"}
-                    </p>
-                  </a>
-                </div>
-              </div>
+              <CrmPersonFacts
+                rows={[
+                  {
+                    label: "Telefon",
+                    value: detail.phone || "Brak",
+                    href: detail.phone ? `tel:${detail.phone}` : null,
+                    muted: !detail.phone,
+                  },
+                  {
+                    label: "E-mail",
+                    value: detail.email || "Brak",
+                    href: detail.email ? `mailto:${detail.email}` : null,
+                    muted: !detail.email,
+                  },
+                  {
+                    label: "PESEL",
+                    value: detail.pesel || "Brak",
+                    muted: !detail.pesel,
+                  },
+                ]}
+              />
                 <CrmClientPersonHub
                   selling={relatedProjects.selling}
                   buying={relatedProjects.buying}
@@ -1580,43 +1577,25 @@ export default function CrmClientsWorkspace() {
                 </section>
               ) : null}
 
-              <div className="overflow-hidden rounded-[1.6rem] border border-[#d9c7a3]/70 bg-[#f7f3ec] p-5 dark:border-[#8a6a32]/40 dark:bg-[#2a241c]">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <a
-                    href={detail.phone ? `tel:${detail.phone}` : "#"}
-                    onClick={(e) => {
-                      if (!detail.phone) e.preventDefault();
-                    }}
-                    className="block min-w-0"
-                  >
-                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">Telefon</p>
-                    <p className="mt-2 font-serif text-[28px] leading-tight tracking-wide text-[var(--eos-text)]">
-                      {detail.phone || "Brak numeru"}
-                    </p>
-                  </a>
-                  <a
-                    href={detail.email ? `mailto:${detail.email}` : "#"}
-                    onClick={(e) => {
-                      if (!detail.email) e.preventDefault();
-                    }}
-                    className="block min-w-0"
-                  >
-                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a32]">E-mail</p>
-                    <p className="mt-2 break-all font-serif text-[20px] leading-snug text-[var(--eos-text)]">
-                      {detail.email || "Brak e-maila"}
-                    </p>
-                  </a>
-                </div>
-                {detail.phone ? (
-                  <a
-                    href={`sms:${detail.phone}`}
-                    className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#8a6a32]"
-                  >
-                    <MessageCircle className="size-3.5" />
-                    SMS
-                  </a>
-                ) : null}
-              </div>
+              <CrmPersonFacts
+                rows={[
+                  {
+                    label: "Telefon",
+                    value: detail.phone || "Brak",
+                    href: detail.phone ? `tel:${detail.phone}` : null,
+                    muted: !detail.phone,
+                  },
+                  {
+                    label: "E-mail",
+                    value: detail.email || "Brak",
+                    href: detail.email ? `mailto:${detail.email}` : null,
+                    muted: !detail.email,
+                  },
+                  ...(detail.phone
+                    ? [{ label: "SMS", value: "Napisz wiadomość", href: `sms:${detail.phone}` }]
+                    : []),
+                ]}
+              />
 
               <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-2">
                 <div>
@@ -1861,50 +1840,17 @@ export default function CrmClientsWorkspace() {
                         />
                       </div>
                     ) : null}
-                    {(detail.managedOffers || []).length > 0 ? (
-                      <select
-                        value={presentationOfferId}
-                        onChange={(e) => setPresentationOfferId(e.target.value)}
-                        className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
-                      >
-                        <option value="">Wybierz nieruchomość agenta</option>
-                        {(detail.managedOffers || []).map((offer) => (
-                          <option key={offer.id} value={String(offer.id)}>
-                            #{offer.id} · {offer.title}
-                            {offer.city ? ` · ${offer.city}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                    {(detail.matches || []).length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {[...(detail.matches || [])]
-                          .sort((a, b) => Number(Boolean(b.notifiedAt)) - Number(Boolean(a.notifiedAt)) || b.score - a.score)
-                          .slice(0, 8)
-                          .map((m) => {
-                            const selected = presentationOfferId === String(m.offer.id);
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => setPresentationOfferId(String(m.offer.id))}
-                                className={`max-w-full rounded-xl border px-3 py-2 text-left ${
-                                  selected
-                                    ? "border-emerald-500/50 bg-emerald-500/15"
-                                    : "border-[var(--eos-border)] bg-[var(--eos-input)]"
-                                }`}
-                              >
-                                <p className="text-[11px] font-black text-[var(--eos-text)]">
-                                  #{m.offer.id} · {m.offer.title}
-                                </p>
-                                <p className="text-[10px] text-[var(--eos-muted)]">
-                                  {m.notifiedAt ? "Wysłana" : "Match"} · {m.score}%
-                                </p>
-                              </button>
-                            );
-                          })}
-                      </div>
-                    ) : null}
+                    <CrmPresentationOfferPick
+                      managedOffers={detail.managedOffers || []}
+                      matches={(detail.matches || []).map((row) => ({
+                        id: row.id,
+                        score: row.score,
+                        notifiedAt: row.notifiedAt,
+                        offer: row.offer,
+                      }))}
+                      selectedId={presentationOfferId}
+                      onSelect={setPresentationOfferId}
+                    />
                     <input
                       value={presentationOfferId}
                       onChange={(e) => setPresentationOfferId(e.target.value.replace(/[^\d]/g, ""))}

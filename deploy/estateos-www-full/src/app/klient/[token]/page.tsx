@@ -22,6 +22,9 @@ import ClientPortalLiveChat from "@/components/portal/ClientPortalLiveChat";
 import ClientPortalSetupPrompt from "@/components/portal/ClientPortalSetupPrompt";
 import ClientPortalBuyerOnboarding from "@/components/portal/ClientPortalBuyerOnboarding";
 import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
+import ClientPortalPresentationHero, {
+  type PortalPresentationSlot,
+} from "@/components/portal/ClientPortalPresentationHero";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import SellerPortalCollaboration from "@/components/portal/SellerPortalCollaboration";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
@@ -56,6 +59,7 @@ type ScheduleSlot = {
   reason: string | null;
   previousStartsAt: string | null;
   prepLabels?: string[];
+  offer?: PortalPresentationSlot["offer"];
 };
 
 type JourneyStage = {
@@ -514,6 +518,16 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         ) : null}
       </header>
 
+      {portal.presentation && token ? (
+        <ClientPortalPresentationHero
+          token={token}
+          clientType={portal.type}
+          slot={portal.presentation}
+          agentName={portal.agentName}
+          onDone={() => load()}
+        />
+      ) : null}
+
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
 
       {portal.type === "BUYER" && portal.pendingCheckback && token ? (
@@ -557,44 +571,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             matchesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
         />
-      ) : null}
-
-      {portal.presentation ? (
-        <section className="eos-lux-panel rounded-[1.75rem] p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="eos-portal-label eos-portal-label--ok">
-                {portal.type === "SELLER" ? "Pokaz mieszkania kupującemu" : "Prezentacja nieruchomości"}
-              </p>
-              <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">
-                {formatMeetingWhenPl(portal.presentation.startsAt)}
-              </h2>
-              {portal.presentation.location ? (
-                <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.presentation.location}</p>
-              ) : null}
-              {portal.type === "SELLER" ? (
-                <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
-                  To termin oglądania z kupującym — nie spotkanie z agentem. Potwierdzenie lub prośba o zmianę
-                  trafia też do drugiej strony.
-                </p>
-              ) : null}
-            </div>
-            <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-[10px]">
-              {portal.presentation.status === "confirmed" ? "Potwierdzona" : "Do potwierdzenia"}
-            </span>
-          </div>
-          {portal.presentation.status === "pending" && portal.presentation.reason ? (
-            <p className="mt-3 text-sm text-amber-700">Prośba o zmianę: {portal.presentation.reason}</p>
-          ) : null}
-          {token ? (
-            <ClientPortalScheduleActions
-              token={token}
-              kind="presentation"
-              slot={portal.presentation}
-              onDone={() => load()}
-            />
-          ) : null}
-        </section>
       ) : null}
 
       {portal.meeting && collapseAgentMeeting ? (

@@ -199,8 +199,11 @@ export type ManagedOfferOption = {
   id: number;
   title: string;
   city: string | null;
+  street?: string | null;
+  area?: number | null;
   price: number | null;
   imageUrl: string | null;
+  imageUrls?: string[] | null;
   linkedClientId: number | null;
   status?: string;
 };

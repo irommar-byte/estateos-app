@@ -5,6 +5,7 @@ import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { formatAgentTitle } from '@/lib/agentProfile';
 import { formatMeetingWhenPl } from '@/lib/datetime/warsaw';
+import { buildCalendarIcs } from '@/lib/crm/calendarLinks';
 
 export const CLIENT_MEETING_EMAIL_INTRO =
   'Umówiliśmy się na spotkanie. Termin jest ustalony — szczegóły i listę przygotowań znajdziesz poniżej.';
@@ -60,28 +61,13 @@ export function buildAcquisitionIcs(params: {
   location?: string | null;
   description?: string | null;
 }): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const fmt = (d: Date) =>
-    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
-  const ends = new Date(params.startsAt.getTime() + 60 * 60 * 1000);
-  const uid = `acq-${Date.now()}@estateos.pl`;
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//EstateOS//CRM//PL',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${uid}`,
-    `DTSTAMP:${fmt(new Date())}`,
-    `DTSTART:${fmt(params.startsAt)}`,
-    `DTEND:${fmt(ends)}`,
-    `SUMMARY:${params.title.replace(/\n/g, ' ')}`,
-  ];
-  if (params.location) lines.push(`LOCATION:${params.location.replace(/\n/g, ' ')}`);
-  if (params.description) lines.push(`DESCRIPTION:${params.description.replace(/\n/g, ' ')}`);
-  lines.push('END:VEVENT', 'END:VCALENDAR');
-  return lines.join('\r\n');
+  return buildCalendarIcs({
+    title: params.title,
+    startsAt: params.startsAt,
+    location: params.location,
+    description: params.description,
+    uid: `acq-${Date.now()}@estateos.pl`,
+  });
 }
 
 function buildBusinessCardHtml(params: {

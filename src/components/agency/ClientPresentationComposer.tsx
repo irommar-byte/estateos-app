@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
 import type { AgencyClientMatch, ManagedOfferOption } from '../../services/agencyClientService';
+import { formatCurrencyPLN } from '../../utils/crmFormatters';
 
 type Colors = {
   card: string;
@@ -10,6 +12,84 @@ type Colors = {
   input: string;
   accent: string;
 };
+
+function photosFor(offer: { imageUrl?: string | null; imageUrls?: string[] | null }) {
+  const urls = (offer.imageUrls || []).map((item) => String(item || '').trim()).filter(Boolean);
+  const primary = String(offer.imageUrl || '').trim();
+  if (primary && !urls.includes(primary)) urls.unshift(primary);
+  return urls;
+}
+
+function OfferTile({
+  offer,
+  selected,
+  expanded,
+  meta,
+  colors,
+  onSelect,
+  onToggle,
+}: {
+  offer: { id: number; title: string; city?: string | null; street?: string | null; area?: number | null; price?: number | null; imageUrl?: string | null; imageUrls?: string[] | null };
+  selected: boolean;
+  expanded: boolean;
+  meta: string;
+  colors: Colors;
+  onSelect: () => void;
+  onToggle: () => void;
+}) {
+  const photos = photosFor(offer);
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: selected ? colors.accent : colors.border,
+        backgroundColor: selected ? 'rgba(52,199,89,0.12)' : colors.input,
+        overflow: 'hidden',
+        width: '100%',
+      }}
+    >
+      <Pressable onPress={onSelect} style={{ flexDirection: 'row', gap: 10, padding: 8 }}>
+        {photos[0] ? (
+          <Image source={{ uri: photos[0] }} style={{ width: 72, height: 60, borderRadius: 10 }} contentFit="cover" />
+        ) : (
+          <View style={{ width: 72, height: 60, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: colors.secondary, fontWeight: '700', fontSize: 11 }}>#{offer.id}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }} numberOfLines={2}>
+            #{offer.id} · {offer.title}
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
+            {[meta, offer.city, offer.price != null ? formatCurrencyPLN(offer.price) : null].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+      </Pressable>
+      <Pressable onPress={onToggle} style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: 10, paddingVertical: 7 }}>
+        <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '700' }}>
+          {expanded ? 'Zwiń podgląd' : 'Rozwiń zdjęcia i szczegóły'}
+        </Text>
+      </Pressable>
+      {expanded ? (
+        <View style={{ paddingHorizontal: 10, paddingBottom: 10, gap: 8 }}>
+          {photos.length > 1 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {photos.slice(1, 5).map((url) => (
+                <Image key={url} source={{ uri: url }} style={{ width: 88, height: 64, borderRadius: 8 }} contentFit="cover" />
+              ))}
+            </ScrollView>
+          ) : null}
+          <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 16 }}>
+            {[offer.street, offer.city, offer.area ? `${offer.area} m²` : null, offer.price != null ? formatCurrencyPLN(offer.price) : null]
+              .filter(Boolean)
+              .join(' · ') || 'Oferta z portfela agenta.'}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 export default function ClientPresentationComposer({
   clientType,
@@ -64,6 +144,7 @@ export default function ClientPresentationComposer({
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const filteredOffers = useMemo(() => {
     const q = pickerQuery.trim().toLowerCase();
     if (!q) return managedOffers;
@@ -147,16 +228,30 @@ export default function ClientPresentationComposer({
           <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>
             NIERUCHOMOŚCI AGENTA
           </Text>
-          <Pressable
-            onPress={() => setPickerOpen(true)}
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
-          >
-            <Text style={{ color: selectedOffer ? colors.text : colors.secondary, fontWeight: '700' }} numberOfLines={2}>
-              {selectedOffer
-                ? `#${selectedOffer.id} · ${selectedOffer.title}`
-                : 'Wybierz nieruchomość z listy agenta'}
-            </Text>
-          </Pressable>
+          <View style={{ gap: 8, marginTop: 8 }}>
+            {managedOffers.slice(0, 8).map((offer) => (
+              <OfferTile
+                key={`managed-${offer.id}`}
+                offer={offer}
+                selected={selectedId === offer.id}
+                expanded={expandedId === offer.id}
+                meta={offer.city || 'W portfelu'}
+                colors={colors}
+                onSelect={() => onChangeOfferId(String(offer.id))}
+                onToggle={() => setExpandedId((current) => (current === offer.id ? null : offer.id))}
+              />
+            ))}
+            {managedOffers.length > 8 ? (
+              <Pressable
+                onPress={() => setPickerOpen(true)}
+                style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, justifyContent: 'center' }]}
+              >
+                <Text style={{ color: colors.accent, fontWeight: '700' }}>
+                  {selectedOffer ? `Wybrano #${selectedOffer.id} · pokaż całą listę` : 'Pokaż całą listę agenta'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
           <Modal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
             <View style={styles.modalBackdrop}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerOpen(false)} />
@@ -172,6 +267,7 @@ export default function ClientPresentationComposer({
                 <ScrollView style={{ maxHeight: 420, marginTop: 10 }}>
                   {filteredOffers.map((offer) => {
                     const selected = selectedId === offer.id;
+                    const photos = photosFor(offer);
                     return (
                       <Pressable
                         key={offer.id}
@@ -180,20 +276,21 @@ export default function ClientPresentationComposer({
                           setPickerOpen(false);
                           setPickerQuery('');
                         }}
-                        style={{
-                          paddingVertical: 12,
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                          borderBottomColor: colors.border,
-                        }}
+                        style={{ paddingVertical: 10, flexDirection: 'row', gap: 10, alignItems: 'center' }}
                       >
-                        <Text style={{ color: selected ? colors.accent : colors.text, fontWeight: '800', fontSize: 13 }}>
-                          #{offer.id} · {offer.title}
-                        </Text>
-                        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
-                          {[offer.city, offer.linkedClientId ? `klient ${offer.linkedClientId}` : null]
-                            .filter(Boolean)
-                            .join(' · ') || 'W portfelu'}
-                        </Text>
+                        {photos[0] ? (
+                          <Image source={{ uri: photos[0] }} style={{ width: 52, height: 44, borderRadius: 8 }} contentFit="cover" />
+                        ) : null}
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: selected ? colors.accent : colors.text, fontWeight: '800', fontSize: 13 }}>
+                            #{offer.id} · {offer.title}
+                          </Text>
+                          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                            {[offer.city, offer.linkedClientId ? `klient ${offer.linkedClientId}` : null]
+                              .filter(Boolean)
+                              .join(' · ') || 'W portfelu'}
+                          </Text>
+                        </View>
                       </Pressable>
                     );
                   })}
@@ -215,35 +312,22 @@ export default function ClientPresentationComposer({
           <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>
             DOPASOWANIA KLIENTA
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+          <View style={{ gap: 8, marginTop: 8 }}>
             {[...matches]
               .sort((a, b) => Number(Boolean(b.notifiedAt)) - Number(Boolean(a.notifiedAt)) || b.score - a.score)
               .slice(0, 8)
-              .map((m) => {
-                const selected = presentationOfferId === String(m.offer.id);
-                return (
-                  <Pressable
-                    key={m.id}
-                    onPress={() => onChangeOfferId(String(m.offer.id))}
-                    style={{
-                      maxWidth: '100%',
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: selected ? colors.accent : colors.border,
-                      backgroundColor: selected ? 'rgba(52,199,89,0.14)' : colors.input,
-                      paddingHorizontal: 10,
-                      paddingVertical: 8,
-                    }}
-                  >
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 11 }} numberOfLines={1}>
-                      #{m.offer.id} · {m.offer.title}
-                    </Text>
-                    <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 2 }}>
-                      {m.notifiedAt ? 'Wysłana' : 'Match'} · {m.score}%
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              .map((m) => (
+                <OfferTile
+                  key={m.id}
+                  offer={m.offer}
+                  selected={presentationOfferId === String(m.offer.id)}
+                  expanded={expandedId === m.offer.id}
+                  meta={`${m.notifiedAt ? 'Wysłana' : 'Match'} · ${m.score}%`}
+                  colors={colors}
+                  onSelect={() => onChangeOfferId(String(m.offer.id))}
+                  onToggle={() => setExpandedId((current) => (current === m.offer.id ? null : m.offer.id))}
+                />
+              ))}
           </View>
         </View>
       ) : null}

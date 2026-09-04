@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import ProfileCardShell from '../profile/ProfileCardShell';
 import {
   confirmPortalSchedule,
   proposePortalScheduleChange,
   type PortalScheduleSlot,
 } from '../../services/clientPortalService';
+import { API_URL } from '../../config/network';
+import { googleCalendarUrl, splitCountdown } from '../../lib/calendarLinks';
 
 type Colors = {
   card: string;
@@ -73,6 +75,14 @@ export default function PortalScheduleCard({
       ? 'Spotkanie z agentem'
       : 'Umówienie spotkania';
   const confirmed = slot.status === 'confirmed';
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isPresentation || !confirmed) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [confirmed, isPresentation]);
+  const parts = useMemo(() => splitCountdown(new Date(slot.startsAt).getTime() - now), [now, slot.startsAt]);
+  const offer = slot.offer || null;
 
   const confirm = async () => {
     if (!canInteract) return;
@@ -122,12 +132,20 @@ export default function PortalScheduleCard({
 
   return (
     <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
-      <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '900', letterSpacing: 0.6 }}>
-        {label.toUpperCase()}
+      <Text style={{ color: isPresentation && !confirmed ? '#FF9500' : colors.secondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.4 }}>
+        {isPresentation ? (confirmed ? 'PREZENTACJA POTWIERDZONA' : 'PREZENTACJA PRZYSZŁA') : label.toUpperCase()}
       </Text>
       <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, marginTop: 8 }}>
         {formatWhen(slot.startsAt)}
       </Text>
+      {offer ? (
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
+          {offer.imageUrl ? (
+            <Image source={{ uri: offer.imageUrl }} style={{ width: 56, height: 48, borderRadius: 8 }} />
+          ) : null}
+          <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14, flex: 1 }}>{offer.title}</Text>
+        </View>
+      ) : null}
       {slot.location ? (
         <Text style={{ color: colors.secondary, marginTop: 4 }}>{slot.location}</Text>
       ) : null}
@@ -136,9 +154,37 @@ export default function PortalScheduleCard({
           To oglądanie z kupującym — nie spotkanie z agentem. Potwierdzenie idzie też do drugiej strony.
         </Text>
       ) : null}
-      <Text style={{ color: confirmed ? colors.green : '#FF9500', fontWeight: '800', fontSize: 12, marginTop: 8 }}>
-        {confirmed ? 'Potwierdzone' : 'Do potwierdzenia'}
-      </Text>
+      {confirmed && isPresentation ? (
+        <View style={{ marginTop: 12 }}>
+          <Text style={{ color: colors.green, fontWeight: '700', fontSize: 13 }}>
+            {parts.days > 0 ? `${parts.days}d ` : ''}
+            {String(parts.hours).padStart(2, '0')}:{String(parts.minutes).padStart(2, '0')}:{String(parts.seconds).padStart(2, '0')}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <Pressable
+              onPress={() =>
+                void Linking.openURL(
+                  googleCalendarUrl({
+                    title: label,
+                    startsAt: new Date(slot.startsAt),
+                    location: slot.location,
+                    description: offer?.title || undefined,
+                  }),
+                )
+              }
+              style={[styles.secondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Google Calendar</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void Linking.openURL(`${API_URL}/api/crm/client-portal/${portalToken}/calendar?kind=presentation`)}
+              style={[styles.secondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Dodaj do kalendarza</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       {slot.status === 'pending' && slot.reason ? (
         <Text style={{ color: '#B45309', marginTop: 6, fontSize: 13 }}>Prośba o zmianę: {slot.reason}</Text>
       ) : null}
