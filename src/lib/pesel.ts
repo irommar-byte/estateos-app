@@ -59,3 +59,30 @@ export function parsePesel(raw: string): PeselData | null {
   const gender = digits[9] % 2 === 0 ? 'K' : 'M';
   return { pesel, birthDate: toIsoDate(year, month, dd), gender };
 }
+
+export function peselAgeYears(birthDate: string, now = new Date()): number {
+  const [year, month, day] = birthDate.split('-').map(Number);
+  if (!year || !month || !day) return 0;
+  let age = now.getFullYear() - year;
+  if (now.getMonth() + 1 < month || (now.getMonth() + 1 === month && now.getDate() < day)) {
+    age -= 1;
+  }
+  return Math.max(0, age);
+}
+
+export function polishAgePhrase(age: number): string {
+  const n = Math.abs(age) % 100;
+  const last = n % 10;
+  if (n === 1) return `${age} rok`;
+  if (n >= 12 && n <= 14) return `${age} lat`;
+  if (last >= 2 && last <= 4) return `${age} lata`;
+  return `${age} lat`;
+}
+
+/** np. "Mężczyzna, 49 lat" — albo null, gdy PESEL nie przechodzi walidacji. */
+export function formatPeselDecode(raw: string, now = new Date()): string | null {
+  const data = parsePesel(raw);
+  if (!data) return null;
+  const gender = data.gender === 'M' ? 'Mężczyzna' : 'Kobieta';
+  return `${gender}, ${polishAgePhrase(peselAgeYears(data.birthDate, now))}`;
+}

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { formatPhoneNumber } from '../../utils/crmFormatters';
+import { formatPeselDecode } from '../../lib/pesel';
+import { dialCodeFor, flagEmojiFromIso2, formatNationalAsYouType, parseStoredPhoneToLine } from '../../utils/phoneRegions';
 
 const appleType = Platform.select({
   ios: { fontFamily: 'System' as const },
@@ -19,39 +20,43 @@ type Colors = {
   input: string;
 };
 
+function PhoneValue({ phone, color }: { phone: string; color: string }) {
+  const line = parseStoredPhoneToLine(phone, 'PL');
+  const iso = line.iso || 'PL';
+  const national =
+    line.nationalDigits
+      ? formatNationalAsYouType(iso, line.nationalDigits) || line.nationalDigits
+      : phone.trim();
+  return (
+    <View style={styles.phoneValue}>
+      <Text style={styles.flag}>{flagEmojiFromIso2(iso)}</Text>
+      <Text style={[styles.dial, appleType, { color }]}>+{dialCodeFor(iso)}</Text>
+      <Text style={[styles.national, appleType, { color }]}>{national}</Text>
+    </View>
+  );
+}
+
 function FactRow({
   label,
-  value,
-  muted,
   last,
   colors,
   onPress,
   link,
+  children,
 }: {
   label: string;
-  value: string;
-  muted?: boolean;
   last?: boolean;
   colors: Colors;
   onPress?: () => void;
   link?: boolean;
+  children: React.ReactNode;
 }) {
   const inner = (
     <View style={[styles.row, !last ? { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null]}>
-      <Text style={[styles.rowLabel, appleType, { color: colors.secondary }]}>{label}</Text>
-      <Text
-        style={[
-          styles.rowValue,
-          appleType,
-          {
-            color: muted ? colors.secondary : link ? '#007AFF' : colors.text,
-            fontWeight: muted ? '400' : '600',
-          },
-        ]}
-        numberOfLines={2}
-      >
-        {value}
-      </Text>
+      <View style={styles.rowBody}>
+        <Text style={[styles.rowLabel, appleType, { color: colors.secondary }]}>{label}</Text>
+        {children}
+      </View>
       {link ? <Ionicons name="chevron-forward" size={13} color="#C7C7CC" /> : null}
     </View>
   );
@@ -104,6 +109,7 @@ export default function ClientPersonCard({
   const dual = personRoles.includes('BUYER') && personRoles.includes('SELLER');
   const accent = dual ? '#C9A227' : type === 'BUYER' ? '#FF9500' : '#34C759';
   const initials = `${firstName.trim().charAt(0)}${lastName.trim().charAt(0)}`.toUpperCase() || 'K';
+  const peselHint = pesel ? formatPeselDecode(pesel) : null;
 
   return (
     <View
@@ -162,37 +168,52 @@ export default function ClientPersonCard({
       <View style={[styles.group, { backgroundColor: colors.input }]}>
         <FactRow
           label="Telefon"
-          value={phone ? formatPhoneNumber(phone) : 'Brak'}
-          muted={!phone}
           colors={colors}
           onPress={phone ? () => Linking.openURL(`tel:${phone}`) : undefined}
           link={Boolean(phone)}
-        />
+        >
+          {phone ? (
+            <PhoneValue phone={phone} color="#007AFF" />
+          ) : (
+            <Text style={[styles.rowValue, appleType, { color: colors.secondary, fontWeight: '400' }]}>Brak</Text>
+          )}
+        </FactRow>
         <FactRow
           label="E-mail"
-          value={email || 'Brak'}
-          muted={!email}
           colors={colors}
           onPress={email ? () => Linking.openURL(`mailto:${email}`) : undefined}
           link={Boolean(email)}
-        />
-        <FactRow
-          label="PESEL"
-          value={pesel || 'Brak'}
-          muted={!pesel}
-          colors={colors}
-          last={!kwNumbers.length}
-        />
+        >
+          <Text
+            style={[styles.rowValue, appleType, { color: email ? '#007AFF' : colors.secondary, fontWeight: email ? '600' : '400' }]}
+            numberOfLines={2}
+          >
+            {email || 'Brak'}
+          </Text>
+        </FactRow>
+        <FactRow label="PESEL" colors={colors} last={!kwNumbers.length}>
+          {pesel ? (
+            <View style={styles.peselValue}>
+              <Text style={[styles.rowValue, appleType, { color: colors.text }]}>{pesel}</Text>
+              {peselHint ? (
+                <Text style={[styles.peselHint, appleType, { color: colors.secondary }]}>{peselHint}</Text>
+              ) : null}
+            </View>
+          ) : (
+            <Text style={[styles.rowValue, appleType, { color: colors.secondary, fontWeight: '400' }]}>Brak</Text>
+          )}
+        </FactRow>
         {kwNumbers.map((item, index) => (
           <FactRow
             key={`kw-${item.kw}`}
             label="KW"
-            value={item.kw}
             last={index === kwNumbers.length - 1}
             colors={colors}
             onPress={() => onOpenKw(item.kw)}
             link
-          />
+          >
+            <Text style={[styles.rowValue, appleType, { color: '#007AFF' }]}>{item.kw}</Text>
+          </FactRow>
         ))}
       </View>
 
@@ -285,25 +306,61 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   row: {
-    minHeight: 44,
+    minHeight: 52,
     paddingHorizontal: 16,
-    paddingVertical: 11,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+  },
+  rowBody: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
   },
   rowLabel: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '400',
-    letterSpacing: -0.24,
+    letterSpacing: -0.08,
+    marginBottom: 3,
   },
   rowValue: {
-    flex: 1,
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.41,
-    textAlign: 'right',
+    textAlign: 'left',
     fontVariant: ['tabular-nums'],
+  },
+  phoneValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  flag: {
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  dial: {
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.41,
+  },
+  national: {
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.41,
+    fontVariant: ['tabular-nums'],
+  },
+  peselValue: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  peselHint: {
+    fontSize: 15,
+    fontWeight: '400',
+    letterSpacing: -0.24,
   },
   stats: {
     alignSelf: 'stretch',
