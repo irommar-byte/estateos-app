@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
+import { loadPresentationOfferPreview } from '@/lib/crm/presentationOfferPreview';
 import { absolutizeMediaUrl } from '@/lib/offerShareLanding';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
@@ -361,6 +362,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const scheduleActs = await loadJourneyActivities(client.id);
   const meeting = resolveMeeting(scheduleActs);
   const presentation = resolvePresentation(scheduleActs);
+  const presentationOffer = await loadPresentationOfferPreview(presentation?.offerId);
   const notifiedMatches = client.matches.filter((m) => m.notifiedAt);
   const reactedMatches = notifiedMatches.filter((m) => clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)));
   const lastOfferSentAt = notifiedMatches
@@ -463,7 +465,12 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             prepCatalog: CLIENT_PREP_ITEMS,
           }
         : null,
-      presentation,
+      presentation: presentation
+        ? {
+            ...presentation,
+            offer: presentationOffer,
+          }
+        : null,
       journey: stages,
       matches: client.buyerPreference
         ? client.matches.map((m) => ({
