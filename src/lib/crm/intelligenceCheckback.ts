@@ -37,7 +37,8 @@ export type PendingCheckback = {
   createdAt: string;
 };
 
-const COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
+export const CHECKBACK_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
+export const CHECKBACK_PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CONFIRM_PHRASES = [
   'Za drogo',
   'Brak balkonu',
@@ -61,6 +62,49 @@ function meta(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 }
 
+export function isHandoffOpen(metadata: unknown): boolean {
+  const m = meta(metadata);
+  return m.agentStatus !== 'done' && !m.agentHandledAt && !m.resumedAt;
+}
+
+export function isPendingCheckbackExpired(createdAt: Date, now = Date.now()): boolean {
+  return now - createdAt.getTime() > CHECKBACK_PENDING_TTL_MS;
+}
+
+export function shouldSkipCheckbackTypeFromHistory(
+  rows: Array<{ metadata: unknown; createdAt: Date }>,
+  type: string,
+  now = Date.now(),
+): boolean {
+  const ofType = rows.filter((row) => String(meta(row.metadata).type || '') === type);
+  if (!ofType.length) return false;
+  const latest = ofType[0];
+  const m = meta(latest.metadata);
+  if (m.status === 'accepted') return true;
+  if (m.status === 'pending' && !isPendingCheckbackExpired(latest.createdAt, now)) return true;
+  if (m.status === 'rejected' && now - latest.createdAt.getTime() < CHECKBACK_COOLDOWN_MS) return true;
+  return false;
+}
+
+export function pickBypassesMinLearns(options: { force?: boolean; replyToFeedback?: boolean }): boolean {
+  return Boolean(options.force || options.replyToFeedback);
+}
+
+export function intelligenceNeedsHunt(skipReason: string | null | undefined, offerId?: number | null): boolean {
+  if (!offerId) return true;
+  const s = String(skipReason || '');
+  return s.includes('Brak oferty') || s.includes('próg') || s.includes('Za mało nauki');
+}
+
+async function loadRecentCheckbacks(clientId: number) {
+  return prisma.agencyClientActivity.findMany({
+    where: { clientId, kind: INTELLIGENCE_ACTIVITY.CHECKBACK },
+    orderBy: { createdAt: 'desc' },
+    take: 40,
+    select: { id: true, body: true, createdAt: true, metadata: true },
+  });
+}
+
 export async function getPendingCheckback(clientId: number): Promise<PendingCheckback | null> {
   const row = await prisma.agencyClientActivity.findFirst({
     where: { clientId, kind: INTELLIGENCE_ACTIVITY.CHECKBACK },
@@ -70,6 +114,19 @@ export async function getPendingCheckback(clientId: number): Promise<PendingChec
   if (!row) return null;
   const m = meta(row.metadata);
   if (m.status !== 'pending') return null;
+  if (isPendingCheckbackExpired(row.createdAt)) {
+    await prisma.agencyClientActivity.update({
+      where: { id: row.id },
+      data: {
+        metadata: {
+          ...m,
+          status: 'expired',
+          expiredAt: new Date().toISOString(),
+        },
+      },
+    });
+    return null;
+  }
   return {
     activityId: row.id,
     type: String(m.type || ''),
@@ -81,30 +138,27 @@ export async function getPendingCheckback(clientId: number): Promise<PendingChec
   };
 }
 
-async function isOnCooldown(clientId: number, type: string): Promise<boolean> {
-  const since = new Date(Date.now() - COOLDOWN_MS);
-  const recent = await prisma.agencyClientActivity.findFirst({
-    where: {
-      clientId,
-      kind: INTELLIGENCE_ACTIVITY.CHECKBACK,
-      createdAt: { gte: since },
-    },
+export async function getOpenIntelligenceHandoff(clientId: number): Promise<{ id: number; body: string } | null> {
+  const row = await prisma.agencyClientActivity.findFirst({
+    where: { clientId, kind: INTELLIGENCE_ACTIVITY.HANDOFF },
     orderBy: { createdAt: 'desc' },
-    select: { metadata: true },
+    select: { id: true, body: true, metadata: true },
   });
-  if (!recent) return false;
-  const m = meta(recent.metadata);
-  return m.type === type && m.status === 'rejected';
+  if (!row || !isHandoffOpen(row.metadata)) return null;
+  return { id: row.id, body: row.body || '' };
+}
+
+async function isOnCooldown(clientId: number, type: string): Promise<boolean> {
+  const rows = await loadRecentCheckbacks(clientId);
+  return shouldSkipCheckbackTypeFromHistory(rows, type);
 }
 
 export async function clientAcceptsScarceBudget(clientId: number): Promise<boolean> {
-  const row = await prisma.agencyClientActivity.findFirst({
-    where: { clientId, kind: INTELLIGENCE_ACTIVITY.CHECKBACK },
-    orderBy: { createdAt: 'desc' },
-    select: { metadata: true },
+  const rows = await loadRecentCheckbacks(clientId);
+  return rows.some((row) => {
+    const m = meta(row.metadata);
+    return m.type === 'market_reality' && m.status === 'accepted' && m.optionId === 'stay_budget';
   });
-  const m = meta(row?.metadata);
-  return m.type === 'market_reality' && m.status === 'accepted' && m.optionId === 'stay_budget';
 }
 
 async function countCounterfactualWithoutBalcony(clientId: number, minThreshold: number): Promise<number> {
@@ -285,13 +339,9 @@ export async function respondToIntelligenceCheckback(params: {
       const snap = m.marketSnapshot as { suggestedMaxPrice?: number } | null;
       const next = Number(snap?.suggestedMaxPrice);
       if (Number.isFinite(next) && next > 0) {
-        if (locks.maxPrice) {
-          agentNote = 'Klient chce iść bliżej rynku, ale budżet ma kłódkę — agent musi zatwierdzić.';
-        } else {
-          prefUpdate.maxPrice = next;
-          lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { maxPrice: false });
-          followUp = 'send_offer';
-        }
+        prefUpdate.maxPrice = next;
+        lockUpdate = mergeLocks(client.intelligenceLockedFields, client.buyerPreference, { maxPrice: false });
+        followUp = 'send_offer';
       }
     }
   } else if (type === 'relax_requireBalcony') {

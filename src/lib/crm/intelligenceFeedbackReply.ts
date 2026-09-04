@@ -7,6 +7,7 @@ import {
   detectExtremeCheckback,
   feedbackRequestsHandoff,
   getPendingCheckback,
+  intelligenceNeedsHunt,
   INTELLIGENCE_ACTIVITY,
 } from '@/lib/crm/intelligenceCheckback';
 import { buildHandoffDialogueTurn } from '@/lib/crm/intelligenceDialogue';
@@ -16,7 +17,7 @@ import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { sendNotification } from '@/lib/core/notification.core';
 
 export type FeedbackReplyResult = {
-  action: 'checkback' | 'sent' | 'handoff' | 'pending_blocked' | 'none';
+  action: 'checkback' | 'sent' | 'handoff' | 'pending_blocked' | 'none' | 'error';
   message?: string;
   emailSent?: boolean;
 };
@@ -68,25 +69,21 @@ export async function handleIntelligenceAfterFeedback(params: {
       content: turn.body,
     }).catch(() => {});
     await notifyAgentHandoff(params.agencyUserId, params.clientId, handoffReason);
-    if (feedback.sentiment === 'like') {
-      return { action: 'handoff', message: handoffReason };
-    }
+    return { action: 'handoff', message: handoffReason };
   }
 
-  if (!handoffReason) {
-    const extreme = await detectExtremeCheckback({
+  const extreme = await detectExtremeCheckback({
+    clientId: params.clientId,
+    agencyUserId: params.agencyUserId,
+    agentFirstName: params.agentFirstName,
+  });
+  if (extreme) {
+    await createAndDeliverCheckback({
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
-      agentFirstName: params.agentFirstName,
+      turn: extreme,
     });
-    if (extreme) {
-      await createAndDeliverCheckback({
-        clientId: params.clientId,
-        agencyUserId: params.agencyUserId,
-        turn: extreme,
-      });
-      return { action: 'checkback', message: extreme.body };
-    }
+    return { action: 'checkback', message: extreme.body };
   }
 
   let result = await sendIntelligenceOffer({
@@ -99,11 +96,9 @@ export async function handleIntelligenceAfterFeedback(params: {
     const preview = await pickIntelligenceOffer(params.clientId, {
       preview: true,
       ignoreInterval: true,
+      replyToFeedback: true,
     });
-    const needsHunt =
-      !preview.pick.offerId ||
-      Boolean(preview.pick.skipReason?.includes('Brak oferty')) ||
-      Boolean(preview.pick.skipReason?.includes('próg'));
+    const needsHunt = intelligenceNeedsHunt(preview.pick.skipReason, preview.pick.offerId);
     if (needsHunt) {
       const supply = await autoSupplyClientFromNieruchomosciOnline({
         clientId: params.clientId,
@@ -121,9 +116,6 @@ export async function handleIntelligenceAfterFeedback(params: {
 
   if (result.sent) {
     return { action: 'sent', emailSent: result.emailSent };
-  }
-  if (handoffReason) {
-    return { action: 'handoff', message: handoffReason };
   }
   return { action: 'none', message: result.pick.skipReason || undefined };
 }

@@ -110,11 +110,11 @@ export function mapChatTextToCheckbackOption(
   if (ids.has('raise_budget') && /\b(ryn\w*|blizej|wiecej|podnies\w*|drozej)\b/.test(normalized)) {
     return 'raise_budget';
   }
-  if (ids.has('keep_balcony') && /\b(balkon|zostaw)\b/.test(normalized) && !looksLikeNo(trimmed)) {
-    return 'keep_balcony';
-  }
   if (ids.has('allow_without_balcony') && /\b(bez\s+balkon|moze\s+byc\s+bez)\b/.test(normalized)) {
     return 'allow_without_balcony';
+  }
+  if (ids.has('keep_balcony') && /\b(balkon|zostaw)\b/.test(normalized) && !looksLikeNo(trimmed)) {
+    return 'keep_balcony';
   }
 
   return null;

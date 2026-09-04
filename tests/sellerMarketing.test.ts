@@ -387,3 +387,42 @@ test("visible market report lands on the seller listing path with reportId", () 
   assert.equal(path[0].kind, "MARKET_REPORT_SENT");
   assert.equal(path[0].reportId, 77);
 });
+
+test("listing path includes OH, auction and PRESENTATION_PROPOSED", () => {
+  const path = buildSellerListingPath({
+    activities: [
+      {
+        id: 1,
+        kind: "OPEN_HOUSE_CONFIRMED",
+        title: "Dzień otwarty",
+        body: "opublikowano",
+        offerId: 12,
+        createdAt: new Date("2026-09-04T10:00:00.000Z"),
+        metadata: { startsAt: "2026-09-10T11:00:00.000Z" },
+      },
+      {
+        id: 2,
+        kind: "PRESENTATION_PROPOSED",
+        title: "Prezentacja",
+        body: "propozycja",
+        offerId: 12,
+        createdAt: new Date("2026-09-03T10:00:00.000Z"),
+        metadata: { startsAt: "2026-09-08T15:00:00.000Z" },
+      },
+      {
+        id: 3,
+        kind: "AUCTION_PROPOSAL",
+        title: "Licytacja",
+        body: "do akceptacji",
+        offerId: 12,
+        createdAt: new Date("2026-09-02T10:00:00.000Z"),
+        metadata: {},
+      },
+    ],
+    linkedOfferId: 12,
+  });
+  assert.deepEqual(
+    path.map((item) => item.kind),
+    ["OPEN_HOUSE_CONFIRMED", "PRESENTATION_PROPOSED", "AUCTION_PROPOSAL"],
+  );
+});

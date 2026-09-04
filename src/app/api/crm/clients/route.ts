@@ -57,20 +57,39 @@ export async function GET(req: Request) {
     include: {
       linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
       buyerPreference: true,
-      matches: { orderBy: { score: 'desc' }, take: 1, select: { score: true } },
+      matches: { orderBy: { score: 'desc' }, take: 40, select: { score: true, notifiedAt: true } },
       _count: { select: { matches: true } },
       activities: {
-        where: { kind: 'ACQUISITION_MEETING' },
+        where: { kind: { in: ['ACQUISITION_MEETING', 'PRESENTATION_CONFIRMED'] } },
         orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: { metadata: true },
+        take: 8,
+        select: { kind: true, metadata: true },
       },
     },
   });
 
+  const buyerUserIds = Array.from(
+    new Set(
+      clients
+        .filter((client) => client.type === 'BUYER' && client.linkedUserId)
+        .map((client) => Number(client.linkedUserId)),
+    ),
+  ).filter((id) => Number.isFinite(id) && id > 0);
+  const closedDeals = buyerUserIds.length
+    ? await prisma.deal.findMany({
+        where: { buyerId: { in: buyerUserIds }, status: 'FINALIZED' },
+        select: { buyerId: true },
+      })
+    : [];
+  const closedBuyerIds = new Set(closedDeals.map((row) => row.buyerId));
+
   return NextResponse.json({
     success: true,
-    clients: clients.map(shapeClientListItem),
+    clients: clients.map((client) =>
+      shapeClientListItem(client, {
+        dealClosed: Boolean(client.linkedUserId && closedBuyerIds.has(client.linkedUserId)),
+      }),
+    ),
   });
 }
 

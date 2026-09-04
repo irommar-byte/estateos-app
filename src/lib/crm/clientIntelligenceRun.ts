@@ -16,7 +16,7 @@ import {
 } from '@/lib/crm/clientIntelligence';
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import { buildOfferDialogueTurn } from '@/lib/crm/intelligenceDialogue';
-import { clientAcceptsScarceBudget, getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
+import { clientAcceptsScarceBudget, getOpenIntelligenceHandoff, getPendingCheckback, pickBypassesMinLearns } from '@/lib/crm/intelligenceCheckback';
 import { sendPortalChat } from '@/lib/crm/portalChat';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { sendNotification } from '@/lib/core/notification.core';
@@ -390,7 +390,7 @@ export async function pickIntelligenceOffer(
 
   let skipReason: string | null = null;
   if (!enabled && !options.force) skipReason = 'Asystent wyłączony — włącz, żeby wysyłał sam.';
-  else if (!calibrating && taste.learnCount < minLearns && !options.force) {
+  else if (!calibrating && taste.learnCount < minLearns && !pickBypassesMinLearns(options)) {
     skipReason = `Za mało nauki (${taste.learnCount}/${minLearns} reakcji).`;
   } else if (!options.ignoreInterval && !due(client.intelligenceLastSentAt, intervalHours) && !options.force) {
     skipReason = 'Interwał jeszcze nie minął.';
@@ -513,6 +513,22 @@ export async function sendIntelligenceOffer(params: {
     return { sent: false, pick: blocked };
   }
 
+  if (!params.force) {
+    const openHandoff = await getOpenIntelligenceHandoff(params.clientId);
+    if (openHandoff) {
+      const blocked = emptyIntelligencePick('Asystent czeka, aż agent skontaktuje się z klientem.', {
+        tasteSummary: '',
+        learnCount: 0,
+        calibrating: false,
+        considered: 0,
+        nextSendAt: null,
+        correctedBalconyIds: [],
+        lessons: [],
+      });
+      return { sent: false, pick: blocked };
+    }
+  }
+
   const excludeOfferIds: number[] = [];
   let lastPick: IntelligencePick | null = null;
 
@@ -581,6 +597,11 @@ export async function sendIntelligenceOffer(params: {
       customMessage,
       intelligence: { reason },
     });
+
+    if ('alreadyNotified' in notified && notified.alreadyNotified) {
+      excludeOfferIds.push(pick.offerId);
+      continue;
+    }
 
     await sendPortalChat({
       clientId: params.clientId,
@@ -675,6 +696,11 @@ export async function tickClientIntelligence(): Promise<{
       skipped += 1;
       continue;
     }
+    const openHandoff = await getOpenIntelligenceHandoff(client.id);
+    if (openHandoff) {
+      skipped += 1;
+      continue;
+    }
     const preview = await pickIntelligenceOffer(client.id, { preview: true });
     if (
       preview.pick.offerId &&
@@ -711,12 +737,21 @@ export async function tickClientIntelligence(): Promise<{
         });
       }
     }
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const sentToday = await prisma.agencyClientActivity.count({
+      where: {
+        clientId: client.id,
+        kind: 'INTELLIGENCE_OFFER',
+        createdAt: { gte: dayStart },
+      },
+    });
     const limit = Math.max(1, Math.min(3, client.intelligenceDailyLimit || 1));
+    const remaining = Math.max(0, limit - sentToday);
     let sentForClient = 0;
-    for (let i = 0; i < limit; i += 1) {
+    for (let i = 0; i < remaining; i += 1) {
       const result = await sendIntelligenceOffer({
         clientId: client.id,
-        ignoreInterval: i > 0,
       });
       if (result.sent) {
         sent += 1;

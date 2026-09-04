@@ -683,14 +683,31 @@ export function defaultIntelligenceLocks(pref?: {
   };
 }
 
+export function emptyIntelligenceLocks(): IntelligenceLocks {
+  return {
+    districts: false,
+    maxPrice: false,
+    minArea: false,
+    maxArea: false,
+    minYear: false,
+    minRooms: false,
+    requireBalcony: false,
+    requireGarden: false,
+    requireElevator: false,
+    requireParking: false,
+    requireFurnished: false,
+  };
+}
+
 export function parseIntelligenceLocks(
   raw: unknown,
   pref?: Parameters<typeof defaultIntelligenceLocks>[0],
 ): IntelligenceLocks {
-  const defaults = defaultIntelligenceLocks(pref);
-  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return defaultIntelligenceLocks(pref);
+  }
   const body = raw as Record<string, unknown>;
-  const out = { ...defaults };
+  const out = emptyIntelligenceLocks();
   for (const key of INTELLIGENCE_LOCK_KEYS) {
     if (typeof body[key] === 'boolean') out[key] = body[key];
   }

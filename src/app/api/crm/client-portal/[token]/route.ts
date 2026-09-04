@@ -279,6 +279,10 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'EXTERNAL_PORTAL_LISTED',
               'EXTERNAL_PORTAL_UPDATED',
               'MARKETING_NOTE',
+              'OPEN_HOUSE_PROPOSAL',
+              'OPEN_HOUSE_CONFIRMED',
+              'AUCTION_PROPOSAL',
+              'AUCTION_CONFIRMED',
               JOURNEY_ACTIVITY.MEETING_CHANGE,
               JOURNEY_ACTIVITY.MEETING_CONFIRMED,
               JOURNEY_ACTIVITY.PRESENTATION,
@@ -288,7 +292,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 80,
+        take: 200,
         select: { id: true, kind: true, title: true, body: true, createdAt: true, offerId: true, metadata: true },
       },
     },
@@ -841,16 +845,37 @@ export async function POST(req: Request, ctx: RouteCtx) {
     });
     const agentFirstName = agent?.name?.trim().split(/\s+/)[0] || null;
 
-    const reply = await handleIntelligenceAfterFeedback({
-      clientId: client.id,
-      agencyUserId: client.agencyUserId,
-      matchId,
-      agentFirstName,
-    }).catch(() => ({ action: 'none' as const }));
+    let intelligenceReply: { action: string; message?: string; emailSent?: boolean } | null = null;
+    try {
+      intelligenceReply = await handleIntelligenceAfterFeedback({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        matchId,
+        agentFirstName,
+      });
+    } catch (error) {
+      console.error('[intelligence.submit_feedback]', error);
+      await prisma.agencyClientActivity.create({
+        data: {
+          clientId: client.id,
+          agencyUserId: client.agencyUserId,
+          kind: 'INTELLIGENCE_STALLED',
+          title: 'Asystent nie dokończył tury po reakcji',
+          body: 'Reakcja klienta została zapisana, ale kolejna oferta nie poszła. Sprawdź asystenta albo wyślij ręcznie.',
+          metadata: { agentStatus: 'pending', matchId, source: 'feedback_reply_error' },
+        },
+      }).catch(() => {});
+      intelligenceReply = {
+        action: 'error',
+        message: 'Zapisano opinię, ale kolejna oferta nie poszła. Agent dostanie zadanie.',
+      };
+    }
 
-    await applyIntelligenceLearning(client.id).catch(() => {});
+    await applyIntelligenceLearning(client.id).catch((error) => {
+      console.error('[intelligence.applyLearning]', error);
+    });
 
-    return NextResponse.json({ success: true, intelligenceReply: reply });
+    return NextResponse.json({ success: true, intelligenceReply });
   }
 
   if (action === 'intelligence_checkback') {

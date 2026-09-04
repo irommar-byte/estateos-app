@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { sendClientPortalWebPush } from "@/lib/crm/clientPortalWebPush";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { buildPortalUrl } from "@/lib/agencyClientNotify";
+import { agentCanPublishOfferEvents } from "@/lib/crm/agencyTeammates";
 import type { PublicLinkPreview } from "@/lib/crm/publicLinkPreview";
 import {
   extractFacebookDestinations,
@@ -703,13 +704,20 @@ export async function upsertSellerNextStep(params: {
   const owned = await prisma.agencyClient.findFirst({
     where: {
       id: params.clientId,
-      agencyUserId: params.agencyUserId,
       type: "SELLER",
       status: "ACTIVE",
     },
-    select: { id: true },
+    select: { id: true, agencyUserId: true, email: true, portalToken: true },
   });
   if (!owned)
+    return {
+      ok: false as const,
+      error: "Nie znaleziono klienta sprzedającego.",
+    };
+  const canWrite =
+    owned.agencyUserId === params.agencyUserId ||
+    (await agentCanPublishOfferEvents(params.agencyUserId, owned.agencyUserId));
+  if (!canWrite)
     return {
       ok: false as const,
       error: "Nie znaleziono klienta sprzedającego.",
@@ -719,7 +727,7 @@ export async function upsertSellerNextStep(params: {
     where: { clientId: params.clientId },
     create: {
       clientId: params.clientId,
-      agencyUserId: params.agencyUserId,
+      agencyUserId: owned.agencyUserId,
       currentStep: currentStep.slice(0, 255),
       nextAction: nextAction.slice(0, 255),
       clientMessage: params.clientMessage?.trim() || null,
@@ -727,7 +735,7 @@ export async function upsertSellerNextStep(params: {
       visibleToClient: params.visibleToClient === true,
     },
     update: {
-      agencyUserId: params.agencyUserId,
+      agencyUserId: owned.agencyUserId,
       currentStep: currentStep.slice(0, 255),
       nextAction: nextAction.slice(0, 255),
       clientMessage: params.clientMessage?.trim() || null,
@@ -735,6 +743,29 @@ export async function upsertSellerNextStep(params: {
       visibleToClient: params.visibleToClient === true,
     },
   });
+
+  if (params.visibleToClient === true) {
+    const portalUrl = owned.portalToken ? buildPortalUrl(owned.portalToken) : "https://estateos.pl";
+    await notifyClientIfVisible({
+      clientId: params.clientId,
+      visibleToClient: true,
+      title: currentStep.slice(0, 80),
+      body: (params.clientMessage || nextAction).slice(0, 180),
+      tag: `seller-next-step-${params.clientId}`,
+      notificationType: "seller_next_step",
+      email: owned.email
+        ? {
+            to: owned.email,
+            subject: `${currentStep.slice(0, 80)} · EstateOS`,
+            html: `<div style="font-family:-apple-system,sans-serif;padding:24px;max-width:560px">
+              <h2>${escapeHtml(currentStep)}</h2>
+              <p>${escapeHtml(params.clientMessage || nextAction)}</p>
+              <p><a href="${portalUrl}">Otwórz panel klienta</a></p>
+            </div>`,
+          }
+        : undefined,
+    });
+  }
 
   return { ok: true as const, nextStep: shapeSellerNextStep(row) };
 }
@@ -778,13 +809,20 @@ export async function createClientDecisionRequest(params: {
   const owned = await prisma.agencyClient.findFirst({
     where: {
       id: params.clientId,
-      agencyUserId: params.agencyUserId,
       type: "SELLER",
       status: "ACTIVE",
     },
-    select: { id: true },
+    select: { id: true, agencyUserId: true, email: true, portalToken: true },
   });
   if (!owned)
+    return {
+      ok: false as const,
+      error: "Nie znaleziono klienta sprzedającego.",
+    };
+  const canWrite =
+    owned.agencyUserId === params.agencyUserId ||
+    (await agentCanPublishOfferEvents(params.agencyUserId, owned.agencyUserId));
+  if (!canWrite)
     return {
       ok: false as const,
       error: "Nie znaleziono klienta sprzedającego.",
@@ -793,7 +831,7 @@ export async function createClientDecisionRequest(params: {
   const row = await prisma.clientDecisionRequest.create({
     data: {
       clientId: params.clientId,
-      agencyUserId: params.agencyUserId,
+      agencyUserId: owned.agencyUserId,
       kind: kind.slice(0, 64),
       title: title.slice(0, 255),
       clientMessage,
@@ -803,12 +841,25 @@ export async function createClientDecisionRequest(params: {
     },
   });
 
+  const portalUrl = owned.portalToken ? buildPortalUrl(owned.portalToken) : "https://estateos.pl";
   await notifyClientIfVisible({
     clientId: params.clientId,
     visibleToClient: true,
     title: "Potrzebujemy Twojej decyzji",
     body: title,
     tag: `decision-${row.id}`,
+    notificationType: "client_decision",
+    email: owned.email
+      ? {
+          to: owned.email,
+          subject: `Decyzja: ${title.slice(0, 80)}`,
+          html: `<div style="font-family:-apple-system,sans-serif;padding:24px;max-width:560px">
+            <h2>${escapeHtml(title)}</h2>
+            <p>${escapeHtml(clientMessage)}</p>
+            <p><a href="${portalUrl}">Otwórz panel i odpowiedz</a></p>
+          </div>`,
+        }
+      : undefined,
   });
 
   return { ok: true as const, decision: shapeClientDecision(row) };
@@ -875,6 +926,35 @@ export async function respondToClientDecision(params: {
   if (params.response === "comment" && (!comment || comment.length < 3)) {
     return { ok: false as const, error: "Dopisz komentarz." };
   }
+  const isEventDecision = decision.kind === "open_house" || decision.kind === "auction";
+  if (params.response === "reject" && isEventDecision && (!comment || comment.length < 3)) {
+    return { ok: false as const, error: "Napisz inny termin albo powód odrzucenia." };
+  }
+
+  let fulfillError: string | null = null;
+  if (params.response === "approve" && isEventDecision) {
+    const { fulfillSellerEventProposal } = await import("@/lib/crm/sellerEventProposals");
+    const fulfilled = await fulfillSellerEventProposal({
+      clientId: params.clientId,
+      decision: {
+        id: decision.id,
+        agencyUserId: decision.agencyUserId,
+        kind: decision.kind,
+        title: decision.title,
+        payload: decision.payload,
+      },
+    });
+    if (!fulfilled.ok || ("skipped" in fulfilled && fulfilled.skipped)) {
+      fulfillError =
+        (!fulfilled.ok ? fulfilled.error : null) ||
+        "Nie udało się opublikować wydarzenia — decyzja zostaje otwarta.";
+      return {
+        ok: true as const,
+        decision: shapeClientDecision(decision),
+        fulfillError,
+      };
+    }
+  }
 
   const resolution = clientDecisionResolution(params.response);
   const status = resolution.status;
@@ -911,34 +991,32 @@ export async function respondToClientDecision(params: {
     },
   });
 
+  if (status === "REJECTED") {
+    await upsertSellerNextStep({
+      clientId: params.clientId,
+      agencyUserId: decision.agencyUserId,
+      currentStep: isEventDecision
+        ? "Klient prosi o inną propozycję"
+        : "Klient odrzucił decyzję",
+      nextAction: comment
+        ? `Odpowiedź klienta: ${comment.slice(0, 180)}`
+        : "Wyślij nową propozycję w planie działania.",
+      clientMessage: comment
+        ? `Dziękujemy za odpowiedź. Agent przygotuje nową propozycję (${comment.slice(0, 160)}).`
+        : "Dziękujemy za odpowiedź. Agent wróci z nową propozycją.",
+      visibleToClient: true,
+    });
+  }
+
   await sendNotificationToAgent(
     decision.agencyUserId,
     params.clientId,
     updated,
   );
 
-  let fulfillError: string | null = null;
-  if (status === "APPROVED" && (decision.kind === "open_house" || decision.kind === "auction")) {
-    const { fulfillSellerEventProposal } = await import("@/lib/crm/sellerEventProposals");
-    const fulfilled = await fulfillSellerEventProposal({
-      clientId: params.clientId,
-      decision: {
-        id: decision.id,
-        agencyUserId: decision.agencyUserId,
-        kind: decision.kind,
-        title: decision.title,
-        payload: decision.payload,
-      },
-    });
-    if (!fulfilled.ok) {
-      fulfillError = fulfilled.error;
-    }
-  }
-
-  const shaped = shapeClientDecision(updated);
   return {
     ok: true as const,
-    decision: shaped,
+    decision: shapeClientDecision(updated),
     fulfillError,
   };
 }
@@ -1025,8 +1103,8 @@ export function filterClientMarketingTimeline(
 }
 
 export const SELLER_LISTING_PATH_JOURNEY_KINDS = [
-  "PRESENTATION",
-  "PRESENTATION_CHANGE",
+  "PRESENTATION_PROPOSED",
+  "PRESENTATION_CHANGE_PROPOSED",
   "PRESENTATION_CONFIRMED",
   "LISTING_LINKED",
   "OPEN_HOUSE_PROPOSAL",

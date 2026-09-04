@@ -114,19 +114,12 @@ async function notifyNegotiationEvent(params: {
   return { deduplicated: false as const };
 }
 
-export async function POST(req: Request) {
+export async function executeDealAction(
+  actorId: number,
+  dealId: number,
+  body: Record<string, unknown>,
+) {
   try {
-    const match = req.url.match(/\/deals\/(\d+)\/actions/);
-    if (!match) return NextResponse.json({ error: 'Bad URL' }, { status: 400 });
-    const dealId = Number(match[1]);
-    if (!dealId || Number.isNaN(dealId)) {
-      return NextResponse.json({ error: 'Nieprawidlowe ID transakcji' }, { status: 400 });
-    }
-
-    const actorId = parseUserIdFromAuthHeader(req.headers.get('authorization'));
-    if (!actorId) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
-
-    const body = await req.json();
     const type = String(body?.type || '');
 
     const deal = await prisma.deal.findUnique({ where: { id: dealId } });
@@ -796,6 +789,26 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
+    console.error('MOBILE DEAL ACTIONS ERROR:', error);
+    return NextResponse.json({ error: 'Blad serwera' }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const match = req.url.match(/\/deals\/(\d+)\/actions/);
+    if (!match) return NextResponse.json({ error: 'Bad URL' }, { status: 400 });
+    const dealId = Number(match[1]);
+    if (!dealId || Number.isNaN(dealId)) {
+      return NextResponse.json({ error: 'Nieprawidlowe ID transakcji' }, { status: 400 });
+    }
+
+    const actorId = parseUserIdFromAuthHeader(req.headers.get('authorization'));
+    if (!actorId) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    return executeDealAction(actorId, dealId, body);
+  } catch (error) {
     console.error('MOBILE DEAL ACTIONS ERROR:', error);
     return NextResponse.json({ error: 'Blad serwera' }, { status: 500 });
   }

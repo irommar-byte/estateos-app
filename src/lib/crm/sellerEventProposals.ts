@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { createOpenHouseEvent } from '@/lib/openHouse';
 import { createAuctionEvent } from '@/lib/auction';
+import { agentCanPublishOfferEvents } from '@/lib/crm/agencyTeammates';
 import {
   createClientDecisionRequest,
   upsertSellerNextStep,
@@ -62,10 +63,13 @@ async function resolveLinkedOfferForAgent(clientId: number, agencyUserId: number
   }
   // Typical acquisition: offer owned by agent. Also allow if offer is this client's linkedOffer.
   if (client.linkedOffer.userId !== agencyUserId) {
-    return {
-      ok: false as const,
-      error: 'Możesz zaproponować wydarzenie tylko dla ogłoszenia na Twoim koncie agenta.',
-    };
+    const teammate = await agentCanPublishOfferEvents(agencyUserId, client.linkedOffer.userId);
+    if (!teammate) {
+      return {
+        ok: false as const,
+        error: 'Możesz zaproponować wydarzenie tylko dla ogłoszenia na Twoim koncie albo w Twoim biurze.',
+      };
+    }
   }
   return { ok: true as const, client, offer: client.linkedOffer };
 }
@@ -263,16 +267,23 @@ export async function fulfillSellerEventProposal(params: {
   };
 }) {
   const proposal = parseSellerEventProposal(params.decision.payload);
-  if (!proposal) return { ok: true as const, skipped: true as const };
+  if (!proposal) {
+    return { ok: false as const, error: 'Brak danych wydarzenia do publikacji. Wyślij propozycję ponownie.' };
+  }
 
   const agencyUserId = params.decision.agencyUserId;
   const offer = await prisma.offer.findFirst({
-    where: { id: proposal.offerId, userId: agencyUserId, status: 'ACTIVE' },
-    select: { id: true, title: true },
+    where: { id: proposal.offerId, status: 'ACTIVE' },
+    select: { id: true, title: true, userId: true },
   });
   if (!offer) {
     return { ok: false as const, error: 'Nie znaleziono aktywnego ogłoszenia do publikacji wydarzenia.' };
   }
+  const canPublish = await agentCanPublishOfferEvents(agencyUserId, offer.userId);
+  if (!canPublish) {
+    return { ok: false as const, error: 'Nie znaleziono aktywnego ogłoszenia do publikacji wydarzenia.' };
+  }
+  const hostUserId = offer.userId;
 
   let eventId: number | null = null;
   try {
@@ -283,7 +294,7 @@ export async function fulfillSellerEventProposal(params: {
           ? [{ startsAt: proposal.startsAt, endsAt: proposal.endsAt, capacity: 8 }]
           : [];
       if (!slots.length) return { ok: false as const, error: 'Brak terminu dnia otwartego.' };
-      const event = await createOpenHouseEvent(agencyUserId, {
+      const event = await createOpenHouseEvent(hostUserId, {
         offerId: offer.id,
         title: params.decision.title,
         description: proposal.clientMessage || null,
@@ -296,7 +307,7 @@ export async function fulfillSellerEventProposal(params: {
       if (!proposal.startsAt || !proposal.endsAt || !proposal.startPrice) {
         return { ok: false as const, error: 'Brak warunków licytacji.' };
       }
-      const event = await createAuctionEvent(agencyUserId, {
+      const event = await createAuctionEvent(hostUserId, {
         offerId: offer.id,
         title: params.decision.title,
         description: proposal.clientMessage || null,

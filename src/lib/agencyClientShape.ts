@@ -15,6 +15,9 @@ export type AgencyClientListItem = {
   notes: string | null;
   matchCount: number;
   topMatchScore: number | null;
+  sentCount?: number;
+  presentationConfirmed?: boolean;
+  dealClosed?: boolean;
   updatedAt: string;
   sellerCity: string | null;
   sellerPrice: number | null;
@@ -117,13 +120,14 @@ export function shapeClientListItem(
   client: AgencyClient & {
     buyerPreference: AgencyClientBuyerPreference | null;
     _count?: { matches: number };
-    matches?: { score: number }[];
+    matches?: { score: number; notifiedAt?: Date | null }[];
     linkedUser?: { id: number; email: string; lastLoginAt: Date | null } | null;
-    activities?: Array<{ metadata: unknown }>;
+    activities?: Array<{ kind?: string; metadata: unknown }>;
   },
+  extras?: { dealClosed?: boolean },
 ): AgencyClientListItem {
   const top = client.matches?.[0]?.score ?? null;
-  const meetingAct = client.activities?.[0];
+  const meetingAct = client.activities?.find((item) => item.kind === 'ACQUISITION_MEETING') || client.activities?.[0];
   const meetingMeta = (meetingAct?.metadata || {}) as Record<string, unknown>;
   const rawMeetingStart = typeof meetingMeta.startsAt === 'string' ? meetingMeta.startsAt : null;
   const meetingStartMs = rawMeetingStart ? new Date(rawMeetingStart).getTime() : NaN;
@@ -132,6 +136,10 @@ export function shapeClientListItem(
   const upcomingMeetingStartsAt = meetingStillRelevant ? rawMeetingStart : null;
   const upcomingMeetingLocation =
     meetingStillRelevant && typeof meetingMeta.location === 'string' ? meetingMeta.location : null;
+  const sentCount = (client.matches || []).filter((item) => item.notifiedAt).length;
+  const presentationConfirmed = (client.activities || []).some(
+    (item) => String(item.kind || '') === 'PRESENTATION_CONFIRMED',
+  );
 
   return {
     id: client.id,
@@ -146,6 +154,9 @@ export function shapeClientListItem(
     notes: client.notes,
     matchCount: client._count?.matches ?? client.matches?.length ?? 0,
     topMatchScore: top,
+    sentCount,
+    presentationConfirmed,
+    dealClosed: extras?.dealClosed === true,
     updatedAt: client.updatedAt.toISOString(),
     sellerCity: client.sellerCity,
     sellerPrice: client.sellerPrice,
