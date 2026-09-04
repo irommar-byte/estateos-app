@@ -26,6 +26,7 @@ import {
 import { portalStackKind } from "../../lib/portalActivityStacks";
 import PortalActivityStacks from "./PortalActivityStacks";
 import PortalScheduleCard from "./PortalScheduleCard";
+import { parseSellerEventProposal } from "../../lib/sellerEventStage";
 
 type Props = {
   portal: ClientPortalPayload;
@@ -63,6 +64,23 @@ function formatDate(iso: string | null | undefined) {
   });
 }
 
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toLocaleString("pl-PL", {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatMoney(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return `${Math.round(value).toLocaleString("pl-PL")} zł`;
+}
+
 export default function SellerPortalView({
   portal,
   portalToken,
@@ -92,6 +110,10 @@ export default function SellerPortalView({
   );
   const nextStep = portal.sellerNextStep;
   const decisions = portal.pendingDecisions || [];
+  const sellerEvents = portal.sellerEvents || null;
+  const confirmedAuction = sellerEvents?.auction?.event || null;
+  const confirmedOpenHouse = sellerEvents?.openHouse?.event || null;
+  const eventStage = sellerEvents?.stage || null;
 
   const respond = async (
     decisionId: number,
@@ -394,6 +416,56 @@ export default function SellerPortalView({
           </ProfileCardShell>
         ) : null}
 
+        {confirmedAuction || confirmedOpenHouse ? (
+          eventStage &&
+          eventStage.id !== "pending_approval" &&
+          eventStage.id !== "rejected" ? (
+            <ProfileCardShell
+              isDark={isDark}
+              style={{ marginBottom: 12 }}
+              faceStyle={{ padding: 16 }}
+            >
+              <Text
+                style={{
+                  color: colors.green,
+                  fontSize: 10,
+                  fontWeight: "900",
+                  letterSpacing: 0.6,
+                }}
+              >
+                WYDARZENIE SPRZEDAŻY · {eventStage.label.toUpperCase()}
+              </Text>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontWeight: "900",
+                  fontSize: 20,
+                  marginTop: 6,
+                }}
+              >
+                {confirmedAuction ? "Licytacja" : "Dzień otwarty"}
+              </Text>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontWeight: "800",
+                  fontSize: 18,
+                  marginTop: 8,
+                }}
+              >
+                {formatDateTime(
+                  confirmedAuction?.startsAt || confirmedOpenHouse?.startsAt,
+                )}
+              </Text>
+              {confirmedAuction?.startPrice != null ? (
+                <Text style={{ color: colors.secondary, marginTop: 6 }}>
+                  Cena startowa: {formatMoney(confirmedAuction.startPrice)}
+                </Text>
+              ) : null}
+            </ProfileCardShell>
+          ) : null
+        ) : null}
+
         {decisions.length > 0 ? (
           <ProfileCardShell
             isDark={isDark}
@@ -410,20 +482,85 @@ export default function SellerPortalView({
             >
               POTRZEBUJĘ TWOJEJ DECYZJI
             </Text>
-            {decisions.map((item) => (
+            {decisions.map((item) => {
+              const proposal = parseSellerEventProposal(item.payload);
+              const isEvent =
+                item.kind === "open_house" ||
+                item.kind === "auction" ||
+                Boolean(proposal);
+              return (
               <View
                 key={item.id}
-                style={[styles.decisionCard, { borderColor: colors.border }]}
+                style={[
+                  styles.decisionCard,
+                  {
+                    borderColor: isEvent ? "#FF9500" : colors.border,
+                    backgroundColor: isEvent ? "#FF950012" : "transparent",
+                  },
+                ]}
               >
-                <Text
-                  style={{
-                    color: colors.text,
-                    fontWeight: "800",
-                    fontSize: 15,
-                  }}
-                >
-                  {item.title}
-                </Text>
+                {isEvent ? (
+                  <>
+                    <Text
+                      style={{
+                        color: "#FF9500",
+                        fontSize: 10,
+                        fontWeight: "900",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      WYDARZENIE SPRZEDAŻY · DO AKCEPTACJI
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontWeight: "900",
+                        fontSize: 18,
+                        marginTop: 4,
+                      }}
+                    >
+                      {proposal?.kind === "auction" || item.kind === "auction"
+                        ? "Licytacja"
+                        : "Dzień otwarty"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontWeight: "800",
+                        fontSize: 16,
+                        marginTop: 8,
+                      }}
+                    >
+                      {formatDateTime(
+                        proposal?.startsAt ||
+                          proposal?.slots?.[0]?.startsAt ||
+                          null,
+                      ) || item.title}
+                    </Text>
+                    {proposal?.kind === "auction" &&
+                    proposal.startPrice != null ? (
+                      <Text
+                        style={{
+                          color: colors.text,
+                          fontWeight: "700",
+                          marginTop: 6,
+                        }}
+                      >
+                        Cena startowa: {formatMoney(proposal.startPrice)}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontWeight: "800",
+                      fontSize: 15,
+                    }}
+                  >
+                    {item.title}
+                  </Text>
+                )}
                 <Text
                   style={{
                     color: colors.secondary,
@@ -458,7 +595,11 @@ export default function SellerPortalView({
                   onChangeText={(value) =>
                     setCommentDrafts((prev) => ({ ...prev, [item.id]: value }))
                   }
-                  placeholder="Komentarz (opcjonalnie)"
+                  placeholder={
+                    isEvent
+                      ? "Inny termin / inna cena (opcjonalnie)"
+                      : "Komentarz (opcjonalnie)"
+                  }
                   placeholderTextColor={colors.secondary}
                   style={[
                     styles.commentInput,
@@ -496,7 +637,7 @@ export default function SellerPortalView({
                     ]}
                   >
                     <Text style={{ color: colors.text, fontWeight: "800" }}>
-                      Odrzucam
+                      {isEvent ? "Inny termin" : "Odrzucam"}
                     </Text>
                   </Pressable>
                 </View>
@@ -522,8 +663,26 @@ export default function SellerPortalView({
                     </Text>
                   </Pressable>
                 ) : null}
+                {isEvent ? (
+                  <Pressable
+                    disabled={!canInteract || busyId === item.id}
+                    onPress={() => void respond(item.id, "reject")}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.secondary,
+                        fontWeight: "700",
+                        fontSize: 12,
+                      }}
+                    >
+                      Nie teraz
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
-            ))}
+              );
+            })}
           </ProfileCardShell>
         ) : null}
 

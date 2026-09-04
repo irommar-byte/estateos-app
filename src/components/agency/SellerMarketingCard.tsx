@@ -69,7 +69,32 @@ export type SellerMarketingState = {
     clientResponse?: string | null;
     dueAt: string | null;
     createdAt: string;
+    payload?: Record<string, unknown> | null;
   }[];
+  sellerEvents?: {
+    openHouse: {
+      proposal: { id: number; title: string; status: string } | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        title?: string | null;
+      } | null;
+    };
+    auction: {
+      proposal: { id: number; title: string; status: string } | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        startPrice?: number;
+        title?: string | null;
+      } | null;
+    };
+    stage: { id: string; label: string; kind: "open_house" | "auction" | null } | null;
+  } | null;
   marketingTimeline: {
     id: number;
     kind: string;
@@ -193,7 +218,7 @@ export default function SellerMarketingCard({
     mimeType: string;
   } | null>(null);
   const [datePicker, setDatePicker] = useState<
-    "published" | "renewal" | "next" | "decision" | null
+    "published" | "renewal" | "next" | "decision" | "event" | null
   >(null);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [nextCurrent, setNextCurrent] = useState(
@@ -215,6 +240,19 @@ export default function SellerMarketingCard({
   const [decisionMessage, setDecisionMessage] = useState("");
   const [decisionKind, setDecisionKind] = useState("price");
   const [decisionDueAt, setDecisionDueAt] = useState("");
+  const [eventMode, setEventMode] = useState<"open_house" | "auction" | null>(
+    null,
+  );
+  const [eventDate, setEventDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [eventStartTime, setEventStartTime] = useState("11:00");
+  const [eventEndTime, setEventEndTime] = useState("14:00");
+  const [eventStartPrice, setEventStartPrice] = useState("");
+  const [eventReservePrice, setEventReservePrice] = useState("");
+  const [eventMessage, setEventMessage] = useState("");
   const [openSection, setOpenSection] = useState<
     "external" | "plan" | "decision" | "facebook" | "channels" | "feed" | null
   >(null);
@@ -537,6 +575,52 @@ export default function SellerMarketingCard({
       setDecisionTitle("");
       setDecisionMessage("");
       setDecisionDueAt("");
+    }
+  };
+
+  const handleProposeEvent = async () => {
+    if (!linkedOfferId) {
+      Alert.alert("Wydarzenie", "Najpierw powiąż aktywne ogłoszenie.");
+      return;
+    }
+    if (!eventMode) return;
+    if (!eventDate || !eventStartTime || !eventEndTime) {
+      Alert.alert("Wydarzenie", "Uzupełnij datę i godziny.");
+      return;
+    }
+    if (
+      eventMode === "auction" &&
+      (!eventStartPrice.trim() || Number(eventStartPrice) <= 0)
+    ) {
+      Alert.alert("Licytacja", "Podaj cenę startową.");
+      return;
+    }
+    const startsAt = new Date(`${eventDate}T${eventStartTime}:00`).toISOString();
+    const endsAt = new Date(`${eventDate}T${eventEndTime}:00`).toISOString();
+    const ok = await runAction(
+      eventMode === "auction" ? "propose_auction" : "propose_open_house",
+      {
+        startsAt,
+        endsAt,
+        startPrice:
+          eventMode === "auction" ? Number(eventStartPrice) : undefined,
+        reservePrice:
+          eventMode === "auction" && eventReservePrice.trim()
+            ? Number(eventReservePrice)
+            : undefined,
+        clientMessage: eventMessage.trim() || null,
+      },
+      "event-propose",
+    );
+    if (ok) {
+      setEventMode(null);
+      setEventMessage("");
+      setEventStartPrice("");
+      setEventReservePrice("");
+      Alert.alert(
+        "Wysłano",
+        "Propozycja czeka na akceptację klienta w panelu.",
+      );
     }
   };
 
@@ -1457,6 +1541,206 @@ export default function SellerMarketingCard({
               {busy === "next" ? "…" : "Zapisz plan"}
             </Text>
           </Pressable>
+
+          <View
+            style={[
+              styles.eventBox,
+              { borderColor: `${colors.accent}44`, backgroundColor: `${colors.accent}12` },
+            ]}
+          >
+            <Text style={{ color: colors.text, fontWeight: "800", fontSize: 13 }}>
+              Wydarzenie sprzedaży
+            </Text>
+            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, lineHeight: 16 }}>
+              Zaproponuj dzień otwarty lub licytację — klient zatwierdzi termin i warunki.
+            </Text>
+            {sellerMarketing?.sellerEvents?.stage ? (
+              <View
+                style={[
+                  styles.eventStageChip,
+                  { backgroundColor: "#FF950022", marginTop: 8 },
+                ]}
+              >
+                <Text style={{ color: "#FF9500", fontSize: 10, fontWeight: "900" }}>
+                  {(sellerMarketing.sellerEvents.stage.kind === "auction"
+                    ? "LICYTACJA"
+                    : sellerMarketing.sellerEvents.stage.kind === "open_house"
+                      ? "DZIEŃ OTWARTY"
+                      : "WYDARZENIE") +
+                    ` · ${sellerMarketing.sellerEvents.stage.label.toUpperCase()}`}
+                </Text>
+              </View>
+            ) : null}
+            {(sellerMarketing?.sellerEvents?.openHouse.proposal ||
+              sellerMarketing?.sellerEvents?.auction.proposal) ? (
+              <Text
+                style={{
+                  color: "#FF9500",
+                  fontSize: 12,
+                  fontWeight: "700",
+                  marginTop: 8,
+                }}
+              >
+                Czeka na akceptację klienta
+              </Text>
+            ) : null}
+            <View style={[styles.chips, { marginTop: 10 }]}>
+              <Pressable
+                onPress={() =>
+                  setEventMode(eventMode === "open_house" ? null : "open_house")
+                }
+                style={[
+                  styles.chip,
+                  {
+                    borderColor:
+                      eventMode === "open_house" ? colors.accent : colors.border,
+                    backgroundColor:
+                      eventMode === "open_house"
+                        ? `${colors.accent}22`
+                        : colors.input,
+                  },
+                ]}
+              >
+                <Text style={{ color: colors.text, fontSize: 11, fontWeight: "700" }}>
+                  Dzień otwarty
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() =>
+                  setEventMode(eventMode === "auction" ? null : "auction")
+                }
+                style={[
+                  styles.chip,
+                  {
+                    borderColor:
+                      eventMode === "auction" ? colors.accent : colors.border,
+                    backgroundColor:
+                      eventMode === "auction"
+                        ? `${colors.accent}22`
+                        : colors.input,
+                  },
+                ]}
+              >
+                <Text style={{ color: colors.text, fontSize: 11, fontWeight: "700" }}>
+                  Licytacja
+                </Text>
+              </Pressable>
+            </View>
+            {eventMode ? (
+              <View style={{ marginTop: 10, gap: 8 }}>
+                <Pressable
+                  onPress={() => setDatePicker("event")}
+                  style={[
+                    styles.input,
+                    styles.dateButton,
+                    { borderColor: colors.border, backgroundColor: colors.input },
+                  ]}
+                >
+                  <Ionicons name="calendar-outline" size={17} color={colors.accent} />
+                  <Text style={{ color: colors.text, flex: 1 }}>
+                    Data: {formatDateLabel(eventDate)}
+                  </Text>
+                </Pressable>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TextInput
+                    value={eventStartTime}
+                    onChangeText={setEventStartTime}
+                    placeholder="11:00"
+                    placeholderTextColor={colors.secondary}
+                    style={[
+                      styles.input,
+                      {
+                        flex: 1,
+                        color: colors.text,
+                        borderColor: colors.border,
+                        backgroundColor: colors.input,
+                      },
+                    ]}
+                  />
+                  <TextInput
+                    value={eventEndTime}
+                    onChangeText={setEventEndTime}
+                    placeholder="14:00"
+                    placeholderTextColor={colors.secondary}
+                    style={[
+                      styles.input,
+                      {
+                        flex: 1,
+                        color: colors.text,
+                        borderColor: colors.border,
+                        backgroundColor: colors.input,
+                      },
+                    ]}
+                  />
+                </View>
+                {eventMode === "auction" ? (
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <TextInput
+                      value={eventStartPrice}
+                      onChangeText={(v) =>
+                        setEventStartPrice(v.replace(/[^\d]/g, ""))
+                      }
+                      placeholder="Cena startowa"
+                      placeholderTextColor={colors.secondary}
+                      keyboardType="number-pad"
+                      style={[
+                        styles.input,
+                        {
+                          flex: 1,
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.input,
+                        },
+                      ]}
+                    />
+                    <TextInput
+                      value={eventReservePrice}
+                      onChangeText={(v) =>
+                        setEventReservePrice(v.replace(/[^\d]/g, ""))
+                      }
+                      placeholder="Rezerwa"
+                      placeholderTextColor={colors.secondary}
+                      keyboardType="number-pad"
+                      style={[
+                        styles.input,
+                        {
+                          flex: 1,
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.input,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
+                <TextInput
+                  value={eventMessage}
+                  onChangeText={setEventMessage}
+                  placeholder="Wiadomość do klienta (opcjonalnie)"
+                  placeholderTextColor={colors.secondary}
+                  multiline
+                  style={[
+                    styles.input,
+                    styles.multiline,
+                    {
+                      color: colors.text,
+                      borderColor: colors.border,
+                      backgroundColor: colors.input,
+                    },
+                  ]}
+                />
+                <Pressable
+                  disabled={Boolean(busy)}
+                  onPress={() => void handleProposeEvent()}
+                  style={[styles.secondaryBtn, { borderColor: colors.accent }]}
+                >
+                  <Text style={{ color: colors.accent, fontWeight: "800" }}>
+                    {busy === "event-propose" ? "…" : "Wyślij do akceptacji"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
         </>
       ) : null}
 
@@ -1746,7 +2030,9 @@ export default function SellerMarketingCard({
               ? renewalDate
               : datePicker === "next"
                 ? nextDueAt
-                : decisionDueAt
+                : datePicker === "event"
+                  ? eventDate
+                  : decisionDueAt
         }
         onClose={() => setDatePicker(null)}
         onSelect={(value) => {
@@ -1756,6 +2042,7 @@ export default function SellerMarketingCard({
           if (datePicker === "renewal") setRenewalDate(normalized);
           if (datePicker === "next") setNextDueAt(normalized);
           if (datePicker === "decision") setDecisionDueAt(normalized);
+          if (datePicker === "event" && normalized) setEventDate(normalized);
         }}
         isDark={isDark}
         mode="timeline"
@@ -1766,7 +2053,9 @@ export default function SellerMarketingCard({
               ? "Termin odnowienia publikacji"
               : datePicker === "next"
                 ? "Termin następnego kroku"
-                : "Termin odpowiedzi klienta"
+                : datePicker === "event"
+                  ? "Data wydarzenia"
+                  : "Termin odpowiedzi klienta"
         }
       />
 
@@ -1916,6 +2205,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
     marginTop: 8,
+  },
+  eventBox: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  eventStageChip: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   feedRow: {
     flexDirection: "row",

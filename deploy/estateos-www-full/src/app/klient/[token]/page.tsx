@@ -27,8 +27,9 @@ import SellerPortalCollaboration from "@/components/portal/SellerPortalCollabora
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { buyerOnboardingStorageKey, isBuyerOnboardingDismissed } from "@/lib/clientPortalPath";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
-import type { ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
+import { collectAgentOfferReplies, type ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
 import { initialOpenMatchIds } from "@/lib/crm/clientPortalOfferBoard";
+import ClientPortalAgentReplyInbox from "@/components/portal/ClientPortalAgentReplyInbox";
 
 type SearchCriteria = {
   location: string;
@@ -164,11 +165,37 @@ type PortalData = {
   } | null;
   pendingDecisions?: Array<{
     id: number;
+    kind?: string;
     title: string;
     clientMessage: string;
     clientResponse?: string | null;
     dueAt: string | null;
+    payload?: Record<string, unknown> | null;
   }>;
+  sellerEvents?: {
+    openHouse: {
+      proposal: { id: number; title: string; status: string } | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        title?: string | null;
+      } | null;
+    };
+    auction: {
+      proposal: { id: number; title: string; status: string } | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        startPrice: number;
+        title?: string | null;
+      } | null;
+    };
+    stage: { id: string; label: string; kind: "open_house" | "auction" | null } | null;
+  } | null;
   acquisition: {
     status: string;
     currentStep: number;
@@ -353,6 +380,21 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     setOpenMatchIds((current) => (current.includes(matchId) ? current : [...current, matchId]));
   };
 
+  const ackAgentReply = async (matchId: number) => {
+    if (!token) return;
+    const res = await fetch(`/api/crm/client-portal/${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "ack_agent_reply", matchId }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(String(json?.error || "Nie udało się potwierdzić odczytu."));
+      return;
+    }
+    await load({ silent: true });
+  };
+
   const submitFeedback = async (
     matchId: number,
     payload: { sentiment: string | null; liked: string; disliked: string; phrases: string[]; note: string },
@@ -476,6 +518,20 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           token={token}
           checkback={portal.pendingCheckback}
           onDone={() => void load()}
+        />
+      ) : null}
+
+      {portal.type === "BUYER" && token ? (
+        <ClientPortalAgentReplyInbox
+          token={token}
+          replies={collectAgentOfferReplies(portal.matches)}
+          onOpenOffer={(matchId) => {
+            ensureMatchOpen(matchId);
+            window.setTimeout(() => {
+              document.getElementById(`portal-match-${matchId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 80);
+          }}
+          onDone={() => void load({ silent: true })}
         />
       ) : null}
 
@@ -731,6 +787,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           activeChannels={portal.activeChannels || []}
           sellerNextStep={portal.sellerNextStep || null}
           pendingDecisions={portal.pendingDecisions || []}
+          sellerEvents={portal.sellerEvents || null}
+          listingHref={
+            portal.listing?.id ? `/oferta/${portal.listing.id}` : null
+          }
           onDone={() => void load()}
         />
       ) : null}
@@ -753,6 +813,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             onToggleMatch={toggleMatch}
             onEnsureMatchOpen={ensureMatchOpen}
             onSubmit={(matchId, payload) => submitFeedback(matchId, payload)}
+            onAckReply={ackAgentReply}
             prefillFor={{
               matchId: focusMatchId || undefined,
               offerId: focusOfferId || undefined,

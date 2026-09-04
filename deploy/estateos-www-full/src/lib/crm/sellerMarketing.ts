@@ -118,6 +118,7 @@ export type ClientDecisionPayload = {
   dueAt: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  payload?: Record<string, unknown> | null;
 };
 
 function escapeHtml(value: string) {
@@ -763,6 +764,7 @@ export async function createClientDecisionRequest(params: {
   title: string;
   clientMessage: string;
   dueAt?: Date | null;
+  payload?: Record<string, unknown> | null;
 }) {
   const title = params.title.trim();
   const clientMessage = params.clientMessage.trim();
@@ -796,6 +798,7 @@ export async function createClientDecisionRequest(params: {
       title: title.slice(0, 255),
       clientMessage,
       dueAt: params.dueAt || null,
+      payload: (params.payload as Prisma.InputJsonValue | undefined) || undefined,
       status: "PENDING",
     },
   });
@@ -821,6 +824,7 @@ export function shapeClientDecision(row: {
   dueAt: Date | null;
   createdAt: Date;
   resolvedAt: Date | null;
+  payload?: unknown;
 }): ClientDecisionPayload {
   return {
     id: row.id,
@@ -832,6 +836,10 @@ export function shapeClientDecision(row: {
     dueAt: row.dueAt?.toISOString() || null,
     createdAt: row.createdAt.toISOString(),
     resolvedAt: row.resolvedAt?.toISOString() || null,
+    payload:
+      row.payload && typeof row.payload === "object" && !Array.isArray(row.payload)
+        ? (row.payload as Record<string, unknown>)
+        : null,
   };
 }
 
@@ -898,6 +906,7 @@ export async function respondToClientDecision(params: {
         decisionId: decision.id,
         status,
         visibleToClient: false,
+        kind: decision.kind,
       },
     },
   });
@@ -908,7 +917,30 @@ export async function respondToClientDecision(params: {
     updated,
   );
 
-  return { ok: true as const, decision: shapeClientDecision(updated) };
+  let fulfillError: string | null = null;
+  if (status === "APPROVED" && (decision.kind === "open_house" || decision.kind === "auction")) {
+    const { fulfillSellerEventProposal } = await import("@/lib/crm/sellerEventProposals");
+    const fulfilled = await fulfillSellerEventProposal({
+      clientId: params.clientId,
+      decision: {
+        id: decision.id,
+        agencyUserId: decision.agencyUserId,
+        kind: decision.kind,
+        title: decision.title,
+        payload: decision.payload,
+      },
+    });
+    if (!fulfilled.ok) {
+      fulfillError = fulfilled.error;
+    }
+  }
+
+  const shaped = shapeClientDecision(updated);
+  return {
+    ok: true as const,
+    decision: shaped,
+    fulfillError,
+  };
 }
 
 async function sendNotificationToAgent(
@@ -997,6 +1029,10 @@ export const SELLER_LISTING_PATH_JOURNEY_KINDS = [
   "PRESENTATION_CHANGE",
   "PRESENTATION_CONFIRMED",
   "LISTING_LINKED",
+  "OPEN_HOUSE_PROPOSAL",
+  "OPEN_HOUSE_CONFIRMED",
+  "AUCTION_PROPOSAL",
+  "AUCTION_CONFIRMED",
 ] as const;
 
 export type SellerListingPathItem = {
@@ -1117,7 +1153,7 @@ export async function loadSellerPortalMarketing(
   clientId: number,
   options: { visibleOnly?: boolean } = {},
 ) {
-  const [activities, nextStep, pendingDecisions, client] = await Promise.all([
+  const [activities, nextStep, pendingDecisions, client, sellerEvents] = await Promise.all([
     prisma.agencyClientActivity.findMany({
       where: { clientId, kind: { in: [...MARKETING_KINDS] } },
       orderBy: { createdAt: "desc" },
@@ -1151,6 +1187,9 @@ export async function loadSellerPortalMarketing(
         },
       },
     }),
+    import("@/lib/crm/sellerEventProposals").then((mod) =>
+      mod.loadSellerEventsBundle(clientId),
+    ),
   ]);
 
   const allTimeline = activities.map(shapeMarketingTimelineItem);
@@ -1186,6 +1225,7 @@ export async function loadSellerPortalMarketing(
         ? shapeSellerNextStep(nextStep)
         : null,
     pendingDecisions: pendingDecisions.map(shapeClientDecision),
+    sellerEvents,
   };
 }
 

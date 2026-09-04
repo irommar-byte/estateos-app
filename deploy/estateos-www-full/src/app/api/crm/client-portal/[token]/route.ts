@@ -362,6 +362,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           pendingDecisions: [],
           marketingTimeline: [],
           facebookGroups: [],
+          sellerEvents: null,
         }))
       : null;
 
@@ -498,6 +499,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       activeChannels: sellerMarketing?.activeChannels || [],
       sellerNextStep: sellerMarketing?.sellerNextStep || null,
       pendingDecisions: sellerMarketing?.pendingDecisions || [],
+      sellerEvents: sellerMarketing?.sellerEvents || null,
       acquisition: client.acquisition
         ? {
             status: client.acquisition.status,
@@ -603,7 +605,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
       comment: body.comment != null ? String(body.comment) : null,
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
-    return NextResponse.json({ success: true, decision: result.decision });
+    return NextResponse.json({
+      success: true,
+      decision: result.decision,
+      fulfillError: result.fulfillError || null,
+    });
   }
 
   if (action === 'release_first_match') {
@@ -714,6 +720,37 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ success: true, acknowledgedAt: acknowledgedAt.toISOString() });
   }
 
+  if (action === 'ack_agent_reply') {
+    if (client.type !== 'BUYER') {
+      return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
+    }
+    const matchId = Number(body.matchId);
+    if (!Number.isFinite(matchId) || matchId <= 0) {
+      return NextResponse.json({ error: 'Nie znaleziono odpowiedzi.' }, { status: 400 });
+    }
+    const match = await prisma.agencyClientMatch.findFirst({
+      where: { id: matchId, clientId: client.id },
+      select: { id: true, clientFeedback: true },
+    });
+    if (!match) {
+      return NextResponse.json({ error: 'Nie znaleziono oferty.' }, { status: 404 });
+    }
+    const existing = parseClientOfferFeedback(match.clientFeedback);
+    if (!existing.agentReply) {
+      return NextResponse.json({ error: 'Brak odpowiedzi agenta.' }, { status: 404 });
+    }
+    await prisma.agencyClientMatch.update({
+      where: { id: match.id },
+      data: {
+        clientFeedback: serializeClientOfferFeedback({
+          ...existing,
+          agentReplyReadAt: existing.agentReplyReadAt || new Date().toISOString(),
+        }),
+      },
+    });
+    return NextResponse.json({ success: true });
+  }
+
   if (action === 'submit_feedback') {
     if (client.type !== 'BUYER') {
       return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
@@ -738,7 +775,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: 'Nie znaleziono dopasowania.' }, { status: 404 });
     }
 
-    const stored = serializeClientOfferFeedback(parsed);
+    const existingFeedback = parseClientOfferFeedback(match.clientFeedback);
+    const stored = serializeClientOfferFeedback({
+      ...parsed,
+      agentReply: existingFeedback.agentReply,
+      agentReplyAt: existingFeedback.agentReplyAt,
+      agentReplyReadAt: existingFeedback.agentReplyReadAt,
+    });
     const agentSummary = formatClientFeedbackForAgent(stored);
     await prisma.$transaction([
       prisma.agencyClientMatch.update({

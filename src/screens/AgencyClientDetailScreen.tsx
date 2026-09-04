@@ -52,6 +52,10 @@ import IntelligenceAssistantCard, {
 } from '../components/agency/IntelligenceAssistantCard';
 import SellerMarketingCard from '../components/agency/SellerMarketingCard';
 import ClientPersonHub from '../components/agency/ClientPersonHub';
+import ClientPersonCard from '../components/agency/ClientPersonCard';
+import OfferProjectCard from '../components/agency/OfferProjectCard';
+import { fetchPublicOfferCover } from '../lib/offerCoverUrl';
+import { resolveMediaUrl } from '../utils/userAvatar';
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   type IntelligenceLocks,
@@ -106,6 +110,8 @@ import {
 } from '../lib/officeOfferStatusUi';
 import { fetchOfficeReviewCapability, postOfficeReviewAction } from '../services/agencyCompanyService';
 import { LAND_REGISTRY_REGEX } from '../utils/landRegistry';
+import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBar';
+import { sellerPipelineFromClientDetail, buyerPipelineFromClientDetail } from '../lib/sellerClientPipeline';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -380,6 +386,8 @@ export default function AgencyClientDetailScreen() {
   const [wholePropertyScan, setWholePropertyScan] = useState<WholePropertyScan | null>(null);
   const [chatDraft, setChatDraft] = useState('');
   const [pendingChatFile, setPendingChatFile] = useState<{ uri: string; name: string; mimeType: string } | null>(null);
+  const [taskReplyDrafts, setTaskReplyDrafts] = useState<Record<string, string>>({});
+  const [taskReplyingId, setTaskReplyingId] = useState<string | null>(null);
   const [chatFocused, setChatFocused] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [crmLevel, setCrmLevel] = useState<'person' | 'lane' | 'project'>(
@@ -390,6 +398,7 @@ export default function AgencyClientDetailScreen() {
   );
   const [radarExpanded, setRadarExpanded] = useState(false);
   const [presentationExpanded, setPresentationExpanded] = useState(false);
+  const [offerCovers, setOfferCovers] = useState<Record<number, string>>({});
   const chatScrollRef = useRef<ScrollView | null>(null);
   const chatPinnedToEndRef = useRef(true);
   const [presentationAt, setPresentationAt] = useState('');
@@ -1073,6 +1082,8 @@ export default function AgencyClientDetailScreen() {
               linkedOfferId: client.linkedOfferId,
               matchCount: 0,
               updatedAt: client.updatedAt,
+              createdAt: client.updatedAt,
+              coverImageUrl: null,
             } satisfies ClientPersonProject,
           ]
         : [],
@@ -1089,6 +1100,8 @@ export default function AgencyClientDetailScreen() {
               linkedOfferId: null,
               matchCount: client.matchCount || 0,
               updatedAt: client.updatedAt,
+              createdAt: client.updatedAt,
+              coverImageUrl: null,
             } satisfies ClientPersonProject,
           ]
         : [],
@@ -1159,7 +1172,60 @@ export default function AgencyClientDetailScreen() {
   ]
     .filter(Boolean)
     .join(' · ');
-  const clientInitials = `${(client?.firstName || '').trim().charAt(0)}${(client?.lastName || '').trim().charAt(0)}`.toUpperCase() || 'K';
+  const pipelineStages = useMemo(() => {
+    if (!client) return [];
+    if (client.type === 'SELLER') return sellerPipelineFromClientDetail(client, record, linkedOffer?.status || null);
+    return buyerPipelineFromClientDetail(client);
+  }, [client, record, linkedOffer]);
+
+  const currentProject =
+    relatedProjects.selling.find((item) => item.id === clientId) ||
+    relatedProjects.buying.find((item) => item.id === clientId) ||
+    null;
+
+  const offerCoverUrl = useMemo(() => {
+    const offerId = linkedOffer?.id || client?.linkedOfferId || currentProject?.linkedOfferId || null;
+    if (!offerId) return null;
+    return (
+      resolveMediaUrl(linkedOffer?.imageUrl) ||
+      resolveMediaUrl(currentProject?.coverImageUrl) ||
+      offerCovers[offerId] ||
+      null
+    );
+  }, [linkedOffer, client?.linkedOfferId, currentProject, offerCovers]);
+
+  useEffect(() => {
+    const ids = new Set<number>();
+    const projects = [
+      ...(client?.relatedProjects?.selling || relatedProjects.selling),
+      ...(client?.relatedProjects?.buying || relatedProjects.buying),
+    ];
+    for (const project of projects) {
+      if (project.linkedOfferId && !resolveMediaUrl(project.coverImageUrl)) ids.add(project.linkedOfferId);
+    }
+    const extraId = linkedOffer?.id || client?.linkedOfferId || null;
+    if (extraId && !resolveMediaUrl(linkedOffer?.imageUrl)) ids.add(extraId);
+    const pending = [...ids].filter((id) => !offerCovers[id]);
+    if (!pending.length) return;
+    let cancelled = false;
+    void Promise.all(pending.map(async (id) => [id, await fetchPublicOfferCover(id)] as const)).then((rows) => {
+      if (cancelled) return;
+      setOfferCovers((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, url] of rows) {
+          if (url && next[id] !== url) {
+            next[id] = url;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, linkedOffer, relatedProjects.buying, relatedProjects.selling, offerCovers]);
 
   const saveBuyerRadar = async (enabled: boolean, filters = buyerFilters) => {
     if (!token) return false;
@@ -1379,167 +1445,22 @@ export default function AgencyClientDetailScreen() {
             <ActivityIndicator color="#34C759" style={{ marginTop: 40 }} />
           ) : (
             <>
-              {/* Client Info Banner */}
-              <View
-                style={[
-                  styles.card,
-                  { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden', padding: 0 },
-                ]}
-              >
-                <LinearGradient
-                  colors={
-                    isDark
-                      ? ['rgba(52,199,89,0.22)', 'rgba(52,199,89,0.06)', colors.card]
-                      : ['rgba(52,199,89,0.18)', 'rgba(52,199,89,0.05)', '#FFFFFF']
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{ padding: 16 }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                    <View
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 18,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: 'rgba(52,199,89,0.2)',
-                        borderWidth: 1,
-                        borderColor: 'rgba(52,199,89,0.35)',
-                      }}
-                    >
-                      <Text style={{ color: colors.accent, fontSize: 20, fontWeight: '900', letterSpacing: 0.4 }}>
-                        {clientInitials}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <View
-                          style={{
-                            alignSelf: 'flex-start',
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
-                            borderRadius: 999,
-                            backgroundColor: 'rgba(52,199,89,0.16)',
-                          }}
-                        >
-                          <Text style={{ color: colors.accent, fontSize: 10, fontWeight: '900', letterSpacing: 0.8 }}>
-                            {client.type === 'SELLER' ? 'SPRZEDAJĄCY' : 'KUPUJĄCY'}
-                          </Text>
-                        </View>
-                        {client.portalUrl ? (
-                          <Pressable
-                            onPress={() =>
-                              Linking.openURL(
-                                client.portalUrl!.startsWith('http')
-                                  ? client.portalUrl!
-                                  : `https://estateos.pl${client.portalUrl}`
-                              )
-                            }
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 4,
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
-                              borderRadius: 999,
-                              backgroundColor: colors.card,
-                              borderWidth: 1,
-                              borderColor: colors.border,
-                            }}
-                          >
-                            <Ionicons name="open-outline" size={13} color="#007AFF" />
-                            <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 11 }}>Panel</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                      <Text style={{ color: colors.text, fontSize: 22, fontWeight: '900', marginTop: 6 }} numberOfLines={1}>
-                        {client.firstName} {client.lastName}
-                      </Text>
-                      <View style={{ marginTop: 8, gap: 6 }}>
-                        {client.phone ? (
-                          <Pressable
-                            onPress={() => Linking.openURL(`tel:${client.phone}`)}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                          >
-                            <Ionicons name="call-outline" size={14} color={colors.secondary} />
-                            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>
-                              {formatPhoneNumber(client.phone)}
-                            </Text>
-                          </Pressable>
-                        ) : null}
-                        <Pressable
-                          onPress={() => (client.email ? Linking.openURL(`mailto:${client.email}`) : undefined)}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                        >
-                          <Ionicons name="mail-outline" size={14} color={colors.secondary} />
-                          <Text style={{ color: colors.secondary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
-                            {client.email || 'Brak e-maila'}
-                          </Text>
-                        </Pressable>
-                        {client.pesel ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Ionicons name="card-outline" size={14} color={colors.secondary} />
-                            <Text style={{ color: colors.secondary, fontSize: 13, fontWeight: '600' }}>
-                              PESEL {client.pesel}
-                            </Text>
-                          </View>
-                        ) : null}
-                        {clientKwNumbers.map((item) => (
-                          <Pressable
-                            key={item.kw}
-                            onPress={() => setEkwViewerKw(item.kw)}
-                            hitSlop={8}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                          >
-                            <Ionicons
-                              name={item.verified ? 'shield-checkmark' : 'document-text-outline'}
-                              size={14}
-                              color={item.verified ? '#34C759' : colors.secondary}
-                            />
-                            <Text
-                              style={{
-                                color: item.verified ? colors.text : colors.secondary,
-                                fontSize: 13,
-                                fontWeight: '700',
-                                fontVariant: ['tabular-nums'],
-                              }}
-                            >
-                              KW {item.kw}
-                            </Text>
-                            <Ionicons name="open-outline" size={13} color="#007AFF" />
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-                    <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                      <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>WYSŁANE</Text>
-                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>{sentMatches.length}</Text>
-                    </View>
-                    <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                      <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>Z OPINIĄ</Text>
-                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>{reactedMatches.length}</Text>
-                    </View>
-                    <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                      <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>CZAT</Text>
-                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>{portalMessages.length}</Text>
-                    </View>
-                  </View>
-
-                  {client.nextStep ? (
-                    <Pressable onPress={runNextStep} style={[styles.primary, { marginTop: 14, minHeight: 52, height: undefined, paddingVertical: 10 }]}>
-                      <Text style={styles.primaryText}>{client.nextStep.label}</Text>
-                      <Text style={{ color: '#052e16', fontSize: 11, marginTop: 3, opacity: 0.8, textAlign: 'center' }} numberOfLines={2}>
-                        {client.nextStep.hint}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </LinearGradient>
-              </View>
+              <ClientPersonCard
+                firstName={client.firstName}
+                lastName={client.lastName}
+                type={client.type}
+                phone={client.phone}
+                email={client.email}
+                pesel={client.pesel}
+                kwNumbers={clientKwNumbers}
+                sentCount={sentMatches.length}
+                opinionCount={reactedMatches.length}
+                chatCount={portalMessages.length}
+                portalUrl={client.portalUrl}
+                colors={colors}
+                isDark={isDark}
+                onOpenKw={setEkwViewerKw}
+              />
 
               {crmLevel !== 'project' ? (
                 <ClientPersonHub
@@ -1549,6 +1470,7 @@ export default function AgencyClientDetailScreen() {
                   lane={crmLane}
                   busy={busy === 'project'}
                   colors={colors}
+                  coverOverrides={offerCovers}
                   onOpenLane={(next) => {
                     setCrmLane(next);
                     setCrmLevel('lane');
@@ -1562,6 +1484,70 @@ export default function AgencyClientDetailScreen() {
                 />
               ) : (
               <>
+              {client.type === 'SELLER' ? (
+                <OfferProjectCard
+                  title={
+                    linkedOffer?.title?.trim() ||
+                    currentProject?.title ||
+                    'Oferta w przygotowaniu'
+                  }
+                  offerId={linkedOffer?.id || client.linkedOfferId}
+                  acquiredAt={currentProject?.createdAt || record?.signedAt || client.updatedAt}
+                  statusLabel={linkedOffer ? offerUiStatus.label : currentProject?.statusLabel || 'W przygotowaniu'}
+                  statusColor={linkedOffer ? officeOfferStatusColor(offerUiStatus.key, isDark) : colors.accent}
+                  eventStageLabel={
+                    client.sellerMarketing?.sellerEvents?.stage
+                      ? `${
+                          client.sellerMarketing.sellerEvents.stage.kind === 'auction'
+                            ? 'Licytacja'
+                            : client.sellerMarketing.sellerEvents.stage.kind === 'open_house'
+                              ? 'Dzień otwarty'
+                              : 'Wydarzenie'
+                        } · ${client.sellerMarketing.sellerEvents.stage.label}`
+                      : currentProject?.eventStage
+                        ? `${
+                            currentProject.eventStage.kind === 'auction'
+                              ? 'Licytacja'
+                              : currentProject.eventStage.kind === 'open_house'
+                                ? 'Dzień otwarty'
+                                : 'Wydarzenie'
+                          } · ${currentProject.eventStage.label}`
+                        : null
+                  }
+                  eventStageColor="#FF9500"
+                  coverUrl={offerCoverUrl}
+                  emptyHint="Po zamknięciu pozysku powstanie szkic ogłoszenia z głównym zdjęciem."
+                  colors={colors}
+                  isDark={isDark}
+                  onPress={
+                    linkedOffer?.id || client.linkedOfferId
+                      ? () =>
+                          navigation.navigate('OfferDetail', {
+                            offerId: linkedOffer?.id || client.linkedOfferId,
+                          })
+                      : undefined
+                  }
+                />
+              ) : (
+                <OfferProjectCard
+                  title={currentProject?.title || 'Poszukiwanie nieruchomości'}
+                  acquiredAt={currentProject?.createdAt || client.updatedAt}
+                  statusLabel={currentProject?.statusLabel || 'Radar'}
+                  statusColor="#FF9500"
+                  kicker="Poszukiwanie"
+                  placeholderIcon="search-outline"
+                  emptyHint={currentProject?.subtitle || 'Kryteria, radar i dopasowania w tym projekcie.'}
+                  colors={colors}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* ═══ PIPELINE BAR ═══ */}
+              {pipelineStages.length > 0 ? (
+                <SellerClientPipelineBar stages={pipelineStages} isDark={isDark} />
+              ) : null}
+
+              {/* ═══ SECTION: WYMAGA REAKCJI ═══ */}
               {client.type === 'BUYER' && buyerAgentTasks.length ? (
                 <View
                   style={[
@@ -1595,7 +1581,10 @@ export default function AgencyClientDetailScreen() {
                     </View>
                   </View>
 
-                  {buyerAgentTasks.slice(0, 3).map((task) => (
+                  {buyerAgentTasks.slice(0, 5).map((task) => {
+                    const replyDraft = taskReplyDrafts[task.id] || '';
+                    const isReplying = taskReplyingId === task.id;
+                    return (
                     <View
                       key={task.id}
                       style={{
@@ -1616,6 +1605,78 @@ export default function AgencyClientDetailScreen() {
                       <Text style={{ color: colors.secondary, fontSize: 10, marginTop: 6 }}>
                         {new Date(task.createdAt).toLocaleString('pl-PL')}
                       </Text>
+
+                      {/* Inline reply */}
+                      {isReplying ? (
+                        <View style={{ marginTop: 10, gap: 8 }}>
+                          <TextInput
+                            value={replyDraft}
+                            onChangeText={(text) => setTaskReplyDrafts((prev) => ({ ...prev, [task.id]: text }))}
+                            placeholder="Twoja odpowiedź do klienta…"
+                            placeholderTextColor={colors.secondary}
+                            multiline
+                            style={{
+                              backgroundColor: colors.input,
+                              color: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              borderRadius: 12,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              fontSize: 14,
+                              minHeight: 60,
+                              maxHeight: 140,
+                              textAlignVertical: 'top',
+                            }}
+                          />
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <Pressable
+                              disabled={!replyDraft.trim() || busy === `reply_${task.id}`}
+                              onPress={async () => {
+                                if (!token || !replyDraft.trim()) return;
+                                setBusy(`reply_${task.id}`);
+                                const matchId =
+                                  task.matchId ||
+                                  client.matches.find((item) => item.offer.id === task.offerId)?.id ||
+                                  0;
+                                const res = await postAgencyClientAction(token, clientId, {
+                                  action: 'reply_to_offer_feedback',
+                                  matchId,
+                                  offerId: task.offerId,
+                                  reply: replyDraft.trim(),
+                                  activityId: task.activityId,
+                                });
+                                setBusy('');
+                                if (!res.ok) {
+                                  Alert.alert('Odpowiedź', res.message);
+                                  return;
+                                }
+                                setTaskReplyDrafts((prev) => ({ ...prev, [task.id]: '' }));
+                                setTaskReplyingId(null);
+                                void load();
+                              }}
+                              style={[styles.taskButton, {
+                                backgroundColor: '#FF9500',
+                                borderColor: '#FF9500',
+                                flex: 1,
+                                opacity: !replyDraft.trim() || busy === `reply_${task.id}` ? 0.5 : 1,
+                              }]}
+                            >
+                              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>
+                                {busy === `reply_${task.id}` ? 'Wysyłam…' : 'Wyślij odpowiedź'}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => setTaskReplyingId(null)}
+                              style={[styles.taskButton, { backgroundColor: colors.input, borderColor: colors.border }]}
+                            >
+                              <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '900' }}>Anuluj</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
+
+                      {!isReplying ? (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                         {task.offerId ? (
                           <Pressable
@@ -1625,6 +1686,12 @@ export default function AgencyClientDetailScreen() {
                             <Text style={{ color: colors.text, fontSize: 11, fontWeight: '900' }}>Otwórz ofertę</Text>
                           </Pressable>
                         ) : null}
+                        <Pressable
+                          onPress={() => setTaskReplyingId(task.id)}
+                          style={[styles.taskButton, { backgroundColor: '#FF9500', borderColor: '#FF9500' }]}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>Odpowiedz</Text>
+                        </Pressable>
                         {task.kind === 'viewing' && task.offerId ? (
                           <Pressable
                             onPress={() => {
@@ -1635,14 +1702,7 @@ export default function AgencyClientDetailScreen() {
                           >
                             <Text style={{ color: '#052e16', fontSize: 11, fontWeight: '900' }}>Umów prezentację</Text>
                           </Pressable>
-                        ) : (
-                          <Pressable
-                            onPress={() => setChatExpanded(true)}
-                            style={[styles.taskButton, { backgroundColor: colors.input, borderColor: colors.border }]}
-                          >
-                            <Text style={{ color: colors.text, fontSize: 11, fontWeight: '900' }}>Otwórz czat</Text>
-                          </Pressable>
-                        )}
+                        ) : null}
                         <Pressable
                           disabled={busy === 'resolve_buyer_task'}
                           onPress={() => void resolveBuyerAgentTask(task.activityId)}
@@ -1658,12 +1718,14 @@ export default function AgencyClientDetailScreen() {
                           <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '900' }}>Załatwione</Text>
                         </Pressable>
                       </View>
+                      ) : null}
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               ) : null}
 
-              {/* Acquisition Card (For Sellers) */}
+              {/* ═══ SECTION: POZYSKANIE ═══ */}
               {client.type === 'SELLER' && form ? (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '900', letterSpacing: 1.2, textAlign: 'center' }}>
@@ -2381,6 +2443,7 @@ export default function AgencyClientDetailScreen() {
               ) : null}
 
 
+              {/* ═══ SECTION: WSPÓŁPRACA / PREZENTACJE ═══ */}
               <View
                 style={[
                   styles.card,
@@ -2638,6 +2701,7 @@ export default function AgencyClientDetailScreen() {
 
               </View>
 
+              {/* ═══ SECTION: LIVE CHAT ═══ */}
               <View
                 style={[
                   styles.card,
@@ -2901,31 +2965,13 @@ export default function AgencyClientDetailScreen() {
                 ) : null}
               </View>
 
-              {/* Offer Creation / Link Section for Sellers */}
-              {client.type === 'SELLER' ? (
+              {/* ═══ SECTION: OFERTA NIERUCHOMOŚCI ═══ */}
+              {client.type === 'SELLER' && !client.linkedOfferId ? (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
                     OFERTA NIERUCHOMOŚCI
                   </Text>
-                  {client.linkedOfferId ? (
-                    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>
-                          Oferta #{client.linkedOfferId}
-                        </Text>
-                        <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2, fontWeight: '700' }}>
-                          Szkic niepubliczny — klient zobaczy go po zamknięciu pozysku
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => navigation.navigate('OfferDetail', { offerId: client.linkedOfferId })}
-                        style={{ backgroundColor: colors.bg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
-                      >
-                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>Zobacz ofertę</Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <View style={{ marginTop: 8 }}>
+                  <View style={{ marginTop: 8 }}>
                       <Text style={{ color: colors.secondary, fontSize: 13 }}>
                         Brak szkicu oferty. Po podpisie i wysłaniu kopii powstanie niepubliczny szkic do akceptacji.
                       </Text>
@@ -2960,10 +3006,10 @@ export default function AgencyClientDetailScreen() {
                         </Text>
                       ) : null}
                     </View>
-                  )}
                 </View>
               ) : null}
 
+              {/* ═══ SECTION: PROMOCJA I DYSTRYBUCJA ═══ */}
               {client.type === 'SELLER' && token ? (
                 <SellerMarketingCard
                   clientId={clientId}
@@ -2978,7 +3024,7 @@ export default function AgencyClientDetailScreen() {
                 />
               ) : null}
 
-              {/* Dedicated Seller Buyer Radar Section */}
+              {/* ═══ SECTION: RADAR ═══ */}
               <View
                 style={[
                   styles.card,
@@ -3265,8 +3311,8 @@ const styles = StyleSheet.create({
     minWidth: 64,
   },
   chatThread: {
-    height: 268,
-    overflow: 'hidden',
+    maxHeight: 480,
+    flexGrow: 1,
   },
   chatThreadContent: {
     paddingHorizontal: 16,

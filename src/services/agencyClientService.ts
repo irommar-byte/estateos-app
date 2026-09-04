@@ -130,7 +130,32 @@ export type SellerMarketingBundle = {
     clientResponse?: string | null;
     dueAt: string | null;
     createdAt: string;
+    payload?: Record<string, unknown> | null;
   }[];
+  sellerEvents?: {
+    openHouse: {
+      proposal: { id: number; title: string; status: string } | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        title: string | null;
+      } | null;
+    };
+    auction: {
+      proposal: { id: number; title: string; status: string } | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        startPrice: number;
+        title: string | null;
+      } | null;
+    };
+    stage: { id: string; label: string; kind: 'open_house' | 'auction' | null } | null;
+  } | null;
   marketingTimeline: {
     id: number;
     kind: string;
@@ -245,10 +270,13 @@ export type ClientPersonProject = {
   title: string;
   subtitle: string;
   statusLabel: string;
+  eventStage?: { id: string; label: string; kind: 'open_house' | 'auction' | null } | null;
   portalUnreadCount: number;
   linkedOfferId: number | null;
   matchCount: number;
   updatedAt: string;
+  createdAt: string;
+  coverImageUrl: string | null;
 };
 
 export type AcquisitionFormData = {
@@ -410,7 +438,13 @@ export async function fetchAcquisition(token: string, clientId: number) {
     portalUrl: json.portalUrl as string | null,
     linkedOfferId: json.linkedOfferId != null ? Number(json.linkedOfferId) : null,
     linkedOffer: json.linkedOffer as
-      | { id: number; status?: string | null; officeReviewStatus?: string | null; title?: string | null }
+      | {
+          id: number;
+          status?: string | null;
+          officeReviewStatus?: string | null;
+          title?: string | null;
+          imageUrl?: string | null;
+        }
       | null
       | undefined,
   };

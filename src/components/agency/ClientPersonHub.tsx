@@ -1,7 +1,18 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import type { ClientPersonProject } from '../../services/agencyClientService';
+import { resolveMediaUrl } from '../../utils/userAvatar';
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
 export default function ClientPersonHub({
   selling,
@@ -14,6 +25,7 @@ export default function ClientPersonHub({
   onBackToPerson,
   onOpenProject,
   onAddProject,
+  coverOverrides,
 }: {
   selling: ClientPersonProject[];
   buying: ClientPersonProject[];
@@ -25,6 +37,7 @@ export default function ClientPersonHub({
   onBackToPerson: () => void;
   onOpenProject: (projectId: number) => void;
   onAddProject: (type: 'BUYER' | 'SELLER') => void;
+  coverOverrides?: Record<number, string>;
 }) {
   if (view === 'lane' && lane) {
     const isSell = lane === 'SELL';
@@ -34,7 +47,7 @@ export default function ClientPersonHub({
         <Pressable onPress={onBackToPerson} hitSlop={10}>
           <Text style={{ color: '#34C759', fontWeight: '800', fontSize: 13 }}>← Karty klienta</Text>
         </Pressable>
-        <Text style={{ color: isSell ? '#34C759' : '#5AC8FA', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }}>
+        <Text style={{ color: isSell ? '#34C759' : '#FF9500', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }}>
           {isSell ? 'SPRZEDAJE' : 'KUPUJE'}
         </Text>
         <Text style={{ color: colors.text, fontSize: 22, fontWeight: '900' }}>
@@ -45,20 +58,60 @@ export default function ClientPersonHub({
             ? 'Każda nieruchomość to osobny projekt: umowa, ogłoszenie, promocje i live chat.'
             : 'Każde poszukiwanie ma własne kryteria, radar i live chat.'}
         </Text>
-        {items.map((item) => (
-          <Pressable
-            key={item.id}
-            onPress={() => onOpenProject(item.id)}
-            style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>{item.title}</Text>
-            <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>{item.subtitle}</Text>
-            <Text style={{ color: colors.accent, fontSize: 10, fontWeight: '900', marginTop: 8 }}>
-              {item.statusLabel.toUpperCase()}
-              {item.portalUnreadCount ? ` · CZAT ${item.portalUnreadCount}` : ''}
-            </Text>
-          </Pressable>
-        ))}
+        {items.map((item) => {
+          const cover =
+            resolveMediaUrl(item.coverImageUrl) ||
+            (item.linkedOfferId ? coverOverrides?.[item.linkedOfferId] : null);
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => onOpenProject(item.id)}
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                {cover ? (
+                  <Image
+                    source={{ uri: cover }}
+                    style={styles.thumbnail}
+                    contentFit="cover"
+                    recyclingKey={`hub-${item.id}`}
+                  />
+                ) : (
+                  <View style={[styles.thumbnail, styles.placeholderThumb, { backgroundColor: colors.border }]}>
+                    <Ionicons name={isSell ? 'home-outline' : 'search-outline'} size={20} color={colors.secondary} />
+                  </View>
+                )}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: '800' }} numberOfLines={2}>{item.title}</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 3 }} numberOfLines={1}>{item.subtitle}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                    <Text style={{ color: colors.accent, fontSize: 10, fontWeight: '900' }}>
+                      {item.statusLabel.toUpperCase()}
+                      {item.portalUnreadCount ? ` · CZAT ${item.portalUnreadCount}` : ''}
+                    </Text>
+                    {item.eventStage ? (
+                      <Text style={{ color: '#FF9500', fontSize: 10, fontWeight: '900' }}>
+                        {(item.eventStage.kind === 'auction'
+                          ? 'LICYTACJA'
+                          : item.eventStage.kind === 'open_house'
+                            ? 'DZIEŃ OTWARTY'
+                            : 'WYDARZENIE') + ` · ${item.eventStage.label.toUpperCase()}`}
+                      </Text>
+                    ) : null}
+                    {item.createdAt ? (
+                      <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '600' }}>
+                        {formatDate(item.createdAt)}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={{ justifyContent: 'center' }}>
+                  <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                </View>
+              </View>
+            </Pressable>
+          );
+        })}
         {!items.length ? (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderStyle: 'dashed' }]}>
             <Text style={{ color: colors.secondary }}>{isSell ? 'Brak pozysku sprzedaży.' : 'Brak aktywnego poszukiwania.'}</Text>
@@ -91,10 +144,10 @@ export default function ClientPersonHub({
         </Text>
       </Pressable>
       <Pressable onPress={() => onOpenLane('BUY')} style={[styles.lane, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={[styles.iconWrap, { backgroundColor: 'rgba(90,200,250,0.14)' }]}>
-          <Ionicons name="search-outline" size={22} color="#5AC8FA" />
+        <View style={[styles.iconWrap, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
+          <Ionicons name="search-outline" size={22} color="#FF9500" />
         </View>
-        <Text style={{ color: '#5AC8FA', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginTop: 14 }}>KUPUJE</Text>
+        <Text style={{ color: '#FF9500', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginTop: 14 }}>KUPUJE</Text>
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 4 }}>
           {buying.length ? `${buying.length} ${buying.length === 1 ? 'poszukiwanie' : 'poszukiwania'}` : 'Brak poszukiwania'}
         </Text>
@@ -115,7 +168,16 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 18,
     borderWidth: 1,
-    padding: 16,
+    padding: 14,
+  },
+  thumbnail: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+  },
+  placeholderThumb: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconWrap: {
     width: 44,

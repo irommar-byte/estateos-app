@@ -125,6 +125,7 @@ export type PortalDecisionRequest = {
   dueAt: string | null;
   createdAt: string;
   resolvedAt?: string | null;
+  payload?: Record<string, unknown> | null;
 };
 
 export type PortalScheduleSlot = {
@@ -186,6 +187,30 @@ export type ClientPortalPayload = {
   activeChannels?: PortalActiveChannel[];
   sellerNextStep?: PortalSellerNextStep | null;
   pendingDecisions?: PortalDecisionRequest[];
+  sellerEvents?: {
+    openHouse: {
+      proposal: PortalDecisionRequest | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        title: string | null;
+      } | null;
+    };
+    auction: {
+      proposal: PortalDecisionRequest | null;
+      event: {
+        id: number;
+        status: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        startPrice: number;
+        title: string | null;
+      } | null;
+    };
+    stage: { id: string; label: string; kind: 'open_house' | 'auction' | null } | null;
+  } | null;
   meeting?: PortalScheduleSlot | null;
   presentation?: PortalScheduleSlot | null;
   journey?: PortalJourneyStage[];

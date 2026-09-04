@@ -135,6 +135,30 @@ type ClientDetail = AgencyClientListItem & {
       dueAt: string | null;
       visibleToClient: boolean;
     } | null;
+    sellerEvents?: {
+      openHouse: {
+        proposal: { id: number; title: string; status: string } | null;
+        event: {
+          id: number;
+          status: string;
+          startsAt: string | null;
+          endsAt: string | null;
+          title?: string | null;
+        } | null;
+      };
+      auction: {
+        proposal: { id: number; title: string; status: string } | null;
+        event: {
+          id: number;
+          status: string;
+          startsAt: string | null;
+          endsAt: string | null;
+          startPrice: number;
+          title?: string | null;
+        } | null;
+      };
+      stage: { id: string; label: string; kind: "open_house" | "auction" | null } | null;
+    } | null;
     facebookGroups?: Array<{
       key: string;
       groupName: string;
@@ -165,6 +189,7 @@ type ClientPersonProject = {
   title: string;
   subtitle: string;
   statusLabel: string;
+  eventStage?: { id: string; label: string; kind: "open_house" | "auction" | null } | null;
   portalUnreadCount: number;
   linkedOfferId: number | null;
   matchCount: number;
@@ -265,6 +290,8 @@ export default function CrmClientsWorkspace() {
   const skipPersonReset = useRef(false);
   const [workspaceView, setWorkspaceView] = useState<"person" | "lane" | "project">("person");
   const [workspaceLane, setWorkspaceLane] = useState<"SELL" | "BUY" | null>(null);
+  const [taskReplyDrafts, setTaskReplyDrafts] = useState<Record<string, string>>({});
+  const [taskReplyingId, setTaskReplyingId] = useState<string | null>(null);
 
   useEffect(() => {
     const open = () => setFormOpen(true);
@@ -431,6 +458,37 @@ export default function CrmClientsWorkspace() {
       setToast(e instanceof Error ? e.message : "Błąd wysyłki wizytówki.");
     } finally {
       setCardBusyId(null);
+      window.setTimeout(() => setToast(""), 4500);
+    }
+  };
+
+  const replyToOfferFeedback = async (task: BuyerAgentTask) => {
+    if (!detail) return;
+    const reply = String(taskReplyDrafts[task.id] || "").trim();
+    if (!reply) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${detail.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reply_to_offer_feedback",
+          matchId: task.matchId,
+          offerId: task.offerId,
+          activityId: task.activityId,
+          reply,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json?.error || "Nie udało się wysłać odpowiedzi."));
+      setTaskReplyDrafts((prev) => ({ ...prev, [task.id]: "" }));
+      setTaskReplyingId(null);
+      setToast("Odpowiedź jest już przy ofercie w panelu klienta.");
+      await loadDetail(detail.id, { silent: true });
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Nie udało się wysłać odpowiedzi.");
+    } finally {
+      setBusy(false);
       window.setTimeout(() => setToast(""), 4500);
     }
   };
@@ -1360,6 +1418,14 @@ export default function CrmClientsWorkspace() {
                             <button
                               type="button"
                               disabled={busy}
+                              onClick={() => setTaskReplyingId(task.id)}
+                              className={eosBtn("home", { size: "sm" })}
+                            >
+                              Odpowiedz
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
                               onClick={() => void resolveBuyerAgentTask(task.activityId)}
                               className={eosBtn("secondary", { size: "sm" })}
                             >
@@ -1368,6 +1434,36 @@ export default function CrmClientsWorkspace() {
                             </button>
                           </div>
                         </div>
+                        {taskReplyingId === task.id ? (
+                          <div className="mt-3 space-y-2">
+                            <textarea
+                              value={taskReplyDrafts[task.id] || ""}
+                              onChange={(event) =>
+                                setTaskReplyDrafts((prev) => ({ ...prev, [task.id]: event.target.value }))
+                              }
+                              rows={3}
+                              placeholder="Odpowiedź pojawi się przy tej ofercie w panelu klienta…"
+                              className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busy || !String(taskReplyDrafts[task.id] || "").trim()}
+                                onClick={() => void replyToOfferFeedback(task)}
+                                className={eosBtn("home", { size: "sm" })}
+                              >
+                                {busy ? "Wysyłam…" : "Wyślij przy ofercie"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setTaskReplyingId(null)}
+                                className={eosBtn("secondary", { size: "sm" })}
+                              >
+                                Anuluj
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </article>
                     ))}
                   </div>
@@ -1893,12 +1989,24 @@ export default function CrmClientsWorkspace() {
                     {detail.linkedOfferId ? (
                       <div className="rounded-xl bg-[var(--eos-input)]/50 p-4">
                         <p className="text-sm font-semibold text-[var(--eos-text)]">{cl.viewLinkedListing}</p>
-                        <Link
-                          href={`/oferta/${detail.linkedOfferId}`}
-                          className="mt-2 inline-flex items-center gap-2 text-sm font-bold text-emerald-600"
-                        >
-                          #{detail.linkedOfferId}
-                        </Link>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/oferta/${detail.linkedOfferId}`}
+                            className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600"
+                          >
+                            #{detail.linkedOfferId}
+                          </Link>
+                          {detail.sellerMarketing?.sellerEvents?.stage ? (
+                            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-amber-800">
+                              {detail.sellerMarketing.sellerEvents.stage.kind === "auction"
+                                ? "Licytacja"
+                                : detail.sellerMarketing.sellerEvents.stage.kind === "open_house"
+                                  ? "Dzień otwarty"
+                                  : "Wydarzenie"}{" "}
+                              · {detail.sellerMarketing.sellerEvents.stage.label}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-sm text-[var(--eos-muted)]">{cl.sellerPanelEmpty}</p>
@@ -1907,6 +2015,7 @@ export default function CrmClientsWorkspace() {
                       linkedOfferId={detail.linkedOfferId || null}
                       busy={busy}
                       sellerNextStep={detail.sellerMarketing?.sellerNextStep || null}
+                      sellerEvents={detail.sellerMarketing?.sellerEvents || null}
                       facebookGroups={detail.sellerMarketing?.facebookGroups || []}
                       facebookShareOffers={detail.sellerMarketing?.facebookShareOffers || []}
                       onAction={clientAction}
