@@ -45,7 +45,7 @@ import {
 } from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { stampKwFromAcquisitionForm } from '@/lib/legalVerificationAgentStamp';
-import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
+import { emailClientSchedule, emailGuestAgencyPresentation } from '@/lib/crm/clientScheduleNotify';
 import { findPresentationCounterpartId, mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { facebookShareRecordGate } from '@/lib/crm/marketingChannel';
@@ -56,6 +56,7 @@ import {
   listingFacebookShareUrl,
   loadAgentFacebookDestinations,
   loadAgentShareOffers,
+  loadAgentManagedOffers,
   MARKETING_ACTIVITY,
   parseOptionalDate,
   recordMarketingActivity,
@@ -178,13 +179,18 @@ export async function GET(req: Request, ctx: RouteCtx) {
         }))
       : null;
 
-  const [facebookNetwork, facebookShareOffers] =
+  const [facebookNetwork, facebookShareOffers, managedOffers] =
     client.type === 'SELLER'
       ? await Promise.all([
           loadAgentFacebookDestinations(agencyUserId).catch(() => []),
           loadAgentShareOffers(agencyUserId).catch(() => []),
+          loadAgentManagedOffers(agencyUserId).catch(() => []),
         ])
-      : [[], []];
+      : await Promise.all([
+          Promise.resolve([]),
+          Promise.resolve([]),
+          loadAgentManagedOffers(agencyUserId).catch(() => []),
+        ]);
 
   const nextStep = resolveClientNextStep({
     type: client.type,
@@ -297,6 +303,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
           }
         : null,
       relatedProjects,
+      managedOffers,
     },
   });
 }
@@ -1152,14 +1159,29 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
     const location = body.location ? String(body.location).trim() : '';
     const notes = body.notes ? String(body.notes).trim() : '';
+    const guestRaw = body.guestAgency && typeof body.guestAgency === 'object' ? (body.guestAgency as Record<string, unknown>) : null;
+    const guestAgency = guestRaw
+      ? {
+          name: String(guestRaw.name || '').trim(),
+          email: String(guestRaw.email || '').trim().toLowerCase(),
+          phone: String(guestRaw.phone || '').trim() || null,
+          visitorName: String(guestRaw.visitorName || '').trim() || null,
+        }
+      : null;
+    if (guestAgency && (!guestAgency.name || !guestAgency.email.includes('@'))) {
+      return NextResponse.json({ error: 'Podaj nazwę agencji i e-mail agenta, który chce pokazać nieruchomość.' }, { status: 400 });
+    }
     const offerIdRaw = Number(body.offerId || 0);
     const offerId = Number.isFinite(offerIdRaw) && offerIdRaw > 0 ? offerIdRaw : client.linkedOfferId || null;
     if (!isMeeting && client.type === 'BUYER' && !offerId) {
       return NextResponse.json({ error: 'Podaj ID oferty, którą chcesz prezentować kupującemu.' }, { status: 400 });
     }
+    if (!isMeeting && guestAgency && !offerId) {
+      return NextResponse.json({ error: 'Wybierz nieruchomość, którą ma pokazać inna agencja.' }, { status: 400 });
+    }
 
     let counterpartId: number | null = null;
-    if (!isMeeting && offerId) {
+    if (!isMeeting && offerId && !guestAgency) {
       counterpartId = await findPresentationCounterpartId({
         agencyUserId,
         actorClientId: client.id,
@@ -1167,7 +1189,27 @@ export async function POST(req: Request, ctx: RouteCtx) {
         offerId,
         metadata: { buyerClientId: body.buyerClientId, offerId },
       });
+      if (!counterpartId && client.type === 'SELLER' && client.linkedOfferId !== offerId) {
+        const listingOwner = await prisma.agencyClient.findFirst({
+          where: {
+            agencyUserId,
+            type: 'SELLER',
+            linkedOfferId: offerId,
+            status: 'ACTIVE',
+            id: { not: client.id },
+          },
+          select: { id: true },
+        });
+        counterpartId = listingOwner?.id || null;
+      }
     }
+
+    const offerRow = offerId
+      ? await prisma.offer.findFirst({
+          where: { id: offerId },
+          select: { id: true, title: true, userId: true },
+        })
+      : null;
 
     const metadata = {
       startsAt: startsAt.toISOString(),
@@ -1178,6 +1220,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
       offerId,
       buyerClientId: client.type === 'BUYER' ? client.id : counterpartId,
       sellerClientId: client.type === 'SELLER' ? client.id : counterpartId,
+      guestAgency: guestAgency
+        ? {
+            name: guestAgency.name,
+            email: guestAgency.email,
+            phone: guestAgency.phone,
+            visitorName: guestAgency.visitorName,
+          }
+        : null,
     };
 
     const targets = [clientId, ...(counterpartId && counterpartId !== clientId ? [counterpartId] : [])];
@@ -1197,8 +1247,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
           kind: isMeeting ? JOURNEY_ACTIVITY.MEETING : JOURNEY_ACTIVITY.PRESENTATION,
           title: isMeeting
             ? `Spotkanie · ${target.firstName} ${target.lastName}`
-            : `Prezentacja oferty${offerId ? ` #${offerId}` : ''} · ${target.firstName} ${target.lastName}`,
-          body: [startsAt.toLocaleString('pl-PL'), location, notes].filter(Boolean).join(' · '),
+            : guestAgency
+              ? `Prezentacja z agencją ${guestAgency.name}${offerId ? ` · #${offerId}` : ''}`
+              : `Prezentacja oferty${offerId ? ` #${offerId}` : ''} · ${target.firstName} ${target.lastName}`,
+          body: [startsAt.toLocaleString('pl-PL'), location, notes, guestAgency ? `Gość: ${guestAgency.name}` : null]
+            .filter(Boolean)
+            .join(' · '),
           metadata,
         },
       });
@@ -1209,6 +1263,27 @@ export async function POST(req: Request, ctx: RouteCtx) {
         startsAt,
         location: location || null,
         notes: notes || null,
+      });
+    }
+
+    if (!isMeeting && guestAgency) {
+      const agent = await prisma.user.findUnique({
+        where: { id: agencyUserId },
+        select: { name: true, companyName: true },
+      });
+      await emailGuestAgencyPresentation({
+        to: guestAgency.email,
+        visitingAgencyName: guestAgency.name,
+        visitorName: guestAgency.visitorName,
+        visitorPhone: guestAgency.phone,
+        hostAgencyName: agent?.companyName || 'EstateOS',
+        agentName: agent?.name || 'Agent',
+        offerTitle: offerRow?.title || '',
+        offerId: offerId || 0,
+        startsAt,
+        location: location || null,
+        notes: notes || null,
+        portalUrl: offerId ? `https://estateos.pl/oferta/${offerId}` : null,
       });
     }
     await sendNotification({

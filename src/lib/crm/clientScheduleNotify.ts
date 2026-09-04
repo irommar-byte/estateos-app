@@ -82,3 +82,39 @@ export async function emailClientSchedule(params: {
     native: true,
   }).catch(() => {});
 }
+
+export async function emailGuestAgencyPresentation(params: {
+  to: string;
+  visitingAgencyName: string;
+  visitorName?: string | null;
+  visitorPhone?: string | null;
+  hostAgencyName: string;
+  agentName: string;
+  offerTitle: string;
+  offerId: number;
+  startsAt: Date;
+  location?: string | null;
+  notes?: string | null;
+  portalUrl?: string | null;
+}): Promise<void> {
+  const to = String(params.to || '').trim().toLowerCase();
+  if (!to.includes('@')) return;
+  const when = params.startsAt.toLocaleString('pl-PL');
+  const visitor = [params.visitorName, params.visitorPhone].filter(Boolean).join(' · ');
+  await sendTransactionalEmail({
+    to,
+    subject: `Propozycja prezentacji · oferta #${params.offerId} · ${params.hostAgencyName}`,
+    html: `<div style="font-family:Georgia,'Times New Roman',serif;padding:28px;max-width:560px;background:#f7f3ec;color:#1c1915">
+      <p style="font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#8a6a32;font-weight:700">${escapeHtml(params.hostAgencyName)}</p>
+      <h2 style="margin:10px 0 16px;font-weight:500">Propozycja prezentacji</h2>
+      <p>Dzień dobry${params.visitingAgencyName ? `, ${escapeHtml(params.visitingAgencyName)}` : ''},</p>
+      <p>${escapeHtml(params.agentName)} proponuje termin pokazu nieruchomości <strong>#${params.offerId}</strong>${params.offerTitle ? ` — ${escapeHtml(params.offerTitle)}` : ''}.</p>
+      <p style="font-size:22px;font-weight:500;margin:18px 0">${escapeHtml(when)}</p>
+      ${params.location ? `<p>Miejsce: ${escapeHtml(params.location)}</p>` : ''}
+      ${visitor ? `<p>Gość: ${escapeHtml(visitor)}</p>` : ''}
+      ${params.notes ? `<p>${escapeHtml(params.notes)}</p>` : ''}
+      <p style="font-size:13px;color:#6b6258">Właściciel dostał tę samą propozycję do akceptacji w panelu klienta.</p>
+      ${params.portalUrl ? `<p><a href="${params.portalUrl}" style="color:#8a6a32">Szczegóły oferty</a></p>` : ''}
+    </div>`,
+  }).catch(() => {});
+}
