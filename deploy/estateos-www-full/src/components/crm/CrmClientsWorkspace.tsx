@@ -137,7 +137,7 @@ type ClientDetail = AgencyClientListItem & {
     } | null;
     sellerEvents?: {
       openHouse: {
-        proposal: { id: number; title: string; status: string } | null;
+        proposal: { id: number; title: string; status: string; payload?: Record<string, unknown> | null } | null;
         event: {
           id: number;
           status: string;
@@ -147,7 +147,7 @@ type ClientDetail = AgencyClientListItem & {
         } | null;
       };
       auction: {
-        proposal: { id: number; title: string; status: string } | null;
+        proposal: { id: number; title: string; status: string; payload?: Record<string, unknown> | null } | null;
         event: {
           id: number;
           status: string;
@@ -181,6 +181,18 @@ type ClientDetail = AgencyClientListItem & {
     selling: ClientPersonProject[];
     buying: ClientPersonProject[];
   };
+  meeting?: {
+    startsAt: string;
+    location: string | null;
+    status: "confirmed" | "pending";
+    reason: string | null;
+  } | null;
+  presentation?: {
+    startsAt: string;
+    status: "confirmed" | "pending";
+    reason: string | null;
+    offerId?: number | null;
+  } | null;
 };
 
 type ClientPersonProject = {
@@ -276,6 +288,8 @@ export default function CrmClientsWorkspace() {
   const [selectedClientIds, setSelectedClientIds] = useState<Set<number>>(new Set());
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [presentationOfferId, setPresentationOfferId] = useState("");
+  const [presentationAt, setPresentationAt] = useState("");
   const [sellerFilters, setSellerFilters] = useState<WebRadarFilters>(() => ({
     ...defaultWebRadarFilters(),
     pushNotifications: false,
@@ -647,12 +661,11 @@ export default function CrmClientsWorkspace() {
         body: JSON.stringify({
           alsoSearching: true,
           buyerFilters: { ...sellerFilters, pushNotifications: false },
-          intelligence: { ...next, lockedFields: { ...intelLocks, maxPrice: true } },
+          intelligence: { ...next, lockedFields: intelLocks },
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(json?.error || "Nie udało się zapisać asystenta."));
-      setIntelLocks((current) => ({ ...current, maxPrice: true }));
       await loadDetail(selectedId);
       return true;
     } catch (e) {
@@ -858,7 +871,7 @@ export default function CrmClientsWorkspace() {
       return;
     }
     if (action === "propose_presentation") {
-      document.getElementById("crm-matches")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("crm-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     if (action === "respond_to_client") {
@@ -870,7 +883,7 @@ export default function CrmClientsWorkspace() {
       return;
     }
     if (action === "accept_schedule") {
-      document.getElementById("crm-contact")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("crm-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     if (detail.portalUrl) window.open(detail.portalUrl, "_blank", "noopener,noreferrer");
@@ -1646,6 +1659,139 @@ export default function CrmClientsWorkspace() {
                       Potwierdź telefon
                     </button>
                   </div>
+                ) : null}
+              </div>
+
+              <div id="crm-schedule" className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">
+                  Spotkanie i prezentacja
+                </p>
+                {detail.meeting ? (
+                  <div className="mt-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card,#fff)]/40 px-3 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Spotkanie</p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
+                      {new Date(detail.meeting.startsAt).toLocaleString("pl-PL")}
+                    </p>
+                    {detail.meeting.location ? (
+                      <p className="mt-1 text-xs text-[var(--eos-muted)]">{detail.meeting.location}</p>
+                    ) : null}
+                    <p className={`mt-1 text-xs font-black uppercase tracking-wider ${detail.meeting.status === "pending" ? "text-amber-700" : "text-emerald-700"}`}>
+                      {detail.meeting.status === "pending"
+                        ? detail.meeting.reason || "Oczekuje na Twoją decyzję"
+                        : "Potwierdzone"}
+                    </p>
+                    {detail.meeting.status === "pending" ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void clientAction("accept_schedule_change", { kind: "meeting" })}
+                        className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                      >
+                        Akceptuj nowy termin
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {detail.presentation ? (
+                  <div className="mt-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card,#fff)]/40 px-3 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
+                      {detail.type === "SELLER" ? "Pokaz dla kupującego" : "Prezentacja oferty"}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
+                      {new Date(detail.presentation.startsAt).toLocaleString("pl-PL")}
+                    </p>
+                    <p className={`mt-1 text-xs font-black uppercase tracking-wider ${detail.presentation.status === "pending" ? "text-amber-700" : "text-emerald-700"}`}>
+                      {detail.presentation.status === "pending"
+                        ? detail.presentation.reason || "Propozycja wysłana obu stronom"
+                        : "Potwierdzona"}
+                    </p>
+                    {detail.presentation.status === "pending" && detail.presentation.reason ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void clientAction("accept_schedule_change", { kind: "presentation" })}
+                        className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                      >
+                        Akceptuj nowy termin pokazu
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {detail.type === "BUYER" ? (
+                  <div className="mt-3 space-y-2">
+                    {!detail.presentation ? (
+                      <p className="text-xs text-[var(--eos-muted)]">
+                        Wybierz ofertę z dopasowań i zaproponuj termin — dostaną go kupujący i sprzedający.
+                      </p>
+                    ) : null}
+                    {(detail.matches || []).length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {[...(detail.matches || [])]
+                          .sort((a, b) => Number(Boolean(b.notifiedAt)) - Number(Boolean(a.notifiedAt)) || b.score - a.score)
+                          .slice(0, 8)
+                          .map((m) => {
+                            const selected = presentationOfferId === String(m.offer.id);
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => setPresentationOfferId(String(m.offer.id))}
+                                className={`max-w-full rounded-xl border px-3 py-2 text-left ${
+                                  selected
+                                    ? "border-emerald-500/50 bg-emerald-500/15"
+                                    : "border-[var(--eos-border)] bg-[var(--eos-input)]"
+                                }`}
+                              >
+                                <p className="text-[11px] font-black text-[var(--eos-text)]">
+                                  #{m.offer.id} · {m.offer.title}
+                                </p>
+                                <p className="text-[10px] text-[var(--eos-muted)]">
+                                  {m.notifiedAt ? "Wysłana" : "Match"} · {m.score}%
+                                </p>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    ) : (
+                      <input
+                        value={presentationOfferId}
+                        onChange={(e) => setPresentationOfferId(e.target.value.replace(/[^\d]/g, ""))}
+                        placeholder="ID oferty do prezentacji"
+                        className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                      />
+                    )}
+                    <input
+                      type="datetime-local"
+                      value={presentationAt}
+                      onChange={(e) => setPresentationAt(e.target.value)}
+                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                    />
+                    <button
+                      type="button"
+                      disabled={busy || !presentationAt || !presentationOfferId.trim()}
+                      onClick={() => {
+                        if (!presentationAt || !presentationOfferId.trim()) return;
+                        void clientAction("propose_presentation", {
+                          startsAt: new Date(presentationAt).toISOString(),
+                          offerId: Number(presentationOfferId),
+                        }).then((json) => {
+                          if (json?.success) {
+                            setPresentationAt("");
+                            setToast("Wysłano propozycję prezentacji obu stronom.");
+                          }
+                        });
+                      }}
+                      className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                    >
+                      Zaproponuj termin obu stronom
+                    </button>
+                  </div>
+                ) : !detail.presentation ? (
+                  <p className="mt-3 text-xs text-[var(--eos-muted)]">
+                    Termin pokazu pojawi się tu, gdy zaproponujesz go z karty kupującego.
+                  </p>
                 ) : null}
               </div>
 

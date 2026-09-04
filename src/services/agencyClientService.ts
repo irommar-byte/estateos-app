@@ -18,6 +18,9 @@ export type AgencyClientListItem = {
   pesel?: string | null;
   matchCount: number;
   topMatchScore: number | null;
+  sentCount?: number;
+  presentationConfirmed?: boolean;
+  dealClosed?: boolean;
   sellerCity: string | null;
   sellerPrice: number | null;
   buyerCity: string | null;

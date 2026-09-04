@@ -410,6 +410,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
       await load({ silent: true });
+      if (json.intelligenceReply?.action === "error" && json.intelligenceReply?.message) {
+        alert(String(json.intelligenceReply.message));
+      }
     } catch (e) {
       alert(e instanceof Error ? e.message : "Błąd");
     } finally {

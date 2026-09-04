@@ -886,6 +886,31 @@ export async function transferMemberOffers(params: {
     data: { userId: toUserId, updatedAt: new Date() },
   });
 
+  await prisma.openHouseEvent.updateMany({
+    where: { offerId: { in: offerIds }, hostUserId: fromUserId },
+    data: { hostUserId: toUserId },
+  });
+  await prisma.auctionEvent.updateMany({
+    where: { offerId: { in: offerIds }, hostUserId: fromUserId },
+    data: { hostUserId: toUserId },
+  }).catch(() => {});
+
+  const linkedClients = await prisma.agencyClient.findMany({
+    where: { linkedOfferId: { in: offerIds }, agencyUserId: fromUserId },
+    select: { id: true },
+  });
+  const clientIds = linkedClients.map((row) => row.id);
+  if (clientIds.length) {
+    await prisma.agencyClient.updateMany({
+      where: { id: { in: clientIds } },
+      data: { agencyUserId: toUserId },
+    });
+    await prisma.clientDecisionRequest.updateMany({
+      where: { clientId: { in: clientIds }, agencyUserId: fromUserId, status: 'PENDING' },
+      data: { agencyUserId: toUserId },
+    });
+  }
+
   void notifyOffersTransferred({
     toUserId,
     fromUserName: fromMember.user.name || 'Agent',

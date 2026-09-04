@@ -46,6 +46,8 @@ import {
 } from '../services/clientPortalService';
 import SellerPortalView from '../components/clientPortal/SellerPortalView';
 import PortalScheduleCard from '../components/clientPortal/PortalScheduleCard';
+import ClientPortalAgentReplyInbox from '../components/clientPortal/ClientPortalAgentReplyInbox';
+import { collectAgentOfferReplies } from '../utils/clientPortalFeedback';
 
 const LIKE_PHRASES = ['Świetna lokalizacja', 'Podoba mi się układ', 'Dobry metraż', 'Pasuje do budżetu'];
 const DISLIKE_PHRASES = ['Za drogo', 'Brak balkonu', 'Nie ta dzielnica', 'Za mało pokoi'];
@@ -586,6 +588,20 @@ export default function ClientPortalScreen() {
       >
         {renderAccountSection()}
         {renderPushRow()}
+
+        {portal ? (
+          <ClientPortalAgentReplyInbox
+            portalToken={portalToken}
+            replies={collectAgentOfferReplies(portal.matches || [])}
+            canInteract={canInteract}
+            colors={colors}
+            onOpenOffer={(matchId) => {
+              setOpenMatchIds((prev) => (prev.includes(matchId) ? prev : [...prev, matchId]));
+              setOpenStacks((prev) => (prev.includes('new') ? prev : [...prev, 'new']));
+            }}
+            onDone={() => void load('silent')}
+          />
+        ) : null}
 
         {portal?.presentation ? (
           <PortalScheduleCard

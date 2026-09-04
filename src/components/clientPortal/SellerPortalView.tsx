@@ -100,6 +100,7 @@ export default function SellerPortalView({
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>(
     {},
   );
+  const [fulfillError, setFulfillError] = useState("");
 
   const listing = portal.listing;
   const progress = portal.listingProgress || [];
@@ -118,15 +119,24 @@ export default function SellerPortalView({
   const respond = async (
     decisionId: number,
     response: "approve" | "reject" | "comment",
+    isEvent = false,
   ) => {
     if (!canInteract) return;
+    if (response === "reject" && isEvent && (commentDrafts[decisionId] || "").trim().length < 3) {
+      Alert.alert("Decyzja", "Napisz inny termin albo powód odrzucenia.");
+      return;
+    }
     setBusyId(decisionId);
+    setFulfillError("");
     try {
-      await respondPortalDecision(portalToken, {
+      const result = await respondPortalDecision(portalToken, {
         decisionId,
         response,
         comment: commentDrafts[decisionId],
       });
+      if (result?.fulfillError) {
+        setFulfillError(String(result.fulfillError));
+      }
       setCommentDrafts((current) => {
         const next = { ...current };
         delete next[decisionId];
@@ -537,6 +547,19 @@ export default function SellerPortalView({
                           null,
                       ) || item.title}
                     </Text>
+                    {proposal?.endsAt || proposal?.slots?.[0]?.endsAt ? (
+                      <Text
+                        style={{
+                          color: colors.secondary,
+                          marginTop: 4,
+                        }}
+                      >
+                        do{" "}
+                        {formatDateTime(
+                          proposal?.endsAt || proposal?.slots?.[0]?.endsAt,
+                        )}
+                      </Text>
+                    ) : null}
                     {proposal?.kind === "auction" &&
                     proposal.startPrice != null ? (
                       <Text
@@ -547,6 +570,9 @@ export default function SellerPortalView({
                         }}
                       >
                         Cena startowa: {formatMoney(proposal.startPrice)}
+                        {proposal.reservePrice != null
+                          ? ` · rezerwa ${formatMoney(proposal.reservePrice)}`
+                          : ""}
                       </Text>
                     ) : null}
                   </>
@@ -597,7 +623,7 @@ export default function SellerPortalView({
                   }
                   placeholder={
                     isEvent
-                      ? "Inny termin / inna cena (opcjonalnie)"
+                      ? "Inny termin / inna cena (wymagane przy odrzuceniu)"
                       : "Komentarz (opcjonalnie)"
                   }
                   placeholderTextColor={colors.secondary}
@@ -609,7 +635,7 @@ export default function SellerPortalView({
                 <View style={styles.decisionActions}>
                   <Pressable
                     disabled={!canInteract || busyId === item.id}
-                    onPress={() => void respond(item.id, "approve")}
+                    onPress={() => void respond(item.id, "approve", isEvent)}
                     style={[
                       styles.decisionBtn,
                       {
@@ -626,7 +652,7 @@ export default function SellerPortalView({
                   </Pressable>
                   <Pressable
                     disabled={!canInteract || busyId === item.id}
-                    onPress={() => void respond(item.id, "reject")}
+                    onPress={() => void respond(item.id, "reject", isEvent)}
                     style={[
                       styles.decisionBtn,
                       {
@@ -644,7 +670,7 @@ export default function SellerPortalView({
                 {(commentDrafts[item.id] || "").trim() ? (
                   <Pressable
                     disabled={!canInteract || busyId === item.id}
-                    onPress={() => void respond(item.id, "comment")}
+                    onPress={() => void respond(item.id, "comment", isEvent)}
                     style={[
                       styles.commentBtn,
                       {
@@ -666,7 +692,7 @@ export default function SellerPortalView({
                 {isEvent ? (
                   <Pressable
                     disabled={!canInteract || busyId === item.id}
-                    onPress={() => void respond(item.id, "reject")}
+                    onPress={() => void respond(item.id, "reject", isEvent)}
                     style={{ marginTop: 8 }}
                   >
                     <Text
@@ -683,6 +709,11 @@ export default function SellerPortalView({
               </View>
               );
             })}
+            {fulfillError ? (
+              <Text style={{ color: "#DC2626", marginTop: 10, lineHeight: 20 }}>
+                {fulfillError}
+              </Text>
+            ) : null}
           </ProfileCardShell>
         ) : null}
 

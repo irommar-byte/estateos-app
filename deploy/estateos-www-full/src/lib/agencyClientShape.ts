@@ -15,6 +15,9 @@ export type AgencyClientListItem = {
   notes: string | null;
   matchCount: number;
   topMatchScore: number | null;
+  sentCount?: number;
+  presentationConfirmed?: boolean;
+  dealClosed?: boolean;
   updatedAt: string;
   sellerCity: string | null;
   sellerPrice: number | null;
@@ -37,7 +40,9 @@ export function buyerPrefToRadarRecord(pref: AgencyClientBuyerPreference | null)
     districts: pref.districts,
     maxPrice: pref.maxPrice,
     minArea: pref.minArea,
+    maxArea: pref.maxArea,
     minYear: pref.minYear,
+    minRooms: pref.minRooms,
     requireBalcony: pref.requireBalcony,
     requireGarden: pref.requireGarden,
     requireElevator: pref.requireElevator,
@@ -64,6 +69,7 @@ export function webRadarFiltersToBuyerPrefCreate(filters: WebRadarFilters) {
     districts: filters.selectedDistricts.length ? filters.selectedDistricts : undefined,
     maxPrice: filters.maxPrice > 0 ? filters.maxPrice : null,
     minArea: filters.minArea > 0 ? filters.minArea : null,
+    maxArea: filters.maxArea > 0 ? filters.maxArea : null,
     minYear: filters.minYear > 1900 ? filters.minYear : null,
     requireBalcony: filters.requireBalcony,
     requireGarden: filters.requireGarden,
@@ -93,6 +99,7 @@ export function buyerPrefToWebRadarFilters(
     selectedDistricts: districts,
     maxPrice: pref?.maxPrice ?? 0,
     minArea: pref?.minArea ?? 0,
+    maxArea: pref?.maxArea ?? 0,
     minYear: pref?.minYear ?? 1900,
     requireBalcony: !!pref?.requireBalcony,
     requireGarden: !!pref?.requireGarden,
@@ -113,13 +120,14 @@ export function shapeClientListItem(
   client: AgencyClient & {
     buyerPreference: AgencyClientBuyerPreference | null;
     _count?: { matches: number };
-    matches?: { score: number }[];
+    matches?: { score: number; notifiedAt?: Date | null }[];
     linkedUser?: { id: number; email: string; lastLoginAt: Date | null } | null;
-    activities?: Array<{ metadata: unknown }>;
+    activities?: Array<{ kind?: string; metadata: unknown }>;
   },
+  extras?: { dealClosed?: boolean },
 ): AgencyClientListItem {
   const top = client.matches?.[0]?.score ?? null;
-  const meetingAct = client.activities?.[0];
+  const meetingAct = client.activities?.find((item) => item.kind === 'ACQUISITION_MEETING') || client.activities?.[0];
   const meetingMeta = (meetingAct?.metadata || {}) as Record<string, unknown>;
   const rawMeetingStart = typeof meetingMeta.startsAt === 'string' ? meetingMeta.startsAt : null;
   const meetingStartMs = rawMeetingStart ? new Date(rawMeetingStart).getTime() : NaN;
@@ -128,6 +136,10 @@ export function shapeClientListItem(
   const upcomingMeetingStartsAt = meetingStillRelevant ? rawMeetingStart : null;
   const upcomingMeetingLocation =
     meetingStillRelevant && typeof meetingMeta.location === 'string' ? meetingMeta.location : null;
+  const sentCount = (client.matches || []).filter((item) => item.notifiedAt).length;
+  const presentationConfirmed = (client.activities || []).some(
+    (item) => String(item.kind || '') === 'PRESENTATION_CONFIRMED',
+  );
 
   return {
     id: client.id,
@@ -142,6 +154,9 @@ export function shapeClientListItem(
     notes: client.notes,
     matchCount: client._count?.matches ?? client.matches?.length ?? 0,
     topMatchScore: top,
+    sentCount,
+    presentationConfirmed,
+    dealClosed: extras?.dealClosed === true,
     updatedAt: client.updatedAt.toISOString(),
     sellerCity: client.sellerCity,
     sellerPrice: client.sellerPrice,
@@ -152,7 +167,9 @@ export function shapeClientListItem(
     linkedUserLastLoginAt: client.linkedUser?.lastLoginAt?.toISOString() ?? null,
     upcomingMeetingStartsAt,
     upcomingMeetingLocation,
-    portalUrl: client.portalToken ? buildPortalUrl(client.portalToken) : null,
+    portalUrl: client.portalToken
+      ? `${(process.env.NEXT_PUBLIC_SITE_URL || 'https://estateos.pl').replace(/\/$/, '')}/klient/${client.portalToken}`
+      : null,
   };
 }
 

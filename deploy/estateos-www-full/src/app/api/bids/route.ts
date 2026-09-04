@@ -30,79 +30,64 @@ export async function POST(req: Request) {
       update: {},
     });
 
-    const bid = await prisma.bid.create({
-      data: {
-        dealId: deal.id,
-        senderId: buyerId,
-        amount: Number(amount),
-        message: financing ? `Finansowanie: ${String(financing)}` : null,
-        status: 'PENDING'
-      }
+    const { executeDealAction } = await import('@/app/api/mobile/v1/deals/[id]/actions/route');
+    const actionRes = await executeDealAction(buyerId, deal.id, {
+      type: 'BID_PROPOSE',
+      amount: Number(amount),
+      financing,
     });
-    
-    // --- INIEKCJA: Wiadomość Systemowa do Deal Roomu ---
-    try {
-        await prisma.dealMessage.create({
-            data: {
-                dealId: deal.id,
-                senderId: buyerId,
-                content: `💰 Złożono oficjalną ofertę zakupu na kwotę: ${Number(amount).toLocaleString('pl-PL')} PLN. Finansowanie: ${financing}`
-            }
-        });
-    } catch(e) { console.log('DealMessage err', e); }
-    
+    if (actionRes.status >= 400) return actionRes;
 
-    // Powiadomienie dla Sprzedającego (Dzwoneczek)
-    await prisma.notification.create({
-      data: {
-        userId: Number(offer.userId),
-        title: '💎 Nowa Oferta Zakupu!',
-        body: `Kupiec złożył oficjalną ofertę w kwocie ${Number(amount).toLocaleString('pl-PL')} PLN (${financing === 'CASH' ? 'Gotówka' : 'Kredyt Bankowy'}) za Twoją nieruchomość. Wejdź w Lejek CRM.`,
-        type: 'BID_RECEIVED',
-        targetType: 'DEAL',
-        targetId: String(deal.id)
-      }
-    });
+    const actionJson = (await actionRes.clone().json().catch(() => ({}))) as {
+      bidId?: number;
+    };
 
-    // WYSYŁKA E-MAIL (Zgodna z istniejącym szablonem EstateOS)
-    
     const safeHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST || '';
     const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT) || 587;
     const safeUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || '';
     const safePass = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD || '';
 
-    const transporter = nodemailer.createTransport({
+    const seller = await prisma.user.findUnique({
+      where: { id: Number(offer.userId) },
+      select: { email: true },
+    });
+    if (seller?.email && safeHost) {
+      try {
+        const transporter = nodemailer.createTransport({
           host: safeHost,
           port: smtpPort,
           secure: smtpPort === 465,
           auth: { user: safeUser, pass: safePass },
-          tls: { rejectUnauthorized: false }
+          tls: { rejectUnauthorized: false },
         });
-
-    const seller = await prisma.user.findUnique({ where: { id: Number(offer.userId) }, select: { email: true } });
-    if (seller && seller.email) {
-      try {
         await transporter.sendMail({
           from: '"EstateOS" <powiadomienia@estateos.pl>',
           to: seller.email,
-          subject: "💎 Nowa Oferta Zakupu Nieruchomości",
-          html: `<div style="font-family: sans-serif; max-w: 600px; margin: 0 auto; background-color: #050505; color: #ffffff; padding: 40px; border-radius: 20px; border: 1px solid #111;">
-            <h2 style="color: #10b981; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; font-size: 18px;">Nowa Oferta Zakupu</h2>
+          subject: 'Nowa oferta zakupu nieruchomości',
+          html: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background-color: #050505; color: #ffffff; padding: 40px; border-radius: 20px; border: 1px solid #111;">
+            <h2 style="color: #10b981; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; font-size: 18px;">Nowa oferta zakupu</h2>
             <p style="color: #ccc; line-height: 1.6;">Kupiec złożył oficjalną propozycję finansową dla Twojej nieruchomości.</p>
             <div style="background-color: #111; padding: 20px; border-radius: 10px; margin: 20px 0; border: 1px solid #222;">
               <p style="margin: 0; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 2px;">Proponowana kwota</p>
               <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: 900; color: #fff;">${Number(amount).toLocaleString('pl-PL')} PLN</p>
               <p style="margin: 15px 0 0 0; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 2px;">Źródło finansowania</p>
-              <p style="margin: 5px 0 0 0; font-size: 14px; font-weight: bold; color: #10b981;">${financing === 'CASH' ? 'Gotówka' : 'Kredyt Bankowy'}</p>
+              <p style="margin: 5px 0 0 0; font-size: 14px; font-weight: bold; color: #10b981;">${financing === 'CASH' ? 'Gotówka' : 'Kredyt bankowy'}</p>
             </div>
-            <a href="https://estateos.pl/moje-konto/crm" style="display: inline-block; background-color: #10b981; color: #000; padding: 15px 30px; border-radius: 30px; text-decoration: none; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 10px; margin-top: 20px;">Sprawdź Ofertę w CRM</a>
-          </div>`
+            <a href="https://estateos.pl/moje-konto/crm" style="display: inline-block; background-color: #10b981; color: #000; padding: 15px 30px; border-radius: 30px; text-decoration: none; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 10px; margin-top: 20px;">Sprawdź ofertę w CRM</a>
+          </div>`,
         });
-      } catch(err) { console.error("Błąd maila (Bids):", err); }
+      } catch (err) {
+        console.error('Błąd maila (Bids):', err);
+      }
     }
 
-    return NextResponse.json({ success: true, bid });
-  } catch(e) {
+    return NextResponse.json({
+      success: true,
+      bid: { id: actionJson.bidId || null, dealId: deal.id },
+      dealId: deal.id,
+    });
+  } catch (e) {
+    console.error('[bids]', e);
     return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
   }
 }

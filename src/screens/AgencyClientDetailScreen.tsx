@@ -1257,9 +1257,8 @@ export default function AgencyClientDetailScreen() {
     const res = await patchAgencyClient(token, clientId, {
       alsoSearching: true,
       buyerFilters: { ...buyerFilters, pushNotifications: false },
-      intelligence: { ...next, lockedFields: { ...intelLocks, maxPrice: true } },
+      intelligence: { ...next, lockedFields: intelLocks },
     });
-    if (res.ok) setIntelLocks((current) => ({ ...current, maxPrice: true }));
     setBusy('');
     if (!res.ok) Alert.alert('Asystent', res.message);
     else void load();

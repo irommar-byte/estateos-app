@@ -24,6 +24,7 @@ import { promoteMobileOfferListing } from "../../utils/mobileOfferPromote";
 import { shareListingLink } from "../../utils/offerShareUrls";
 import { isFacebookPostPermalink } from "../../lib/marketingChannel";
 import { groupPortalPath } from "../../lib/portalActivityStacks";
+import { parseSellerEventProposal } from "../../lib/sellerEventStage";
 
 export type MarketingActivity = {
   id: number;
@@ -73,7 +74,7 @@ export type SellerMarketingState = {
   }[];
   sellerEvents?: {
     openHouse: {
-      proposal: { id: number; title: string; status: string } | null;
+      proposal: { id: number; title: string; status: string; payload?: Record<string, unknown> | null } | null;
       event: {
         id: number;
         status: string;
@@ -83,7 +84,7 @@ export type SellerMarketingState = {
       } | null;
     };
     auction: {
-      proposal: { id: number; title: string; status: string } | null;
+      proposal: { id: number; title: string; status: string; payload?: Record<string, unknown> | null } | null;
       event: {
         id: number;
         status: string;
@@ -1581,7 +1582,25 @@ export default function SellerMarketingCard({
                   marginTop: 8,
                 }}
               >
-                Czeka na akceptację klienta
+                {(() => {
+                  const pending =
+                    sellerMarketing.sellerEvents.auction.proposal ||
+                    sellerMarketing.sellerEvents.openHouse.proposal;
+                  const parsed = parseSellerEventProposal(pending?.payload);
+                  const when = parsed?.startsAt
+                    ? new Date(parsed.startsAt).toLocaleString("pl-PL", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "";
+                  const price =
+                    parsed?.kind === "auction" && parsed.startPrice != null
+                      ? ` · od ${Math.round(parsed.startPrice).toLocaleString("pl-PL")} zł`
+                      : "";
+                  return `Czeka na akceptację klienta${when ? `: ${when}` : ""}${price}`;
+                })()}
               </Text>
             ) : null}
             <View style={[styles.chips, { marginTop: 10 }]}>

@@ -19,7 +19,7 @@ import { fetchAgencyClients, archiveAgencyClients, type AgencyClientListItem } f
 import { emitCrmClientsChanged } from '../lib/crmClientsEvents';
 import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBar';
 import { useSellerClientPipelines } from '../hooks/useSellerClientPipelines';
-import { hasLiveMeetingCountdown } from '../lib/sellerClientPipeline';
+import { hasLiveMeetingCountdown, computeBuyerPipeline } from '../lib/sellerClientPipeline';
 import { formatPolishDateTime } from '../lib/polishText';
 
 function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso: string; location?: string | null; isDark?: boolean }) {
@@ -237,7 +237,17 @@ export default function AgencyClientsScreen() {
         {visible.map((client) => {
           const showMeeting =
             client.upcomingMeetingStartsAt && hasLiveMeetingCountdown(client.upcomingMeetingStartsAt);
-          const pipeline = client.type === 'SELLER' ? pipelines[client.id] : undefined;
+          const pipeline = client.type === 'SELLER'
+            ? pipelines[client.id]
+            : client.type === 'BUYER'
+              ? computeBuyerPipeline({
+                  hasCriteria: (client.matchCount || 0) > 0 || Boolean(client.buyerMaxPrice),
+                  hasMatches: (client.matchCount || 0) > 0,
+                  hasSent: (client.sentCount || 0) > 0,
+                  presentationConfirmed: client.presentationConfirmed === true,
+                  dealClosed: client.dealClosed === true,
+                })
+              : undefined;
           const portalUrl = client.portalUrl || portalUrls[client.id];
           const isSelected = selectedIds.has(client.id);
 
@@ -294,10 +304,6 @@ export default function AgencyClientsScreen() {
                 ) : null}
                 {pipeline ? (
                   <SellerClientPipelineBar stages={pipeline} isDark={isDark} compact />
-                ) : client.type === 'BUYER' && client.matchCount > 0 ? (
-                  <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 12, fontWeight: '700' }}>
-                    {client.matchCount} dopasowań{client.topMatchScore ? ` · top ${client.topMatchScore}%` : ''}
-                  </Text>
                 ) : null}
 
                 {portalUrl ? (

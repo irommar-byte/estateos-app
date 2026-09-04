@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { buildAcquisitionIcs } from '@/lib/agencyClientBusinessCard';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
+import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
 
 function escapeHtml(value: string): string {
   return value
@@ -71,5 +72,13 @@ export async function emailClientSchedule(params: {
         contentType: 'text/calendar; charset=utf-8',
       },
     ],
+  }).catch(() => {});
+
+  await sendClientPortalWebPush(params.clientId, {
+    title,
+    body: `${when}${params.location ? ` · ${params.location}` : ''}`.slice(0, 180),
+    tag: `schedule-${params.kind}-${params.clientId}`,
+    notificationType: 'client_schedule',
+    native: true,
   }).catch(() => {});
 }

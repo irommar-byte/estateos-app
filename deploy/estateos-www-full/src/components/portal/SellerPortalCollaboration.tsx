@@ -118,7 +118,12 @@ export default function SellerPortalCollaboration({
   const respond = async (
     decisionId: number,
     response: "approve" | "reject" | "comment",
+    isEvent = false,
   ) => {
+    if (response === "reject" && isEvent && (comments[decisionId] || "").trim().length < 3) {
+      setError("Napisz inny termin albo powód odrzucenia (min. 3 znaki).");
+      return;
+    }
     setBusyId(decisionId);
     setError("");
     try {
@@ -332,7 +337,7 @@ export default function SellerPortalCollaboration({
                     }
                     placeholder={
                       isEvent
-                        ? "Inny termin / inna cena (opcjonalnie)"
+                        ? "Inny termin / inna cena (wymagane przy odrzuceniu)"
                         : "Komentarz (opcjonalnie)"
                     }
                     className="mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
@@ -342,7 +347,7 @@ export default function SellerPortalCollaboration({
                     <button
                       type="button"
                       disabled={busyId === item.id}
-                      onClick={() => void respond(item.id, "approve")}
+                      onClick={() => void respond(item.id, "approve", isEvent)}
                       className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                     >
                       Akceptuję
@@ -350,7 +355,7 @@ export default function SellerPortalCollaboration({
                     <button
                       type="button"
                       disabled={busyId === item.id}
-                      onClick={() => void respond(item.id, "reject")}
+                      onClick={() => void respond(item.id, "reject", isEvent)}
                       className="rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)] disabled:opacity-50"
                     >
                       {isEvent ? "Poproszę o inny termin" : "Odrzucam"}
@@ -359,7 +364,7 @@ export default function SellerPortalCollaboration({
                       <button
                         type="button"
                         disabled={busyId === item.id}
-                        onClick={() => void respond(item.id, "comment")}
+                        onClick={() => void respond(item.id, "comment", isEvent)}
                         className="rounded-full border border-emerald-500/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
                       >
                         Wyślij komentarz
@@ -369,7 +374,7 @@ export default function SellerPortalCollaboration({
                       <button
                         type="button"
                         disabled={busyId === item.id}
-                        onClick={() => void respond(item.id, "reject")}
+                        onClick={() => void respond(item.id, "reject", isEvent)}
                         className="rounded-full border border-rose-500/20 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-rose-700 disabled:opacity-50"
                       >
                         Nie teraz

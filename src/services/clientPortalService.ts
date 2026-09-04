@@ -298,7 +298,7 @@ export async function respondPortalDecision(
   params: { decisionId: number; response: 'approve' | 'reject' | 'comment'; comment?: string },
   authToken?: string | null,
 ) {
-  return postPortal(
+  return postPortal<{ success?: boolean; fulfillError?: string | null }>(
     token,
     {
       action: 'respond_decision',
@@ -308,6 +308,10 @@ export async function respondPortalDecision(
     },
     authToken,
   );
+}
+
+export async function ackPortalAgentReply(token: string, matchId: number) {
+  return postPortal(token, { action: 'ack_agent_reply', matchId });
 }
 
 export async function listPortalMessages(token: string): Promise<{ messages: PortalChatMessage[]; unreadCount: number }> {

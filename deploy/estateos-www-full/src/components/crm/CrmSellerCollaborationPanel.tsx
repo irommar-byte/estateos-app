@@ -5,7 +5,7 @@ import FacebookGroupPromotePanel, {
   type FacebookShareOffer,
 } from "@/components/crm/FacebookGroupPromotePanel";
 import type { FacebookGroupDestination } from "@/lib/crm/marketingChannel";
-import { SELLER_EVENT_STAGE_LABELS } from "@/lib/crm/sellerEventStage";
+import { parseSellerEventProposal, SELLER_EVENT_STAGE_LABELS } from "@/lib/crm/sellerEventStage";
 
 type NextStep = {
   currentStep: string;
@@ -17,11 +17,21 @@ type NextStep = {
 
 type SellerEventsBundle = {
   openHouse: {
-    proposal: { id: number; title: string; status: string } | null;
+    proposal: {
+      id: number;
+      title: string;
+      status: string;
+      payload?: Record<string, unknown> | null;
+    } | null;
     event: { id: number; status: string; startsAt: string | null; endsAt: string | null } | null;
   };
   auction: {
-    proposal: { id: number; title: string; status: string } | null;
+    proposal: {
+      id: number;
+      title: string;
+      status: string;
+      payload?: Record<string, unknown> | null;
+    } | null;
     event: {
       id: number;
       status: string;
@@ -59,6 +69,44 @@ function toLocalDateTimeValue(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toLocaleString("pl-PL", {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatMoney(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return `${Math.round(value).toLocaleString("pl-PL")} zł`;
+}
+
+function pendingProposalSummary(proposal: {
+  title: string;
+  payload?: Record<string, unknown> | null;
+} | null) {
+  if (!proposal) return "";
+  const parsed = parseSellerEventProposal(proposal.payload);
+  const when = formatDateTime(parsed?.startsAt || parsed?.slots?.[0]?.startsAt || null);
+  const until = formatDateTime(parsed?.endsAt || parsed?.slots?.[0]?.endsAt || null);
+  const price =
+    parsed?.kind === "auction" && parsed.startPrice != null
+      ? `od ${formatMoney(parsed.startPrice)}`
+      : null;
+  const reserve =
+    parsed?.kind === "auction" && parsed.reservePrice != null
+      ? `rezerwa ${formatMoney(parsed.reservePrice)}`
+      : null;
+  return [proposal.title, when, until ? `do ${until}` : null, price, reserve]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function stageChipClass(id: string | undefined) {
   switch (id) {
     case "pending_approval":
@@ -94,6 +142,7 @@ export default function CrmSellerCollaborationPanel({
   const [nextVisible, setNextVisible] = useState(true);
   const [decisionTitle, setDecisionTitle] = useState("");
   const [decisionMessage, setDecisionMessage] = useState("");
+  const [decisionKind, setDecisionKind] = useState<"price" | "materials" | "schedule" | "other">("other");
   const [promoting, setPromoting] = useState(false);
   const [eventMode, setEventMode] = useState<"open_house" | "auction" | null>(null);
   const [eventStartsAt, setEventStartsAt] = useState(() => {
@@ -188,7 +237,7 @@ export default function CrmSellerCollaborationPanel({
       return;
     }
     const json = await onAction("request_client_decision", {
-      kind: "other",
+      kind: decisionKind,
       title: decisionTitle.trim(),
       clientMessage: decisionMessage.trim(),
     });
@@ -397,11 +446,10 @@ export default function CrmSellerCollaborationPanel({
           {(sellerEvents?.openHouse.proposal || sellerEvents?.auction.proposal) ? (
             <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-900">
               Czeka na akceptację klienta
-              {sellerEvents?.auction.proposal
-                ? `: ${sellerEvents.auction.proposal.title}`
-                : sellerEvents?.openHouse.proposal
-                  ? `: ${sellerEvents.openHouse.proposal.title}`
-                  : ""}
+              {": "}
+              {pendingProposalSummary(
+                sellerEvents?.auction.proposal || sellerEvents?.openHouse.proposal,
+              )}
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -489,6 +537,29 @@ export default function CrmSellerCollaborationPanel({
         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">
           Prośba o decyzję
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(
+            [
+              { id: "price", label: "Cena" },
+              { id: "materials", label: "Materiały" },
+              { id: "schedule", label: "Termin" },
+              { id: "other", label: "Inne" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setDecisionKind(item.id)}
+              className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${
+                decisionKind === item.id
+                  ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-800"
+                  : "border-[var(--eos-border)] text-[var(--eos-muted)]"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <input
           value={decisionTitle}
           onChange={(e) => setDecisionTitle(e.target.value)}
