@@ -1,6 +1,7 @@
 import {
   LIKE_PHRASES,
   clientFeedbackHasContent,
+  hasUnreadAgentReply,
   parseClientOfferFeedback,
   type ClientOfferSentiment,
 } from '@/lib/crm/clientPortalFeedback';
@@ -420,6 +421,9 @@ export function initialOpenMatchIds(params: {
   else if (!params.storedIds.length) {
     const pending = sortMatchesNewest(params.matches.filter((match) => matchStackId(match) === 'new'))[0];
     if (pending) next.add(pending.id);
+  }
+  for (const match of params.matches) {
+    if (hasUnreadAgentReply(parseClientOfferFeedback(match.clientFeedback))) next.add(match.id);
   }
   return [...next];
 }

@@ -4,7 +4,6 @@ import { PortalSourceBadge } from './MatchImportAgentMeta';
 import { importPortalBadge } from '../../lib/importPortalBadge';
 import { LinearGradient } from 'expo-linear-gradient';
 import { postAgencyClientAction } from '../../services/agencyClientService';
-import { API_URL } from '../../config/network';
 import {
   DEFAULT_INTELLIGENCE_LOCKS,
   INTELLIGENCE_DAILY_LIMIT_OPTIONS,
@@ -144,6 +143,7 @@ export default function IntelligenceAssistantCard({
   colors,
   busy,
   pendingCheckback,
+  openHandoff,
   onSave,
 }: {
   clientId: number;
@@ -158,13 +158,15 @@ export default function IntelligenceAssistantCard({
     options: Array<{ id: string; label: string }>;
     createdAt: string;
   } | null;
+  openHandoff?: { id: number; body: string } | null;
   onSave: (next: IntelligenceSettings) => void;
 }) {
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
   const [pick, setPick] = useState<IntelligencePickPreview | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
-  const [smartAdd, setSmartAdd] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [localResumed, setLocalResumed] = useState(false);
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [huntBusy, setHuntBusy] = useState<'preview' | 'import' | null>(null);
   const [huntNote, setHuntNote] = useState<string | null>(null);
@@ -186,35 +188,11 @@ export default function IntelligenceAssistantCard({
   }, [value]);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_URL}/api/mobile/v1/intelligence-smart-add`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && typeof json?.enabled === 'boolean') setSmartAdd(json.enabled);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+    setLocalResumed(false);
+  }, [pendingCheckback?.activityId, openHandoff?.id]);
 
-  const saveSmartAdd = async (enabled: boolean) => {
-    setSmartAdd(enabled);
-    try {
-      const res = await fetch(`${API_URL}/api/mobile/v1/intelligence-smart-add`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) setSmartAdd(!enabled);
-      else if (typeof json.enabled === 'boolean') setSmartAdd(json.enabled);
-    } catch {
-      setSmartAdd(!enabled);
-    }
-  };
+  const pauseCheckback = localResumed ? null : pendingCheckback;
+  const pauseHandoff = localResumed ? null : openHandoff;
 
   useEffect(() => {
     let cancelled = false;
@@ -300,6 +278,30 @@ export default function IntelligenceAssistantCard({
     }
   };
 
+  const handleResumeIntelligence = async () => {
+    setResumeBusy(true);
+    setSendNote(null);
+    try {
+      const res = await postAgencyClientAction(token, clientId, { action: 'resume_intelligence' });
+      if (!res.ok) {
+        setSendNote(res.message || 'Nie udało się wznowić asystenta.');
+        return;
+      }
+      const resumed = Boolean((res as { resumedCheckback?: boolean; resumedHandoff?: boolean }).resumedCheckback) ||
+        Boolean((res as { resumedHandoff?: boolean }).resumedHandoff);
+      setSendNote(resumed ? 'Asystent wznowiony — może znowu wysyłać oferty.' : 'Asystent nie był zablokowany.');
+      setLocalResumed(true);
+      const preview = await postAgencyClientAction(token, clientId, { action: 'intelligence_preview' });
+      if (preview.ok && (preview as { pick?: IntelligencePickPreview }).pick) {
+        setPick((preview as { pick: IntelligencePickPreview }).pick);
+      }
+    } catch {
+      setSendNote('Nie udało się wznowić asystenta.');
+    } finally {
+      setResumeBusy(false);
+    }
+  };
+
   const runPortalHunt = async (mode: 'preview' | 'import') => {
     setHuntBusy(mode);
     setHuntNote(
@@ -363,40 +365,45 @@ export default function IntelligenceAssistantCard({
               ios_backgroundColor="#D1D1D6"
             />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginTop: 12 }}>
             <View style={{ flex: 1 }}>
               <Text style={styles.kicker}>Inteligentne dodawanie</Text>
               <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
-                Przy imporcie mózg pyta o balkon, komórkę i ogród z opisu. Zmiany widać na ofercie i można cofnąć.
+                Przy imporcie mózg zawsze pyta o balkon, komórkę i ogród z opisu. Zmiany widać na ofercie i można cofnąć.
               </Text>
             </View>
-            <Switch
-              value={smartAdd}
-              onValueChange={(enabled) => void saveSmartAdd(enabled)}
-              trackColor={{ false: '#D1D1D6', true: '#BF5AF2' }}
-              ios_backgroundColor="#D1D1D6"
-            />
+            <View style={{ backgroundColor: 'rgba(52,199,89,0.15)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text style={{ color: '#248A3D', fontSize: 9, fontWeight: '900', letterSpacing: 0.4 }}>ZAWSZE WŁĄCZONE</Text>
+            </View>
           </View>
           <View style={{ gap: 12, marginTop: 12 }}>
             {choiceRow('Interwał', 'intervalHours', INTELLIGENCE_INTERVAL_OPTIONS)}
-            {choiceRow('Ofert na cykl (wyśle naraz, gdy cykl minie)', 'dailyLimit', INTELLIGENCE_DAILY_LIMIT_OPTIONS)}
+            {choiceRow('Ofert dziennie', 'dailyLimit', INTELLIGENCE_DAILY_LIMIT_OPTIONS)}
             {choiceRow('Ile reakcji zanim wyśle', 'minLearns', INTELLIGENCE_MIN_LEARNS_OPTIONS)}
             {choiceRow('Minimalna pewność', 'minScore', INTELLIGENCE_MIN_SCORE_OPTIONS)}
           </View>
           {draft.enabled ? (
             <View style={[styles.queue, { borderColor: colors.border, backgroundColor: colors.input }]}>
-              {pendingCheckback ? (
+              {pauseCheckback ? (
                 <View style={{ marginBottom: 10, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.08)' }}>
                   <Text style={{ color: '#B45309', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>CZEKA NA KLIENTA</Text>
-                  <Text style={{ color: colors.text, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{pendingCheckback.body}</Text>
+                  <Text style={{ color: colors.text, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{pauseCheckback.body}</Text>
+                </View>
+              ) : null}
+              {pauseHandoff ? (
+                <View style={{ marginBottom: 10, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(10,132,255,0.35)', backgroundColor: 'rgba(10,132,255,0.08)' }}>
+                  <Text style={{ color: '#0A84FF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>CZEKA NA AGENTA</Text>
+                  <Text style={{ color: colors.text, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{pauseHandoff.body}</Text>
                 </View>
               ) : null}
               <Text style={styles.kicker}>Konsola asystenta</Text>
               <Text style={{ color: colors.text, fontSize: 12, marginTop: 8, lineHeight: 17 }}>
                 Teraz:{' '}
-                {pendingCheckback
+                {pauseCheckback
                   ? 'asystent czeka na odpowiedź w panelu klienta.'
-                  : !draft.enabled
+                  : pauseHandoff
+                    ? 'asystent czeka, aż skontaktujesz się z klientem.'
+                    : !draft.enabled
                   ? 'asystent wyłączony.'
                   : queueBusy
                     ? 'analizuję opisy i reakcje…'
@@ -405,8 +412,8 @@ export default function IntelligenceAssistantCard({
                       : pick?.skipReason || 'czeka na cykl albo reakcję.'}
               </Text>
               <Text style={{ color: colors.text, fontSize: 12, marginTop: 6, lineHeight: 17 }}>
-                Zaplanowane: gdy cykl minie, wyślę do {draft.dailyLimit}{' '}
-                {draft.dailyLimit === 1 ? 'oferty' : 'ofert'} naraz
+                Zaplanowane: interwał i dzienny limit do {draft.dailyLimit}{' '}
+                {draft.dailyLimit === 1 ? 'oferty' : 'ofert'} w danym dniu
                 {nextWhen ? ` · ${nextWhen}` : ''}.
               </Text>
               {(pick?.lessons || []).length ? (
@@ -491,6 +498,25 @@ export default function IntelligenceAssistantCard({
               {sendingNow ? 'Wysyłam…' : 'Wyślij teraz'}
             </Text>
           </Pressable>
+          {pauseCheckback || pauseHandoff ? (
+            <Pressable
+              disabled={busy || resumeBusy}
+              onPress={() => void handleResumeIntelligence()}
+              style={[
+                styles.save,
+                {
+                  backgroundColor: colors.input,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  opacity: busy || resumeBusy ? 0.5 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: colors.text, fontWeight: '900', fontSize: 12, textAlign: 'center' }}>
+                {resumeBusy ? 'Wznawiam…' : 'Wznów asystenta'}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             disabled={busy || sendingNow || huntBusy != null}
             onPress={() => void runPortalHunt('preview')}

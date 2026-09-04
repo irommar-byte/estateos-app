@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { portalStackKind } from '../src/lib/portalActivityStacks';
 import { collectAgentOfferReplies } from '../src/utils/clientPortalFeedback';
+import { computeBuyerPipeline, buyerPipelineFromClientDetail } from '../src/lib/sellerClientPipeline';
 
 test('portal stacks map real presentation and sale event kinds', () => {
   assert.equal(portalStackKind('PRESENTATION_PROPOSED'), 'presentations');
@@ -30,4 +31,26 @@ test('collects unread agent replies for the buyer inbox', () => {
   assert.equal(rows[0].matchId, 11);
   assert.equal(rows[0].unread, true);
   assert.match(rows[0].agentReply, /hali/);
+});
+
+test('buyer pipeline uses sentCount and dealClosed from the client record', () => {
+  const stages = computeBuyerPipeline({
+    hasCriteria: true,
+    hasMatches: true,
+    hasSent: true,
+    presentationConfirmed: false,
+    dealClosed: true,
+  });
+  assert.equal(stages.find((s) => s.id === 'sending')?.done, true);
+  assert.equal(stages.find((s) => s.id === 'deal')?.done, true);
+
+  const fromDetail = buyerPipelineFromClientDetail({
+    sentCount: 4,
+    dealClosed: true,
+    matches: [],
+    presentation: { status: 'confirmed' },
+  } as Parameters<typeof buyerPipelineFromClientDetail>[0]);
+  assert.equal(fromDetail.find((s) => s.id === 'sending')?.done, true);
+  assert.equal(fromDetail.find((s) => s.id === 'deal')?.done, true);
+  assert.equal(fromDetail.find((s) => s.id === 'presentation')?.done, true);
 });

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
@@ -360,6 +361,57 @@ export async function buildAgencyClientEmailPreview(params: {
   };
 }
 
+async function claimClientMatchNotification(params: {
+  clientId: number;
+  offerId: number;
+  score: number;
+  now: Date;
+  intelligence?: { reason: string };
+}): Promise<boolean> {
+  const existing = await prisma.agencyClientMatch.findUnique({
+    where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
+    select: { id: true, notifiedAt: true },
+  });
+  if (existing?.notifiedAt) return false;
+
+  const intelPatch = params.intelligence
+    ? { intelligenceSent: true, intelligenceReason: params.intelligence.reason }
+    : {};
+
+  if (existing) {
+    const updated = await prisma.agencyClientMatch.updateMany({
+      where: { id: existing.id, notifiedAt: null },
+      data: {
+        score: params.score,
+        notifiedAt: params.now,
+        sharedAt: params.now,
+        ...intelPatch,
+      },
+    });
+    return updated.count === 1;
+  }
+
+  try {
+    await prisma.agencyClientMatch.create({
+      data: {
+        clientId: params.clientId,
+        offerId: params.offerId,
+        score: params.score,
+        notifiedAt: params.now,
+        sharedAt: params.now,
+        intelligenceSent: Boolean(params.intelligence),
+        intelligenceReason: params.intelligence?.reason ?? null,
+      },
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export async function notifyAgencyClientAboutOffer(params: {
   clientId: number;
   offerId: number;
@@ -370,22 +422,53 @@ export async function notifyAgencyClientAboutOffer(params: {
   matchScore?: number;
   intelligence?: { reason: string };
 }) {
-  if (params.skipIfNotified !== false) {
-    const existing = await prisma.agencyClientMatch.findUnique({
-      where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
-      select: { notifiedAt: true },
-    });
-    if (existing?.notifiedAt && params.channel === 'email') {
-      return { emailSent: false, offerUrl: `https://estateos.pl/oferta/${params.offerId}`, alreadyNotified: true };
-    }
-  }
-
   const preview = await buildAgencyClientEmailPreview({
     clientId: params.clientId,
     offerIds: [params.offerId],
     agencyUserId: params.agencyUserId,
     customMessage: params.customMessage,
   });
+
+  const now = new Date();
+  const score = await resolveClientMatchScore({
+    clientId: params.clientId,
+    offerId: params.offerId,
+    matchScore: params.matchScore,
+  });
+
+  if (params.skipIfNotified !== false) {
+    const claimed = await claimClientMatchNotification({
+      clientId: params.clientId,
+      offerId: params.offerId,
+      score,
+      now,
+      intelligence: params.intelligence,
+    });
+    if (!claimed) {
+      return { emailSent: false, offerUrl: `https://estateos.pl/oferta/${params.offerId}`, alreadyNotified: true };
+    }
+  } else {
+    await prisma.agencyClientMatch.upsert({
+      where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
+      create: {
+        clientId: params.clientId,
+        offerId: params.offerId,
+        score,
+        notifiedAt: now,
+        sharedAt: now,
+        intelligenceSent: Boolean(params.intelligence),
+        intelligenceReason: params.intelligence?.reason ?? null,
+      },
+      update: {
+        score: score > 0 ? score : undefined,
+        notifiedAt: now,
+        sharedAt: now,
+        ...(params.intelligence
+          ? { intelligenceSent: true, intelligenceReason: params.intelligence.reason }
+          : {}),
+      },
+    });
+  }
 
   let emailSent = false;
   if (params.channel === 'email' && preview.clientEmail) {
@@ -399,33 +482,6 @@ export async function notifyAgencyClientAboutOffer(params: {
     });
     emailSent = true;
   }
-
-  const now = new Date();
-  const score = await resolveClientMatchScore({
-    clientId: params.clientId,
-    offerId: params.offerId,
-    matchScore: params.matchScore,
-  });
-  await prisma.agencyClientMatch.upsert({
-    where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
-    create: {
-      clientId: params.clientId,
-      offerId: params.offerId,
-      score,
-      notifiedAt: now,
-      sharedAt: now,
-      intelligenceSent: Boolean(params.intelligence),
-      intelligenceReason: params.intelligence?.reason ?? null,
-    },
-    update: {
-      score: score > 0 ? score : undefined,
-      notifiedAt: now,
-      sharedAt: now,
-      ...(params.intelligence
-        ? { intelligenceSent: true, intelligenceReason: params.intelligence.reason }
-        : {}),
-    },
-  });
 
   await prisma.agencyClientActivity.create({
     data: {

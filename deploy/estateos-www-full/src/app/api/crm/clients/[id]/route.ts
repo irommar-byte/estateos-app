@@ -72,7 +72,7 @@ import {
   serializeClientOfferFeedback,
 } from '@/lib/crm/clientPortalFeedback';
 import { resolveClientNextStep } from '@/lib/crm/clientNextStep';
-import { getPendingCheckback } from '@/lib/crm/intelligenceCheckback';
+import { getPendingCheckback, getOpenIntelligenceHandoff, resumeIntelligenceForAgent } from '@/lib/crm/intelligenceCheckback';
 import { buildBuyerAgentTasks } from '@/lib/crm/buyerAgentTasks';
 import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
 import { attachMatchImportBrief, listMatchImportBriefs } from '@/lib/crm/matchImportProvenance';
@@ -120,6 +120,20 @@ export async function GET(req: Request, ctx: RouteCtx) {
     agentUserId: agencyUserId,
     formData: acquisition?.formData,
   }).catch(() => {});
+  const [pendingCheckback, sentCount, closedDeal, openHandoff] = await Promise.all([
+    getPendingCheckback(client.id),
+    prisma.agencyClientMatch.count({
+      where: { clientId: client.id, notifiedAt: { not: null } },
+    }),
+    client.linkedUserId
+      ? prisma.deal.findFirst({
+          where: { buyerId: client.linkedUserId, status: 'FINALIZED' },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    getOpenIntelligenceHandoff(client.id),
+  ]);
+  const dealClosed = Boolean(closedDeal);
   const journey = buildJourneyStages({
     clientType: client.type,
     hasMeeting: Boolean(meeting),
@@ -130,7 +144,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     hasPresentation: Boolean(presentation),
     presentationConfirmed: presentation?.status === 'confirmed',
     hasCriteria: Boolean(client.buyerPreference),
-    sentOfferCount: client.matches.filter((m) => m.notifiedAt).length,
+    sentOfferCount: sentCount,
     reactedCount: client.matches.filter((m) =>
       clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)),
     ).length,
@@ -146,7 +160,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
       ?.toISOString?.() || null,
   });
 
-  const pendingCheckback = await getPendingCheckback(client.id);
   const buyerAgentTasks =
     client.type === 'BUYER'
       ? buildBuyerAgentTasks(client.matches, client.activities)
@@ -182,7 +195,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     linkedUserId: client.linkedUserId,
     hasCriteria: Boolean(client.buyerPreference),
     matchCount: client.matches.length,
-    sentCount: client.matches.filter((m) => m.notifiedAt).length,
+    sentCount,
     feedbackCount: client.matches.filter((m) =>
       clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)),
     ).length,
@@ -212,7 +225,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
   return NextResponse.json({
     success: true,
     client: {
-      ...shapeClientListItem(client),
+      ...shapeClientListItem(client, { dealClosed, sentCount }),
       nextStep,
       notes: client.notes,
       sellerTransactionType: client.sellerTransactionType,
@@ -251,6 +264,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
       ),
       intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
       pendingCheckback,
+      openHandoff,
       buyerAgentTasks,
       meeting,
       presentation,
@@ -589,6 +603,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
     const owned = await prisma.agencyClient.findFirst({ where: { id: clientId, agencyUserId }, select: { id: true } });
     if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
     const result = await sendIntelligenceOffer({ clientId, force: true });
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'resume_intelligence') {
+    const owned = await prisma.agencyClient.findFirst({ where: { id: clientId, agencyUserId }, select: { id: true } });
+    if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    const result = await resumeIntelligenceForAgent({ clientId, agencyUserId });
     return NextResponse.json({ success: true, ...result });
   }
 

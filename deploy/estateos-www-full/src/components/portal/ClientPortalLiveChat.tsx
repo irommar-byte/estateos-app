@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BellRing, ChevronDown, MessageSquare, Paperclip, Plus, Radio, Send, X } from "lucide-react";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
-import { formatContactBytes, type ContactAttachmentMeta } from "@/lib/contactAttachmentShared";
+import {
+  cleanAttachmentOnlyMessage,
+  contactAttachmentPreviewLabel,
+  formatContactAttachmentName,
+  formatContactBytes,
+  type ContactAttachmentMeta,
+} from "@/lib/contactAttachmentShared";
 import { showWebNotification } from "@/lib/webNotifications";
 import SendPlaneButton from "@/components/ui/SendPlaneButton";
 
@@ -14,6 +20,10 @@ type PortalMessage = {
   fromAgent: boolean;
   fromMe: boolean;
   attachments?: ContactAttachmentMeta[];
+  checkbackQuickReplies?: {
+    activityId: number;
+    options: Array<{ id: string; label: string }>;
+  };
 };
 
 function messageTime(value: string) {
@@ -79,8 +89,11 @@ export default function ClientPortalLiveChat({
         );
         if (freshFromAgent.length > 0 && (!openRef.current || document.hidden)) {
           const latest = freshFromAgent[freshFromAgent.length - 1];
+          const visibleContent = cleanAttachmentOnlyMessage(latest.content, latest.attachments);
           showWebNotification(`Nowa wiadomość · ${agentName}`, {
-            body: latest.content || latest.attachments?.[0]?.name || "Nowy załącznik",
+            body:
+              visibleContent ||
+              (latest.attachments?.[0] ? contactAttachmentPreviewLabel(latest.attachments[0]) : "Nowy załącznik"),
             tag: `estateos-portal-chat-${token}`,
             onClickPath: `/klient/${token}?chat=1`,
           });
@@ -160,6 +173,26 @@ export default function ClientPortalLiveChat({
     }, 280);
   };
 
+  const respondCheckback = async (activityId: number, optionId: string) => {
+    if (!token || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/crm/client-portal/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "intelligence_checkback", activityId, optionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać odpowiedzi.");
+      await loadMessages();
+    } catch (respondError) {
+      setError(respondError instanceof Error ? respondError.message : "Nie udało się wysłać odpowiedzi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const sendChat = async () => {
     const content = draft.trim();
     if (!token || busy || (!content && !pendingFile)) return;
@@ -185,6 +218,11 @@ export default function ClientPortalLiveChat({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Nie udało się wysłać wiadomości.");
+      if (json.needsCheckbackChoice) {
+        setError("Wybierz proszę jedną z opcji odpowiedzi poniżej.");
+      } else {
+        setError("");
+      }
       setDraft("");
       setPendingFile(null);
       await loadMessages();
@@ -196,7 +234,9 @@ export default function ClientPortalLiveChat({
   };
 
   const copyMessage = async (message: PortalMessage) => {
-    const text = message.content || (message.attachments || []).map((attachment) => attachment.name).join(", ");
+    const text =
+      cleanAttachmentOnlyMessage(message.content, message.attachments) ||
+      (message.attachments || []).map((attachment) => formatContactAttachmentName(attachment.name)).join(", ");
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -208,6 +248,9 @@ export default function ClientPortalLiveChat({
   };
 
   const latestMessage = messages[messages.length - 1];
+  const latestVisibleContent = latestMessage
+    ? cleanAttachmentOnlyMessage(latestMessage.content, latestMessage.attachments)
+    : "";
 
   return (
     <section
@@ -251,7 +294,10 @@ export default function ClientPortalLiveChat({
             {unreadCount > 0
               ? `${unreadCount} ${unreadCount === 1 ? "nowa wiadomość" : "nowe wiadomości"}`
               : latestMessage
-                ? latestMessage.content || latestMessage.attachments?.[0]?.name || "Załącznik"
+                ? latestVisibleContent ||
+                  (latestMessage.attachments?.[0]
+                    ? contactAttachmentPreviewLabel(latestMessage.attachments[0])
+                    : "Załącznik")
                 : "Napisz — agent dostanie powiadomienie od razu"}
           </p>
         </div>
@@ -279,8 +325,10 @@ export default function ClientPortalLiveChat({
                 </p>
               </div>
             ) : (
-              messages.map((message) => (
-                <div
+              messages.map((message) => {
+                const visibleContent = cleanAttachmentOnlyMessage(message.content, message.attachments);
+                return (
+                  <div
                   key={message.id}
                   onContextMenu={(event) => {
                     event.preventDefault();
@@ -310,15 +358,33 @@ export default function ClientPortalLiveChat({
                       {messageTime(message.createdAt)}
                     </time>
                   </div>
-                  {message.content ? <p className="mt-1 whitespace-pre-wrap leading-relaxed">{message.content}</p> : null}
+                  {visibleContent ? <p className="mt-1 whitespace-pre-wrap leading-relaxed">{visibleContent}</p> : null}
+                  {message.checkbackQuickReplies?.options?.length ? (
+                    <div className="mt-3 flex flex-col gap-2">
+                      {message.checkbackQuickReplies.options.map((option) => (
+                        <button
+                          key={`${message.id}-${option.id}`}
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void respondCheckback(message.checkbackQuickReplies!.activityId, option.id)
+                          }
+                          className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-[var(--eos-text)] transition hover:border-emerald-400 disabled:opacity-50"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   {(message.attachments || []).map((attachment) => (
                     <ContactAttachmentBubble key={attachment.url} attachment={attachment} isMe={message.fromMe} />
                   ))}
                   {copiedId === message.id ? (
                     <p className="mt-1 text-[10px] font-bold text-emerald-700">Skopiowano</p>
                   ) : null}
-                </div>
-              ))
+                  </div>
+                );
+              })
             )}
             {peerTyping ? (
               <div className="mr-auto inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2">
@@ -333,7 +399,7 @@ export default function ClientPortalLiveChat({
             <div className="eos-inset-well mx-3 mb-2 flex items-center gap-3 rounded-2xl px-4 py-2.5 sm:mx-5">
               <Paperclip className="size-4 shrink-0 text-emerald-500" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold">{pendingFile.name}</p>
+                <p className="truncate text-xs font-semibold">{formatContactAttachmentName(pendingFile.name)}</p>
                 <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
               </div>
               <button type="button" onClick={() => setPendingFile(null)} className="rounded-full p-1.5 text-[var(--eos-muted)]">

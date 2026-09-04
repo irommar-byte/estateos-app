@@ -3170,6 +3170,7 @@ export default function AgencyClientDetailScreen() {
                       token={token}
                       value={client.intelligence || DEFAULT_INTELLIGENCE_SETTINGS}
                       pendingCheckback={client.pendingCheckback}
+                      openHandoff={client.openHandoff}
                       colors={colors}
                       busy={busy === 'intel'}
                       onSave={(next) => void saveIntelligence(next)}

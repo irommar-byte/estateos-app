@@ -14,7 +14,11 @@ import {
 import ClientPortalMatchCard from "@/components/portal/ClientPortalMatchCard";
 import ClientPortalOfferSearchPanel from "@/components/portal/ClientPortalOfferSearchPanel";
 import ClientPortalUpcomingOfferSlot from "@/components/portal/ClientPortalUpcomingOfferSlot";
-import type { ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
+import {
+  hasUnreadAgentReply,
+  parseClientOfferFeedback,
+  type ClientOfferSentiment,
+} from "@/lib/crm/clientPortalFeedback";
 import {
   OFFER_STACKS,
   buildPortalTimeline,
@@ -191,6 +195,7 @@ export default function ClientPortalOfferBoard({
   onToggleMatch,
   onEnsureMatchOpen,
   onSubmit,
+  onAckReply,
   prefillFor,
 }: {
   token: string;
@@ -217,6 +222,7 @@ export default function ClientPortalOfferBoard({
       note: string;
     },
   ) => Promise<void>;
+  onAckReply?: (matchId: number) => Promise<void>;
   prefillFor?: {
     matchId?: number;
     offerId?: number;
@@ -251,7 +257,16 @@ export default function ClientPortalOfferBoard({
     const storedView = readJson<ViewMode>(storageKey(token, "view"), "stacks");
     setView(storedView === "timeline" ? "timeline" : "stacks");
     const storedStacks = readJson<OfferStackId[] | null>(storageKey(token, "stacks"), null);
-    setOpenStacks(storedStacks?.length ? storedStacks : defaultOpenStacks(stats));
+    const unreadStacks = (Object.entries(stacks) as Array<[OfferStackId, PortalMatch[]]>)
+      .filter(([, rows]) =>
+        rows.some((row) => hasUnreadAgentReply(parseClientOfferFeedback(row.clientFeedback))),
+      )
+      .map(([id]) => id);
+    setOpenStacks(
+      storedStacks?.length
+        ? Array.from(new Set([...storedStacks, ...unreadStacks]))
+        : Array.from(new Set([...defaultOpenStacks(stats), ...unreadStacks])),
+    );
     setHydrated(true);
     // First visit only — later poll must not re-collapse stacks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -480,6 +495,9 @@ export default function ClientPortalOfferBoard({
             if (!rows.length && stack.id !== "new") return null;
             const open = openStacks.includes(stack.id);
             const Icon = STACK_ICON[stack.id];
+            const unreadCount = rows.filter((row) =>
+              hasUnreadAgentReply(parseClientOfferFeedback(row.clientFeedback)),
+            ).length;
             return (
               <div id={`portal-stack-${stack.id}`} key={stack.id} className="eos-inset-frame scroll-mt-24 overflow-hidden rounded-[1.6rem]">
                 <button
@@ -495,6 +513,11 @@ export default function ClientPortalOfferBoard({
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-black text-[var(--eos-text)]">{stack.title}</span>
                       <span className="eos-lux-badge">{rows.length}</span>
+                      {unreadCount ? (
+                        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-amber-800">
+                          {unreadCount} do przeczytania
+                        </span>
+                      ) : null}
                     </span>
                     <span className="mt-0.5 block text-[11px] leading-snug text-[var(--eos-muted)]">{stack.hint}</span>
                   </span>
@@ -523,6 +546,7 @@ export default function ClientPortalOfferBoard({
                               current.includes(dest) ? current : [...current, dest],
                             );
                           }}
+                          onAckReply={onAckReply}
                         />
                       ))
                     ) : (

@@ -82,12 +82,21 @@ export async function GET(req: Request) {
       })
     : [];
   const closedBuyerIds = new Set(closedDeals.map((row) => row.buyerId));
+  const sentGroups = clients.length
+    ? await prisma.agencyClientMatch.groupBy({
+        by: ['clientId'],
+        where: { clientId: { in: clients.map((client) => client.id) }, notifiedAt: { not: null } },
+        _count: { _all: true },
+      })
+    : [];
+  const sentByClient = new Map(sentGroups.map((row) => [row.clientId, row._count._all]));
 
   return NextResponse.json({
     success: true,
     clients: clients.map((client) =>
       shapeClientListItem(client, {
         dealClosed: Boolean(client.linkedUserId && closedBuyerIds.has(client.linkedUserId)),
+        sentCount: sentByClient.get(client.id) ?? 0,
       }),
     ),
   });

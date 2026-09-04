@@ -117,6 +117,64 @@ export function sellerPipelineFromClientDetail(
   });
 }
 
+// ─── Buyer Pipeline ───
+
+export type BuyerPipelineStageId =
+  | 'criteria'
+  | 'radar'
+  | 'sending'
+  | 'presentation'
+  | 'deal';
+
+export type BuyerPipelineStage = {
+  id: BuyerPipelineStageId;
+  label: string;
+  done: boolean;
+  current: boolean;
+};
+
+export const BUYER_PIPELINE_LABELS: Record<BuyerPipelineStageId, string> = {
+  criteria: 'Kryteria',
+  radar: 'Radar',
+  sending: 'Wysyłka',
+  presentation: 'Prezentacja',
+  deal: 'Transakcja',
+};
+
+export function computeBuyerPipeline(input: {
+  hasCriteria: boolean;
+  hasMatches: boolean;
+  hasSent: boolean;
+  presentationConfirmed: boolean;
+  dealClosed: boolean;
+}): BuyerPipelineStage[] {
+  const doneFlags: Record<BuyerPipelineStageId, boolean> = {
+    criteria: input.hasCriteria,
+    radar: input.hasMatches,
+    sending: input.hasSent,
+    presentation: input.presentationConfirmed,
+    deal: input.dealClosed,
+  };
+  const order: BuyerPipelineStageId[] = ['criteria', 'radar', 'sending', 'presentation', 'deal'];
+  const firstOpen = order.findIndex((id) => !doneFlags[id]);
+  return order.map((id, index) => ({
+    id,
+    label: BUYER_PIPELINE_LABELS[id],
+    done: doneFlags[id],
+    current: firstOpen === -1 ? index === order.length - 1 : index === firstOpen,
+  }));
+}
+
+export function buyerPipelineFromClientDetail(client: AgencyClientDetail): BuyerPipelineStage[] {
+  const hasCriteria = Boolean(client.buyerFilters) || (client.matchCount || 0) > 0;
+  const matches = client.matches || [];
+  const hasMatches = matches.length > 0;
+  const hasSent = (client.sentCount || 0) > 0 || matches.some((m) => Boolean(m.notifiedAt || m.sharedAt));
+  const presentationConfirmed = client.presentation?.status === 'confirmed';
+  const dealClosed = client.dealClosed === true;
+  return computeBuyerPipeline({ hasCriteria, hasMatches, hasSent, presentationConfirmed, dealClosed });
+}
+
 export function hasLiveMeetingCountdown(startsAt?: string | null, nowMs = Date.now()) {
   if (!startsAt) return false;
   const start = new Date(startsAt).getTime();

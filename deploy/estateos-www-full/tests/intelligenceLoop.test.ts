@@ -60,6 +60,7 @@ test('open handoff metadata blocks auto-send', () => {
   assert.equal(isHandoffOpen({}), true);
   assert.equal(isHandoffOpen({ agentStatus: 'done' }), false);
   assert.equal(isHandoffOpen({ agentHandledAt: new Date().toISOString() }), false);
+  assert.equal(isHandoffOpen({ resumedAt: new Date().toISOString() }), false);
 });
 
 test('pending checkback expires after TTL', () => {

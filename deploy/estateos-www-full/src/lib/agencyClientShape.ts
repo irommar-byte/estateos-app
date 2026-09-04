@@ -124,7 +124,7 @@ export function shapeClientListItem(
     linkedUser?: { id: number; email: string; lastLoginAt: Date | null } | null;
     activities?: Array<{ kind?: string; metadata: unknown }>;
   },
-  extras?: { dealClosed?: boolean },
+  extras?: { dealClosed?: boolean; sentCount?: number },
 ): AgencyClientListItem {
   const top = client.matches?.[0]?.score ?? null;
   const meetingAct = client.activities?.find((item) => item.kind === 'ACQUISITION_MEETING') || client.activities?.[0];
@@ -136,7 +136,8 @@ export function shapeClientListItem(
   const upcomingMeetingStartsAt = meetingStillRelevant ? rawMeetingStart : null;
   const upcomingMeetingLocation =
     meetingStillRelevant && typeof meetingMeta.location === 'string' ? meetingMeta.location : null;
-  const sentCount = (client.matches || []).filter((item) => item.notifiedAt).length;
+  const sentCount =
+    extras?.sentCount ?? (client.matches || []).filter((item) => item.notifiedAt).length;
   const presentationConfirmed = (client.activities || []).some(
     (item) => String(item.kind || '') === 'PRESENTATION_CONFIRMED',
   );

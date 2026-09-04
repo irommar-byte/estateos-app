@@ -234,6 +234,7 @@ export type AgencyClientDetail = AgencyClientListItem & {
     options: { id: string; label: string }[];
     createdAt: string;
   } | null;
+  openHandoff?: { id: number; body: string } | null;
   buyerAgentTasks?: BuyerAgentTask[];
   meeting?: {
     startsAt: string;

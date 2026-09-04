@@ -116,6 +116,7 @@ type ClientDetail = AgencyClientListItem & {
     options: Array<{ id: string; label: string }>;
     createdAt: string;
   } | null;
+  openHandoff?: { id: number; body: string } | null;
   nextStep?: ClientNextStep | null;
   portalUnreadCount?: number;
   buyerAgentTasks?: BuyerAgentTask[];
@@ -1803,6 +1804,7 @@ export default function CrmClientsWorkspace() {
                     busy={busy}
                     activities={detail.activities}
                     pendingCheckback={detail.pendingCheckback}
+                    openHandoff={detail.openHandoff}
                     onSave={(next) => saveIntelligence(next)}
                   />
                   <div id="crm-criteria">
@@ -2014,6 +2016,7 @@ export default function CrmClientsWorkspace() {
                           busy={busy}
                           activities={detail.activities}
                           pendingCheckback={detail.pendingCheckback}
+                          openHandoff={detail.openHandoff}
                           onSave={(next) => saveIntelligence(next)}
                         />
                         <AgencyClientCriteriaEditor
