@@ -148,6 +148,60 @@ export async function getOpenIntelligenceHandoff(clientId: number): Promise<{ id
   return { id: row.id, body: row.body || '' };
 }
 
+export async function resumeIntelligenceForAgent(params: {
+  clientId: number;
+  agencyUserId: number;
+}): Promise<{ ok: true; resumedCheckback: boolean; resumedHandoff: boolean }> {
+  const pending = await prisma.agencyClientActivity.findFirst({
+    where: { clientId: params.clientId, kind: INTELLIGENCE_ACTIVITY.CHECKBACK },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, metadata: true, createdAt: true },
+  });
+  let resumedCheckback = false;
+  if (pending) {
+    const m = meta(pending.metadata);
+    if (m.status === 'pending') {
+      await prisma.agencyClientActivity.update({
+        where: { id: pending.id },
+        data: {
+          metadata: {
+            ...m,
+            status: 'dismissed',
+            dismissedAt: new Date().toISOString(),
+            dismissedBy: params.agencyUserId,
+          },
+        },
+      });
+      resumedCheckback = true;
+    }
+  }
+
+  const handoff = await prisma.agencyClientActivity.findFirst({
+    where: { clientId: params.clientId, kind: INTELLIGENCE_ACTIVITY.HANDOFF },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, metadata: true },
+  });
+  let resumedHandoff = false;
+  if (handoff && isHandoffOpen(handoff.metadata)) {
+    const m = meta(handoff.metadata);
+    await prisma.agencyClientActivity.update({
+      where: { id: handoff.id },
+      data: {
+        metadata: {
+          ...m,
+          agentStatus: 'done',
+          agentHandledAt: new Date().toISOString(),
+          resumedAt: new Date().toISOString(),
+          agentHandledBy: params.agencyUserId,
+        },
+      },
+    });
+    resumedHandoff = true;
+  }
+
+  return { ok: true, resumedCheckback, resumedHandoff };
+}
+
 async function isOnCooldown(clientId: number, type: string): Promise<boolean> {
   const rows = await loadRecentCheckbacks(clientId);
   return shouldSkipCheckbackTypeFromHistory(rows, type);

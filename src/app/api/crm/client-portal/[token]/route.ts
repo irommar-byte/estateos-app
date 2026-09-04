@@ -63,6 +63,33 @@ import { mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
+function clientWhyFromIntelMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const why = (metadata as Record<string, unknown>).clientWhy;
+  return typeof why === 'string' && why.trim() ? why.trim() : null;
+}
+
+function intelWhyByOfferId(
+  rows: Array<{ offerId: number | null; metadata: unknown }>,
+): Map<number, string> {
+  const whyByOffer = new Map<number, string>();
+  for (const row of rows) {
+    const why = clientWhyFromIntelMetadata(row.metadata);
+    if (!why) continue;
+    if (row.offerId && !whyByOffer.has(row.offerId)) whyByOffer.set(row.offerId, why);
+    const rec = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+    const ids = rec.offerIds;
+    if (!Array.isArray(ids)) continue;
+    for (const raw of ids) {
+      const id = Number(raw);
+      if (Number.isFinite(id) && id > 0 && !whyByOffer.has(id)) whyByOffer.set(id, why);
+    }
+  }
+  return whyByOffer;
+}
+
 function shapeSearchCriteria(pref: AgencyClientBuyerPreference | null) {
   if (!pref) return null;
   const filters = buyerPrefToWebRadarFilters(pref);
@@ -322,6 +349,15 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const agencyAddress = company?.address || null;
 
   const searchCriteria = await resolveSearchCriteria(client.id, client.agencyUserId, client.buyerPreference);
+  const intelWhyRows = client.buyerPreference && client.matches.length
+    ? await prisma.agencyClientActivity.findMany({
+        where: { clientId: client.id, kind: 'INTELLIGENCE_OFFER' },
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+        select: { offerId: true, metadata: true },
+      })
+    : [];
+  const whyByOffer = intelWhyByOfferId(intelWhyRows);
   const scheduleActs = await loadJourneyActivities(client.id);
   const meeting = resolveMeeting(scheduleActs);
   const presentation = resolvePresentation(scheduleActs);
@@ -430,21 +466,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       presentation,
       journey: stages,
       matches: client.buyerPreference
-        ? client.matches.map((m) => {
-            const intelActivity = client.activities.find(
-              (a) =>
-                a.kind === 'INTELLIGENCE_OFFER' &&
-                (a.offerId === m.offerId ||
-                  (a.metadata &&
-                    typeof a.metadata === 'object' &&
-                    Array.isArray((a.metadata as Record<string, unknown>).offerIds) &&
-                    ((a.metadata as Record<string, unknown>).offerIds as number[]).includes(m.offerId))),
-            );
-            const intelMeta =
-              intelActivity?.metadata && typeof intelActivity.metadata === 'object'
-                ? (intelActivity.metadata as Record<string, unknown>)
-                : {};
-            return {
+        ? client.matches.map((m) => ({
             id: m.id,
             score: m.score,
             notifiedAt: m.notifiedAt?.toISOString() ?? null,
@@ -452,10 +474,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
             intelligenceSent: Boolean(m.intelligenceSent),
             intelligenceReason: m.intelligenceReason || null,
-            clientWhy: typeof intelMeta.clientWhy === 'string' ? intelMeta.clientWhy : null,
+            clientWhy: whyByOffer.get(m.offerId) || null,
             offer: shapeAgencyClientMatchOffer(m.offer),
-          };
-          })
+          }))
         : [],
       listing: listingVisible && client.linkedOffer
         ? {

@@ -13,6 +13,7 @@ import {
   shapeMarketingTimelineItem,
   shouldSendRenewalReminder,
 } from "../src/lib/crm/sellerMarketing";
+import { parseSellerEventProposal } from "../src/lib/crm/sellerEventStage";
 
 test("marketing kinds include canonical events", () => {
   assert.equal(
@@ -425,4 +426,11 @@ test("listing path includes OH, auction and PRESENTATION_PROPOSED", () => {
     path.map((item) => item.kind),
     ["OPEN_HOUSE_CONFIRMED", "PRESENTATION_PROPOSED", "AUCTION_PROPOSAL"],
   );
+});
+
+test("event fulfill requires payload with kind and offerId", () => {
+  assert.equal(parseSellerEventProposal(null), null);
+  assert.equal(parseSellerEventProposal({}), null);
+  assert.equal(parseSellerEventProposal({ kind: "open_house" }), null);
+  assert.equal(parseSellerEventProposal({ kind: "open_house", offerId: 12 })?.offerId, 12);
 });

@@ -21,6 +21,7 @@ import { sendPortalChat } from '@/lib/crm/portalChat';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { withMysqlNamedLock } from '@/lib/crm/mysqlNamedLock';
 
 function lastFeedbackLesson(
   matches: Array<{
@@ -491,7 +492,55 @@ export async function pickIntelligenceOffer(
   };
 }
 
+function clampIntelligenceDailyLimit(value: number | null | undefined): number {
+  return Math.max(1, Math.min(3, value || 1));
+}
+
+async function intelligenceSendsRemainingToday(
+  clientId: number,
+  dailyLimit: number | null | undefined,
+): Promise<number> {
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const sentToday = await prisma.agencyClientActivity.count({
+    where: {
+      clientId,
+      kind: 'INTELLIGENCE_OFFER',
+      createdAt: { gte: dayStart },
+    },
+  });
+  return Math.max(0, clampIntelligenceDailyLimit(dailyLimit) - sentToday);
+}
+
 export async function sendIntelligenceOffer(params: {
+  clientId: number;
+  force?: boolean;
+  forceScore?: boolean;
+  ignoreInterval?: boolean;
+  replyToFeedback?: boolean;
+  channel?: 'email' | 'manual';
+}): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
+  const locked = await withMysqlNamedLock(`eos-intel-${params.clientId}`, () =>
+    sendIntelligenceOfferUnlocked(params),
+  );
+  if (!locked.ok) {
+    return {
+      sent: false,
+      pick: emptyIntelligencePick('Inna wysyłka asystenta jest w toku.', {
+        tasteSummary: '',
+        learnCount: 0,
+        calibrating: false,
+        considered: 0,
+        nextSendAt: null,
+        correctedBalconyIds: [],
+        lessons: [],
+      }),
+    };
+  }
+  return locked.value;
+}
+
+async function sendIntelligenceOfferUnlocked(params: {
   clientId: number;
   force?: boolean;
   forceScore?: boolean;
@@ -526,6 +575,31 @@ export async function sendIntelligenceOffer(params: {
         lessons: [],
       });
       return { sent: false, pick: blocked };
+    }
+  }
+
+  if (!params.force && !params.replyToFeedback) {
+    const limitRow = await prisma.agencyClient.findUnique({
+      where: { id: params.clientId },
+      select: { intelligenceDailyLimit: true },
+    });
+    const remainingToday = await intelligenceSendsRemainingToday(
+      params.clientId,
+      limitRow?.intelligenceDailyLimit,
+    );
+    if (remainingToday <= 0) {
+      return {
+        sent: false,
+        pick: emptyIntelligencePick('Dzienny limit ofert już wykorzystany.', {
+          tasteSummary: '',
+          learnCount: 0,
+          calibrating: false,
+          considered: 0,
+          nextSendAt: null,
+          correctedBalconyIds: [],
+          lessons: [],
+        }),
+      };
     }
   }
 
@@ -737,17 +811,7 @@ export async function tickClientIntelligence(): Promise<{
         });
       }
     }
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const sentToday = await prisma.agencyClientActivity.count({
-      where: {
-        clientId: client.id,
-        kind: 'INTELLIGENCE_OFFER',
-        createdAt: { gte: dayStart },
-      },
-    });
-    const limit = Math.max(1, Math.min(3, client.intelligenceDailyLimit || 1));
-    const remaining = Math.max(0, limit - sentToday);
+    const remaining = await intelligenceSendsRemainingToday(client.id, client.intelligenceDailyLimit);
     let sentForClient = 0;
     for (let i = 0; i < remaining; i += 1) {
       const result = await sendIntelligenceOffer({

@@ -138,6 +138,7 @@ export default function CrmIntelligenceAssistant({
   busy,
   activities,
   pendingCheckback,
+  openHandoff,
   onSave,
 }: {
   clientId: number;
@@ -151,6 +152,7 @@ export default function CrmIntelligenceAssistant({
     options: Array<{ id: string; label: string }>;
     createdAt: string;
   } | null;
+  openHandoff?: { id: number; body: string } | null;
   onSave: (next: IntelligenceSettings) => void | boolean | Promise<unknown>;
 }) {
   const [draft, setDraft] = useState<IntelligenceSettings>(value || DEFAULT_INTELLIGENCE_SETTINGS);
@@ -160,6 +162,8 @@ export default function CrmIntelligenceAssistant({
   const [saved, setSaved] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
   const [sendNote, setSendNote] = useState("");
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [localResumed, setLocalResumed] = useState(false);
   const [huntBusy, setHuntBusy] = useState<"preview" | "import" | null>(null);
   const [huntNote, setHuntNote] = useState("");
   const [huntHits, setHuntHits] = useState<
@@ -179,6 +183,13 @@ export default function CrmIntelligenceAssistant({
   useEffect(() => {
     setDraft(value || DEFAULT_INTELLIGENCE_SETTINGS);
   }, [value]);
+
+  useEffect(() => {
+    setLocalResumed(false);
+  }, [pendingCheckback?.activityId, openHandoff?.id]);
+
+  const pauseCheckback = localResumed ? null : pendingCheckback;
+  const pauseHandoff = localResumed ? null : openHandoff;
 
   useEffect(() => {
     if (draft.enabled && !enabledRef.current) {
@@ -223,10 +234,16 @@ export default function CrmIntelligenceAssistant({
 
   const nowLines = useMemo(() => {
     if (!draft.enabled) return ["Asystent jest wyłączony — nic nie wyjdzie, kolejka tylko podgląda."];
-    if (pendingCheckback) {
+    if (pauseCheckback) {
       return [
         "Czekam na odpowiedź klienta w panelu.",
-        pendingCheckback.body.slice(0, 160),
+        pauseCheckback.body.slice(0, 160),
+      ];
+    }
+    if (pauseHandoff) {
+      return [
+        "Asystent czeka, aż skontaktujesz się z klientem.",
+        pauseHandoff.body.slice(0, 160),
       ];
     }
     if (queueBusy) return ["Analizuję opisy, ankietę i reakcje…"];
@@ -237,12 +254,12 @@ export default function CrmIntelligenceAssistant({
       ];
     }
     return [pick?.skipReason || "Czeka na kolejny cykl albo reakcję klienta."];
-  }, [draft.enabled, pick, queueBusy, pendingCheckback]);
+  }, [draft.enabled, pick, queueBusy, pauseCheckback, pauseHandoff]);
 
   const plannedLines = useMemo(() => {
     const interval = INTELLIGENCE_INTERVAL_OPTIONS.find((item) => item.value === draft.intervalHours)?.label || `${draft.intervalHours} godz.`;
     return [
-      `Gdy cykl minie, wyślę do ${draft.dailyLimit} ${draft.dailyLimit === 1 ? "oferty" : "ofert"} naraz.`,
+      `Interwał: ${interval}. Dzienny limit: do ${draft.dailyLimit} ${draft.dailyLimit === 1 ? "oferty" : "ofert"} w danym dniu.`,
       nextWhen ? `Następna próba: ${nextWhen}.` : "Brak zaplanowanej godziny — włącz asystenta albo zbierz reakcje.",
       pick?.title ? `W kolejce: ${pick.title}.` : "Brak kandydata w kolejce.",
     ];
@@ -308,6 +325,31 @@ export default function CrmIntelligenceAssistant({
       setSendNote(error instanceof Error ? error.message : "Nie udało się wysłać.");
     } finally {
       setSendingNow(false);
+    }
+  };
+
+  const handleResumeIntelligence = async () => {
+    setResumeBusy(true);
+    setSendNote("");
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resume_intelligence" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json.error || "Nie udało się wznowić asystenta."));
+      setSendNote(
+        json.resumedCheckback || json.resumedHandoff
+          ? "Asystent wznowiony — może znowu wysyłać oferty."
+          : "Asystent nie był zablokowany.",
+      );
+      setLocalResumed(true);
+      await refreshPick();
+    } catch (error) {
+      setSendNote(error instanceof Error ? error.message : "Nie udało się wznowić asystenta.");
+    } finally {
+      setResumeBusy(false);
     }
   };
 
@@ -397,8 +439,8 @@ export default function CrmIntelligenceAssistant({
             onChange={(intervalHours) => setDraft((current) => ({ ...current, intervalHours }))}
           />
           <EosGlowSelect
-            label="Ofert na cykl"
-            hint="Limit na jeden cykl: jak minie interwał, wyśle do N ofert naraz — nie codziennie po jednej."
+            label="Ofert dziennie"
+            hint="Limit na dzień kalendarzowy — tyle ofert może pójść dziś, niezależnie od interwału."
             value={draft.dailyLimit}
             options={INTELLIGENCE_DAILY_LIMIT_OPTIONS}
             onChange={(dailyLimit) => setDraft((current) => ({ ...current, dailyLimit }))}
@@ -435,13 +477,19 @@ export default function CrmIntelligenceAssistant({
 
         {draft.enabled ? (
           <div className="eos-intel-console">
-            {pendingCheckback ? (
+            {pauseCheckback ? (
               <div className="mb-4 rounded-2xl border border-amber-400/35 bg-amber-500/10 px-4 py-3 text-sm leading-relaxed text-[var(--eos-text)]">
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-200">Czeka na klienta</p>
-                <p className="mt-2">{pendingCheckback.body}</p>
+                <p className="mt-2">{pauseCheckback.body}</p>
                 <p className="mt-2 text-xs text-[var(--eos-muted)]">
-                  Opcje: {pendingCheckback.options.map((o) => o.label).join(" · ")}
+                  Opcje: {pauseCheckback.options.map((o) => o.label).join(" · ")}
                 </p>
+              </div>
+            ) : null}
+            {pauseHandoff ? (
+              <div className="mb-4 rounded-2xl border border-sky-400/35 bg-sky-500/10 px-4 py-3 text-sm leading-relaxed text-[var(--eos-text)]">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-200">Czeka na agenta</p>
+                <p className="mt-2">{pauseHandoff.body}</p>
               </div>
             ) : null}
             <p className="eos-intel-kicker inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
@@ -586,6 +634,16 @@ export default function CrmIntelligenceAssistant({
           >
             {sendingNow ? "Wysyłam…" : "Wyślij teraz"}
           </button>
+          {pauseCheckback || pauseHandoff ? (
+            <button
+              type="button"
+              disabled={busy || resumeBusy}
+              onClick={() => void handleResumeIntelligence()}
+              className={eosBtn("ghost", { size: "sm" })}
+            >
+              {resumeBusy ? "Wznawiam…" : "Wznów asystenta"}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={busy || sendingNow || huntBusy != null}
