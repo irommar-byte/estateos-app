@@ -1,6 +1,23 @@
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production";
+
+const securityHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-site" },
+  ...(isProd
+    ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" }]
+    : []),
+];
+
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  /** Deploy atomowy: `NEXT_DIST_DIR=.next-build next build`, start zostaje na `.next`. */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   experimental: {
     optimizePackageImports: [
       "lucide-react",
@@ -12,7 +29,18 @@ const nextConfig: NextConfig = {
     ],
   },
   images: {
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 3600,
+    remotePatterns: [
+      { protocol: "https", hostname: "**.estateos.pl" },
+      { protocol: "https", hostname: "estateos.pl" },
+      { protocol: "https", hostname: "images.unsplash.com" },
+      { protocol: "https", hostname: "api.mapbox.com" },
+      { protocol: "https", hostname: "**.otodom.pl" },
+      { protocol: "https", hostname: "**.olx.pl" },
+      { protocol: "https", hostname: "**.cloudinary.com" },
+      { protocol: "https", hostname: "**.amazonaws.com" },
+    ],
   },
   /** Stałe 301: jedna kanoniczna domena (Universal Links / App Links bez duplikatu www). */
   async redirects() {
@@ -23,18 +51,19 @@ const nextConfig: NextConfig = {
         destination: "https://estateos.pl/:path*",
         permanent: true,
       },
-      /** Alias pod App Store / linki zewnętrzne — treść EN na działającej trasie prawnej. */
       { source: "/privacy-policy", destination: "/polityka-prywatnosci", permanent: false },
       { source: "/privacy-policy/", destination: "/polityka-prywatnosci", permanent: false },
       { source: "/press", destination: "/dla-prasy", permanent: true },
       { source: "/press/", destination: "/dla-prasy", permanent: true },
       { source: "/plan", destination: "/kampania", permanent: false },
-      { source: "/plan/", destination: "/kampania", permanent: false },
+      { source: "/register", destination: "/rejestracja", permanent: true },
+      { source: "/sprzedaj-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
+      { source: "/wystaw-nieruchomosc-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
+      { source: "/start", destination: "/wystaw-za-darmo", permanent: false },
     ];
   },
   async rewrites() {
     return [
-      /** Android beta — serwuj z API (plik lokalny lub redirect). */
       { source: "/downloads/estateos-android.apk", destination: "/api/downloads/estateos-android" },
       { source: "/downloads/estateos-android.aab", destination: "/api/downloads/estateos-android" },
     ];
@@ -43,13 +72,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/(.*)",
-        headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" }
-        ],
+        headers: securityHeaders,
       },
     ];
   },

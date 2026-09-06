@@ -1,5 +1,17 @@
 const path = require("path");
+const { execFileSync } = require("child_process");
 const root = __dirname;
+
+function gitCommitSha() {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return process.env.COMMIT_SHA || "unknown";
+  }
+}
 
 /** Źródło env produkcyjnego: ten plik + `.env` w katalogu aplikacji (PM2 `env` + `env_file`). */
 require("dotenv").config({ path: path.join(root, ".env") });
@@ -32,6 +44,7 @@ const sharedEnv = {
   OPENAI_LISTING_MODEL: pick("OPENAI_LISTING_MODEL", "gpt-5-mini"),
   OPENAI_OTODOM_MODEL: pick("OPENAI_OTODOM_MODEL", "gpt-4o-mini"),
   OTODOM_IMPORT_AI_REWRITE: process.env.OTODOM_IMPORT_AI_REWRITE,
+  COMMIT_SHA: gitCommitSha(),
 };
 
 module.exports = {
@@ -50,8 +63,10 @@ module.exports = {
       max_memory_restart: "1G",
       autorestart: true,
       max_restarts: 10,
-      min_uptime: "10s",
-      kill_timeout: 8000,
+      min_uptime: "20s",
+      kill_timeout: 12000,
+      listen_timeout: 20000,
+      exp_backoff_restart_delay: 3000,
       merge_logs: true,
       time: true,
     },

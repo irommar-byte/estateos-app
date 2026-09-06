@@ -1182,11 +1182,24 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
         ytdlp.stdout.pipe(ffmpeg.stdin);
         ytdlp.stderr.on("data", () => {});
         ffmpeg.stderr.on("data", () => {});
-        const fail = (err) => {
+        const STREAM_TIMEOUT_MS = Number(process.env.MUSIC_STREAM_TIMEOUT_MS || 180000);
+        let settled = false;
+        const finish = (fn) => (arg) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          fn(arg);
+        };
+        const fail = finish((err) => {
           try { ytdlp.kill("SIGKILL"); } catch {}
           try { ffmpeg.kill("SIGKILL"); } catch {}
           reject(err);
-        };
+        });
+        const succeed = finish(() => resolve());
+        const timer = setTimeout(
+          () => fail(new Error("Stream audio przekroczył limit czasu.")),
+          STREAM_TIMEOUT_MS,
+        );
         ytdlp.once("error", fail);
         ffmpeg.once("error", fail);
         ytdlp.once("close", (code) => {
@@ -1199,7 +1212,7 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
             fail(new Error(`ffmpeg stream zakończył się kodem ${code}.`));
             return;
           }
-          resolve();
+          succeed();
         });
         res.on("close", () => {
           try { ytdlp.kill("SIGKILL"); } catch {}

@@ -90,7 +90,33 @@ async function main() {
   log("info", "scan_completed", { scanned: deals.length, created, skipped });
 }
 
-main()
+function isRetryableDbError(error) {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /Can't reach database server|ECONNREFUSED|P1001|P1017/i.test(msg);
+}
+
+async function mainWithRetry() {
+  const attempts = Math.max(1, Number(process.env.CRON_HEARTBEAT_RETRIES || 4));
+  const delayMs = Math.max(250, Number(process.env.CRON_HEARTBEAT_RETRY_MS || 8000));
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await main();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableDbError(error) || attempt === attempts) break;
+      log("info", "scan_retry", {
+        attempt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
+mainWithRetry()
   .catch((error) => {
     log("error", "scan_failed", { error: error instanceof Error ? error.message : String(error) });
     process.exitCode = 1;
