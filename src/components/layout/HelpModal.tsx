@@ -49,7 +49,12 @@ export default function HelpModal({ isOpen, onClose }: Props) {
       maxWidth="max-w-5xl"
       hideHeader
       hideBodyPadding
-      bodyClassName="flex h-[min(92dvh,880px)] min-h-0 flex-col overflow-hidden"
+      surfaceStyle={{
+        height: "min(92dvh, 880px)",
+        maxHeight: "min(92dvh, 880px)",
+        minHeight: "min(72dvh, 640px)",
+      }}
+      bodyClassName="flex h-full min-h-0 flex-col overflow-hidden"
     >
       <div className="pointer-events-none absolute left-0 top-0 h-72 w-72 rounded-full bg-emerald-500/10 blur-[120px]" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-64 w-64 rounded-full bg-white/5 blur-[100px]" />
@@ -75,7 +80,7 @@ export default function HelpModal({ isOpen, onClose }: Props) {
         </div>
       </header>
 
-      <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         <nav
           className="custom-scrollbar shrink-0 border-b border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-4 lg:w-56 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-6"
           data-lenis-prevent

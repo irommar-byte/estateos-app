@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -30,6 +30,7 @@ type Props = {
   iconWrapClassName?: string;
   className?: string;
   bodyClassName?: string;
+  surfaceStyle?: CSSProperties;
 };
 
 const VARIANT_SHELL: Record<EosModalVariant, string> = {
@@ -65,6 +66,7 @@ export default function EosModal({
   iconWrapClassName = "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-500 shadow-[0_8px_24px_rgba(16,185,129,0.12)]",
   className = "",
   bodyClassName = "",
+  surfaceStyle,
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const stackDepth = useModalStack(open);
@@ -125,6 +127,7 @@ export default function EosModal({
             aria-labelledby={titleId}
             tabIndex={-1}
             className={`eos-modal-surface eos-modal-shell eos-themed-modal pointer-events-auto relative z-10 flex w-full min-h-0 flex-col overflow-hidden ${VARIANT_SURFACE[variant]} ${isFullscreen ? "" : maxWidth}`}
+            style={surfaceStyle}
             data-lenis-prevent
             onWheel={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
