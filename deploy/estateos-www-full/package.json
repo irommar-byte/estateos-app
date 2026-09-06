@@ -13,7 +13,7 @@
     "start:prod:verify": "NODE_ENV=production next start -p 3010",
     "pm2:start": "pm2 start ecosystem.config.cjs --env production",
     "pm2:reload": "pm2 startOrReload ecosystem.config.cjs --env production",
-    "pm2:reload:web": "pm2 reload nieruchomosci --update-env",
+    "pm2:reload:web": "pm2 startOrReload ecosystem.config.cjs --only nieruchomosci --env production",
     "pm2:reload:seller-marketing-renewals": "pm2 startOrReload ecosystem.config.cjs --only seller-marketing-renewals --env production",
     "pm2:save": "pm2 save",
     "db:seller-marketing": "prisma db execute --file prisma/manual/sql/2026-09-01_seller_marketing.sql --schema prisma/schema.prisma",

@@ -444,8 +444,8 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'commit-stale',
       severity: 'info',
-      title: 'Aplikacja działa na poprzedniej wersji kodu',
-      detail: 'Repozytorium jest nowsze niż proces WWW. Strona działa, ale health raportuje stary build.',
+      title: 'Health pokazuje stary commit',
+      detail: 'Kod na dysku jest aktualny. Workery WWW trzymają starą zmienną COMMIT_SHA po reloadzie, który nie wczytał ecosystem.config.cjs.',
       evidence: [
         { label: 'W repozytorium', value: sha },
         { label: 'W pliku .env', value: envSha || 'brak' },
@@ -627,7 +627,11 @@ export async function optimizeServer(): Promise<{
   }
 
   if (needsReload && !isBuildLocked()) {
-    await run('pm2', ['reload', 'nieruchomosci', '--update-env'], 30_000);
+    await run(
+      'pm2',
+      ['startOrReload', path.join(APP_ROOT, 'ecosystem.config.cjs'), '--only', 'nieruchomosci', '--env', 'production'],
+      45_000,
+    );
     if (findingIds.has('restarts')) {
       await run('pm2', ['reset', 'nieruchomosci'], 8_000);
     }
