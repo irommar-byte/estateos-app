@@ -16,6 +16,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  /** Deploy atomowy: `NEXT_DIST_DIR=.next-build next build`, start zostaje na `.next`. */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   experimental: {
     optimizePackageImports: [
       "lucide-react",
