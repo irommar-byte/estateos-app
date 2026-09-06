@@ -507,26 +507,16 @@ export default function ServerMemoryPage() {
             </p>
             <h1 className="text-4xl font-black tracking-tight md:text-5xl">Pamięć i serwer</h1>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
-              Jeden dysk VPS. Filmy, muzyka, nieruchomości i samochody — osobno, czytelnie, z bezpiecznym czyszczeniem.
+              Diagnostyka, optymalizacja i mapa dysku — filmy, muzyka, oferty i system osobno.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className={`rounded-full border px-4 py-2 text-[11px] font-black uppercase tracking-widest ${levelMeta.cls}`}>
-              {levelMeta.text}
-            </span>
-            <button
-              type="button"
-              disabled={busy || safeCleanup.count === 0}
-              onClick={() => setConfirmCleanup(true)}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-accent)] px-5 py-2.5 text-[11px] font-black uppercase tracking-widest text-white shadow-[var(--eos-shadow-soft)] disabled:opacity-40"
-            >
-              <Sparkles size={14} /> Bezpieczne oczyszczanie
-            </button>
-          </div>
+          <span className={`rounded-full border px-4 py-2 text-[11px] font-medium ${levelMeta.cls}`}>
+            {levelMeta.text}
+          </span>
         </header>
 
         <div className="mb-10">
-          <ServerHealthOptimizer compact />
+          <ServerHealthOptimizer />
         </div>
 
         {error && (

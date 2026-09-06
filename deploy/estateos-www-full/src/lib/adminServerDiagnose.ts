@@ -32,6 +32,8 @@ export type ServerFinding = {
   severity: FindingSeverity;
   title: string;
   detail: string;
+  evidence?: Array<{ label: string; value: string }>;
+  action?: string;
   fixable: boolean;
 };
 
@@ -39,6 +41,7 @@ export type DiagnoseReport = {
   ok: true;
   healthy: boolean;
   level: 'ok' | 'warning' | 'critical';
+  score: number;
   summary: string;
   findings: ServerFinding[];
   collectedAt: string;
@@ -71,33 +74,54 @@ export function parsePsEtimeToSec(etime: string): number {
   return 0;
 }
 
+export function healthScore(findings: ServerFinding[]): number {
+  let score = 100;
+  for (const item of findings) {
+    if (item.severity === 'critical') score -= 35;
+    else if (item.severity === 'warning') score -= 12;
+    else score -= 5;
+  }
+  return Math.max(0, Math.min(100, score));
+}
+
 export function summarizeFindings(findings: ServerFinding[]): {
   level: 'ok' | 'warning' | 'critical';
   healthy: boolean;
+  score: number;
   summary: string;
 } {
+  const score = healthScore(findings);
+  const fixable = findings.filter((item) => item.fixable).length;
   if (findings.some((item) => item.severity === 'critical')) {
     return {
       level: 'critical',
       healthy: false,
-      summary: 'Serwer wymaga natychmiastowej interwencji.',
+      score,
+      summary: `${findings.length} problemów, w tym krytyczne. Przywrócenie zdrowego stanu jest wymagane.`,
     };
   }
   if (findings.some((item) => item.severity === 'warning')) {
     return {
       level: 'warning',
       healthy: false,
-      summary: 'Znalazłem problemy, które da się posprzątać optymalizacją.',
+      score,
+      summary: `${findings.length} problemów do przeglądu${fixable ? `, ${fixable} można naprawić od razu` : ''}.`,
     };
   }
   if (findings.length > 0) {
     return {
       level: 'ok',
       healthy: false,
-      summary: 'Drobne uwagi — nic krytycznego, ale warto posprzątać.',
+      score,
+      summary: `${findings.length} ${findings.length === 1 ? 'odchylenie od wzorca produkcyjnego' : 'odchylenia od wzorca produkcyjnego'}. Nic nie zagraża stronie.`,
     };
   }
-  return { level: 'ok', healthy: true, summary: 'Zdrowy stan. Brak śmieci, błędów i zaciętych procesów.' };
+  return {
+    level: 'ok',
+    healthy: true,
+    score: 100,
+    summary: 'Wszystkie kontrole przeszły. Serwer jest w zdrowym stanie.',
+  };
 }
 
 function formatBytes(bytes: number) {
@@ -269,8 +293,10 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'mariadb',
       severity: 'critical',
-      title: 'MariaDB nie odpowiada',
-      detail: `Usługa bazy: ${mariadb.status}. Oferty i CRM mogą nie działać.`,
+      title: 'Baza danych nie odpowiada',
+      detail: 'Oferty, CRM i logowanie mogą nie działać, dopóki MariaDB nie wstanie.',
+      evidence: [{ label: 'Usługa', value: mariadb.status }],
+      action: 'Uruchom MariaDB',
       fixable: true,
     });
   }
@@ -279,7 +305,12 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       id: 'disk-critical',
       severity: 'critical',
       title: 'Dysk prawie pełny',
-      detail: `${disk.percent}% zajęte · wolne ${formatBytes(disk.freeBytes)}.`,
+      detail: 'Brak miejsca zatrzyma logi, importy i uploady.',
+      evidence: [
+        { label: 'Zajęte', value: `${disk.percent}%` },
+        { label: 'Wolne', value: formatBytes(disk.freeBytes) },
+      ],
+      action: junk.count > 0 ? 'Usuń pliki tymczasowe' : undefined,
       fixable: junk.count > 0,
     });
   } else if (disk.percent >= 85) {
@@ -287,7 +318,12 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       id: 'disk-warning',
       severity: 'warning',
       title: 'Dysk zapełnia się',
-      detail: `${disk.percent}% zajęte · wolne ${formatBytes(disk.freeBytes)}.`,
+      detail: 'Zostało mało zapasu na importy i media.',
+      evidence: [
+        { label: 'Zajęte', value: `${disk.percent}%` },
+        { label: 'Wolne', value: formatBytes(disk.freeBytes) },
+      ],
+      action: junk.count > 0 ? 'Usuń pliki tymczasowe' : undefined,
       fixable: junk.count > 0,
     });
   }
@@ -295,8 +331,13 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'junk',
       severity: junk.bytes > 200 * 1024 * 1024 ? 'warning' : 'info',
-      title: 'Śmieci i pliki tymczasowe',
-      detail: `${junk.count} pozycji · ${formatBytes(junk.bytes)} (.part, .tmp, cache).`,
+      title: 'Pliki tymczasowe i niedokończone pobrania',
+      detail: 'Cache, .part i .tmp — nic z biblioteki filmów ani ofert.',
+      evidence: [
+        { label: 'Pozycje', value: String(junk.count) },
+        { label: 'Do odzyskania', value: formatBytes(junk.bytes) },
+      ],
+      action: 'Usuń śmieci',
       fixable: true,
     });
   }
@@ -305,8 +346,13 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'logs',
       severity: 'warning',
-      title: 'Rozdęte logi PM2',
-      detail: `${logs.length} plików · ${formatBytes(bytes)}. Przytnę je do ostatnich 8 MB.`,
+      title: 'Logi PM2 są rozdęte',
+      detail: 'Zostaną ostatnie 8 MB każdego pliku. Historia błędów nie znika w całości.',
+      evidence: [
+        { label: 'Pliki', value: String(logs.length) },
+        { label: 'Rozmiar', value: formatBytes(bytes) },
+      ],
+      action: 'Przytnij logi',
       fixable: true,
     });
   }
@@ -315,8 +361,13 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'cores',
       severity: 'warning',
-      title: 'Zrzuty pamięci (core dump)',
-      detail: `${cores.length} plików · ${formatBytes(bytes)} w downloaderze.`,
+      title: 'Zrzuty pamięci po awarii procesu',
+      detail: 'Pliki core w downloaderze nie są potrzebne do działania serwisu.',
+      evidence: [
+        { label: 'Pliki', value: String(cores.length) },
+        { label: 'Rozmiar', value: formatBytes(bytes) },
+      ],
+      action: 'Usuń zrzuty',
       fixable: true,
     });
   }
@@ -324,8 +375,10 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'hung-media',
       severity: 'warning',
-      title: 'Zacięte pobieranie audio/wideo',
-      detail: `${hung.length} procesów yt-dlp/ffmpeg powyżej 10 min.`,
+      title: 'Zacięte procesy pobierania',
+      detail: 'yt-dlp albo ffmpeg działa ponad 10 minut i nie oddaje wyniku.',
+      evidence: [{ label: 'Procesy', value: String(hung.length) }],
+      action: 'Przerwij zacięte joby',
       fixable: true,
     });
   }
@@ -333,16 +386,20 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'health-down',
       severity: 'critical',
-      title: 'WWW nie odpowiada na /api/health',
-      detail: 'Next na :3000 nie oddał 200 w 4 s.',
+      title: 'WWW nie odpowiada',
+      detail: 'Lokalny /api/health nie wrócił w 4 sekundy.',
+      evidence: [{ label: 'Port', value: String(process.env.PORT || '3000') }],
+      action: isBuildLocked() ? undefined : 'Przeładuj workery',
       fixable: !isBuildLocked(),
     });
   } else if (health.ms >= 750) {
     findings.push({
       id: 'health-slow',
       severity: 'warning',
-      title: 'Wolna odpowiedź health',
-      detail: `${health.ms} ms. Workery warto odświeżyć.`,
+      title: 'Wolna odpowiedź aplikacji',
+      detail: 'Health powinien zamykać się w ułamku sekundy.',
+      evidence: [{ label: 'Czas', value: `${health.ms} ms` }],
+      action: isBuildLocked() ? undefined : 'Przeładuj workery',
       fixable: !isBuildLocked(),
     });
   }
@@ -350,8 +407,13 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'web-memory',
       severity: 'warning',
-      title: 'Workery WWW biorą za dużo RAM',
-      detail: `Największy ${formatBytes(maxWebRss)} · suma ${formatBytes(webRss)}.`,
+      title: 'Workery WWW zużywają za dużo RAM',
+      detail: 'Łagodny reload zwalnia stertę bez wyłączania strony.',
+      evidence: [
+        { label: 'Największy', value: formatBytes(maxWebRss) },
+        { label: 'Suma', value: formatBytes(webRss) },
+      ],
+      action: isBuildLocked() ? undefined : 'Przeładuj workery',
       fixable: !isBuildLocked(),
     });
   }
@@ -361,7 +423,9 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       id: 'restarts',
       severity: 'info',
       title: 'Wysoki licznik restartów PM2',
-      detail: noisyRestarts.map((item) => `${item.name}: ${item.restarts}`).join(', '),
+      detail: 'To historia, nie awaria. Licznik można wyzerować po stabilnym starcie.',
+      evidence: noisyRestarts.map((item) => ({ label: item.name, value: String(item.restarts) })),
+      action: 'Wyzeruj licznik',
       fixable: true,
     });
   }
@@ -369,8 +433,10 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'build-leftovers',
       severity: 'info',
-      title: 'Resztki atomowego buildu',
-      detail: leftovers.map((item) => path.basename(item)).join(', '),
+      title: 'Zostały katalogi po buildzie',
+      detail: '.next-build albo .next-prev nie są już potrzebne.',
+      evidence: leftovers.map((item) => ({ label: 'Katalog', value: path.basename(item) })),
+      action: 'Usuń resztki',
       fixable: true,
     });
   }
@@ -378,8 +444,14 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'commit-stale',
       severity: 'info',
-      title: 'Health pokazuje stary commit',
-      detail: `Git ${sha} · .env ${envSha || 'brak'} · proces ${health?.commit || 'brak'}.`,
+      title: 'Aplikacja działa na poprzedniej wersji kodu',
+      detail: 'Repozytorium jest nowsze niż proces WWW. Strona działa, ale health raportuje stary build.',
+      evidence: [
+        { label: 'W repozytorium', value: sha },
+        { label: 'W pliku .env', value: envSha || 'brak' },
+        { label: 'W procesie WWW', value: health?.commit || 'brak' },
+      ],
+      action: isBuildLocked() ? undefined : 'Przeładuj z aktualnym commitem',
       fixable: !isBuildLocked(),
     });
   }
@@ -388,7 +460,12 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       id: 'swap',
       severity: 'warning',
       title: 'System korzysta ze swapu',
-      detail: `Swap ${formatBytes(swapUsed)} · RAM ${memory.percent}%.`,
+      detail: 'Część RAM-u spadła na dysk. Strona może zwalniać.',
+      evidence: [
+        { label: 'Swap', value: formatBytes(swapUsed) },
+        { label: 'RAM', value: `${memory.percent}%` },
+      ],
+      action: maxWebRss >= WEB_RSS_WARN && !isBuildLocked() ? 'Przeładuj workery' : undefined,
       fixable: maxWebRss >= WEB_RSS_WARN && !isBuildLocked(),
     });
   }
@@ -396,8 +473,13 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     findings.push({
       id: 'load',
       severity: 'warning',
-      title: 'Wysokie obciążenie CPU',
-      detail: `Load ${cpu.load1} przy ${cpu.cores} rdzeniach.`,
+      title: 'Wysokie obciążenie procesora',
+      detail: 'Load przekracza liczbę rdzeni.',
+      evidence: [
+        { label: 'Load', value: String(cpu.load1) },
+        { label: 'Rdzenie', value: String(cpu.cores) },
+      ],
+      action: hung.length > 0 ? 'Przerwij zacięte joby' : undefined,
       fixable: hung.length > 0,
     });
   }
