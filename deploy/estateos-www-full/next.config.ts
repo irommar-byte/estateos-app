@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   /** Deploy atomowy: `NEXT_DIST_DIR=.next-build next build`, start zostaje na `.next`. */
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  typescript: {
+    /** VM 6 GB: pełny tsc w `next build` swapuje i dusi live. Type-check jest w `npm run type-check`. */
+    ignoreBuildErrors: process.env.ESTATEOS_SKIP_BUILD_TYPECHECK === "1",
+  },
   experimental: {
     optimizePackageImports: [
       "lucide-react",
