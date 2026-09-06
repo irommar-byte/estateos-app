@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
+import ServerHealthOptimizer from "@/components/admin/ServerHealthOptimizer";
 import {
   ArrowLeft,
   Car,
@@ -523,6 +524,10 @@ export default function ServerMemoryPage() {
             </button>
           </div>
         </header>
+
+        <div className="mb-10">
+          <ServerHealthOptimizer compact />
+        </div>
 
         {error && (
           <div className="mb-6 flex items-center gap-3 rounded-3xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-700 dark:text-red-300">

@@ -5,6 +5,7 @@ import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, A
 import KeiAmerWorkspace from "@/components/admin/KeiAmerWorkspace";
 import PortalOnboardingInvitePanel from "@/components/admin/PortalOnboardingInvitePanel";
 import ServerMemoryTile from "@/components/admin/ServerMemoryTile";
+import ServerHealthOptimizer from "@/components/admin/ServerHealthOptimizer";
 
 export default function Centrala() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -82,6 +83,10 @@ export default function Centrala() {
             Zalogowano pomyślnie na konto Master Admin. Masz pełen dostęp do platformy.
           </p>
         </motion.div>
+
+        <div className="mb-10">
+          <ServerHealthOptimizer />
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
           <ServerMemoryTile />
