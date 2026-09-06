@@ -282,7 +282,7 @@ export default function Navbar() {
       : null;
 
   return (
-    <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
+    <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-md [padding-top:env(safe-area-inset-top)]">
       <div
         ref={barRef}
         className="relative mx-auto grid h-20 max-w-[1400px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 px-3 sm:gap-2 sm:px-4 md:px-6"

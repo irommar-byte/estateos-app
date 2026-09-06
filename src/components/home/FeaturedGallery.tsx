@@ -93,7 +93,7 @@ export default function FeaturedGallery() {
   useEffect(() => {
     let cancelled = false;
 
-    fetchHomeCatalogJson<Offer[]>("/api/offers")
+    fetchHomeCatalogJson<Offer[]>("/api/offers?view=home-featured")
       .then((json) => {
         if (!cancelled && Array.isArray(json)) {
           const featuredOnly = json.filter((offer: Offer) => offer?.featured === true);
@@ -112,6 +112,14 @@ export default function FeaturedGallery() {
 
   useEffect(() => {
     let cancelled = false;
+    const cookie = typeof document === "undefined" ? "" : document.cookie;
+    if (
+      !/(?:^|;\s*)(estateos_session|luxestate_user|next-auth\.session-token|__Secure-next-auth\.session-token)=/.test(
+        cookie,
+      )
+    ) {
+      return;
+    }
 
     fetch("/api/deals/my", { credentials: "include", cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))

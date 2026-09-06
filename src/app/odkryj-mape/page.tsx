@@ -1,6 +1,10 @@
 "use client";
 
-import InteractiveMap from "@/components/map/InteractiveMap";
+import dynamic from "next/dynamic";
+
+const InteractiveMap = dynamic(() => import("@/components/map/InteractiveMap"), {
+  ssr: false,
+});
 
 /** Pełnoekranowa mapa — bez formularzy miasta/dzielnic; tylko HUD nad Mapbox. */
 export default function DiscoverMapPage() {

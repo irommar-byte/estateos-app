@@ -1,9 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import HeroDepthEffect from "@/components/hero3d/HeroDepthEffect";
-import SmoothScroll from "@/components/layout/SmoothScroll";
 import Footer from "@/components/layout/Footer";
 import { useLocale } from "@/contexts/LocaleContext";
 
@@ -20,13 +19,43 @@ const EstateOsGuidePanel = dynamic(() => import("@/components/home/EstateOsGuide
 
 const InteractiveMap = dynamic(() => import("@/components/map/InteractiveMap"), {
   ssr: false,
-  loading: () => (
+  loading: MapPlaceholder,
+});
+
+function MapPlaceholder() {
+  return (
     <div
-      className="mx-auto h-[min(70vh,640px)] w-full max-w-7xl animate-pulse rounded-[1.75rem] bg-[var(--eos-card)]"
+      className="mx-auto h-[85vh] min-h-[600px] w-full bg-[var(--eos-card)]"
       aria-hidden
     />
-  ),
-});
+  );
+}
+
+function DeferredInteractiveMap() {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || ready) return;
+    if (!("IntersectionObserver" in window)) {
+      setReady(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setReady(true);
+        observer.disconnect();
+      },
+      { rootMargin: "500px 0px" },
+    );
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [ready]);
+
+  return <div ref={hostRef}>{ready ? <InteractiveMap /> : <MapPlaceholder />}</div>;
+}
 
 export default function Home() {
   const { dict } = useLocale();
@@ -41,37 +70,35 @@ export default function Home() {
   }, []);
 
   return (
-    <SmoothScroll>
-      <main className="premium-home-shell eos-lux-home theme-aware-dashboard relative min-h-screen overflow-x-hidden bg-[var(--eos-bg)] text-[var(--eos-text)] selection:bg-emerald-500/30">
-        <HeroDepthEffect />
+    <main className="premium-home-shell eos-lux-home theme-aware-dashboard relative min-h-screen overflow-x-clip bg-[var(--eos-bg)] text-[var(--eos-text)] selection:bg-emerald-500/30">
+      <HeroDepthEffect />
 
-        <FeaturedGallery />
-        <FeaturedCarsGallery />
+      <FeaturedGallery />
+      <FeaturedCarsGallery />
 
-        <HomeLiveStrip />
-        <EstateOsGuidePanel />
+      <HomeLiveStrip />
+      <EstateOsGuidePanel />
 
-        <div
-          id="map-section"
-          className="premium-home-surface relative z-20 w-full scroll-mt-[6.75rem] border-t border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] pt-16 shadow-[0_-40px_100px_rgba(0,0,0,0.06)] sm:scroll-mt-24 sm:pt-24"
-        >
-          <div className="mx-auto mb-12 max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-700/90">
-              {dict.homePremium.mapEyebrow}
-            </p>
-            <h2 className="premium-home-section-title mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
-              {dict.homePremium.mapTitle}{" "}
-              <span className="font-semibold text-emerald-600">{dict.homePremium.mapTitleHighlight}</span>
-            </h2>
-            <p className="mx-auto mt-5 max-w-2xl text-sm font-light leading-relaxed text-[var(--eos-muted)] sm:text-base">
-              {dict.homePremium.mapSubtitle}
-            </p>
-          </div>
-          <InteractiveMap />
+      <div
+        id="map-section"
+        className="premium-home-surface relative z-20 w-full scroll-mt-[6.75rem] border-t border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] pt-16 shadow-[0_-40px_100px_rgba(0,0,0,0.06)] sm:scroll-mt-24 sm:pt-24"
+      >
+        <div className="mx-auto mb-12 max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-700/90">
+            {dict.homePremium.mapEyebrow}
+          </p>
+          <h2 className="premium-home-section-title mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
+            {dict.homePremium.mapTitle}{" "}
+            <span className="font-semibold text-emerald-600">{dict.homePremium.mapTitleHighlight}</span>
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl text-sm font-light leading-relaxed text-[var(--eos-muted)] sm:text-base">
+            {dict.homePremium.mapSubtitle}
+          </p>
         </div>
+        <DeferredInteractiveMap />
+      </div>
 
-        <Footer />
-      </main>
-    </SmoothScroll>
+      <Footer />
+    </main>
   );
 }

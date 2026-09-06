@@ -760,6 +760,18 @@ export async function endOfferPublicationInTx(
   return rows[0] ?? null;
 }
 
+export async function allActivePublicationOfferIds() {
+  await ensureOfferPublicationSchema();
+  const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
+    `
+      SELECT offerId
+      FROM OfferPublication
+      WHERE status = 'ACTIVE'
+    `,
+  );
+  return new Set(rows.map((row) => Number(row.offerId)).filter((id) => Number.isFinite(id)));
+}
+
 export async function activePublicationOfferIds(offerIds: number[]) {
   await ensureOfferPublicationSchema();
   if (!offerIds.length) return new Set<number>();

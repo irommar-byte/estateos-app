@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Building2, Car, CheckCircle2, Home } from "lucide-react";
@@ -165,7 +165,6 @@ export default function HeroDepthEffect() {
   const { dict } = useLocale();
   const router = useRouter();
   const ref = useRef<HTMLElement | null>(null);
-  const noiseFilterId = useId().replace(/:/g, "");
   const [reduceMotion, setReduceMotion] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -260,32 +259,8 @@ export default function HeroDepthEffect() {
           />
         </motion.div>
 
-        <div className="absolute inset-0 z-[6] opacity-[0.035] mix-blend-overlay">
-          <svg className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <filter id={`hero-noise-${noiseFilterId}`} x="0" y="0">
-                <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" stitchTiles="stitch" />
-              </filter>
-            </defs>
-            <rect width="100%" height="100%" filter={`url(#hero-noise-${noiseFilterId})`} />
-          </svg>
-        </div>
-
-        {!reduceMotion && (
-          <motion.div
-            className="absolute -left-[18%] top-[4%] z-[5] h-[70%] w-[62%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(16,185,129,0.22),transparent_72%)] blur-2xl will-change-transform"
-            animate={{ x: ["-4%", "6%", "-2%"], y: ["0%", "5%", "-1%"], opacity: [0.22, 0.42, 0.28] }}
-            transition={{ duration: 24, repeat: Infinity, ease: "easeInOut" }}
-          />
-        )}
-
-        {!reduceMotion && (
-          <motion.div
-            className="absolute -right-[12%] bottom-[0%] z-[5] h-[58%] w-[52%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(56,189,248,0.18),transparent_70%)] blur-2xl will-change-transform"
-            animate={{ x: ["2%", "-5%", "1%"], y: ["0%", "-4%", "1%"], opacity: [0.14, 0.28, 0.18] }}
-            transition={{ duration: 26, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
-          />
-        )}
+        <div className="absolute -left-[18%] top-[4%] z-[5] h-[70%] w-[62%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(16,185,129,0.18),transparent_72%)] blur-2xl" />
+        <div className="absolute -right-[12%] bottom-[0%] z-[5] h-[58%] w-[52%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(56,189,248,0.15),transparent_70%)] blur-2xl" />
 
         <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/72 via-black/34 to-[#050505]" />
         <div className="absolute inset-y-0 left-1/2 z-[9] w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
@@ -293,18 +268,6 @@ export default function HeroDepthEffect() {
         <div className="absolute inset-x-0 top-0 z-[11] h-[min(12vh,7rem)] bg-gradient-to-b from-black/90 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 z-[11] h-[min(22vh,13rem)] bg-gradient-to-t from-[#050505] to-transparent" />
 
-        {!reduceMotion && (
-          <motion.div
-            className="absolute inset-0 z-[12] opacity-0 sm:opacity-100"
-            style={{
-              backgroundImage:
-                "linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.045) 50%, transparent 58%)",
-              backgroundSize: "220% 100%",
-            }}
-            animate={{ backgroundPosition: ["12% 0%", "88% 0%", "20% 0%"] }}
-            transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
-          />
-        )}
       </div>
 
       <motion.div
@@ -329,9 +292,9 @@ export default function HeroDepthEffect() {
           </motion.p>
 
           <motion.h1
-            initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 1.05, ease: customEase, delay: 0.1 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: customEase, delay: 0.1 }}
             className="hero-wordmark shrink-0 text-[clamp(3.75rem,22vw,16rem)] font-light leading-[0.8] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] sm:text-[clamp(5rem,24vw,16rem)] md:text-[clamp(6.5rem,24vw,18rem)]"
           >
             <span className="font-semibold text-emerald-400">E</span>state

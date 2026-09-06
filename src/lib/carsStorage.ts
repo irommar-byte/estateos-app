@@ -217,7 +217,10 @@ async function ensureCarListingColumn(column: string, definition: string) {
   }
 }
 
-export async function ensureCarsStorage() {
+let carsStorageReady = false;
+let carsStoragePromise: Promise<void> | null = null;
+
+async function ensureCarsStorageOnce() {
   await prisma.$executeRawUnsafe(CREATE_SQL);
   await ensureCarListingColumn("generation", "VARCHAR(120) NULL");
   await ensureCarListingColumn("enginePower", "VARCHAR(80) NULL");
@@ -249,6 +252,17 @@ export async function ensureCarsStorage() {
     WHERE price IS NULL OR price = 0 OR priceCurrency IS NULL OR priceCurrency = ''
   `);
   await prisma.$executeRawUnsafe(SEED_SQL);
+  carsStorageReady = true;
+}
+
+export async function ensureCarsStorage() {
+  if (carsStorageReady) return;
+  if (!carsStoragePromise) {
+    carsStoragePromise = ensureCarsStorageOnce().finally(() => {
+      carsStoragePromise = null;
+    });
+  }
+  await carsStoragePromise;
 }
 
 export async function listCars(limit = 50): Promise<CarListingRecord[]> {

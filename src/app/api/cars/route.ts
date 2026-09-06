@@ -9,18 +9,29 @@ import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 import { resolveOfferPriceFromBody } from "@/lib/money/offerPrice.server";
 import { enrichOfferMoneyFields } from "@/lib/money/offerPrice";
 
+let carEngagementReady = false;
+let carEngagementPromise: Promise<void> | null = null;
 
 async function ensureCarEngagementTable() {
-  const { prisma } = await import("@/lib/prisma");
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS CarEngagement (
-      carId INT NOT NULL,
-      viewsCount INT NOT NULL DEFAULT 0,
-      favoritesCount INT NOT NULL DEFAULT 0,
-      updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (carId)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
+  if (carEngagementReady) return;
+  if (!carEngagementPromise) {
+    carEngagementPromise = (async () => {
+      const { prisma } = await import("@/lib/prisma");
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS CarEngagement (
+          carId INT NOT NULL,
+          viewsCount INT NOT NULL DEFAULT 0,
+          favoritesCount INT NOT NULL DEFAULT 0,
+          updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+          PRIMARY KEY (carId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      carEngagementReady = true;
+    })().finally(() => {
+      carEngagementPromise = null;
+    });
+  }
+  await carEngagementPromise;
 }
 
 async function loadCarEngagement(ids: number[]): Promise<Map<number, { viewsCount: number; favoritesCount: number }>> {
@@ -163,7 +174,7 @@ export async function GET(req: Request) {
       { status: 200 },
     );
   }
-  const all = await listCars(100);
+  const all = await listCars(searchParams.get("view") === "featured" ? 12 : 100);
   const engagement = await loadCarEngagement(all.map((c) => c.id));
   return NextResponse.json(
     all.map((listing) =>
@@ -176,7 +187,10 @@ export async function GET(req: Request) {
         engagement,
       ),
     ),
-    { status: 200 },
+    {
+      status: 200,
+      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+    },
   );
 }
 

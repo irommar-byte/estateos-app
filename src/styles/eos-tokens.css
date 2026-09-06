@@ -119,7 +119,7 @@ body {
   background-color: var(--eos-bg);
   color: var(--eos-text);
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  overflow-x: clip;
   transition: background-color 0.35s ease, color 0.35s ease;
 }
 

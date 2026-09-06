@@ -32,7 +32,7 @@ export default function FeaturedCarsGallery() {
   useEffect(() => {
     let cancelled = false;
 
-    fetchHomeCatalogJson<CarListing[]>("/api/cars")
+    fetchHomeCatalogJson<CarListing[]>("/api/cars?view=featured")
       .then((json) => {
         if (cancelled || !Array.isArray(json)) return;
         const featured = json.filter((car: CarListing) => car?.featured === true);

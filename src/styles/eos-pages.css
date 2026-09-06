@@ -1175,7 +1175,7 @@ html.light nav.fixed {
   .premium-hero-stage {
     min-height: 100svh;
     height: auto;
-    overflow-x: hidden;
+    overflow-x: clip;
     overflow-y: visible;
   }
 
@@ -1386,11 +1386,7 @@ html.light .hero-audience-grid > .hero-audience-card:last-child {
   }
 }
 
-/* Below-fold: mniej pracy przy scrollu */
-.premium-home-shell .premium-home-surface {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 520px;
-}
+/* content-visibility: auto zaniżał wysokość dokumentu (Lenis / Safari) i ucinał scroll */
 
 /* Szklany podpis na kartach ofert — zawsze ciemny na zdjęciu (fix jasnego motywu) */
 .eos-offer-caption-glass {

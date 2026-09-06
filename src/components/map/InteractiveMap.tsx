@@ -268,6 +268,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [mapInitError, setMapInitError] = useState<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapIsVisible, setMapIsVisible] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showTeaser, setShowTeaser] = useState(false);
   const [activeHoverPinId, setActiveHoverPinId] = useState<number | null>(null);
@@ -331,6 +332,20 @@ export default function InteractiveMap({ immersive = false }: Props) {
     canHoverRef.current = window.matchMedia("(hover: hover)").matches;
     const dismissed = window.sessionStorage.getItem("estateos_map_guide_dismissed");
     setShowMapGuide(dismissed !== "1");
+  }, []);
+
+  useEffect(() => {
+    const container = mapContainer.current;
+    if (!container || !("IntersectionObserver" in window)) {
+      setMapIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setMapIsVisible(Boolean(entry?.isIntersecting)),
+      { rootMargin: "120px 0px" },
+    );
+    observer.observe(container);
+    return () => observer.disconnect();
   }, []);
 
   const focusPin = useCallback((offerId: number, coords: [number, number]) => {
@@ -436,7 +451,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
           if (!cancelled) setAllOffers(list);
           return;
         }
-        const data = await fetchHomeCatalogJson<{ transactionType?: unknown }[]>("/api/offers");
+        const data = await fetchHomeCatalogJson<{ transactionType?: unknown }[]>("/api/offers?view=map");
         const list = Array.isArray(data) ? data : [];
         if (cancelled) return;
         setAllOffers(list);
@@ -739,17 +754,17 @@ export default function InteractiveMap({ immersive = false }: Props) {
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
     const handler = () => updateMarkersRef.current();
-    map.current.on("render", handler);
     map.current.on("idle", handler);
+    map.current.on("moveend", handler);
     handler();
     return () => {
-      map.current?.off("render", handler);
       map.current?.off("idle", handler);
+      map.current?.off("moveend", handler);
     };
   }, [mapLoaded, updateMarkers]);
 
   useEffect(() => {
-    if (!map.current || !mapLoaded) return;
+    if (!map.current || !mapLoaded || !mapIsVisible) return;
     const mapInstance = map.current;
 
     const markInteraction = () => {
@@ -764,8 +779,15 @@ export default function InteractiveMap({ immersive = false }: Props) {
     mapInstance.on("touchstart", markInteraction);
     mapInstance.on("wheel", markInteraction);
 
+    const stopSpin = () => {
+      if (autoRotateFrameRef.current) {
+        window.cancelAnimationFrame(autoRotateFrameRef.current);
+        autoRotateFrameRef.current = null;
+      }
+    };
+
     const spin = () => {
-      if (!map.current) return;
+      if (!map.current || document.hidden) return;
       if (!hoverFocusActiveRef.current) {
         const now = Date.now();
         const idleForMs = now - lastInteractionAtRef.current;
@@ -776,7 +798,16 @@ export default function InteractiveMap({ immersive = false }: Props) {
       }
       autoRotateFrameRef.current = window.requestAnimationFrame(spin);
     };
-    autoRotateFrameRef.current = window.requestAnimationFrame(spin);
+
+    const syncSpin = () => {
+      stopSpin();
+      if (!document.hidden) {
+        autoRotateFrameRef.current = window.requestAnimationFrame(spin);
+      }
+    };
+
+    syncSpin();
+    document.addEventListener("visibilitychange", syncSpin);
 
     return () => {
       mapInstance.off("dragstart", markInteraction);
@@ -786,12 +817,10 @@ export default function InteractiveMap({ immersive = false }: Props) {
       mapInstance.off("mousedown", markInteraction);
       mapInstance.off("touchstart", markInteraction);
       mapInstance.off("wheel", markInteraction);
-      if (autoRotateFrameRef.current) {
-        window.cancelAnimationFrame(autoRotateFrameRef.current);
-        autoRotateFrameRef.current = null;
-      }
+      document.removeEventListener("visibilitychange", syncSpin);
+      stopSpin();
     };
-  }, [mapLoaded]);
+  }, [mapIsVisible, mapLoaded]);
 
   useEffect(() => {
     const el = mapContainer.current;
