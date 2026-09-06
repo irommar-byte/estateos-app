@@ -1,0 +1,570 @@
+import { execFile } from 'child_process';
+import fs from 'fs';
+import http from 'http';
+import path from 'path';
+import { promisify } from 'util';
+import {
+  previewSafeCleanup,
+  readCpuMetrics,
+  readDiskMetrics,
+  readMariaDbStatus,
+  readMemoryMetrics,
+  readPm2Processes,
+  runSafeCleanup,
+} from './adminServerOps';
+
+const execFileAsync = promisify(execFile);
+const HOME = (process.env.ADMIN_SERVER_HOME || process.env.HOME || '/home/rommar').replace(/\/+$/, '');
+const APP_ROOT = process.env.ADMIN_CORE_CWD || path.join(HOME, 'estateos');
+const ENV_PATH = path.join(APP_ROOT, '.env');
+const LOG_DIR = path.join(HOME, '.pm2', 'logs');
+const DOWNLOADER_DIR = path.join(HOME, 'lineage-movies', 'video-downloader');
+const KEEP_LOG_BYTES = 8 * 1024 * 1024;
+const BIG_LOG_BYTES = 16 * 1024 * 1024;
+const HUNG_MEDIA_SEC = 10 * 60;
+const WEB_RSS_WARN = 700 * 1024 * 1024;
+const WEB_RSS_TOTAL_WARN = 1200 * 1024 * 1024;
+
+export type FindingSeverity = 'critical' | 'warning' | 'info';
+
+export type ServerFinding = {
+  id: string;
+  severity: FindingSeverity;
+  title: string;
+  detail: string;
+  fixable: boolean;
+};
+
+export type DiagnoseReport = {
+  ok: true;
+  healthy: boolean;
+  level: 'ok' | 'warning' | 'critical';
+  summary: string;
+  findings: ServerFinding[];
+  collectedAt: string;
+};
+
+export type OptimizeAction = {
+  id: string;
+  label: string;
+  detail: string;
+  freedBytes?: number;
+};
+
+async function run(cmd: string, args: string[], timeout = 12_000): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(cmd, args, { timeout, maxBuffer: 8 * 1024 * 1024 });
+    return String(stdout || '');
+  } catch {
+    return '';
+  }
+}
+
+export function parsePsEtimeToSec(etime: string): number {
+  const raw = String(etime || '').trim();
+  if (!raw) return 0;
+  const [dayPart, clockPart] = raw.includes('-') ? raw.split('-') : ['0', raw];
+  const days = Number(dayPart) || 0;
+  const parts = clockPart.split(':').map((part) => Number(part) || 0);
+  if (parts.length === 2) return days * 86400 + parts[0] * 60 + parts[1];
+  if (parts.length === 3) return days * 86400 + parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+export function summarizeFindings(findings: ServerFinding[]): {
+  level: 'ok' | 'warning' | 'critical';
+  healthy: boolean;
+  summary: string;
+} {
+  if (findings.some((item) => item.severity === 'critical')) {
+    return {
+      level: 'critical',
+      healthy: false,
+      summary: 'Serwer wymaga natychmiastowej interwencji.',
+    };
+  }
+  if (findings.some((item) => item.severity === 'warning')) {
+    return {
+      level: 'warning',
+      healthy: false,
+      summary: 'Znalazłem problemy, które da się posprzątać optymalizacją.',
+    };
+  }
+  if (findings.length > 0) {
+    return {
+      level: 'ok',
+      healthy: false,
+      summary: 'Drobne uwagi — nic krytycznego, ale warto posprzątać.',
+    };
+  }
+  return { level: 'ok', healthy: true, summary: 'Zdrowy stan. Brak śmieci, błędów i zaciętych procesów.' };
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${n >= 10 || i === 0 ? n.toFixed(0) : n.toFixed(1)} ${units[i]}`;
+}
+
+function gitShortSha() {
+  return run('git', ['-C', APP_ROOT, 'rev-parse', '--short', 'HEAD'], 4000).then((out) => out.trim());
+}
+
+function readEnvCommit() {
+  try {
+    const text = fs.readFileSync(ENV_PATH, 'utf8');
+    return text.match(/^COMMIT_SHA=(.+)$/m)?.[1]?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
+function upsertEnv(key: string, value: string) {
+  const current = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
+  const line = `${key}=${value}`;
+  const next = new RegExp(`^${key}=.*$`, 'm').test(current)
+    ? current.replace(new RegExp(`^${key}=.*$`, 'm'), line)
+    : `${current}${current && !current.endsWith('\n') ? '\n' : ''}${line}\n`;
+  if (next !== current) fs.writeFileSync(ENV_PATH, next, { encoding: 'utf8', mode: 0o600 });
+}
+
+function listCoreDumps() {
+  if (!fs.existsSync(DOWNLOADER_DIR)) return [];
+  return fs
+    .readdirSync(DOWNLOADER_DIR)
+    .filter((name) => name.startsWith('core.'))
+    .map((name) => {
+      const full = path.join(DOWNLOADER_DIR, name);
+      try {
+        return { path: full, bytes: fs.statSync(full).size };
+      } catch {
+        return { path: full, bytes: 0 };
+      }
+    });
+}
+
+function listOversizedLogs() {
+  if (!fs.existsSync(LOG_DIR)) return [];
+  return fs
+    .readdirSync(LOG_DIR)
+    .filter((name) => name.endsWith('.log'))
+    .map((name) => {
+      const full = path.join(LOG_DIR, name);
+      try {
+        return { path: full, bytes: fs.statSync(full).size };
+      } catch {
+        return { path: full, bytes: 0 };
+      }
+    })
+    .filter((item) => item.bytes >= BIG_LOG_BYTES);
+}
+
+function leftoverBuildDirs() {
+  return ['.next-build', '.next-prev']
+    .map((name) => path.join(APP_ROOT, name))
+    .filter((full) => fs.existsSync(full));
+}
+
+function isBuildLocked() {
+  const lock = path.join(APP_ROOT, '.next', 'lock');
+  if (!fs.existsSync(lock)) return false;
+  return Date.now() - fs.statSync(lock).mtimeMs < 30 * 60 * 1000;
+}
+
+async function listHungMedia() {
+  const out = await run('ps', ['-eo', 'pid=,etime=,cmd='], 4000);
+  const rows: Array<{ pid: number; seconds: number; cmd: string }> = [];
+  for (const line of out.split('\n')) {
+    const match = line.trim().match(/^(\d+)\s+(\S+)\s+(.+)$/);
+    if (!match) continue;
+    const cmd = match[3];
+    if (!/yt-dlp|ffmpeg-static|ytsearch1/.test(cmd)) continue;
+    const seconds = parsePsEtimeToSec(match[2]);
+    if (seconds < HUNG_MEDIA_SEC) continue;
+    rows.push({ pid: Number(match[1]), seconds, cmd });
+  }
+  return rows;
+}
+
+function pingHealth(): Promise<{ ms: number; commit: string } | null> {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const req = http.get(
+      {
+        hostname: '127.0.0.1',
+        port: Number(process.env.PORT || 3000),
+        path: '/api/health',
+        timeout: 4000,
+        headers: { Connection: 'close' },
+      },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          if (body.length < 2000) body += chunk;
+        });
+        res.on('end', () => {
+          const ms = Date.now() - started;
+          if (res.statusCode !== 200) {
+            resolve(null);
+            return;
+          }
+          try {
+            const json = JSON.parse(body) as { commit?: string };
+            resolve({ ms, commit: String(json.commit || '') });
+          } catch {
+            resolve({ ms, commit: '' });
+          }
+        });
+      },
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
+    req.on('error', () => resolve(null));
+  });
+}
+
+function readSwapUsedBytes() {
+  try {
+    const text = fs.readFileSync('/proc/meminfo', 'utf8');
+    const total = Number(text.match(/^SwapTotal:\s+(\d+)/m)?.[1] || 0) * 1024;
+    const free = Number(text.match(/^SwapFree:\s+(\d+)/m)?.[1] || 0) * 1024;
+    return Math.max(0, total - free);
+  } catch {
+    return 0;
+  }
+}
+
+export async function diagnoseServer(): Promise<DiagnoseReport> {
+  const [disk, processes, mariadb, junk, health, hung, sha] = await Promise.all([
+    readDiskMetrics('/'),
+    readPm2Processes(),
+    readMariaDbStatus(),
+    previewSafeCleanup(),
+    pingHealth(),
+    listHungMedia(),
+    gitShortSha(),
+  ]);
+  const cpu = readCpuMetrics();
+  const memory = readMemoryMetrics();
+  const cores = listCoreDumps();
+  const logs = listOversizedLogs();
+  const leftovers = leftoverBuildDirs();
+  const envSha = readEnvCommit();
+  const swapUsed = readSwapUsedBytes();
+  const web = processes.filter((item) => item.name === 'nieruchomosci');
+  const webRss = web.reduce((sum, item) => sum + item.memoryBytes, 0);
+  const maxWebRss = web.reduce((max, item) => Math.max(max, item.memoryBytes), 0);
+  const findings: ServerFinding[] = [];
+
+  if (!mariadb.up) {
+    findings.push({
+      id: 'mariadb',
+      severity: 'critical',
+      title: 'MariaDB nie odpowiada',
+      detail: `Usługa bazy: ${mariadb.status}. Oferty i CRM mogą nie działać.`,
+      fixable: true,
+    });
+  }
+  if (disk.percent >= 94) {
+    findings.push({
+      id: 'disk-critical',
+      severity: 'critical',
+      title: 'Dysk prawie pełny',
+      detail: `${disk.percent}% zajęte · wolne ${formatBytes(disk.freeBytes)}.`,
+      fixable: junk.count > 0,
+    });
+  } else if (disk.percent >= 85) {
+    findings.push({
+      id: 'disk-warning',
+      severity: 'warning',
+      title: 'Dysk zapełnia się',
+      detail: `${disk.percent}% zajęte · wolne ${formatBytes(disk.freeBytes)}.`,
+      fixable: junk.count > 0,
+    });
+  }
+  if (junk.count > 0) {
+    findings.push({
+      id: 'junk',
+      severity: junk.bytes > 200 * 1024 * 1024 ? 'warning' : 'info',
+      title: 'Śmieci i pliki tymczasowe',
+      detail: `${junk.count} pozycji · ${formatBytes(junk.bytes)} (.part, .tmp, cache).`,
+      fixable: true,
+    });
+  }
+  if (logs.length > 0) {
+    const bytes = logs.reduce((sum, item) => sum + item.bytes, 0);
+    findings.push({
+      id: 'logs',
+      severity: 'warning',
+      title: 'Rozdęte logi PM2',
+      detail: `${logs.length} plików · ${formatBytes(bytes)}. Przytnę je do ostatnich 8 MB.`,
+      fixable: true,
+    });
+  }
+  if (cores.length > 0) {
+    const bytes = cores.reduce((sum, item) => sum + item.bytes, 0);
+    findings.push({
+      id: 'cores',
+      severity: 'warning',
+      title: 'Zrzuty pamięci (core dump)',
+      detail: `${cores.length} plików · ${formatBytes(bytes)} w downloaderze.`,
+      fixable: true,
+    });
+  }
+  if (hung.length > 0) {
+    findings.push({
+      id: 'hung-media',
+      severity: 'warning',
+      title: 'Zacięte pobieranie audio/wideo',
+      detail: `${hung.length} procesów yt-dlp/ffmpeg powyżej 10 min.`,
+      fixable: true,
+    });
+  }
+  if (!health) {
+    findings.push({
+      id: 'health-down',
+      severity: 'critical',
+      title: 'WWW nie odpowiada na /api/health',
+      detail: 'Next na :3000 nie oddał 200 w 4 s.',
+      fixable: !isBuildLocked(),
+    });
+  } else if (health.ms >= 750) {
+    findings.push({
+      id: 'health-slow',
+      severity: 'warning',
+      title: 'Wolna odpowiedź health',
+      detail: `${health.ms} ms. Workery warto odświeżyć.`,
+      fixable: !isBuildLocked(),
+    });
+  }
+  if (maxWebRss >= WEB_RSS_WARN || webRss >= WEB_RSS_TOTAL_WARN) {
+    findings.push({
+      id: 'web-memory',
+      severity: 'warning',
+      title: 'Workery WWW biorą za dużo RAM',
+      detail: `Największy ${formatBytes(maxWebRss)} · suma ${formatBytes(webRss)}.`,
+      fixable: !isBuildLocked(),
+    });
+  }
+  const noisyRestarts = web.filter((item) => item.restarts >= 20);
+  if (noisyRestarts.length > 0) {
+    findings.push({
+      id: 'restarts',
+      severity: 'info',
+      title: 'Wysoki licznik restartów PM2',
+      detail: noisyRestarts.map((item) => `${item.name}: ${item.restarts}`).join(', '),
+      fixable: true,
+    });
+  }
+  if (leftovers.length > 0 && !isBuildLocked()) {
+    findings.push({
+      id: 'build-leftovers',
+      severity: 'info',
+      title: 'Resztki atomowego buildu',
+      detail: leftovers.map((item) => path.basename(item)).join(', '),
+      fixable: true,
+    });
+  }
+  if (sha && (envSha !== sha || (health?.commit && health.commit !== sha))) {
+    findings.push({
+      id: 'commit-stale',
+      severity: 'info',
+      title: 'Health pokazuje stary commit',
+      detail: `Git ${sha} · .env ${envSha || 'brak'} · proces ${health?.commit || 'brak'}.`,
+      fixable: !isBuildLocked(),
+    });
+  }
+  if (swapUsed > 400 * 1024 * 1024) {
+    findings.push({
+      id: 'swap',
+      severity: 'warning',
+      title: 'System korzysta ze swapu',
+      detail: `Swap ${formatBytes(swapUsed)} · RAM ${memory.percent}%.`,
+      fixable: maxWebRss >= WEB_RSS_WARN && !isBuildLocked(),
+    });
+  }
+  if (cpu.load1 >= cpu.cores * 2) {
+    findings.push({
+      id: 'load',
+      severity: 'warning',
+      title: 'Wysokie obciążenie CPU',
+      detail: `Load ${cpu.load1} przy ${cpu.cores} rdzeniach.`,
+      fixable: hung.length > 0,
+    });
+  }
+
+  const rollup = summarizeFindings(findings);
+  return {
+    ok: true,
+    ...rollup,
+    findings,
+    collectedAt: new Date().toISOString(),
+  };
+}
+
+function trimLogTail(filePath: string, keepBytes: number) {
+  const stat = fs.statSync(filePath);
+  if (stat.size <= keepBytes) return 0;
+  const fd = fs.openSync(filePath, 'r');
+  const size = Math.min(keepBytes, stat.size);
+  const buffer = Buffer.allocUnsafe(size);
+  fs.readSync(fd, buffer, 0, size, stat.size - size);
+  fs.closeSync(fd);
+  fs.writeFileSync(filePath, buffer);
+  return stat.size - size;
+}
+
+async function waitHealthy(timeoutMs = 25_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const health = await pingHealth();
+    if (health) return true;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+  return false;
+}
+
+export async function optimizeServer(): Promise<{
+  ok: boolean;
+  actions: OptimizeAction[];
+  before: DiagnoseReport;
+  after: DiagnoseReport;
+}> {
+  const before = await diagnoseServer();
+  const actions: OptimizeAction[] = [];
+  const findingIds = new Set(before.findings.filter((item) => item.fixable).map((item) => item.id));
+
+  if (findingIds.has('junk') || findingIds.has('disk-critical') || findingIds.has('disk-warning')) {
+    const preview = await previewSafeCleanup();
+    const result = runSafeCleanup();
+    actions.push({
+      id: 'junk',
+      label: 'Usunięto śmieci',
+      detail: `${result.deleted.length} pozycji`,
+      freedBytes: preview.bytes,
+    });
+  }
+
+  if (findingIds.has('logs')) {
+    let freed = 0;
+    for (const item of listOversizedLogs()) {
+      try {
+        freed += trimLogTail(item.path, KEEP_LOG_BYTES);
+      } catch {
+        /* keep going */
+      }
+    }
+    actions.push({
+      id: 'logs',
+      label: 'Przycięto logi',
+      detail: `Zwolniono ${formatBytes(freed)}`,
+      freedBytes: freed,
+    });
+  }
+
+  if (findingIds.has('cores')) {
+    const cores = listCoreDumps();
+    let freed = 0;
+    for (const item of cores) {
+      try {
+        fs.rmSync(item.path, { force: true });
+        freed += item.bytes;
+      } catch {
+        /* keep going */
+      }
+    }
+    actions.push({
+      id: 'cores',
+      label: 'Usunięto zrzuty core',
+      detail: `${cores.length} plików`,
+      freedBytes: freed,
+    });
+  }
+
+  if (findingIds.has('hung-media') || findingIds.has('load')) {
+    const hung = await listHungMedia();
+    for (const item of hung) {
+      try {
+        process.kill(item.pid, 'SIGKILL');
+      } catch {
+        /* already gone */
+      }
+    }
+    if (hung.length) {
+      actions.push({
+        id: 'hung-media',
+        label: 'Przerwano zacięte streamy',
+        detail: `${hung.length} procesów`,
+      });
+    }
+  }
+
+  if (findingIds.has('build-leftovers') && !isBuildLocked()) {
+    const leftovers = leftoverBuildDirs();
+    for (const full of leftovers) {
+      try {
+        fs.rmSync(full, { recursive: true, force: true });
+      } catch {
+        /* keep going */
+      }
+    }
+    if (leftovers.length) {
+      actions.push({
+        id: 'build-leftovers',
+        label: 'Usunięto resztki buildu',
+        detail: leftovers.map((item) => path.basename(item)).join(', '),
+      });
+    }
+  }
+
+  if (findingIds.has('mariadb')) {
+    await run('sudo', ['-n', 'systemctl', 'start', 'mariadb'], 15_000);
+    actions.push({ id: 'mariadb', label: 'Uruchomiono MariaDB', detail: 'systemctl start mariadb' });
+  }
+
+  const needsReload =
+    findingIds.has('web-memory') ||
+    findingIds.has('health-slow') ||
+    findingIds.has('health-down') ||
+    findingIds.has('commit-stale') ||
+    findingIds.has('swap') ||
+    findingIds.has('restarts');
+
+  if (findingIds.has('commit-stale')) {
+    const sha = await gitShortSha();
+    if (sha) upsertEnv('COMMIT_SHA', sha);
+  }
+
+  if (needsReload && !isBuildLocked()) {
+    await run('pm2', ['reload', 'nieruchomosci', '--update-env'], 30_000);
+    if (findingIds.has('restarts')) {
+      await run('pm2', ['reset', 'nieruchomosci'], 8_000);
+    }
+    await waitHealthy();
+    actions.push({
+      id: 'reload',
+      label: 'Odświeżono workery WWW',
+      detail: 'pm2 reload nieruchomosci — strona nie była wyłączana',
+    });
+  }
+
+  if (actions.length === 0) {
+    actions.push({
+      id: 'noop',
+      label: 'Nie było nic do automatycznej naprawy',
+      detail: 'Stan zostawiony bez zmian.',
+    });
+  }
+
+  const after = await diagnoseServer();
+  return { ok: after.healthy || after.level !== 'critical', actions, before, after };
+}
