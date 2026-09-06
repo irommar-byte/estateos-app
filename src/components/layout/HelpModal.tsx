@@ -13,6 +13,7 @@ import {
   Smartphone,
   ChevronRight,
   BookOpen,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -48,12 +49,20 @@ export default function HelpModal({ isOpen, onClose }: Props) {
       maxWidth="max-w-5xl"
       hideHeader
       hideBodyPadding
-      bodyClassName="flex min-h-0 flex-col overflow-hidden"
+      bodyClassName="flex h-[min(92dvh,880px)] min-h-0 flex-col overflow-hidden"
     >
       <div className="pointer-events-none absolute left-0 top-0 h-72 w-72 rounded-full bg-emerald-500/10 blur-[120px]" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-64 w-64 rounded-full bg-white/5 blur-[100px]" />
 
       <header className="relative shrink-0 border-b border-[var(--eos-border)] px-6 py-6 sm:px-10 sm:py-8">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-5 top-5 rounded-full p-2 text-[var(--eos-subtle)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)] sm:right-6 sm:top-6"
+          aria-label="Zamknij"
+        >
+          <X size={18} />
+        </button>
         <div className="flex items-start gap-4 pr-10">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-400">
             <BookOpen size={26} />
@@ -67,7 +76,10 @@ export default function HelpModal({ isOpen, onClose }: Props) {
       </header>
 
       <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
-        <nav className="shrink-0 border-b border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-4 lg:w-56 lg:border-b-0 lg:border-r lg:py-6">
+        <nav
+          className="custom-scrollbar shrink-0 border-b border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-4 lg:w-56 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-6"
+          data-lenis-prevent
+        >
           <p className="mb-3 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-subtle)]">{help.tocLabel}</p>
           <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {help.sections.map((section, i) => {
@@ -91,7 +103,10 @@ export default function HelpModal({ isOpen, onClose }: Props) {
           </ul>
         </nav>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+        <div
+          className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8 sm:py-8"
+          data-lenis-prevent
+        >
           <div className="space-y-10">
             {help.sections.map((section) => {
               const Icon = ICONS[section.icon];

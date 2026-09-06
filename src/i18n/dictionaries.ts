@@ -619,6 +619,35 @@ export type Dictionary = {
     subtitleAgency: string;
     tabPrivate: string;
     tabAgency: string;
+    tabPermanent: string;
+    subtitlePermanent: string;
+    mailName: string;
+    mailDesc: string;
+    mailPrice: string;
+    mailPeriod: string;
+    mailF1: string;
+    mailF2: string;
+    mailF3: string;
+    mailPlaceholder: string;
+    mailDomain: string;
+    mailChecking: string;
+    mailAvailable: string;
+    mailTaken: string;
+    mailInvalid: string;
+    mailCta: string;
+    mailCtaLogin: string;
+    mailCtaBuyPlus: string;
+    mailCtaBuying: string;
+    mailNeedPlus: string;
+    mailNeedLogin: string;
+    mailSuccess: string;
+    mailError: string;
+    mailHint: string;
+    mailBalance: string;
+    mailOwnedTitle: string;
+    mailOwnedDesc: string;
+    mailOwnedEmpty: string;
+    mailForward: string;
     basicName: string;
     basicDesc: string;
     basicPrice: string;
@@ -1416,6 +1445,37 @@ const pl: Dictionary = {
       "Załóż biuro za 0 zł — Partner Free włącza się przy rejestracji (5 kredytów, Concierge, katalog). Poniżej pakiety płatne, gdy zespół się rozwinie.",
     tabPrivate: "Prywatni & Inwestorzy",
     tabAgency: "EstateOS™ Partner",
+    tabPermanent: "Zakupy na zawsze",
+    subtitlePermanent:
+      "Jednorazowe dodatki do konta. Mail @estateos.pl zostaje na stałe — niezależnie od abonamentu.",
+    mailName: "Mail @estateos.pl",
+    mailDesc:
+      "Wybierz login. Jeśli jest wolny, kupujesz go za 1 kredyt Plus. Poczta wpada na e-mail z Twojego konta EstateOS.",
+    mailPrice: "1",
+    mailPeriod: "Plus",
+    mailF1: "Adres wybranylogin@estateos.pl na stałe, bez abonamentu.",
+    mailF2: "Na żywo sprawdzamy, czy login jest wolny (ptaszek albo X).",
+    mailF3: "Brak kredytu Plus? Zaproponujemy zakup Pakietu + (49 zł).",
+    mailPlaceholder: "Wpisz login",
+    mailDomain: "@estateos.pl",
+    mailChecking: "Sprawdzam dostępność…",
+    mailAvailable: "{address} jest wolny.",
+    mailTaken: "Ten login jest zajęty albo zarezerwowany.",
+    mailInvalid: "3–32 znaki: litery, cyfry, kropka lub myślnik. Bez spacji.",
+    mailCta: "Kup za 1 Plus",
+    mailCtaLogin: "Zaloguj się, aby kupić",
+    mailCtaBuyPlus: "Dokup Plus i kup ten mail",
+    mailCtaBuying: "Kupuję…",
+    mailNeedPlus: "Nie masz kredytu Plus. Kliknij, aby kupić Pakiet + (49 zł), potem wróć po adres.",
+    mailNeedLogin: "Najpierw zaloguj się na konto EstateOS.",
+    mailSuccess: "Gotowe. Twój adres: {address}",
+    mailError: "Nie udało się dokończyć zakupu. Spróbuj ponownie.",
+    mailHint: "Login pojawi się jako login@estateos.pl",
+    mailBalance: "Masz {n} kredytów Plus.",
+    mailOwnedTitle: "Twoje adresy",
+    mailOwnedDesc: "Tu widać maile @estateos.pl już przypisane do tego konta.",
+    mailOwnedEmpty: "Nie masz jeszcze własnego adresu — wybierz login obok.",
+    mailForward: "Przekierowanie na {email}",
     basicName: "Basic",
     basicDesc:
       "Darmowe konto na start. Mapa, rynek i Radar — publikujesz, gdy potrzebujesz (kupon, Pakiet + lub kredyty z PRO).",
@@ -2233,6 +2293,37 @@ const en: Dictionary = {
       "Register your office for 0 PLN — Partner Free activates on signup (5 credits, Concierge, catalog). Paid plans below when your team scales up.",
     tabPrivate: "Private & Investors",
     tabAgency: "EstateOS™ Partner",
+    tabPermanent: "Keep forever",
+    subtitlePermanent:
+      "One-off add-ons for your account. An @estateos.pl address stays yours — even without a subscription.",
+    mailName: "Mail @estateos.pl",
+    mailDesc:
+      "Pick a login. If it is free, you buy it for 1 Plus credit. Mail is forwarded to the email on your EstateOS account.",
+    mailPrice: "1",
+    mailPeriod: "Plus",
+    mailF1: "yourlogin@estateos.pl forever, no subscription.",
+    mailF2: "Live availability check (checkmark or X) as you type.",
+    mailF3: "No Plus credit? We will offer Pakiet + (49 PLN).",
+    mailPlaceholder: "Choose a login",
+    mailDomain: "@estateos.pl",
+    mailChecking: "Checking availability…",
+    mailAvailable: "{address} is available.",
+    mailTaken: "This login is taken or reserved.",
+    mailInvalid: "3–32 characters: letters, digits, dot or hyphen. No spaces.",
+    mailCta: "Buy for 1 Plus",
+    mailCtaLogin: "Log in to buy",
+    mailCtaBuyPlus: "Buy Plus, then this address",
+    mailCtaBuying: "Buying…",
+    mailNeedPlus: "You need 1 Plus credit. Tap to buy Pakiet + (49 PLN), then come back for the address.",
+    mailNeedLogin: "Log in to your EstateOS account first.",
+    mailSuccess: "Done. Your address: {address}",
+    mailError: "Could not finish the purchase. Try again.",
+    mailHint: "Your login becomes login@estateos.pl",
+    mailBalance: "You have {n} Plus credits.",
+    mailOwnedTitle: "Your addresses",
+    mailOwnedDesc: "Email addresses @estateos.pl already linked to this account.",
+    mailOwnedEmpty: "No custom address yet — pick a login on the left.",
+    mailForward: "Forwards to {email}",
     basicName: "Basic",
     basicDesc:
       "Free account to start. Map, market, and Radar — publish when you need (coupon, Pakiet +, or PRO credits).",

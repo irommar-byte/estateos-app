@@ -29,10 +29,10 @@ const PL: PlatformHelpContent = {
       summary:
         "EstateOS™ łączy stronę estateos.pl i aplikację mobilną. To ten sam rynek ofert, to samo logowanie i te same ulubione — możesz szukać na mapie, kalibrować Radar i wystawiać nieruchomość z telefonu lub przeglądarki.",
       bullets: [
-        "Załóż konto lub zaloguj się — dostępny jest też Passkey (logowanie biometryczne w aplikacji).",
+        "Załóż konto lub zaloguj się — Passkey (logowanie biometryczne) działa w aplikacji i na stronie.",
         "Kupujący: mapa, ulubione, Radar Inwestycji w Moje konto.",
-        "Sprzedający: Dodaj swoją ofertę → publikacja → zarządzanie w Moje ogłoszenia.",
-        "Partner / inwestor PRO: rozszerzony Radar, Deal Room i statusy Elite.",
+        "Sprzedający: Dodaj swoją ofertę → publikacja (kupon, Pakiet + albo kredyt PRO) → zarządzanie w Moje ogłoszenia.",
+        "Partner / Investor PRO: wcześniejszy podgląd rynku, Deal Room i odznaka PRO. Cennik: /cennik.",
       ],
       links: [
         { label: "Zaloguj się", href: "/login" },
@@ -46,10 +46,10 @@ const PL: PlatformHelpContent = {
       summary:
         "Mapa to pełnoekranowy widok Mapbox. Nie wybierasz miasta z listy — przesuwasz globus, przybliżasz region i klikasz pinezki. Kolory mówią, jaki to typ transakcji.",
       bullets: [
-        "Na sprzedaż (zielone pinezki) / Na wynajem (niebieskie) — przełącznik u góry ekranu.",
+        "Na sprzedaż (zielone pinezki) / Na wynajem (niebieskie) — przełącznik u góry. HOME / CAR: samochody mają jasnoniebieskie pinezki.",
         "Suwak maks. ceny filtruje oferty na żywo — zbyt drogie znikają z mapy.",
         "Zlokalizuj mnie — mapa płynnie przenosi Cię do Twojej okolicy (wymaga zgody na lokalizację w przeglądarce).",
-        "Pomarańczowa pinezka = oferta Deal Room (program partnerski).",
+        "Najedź na pinezkę, aby przybliżyć lokalizację. Instrukcja na mapie da się zamknąć przyciskiem OK.",
         "Kliknięcie pinezki: po zalogowaniu otwiera kartę oferty; gość zobaczy prośbę o logowanie.",
       ],
       links: [{ label: "Otwórz mapę", href: "/odkryj-mape" }],
@@ -114,13 +114,13 @@ const PL: PlatformHelpContent = {
       icon: "plus",
       title: "Dodaj swoją ofertę — publikacja krok po kroku",
       summary:
-        "Kreator prowadzi przez lokalizację, parametry, finanse, media i podsumowanie. Oferta po wysłaniu przechodzi weryfikację i pojawia się na mapie oraz rynku.",
+        "Kreator prowadzi przez lokalizację, parametry, finanse, media i podsumowanie. Żeby oferta poszła na mapę i rynek, potrzebny jest kupon powitalny, kredyt Pakietu + albo pula Investor PRO / Partner.",
       bullets: [
         "Lokalizacja na mapie + adres — dokładność wpływa na Radar i prywatność (tryb przybliżony).",
         "Cena w PLN lub EUR; wynajem: czynsz, kaucja, opłaty.",
         "Zdjęcia i plan — minimum jakości podnosi zaufanie kupujących.",
-        "Statusy: aktywna, oczekująca, zakończona/archiwum — zarządzasz w Moje ogłoszenia.",
-        "Odnowienie publikacji — po wygaśnięciu możesz przedłużyć (płatność Stripe, jeśli włączona).",
+        "Statusy: aktywna, oczekująca, zakończona/archiwum — zarządzasz w Moje ogłoszenia (Moje konto).",
+        "Odnowienie publikacji po wygaśnięciu — Pakiet + albo kredyt z puli (płatność Stripe na stronie).",
       ],
       links: [{ label: "Dodaj ofertę", href: "/dodaj-oferte" }],
     },
@@ -142,7 +142,7 @@ const PL: PlatformHelpContent = {
       icon: "deal",
       title: "Deal Room i transakcje",
       summary:
-        "Deal Room to zamknięte pokoje dla stron transakcji: wiadomości, propozycje cenowe, dokumenty. Partnerzy mają priorytetowy dostęp do segmentu Deal Room na mapie.",
+        "Deal Room to zamknięte pokoje dla stron transakcji: wiadomości, propozycje cenowe, dokumenty. Otwierasz je ze strony oferty albo z zakładki Transakcje — pinezki na mapie nie mają osobnego koloru Deal Room.",
       bullets: [
         "Zakładka Transakcje w Moje konto — lista aktywnych pokoi.",
         "Powiadomienia o nowych wiadomościach i ofertach w pokoju.",
@@ -168,12 +168,17 @@ const PL: PlatformHelpContent = {
       summary: "Szybkie odpowiedzi — jeśli czegoś brakuje, napisz przez Kontakt w stopce.",
       bullets: [
         "Nie widzę mapy? — sprawdź połączenie, odśwież stronę; na serwerze musi być skonfigurowany token Mapbox.",
-        "Nie mogę dodać oferty? — musisz być zalogowany; uzupełnij wymagane pola w kreatorze.",
+        "Nie mogę dodać oferty? — musisz być zalogowany i mieć kupon albo kredyt Plus / PRO.",
         "Radar pusty? — otwórz Kalibruj radar i zapisz kryteria; poczekaj chwilę na przeliczenie.",
-        "Konto PRO? — sekcja EstateOS Elite / cennik; badge PRO w profilu.",
-        "Pomoc techniczna: kontakt@estateos.pl przez formularz Kontakt.",
+        "Konto PRO? — Cennik: Investor PRO (osoby) albo EstateOS™ Partner (biura).",
+        "Własny mail login@estateos.pl — Cennik → Zakupy na zawsze, 1 kredyt Plus.",
+        "Pomoc techniczna: kontakt@estateos.pl albo formularz Kontakt w stopce.",
       ],
-      links: [{ label: "Regulamin", href: "/regulamin" }, { label: "Prywatność", href: "/polityka-prywatnosci" }],
+      links: [
+        { label: "Regulamin", href: "/regulamin" },
+        { label: "Prywatność", href: "/polityka-prywatnosci" },
+        { label: "Cennik", href: "/cennik" },
+      ],
     },
   ],
 };
@@ -191,10 +196,10 @@ const EN: PlatformHelpContent = {
       summary:
         "EstateOS™ connects estateos.pl and the mobile app. Same listings, same login, same favorites — search on the map, calibrate Radar, and publish property from phone or browser.",
       bullets: [
-        "Create an account or sign in — Passkey (biometric) is available in the app.",
+        "Create an account or sign in — Passkey works in the app and on the website.",
         "Buyers: map, favorites, Investment Radar in My account.",
-        "Sellers: Add your listing → publish → manage under My listings.",
-        "Partners / PRO investors: extended Radar, Deal Rooms, Elite badges.",
+        "Sellers: Add your listing → publish (welcome coupon, Pakiet +, or PRO credit) → manage under My listings.",
+        "Partner / Investor PRO: earlier market preview, Deal Room, and PRO badge. See /cennik.",
       ],
       links: [
         { label: "Sign in", href: "/login" },
@@ -208,10 +213,10 @@ const EN: PlatformHelpContent = {
       summary:
         "The map is a full-screen Mapbox view. Pan the globe, zoom in, and tap pins — no city dropdowns. Colors indicate transaction type.",
       bullets: [
-        "For sale (green) / For rent (blue) — toggle at the top.",
+        "For sale (green) / For rent (blue) — toggle at the top. HOME / CAR: cars use sky-blue pins.",
         "Max price slider hides offers above your budget in real time.",
         "Locate me — cinematic fly-to your area (browser location permission).",
-        "Orange pin = Deal Room (partner program).",
+        "Hover a pin to zoom. Dismiss the on-map guide with OK.",
         "Tap a pin: signed-in users open the listing; guests are prompted to log in.",
       ],
       links: [{ label: "Open map", href: "/odkryj-mape" }],
@@ -276,13 +281,13 @@ const EN: PlatformHelpContent = {
       icon: "plus",
       title: "Add your listing — step-by-step",
       summary:
-        "The wizard covers location, specs, finance, media, and summary. After submit, review runs and the listing appears on map and market.",
+        "The wizard covers location, specs, finance, media, and summary. Going live on the map and market uses a welcome coupon, Pakiet + credit, or the Investor PRO / Partner pool.",
       bullets: [
         "Map pin + address — accuracy affects Radar and privacy modes.",
         "Price in PLN or EUR; rent: deposit and fees.",
         "Photos and floor plan build trust.",
         "Statuses: active, pending, archived — managed under My listings.",
-        "Renewal after expiry when payments are enabled.",
+        "Renewal after expiry via Pakiet + or pool credits (Stripe on the website).",
       ],
       links: [{ label: "Add listing", href: "/dodaj-oferte" }],
     },
@@ -304,7 +309,7 @@ const EN: PlatformHelpContent = {
       icon: "deal",
       title: "Deal Rooms and transactions",
       summary:
-        "Deal Rooms are private spaces for messages, price offers, and documents. Partners get orange Deal Room pins on the map.",
+        "Deal Rooms are private spaces for messages, price offers, and documents. Open them from a listing or the Transactions tab — map pins do not use a separate Deal Room color.",
       bullets: [
         "Transactions tab lists active rooms.",
         "Notifications for new messages and bids.",
@@ -330,12 +335,17 @@ const EN: PlatformHelpContent = {
       summary: "Short answers — if something is missing, use Contact in the footer.",
       bullets: [
         "Map blank? — refresh; server needs a valid Mapbox token.",
-        "Cannot publish? — sign in and complete required wizard fields.",
+        "Cannot publish? — sign in and have a coupon or Plus / PRO credit.",
         "Empty Radar? — calibrate and save criteria; wait for recalculation.",
-        "PRO account? — Elite / pricing section; PRO badge on profile.",
-        "Support: kontakt@estateos.pl via the Contact form.",
+        "PRO account? — Pricing: Investor PRO (individuals) or EstateOS™ Partner (offices).",
+        "Custom login@estateos.pl — Pricing → Keep forever, 1 Plus credit.",
+        "Support: kontakt@estateos.pl or Contact in the footer.",
       ],
-      links: [{ label: "Terms", href: "/regulamin" }, { label: "Privacy", href: "/polityka-prywatnosci" }],
+      links: [
+        { label: "Terms", href: "/regulamin" },
+        { label: "Privacy", href: "/polityka-prywatnosci" },
+        { label: "Pricing", href: "/cennik" },
+      ],
     },
   ],
 };

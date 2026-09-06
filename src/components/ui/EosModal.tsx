@@ -81,7 +81,12 @@ export default function EosModal({
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onEsc);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [open, onClose]);
 
   if (!mounted) return null;
@@ -99,6 +104,7 @@ export default function EosModal({
           transition={{ duration: 0.18 }}
           className={`fixed inset-0 ${resolvedZ} flex ${VARIANT_SHELL[variant]} ${className}`}
           role="presentation"
+          data-lenis-prevent
         >
           <button
             type="button"
@@ -118,7 +124,9 @@ export default function EosModal({
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            className={`eos-modal-surface eos-modal-shell eos-themed-modal pointer-events-auto relative z-10 flex w-full flex-col overflow-hidden ${VARIANT_SURFACE[variant]} ${isFullscreen ? "" : maxWidth}`}
+            className={`eos-modal-surface eos-modal-shell eos-themed-modal pointer-events-auto relative z-10 flex w-full min-h-0 flex-col overflow-hidden ${VARIANT_SURFACE[variant]} ${isFullscreen ? "" : maxWidth}`}
+            data-lenis-prevent
+            onWheel={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
@@ -159,7 +167,10 @@ export default function EosModal({
             ) : null}
 
             <div
-              className={`custom-scrollbar relative flex-1 overflow-y-auto text-[var(--eos-text)] ${hideBodyPadding ? "" : "px-6 py-5"} ${bodyClassName}`}
+              className={`custom-scrollbar relative min-h-0 flex-1 overscroll-contain text-[var(--eos-text)] ${
+                hideBodyPadding ? "overflow-hidden" : "overflow-y-auto"
+              } ${hideBodyPadding ? "" : "px-6 py-5"} ${bodyClassName}`}
+              data-lenis-prevent
             >
               {children}
             </div>

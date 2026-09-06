@@ -17,8 +17,10 @@ import {
   Users,
   Wallet,
   Scale,
+  Mail,
 } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import PermanentPurchases from "@/components/pricing/PermanentPurchases";
 import {
   PARTNER_FREE_PLAN,
   PARTNER_PAID_PLANS,
@@ -270,7 +272,7 @@ function PartnerPlanCard({
 export default function Pricing() {
   const { dict } = useLocale();
   const p = dict.pricing;
-  const [isAgency, setIsAgency] = useState(false);
+  const [tab, setTab] = useState<"private" | "partner" | "permanent">("private");
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [isBasicModalOpen, setIsBasicModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -283,9 +285,9 @@ export default function Pricing() {
       .catch(() => {});
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "partner") {
-      setIsAgency(true);
-    }
+    const requested = params.get("tab");
+    if (requested === "partner") setTab("partner");
+    if (requested === "permanent") setTab("permanent");
   }, []);
 
   const handleCheckout = async (planName: string) => {
@@ -341,7 +343,8 @@ export default function Pricing() {
     window.location.href = "/rejestracja?kind=agent";
   };
 
-  const activeSubtitle = isAgency ? p.subtitleAgency : p.subtitlePrivate;
+  const activeSubtitle =
+    tab === "partner" ? p.subtitleAgency : tab === "permanent" ? p.subtitlePermanent : p.subtitlePrivate;
 
   return (
     <section className="theme-aware-dashboard relative bg-[var(--eos-bg)] text-[var(--eos-text)] overflow-hidden font-sans min-h-[calc(100dvh-var(--eos-nav-height))] py-10 sm:py-14 lg:py-20">
@@ -349,9 +352,14 @@ export default function Pricing() {
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-[#D4AF37]/5 dark:bg-[#D4AF37]/5 rounded-full blur-[120px] pointer-events-none"
         aria-hidden
       />
-      {!isAgency ? (
+      {!tab || tab === "private" ? (
         <motion.div
           className="absolute top-1/4 right-0 w-[420px] h-[420px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none"
+          aria-hidden
+        />
+      ) : tab === "permanent" ? (
+        <motion.div
+          className="absolute top-1/4 right-0 w-[420px] h-[420px] bg-amber-500/8 rounded-full blur-[100px] pointer-events-none"
           aria-hidden
         />
       ) : (
@@ -375,33 +383,49 @@ export default function Pricing() {
         </motion.div>
 
         <div className="flex justify-center mb-10 sm:mb-14 px-2">
-          <div className="eos-pricing-toggle bg-[var(--eos-card)] p-1.5 rounded-full border border-[var(--eos-border)] flex items-center relative w-full max-w-md shadow-[var(--eos-shadow-soft)]">
+          <div className="eos-pricing-toggle bg-[var(--eos-card)] p-1.5 rounded-full border border-[var(--eos-border)] flex items-center relative w-full max-w-3xl shadow-[var(--eos-shadow-soft)]">
             <div
-              className="eos-pricing-toggle-pill absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-full transition-transform duration-500 ease-out shadow-sm hidden sm:block"
-              style={{ transform: isAgency ? "translateX(100%)" : "translateX(0)" }}
+              className="eos-pricing-toggle-pill absolute top-1.5 bottom-1.5 w-[calc(33.333%-4px)] bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-full transition-transform duration-500 ease-out shadow-sm hidden sm:block"
+              style={{
+                transform:
+                  tab === "partner"
+                    ? "translateX(100%)"
+                    : tab === "permanent"
+                      ? "translateX(200%)"
+                      : "translateX(0)",
+              }}
             />
             <button
               type="button"
-              onClick={() => setIsAgency(false)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full relative z-10 font-bold text-xs sm:text-sm transition-colors duration-300 min-w-0 ${
-                !isAgency ? "text-[var(--eos-text)] sm:bg-transparent bg-[var(--eos-bg-elevated)] shadow-sm sm:shadow-none" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
+              onClick={() => setTab("private")}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-full relative z-10 font-bold text-[11px] sm:text-sm transition-colors duration-300 min-w-0 ${
+                tab === "private" ? "text-[var(--eos-text)] sm:bg-transparent bg-[var(--eos-bg-elevated)] shadow-sm sm:shadow-none" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
               }`}
             >
               <User size={16} className="shrink-0" /> <span className="truncate">{p.tabPrivate}</span>
             </button>
             <button
               type="button"
-              onClick={() => setIsAgency(true)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full relative z-10 font-bold text-xs sm:text-sm transition-colors duration-300 min-w-0 ${
-                isAgency ? "text-[var(--eos-text)] sm:bg-transparent bg-[var(--eos-bg-elevated)] shadow-sm sm:shadow-none" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
+              onClick={() => setTab("partner")}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-full relative z-10 font-bold text-[11px] sm:text-sm transition-colors duration-300 min-w-0 ${
+                tab === "partner" ? "text-[var(--eos-text)] sm:bg-transparent bg-[var(--eos-bg-elevated)] shadow-sm sm:shadow-none" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
               }`}
             >
               <Building2 size={16} className="shrink-0" /> <span className="truncate">{p.tabAgency}</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setTab("permanent")}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-full relative z-10 font-bold text-[11px] sm:text-sm transition-colors duration-300 min-w-0 ${
+                tab === "permanent" ? "text-[var(--eos-text)] sm:bg-transparent bg-[var(--eos-bg-elevated)] shadow-sm sm:shadow-none" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
+              }`}
+            >
+              <Mail size={16} className="shrink-0" /> <span className="truncate">{p.tabPermanent}</span>
+            </button>
           </div>
         </div>
 
-        {!isAgency && (
+        {tab === "private" && (
           <div className="animate-in fade-in duration-700">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
               <div className="bg-[var(--eos-card)] border border-[var(--eos-border)] rounded-[2.5rem] p-10 flex flex-col relative overflow-hidden group hover:border-[var(--eos-border-strong)] transition-colors shadow-[var(--eos-shadow-soft)]">
@@ -510,7 +534,9 @@ export default function Pricing() {
           </div>
         )}
 
-        {isAgency && (
+        {tab === "permanent" && <PermanentPurchases />}
+
+        {tab === "partner" && (
           <div className="animate-in fade-in duration-700 space-y-10">
             <div className="max-w-4xl mx-auto rounded-[2rem] border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.1] via-[var(--eos-card)] to-[var(--eos-card)] p-8 md:p-10 text-center shadow-[0_0_60px_rgba(16,185,129,0.08)]">
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-600 dark:text-emerald-400 mb-3">

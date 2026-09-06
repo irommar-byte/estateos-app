@@ -875,7 +875,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
         <motion.aside
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="absolute bottom-6 left-4 z-30 w-[min(92vw,360px)] rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl sm:left-6 sm:p-5"
+          data-lenis-prevent
+          className="absolute bottom-6 left-4 z-30 max-h-[min(48vh,320px)] w-[min(92vw,360px)] overflow-y-auto overscroll-contain rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl sm:left-6 sm:p-5"
+          onWheel={(event) => event.stopPropagation()}
         >
           <button
             type="button"
