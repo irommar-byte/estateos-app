@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parsePsEtimeToSec, summarizeFindings, type ServerFinding } from '../src/lib/adminServerDiagnose';
+import {
+  healthScore,
+  parsePsEtimeToSec,
+  summarizeFindings,
+  type ServerFinding,
+} from '../src/lib/adminServerDiagnose';
 
 test('parse ps etime', () => {
   assert.equal(parsePsEtimeToSec('41:15'), 41 * 60 + 15);
@@ -12,6 +17,8 @@ test('healthy when no findings', () => {
   const rollup = summarizeFindings([]);
   assert.equal(rollup.healthy, true);
   assert.equal(rollup.level, 'ok');
+  assert.equal(rollup.score, 100);
+  assert.equal(healthScore([]), 100);
 });
 
 test('critical beats warning', () => {
