@@ -88,6 +88,13 @@ export default function HelpModal({ isOpen, onClose }: Props) {
                 <li key={section.id} className="shrink-0 lg:shrink">
                   <a
                     href={`#help-${section.id}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      document.getElementById(`help-${section.id}`)?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }}
                     className="flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--eos-muted)] transition-colors hover:border-[var(--eos-border)] hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)] lg:text-[10px]"
                   >
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
