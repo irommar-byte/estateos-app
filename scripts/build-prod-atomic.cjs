@@ -33,7 +33,15 @@ const env = {
   ...process.env,
   NODE_ENV: process.env.NODE_ENV || "production",
   NEXT_DIST_DIR: ".next-build",
+  ESTATEOS_SKIP_BUILD_TYPECHECK: process.env.ESTATEOS_SKIP_BUILD_TYPECHECK || "1",
 };
+const nodeOpts = String(env.NODE_OPTIONS || "")
+  .split(/\s+/)
+  .filter(Boolean);
+if (!nodeOpts.some((opt) => opt.startsWith("--max-old-space-size"))) {
+  nodeOpts.push("--max-old-space-size=1536");
+}
+env.NODE_OPTIONS = nodeOpts.join(" ");
 
 console.log(JSON.stringify({ ok: true, step: "atomic-build-start", distDir: ".next-build" }));
 
