@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, Bookmark, CheckCircle2, Download, Share2, Smartphone, X } from "lucide-react";
+import { BellRing, CheckCircle2, ExternalLink, Share2, Smartphone, X } from "lucide-react";
+import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
+import { openIosAppOrAppStore } from "@/lib/estateosAppLinks";
+import { openInSystemBrowser } from "@/lib/inAppBrowser";
+import {
+  canEnablePortalPush,
+  isPortalStandalone,
+  portalInstallGuide,
+  resolvePortalInstallSurface,
+} from "@/lib/portalInstallGuide";
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -10,14 +19,6 @@ type InstallPromptEvent = Event & {
 
 type NotifyState = "idle" | "busy" | "enabled" | "blocked" | "unsupported";
 
-function isStandalone() {
-  if (typeof window === "undefined") return false;
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone)
-  );
-}
-
 function base64UrlToBytes(value: string) {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -25,31 +26,37 @@ function base64UrlToBytes(value: string) {
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 }
 
-export default function ClientPortalSetupPrompt({ token }: { token: string }) {
+export default function ClientPortalSetupPrompt({
+  token,
+  deferUntilReady = false,
+}: {
+  token: string;
+  deferUntilReady?: boolean;
+}) {
   const [visible, setVisible] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [notifyState, setNotifyState] = useState<NotifyState>("idle");
   const [hint, setHint] = useState("");
   const dismissedKey = useMemo(() => `estateos_portal_setup_${token.slice(-10)}`, [token]);
-
-  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
-  const isIos = /iphone|ipad|ipod/i.test(userAgent);
-  const isMac = /macintosh|mac os x/i.test(userAgent);
+  const surface = useMemo(
+    () => resolvePortalInstallSurface(typeof navigator !== "undefined" ? navigator.userAgent : ""),
+    [],
+  );
+  const guide = portalInstallGuide(surface);
+  const pushReady = canEnablePortalPush({ surface, standalone: installed });
 
   const registerPush = async (askPermission: boolean) => {
-    if (
-      !("serviceWorker" in navigator) ||
-      !("PushManager" in window) ||
-      !("Notification" in window)
-    ) {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
       setNotifyState("unsupported");
-      setHint("Ta przeglądarka nie obsługuje powiadomień Push. Live Chat nadal odświeża się automatycznie.");
+      setHint("Ta przeglądarka nie obsługuje powiadomień. Live Chat i tak odświeża się sam.");
       return;
     }
-    if (isIos && !isStandalone()) {
+    if (!canEnablePortalPush({ surface, standalone: isPortalStandalone() })) {
       setNotifyState("idle");
-      setHint("Na iPhonie najpierw dodaj panel do ekranu początkowego, otwórz go z ikony i wtedy włącz powiadomienia.");
+      setHint(
+        "Na iPhonie powiadomienia działają dopiero po dodaniu znaczka i otwarciu panelu z ikony na ekranie początkowym.",
+      );
       return;
     }
 
@@ -60,8 +67,8 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
         setNotifyState(permission === "denied" ? "blocked" : "idle");
         setHint(
           permission === "denied"
-            ? "Powiadomienia są zablokowane. Włącz je w ustawieniach tej witryny w przeglądarce."
-            : "Kliknij ponownie, kiedy chcesz włączyć powiadomienia.",
+            ? "Powiadomienia są zablokowane. Włącz je w Ustawieniach iPhone’a → EstateOS (albo Safari) → Powiadomienia."
+            : "Kliknij ponownie, gdy będziesz gotowy włączyć powiadomienia.",
         );
         return;
       }
@@ -69,7 +76,7 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
       const configRes = await fetch(`/api/crm/client-portal/${token}/push`, { cache: "no-store" });
       const config = await configRes.json();
       if (!configRes.ok || !config.publicKey) {
-        throw new Error(config.error || "Powiadomienia Push nie są jeszcze dostępne.");
+        throw new Error(config.error || "Powiadomienia nie są jeszcze dostępne.");
       }
 
       const registration = await navigator.serviceWorker.register("/portal-sw.js", { scope: "/" });
@@ -91,7 +98,7 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
       if (!saveRes.ok) throw new Error(saved.error || "Nie udało się zapisać powiadomień.");
 
       setNotifyState("enabled");
-      setHint("Gotowe — odpowiedź agenta pojawi się natychmiast, także gdy panel będzie w tle.");
+      setHint("Gotowe. Odpowiedź agenta dotrze na telefon, także gdy panel jest zamknięty.");
     } catch (error) {
       setNotifyState("idle");
       if (!askPermission) {
@@ -101,14 +108,22 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
       const message = error instanceof Error ? error.message : "";
       setHint(
         /registration failed|push service not available|aborterror/i.test(message)
-          ? "Ta przeglądarka nie udostępnia usługi Push. Live Chat nadal odświeża się automatycznie."
-          : message || "Nie udało się włączyć powiadomień. Spróbuj ponownie w ustawieniach przeglądarki.",
+          ? "Ta przeglądarka nie udostępnia usługi Push. Live Chat nadal działa w panelu."
+          : message || "Nie udało się włączyć powiadomień. Spróbuj ponownie po otwarciu panelu z ikony.",
       );
     }
   };
 
   useEffect(() => {
-    const installStateFrame = window.requestAnimationFrame(() => setInstalled(isStandalone()));
+    if (deferUntilReady) {
+      setVisible(false);
+      return;
+    }
+    const syncInstalled = () => setInstalled(isPortalStandalone());
+    syncInstalled();
+    const media = window.matchMedia("(display-mode: standalone)");
+    media.addEventListener?.("change", syncInstalled);
+
     let dismissedRecently = false;
     try {
       const dismissedAt = Number(window.localStorage.getItem(dismissedKey) || 0);
@@ -116,7 +131,13 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
     } catch {
       /* pokaż prompt */
     }
-    const timer = dismissedRecently ? null : window.setTimeout(() => setVisible(true), 900);
+
+    const standaloneNow = isPortalStandalone();
+    const pushPending =
+      "Notification" in window && Notification.permission !== "granted" && standaloneNow;
+    const timer =
+      dismissedRecently && !pushPending ? null : window.setTimeout(() => setVisible(true), 700);
+
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as InstallPromptEvent);
@@ -124,7 +145,7 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
     const onInstalled = () => {
       setInstalled(true);
       setInstallPrompt(null);
-      setHint("Panel jest już dostępny jako osobna ikona.");
+      setHint("Znaczek jest na telefonie. Otwórz panel z ikony i włącz powiadomienia w kroku 2.");
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
     window.addEventListener("appinstalled", onInstalled);
@@ -141,7 +162,7 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
         : null;
 
     return () => {
-      window.cancelAnimationFrame(installStateFrame);
+      media.removeEventListener?.("change", syncInstalled);
       if (timer !== null) window.clearTimeout(timer);
       if (pushTimer !== null) window.clearTimeout(pushTimer);
       if (workerTimer !== null) window.clearTimeout(workerTimer);
@@ -150,13 +171,22 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
     };
     // Prompt jest inicjalizowany jeden raz dla danego panelu.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dismissedKey]);
+  }, [dismissedKey, deferUntilReady]);
 
   if (!visible) return null;
 
   const install = async () => {
+    if (guide.needsSafariFirst) {
+      openInSystemBrowser(window.location.href);
+      setHint(
+        surface === "ios-iab"
+          ? "Otwórz panel w Safari, potem: Udostępnij → Do ekranu początkowego → Dodaj. Wejdź z nowej ikony."
+          : "Otwórz panel w Chrome, potem dodaj go na ekran główny.",
+      );
+      return;
+    }
     if (installed) {
-      setHint("Panel jest już dodany jako aplikacja na tym urządzeniu.");
+      setHint("Ikona jest już na tym urządzeniu. Jeśli nie widzisz kroku 2, otwórz panel właśnie z tej ikony.");
       return;
     }
     if (installPrompt) {
@@ -165,24 +195,14 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
       if (choice.outcome === "accepted") {
         setInstalled(true);
         setInstallPrompt(null);
-        setHint("Panel został dodany. Otwieraj go teraz jednym dotknięciem.");
+        setHint("Panel został dodany. Otwórz go z ikony i włącz powiadomienia poniżej.");
       }
       return;
     }
-    if (isIos) {
-      setHint("Safari: dotknij Udostępnij ⤴, wybierz „Do ekranu początkowego”, a potem „Dodaj”.");
-      return;
-    }
     setHint(
-      "W menu przeglądarki wybierz „Zainstaluj aplikację” lub „Utwórz skrót”. Możesz też zapisać stronę w zakładkach.",
-    );
-  };
-
-  const bookmark = () => {
-    setHint(
-      isIos
-        ? "Safari: Udostępnij ⤴ → Dodaj zakładkę."
-        : `Naciśnij ${isMac ? "⌘ D" : "Ctrl + D"}, aby zapisać ten panel w zakładkach.`,
+      surface === "ios-safari"
+        ? "Zrób to teraz: Udostępnij (strzałka w górę na dole) → Do ekranu początkowego → Dodaj. Potem wejdź z nowej ikony."
+        : guide.steps.join(" "),
     );
   };
 
@@ -195,8 +215,11 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
     setVisible(false);
   };
 
+  const allDone =
+    notifyState === "enabled" && (installed || !guide.pushLockedUntilStandalone);
+
   return (
-    <section className="relative overflow-hidden rounded-[1.45rem] border border-sky-400/25 bg-gradient-to-r from-sky-500/10 via-[var(--eos-card)] to-emerald-500/10 p-4 shadow-[0_12px_36px_rgba(14,165,233,0.08)] sm:p-5">
+    <section className="relative overflow-hidden rounded-[1.45rem] border border-emerald-400/25 bg-gradient-to-br from-emerald-500/8 via-[var(--eos-card)] to-sky-500/8 p-4 shadow-[0_12px_36px_rgba(16,185,129,0.08)] sm:p-5">
       <button
         type="button"
         onClick={dismiss}
@@ -205,49 +228,152 @@ export default function ClientPortalSetupPrompt({ token }: { token: string }) {
       >
         <X className="size-4" />
       </button>
+
       <div className="flex items-start gap-3 pr-8">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/14 text-sky-600">
-          {notifyState === "enabled" ? <CheckCircle2 className="size-5" /> : <BellRing className="size-5" />}
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/14 text-emerald-700">
+          {allDone ? <CheckCircle2 className="size-5" /> : <Smartphone className="size-5" />}
         </div>
         <div>
-          <p className="text-sm font-black text-[var(--eos-text)]">Miej swój panel zawsze pod ręką</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700/80">
+            {allDone ? "Gotowe" : "Dwa kroki, żeby nie przegapić agenta"}
+          </p>
+          <p className="mt-1 text-sm font-black text-[var(--eos-text)]">
+            {allDone ? "Panel jest na telefonie, powiadomienia włączone" : "Najpierw znaczek, potem powiadomienia"}
+          </p>
           <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
-            Dodaj ikonę Panelu EstateOS i włącz powiadomienia. Nie przegapisz odpowiedzi ani ważnej wiadomości od agenta.
+            {allDone
+              ? "Możesz zamknąć tę kartę. Wiadomości od agenta przyjdą na telefon."
+              : "Ikona na ekranie początkowym działa jak mała aplikacja. Powiadomienia włączysz dopiero po jej otwarciu — tak wymaga telefon."}
           </p>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void registerPush(true)}
-          disabled={notifyState === "busy" || notifyState === "enabled"}
-          className="eos-btn eos-btn--primary eos-btn--sm disabled:opacity-60"
-        >
-          {notifyState === "enabled" ? <CheckCircle2 className="size-4" /> : <BellRing className="size-4" />}
-          {notifyState === "busy"
-            ? "Włączam…"
-            : notifyState === "enabled"
-              ? "Powiadomienia aktywne"
-              : notifyState === "blocked"
-                ? "Powiadomienia zablokowane"
-                : "Włącz powiadomienia"}
-        </button>
-        <button type="button" onClick={() => void install()} className="eos-btn eos-btn--secondary eos-btn--sm">
-          {isIos ? <Share2 className="size-4" /> : installed ? <Smartphone className="size-4" /> : <Download className="size-4" />}
-          {installed ? "Panel zainstalowany" : "Dodaj ikonę / skrót"}
-        </button>
-        <button type="button" onClick={bookmark} className="eos-btn eos-btn--secondary eos-btn--sm">
-          <Bookmark className="size-4" />
-          Dodaj zakładkę
-        </button>
-      </div>
+      {allDone ? null : (
+        <ol className="mt-4 space-y-3">
+          <li
+            className={`rounded-2xl border p-3.5 ${
+              installed
+                ? "border-emerald-400/35 bg-emerald-500/8"
+                : "border-[var(--eos-border)] bg-[var(--eos-card)]/80"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
+                  installed ? "bg-emerald-500 text-white" : "bg-[var(--eos-text)] text-[var(--eos-card)]"
+                }`}
+              >
+                {installed ? <CheckCircle2 className="size-4" /> : "1"}
+              </span>
+              <p className="text-sm font-black text-[var(--eos-text)]">{guide.step1Title}</p>
+            </div>
+            <ol className="mt-3 space-y-2">
+              {guide.steps.map((step, index) => (
+                <li key={step} className="flex gap-2.5 text-xs leading-relaxed text-[var(--eos-muted)]">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--eos-input)] text-[10px] font-black text-[var(--eos-text)]">
+                    {index + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+            <button
+              type="button"
+              onClick={() => void install()}
+              className="eos-btn eos-btn--primary eos-btn--sm mt-3"
+            >
+              {guide.needsSafariFirst ? (
+                <ExternalLink className="size-4" />
+              ) : installed ? (
+                <Smartphone className="size-4" />
+              ) : surface.startsWith("ios") ? (
+                <Share2 className="size-4" />
+              ) : (
+                <Smartphone className="size-4" />
+              )}
+              {installed ? "Ikona dodana — otwórz ją" : guide.installButton}
+            </button>
+          </li>
+
+          <li
+            className={`rounded-2xl border p-3.5 ${
+              notifyState === "enabled"
+                ? "border-emerald-400/35 bg-emerald-500/8"
+                : pushReady
+                  ? "border-emerald-400/30 bg-emerald-500/6"
+                  : "border-[var(--eos-border)] bg-[var(--eos-input)]/50"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
+                  notifyState === "enabled"
+                    ? "bg-emerald-500 text-white"
+                    : pushReady
+                      ? "bg-emerald-600 text-white"
+                      : "bg-[var(--eos-muted)]/35 text-[var(--eos-muted)]"
+                }`}
+              >
+                {notifyState === "enabled" ? <CheckCircle2 className="size-4" /> : "2"}
+              </span>
+              <p className="text-sm font-black text-[var(--eos-text)]">Włącz powiadomienia</p>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-[var(--eos-muted)]">
+              {pushReady
+                ? "Jesteś w panelu z ikony. Kliknij przycisk i zaakceptuj prośbę telefonu — wtedy wiadomości od agenta przyjdą od razu."
+                : "Ten przycisk odblokuje się, gdy otworzysz panel z ikony na ekranie telefonu (krok 1)."}
+            </p>
+            <button
+              type="button"
+              onClick={() => void registerPush(true)}
+              disabled={!pushReady || notifyState === "busy" || notifyState === "enabled"}
+              className="eos-btn eos-btn--primary eos-btn--sm mt-3 disabled:opacity-45"
+            >
+              {notifyState === "enabled" ? <CheckCircle2 className="size-4" /> : <BellRing className="size-4" />}
+              {notifyState === "busy"
+                ? "Włączam…"
+                : notifyState === "enabled"
+                  ? "Powiadomienia aktywne"
+                  : notifyState === "blocked"
+                    ? "Powiadomienia zablokowane"
+                    : pushReady
+                      ? "Włącz powiadomienia"
+                      : "Najpierw krok 1"}
+            </button>
+          </li>
+        </ol>
+      )}
 
       {hint ? (
         <p className="mt-3 rounded-xl bg-[var(--eos-input)] px-3 py-2 text-xs font-semibold leading-relaxed text-[var(--eos-text)]">
           {hint}
         </p>
       ) : null}
+
+      {allDone ? null : (
+        <div className="mt-4 rounded-2xl bg-[#141416] px-3 py-3.5 text-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">Albo gotowa aplikacja</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-white/80">
+            Pobierz EstateOS z App Store. Tam też włączysz powiadomienia — bez dodawania znaczka strony.
+          </p>
+          <div className="mt-3">
+            <AppStoreBadgeLink compact androidComingSoon label="Pobierz EstateOS w App Store" />
+          </div>
+          {surface.startsWith("ios") ? (
+            <button
+              type="button"
+              onClick={() => {
+                setHint("Jeśli apka jest zainstalowana, otworzy ten panel. W przeciwnym razie wejdzie App Store.");
+                openIosAppOrAppStore({ portalToken: token, href: window.location.href });
+              }}
+              className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-300 underline-offset-2 hover:underline"
+            >
+              <Smartphone className="size-3.5" />
+              Mam już aplikację — otwórz ten panel
+            </button>
+          ) : null}
+        </div>
+      )}
     </section>
   );
 }

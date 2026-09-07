@@ -35,26 +35,42 @@ export function extractOfferIdFromHref(href: string): number | null {
   return null;
 }
 
-export function buildIosAppOpenUrl(offerId?: number | null): string {
+export function extractPortalTokenFromHref(href: string): string | null {
+  const m = String(href || '').match(/\/klient\/([a-f0-9]{32,64})/i);
+  return m?.[1]?.toLowerCase() || null;
+}
+
+export function buildPortalAppSchemeUrl(token: string): string {
+  return `estateos://klient/${token}`;
+}
+
+export function buildIosAppOpenUrl(offerId?: number | null, portalToken?: string | null): string {
+  const token = String(portalToken || '').trim();
+  if (token) return buildPortalAppSchemeUrl(token);
   if (offerId != null && Number(offerId) > 0) return buildOfferAppSchemeUrl(offerId);
   return 'estateos://';
 }
 
 /**
- * Ręczny CTA z IAB: najpierw custom scheme (oferta, jeśli jest w URL),
+ * Ręczny CTA z IAB: najpierw custom scheme (oferta albo panel klienta),
  * a gdy apka nie przejęła widoku — App Store. Nie wołać automatycznie.
  */
-export function openIosAppOrAppStore(opts?: { offerId?: number | null; href?: string }): void {
+export function openIosAppOrAppStore(opts?: {
+  offerId?: number | null;
+  href?: string;
+  portalToken?: string | null;
+}): void {
   if (typeof window === 'undefined') return;
-  const offerId =
-    opts?.offerId ?? extractOfferIdFromHref(opts?.href || window.location.href);
+  const href = opts?.href || window.location.href;
+  const portalToken = opts?.portalToken ?? extractPortalTokenFromHref(href);
+  const offerId = opts?.offerId ?? extractOfferIdFromHref(href);
   let leftPage = false;
   const markLeft = () => {
     leftPage = true;
   };
   document.addEventListener('visibilitychange', markLeft);
   window.addEventListener('pagehide', markLeft);
-  window.location.href = buildIosAppOpenUrl(offerId);
+  window.location.href = buildIosAppOpenUrl(offerId, portalToken);
   window.setTimeout(() => {
     document.removeEventListener('visibilitychange', markLeft);
     window.removeEventListener('pagehide', markLeft);
