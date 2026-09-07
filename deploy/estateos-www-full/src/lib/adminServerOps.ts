@@ -653,6 +653,7 @@ function walkSafeCleanup(dir: string, out: SafeCleanupItem[], depth = 0) {
 }
 
 export async function previewSafeCleanup() {
+  await new Promise<void>((resolve) => setImmediate(resolve));
   const roots = [
     path.join(HOME, 'lineage-movies'),
     path.join(HOME, 'lineage-movies/video-downloader/tmp'),

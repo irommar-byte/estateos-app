@@ -54,20 +54,28 @@ export async function GET(req: Request) {
   const clients = await prisma.agencyClient.findMany({
     where,
     orderBy: { updatedAt: 'desc' },
-    include: {
+    select: {
+      id: true,
+      type: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      pesel: true,
+      emailVerifiedAt: true,
+      phoneVerifiedAt: true,
+      notes: true,
+      updatedAt: true,
+      sellerCity: true,
+      sellerPrice: true,
+      linkedUserId: true,
+      portalToken: true,
       linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
-      buyerPreference: true,
-      matches: { orderBy: { score: 'desc' }, take: 40, select: { score: true, notifiedAt: true } },
-      _count: { select: { matches: true } },
-      activities: {
-        where: { kind: { in: ['ACQUISITION_MEETING', 'PRESENTATION_CONFIRMED'] } },
-        orderBy: { createdAt: 'desc' },
-        take: 8,
-        select: { kind: true, metadata: true },
-      },
+      buyerPreference: { select: { city: true, maxPrice: true } },
     },
   });
 
+  const ids = clients.map((client) => client.id);
   const buyerUserIds = Array.from(
     new Set(
       clients
@@ -75,30 +83,73 @@ export async function GET(req: Request) {
         .map((client) => Number(client.linkedUserId)),
     ),
   ).filter((id) => Number.isFinite(id) && id > 0);
-  const closedDeals = buyerUserIds.length
-    ? await prisma.deal.findMany({
-        where: { buyerId: { in: buyerUserIds }, status: 'FINALIZED' },
-        select: { buyerId: true },
-      })
-    : [];
+
+  const emptyMatchStats: Array<{ clientId: number; _count: { _all: number }; _max: { score: number | null } }> = [];
+  const [matchStats, activities, closedDeals, sentGroups] = await Promise.all([
+    ids.length
+      ? prisma.agencyClientMatch.groupBy({
+          by: ['clientId'],
+          where: { clientId: { in: ids } },
+          _count: { _all: true },
+          _max: { score: true },
+        })
+      : emptyMatchStats,
+    ids.length
+      ? prisma.agencyClientActivity.findMany({
+          where: {
+            clientId: { in: ids },
+            kind: { in: ['ACQUISITION_MEETING', 'PRESENTATION_CONFIRMED'] },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { clientId: true, kind: true, metadata: true },
+        })
+      : [],
+    buyerUserIds.length
+      ? prisma.deal.findMany({
+          where: { buyerId: { in: buyerUserIds }, status: 'FINALIZED' },
+          select: { buyerId: true },
+        })
+      : [],
+    ids.length
+      ? prisma.agencyClientMatch.groupBy({
+          by: ['clientId'],
+          where: { clientId: { in: ids }, notifiedAt: { not: null } },
+          _count: { _all: true },
+        })
+      : [],
+  ]);
+
+  const matchByClient = new Map(
+    matchStats.map((row) => [row.clientId, { count: row._count._all, top: row._max.score }]),
+  );
+  const actsByClient = new Map<number, Array<{ kind: string; metadata: unknown }>>();
+  for (const act of activities) {
+    const list = actsByClient.get(act.clientId) || [];
+    if (list.length < 8) list.push({ kind: act.kind, metadata: act.metadata });
+    actsByClient.set(act.clientId, list);
+  }
   const closedBuyerIds = new Set(closedDeals.map((row) => row.buyerId));
-  const sentGroups = clients.length
-    ? await prisma.agencyClientMatch.groupBy({
-        by: ['clientId'],
-        where: { clientId: { in: clients.map((client) => client.id) }, notifiedAt: { not: null } },
-        _count: { _all: true },
-      })
-    : [];
   const sentByClient = new Map(sentGroups.map((row) => [row.clientId, row._count._all]));
 
   return NextResponse.json({
     success: true,
-    clients: clients.map((client) =>
-      shapeClientListItem(client, {
-        dealClosed: Boolean(client.linkedUserId && closedBuyerIds.has(client.linkedUserId)),
-        sentCount: sentByClient.get(client.id) ?? 0,
-      }),
-    ),
+    clients: clients.map((client) => {
+      const match = matchByClient.get(client.id);
+      return shapeClientListItem(
+        {
+          ...client,
+          buyerPreference: client.buyerPreference,
+          _count: { matches: match?.count ?? 0 },
+          matches: match?.top != null ? [{ score: match.top }] : [],
+          activities: actsByClient.get(client.id) || [],
+          linkedUser: client.linkedUser,
+        },
+        {
+          dealClosed: Boolean(client.linkedUserId && closedBuyerIds.has(client.linkedUserId)),
+          sentCount: sentByClient.get(client.id) ?? 0,
+        },
+      );
+    }),
   });
 }
 

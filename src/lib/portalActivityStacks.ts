@@ -1,3 +1,9 @@
+import {
+  friendlyPromotionName,
+  promotionGroupId,
+  promotionGroupLabel,
+} from "./marketingChannel";
+
 export type PortalStackKind = "reports" | "promotions" | "presentations" | "path";
 
 export type PortalStackable = {
@@ -112,8 +118,23 @@ function uniqueNames(values: Array<string | null | undefined>, limit = 5): strin
 }
 
 function channelName(item: PortalStackable): string {
-  if (item.groupName) return `Facebook · ${item.groupName}`;
-  return item.portal || item.siteName || item.title || "Publikacja";
+  return promotionGroupLabel(promotionGroupId(item));
+}
+
+export function promotionChannelFoldSummary(params: {
+  count: number;
+  latestAt?: string;
+  activeCount: number;
+}): string {
+  const countLabel = params.count === 1 ? "1 publikacja" : `${params.count} publikacji`;
+  const live =
+    params.activeCount > 0
+      ? params.activeCount === 1
+        ? " · 1 aktywna"
+        : ` · ${params.activeCount} aktywne`
+      : "";
+  const when = params.latestAt ? ` · ost. ${formatWhen(params.latestAt)}` : "";
+  return `${countLabel}${live}${when}`;
 }
 
 export function summarizePortalStack(
@@ -130,7 +151,7 @@ export function summarizePortalStack(
     return `${items.length} raporty w archiwum. Ostatni: ${when}. Każdy dokument można otworzyć ponownie.`;
   }
   if (kind === "promotions") {
-    const live = uniqueNames(options?.activePortals || []);
+    const live = uniqueNames((options?.activePortals || []).map((name) => friendlyPromotionName(name)));
     const names = uniqueNames(items.map(channelName));
     const liveLine = live.length ? `Teraz aktywne: ${live.join(", ")}. ` : "";
     const countLabel =

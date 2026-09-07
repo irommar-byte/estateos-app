@@ -216,43 +216,68 @@ async function listHungMedia() {
   return rows;
 }
 
-function pingHealth(): Promise<{ ms: number; commit: string } | null> {
+const HEALTH_PING_MS = 8000;
+
+type HealthPing = {
+  reached: boolean;
+  timedOut: boolean;
+  statusCode: number | null;
+  ms: number;
+  commit: string;
+  db: string;
+};
+
+function pingHealth(): Promise<HealthPing> {
   return new Promise((resolve) => {
     const started = Date.now();
+    const finish = (partial: Partial<HealthPing> & Pick<HealthPing, 'reached'>) => {
+      resolve({
+        reached: partial.reached,
+        timedOut: partial.timedOut === true,
+        statusCode: partial.statusCode ?? null,
+        ms: Date.now() - started,
+        commit: partial.commit || '',
+        db: partial.db || '',
+      });
+    };
     const req = http.get(
       {
         hostname: '127.0.0.1',
         port: Number(process.env.PORT || 3000),
         path: '/api/health',
-        timeout: 4000,
+        timeout: HEALTH_PING_MS,
         headers: { Connection: 'close' },
       },
       (res) => {
         let body = '';
         res.setEncoding('utf8');
         res.on('data', (chunk) => {
-          if (body.length < 2000) body += chunk;
+          if (body.length < 4000) body += chunk;
         });
         res.on('end', () => {
-          const ms = Date.now() - started;
-          if (res.statusCode !== 200) {
-            resolve(null);
-            return;
-          }
+          let commit = '';
+          let db = '';
           try {
-            const json = JSON.parse(body) as { commit?: string };
-            resolve({ ms, commit: String(json.commit || '') });
+            const json = JSON.parse(body) as { commit?: string; db?: string };
+            commit = String(json.commit || '');
+            db = String(json.db || '');
           } catch {
-            resolve({ ms, commit: '' });
+            /* body is still a response from WWW */
           }
+          finish({
+            reached: true,
+            statusCode: res.statusCode ?? null,
+            commit,
+            db,
+          });
         });
       },
     );
     req.on('timeout', () => {
       req.destroy();
-      resolve(null);
+      finish({ reached: false, timedOut: true });
     });
-    req.on('error', () => resolve(null));
+    req.on('error', () => finish({ reached: false }));
   });
 }
 
@@ -268,12 +293,12 @@ function readSwapUsedBytes() {
 }
 
 export async function diagnoseServer(): Promise<DiagnoseReport> {
-  const [disk, processes, mariadb, junk, health, hung, sha] = await Promise.all([
+  const [health, disk, processes, mariadb, junk, hung, sha] = await Promise.all([
+    pingHealth(),
     readDiskMetrics('/'),
     readPm2Processes(),
     readMariaDbStatus(),
     previewSafeCleanup(),
-    pingHealth(),
     listHungMedia(),
     gitShortSha(),
   ]);
@@ -382,17 +407,31 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       fixable: true,
     });
   }
-  if (!health) {
+  if (!health.reached) {
     findings.push({
       id: 'health-down',
       severity: 'critical',
       title: 'WWW nie odpowiada',
-      detail: 'Lokalny /api/health nie wrócił w 4 sekundy.',
+      detail: health.timedOut
+        ? `Lokalny /api/health nie wrócił w ${HEALTH_PING_MS / 1000} sekund.`
+        : 'Nie udało się połączyć z workerem WWW.',
       evidence: [{ label: 'Port', value: String(process.env.PORT || '3000') }],
       action: isBuildLocked() ? undefined : 'Przeładuj workery',
       fixable: !isBuildLocked(),
     });
-  } else if (health.ms >= 750) {
+  } else if (health.db && health.db !== 'ok') {
+    findings.push({
+      id: 'health-db',
+      severity: 'warning',
+      title: 'Baza odpowiada wolno',
+      detail: 'WWW działa. Ping do MariaDB nie zmieścił się w limicie liveness.',
+      evidence: [
+        { label: 'Baza', value: health.db },
+        { label: 'Czas', value: `${health.ms} ms` },
+      ],
+      fixable: false,
+    });
+  } else if (health.ms >= 2000) {
     findings.push({
       id: 'health-slow',
       severity: 'warning',
@@ -440,7 +479,7 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       fixable: true,
     });
   }
-  if (sha && (envSha !== sha || (health?.commit && health.commit !== sha))) {
+  if (sha && (envSha !== sha || (health.commit && health.commit !== sha))) {
     findings.push({
       id: 'commit-stale',
       severity: 'info',
@@ -449,7 +488,7 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       evidence: [
         { label: 'W repozytorium', value: sha },
         { label: 'W pliku .env', value: envSha || 'brak' },
-        { label: 'W procesie WWW', value: health?.commit || 'brak' },
+        { label: 'W procesie WWW', value: health.commit || 'brak' },
       ],
       action: isBuildLocked() ? undefined : 'Przeładuj z aktualnym commitem',
       fixable: !isBuildLocked(),
@@ -509,7 +548,7 @@ async function waitHealthy(timeoutMs = 25_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const health = await pingHealth();
-    if (health) return true;
+    if (health.reached) return true;
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
   return false;

@@ -68,7 +68,7 @@ export default function ListingPathEventCard({
   });
   const isReport = item.kind === "MARKET_REPORT_SENT";
   const headline =
-    channel.id === "facebook" && item.groupName
+    channel.id === "facebook" && item.groupName && !/^grupa\s+\d{6,}$/i.test(item.groupName) && !/^\d{6,}$/.test(item.groupName)
       ? `Facebook · ${item.groupName}`
       : item.title || channel.label;
   const linkHref = isReport && token

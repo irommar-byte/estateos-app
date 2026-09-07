@@ -375,6 +375,33 @@ export function promotionGroupLabel(id: MarketingChannelId): string {
   return CHANNELS[id].label;
 }
 
+export const PORTAL_PROMO_STRIP_IDS: Array<
+  Exclude<MarketingChannelId, "portal" | "system">
+> = ["estateos", "olx", "facebook", "otodom", "gratka", "morizon"];
+
+export function friendlyPromotionName(raw: string | null | undefined): string {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "";
+  if (/grupa\s+\d{6,}/i.test(trimmed) || /^facebook\b/i.test(trimmed)) {
+    return promotionGroupLabel("facebook");
+  }
+  const id = promotionGroupId({
+    portal: trimmed,
+    siteName: trimmed,
+    groupName: trimmed,
+    title: trimmed,
+    createdAt: "",
+  });
+  if (id === "portal" || id === "system") {
+    if (/^olx$/i.test(trimmed)) return promotionGroupLabel("olx");
+    if (/otodom/i.test(trimmed)) return promotionGroupLabel("otodom");
+    if (/estateos/i.test(trimmed)) return promotionGroupLabel("estateos");
+    if (/gratka/i.test(trimmed)) return promotionGroupLabel("gratka");
+    if (/morizon/i.test(trimmed)) return promotionGroupLabel("morizon");
+  }
+  return promotionGroupLabel(id);
+}
+
 export function groupPromotionsByChannel<T extends PromotionGroupable>(
   items: T[],
 ): PromotionChannelGroup<T>[] {

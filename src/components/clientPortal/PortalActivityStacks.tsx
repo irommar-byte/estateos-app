@@ -9,6 +9,7 @@ import {
   facebookOpenLabel,
   formatPublicationStatus,
   groupPromotionsByChannel,
+  isActivePublicationStatus,
   listingThumbnailFallback,
   promotionGroupLabel,
   resolveMarketingChannel,
@@ -16,6 +17,7 @@ import {
 import {
   groupPortalPath,
   marketReportPortalHref,
+  promotionChannelFoldSummary,
   type PortalStackKind,
 } from "../../lib/portalActivityStacks";
 
@@ -218,6 +220,7 @@ export default function PortalActivityStacks({
     [items, activePortals],
   );
   const [open, setOpen] = useState<Partial<Record<PortalStackKind, boolean>>>({});
+  const [openChannels, setOpenChannels] = useState<Record<string, boolean>>({});
 
   if (!stacks.length) return null;
 
@@ -324,15 +327,39 @@ export default function PortalActivityStacks({
                       .map((row) => items.find((item) => item.id === row.id))
                       .filter((item): item is PortalMarketingTimelineItem => Boolean(item))
                       .map((item) => ({ ...item, url: item.externalUrl })),
-                  ).map((group) => (
+                  ).map((group) => {
+                    const channelOpen = openChannels[group.id] === true;
+                    const activeCount = group.items.filter((item) =>
+                      isActivePublicationStatus(item.status),
+                    ).length;
+                    const summary = promotionChannelFoldSummary({
+                      count: group.items.length,
+                      latestAt: group.latestAt,
+                      activeCount,
+                    });
+                    return (
                     <View key={group.id} style={{ paddingHorizontal: 10, marginBottom: 8 }}>
-                      <View style={styles.channelHead}>
+                      <Pressable
+                        onPress={() =>
+                          setOpenChannels((current) => ({
+                            ...current,
+                            [group.id]: !channelOpen,
+                          }))
+                        }
+                        style={styles.channelHead}
+                      >
                         <MarketingChannelBrand id={group.id} label={group.label} />
-                        <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: "700" }}>
-                          {group.items.length}
+                        <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: "650", flex: 1, textAlign: "right" }}>
+                          {summary}
                         </Text>
-                      </View>
-                      {group.items.map((row) => {
+                        <Ionicons
+                          name={channelOpen ? "chevron-up" : "chevron-down"}
+                          size={16}
+                          color={colors.secondary}
+                        />
+                      </Pressable>
+                      {channelOpen
+                        ? group.items.map((row) => {
                         const full = items.find((item) => item.id === row.id);
                         if (!full) return null;
                         return (
@@ -346,9 +373,11 @@ export default function PortalActivityStacks({
                             onOpenUrl={onOpenUrl}
                           />
                         );
-                      })}
+                      })
+                        : null}
                     </View>
-                  ))
+                    );
+                  })
                 : stack.items.map((row) => {
                     const full = items.find((item) => item.id === row.id);
                     if (!full) return null;
