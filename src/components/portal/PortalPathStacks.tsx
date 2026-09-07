@@ -6,10 +6,15 @@ import ListingPathEventCard, {
   type ListingPathEvent,
 } from "@/components/portal/ListingPathEventCard";
 import MarketingChannelBrand from "@/components/portal/MarketingChannelBrand";
-import { groupPromotionsByChannel } from "@/lib/crm/marketingChannel";
+import {
+  groupPromotionsByChannel,
+  isActivePublicationStatus,
+  type PromotionChannelGroup,
+} from "@/lib/crm/marketingChannel";
 import {
   groupPortalPath,
   marketReportPortalPath,
+  promotionChannelFoldSummary,
   type PortalStackKind,
 } from "@/lib/crm/portalActivityStacks";
 
@@ -21,6 +26,52 @@ function formatWhen(iso: string) {
     month: "short",
     year: "numeric",
   });
+}
+
+function PromotionChannelSection({
+  group,
+  listingImage,
+  token,
+}: {
+  group: PromotionChannelGroup<ListingPathEvent>;
+  listingImage?: string | null;
+  token: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeCount = group.items.filter((item) => isActivePublicationStatus(item.status)).length;
+  const summary = promotionChannelFoldSummary({
+    count: group.items.length,
+    latestAt: group.latestAt,
+    activeCount,
+  });
+
+  return (
+    <section className={`listing-path-channel ${open ? "listing-path-channel--open" : ""}`}>
+      <button
+        type="button"
+        className="listing-path-channel__toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <MarketingChannelBrand id={group.id} label={group.label} />
+        <span className="listing-path-channel__summary">{summary}</span>
+        <ChevronDown
+          className={`listing-path-channel__chevron ${open ? "listing-path-channel__chevron--open" : ""}`}
+          aria-hidden
+        />
+      </button>
+      {open
+        ? group.items.map((item) => (
+            <ListingPathEventCard
+              key={item.id}
+              item={item}
+              fallbackImage={listingImage}
+              token={token}
+            />
+          ))
+        : null}
+    </section>
+  );
 }
 
 export default function PortalPathStacks({
@@ -84,20 +135,12 @@ export default function PortalPathStacks({
               <div className="listing-path-stack__body">
                 {stack.kind === "promotions"
                   ? groupPromotionsByChannel(stack.items as ListingPathEvent[]).map((group) => (
-                      <section key={group.id} className="listing-path-channel">
-                        <header className="listing-path-channel__head">
-                          <MarketingChannelBrand id={group.id} label={group.label} />
-                          <span className="listing-path-channel__count">{group.items.length}</span>
-                        </header>
-                        {group.items.map((item) => (
-                          <ListingPathEventCard
-                            key={item.id}
-                            item={item as ListingPathEvent}
-                            fallbackImage={listingImage}
-                            token={token}
-                          />
-                        ))}
-                      </section>
+                      <PromotionChannelSection
+                        key={group.id}
+                        group={group}
+                        listingImage={listingImage}
+                        token={token}
+                      />
                     ))
                   : stack.items.map((item) => (
                       <ListingPathEventCard

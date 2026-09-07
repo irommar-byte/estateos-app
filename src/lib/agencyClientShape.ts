@@ -117,8 +117,23 @@ export function buyerPrefToWebRadarFilters(
 }
 
 export function shapeClientListItem(
-  client: AgencyClient & {
-    buyerPreference: AgencyClientBuyerPreference | null;
+  client: {
+    id: number;
+    type: AgencyClient['type'];
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    pesel: string | null;
+    emailVerifiedAt: Date | null;
+    phoneVerifiedAt: Date | null;
+    notes: string | null;
+    updatedAt: Date;
+    sellerCity: string | null;
+    sellerPrice: number | null;
+    linkedUserId: number | null;
+    portalToken: string | null;
+    buyerPreference: Pick<AgencyClientBuyerPreference, 'city' | 'maxPrice'> | null;
     _count?: { matches: number };
     matches?: { score: number; notifiedAt?: Date | null }[];
     linkedUser?: { id: number; email: string; lastLoginAt: Date | null } | null;

@@ -282,6 +282,7 @@ export default function CrmClientsWorkspace() {
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(() => initialClientIdFromUrl());
   const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -384,17 +385,25 @@ export default function CrmClientsWorkspace() {
 
   const loadClients = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
-      const listRes = await fetch(`/api/crm/clients`, { cache: "no-store" });
+      const listRes = await fetch(`/api/crm/clients`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      });
       const listJson = await listRes.json();
       if (listJson.success) {
         const nextClients: AgencyClientListItem[] = listJson.clients || [];
         setClients(nextClients);
         setSelectedId((prev) => {
-          if (prev) return prev;
-          return nextClients[0]?.id ?? null;
+          if (prev && nextClients.some((client) => client.id === prev)) return prev;
+          return null;
         });
+      } else {
+        setLoadError("Nie udało się wczytać klientów.");
       }
+    } catch {
+      setLoadError("Lista klientów nie odpowiedziała. Spróbuj ponownie.");
     } finally {
       setLoading(false);
     }
@@ -1088,6 +1097,17 @@ export default function CrmClientsWorkspace() {
           ) : null}
           {loading ? (
             <p className="text-sm text-[var(--eos-muted)]">{cl.loading}</p>
+          ) : loadError ? (
+            <div className="rounded-[1.25rem] border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 px-4 py-8 text-center sm:p-10">
+              <p className="break-words text-lg font-semibold text-[var(--eos-text)]">{loadError}</p>
+              <button
+                type="button"
+                className="mt-4 text-sm font-semibold text-emerald-600 underline"
+                onClick={() => void loadClients()}
+              >
+                Spróbuj ponownie
+              </button>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="rounded-[1.25rem] border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 px-4 py-8 text-center sm:p-10">
               <p className="break-words text-lg font-semibold text-[var(--eos-text)]">{cl.emptyTitle}</p>

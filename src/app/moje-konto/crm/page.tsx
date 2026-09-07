@@ -287,6 +287,8 @@ export default function CRMDashboard() {
   const crmLaunch = useCrmLaunchOptional();
   const deskLaunching = Boolean(crmLaunch?.isLaunching);
   const bootRepeatRef = useRef(false);
+  const currentUserRef = useRef<any>(null);
+  const crmHeavyLoadedRef = useRef(false);
   
   const [loading, setLoading] = useState(true);
 
@@ -677,6 +679,7 @@ export default function CRMDashboard() {
       throw new Error(profileData?.error || 'Nie udało się odświeżyć profilu.');
     }
     setCurrentUser(profileData);
+    currentUserRef.current = profileData;
     initModeFromUser(profileData);
     return profileData;
   };
@@ -734,6 +737,7 @@ export default function CRMDashboard() {
       }
       
       const uData = await refreshCurrentUserFromBackend();
+      currentUserRef.current = uData;
       const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
       const tabFromUrl = sParams?.get('tab');
       const agencyUser = isAgentOrAgencySeller(uData);
@@ -769,7 +773,10 @@ export default function CRMDashboard() {
           setAgencyGrowthInsight(null);
         }
         setLoading(false);
-        void loadCrmHeavyData();
+        if (tabFromUrl !== 'klienci') {
+          crmHeavyLoadedRef.current = true;
+          void loadCrmHeavyData();
+        }
         return;
       }
 
@@ -783,6 +790,7 @@ export default function CRMDashboard() {
         setAgencyGrowthInsight(null);
       }
 
+      crmHeavyLoadedRef.current = true;
       await Promise.all([fetchData(uData.id), fetchRadarData()]);
       
     } catch(err) {
@@ -1062,6 +1070,17 @@ export default function CRMDashboard() {
     const currentY = typeof window !== 'undefined' ? window.scrollY : 0;
     setActiveTab(tab);
     setSelectedDealId(null);
+    if (tab !== 'klienci' && !crmHeavyLoadedRef.current) {
+      const u = currentUserRef.current;
+      if (u?.id) {
+        crmHeavyLoadedRef.current = true;
+        void (async () => {
+          await fetchRadarCatalog();
+          setRadarDisplayFilters(await loadRadarFiltersForUser(u));
+          await Promise.all([fetchData(u.id), fetchRadarData()]);
+        })();
+      }
+    }
     requestAnimationFrame(() => {
       window.scrollTo({ top: currentY, left: 0, behavior: 'auto' });
     });

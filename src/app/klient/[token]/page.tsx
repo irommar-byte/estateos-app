@@ -27,6 +27,7 @@ import ClientPortalPresentationHero, {
 } from "@/components/portal/ClientPortalPresentationHero";
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import SellerPortalCollaboration from "@/components/portal/SellerPortalCollaboration";
+import PortalPromoPresence from "@/components/portal/PortalPromoPresence";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { buyerOnboardingStorageKey, isBuyerOnboardingDismissed } from "@/lib/clientPortalPath";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
@@ -483,6 +484,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 ? `Twój agent prowadzi dopasowanie. Oferty są posegregowane: nowe, do oglądania, do przemyślenia i te, które nie pasują.`
                 : `Dedykowany agent i biuro reprezentują Twoją nieruchomość.`}
             </p>
+            {portal.type === "SELLER" ? (
+              <PortalPromoPresence
+                listing={portal.listing}
+                listingPath={portal.listingPath || []}
+                activeChannels={portal.activeChannels || []}
+              />
+            ) : null}
           </div>
 
           {/* Agent Business Card */}

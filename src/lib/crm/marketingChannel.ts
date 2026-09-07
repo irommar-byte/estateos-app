@@ -382,6 +382,89 @@ export function promotionGroupLabel(id: MarketingChannelId): string {
   return CHANNELS[id].label;
 }
 
+export const PORTAL_PROMO_STRIP_IDS: Array<
+  Exclude<MarketingChannelId, "portal" | "system">
+> = ["estateos", "olx", "facebook", "otodom", "gratka", "morizon"];
+
+export function friendlyPromotionName(raw: string | null | undefined): string {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "";
+  if (/grupa\s+\d{6,}/i.test(trimmed) || /^facebook\b/i.test(trimmed)) {
+    return promotionGroupLabel("facebook");
+  }
+  const id = promotionGroupId({
+    portal: trimmed,
+    siteName: trimmed,
+    groupName: trimmed,
+    title: trimmed,
+    createdAt: "",
+  });
+  if (id === "portal" || id === "system") {
+    if (/^olx$/i.test(trimmed)) return promotionGroupLabel("olx");
+    if (/otodom/i.test(trimmed)) return promotionGroupLabel("otodom");
+    if (/estateos/i.test(trimmed)) return promotionGroupLabel("estateos");
+    if (/gratka/i.test(trimmed)) return promotionGroupLabel("gratka");
+    if (/morizon/i.test(trimmed)) return promotionGroupLabel("morizon");
+  }
+  return promotionGroupLabel(id);
+}
+
+export function isExplicitLivePromotion(status: string | null | undefined): boolean {
+  const key = String(status || "").trim().toLowerCase();
+  return key === "active" || key === "";
+}
+
+export function livePromotionChannelIds(input: {
+  listing?: { featured?: boolean | null; promotedUntil?: string | null } | null;
+  listingPath?: PromotionGroupable[];
+  activeChannels?: Array<{ portal?: string | null; status?: string | null }>;
+}): Set<MarketingChannelId> {
+  const live = new Set<MarketingChannelId>();
+  const listing = input.listing;
+  if (listing?.featured) live.add("estateos");
+  if (listing?.promotedUntil) {
+    const until = Date.parse(listing.promotedUntil);
+    if (Number.isFinite(until) && until > Date.now()) live.add("estateos");
+  }
+  for (const channel of input.activeChannels || []) {
+    if (!isExplicitLivePromotion(channel.status)) continue;
+    const resolved = promotionGroupId({
+      portal: channel.portal,
+      siteName: channel.portal,
+      groupName: channel.portal,
+      createdAt: "",
+    });
+    const id =
+      resolved === "system" || resolved === "portal"
+        ? friendlyStripId(channel.portal)
+        : resolved;
+    if (id === "system") continue;
+    live.add(id);
+  }
+  for (const item of input.listingPath || []) {
+    const kind = String(item.kind || "").toUpperCase();
+    if (
+      kind === "ESTATEOS_PROMOTED" ||
+      kind === "ESTATEOS_ACTIVATED" ||
+      kind === "LISTING_FEATURED"
+    ) {
+      if (isExplicitLivePromotion(item.status)) live.add("estateos");
+    }
+  }
+  return live;
+}
+
+function friendlyStripId(portal: string | null | undefined): MarketingChannelId {
+  const name = friendlyPromotionName(portal).toLowerCase();
+  if (name.includes("olx")) return "olx";
+  if (name.includes("facebook")) return "facebook";
+  if (name.includes("otodom")) return "otodom";
+  if (name.includes("gratka")) return "gratka";
+  if (name.includes("morizon")) return "morizon";
+  if (name.includes("estateos")) return "estateos";
+  return "portal";
+}
+
 export function groupPromotionsByChannel<T extends PromotionGroupable>(
   items: T[],
 ): PromotionChannelGroup<T>[] {

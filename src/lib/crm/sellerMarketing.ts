@@ -12,6 +12,8 @@ import {
   isPendingPublicationStatus,
   listingThumbnailFallback,
   parseFacebookDestination,
+  promotionGroupId,
+  promotionGroupLabel,
   publicationHeadline,
   resolveMarketingChannel,
   type FacebookGroupDestination,
@@ -1076,7 +1078,19 @@ export function extractActiveChannels(
       continue;
     }
     channels.push({
-      portal: item.groupName || item.portal || item.siteName || "Portal",
+      portal: promotionGroupLabel(
+        promotionGroupId({
+          kind: item.kind,
+          portal: item.portal,
+          siteName: item.siteName,
+          url: item.externalUrl,
+          groupName: item.groupName,
+          groupUrl: item.groupUrl,
+          title: item.title,
+          createdAt: item.createdAt,
+          status: item.status,
+        }),
+      ),
       externalUrl:
         facebookClientOpenHref({
           url: item.externalUrl,

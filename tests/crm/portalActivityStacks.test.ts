@@ -44,6 +44,33 @@ test("promotions collapse into one stack with a live-channel summary", () => {
   assert.match(stacks[0].summary, /3 publikacji/);
 });
 
+test("promotion summaries hide numeric facebook group ids", () => {
+  const stacks = groupPortalPath(
+    [
+      {
+        id: 1,
+        kind: "EXTERNAL_PORTAL_LISTED",
+        title: "Facebook",
+        body: "grupa",
+        createdAt: "2026-09-07T10:00:00.000Z",
+        groupName: "Grupa 1059239270898430",
+        portal: "Facebook",
+      },
+      {
+        id: 2,
+        kind: "EXTERNAL_PORTAL_LISTED",
+        title: "OLX",
+        body: "live",
+        createdAt: "2026-09-06T10:00:00.000Z",
+        portal: "OLX",
+      },
+    ],
+    { activePortals: ["Grupa 1059239270898430", "OLX"] },
+  );
+  assert.match(stacks[0].summary, /Teraz aktywne: Facebook, OLX/);
+  assert.doesNotMatch(stacks[0].summary, /1059239270898430/);
+});
+
 test("market reports are their own readable stack", () => {
   assert.equal(portalStackKind("MARKET_REPORT_SENT"), "reports");
   const stacks = groupPortalPath([

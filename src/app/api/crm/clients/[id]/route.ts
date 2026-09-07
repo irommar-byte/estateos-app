@@ -101,7 +101,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: 'Dostęp tylko dla agencji i agentów.' }, { status: 403 });
   }
 
-  await ensureIntelligenceLockedFieldsColumn();
   const { id } = await ctx.params;
   const clientId = Number(id);
   const client = await getAgencyClientForUser(clientId, agencyUserId);

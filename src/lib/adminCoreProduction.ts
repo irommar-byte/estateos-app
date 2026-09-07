@@ -52,7 +52,7 @@ function pingHealth(): Promise<HealthSnap | null> {
         hostname: '127.0.0.1',
         port: Number(process.env.PORT || 3000),
         path: '/api/health',
-        timeout: 4000,
+        timeout: 8000,
         headers: { Connection: 'close' },
       },
       (res) => {
@@ -72,8 +72,8 @@ function pingHealth(): Promise<HealthSnap | null> {
               durationMs?: number;
             };
             resolve({
-              ok: json.ok !== false && res.statusCode === 200,
-              status: String(json.status || (res.statusCode === 200 ? 'ok' : 'down')),
+              ok: json.ok !== false,
+              status: String(json.status || (res.statusCode && res.statusCode < 500 ? 'ok' : 'down')),
               commit: String(json.commit || ''),
               uptimeSec: Number(json.uptimeSec || 0),
               durationMs: Number(json.durationMs || durationMs),

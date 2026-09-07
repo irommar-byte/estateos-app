@@ -56,15 +56,24 @@ export default function MarketingChannelBrand({
   id,
   label,
   compact = false,
+  inactive = false,
 }: {
   id: MarketingChannelId;
   label?: string;
   compact?: boolean;
+  inactive?: boolean;
 }) {
   const groupId = id === "system" ? "portal" : id;
   const word = label || promotionGroupLabel(groupId);
+  const className = [
+    "marketing-channel-brand",
+    compact ? "marketing-channel-brand--compact" : "",
+    inactive ? "marketing-channel-brand--inactive" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <span className={`marketing-channel-brand${compact ? " marketing-channel-brand--compact" : ""}`}>
+    <span className={className}>
       <span className={`marketing-channel-brand__mark marketing-channel-brand__mark--${groupId}`} aria-hidden>
         <ChannelGlyph id={groupId} />
       </span>
