@@ -197,7 +197,7 @@ function RoomScanModalBody({
       const degrees = hasTrueHeading ? heading.trueHeading : heading.magHeading;
       if (!Number.isFinite(degrees) || degrees < 0) return;
       headingRef.current = {
-        northRotationDegrees: Number((-degrees).toFixed(1)),
+        northRotationDegrees: Number((360 - degrees).toFixed(1)) % 360,
         headingAccuracyDegrees: Number.isFinite(heading.accuracy) ? heading.accuracy : null,
         headingSource: hasTrueHeading ? 'true' : 'magnetic',
       };
@@ -480,9 +480,11 @@ function RoomScanModalBody({
                 meta={meta}
                 width={artboardW}
                 height={artboardH}
+                hideDimensions={scanMode === 'property'}
               />
             </View>
 
+            {scanMode !== 'property' ? (
             <View style={styles.statsRow}>
               <View style={styles.statPill}>
                 <Text style={styles.statLabel}>{t('addOffer.step5.roomScan.rooms')}</Text>
@@ -530,6 +532,7 @@ function RoomScanModalBody({
                 <Text style={styles.statValue}>{t('addOffer.step5.roomScan.ready')}</Text>
               </View>
             </View>
+            ) : null}
 
             {detectedObjects.length > 0 ? (
               <View style={styles.objectsBlock}>

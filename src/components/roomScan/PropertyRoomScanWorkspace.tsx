@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import RoomScanModal, { isRoomScanSupportedOnDevice } from './RoomScanModal';
 import FloorPlanFurnitureEditor from './FloorPlanFurnitureEditor';
 import FloorPlanScanArtboard from './FloorPlanScanArtboard';
+import RoomPlanPreviewModal, { type RoomPlanPreviewData } from './RoomPlanPreviewModal';
 import { captureArtboardToPng } from '../../lib/roomScan/captureArtboard';
 import { measurementsFromScanMeta } from '../../lib/roomScan/roomScanMeasurements';
 import { getSafeQuickLook } from '../../utils/safeQuickLook';
@@ -25,7 +26,6 @@ import {
   ROOM_PRESET_DEFS,
   roomTypeKeyFromName,
 } from '../../lib/roomScan/refineScanSections';
-import { getRoomScanSectionLabel } from '../../lib/roomScan/roomScanLabels';
 
 function numberValue(raw: string): number {
   const value = Number(String(raw || '').replace(',', '.'));
@@ -36,6 +36,7 @@ type PlanRelabelJob = {
   id: number;
   walls: RoomScanWallSegment[];
   meta: FloorPlanScanMeta;
+  hideDimensions?: boolean;
   onCaptured: (uri: string) => void;
 };
 
@@ -72,7 +73,7 @@ function HiddenPlanRelabelCapture({ job }: { job: PlanRelabelJob | null }) {
       pointerEvents="none"
       collapsable={false}
     >
-      <View ref={viewRef} collapsable={false} style={{ width: 720, height: 720, backgroundColor: '#f8fafc' }}>
+      <View ref={viewRef} collapsable={false} style={{ width: 720, height: 720, backgroundColor: '#ffffff' }}>
         <FloorPlanScanArtboard
           ref={svgRef}
           walls={job.walls.length ? job.walls : job.meta.walls}
@@ -80,6 +81,7 @@ function HiddenPlanRelabelCapture({ job }: { job: PlanRelabelJob | null }) {
           width={720}
           height={720}
           forExport
+          hideDimensions={Boolean(job.hideDimensions)}
         />
       </View>
     </View>
@@ -122,6 +124,7 @@ export default function PropertyRoomScanWorkspace({
   const wholeScanRef = useRef(wholeScan);
   wholeScanRef.current = wholeScan;
   const [relabelJob, setRelabelJob] = useState<PlanRelabelJob | null>(null);
+  const [roomPlanPreview, setRoomPlanPreview] = useState<RoomPlanPreviewData | null>(null);
   const relabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const relabelSeqRef = useRef(0);
 
@@ -129,6 +132,7 @@ export default function PropertyRoomScanWorkspace({
     meta: FloorPlanScanMeta | undefined,
     onCaptured: (uri: string) => void,
     delayMs = 380,
+    hideDimensions = false,
   ) => {
     if (!meta?.walls?.length) return;
     if (relabelTimerRef.current) clearTimeout(relabelTimerRef.current);
@@ -138,6 +142,7 @@ export default function PropertyRoomScanWorkspace({
         id: relabelSeqRef.current,
         walls: meta.walls,
         meta,
+        hideDimensions,
         onCaptured,
       });
     }, delayMs);
@@ -252,7 +257,9 @@ export default function PropertyRoomScanWorkspace({
     }
 
     if (nextWhole?.scanMeta) {
-      queuePlanPngRelabel(nextWhole.scanMeta, (uri) => {
+      queuePlanPngRelabel(
+        nextWhole.scanMeta,
+        (uri) => {
         const latest = wholeScanRef.current;
         if (!latest || !onChangeWholeScan) return;
         onChangeWholeScan({
@@ -274,7 +281,10 @@ export default function PropertyRoomScanWorkspace({
             80,
           );
         }
-      });
+      },
+        380,
+        true,
+      );
     } else if (changed.scanMeta) {
       queuePlanPngRelabel(changed.scanMeta, (uri) => {
         onChangeRooms(
@@ -296,35 +306,6 @@ export default function PropertyRoomScanWorkspace({
     if (!withoutPrevious.includes(next)) onChangePlanImages([...withoutPrevious, next]);
   };
 
-  const roomsFromScanSections = (meta: RoomScanDraftAssets['scanMeta']): PropertyRoomScan[] => {
-    const stamp = Date.now();
-    const fmt = (value?: number | null, digits = 2) => (value && value > 0 ? value.toFixed(digits) : '');
-    return (meta.sections || []).map((section, index) => {
-      const area =
-        section.areaSqM ??
-        (section.widthM && section.lengthM ? section.widthM * section.lengthM : undefined);
-      const typeKey = section.key || roomTypeKeyFromName(section.label);
-      return {
-        id: `room-${stamp}-${index}-${Math.round(Math.random() * 1000)}`,
-        name: section.label || getRoomScanSectionLabel(typeKey) || `Pomieszczenie ${index + 1}`,
-        typeKey,
-        sourceSectionIndex: index,
-        widthM: fmt(section.widthM),
-        lengthM: fmt(section.lengthM),
-        heightM: fmt(section.ceilingHeightM ?? meta.ceilingHeightM),
-        areaM2: fmt(area, 1),
-        scannedAt: meta.scannedAt,
-      };
-    });
-  };
-
-  const offerDetectedRooms = (meta: RoomScanDraftAssets['scanMeta']) => {
-    const detected = roomsFromScanSections(meta);
-    if (!detected.length) return;
-    onChangeRooms(detected);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
   const applyScan = (assets: RoomScanDraftAssets) => {
     if (!activeScan) return;
     if (activeScan.mode === 'property') {
@@ -334,7 +315,16 @@ export default function PropertyRoomScanWorkspace({
         scannedAt: assets.scanMeta.scannedAt,
       });
       setActiveScan(null);
-      offerDetectedRooms(assets.scanMeta);
+      queuePlanPngRelabel(
+        assets.scanMeta,
+        (uri) => {
+          const latest = wholeScanRef.current;
+          if (!latest || !onChangeWholeScan) return;
+          onChangeWholeScan({ ...latest, floorPlanPngUri: uri });
+        },
+        80,
+        true,
+      );
       return;
     }
 
@@ -565,21 +555,46 @@ export default function PropertyRoomScanWorkspace({
             const cropped = cropScanMetaToRoom(wholeScan?.scanMeta, room);
             const previewMeta = cropped || (room.scanMeta?.walls?.length ? room.scanMeta : null);
             if (!previewMeta?.walls?.length && !room.floorPlanPngUri) return null;
+            const openPreview = () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setRoomPlanPreview({
+                title: room.name,
+                subtitle: `${(previewMeta?.openings || room.scanMeta?.openings)?.length || 0} przejść, drzwi lub okien · ${(previewMeta?.objects || room.scanMeta?.objects)?.length || 0} mebli / AGD`,
+                meta: previewMeta,
+                imageUri: room.floorPlanPngUri,
+                model3dUri: room.floorPlan3dUri,
+                widthM: room.widthM,
+                lengthM: room.lengthM,
+                heightM: room.heightM,
+                areaM2: room.areaM2,
+              });
+            };
             return (
           <View style={styles.roomPlanRow}>
-            {previewMeta?.walls?.length ? (
-              <View style={[styles.roomPlanThumb, { overflow: 'hidden' }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Otwórz podgląd skanu: ${room.name}`}
+              onPress={openPreview}
+              style={({ pressed }) => [
+                styles.roomPlanThumbButton,
+                { borderColor: palette.border, opacity: pressed ? 0.72 : 1 },
+              ]}
+            >
+              {room.floorPlanPngUri ? (
+                <Image source={{ uri: room.floorPlanPngUri }} style={styles.roomPlanThumb} contentFit="contain" />
+              ) : previewMeta?.walls?.length ? (
                 <FloorPlanScanArtboard
                   walls={previewMeta.walls}
                   meta={previewMeta}
-                  width={82}
-                  height={68}
+                  width={118}
+                  height={94}
                   compact
                 />
+              ) : null}
+              <View style={styles.expandBadge}>
+                <Ionicons name="expand-outline" size={12} color="#0f172a" />
               </View>
-            ) : (
-              <Image source={{ uri: room.floorPlanPngUri }} style={styles.roomPlanThumb} contentFit="cover" />
-            )}
+            </Pressable>
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={[styles.planTitle, { color: palette.text }]}>Plan przypisany do: {room.name}</Text>
               <Text style={[styles.planSubtitle, { color: palette.secondary }]}>
@@ -641,12 +656,39 @@ export default function PropertyRoomScanWorkspace({
 
         {wholeScan ? (
           <View style={styles.wholePreview}>
-            <Image source={{ uri: wholeScan.floorPlanPngUri }} style={styles.wholeImage} contentFit="contain" />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Otwórz podgląd planu całej nieruchomości"
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setRoomPlanPreview({
+                  title: 'Plan całej nieruchomości',
+                  subtitle: 'Ogólny rzut LiDAR bez wymiarów — pomieszczenia dodajesz osobno.',
+                  meta: wholeScan.scanMeta,
+                  imageUri: wholeScan.floorPlanPngUri,
+                  model3dUri: wholeScan.floorPlan3dUri,
+                  hideDimensions: true,
+                });
+              }}
+              style={({ pressed }) => [styles.wholeImageButton, { opacity: pressed ? 0.78 : 1 }]}
+            >
+              {wholeScan.scanMeta?.walls?.length ? (
+                <FloorPlanScanArtboard
+                  walls={wholeScan.scanMeta.walls}
+                  meta={wholeScan.scanMeta}
+                  width={280}
+                  height={180}
+                  hideDimensions
+                />
+              ) : (
+                <Image source={{ uri: wholeScan.floorPlanPngUri }} style={styles.wholeImage} contentFit="contain" />
+              )}
+              <View style={styles.wholeExpandBadge}>
+                <Ionicons name="expand-outline" size={15} color="#0f172a" />
+                <Text style={styles.wholeExpandText}>Podgląd</Text>
+              </View>
+            </Pressable>
             <View style={styles.wholeStats}>
-              <Text style={[styles.wholeMetric, { color: palette.text }]}>{wholeScan.scanMeta.roomCount} pom.</Text>
-              <Text style={[styles.wholeMetric, { color: palette.success }]}>
-                {wholeScan.scanMeta.totalAreaSqM?.toFixed(1) || '—'} m²
-              </Text>
               <Pressable onPress={() => void open3d(wholeScan.floorPlan3dUri)} style={styles.inline3d}>
                 <Ionicons name="cube-outline" size={16} color={palette.accent} />
                 <Text style={{ color: palette.accent, fontSize: 12, fontWeight: '800' }}>Całość 3D</Text>
@@ -665,7 +707,7 @@ export default function PropertyRoomScanWorkspace({
                     floorPlanPngUri: uri,
                     scanMeta: { ...next, roomScans: roomsRef.current },
                   });
-                }, 220);
+                }, 220, true);
               }}
               textColor={palette.text}
               secondaryColor={palette.secondary}
@@ -700,6 +742,12 @@ export default function PropertyRoomScanWorkspace({
         onClose={() => setActiveScan(null)}
         onComplete={applyScan}
         onMeasurements={applyMeasurements}
+      />
+      <RoomPlanPreviewModal
+        preview={roomPlanPreview}
+        isDark={isDark}
+        onClose={() => setRoomPlanPreview(null)}
+        onOpen3d={(uri) => void open3d(uri)}
       />
       <HiddenPlanRelabelCapture job={relabelJob} />
     </View>
@@ -742,7 +790,28 @@ const styles = StyleSheet.create({
   measureInput: { flex: 1, fontSize: 13, fontWeight: '800', paddingVertical: 0 },
   measureUnit: { fontSize: 10, fontWeight: '800' },
   roomPlanRow: { flexDirection: 'row', gap: 10, marginTop: 11, alignItems: 'center' },
-  roomPlanThumb: { width: 82, height: 68, borderRadius: 10, backgroundColor: '#e2e8f0' },
+  roomPlanThumbButton: {
+    width: 118,
+    height: 94,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  roomPlanThumb: { width: '100%', height: '100%', backgroundColor: '#ffffff' },
+  expandBadge: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+  },
   planTitle: { fontSize: 11, fontWeight: '900' },
   planSubtitle: { fontSize: 10, lineHeight: 14 },
   furnitureWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
@@ -756,7 +825,23 @@ const styles = StyleSheet.create({
   wholeTitle: { fontSize: 15, fontWeight: '900' },
   wholeSubtitle: { fontSize: 10.5, lineHeight: 15, marginTop: 2 },
   wholePreview: { marginTop: 12 },
-  wholeImage: { width: '100%', height: 190, borderRadius: 14, backgroundColor: '#fff' },
+  wholeImageButton: { width: '100%', height: 190, borderRadius: 14, overflow: 'hidden', backgroundColor: '#fff' },
+  wholeImage: { width: '100%', height: '100%', backgroundColor: '#fff' },
+  wholeExpandBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.1)',
+  },
+  wholeExpandText: { color: '#0f172a', fontSize: 10, fontWeight: '900' },
   wholeStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   wholeMetric: { fontSize: 12, fontWeight: '900' },
   scanWholeBtn: { minHeight: 50, borderRadius: 15, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },

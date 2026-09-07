@@ -8,6 +8,7 @@ import {
   isActivityVisibleToClient,
   isMarketingActivityKind,
   MARKETING_ACTIVITY,
+  extractOtherAgenciesPresence,
   normalizeExternalUrl,
   parseMarketingMetadata,
   shapeMarketingTimelineItem,
@@ -22,6 +23,10 @@ test("marketing kinds include canonical events", () => {
   );
   assert.equal(
     isMarketingActivityKind(MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED),
+    true,
+  );
+  assert.equal(
+    isMarketingActivityKind(MARKETING_ACTIVITY.OTHER_AGENCY_OUTREACH),
     true,
   );
   assert.equal(isMarketingActivityKind("ACQUISITION_SIGNED"), false);
@@ -433,4 +438,45 @@ test("event fulfill requires payload with kind and offerId", () => {
   assert.equal(parseSellerEventProposal({}), null);
   assert.equal(parseSellerEventProposal({ kind: "open_house" }), null);
   assert.equal(parseSellerEventProposal({ kind: "open_house", offerId: 12 })?.offerId, 12);
+});
+
+test("other agencies chip lights from published outreach or guest presentation", () => {
+  assert.deepEqual(
+    extractOtherAgenciesPresence([
+      {
+        kind: MARKETING_ACTIVITY.OTHER_AGENCY_OUTREACH,
+        title: "Współpraca",
+        body: "Oferta u biura Atlas — czekamy na oględziny.",
+        metadata: { visibleToClient: true },
+        createdAt: "2026-09-01T10:00:00.000Z",
+      },
+    ]),
+    {
+      live: true,
+      body: "Oferta u biura Atlas — czekamy na oględziny.",
+    },
+  );
+  assert.equal(
+    extractOtherAgenciesPresence([
+      {
+        kind: MARKETING_ACTIVITY.OTHER_AGENCY_OUTREACH,
+        title: "Szkic",
+        body: "Prywatna notatka agenta.",
+        metadata: { visibleToClient: false },
+        createdAt: "2026-09-01T10:00:00.000Z",
+      },
+    ]).live,
+    false,
+  );
+  const guest = extractOtherAgenciesPresence([
+    {
+      kind: "PRESENTATION_PROPOSED",
+      title: "Prezentacja",
+      body: null,
+      metadata: { guestAgency: { name: "Nova Estate" } },
+      createdAt: "2026-09-02T10:00:00.000Z",
+    },
+  ]);
+  assert.equal(guest.live, true);
+  assert.match(String(guest.body), /Nova Estate/);
 });

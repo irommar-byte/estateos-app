@@ -423,6 +423,7 @@ export function buildOfferGuestInquiryEmail(params: {
   question: string;
   message: string;
   phone: string;
+  email?: string | null;
   guestName?: string | null;
 }): string {
   const firstName = escapeHtml(extractFirstName(params.sellerName));
@@ -432,6 +433,7 @@ export function buildOfferGuestInquiryEmail(params: {
   const question = escapeHtml(params.question);
   const message = escapeHtml(params.message).replace(/\n/g, '<br />');
   const phone = escapeHtml(params.phone);
+  const email = params.email ? escapeHtml(params.email) : null;
   const guest = params.guestName ? escapeHtml(params.guestName) : null;
 
   const body = `
@@ -442,7 +444,7 @@ export function buildOfferGuestInquiryEmail(params: {
       Cześć ${firstName}, ktoś pyta o Twoją ofertę
     </h1>
     <p style="margin:0 0 20px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;line-height:1.5;color:#424245;">
-      Gość skontaktował się bez konta EstateOS — możesz odpisać bezpośrednio na podany numer telefonu.
+      Gość skontaktował się bez konta EstateOS — możesz odpisać bezpośrednio na podany numer telefonu lub e-mail.
     </p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f5f7;border-radius:14px;">
       <tr>
@@ -452,6 +454,7 @@ export function buildOfferGuestInquiryEmail(params: {
           <p style="margin:0 0 10px 0;"><span style="color:#86868b;">Wybrane pytanie</span><br /><strong>${question}</strong></p>
           ${guest ? `<p style="margin:0 0 10px 0;"><span style="color:#86868b;">Od</span><br /><strong>${guest}</strong></p>` : ''}
           <p style="margin:0 0 10px 0;"><span style="color:#86868b;">Telefon</span><br /><strong style="font-size:18px;letter-spacing:0.02em;">${phone}</strong></p>
+          ${email ? `<p style="margin:0 0 10px 0;"><span style="color:#86868b;">E-mail</span><br /><strong>${email}</strong></p>` : ''}
           <p style="margin:12px 0 0 0;padding-top:12px;border-top:1px solid rgba(0,0,0,0.06);"><span style="color:#86868b;">Wiadomość</span><br />${message}</p>
         </td>
       </tr>

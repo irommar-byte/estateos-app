@@ -145,5 +145,6 @@ export const openHouse = {
     title: 'День открытых дверей',
     subtitle: 'Ближайший слот: {{date}} · свободно: {{spots}}',
     cta: 'Записаться',
+    liveNow: 'СЕЙЧАС',
   },
 };

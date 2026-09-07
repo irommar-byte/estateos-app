@@ -710,7 +710,7 @@ function OfferDetails({
 
             {!isArchived ? (
             <div
-              className="pointer-events-auto hidden w-full flex-col gap-3 md:flex"
+              className="pointer-events-auto hidden w-full flex-col gap-3 sm:flex"
               onClick={(e) => e.stopPropagation()}
             >
               {offer.isPresentedByAgent ? (
@@ -796,6 +796,7 @@ function OfferDetails({
                   title: t.openHouse.bannerTitle,
                   subtitle: t.openHouse.bannerSubtitle,
                   cta: t.openHouse.bannerCta,
+                  liveBadge: t.openHouse.liveBadge,
                 }}
                 onPress={openOpenHouseModal}
               />
@@ -1024,6 +1025,7 @@ function OfferDetails({
                         title: t.openHouse.bannerTitle,
                         subtitle: t.openHouse.bannerSubtitle,
                         cta: t.openHouse.bannerCta,
+                        liveBadge: t.openHouse.liveBadge,
                       }}
                       onPress={openOpenHouseModal}
                     />
@@ -1486,7 +1488,7 @@ function OfferDetails({
         {isFloorplanModalOpen && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="eos-cinematic-dark fixed inset-0 z-[999999] bg-black/95 backdrop-blur-xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 sm:p-8"
+            className="eos-cinematic-dark fixed inset-0 eos-z-modal bg-black/95 backdrop-blur-xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 sm:p-8"
             onClick={() => setIsFloorplanModalOpen(false)}
           >
             <button onClick={() => setIsFloorplanModalOpen(false)} className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors z-50">
@@ -1536,6 +1538,7 @@ function OfferDetails({
         copy={t.guestAsk}
         defaultPhone={String(currentUser?.phone || '')}
         defaultName={String(currentUser?.name || '').split(' ')[0] || ''}
+        defaultEmail={String(currentUser?.email || '')}
       />
 
       <OpenHouseReserveModal

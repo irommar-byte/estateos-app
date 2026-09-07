@@ -2,6 +2,7 @@ import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, PanResponder, ActivityIndicator, useWindowDimensions, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
@@ -98,6 +99,22 @@ async function ensureMediaLibraryPermission(): Promise<boolean> {
   Alert.alert(
     t('addOffer.step5.alerts.photoAccess.title'),
     t('addOffer.step5.alerts.photoAccess.message'),
+    [
+      { text: t('addOffer.common.cancel'), style: 'cancel' },
+      { text: t('addOffer.common.settings'), onPress: () => Linking.openSettings() },
+    ],
+  );
+  return false;
+}
+
+async function ensureCameraPermission(): Promise<boolean> {
+  const current = await ImagePicker.getCameraPermissionsAsync();
+  if (current.granted) return true;
+  const requested = await ImagePicker.requestCameraPermissionsAsync();
+  if (requested.granted) return true;
+  Alert.alert(
+    t('addOffer.step5.alerts.cameraAccess.title'),
+    t('addOffer.step5.alerts.cameraAccess.message'),
     [
       { text: t('addOffer.common.cancel'), style: 'cancel' },
       { text: t('addOffer.common.settings'), onPress: () => Linking.openSettings() },
@@ -370,6 +387,125 @@ export default function Step5_Media({ theme }: { theme: any }) {
       }
       setUploadProgress((prev) => ({ ...prev, [uri]: currentProgress }));
     }, 180);
+  };
+
+  const ingestPickerAssets = async (
+    assets: Array<{ uri: string; fileSize?: number | null }>,
+  ) => {
+    if (!assets.length) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSizingGallery(true);
+    try {
+      let nextImages = uniqueImages([...draftImages]);
+      let nextSizes = pruneImageByteSizes(nextImages, { ...(draft.imageByteSizes || {}) });
+      let nextHdr = pruneHdrFlags(nextImages, { ...(draft.imageHdrFlags || {}) });
+      updateDraft({ imageByteSizes: nextSizes, imageHdrFlags: nextHdr });
+
+      for (const asset of assets) {
+        if (nextImages.length >= MAX_IMAGES) break;
+        if (!asset?.uri) continue;
+        const measured = await estimateBytesForDraftImage(asset.uri, asset.fileSize ?? null);
+        const accept = canAcceptDraftImage({
+          currentUris: nextImages,
+          sizes: nextSizes,
+          newEstimatedBytes: measured,
+          pickerReportedBytes: asset.fileSize ?? null,
+          newUri: asset.uri,
+        });
+        if (!accept.ok) {
+          Alert.alert(translate('addOffer.step5.alerts.storageLimit.title'), formatMediaCapacityAlert(accept.reason));
+          break;
+        }
+        if (!nextImages.includes(asset.uri)) nextImages.push(asset.uri);
+        nextSizes[asset.uri] = measured;
+        nextSizes = pruneImageByteSizes(nextImages, nextSizes);
+        if (await probeHdrFromUrl(asset.uri)) {
+          nextHdr[asset.uri] = true;
+        }
+        nextHdr = pruneHdrFlags(nextImages, nextHdr);
+        setUploadProgress((prev) => ({ ...prev, [asset.uri]: 0 }));
+        startFakeUploadProgress(asset.uri);
+      }
+
+      if (nextImages.length > draftImages.length) {
+        updateDraft({
+          images: uniqueImages(nextImages),
+          imageByteSizes: nextSizes,
+          imageHdrFlags: pruneHdrFlags(nextImages, nextHdr),
+        });
+      }
+    } catch (err: any) {
+      Alert.alert(
+        translate('addOffer.step5.alerts.addPhotosFailed.title'),
+        String(err?.message || '').trim() || translate('addOffer.step5.alerts.addPhotosFailed.message'),
+      );
+    } finally {
+      setSizingGallery(false);
+    }
+  };
+
+  const pickCamera = async () => {
+    if (sizingGallery) return;
+    if (draftImages.length >= MAX_IMAGES) {
+      return Alert.alert(
+        translate('addOffer.step5.alerts.photoLimit.title'),
+        translate('addOffer.step5.alerts.photoLimit.message'),
+      );
+    }
+    try {
+      const permitted = await ensureCameraPermission();
+      if (!permitted) return;
+      const result = await ImagePicker.launchCameraAsync({
+        ...OFFER_PHOTO_LIBRARY_OPTIONS,
+        allowsMultipleSelection: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      await ingestPickerAssets(result.assets);
+    } catch (err: any) {
+      Alert.alert(
+        translate('addOffer.step5.alerts.addPhotosFailed.title'),
+        String(err?.message || '').trim() || translate('addOffer.step5.alerts.addPhotosFailed.message'),
+      );
+    }
+  };
+
+  const pickFiles = async () => {
+    if (sizingGallery) return;
+    if (draftImages.length >= MAX_IMAGES) {
+      return Alert.alert(
+        translate('addOffer.step5.alerts.photoLimit.title'),
+        translate('addOffer.step5.alerts.photoLimit.message'),
+      );
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      await ingestPickerAssets(
+        result.assets.map((asset) => ({
+          uri: asset.uri,
+          fileSize: asset.size ?? null,
+        })),
+      );
+    } catch (err: any) {
+      Alert.alert(
+        translate('addOffer.step5.alerts.addPhotosFailed.title'),
+        String(err?.message || '').trim() || translate('addOffer.step5.alerts.addPhotosFailed.message'),
+      );
+    }
+  };
+
+  const openPhotoSourceSheet = () => {
+    if (sizingGallery) return;
+    Alert.alert(translate('addOffer.step5.gallery.sourceTitle'), undefined, [
+      { text: translate('addOffer.step5.gallery.sourceCamera'), onPress: () => void pickCamera() },
+      { text: translate('addOffer.step5.gallery.sourceLibrary'), onPress: () => void pickGallery() },
+      { text: translate('addOffer.step5.gallery.sourceFiles'), onPress: () => void pickFiles() },
+      { text: translate('addOffer.common.cancel'), style: 'cancel' },
+    ]);
   };
 
   const pickGallery = async () => {
@@ -724,7 +860,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
             </View>
           )}
 
-          <AppleHover onPress={pickGallery} scaleTo={0.98}>
+          <AppleHover onPress={openPhotoSourceSheet} scaleTo={0.98}>
             <View
               style={[
                 styles.addMediaBtn,

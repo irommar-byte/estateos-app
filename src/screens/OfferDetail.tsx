@@ -37,13 +37,14 @@ import { getScreenOrientationApi } from '../utils/screenOrientationSafe';
 import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
 import OfferDetailMetaBadgesSection from '../components/offer/OfferDetailMetaBadgesSection';
 import { playFeaturedCelebration } from '../store/useFeaturedCelebrationStore';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, MoreHorizontal, Flag, Ban, DollarSign } from 'lucide-react-native';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, MoreHorizontal, Flag, Ban, DollarSign, MessageCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 import OpenHouseOfferBanner from '../components/openHouse/OpenHouseOfferBanner';
 import AuctionOfferBanner from '../components/auction/AuctionOfferBanner';
+import OfferGuestAskSheet from '../components/offer/OfferGuestAskSheet';
 import { fetchOpenHouseForOffer } from '../services/openHouseService';
 import { fetchAuctionForOffer } from '../services/auctionService';
 import type { OpenHouseEventRecord } from '../contracts/openHouseContract';
@@ -222,7 +223,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
   const intelligenceHydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const isGuest = !user?.id;
-  const [isGuestGateVisible, setIsGuestGateVisible] = useState(isGuest);
+  const [guestAskOpen, setGuestAskOpen] = useState(false);
   const [isPhoneVerifyGateVisible, setIsPhoneVerifyGateVisible] = useState(false);
   // Bramka kontaktu/umawiania spotkań — wymagamy WYŁĄCZNIE potwierdzonego numeru telefonu (SMS).
   // Nie traktujemy ogólnego `isVerified` (np. e-mail) jako sygnału — kontakt bez SMS jest zablokowany.
@@ -429,7 +430,6 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const openAuthEntry = (intent: 'login' | 'register') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsGuestGateVisible(false);
     if (navigation?.canGoBack?.()) navigation.goBack();
     setTimeout(() => {
       navigation.navigate('MainTabs', { screen: 'Profil', params: { authIntent: intent } });
@@ -442,10 +442,6 @@ export default function OfferDetail({ route, navigation }: any) {
     setIsPhoneVerifyGateVisible(true);
     return true;
   };
-
-  useEffect(() => {
-    setIsGuestGateVisible(isGuest);
-  }, [isGuest]);
 
   /**
    * Zgłoszenie wyświetlenia oferty do backendu — fire-and-forget.
@@ -3165,6 +3161,18 @@ export default function OfferDetail({ route, navigation }: any) {
                 <Pencil size={18} color={isDark ? '#000000' : '#fff'} />
                 <Text style={[styles.primaryAppleButtonText, { color: isDark ? '#000000' : '#ffffff' }]}>{t('offer.detail.ctas.editOffer')}</Text>
               </TouchableOpacity>
+            ) : isGuest ? (
+              <TouchableOpacity
+                style={[styles.primaryAppleButton, { flex: 1 }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setGuestAskOpen(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <MessageCircle size={16} color="#fff" />
+                <Text style={styles.primaryAppleButtonText}>{t('offer.detail.ctas.askListing')}</Text>
+              </TouchableOpacity>
             ) : blockBuyerNegotiation ? (
               <TouchableOpacity
                 style={[styles.primaryAppleButton, { flex: 1 }]}
@@ -3511,42 +3519,16 @@ export default function OfferDetail({ route, navigation }: any) {
       </Modal>
       ) : null}
 
-      {/* --- GUEST GATE: DOSTĘP DO OFERTY DLA NIEZALOGOWANYCH --- */}
-      {isGuest && isGuestGateVisible ? (
-      <Modal visible transparent animationType="fade" onRequestClose={handleGoBack}>
-        <BlurView intensity={72} tint="dark" style={StyleSheet.absoluteFill}>
-          <View style={styles.guestGateBackdrop} />
-          <View style={styles.offMarketOverlay}>
-            <View style={styles.guestGateCard}>
-              <Pressable
-                onPress={() => {
-                  setIsGuestGateVisible(false);
-                  handleGoBack();
-                }}
-                style={styles.guestCloseBtn}
-                hitSlop={12}
-              >
-                <X color="rgba(255,255,255,0.8)" size={18} />
-              </Pressable>
-              <View style={styles.guestGateIconWrap}>
-                <ShieldCheck color="#10B981" size={30} />
-              </View>
-              <Text style={styles.guestGateTitle}>{t('offer.guestGate.createAccountTitle')}</Text>
-              <Text style={styles.guestGateSub}>
-                {t('offer.guestGate.createAccountSub')}
-              </Text>
-              <TouchableOpacity activeOpacity={0.9} style={styles.guestPrimaryButton} onPress={() => openAuthEntry('register')}>
-                <Crown color="#0a0a0a" size={16} />
-                <Text style={styles.guestPrimaryButtonText}>{t('offer.guestGate.register')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity activeOpacity={0.9} style={styles.guestSecondaryButton} onPress={() => openAuthEntry('login')}>
-                <Text style={styles.guestSecondaryButtonText}>{t('offer.guestGate.login')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </BlurView>
-      </Modal>
-      ) : null}
+      <OfferGuestAskSheet
+        visible={guestAskOpen}
+        onClose={() => setGuestAskOpen(false)}
+        offerId={Number(offer?.id || 0)}
+        offerTitle={String(offer?.title || '')}
+        isDark={isDark}
+        defaultPhone={String(user?.phone || '')}
+        defaultName={String(user?.name || '').split(' ')[0] || ''}
+        defaultEmail={String(user?.email || '')}
+      />
 
       {isPhoneVerifyGateVisible ? (
       <Modal

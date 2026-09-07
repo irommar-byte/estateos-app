@@ -372,9 +372,13 @@ export const addOffer = {
     gallery: {
       lead: 'Pierwsze zdjęcie to okładka ogłoszenia. Przeciągnij za kropki, aby zmienić kolejność.',
       addLabel: 'Dodaj',
-      open: 'Otwórz galerię',
+      open: 'Dodaj zdjęcia',
       addMore: 'Dodaj kolejne zdjęcia',
       sizing: 'Liczenie miejsca (konwersja podglądowa)...',
+      sourceTitle: 'Dodaj zdjęcia',
+      sourceCamera: 'Aparat',
+      sourceLibrary: 'Biblioteka zdjęć',
+      sourceFiles: 'Pliki',
     },
     proSession: {
       cta: 'Zamów profesjonalną sesję zdjęciową',
@@ -710,6 +714,11 @@ export const addOffer = {
         message:
           'Aby dodać zdjęcia do oferty, zezwól EstateOS na dostęp do biblioteki zdjęć (Ustawienia → EstateOS → Zdjęcia).',
       },
+      cameraAccess: {
+        title: 'Dostęp do aparatu',
+        message:
+          'Aby zrobić zdjęcie oferty, zezwól EstateOS na dostęp do aparatu (Ustawienia → EstateOS → Aparat).',
+      },
       photoLimit: {
         title: 'Limit zdjęć',
         message: 'Osiągnięto maksymalny limit 20 zdjęć.',
@@ -819,6 +828,19 @@ export const addOffer = {
     mediaSummary: 'Zdjęcia: {{photos}} · Plan rzutu: {{floorPlan}} · Wideo: {{video}}',
     mediaYes: 'tak',
     mediaNo: 'nie',
+    mediaPreview: {
+      photos: 'Wgrane zdjęcia',
+      scans: 'Plany i zeskanowane pomieszczenia',
+      scannedRoom: 'Zeskanowane pomieszczenie LiDAR',
+      wholePlan: 'Plan całej nieruchomości',
+      uploadedPlan: 'Wgrany plan nieruchomości',
+      roomCount: '{{count}} pomieszczeń',
+      wholeBadge: 'CAŁOŚĆ',
+      scanReady: 'Skan gotowy',
+      openPhoto: 'Otwórz zdjęcie {{index}}',
+      openWholePlan: 'Otwórz plan całej nieruchomości',
+      openRoom: 'Otwórz skan pomieszczenia {{room}}',
+    },
     validationHint: 'Brakuje danych w kroku {{steps}} — dotknij przycisku, aby przejść do uzupełnienia.',
     plusCreditHint: 'Masz Pakiet Plus na koncie — publikacja zużyje 1 kredyt (bez drugiej opłaty w sklepie).',
     couponPublishHint:

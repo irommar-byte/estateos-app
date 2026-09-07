@@ -161,6 +161,7 @@ export default function CrmSellerCollaborationPanel({
   const [reservePrice, setReservePrice] = useState("");
   const [eventMessage, setEventMessage] = useState("");
   const [eventBusy, setEventBusy] = useState(false);
+  const [otherAgenciesDraft, setOtherAgenciesDraft] = useState("");
 
   useEffect(() => {
     setCurrentStep(sellerNextStep?.currentStep || "");
@@ -213,6 +214,22 @@ export default function CrmSellerCollaborationPanel({
           ? "Zapisano portal i pokazano klientowi."
           : "Zapisano szkic portalu. Klient go jeszcze nie widzi.",
       );
+    }
+  };
+
+  const saveOtherAgencies = async () => {
+    const body = otherAgenciesDraft.trim();
+    if (body.length < 8) {
+      onToast("Opisz krótko, z kim i co się dzieje (min. 8 znaków).");
+      return;
+    }
+    const json = await onAction("publish_other_agencies", {
+      body,
+      visibleToClient: true,
+    });
+    if (json?.success) {
+      setOtherAgenciesDraft("");
+      onToast("Zapisano współpracę z innymi biurami. Klient zobaczy opis w panelu.");
     }
   };
 
@@ -355,6 +372,30 @@ export default function CrmSellerCollaborationPanel({
           />
           Pokaż klientowi od razu
         </label>
+      </div>
+
+      <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.05] p-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">
+          Inne biura
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
+          Krótki opis współpracy z innymi agencjami — klient zobaczy go pod znaczkiem „Inne agencje”.
+        </p>
+        <textarea
+          value={otherAgenciesDraft}
+          onChange={(e) => setOtherAgenciesDraft(e.target.value)}
+          placeholder="Np. Oferta przekazana do biura X — czekamy na oględziny w piątek."
+          rows={3}
+          className="mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+        />
+        <button
+          type="button"
+          disabled={busy || otherAgenciesDraft.trim().length < 8}
+          onClick={() => void saveOtherAgencies()}
+          className="mt-3 rounded-full bg-sky-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-white disabled:opacity-50"
+        >
+          Zapisz i pokaż klientowi
+        </button>
       </div>
 
       {linkedOfferId ? (

@@ -364,9 +364,13 @@ export const addOffer = {
     gallery: {
       lead: 'Первое фото — обложка объявления. Стрелками меняете порядок.',
       addLabel: 'Добавить',
-      open: 'Открыть галерею',
+      open: 'Добавить фото',
       addMore: 'Добавить больше фотографий',
       sizing: 'Вычисление пространства (предварительная конвертация)...',
+      sourceTitle: 'Добавить фото',
+      sourceCamera: 'Камера',
+      sourceLibrary: 'Библиотека фото',
+      sourceFiles: 'Файлы',
     },
     proSession: {
       cta: 'Заказать профессиональную фотосессию',
@@ -702,6 +706,11 @@ export const addOffer = {
         message:
           'To add photos to your listing, allow EstateOS access to your photo library (Settings → EstateOS → Photos).',
       },
+      cameraAccess: {
+        title: 'Доступ к камере',
+        message:
+          'Чтобы сделать фото объявления, разрешите EstateOS доступ к камере (Настройки → EstateOS → Камера).',
+      },
       photoLimit: {
         title: 'Лимит фотографий',
         message: 'Достигнут максимальный лимит в 20 фотографий.',
@@ -810,6 +819,19 @@ export const addOffer = {
     mediaSummary: 'Фотографии: {{photos}} · План этажа: {{floorPlan}} · Видео: {{video}}',
     mediaYes: 'да',
     mediaNo: 'нет',
+    mediaPreview: {
+      photos: 'Загруженные фотографии',
+      scans: 'Планы и отсканированные комнаты',
+      scannedRoom: 'Комната, отсканированная LiDAR',
+      wholePlan: 'План всей недвижимости',
+      uploadedPlan: 'Загруженный план недвижимости',
+      roomCount: '{{count}} комнат',
+      wholeBadge: 'ЦЕЛИКОМ',
+      scanReady: 'Скан готов',
+      openPhoto: 'Открыть фото {{index}}',
+      openWholePlan: 'Открыть план всей недвижимости',
+      openRoom: 'Открыть скан комнаты {{room}}',
+    },
     validationHint: 'На шаге {{steps}} отсутствуют данные — нажмите кнопку, чтобы вернуться и завершить его.',
     plusCreditHint: 'У вас есть бонус Plus — при публикации будет использован 1 кредит (без комиссии за второй магазин).',
     couponPublishHint:

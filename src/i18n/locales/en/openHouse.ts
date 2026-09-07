@@ -145,5 +145,6 @@ export const openHouse = {
     title: 'Open house',
     subtitle: 'Next slot: {{date}} · {{spots}} spots left',
     cta: 'Book a visit',
+    liveNow: 'NOW',
   },
 };

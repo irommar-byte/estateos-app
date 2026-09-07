@@ -28,6 +28,7 @@ export const MARKETING_ACTIVITY = {
   EXTERNAL_PORTAL_LISTED: "EXTERNAL_PORTAL_LISTED",
   EXTERNAL_PORTAL_UPDATED: "EXTERNAL_PORTAL_UPDATED",
   MARKETING_NOTE: "MARKETING_NOTE",
+  OTHER_AGENCY_OUTREACH: "OTHER_AGENCY_OUTREACH",
   /** @deprecated use ESTATEOS_PROMOTED */
   LISTING_FEATURED: "LISTING_FEATURED",
   /** @deprecated use EXTERNAL_PORTAL_LISTED */
@@ -41,6 +42,7 @@ export const MARKETING_KINDS = [
   MARKETING_ACTIVITY.EXTERNAL_PORTAL_LISTED,
   MARKETING_ACTIVITY.EXTERNAL_PORTAL_UPDATED,
   MARKETING_ACTIVITY.MARKETING_NOTE,
+  MARKETING_ACTIVITY.OTHER_AGENCY_OUTREACH,
   MARKETING_ACTIVITY.LISTING_FEATURED,
   MARKETING_ACTIVITY.EXTERNAL_PORTAL,
   MARKETING_ACTIVITY.MARKET_REPORT,
@@ -135,6 +137,68 @@ function escapeHtml(value: string) {
 export function parseMarketingMetadata(raw: unknown): MarketingMetadata {
   if (!raw || typeof raw !== "object") return {};
   return raw as MarketingMetadata;
+}
+
+function activityTimeMs(createdAt?: Date | string) {
+  const ms =
+    createdAt instanceof Date
+      ? createdAt.getTime()
+      : Date.parse(String(createdAt || ""));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+export function extractOtherAgenciesPresence(
+  activities: Array<{
+    kind: string;
+    title: string | null;
+    body: string | null;
+    metadata: unknown;
+    createdAt?: Date | string;
+  }>,
+): { live: boolean; body: string | null } {
+  const newest = <T extends { createdAt?: Date | string }>(rows: T[]) =>
+    [...rows].sort((a, b) => activityTimeMs(b.createdAt) - activityTimeMs(a.createdAt))[0];
+
+  const outreach = newest(
+    activities.filter(
+      (row) =>
+        row.kind === MARKETING_ACTIVITY.OTHER_AGENCY_OUTREACH &&
+        isActivityVisibleToClient(row.metadata),
+    ),
+  );
+  if (outreach) {
+    const body = String(outreach.body || outreach.title || "").trim();
+    return { live: true, body: body || "Oferta została zaproponowana innym biurom." };
+  }
+  const guest = newest(
+    activities.filter((row) => {
+      const kind = String(row.kind || "").toUpperCase();
+      if (!kind.includes("PRESENTATION")) return false;
+      const meta =
+        row.metadata && typeof row.metadata === "object"
+          ? (row.metadata as Record<string, unknown>)
+          : {};
+      return Boolean(meta.guestAgency && typeof meta.guestAgency === "object");
+    }),
+  );
+  if (guest) {
+    const meta =
+      guest.metadata && typeof guest.metadata === "object"
+        ? (guest.metadata as Record<string, unknown>)
+        : {};
+    const guestAgency =
+      meta.guestAgency && typeof meta.guestAgency === "object"
+        ? (meta.guestAgency as Record<string, unknown>)
+        : {};
+    const name = String(guestAgency.name || "").trim();
+    return {
+      live: true,
+      body: name
+        ? `Współpraca z biurem ${name}. Agent prowadzi kontakt i ustala szczegóły.`
+        : "Oferta została zaproponowana innemu biuru.",
+    };
+  }
+  return { live: false, body: null };
 }
 
 export function isMarketingActivityKind(kind: string): boolean {

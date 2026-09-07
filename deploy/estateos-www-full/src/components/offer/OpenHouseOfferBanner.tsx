@@ -9,6 +9,7 @@ type Copy = {
   title: string;
   subtitle: (date: string, spots: number) => string;
   cta: string;
+  liveBadge: string;
 };
 
 type Props = {
@@ -33,6 +34,14 @@ function formatNextSlot(iso: string | null, locale: Locale): string {
   });
 }
 
+export function isOpenHouseLive(event: OpenHouseEventRecord, nowMs = Date.now()): boolean {
+  return (event.slots || []).some((slot) => {
+    const start = Date.parse(slot.startsAt);
+    const end = Date.parse(slot.endsAt);
+    return Number.isFinite(start) && Number.isFinite(end) && start <= nowMs && nowMs <= end;
+  });
+}
+
 export default function OpenHouseOfferBanner({
   event,
   locale,
@@ -42,31 +51,36 @@ export default function OpenHouseOfferBanner({
 }: Props) {
   const dateLabel = formatNextSlot(event.nextSlotStartsAt, locale);
   const isHero = variant === "hero";
+  const isLive = isOpenHouseLive(event);
 
   return (
     <motion.button
       type="button"
       onClick={onPress}
-      className={`eos-offer-feature-banner group relative w-full overflow-hidden text-left transition-transform active:scale-[0.99] ${
-        isHero ? "eos-offer-feature-banner--hero" : ""
-      } rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3.5 sm:px-5 sm:py-4`}
+      className={`eos-offer-feature-banner eos-offer-feature-banner--openhouse group relative w-full overflow-hidden text-left ${
+        isLive ? "is-live" : ""
+      } ${isHero ? "eos-offer-feature-banner--hero" : ""}`}
       whileTap={{ scale: 0.99 }}
     >
+      <span className="eos-offer-feature-banner__glass" aria-hidden />
       <div className="relative flex items-center gap-3 sm:gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/20 sm:h-12 sm:w-12">
+        <div className="eos-offer-feature-banner__icon">
           <DoorOpen size={22} strokeWidth={2.2} />
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="eos-offer-feature-banner-title text-[13px] font-semibold tracking-tight eos-amber-accent">
-            {copy.title}
-          </p>
-          <p className="eos-offer-feature-banner-subtitle mt-1 text-[13px] font-medium leading-snug text-[var(--eos-text)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="eos-offer-feature-banner-title">{copy.title}</p>
+            {isLive ? (
+              <span className="eos-offer-feature-banner__badge">{copy.liveBadge}</span>
+            ) : null}
+          </div>
+          <p className="eos-offer-feature-banner-subtitle">
             {copy.subtitle(dateLabel, event.totalSpotsLeft)}
           </p>
         </div>
 
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500 px-3.5 py-2 text-[13px] font-semibold text-white transition group-hover:bg-amber-400">
+        <span className="eos-offer-feature-banner__cta">
           {copy.cta}
           <ChevronRight size={14} strokeWidth={2.5} />
         </span>

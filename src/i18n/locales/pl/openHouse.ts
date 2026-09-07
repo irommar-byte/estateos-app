@@ -145,5 +145,6 @@ export const openHouse = {
     title: 'Dzień otwartych drzwi',
     subtitle: 'Najbliższy termin: {{date}} · {{spots}} wolnych miejsc',
     cta: 'Zarezerwuj wizytę',
+    liveNow: 'TRWA',
   },
 };

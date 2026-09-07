@@ -364,9 +364,13 @@ export const addOffer = {
     gallery: {
       lead: 'The first photo is the listing cover. Drag by the dots to reorder.',
       addLabel: 'Add',
-      open: 'Open gallery',
+      open: 'Add photos',
       addMore: 'Add more photos',
       sizing: 'Calculating space (preview conversion)...',
+      sourceTitle: 'Add photos',
+      sourceCamera: 'Camera',
+      sourceLibrary: 'Photo library',
+      sourceFiles: 'Files',
     },
     proSession: {
       cta: 'Order a professional photo session',
@@ -702,6 +706,11 @@ export const addOffer = {
         message:
           'To add photos to your listing, allow EstateOS access to your photo library (Settings → EstateOS → Photos).',
       },
+      cameraAccess: {
+        title: 'Camera access',
+        message:
+          'To take a listing photo, allow EstateOS access to the camera (Settings → EstateOS → Camera).',
+      },
       photoLimit: {
         title: 'Photo limit',
         message: 'Maximum limit of 20 photos reached.',
@@ -810,6 +819,19 @@ export const addOffer = {
     mediaSummary: 'Photos: {{photos}} · Floor plan: {{floorPlan}} · Video: {{video}}',
     mediaYes: 'yes',
     mediaNo: 'no',
+    mediaPreview: {
+      photos: 'Uploaded photos',
+      scans: 'Plans and scanned rooms',
+      scannedRoom: 'LiDAR-scanned room',
+      wholePlan: 'Whole property plan',
+      uploadedPlan: 'Uploaded property plan',
+      roomCount: '{{count}} rooms',
+      wholeBadge: 'WHOLE',
+      scanReady: 'Scan ready',
+      openPhoto: 'Open photo {{index}}',
+      openWholePlan: 'Open whole property plan',
+      openRoom: 'Open scan of {{room}}',
+    },
     validationHint: 'Missing data in step {{steps}} — tap the button to go back and complete it.',
     plusCreditHint: 'You have Plus credit — publishing will use 1 credit (no second store charge).',
     couponPublishHint:

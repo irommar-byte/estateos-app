@@ -134,6 +134,7 @@ type PortalData = {
     imageUrl: string;
     promotedUntil?: string | null;
     featured?: boolean;
+    createdAt?: string | null;
   } | null;
   listingProgress?: Array<{ id: string; label: string; done: boolean; current: boolean }>;
   listingPath?: Array<{
@@ -160,6 +161,7 @@ type PortalData = {
     renewalDueAt: string | null;
     activityId: number;
   }>;
+  otherAgencies?: { live?: boolean; body?: string | null } | null;
   sellerNextStep?: {
     currentStep: string;
     nextAction: string;
@@ -484,13 +486,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 ? `Twój agent prowadzi dopasowanie. Oferty są posegregowane: nowe, do oglądania, do przemyślenia i te, które nie pasują.`
                 : `Dedykowany agent i biuro reprezentują Twoją nieruchomość.`}
             </p>
-            {portal.type === "SELLER" ? (
-              <PortalPromoPresence
-                listing={portal.listing}
-                listingPath={portal.listingPath || []}
-                activeChannels={portal.activeChannels || []}
-              />
-            ) : null}
           </div>
 
           {/* Agent Business Card */}
@@ -718,6 +713,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </div>
           {portal.listingProgress?.length ? <ListingProgressRail stages={portal.listingProgress} /> : null}
           {portal.listing ? (
+          <>
           <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
             {portal.listing.imageUrl && (
               <img
@@ -758,6 +754,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               )}
             </div>
           </div>
+          <PortalPromoPresence
+            listing={portal.listing}
+            listingPath={portal.listingPath || []}
+            activeChannels={portal.activeChannels || []}
+            otherAgencies={portal.otherAgencies || null}
+          />
+          </>
           ) : (
             <p className="mt-4 text-sm text-[var(--eos-muted)]">
               Po podpisaniu umowy agent przygotuje ogłoszenie. Szkic, zdjęcia i publikacja pojawią się tutaj.
