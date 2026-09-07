@@ -1,73 +1,108 @@
 import { execSync } from 'child_process';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { NextResponse } from 'next/server';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
-import { isControlEnabled, readPm2RuntimePublic } from '@/lib/adminCoreControl';
+import { readPm2RuntimePublic } from '@/lib/adminCoreControl';
 
 const NO_CACHE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
   Pragma: 'no-cache',
 };
 
-const PM2_APP_NAME = (process.env.ADMIN_CORE_PM2_NAME || 'nieruchomosci').trim();
+export const CORE_LOG_APP_NAMES = [
+  'nieruchomosci',
+  'lineage-movies-downloader',
+  'lineage-movies-proxy',
+  'partner-growth-nurture',
+  'reviews-finalization-fallback',
+  'kei-auto-import',
+  'client-intelligence',
+  'seller-marketing-renewals',
+  'rcn-market-ingest',
+] as const;
+
+export type CoreLogAppName = (typeof CORE_LOG_APP_NAMES)[number];
+export type CoreLogStream = 'out' | 'error' | 'both';
+
 const PM2_LOG_DIR = path.join(os.homedir(), '.pm2', 'logs');
+const NAME_SET = new Set<string>(CORE_LOG_APP_NAMES);
+
+export function parseCoreLogQuery(searchParams: URLSearchParams) {
+  const rawName = String(searchParams.get('name') || 'nieruchomosci').trim();
+  const name: CoreLogAppName = NAME_SET.has(rawName) ? (rawName as CoreLogAppName) : 'nieruchomosci';
+  const rawStream = String(searchParams.get('stream') || 'both').trim();
+  const stream: CoreLogStream = rawStream === 'out' || rawStream === 'error' ? rawStream : 'both';
+  const parsed = Number(searchParams.get('lines') || 200);
+  const lines = Math.min(500, Math.max(20, Number.isFinite(parsed) ? Math.floor(parsed) : 200));
+  return { name, stream, lines };
+}
 
 function tailLogFile(filePath: string, lines: number): string {
   try {
     return execSync(`tail -n ${lines} ${JSON.stringify(filePath)} 2>/dev/null`, {
       encoding: 'utf8',
       timeout: 3000,
-      maxBuffer: 512 * 1024,
+      maxBuffer: 1024 * 1024,
     });
   } catch {
     return '';
   }
 }
 
-export function readPm2LogTail(maxLines = 100): string {
+function logFilesFor(name: string, kind: 'out' | 'error'): string[] {
+  let entries: string[] = [];
   try {
-    const out = execSync(
-      `pm2 logs ${JSON.stringify(PM2_APP_NAME)} --nostream --lines ${maxLines} --raw 2>&1`,
-      { encoding: 'utf8', timeout: 6000, maxBuffer: 1024 * 1024 },
-    );
-    if (out.trim()) return out;
+    entries = fs.readdirSync(PM2_LOG_DIR);
   } catch {
-    /* fallback */
+    return [];
   }
+  const exact = `${name}-${kind}.log`;
+  const prefix = `${name}-${kind}-`;
+  return entries
+    .filter((file) => file === exact || (file.startsWith(prefix) && file.endsWith('.log')))
+    .map((file) => path.join(PM2_LOG_DIR, file));
+}
 
-  const perFile = Math.max(20, Math.floor(maxLines / 2));
-  const outPath = path.join(PM2_LOG_DIR, `${PM2_APP_NAME}-out.log`);
-  const errPath = path.join(PM2_LOG_DIR, `${PM2_APP_NAME}-error.log`);
-  const stdout = tailLogFile(outPath, perFile);
-  const stderr = tailLogFile(errPath, perFile);
-  const chunks = [
-    stderr ? `--- stderr ---\n${stderr}` : '',
-    stdout ? `--- stdout ---\n${stdout}` : '',
-  ].filter(Boolean);
-  return chunks.join('\n\n') || 'Brak logów PM2.';
+export function readPm2AppLogTail(name: CoreLogAppName, stream: CoreLogStream, maxLines: number): string {
+  const kinds: Array<'out' | 'error'> = stream === 'both' ? ['error', 'out'] : [stream];
+  const perFile = stream === 'both' ? Math.max(20, Math.floor(maxLines / 2)) : maxLines;
+  const chunks: string[] = [];
+  for (const kind of kinds) {
+    const files = logFilesFor(name, kind);
+    const body = files
+      .map((file) => tailLogFile(file, perFile).trim())
+      .filter(Boolean)
+      .join('\n');
+    if (!body) continue;
+    chunks.push(stream === 'both' ? `--- ${kind} ---\n${body}` : body);
+  }
+  return chunks.join('\n\n') || 'Brak logów PM2 dla tego procesu.';
+}
+
+/** @deprecated use readPm2AppLogTail — kept for older callers */
+export function readPm2LogTail(maxLines = 100): string {
+  return readPm2AppLogTail('nieruchomosci', 'both', maxLines);
 }
 
 export async function handleAdminCoreLogsGET(req: Request) {
   const gate = await requireMobileAdmin(req);
   if (!gate.ok) return gate.response;
 
-  if (!isControlEnabled()) {
-    return NextResponse.json(
-      { success: false, message: 'Logi CORE wyłączone.' },
-      { status: 403, headers: NO_CACHE_HEADERS },
-    );
-  }
-
   const url = new URL(req.url);
-  const lines = Math.min(200, Math.max(20, Number(url.searchParams.get('lines') || 80)));
+  const query = parseCoreLogQuery(url.searchParams);
+  const logs = readPm2AppLogTail(query.name, query.stream, query.lines);
 
   return NextResponse.json(
     {
       success: true,
-      logs: readPm2LogTail(lines),
+      logs,
+      name: query.name,
+      stream: query.stream,
+      lines: query.lines,
+      apps: CORE_LOG_APP_NAMES,
       pm2: readPm2RuntimePublic(),
-      lines,
       collectedAt: new Date().toISOString(),
     },
     { headers: NO_CACHE_HEADERS },
