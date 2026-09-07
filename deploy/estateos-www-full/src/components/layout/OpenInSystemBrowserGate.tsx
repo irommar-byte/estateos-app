@@ -47,13 +47,13 @@ export default function OpenInSystemBrowserGate() {
               ? "Galeria i powiększanie zdjęć działają w Safari albo w aplikacji EstateOS."
               : `Galeria i powiększanie zdjęć działają w pełnej przeglądarce. Otwórz EstateOS w ${browserName}.`}
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className={`mt-3 ${ctx.isIOS ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2"}`}>
             <button
               type="button"
               onClick={() => openInSystemBrowser(window.location.href)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-amber-400 px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-black"
+              className="inline-flex min-w-0 items-center justify-center gap-1 rounded-full bg-amber-400 px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-black"
             >
-              <ExternalLink className="size-3.5" aria-hidden />
+              <ExternalLink className="size-3.5 shrink-0" aria-hidden />
               Otwórz w {browserName}
             </button>
             {ctx.isIOS ? (
@@ -63,20 +63,20 @@ export default function OpenInSystemBrowserGate() {
                   setAppHint("Jeśli apka nie jest zainstalowana, otworzy się App Store.");
                   openIosAppOrAppStore({ href: window.location.href });
                 }}
-                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-black"
+                className="inline-flex min-w-0 items-center justify-center gap-1 rounded-full bg-white px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-black"
               >
-                <Smartphone className="size-3.5" aria-hidden />
-                Pobierz i otwórz w apce
+                <Smartphone className="size-3.5 shrink-0" aria-hidden />
+                Pobierz i otwórz
               </button>
             ) : null}
-            {appHint ? (
-              <p className="w-full text-[10px] leading-relaxed text-amber-200/90">{appHint}</p>
-            ) : ctx.isIOS ? (
-              <p className="w-full text-[10px] leading-relaxed text-white/55">
-                Albo: ⋯ u dołu → <span className="text-white/85">Otwórz w Safari</span>
-              </p>
-            ) : null}
           </div>
+          {appHint ? (
+            <p className="mt-2 text-[10px] leading-relaxed text-amber-200/90">{appHint}</p>
+          ) : ctx.isIOS ? (
+            <p className="mt-2 text-[10px] leading-relaxed text-white/55">
+              Albo: ⋯ u dołu → <span className="text-white/85">Otwórz w Safari</span>
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
