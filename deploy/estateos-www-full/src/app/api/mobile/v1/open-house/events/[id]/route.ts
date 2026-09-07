@@ -63,7 +63,12 @@ export async function PATCH(req: Request, context: RouteContext) {
       title: body.title,
       description: body.description,
       status: body.status,
-      replaceSlots: Array.isArray(body.slots) ? body.slots : undefined,
+      replaceSlots: Array.isArray(body.replaceSlots)
+        ? body.replaceSlots
+        : Array.isArray(body.slots)
+          ? body.slots
+          : undefined,
+      visitMode: body.visitMode,
     });
     return NextResponse.json({ success: true, event });
   } catch (error) {

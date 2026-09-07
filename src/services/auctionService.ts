@@ -99,6 +99,31 @@ export async function createAuctionEvent(
   return { event: json.event };
 }
 
+export async function updateAuctionEvent(
+  token: string,
+  eventId: number,
+  payload: {
+    title?: string;
+    description?: string;
+    startPrice?: number | null;
+    reservePrice?: number | null;
+    minIncrement?: number | null;
+    startsAt?: string;
+    endsAt?: string;
+  }
+): Promise<{ event?: AuctionEventRecord; message?: string }> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/auction/events/${eventId}`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const json = await parseJson(res);
+  if (!res.ok || !json?.success) {
+    return { message: json?.message || 'Nie udało się zaktualizować licytacji.' };
+  }
+  return { event: json.event };
+}
+
 export async function cancelAuctionEvent(
   token: string,
   eventId: number

@@ -5,6 +5,8 @@ import { ChevronDown } from "lucide-react";
 import ListingPathEventCard, {
   type ListingPathEvent,
 } from "@/components/portal/ListingPathEventCard";
+import MarketingChannelBrand from "@/components/portal/MarketingChannelBrand";
+import { groupPromotionsByChannel } from "@/lib/crm/marketingChannel";
 import {
   groupPortalPath,
   marketReportPortalPath,
@@ -80,14 +82,31 @@ export default function PortalPathStacks({
             ) : null}
             {expanded ? (
               <div className="listing-path-stack__body">
-                {stack.items.map((item) => (
-                  <ListingPathEventCard
-                    key={item.id}
-                    item={item as ListingPathEvent}
-                    fallbackImage={listingImage}
-                    token={token}
-                  />
-                ))}
+                {stack.kind === "promotions"
+                  ? groupPromotionsByChannel(stack.items as ListingPathEvent[]).map((group) => (
+                      <section key={group.id} className="listing-path-channel">
+                        <header className="listing-path-channel__head">
+                          <MarketingChannelBrand id={group.id} label={group.label} />
+                          <span className="listing-path-channel__count">{group.items.length}</span>
+                        </header>
+                        {group.items.map((item) => (
+                          <ListingPathEventCard
+                            key={item.id}
+                            item={item as ListingPathEvent}
+                            fallbackImage={listingImage}
+                            token={token}
+                          />
+                        ))}
+                      </section>
+                    ))
+                  : stack.items.map((item) => (
+                      <ListingPathEventCard
+                        key={item.id}
+                        item={item as ListingPathEvent}
+                        fallbackImage={listingImage}
+                        token={token}
+                      />
+                    ))}
               </div>
             ) : null}
           </article>

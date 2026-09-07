@@ -8,6 +8,7 @@ import {
   parseFacebookDestination,
   publicationHeadline,
   resolveMarketingChannel,
+  groupPromotionsByChannel,
 } from "../src/lib/marketingChannel";
 
 test("mobile marketingChannel parses Facebook groups", () => {
@@ -79,4 +80,36 @@ test("mobile facebook client link prefers the post over the group home", () => {
     }),
     "https://www.facebook.com/groups/abc/posts/1234567890/",
   );
+});
+
+test("groupPromotionsByChannel orders OLX before older Facebook and active first", () => {
+  const groups = groupPromotionsByChannel([
+    {
+      createdAt: "2026-08-01T10:00:00.000Z",
+      url: "https://www.facebook.com/groups/abc/posts/1",
+      kind: "EXTERNAL_PORTAL_LISTED",
+      status: "active",
+      groupName: "Warszawa",
+    },
+    {
+      createdAt: "2026-09-01T10:00:00.000Z",
+      url: "https://www.olx.pl/d/oferta/x",
+      kind: "EXTERNAL_PORTAL_LISTED",
+      portal: "OLX",
+      status: "expired",
+    },
+    {
+      createdAt: "2026-07-01T10:00:00.000Z",
+      url: "https://www.olx.pl/d/oferta/old",
+      kind: "EXTERNAL_PORTAL_LISTED",
+      portal: "OLX",
+      status: "active",
+    },
+  ]);
+  assert.equal(groups[0].id, "olx");
+  assert.equal(groups[0].label, "OLX");
+  assert.equal(groups[1].id, "facebook");
+  assert.equal(groups[1].label, "Facebook");
+  assert.equal(groups[0].items[0].status, "active");
+  assert.equal(groups[0].items[1].status, "expired");
 });

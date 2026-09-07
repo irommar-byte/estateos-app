@@ -6,6 +6,7 @@ import {
   cancelAuctionEvent,
   getAuctionEventById,
   mapAuctionError,
+  updateAuctionEvent,
 } from '@/lib/auction';
 import { requireInvestorProWeb } from '@/lib/requireInvestorProWeb';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
@@ -51,7 +52,16 @@ export async function PATCH(req: Request, context: RouteContext) {
       const event = await cancelAuctionEvent(gate.userId, eventId);
       return NextResponse.json({ success: true, event });
     }
-    return NextResponse.json({ success: false, message: 'Unsupported action' }, { status: 400 });
+    const event = await updateAuctionEvent(gate.userId, eventId, {
+      title: body.title,
+      description: body.description,
+      startPrice: body.startPrice,
+      reservePrice: body.reservePrice,
+      minIncrement: body.minIncrement,
+      startsAt: body.startsAt,
+      endsAt: body.endsAt,
+    });
+    return NextResponse.json({ success: true, event });
   } catch (error) {
     const mapped = mapAuctionError(error);
     return NextResponse.json({ success: false, message: mapped.message, code: mapped.code }, { status: mapped.status });

@@ -110,6 +110,15 @@ export default function OpenHouseHubScreen() {
           <Text style={[styles.cardMeta, { color: muted }]}>
             {t('openHouse.hub.spotsLeft', { n: item.totalSpotsLeft })}
           </Text>
+          {tab === 'host' && item.status !== 'CANCELLED' && item.status !== 'COMPLETED' ? (
+            <Pressable
+              onPress={() => navigation.navigate('OpenHouseCreate', { eventId: item.id })}
+              hitSlop={8}
+              style={{ marginTop: 8 }}
+            >
+              <Text style={{ color: '#F59E0B', fontWeight: '800' }}>{t('openHouse.hub.edit')}</Text>
+            </Pressable>
+          ) : null}
         </View>
         <Ionicons name="chevron-forward" size={18} color="#C7C7CC" />
       </Pressable>

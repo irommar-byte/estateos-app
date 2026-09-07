@@ -3,11 +3,14 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { API_URL } from "../../config/network";
 import type { PortalMarketingTimelineItem } from "../../services/clientPortalService";
+import MarketingChannelBrand from "../marketing/MarketingChannelBrand";
 import {
   facebookClientOpenHref,
   facebookOpenLabel,
   formatPublicationStatus,
+  groupPromotionsByChannel,
   listingThumbnailFallback,
+  promotionGroupLabel,
   resolveMarketingChannel,
 } from "../../lib/marketingChannel";
 import {
@@ -112,35 +115,22 @@ function TimelineEventRow({
       ]}
     >
       <View style={styles.timelineHead}>
-        <View style={[styles.channelMark, { backgroundColor: accent }]}>
-          <Ionicons
-            name={
-              isReport
-                ? "document-text-outline"
-                : channel.id === "estateos"
-                  ? "star"
-                  : channel.id === "facebook"
-                    ? "logo-facebook"
-                    : channel.id === "otodom"
-                      ? "home"
-                      : "globe-outline"
-            }
-            size={14}
-            color={channel.id === "estateos" ? "#1c1408" : "#fff"}
-          />
-        </View>
         <View style={{ flex: 1 }}>
+          <MarketingChannelBrand
+            id={channel.id}
+            label={promotionGroupLabel(channel.id === "system" ? "portal" : channel.id)}
+          />
           <Text
             style={{
               color: accent,
-              fontSize: 10,
-              fontWeight: "900",
-              letterSpacing: 0.6,
+              fontSize: 12,
+              fontWeight: "700",
+              marginTop: 6,
             }}
           >
-            {channel.badge.toUpperCase()}
+            {channel.badge}
           </Text>
-          <Text style={{ color: colors.secondary, fontSize: 11 }}>
+          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
             {formatDate(item.createdAt)}
           </Text>
         </View>
@@ -328,21 +318,52 @@ export default function PortalActivityStacks({
               </Pressable>
             ) : null}
             {expanded
-              ? stack.items.map((row) => {
-                  const full = items.find((item) => item.id === row.id);
-                  if (!full) return null;
-                  return (
-                    <TimelineEventRow
-                      key={row.id}
-                      item={full}
-                      listingImage={listingImage}
-                      isDark={isDark}
-                      colors={colors}
-                      portalToken={portalToken}
-                      onOpenUrl={onOpenUrl}
-                    />
-                  );
-                })
+              ? stack.kind === "promotions"
+                ? groupPromotionsByChannel(
+                    stack.items
+                      .map((row) => items.find((item) => item.id === row.id))
+                      .filter((item): item is PortalMarketingTimelineItem => Boolean(item))
+                      .map((item) => ({ ...item, url: item.externalUrl })),
+                  ).map((group) => (
+                    <View key={group.id} style={{ paddingHorizontal: 10, marginBottom: 8 }}>
+                      <View style={styles.channelHead}>
+                        <MarketingChannelBrand id={group.id} label={group.label} />
+                        <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: "700" }}>
+                          {group.items.length}
+                        </Text>
+                      </View>
+                      {group.items.map((row) => {
+                        const full = items.find((item) => item.id === row.id);
+                        if (!full) return null;
+                        return (
+                          <TimelineEventRow
+                            key={row.id}
+                            item={full}
+                            listingImage={listingImage}
+                            isDark={isDark}
+                            colors={colors}
+                            portalToken={portalToken}
+                            onOpenUrl={onOpenUrl}
+                          />
+                        );
+                      })}
+                    </View>
+                  ))
+                : stack.items.map((row) => {
+                    const full = items.find((item) => item.id === row.id);
+                    if (!full) return null;
+                    return (
+                      <TimelineEventRow
+                        key={row.id}
+                        item={full}
+                        listingImage={listingImage}
+                        isDark={isDark}
+                        colors={colors}
+                        portalToken={portalToken}
+                        onOpenUrl={onOpenUrl}
+                      />
+                    );
+                  })
               : null}
           </View>
         );
@@ -383,11 +404,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  channelMark: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
+  channelHead: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 8,
   },
 });

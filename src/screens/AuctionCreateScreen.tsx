@@ -13,7 +13,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
@@ -23,12 +23,35 @@ import {
   createAuctionEvent,
   defaultAuctionEndIso,
   defaultAuctionStartIso,
+  fetchAuctionEvent,
+  updateAuctionEvent,
 } from '../services/auctionService';
+import { useOpenHouseLiveStore } from '../store/useOpenHouseLiveStore';
 
 type OfferRow = { id: number; title: string; city: string; district: string; price?: number };
 
+function pad(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function isoToLocalField(iso: string) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localFieldToIso(value: string) {
+  const parsed = new Date(value.trim().replace(' ', 'T'));
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 export default function AuctionCreateScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const eventId = Number(route.params?.eventId) || 0;
+  const isEdit = eventId > 0;
+  const returnToLive = Boolean(route.params?.returnToLive);
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
@@ -53,6 +76,10 @@ export default function AuctionCreateScreen() {
   const [startPrice, setStartPrice] = useState('');
   const [reservePrice, setReservePrice] = useState('');
   const [minIncrement, setMinIncrement] = useState('');
+  const [startsAt, setStartsAt] = useState(isoToLocalField(defaultAuctionStartIso()));
+  const [endsAt, setEndsAt] = useState(isoToLocalField(defaultAuctionEndIso()));
+  const [loadingEvent, setLoadingEvent] = useState(isEdit);
+  const [startPriceLocked, setStartPriceLocked] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const descriptionYRef = useRef(0);
 
@@ -75,7 +102,7 @@ export default function AuctionCreateScreen() {
             price: Number(o.price || 0),
           }));
         setOffers(rows);
-        if (rows[0]) {
+        if (!isEdit && rows[0]) {
           setSelectedOfferId(rows[0].id);
           if (rows[0].price) setStartPrice(String(Math.round(rows[0].price * 0.9)));
         }
@@ -83,7 +110,57 @@ export default function AuctionCreateScreen() {
         setLoadingOffers(false);
       }
     })();
-  }, [token, user?.id]);
+  }, [token, user?.id, isEdit]);
+
+  useEffect(() => {
+    if (!isEdit || !token) return;
+    void (async () => {
+      setLoadingEvent(true);
+      const event = await fetchAuctionEvent(token, eventId);
+      if (!event || !event.isHost) {
+        setLoadingEvent(false);
+        Alert.alert(t('auction.create.title'), t('auction.event.loadError'));
+        navigation.goBack();
+        return;
+      }
+      setSelectedOfferId(event.offerId);
+      setTitle(event.title || '');
+      setDescription(event.description || '');
+      setStartPrice(String(Math.round(event.startPrice)));
+      setReservePrice(event.reservePrice ? String(Math.round(event.reservePrice)) : '');
+      setMinIncrement(event.minIncrement ? String(Math.round(event.minIncrement)) : '');
+      setStartsAt(isoToLocalField(event.startsAt));
+      setEndsAt(isoToLocalField(event.endsAt));
+      setStartPriceLocked(event.bidCount > 0);
+      setOffers((current) => {
+        if (current.some((row) => row.id === event.offerId)) return current;
+        return [
+          {
+            id: event.offer.id,
+            title: event.offer.title,
+            city: event.offer.city,
+            district: event.offer.district,
+            price: event.offer.price,
+          },
+          ...current,
+        ];
+      });
+      setLoadingEvent(false);
+    })();
+  }, [isEdit, eventId, token, navigation, t]);
+
+  const finishAfterSave = (savedId: number) => {
+    if (returnToLive) {
+      useOpenHouseLiveStore.getState().openPanel();
+      navigation.goBack();
+      return;
+    }
+    if (isEdit) {
+      navigation.goBack();
+      return;
+    }
+    navigation.replace('AuctionEvent', { eventId: savedId });
+  };
 
   const publish = async () => {
     if (!token || !selectedOfferId) return;
@@ -92,29 +169,49 @@ export default function AuctionCreateScreen() {
       Alert.alert(t('auction.create.title'), t('auction.create.startPrice'));
       return;
     }
+    const startIso = localFieldToIso(startsAt);
+    const endIso = localFieldToIso(endsAt);
+    if (!startIso || !endIso) {
+      Alert.alert(t('auction.create.title'), t('auction.create.datesRequired'));
+      return;
+    }
     setSubmitting(true);
-    const result = await createAuctionEvent(token, {
-      offerId: selectedOfferId,
-      title: title.trim() || undefined,
-      description: description.trim() || undefined,
-      startPrice: sp,
-      reservePrice: reservePrice ? Number(reservePrice) : null,
-      minIncrement: minIncrement ? Number(minIncrement) : null,
-      startsAt: defaultAuctionStartIso(),
-      endsAt: defaultAuctionEndIso(),
-      publish: true,
-    });
+    const result = isEdit
+      ? await updateAuctionEvent(token, eventId, {
+          title: title.trim() || undefined,
+          description: description.trim() || undefined,
+          startPrice: startPriceLocked ? undefined : sp,
+          reservePrice: reservePrice ? Number(reservePrice) : null,
+          minIncrement: minIncrement ? Number(minIncrement) : null,
+          startsAt: startIso,
+          endsAt: endIso,
+        })
+      : await createAuctionEvent(token, {
+          offerId: selectedOfferId,
+          title: title.trim() || undefined,
+          description: description.trim() || undefined,
+          startPrice: sp,
+          reservePrice: reservePrice ? Number(reservePrice) : null,
+          minIncrement: minIncrement ? Number(minIncrement) : null,
+          startsAt: startIso,
+          endsAt: endIso,
+          publish: true,
+        });
     setSubmitting(false);
     if (!result.event) {
       Alert.alert(t('auction.create.title'), result.message || t('common.error'));
       return;
     }
-    Alert.alert(t('auction.create.successTitle'), t('auction.create.successBody'), [
-      {
-        text: 'OK',
-        onPress: () => navigation.replace('AuctionEvent', { eventId: result.event!.id }),
-      },
-    ]);
+    Alert.alert(
+      isEdit ? t('auction.create.updateSuccessTitle') : t('auction.create.successTitle'),
+      isEdit ? t('auction.create.updateSuccessBody') : t('auction.create.successBody'),
+      [
+        {
+          text: 'OK',
+          onPress: () => finishAfterSave(result.event!.id),
+        },
+      ],
+    );
   };
 
   return (
@@ -127,7 +224,9 @@ export default function AuctionCreateScreen() {
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="chevron-back" size={28} color={text} />
         </Pressable>
-        <Text style={[styles.title, { color: text }]}>{t('auction.create.title')}</Text>
+        <Text style={[styles.title, { color: text }]}>
+          {isEdit ? t('auction.create.editTitle') : t('auction.create.title')}
+        </Text>
       </View>
 
       <ScrollView
@@ -144,7 +243,7 @@ export default function AuctionCreateScreen() {
         </View>
 
         <Text style={[styles.label, { color: muted }]}>{t('auction.create.pickOffer')}</Text>
-        {loadingOffers ? (
+        {loadingOffers || loadingEvent ? (
           <ActivityIndicator color={accent} />
         ) : offers.length === 0 ? (
           <Text style={{ color: muted }}>{t('auction.create.noOffers')}</Text>
@@ -152,6 +251,7 @@ export default function AuctionCreateScreen() {
           offers.map((o) => (
             <Pressable
               key={o.id}
+              disabled={isEdit}
               onPress={() => {
                 setSelectedOfferId(o.id);
                 if (o.price) setStartPrice(String(Math.round(o.price * 0.9)));
@@ -161,6 +261,7 @@ export default function AuctionCreateScreen() {
                 {
                   backgroundColor: card,
                   borderColor: selectedOfferId === o.id ? accent : border,
+                  opacity: isEdit ? 0.85 : 1,
                 },
               ]}
             >
@@ -178,8 +279,9 @@ export default function AuctionCreateScreen() {
         <TextInput
           value={startPrice}
           onChangeText={setStartPrice}
+          editable={!startPriceLocked}
           keyboardType="numeric"
-          style={[styles.input, { backgroundColor: card, color: text, borderColor: border }]}
+          style={[styles.input, { backgroundColor: card, color: text, borderColor: border, opacity: startPriceLocked ? 0.7 : 1 }]}
         />
 
         <Text style={[styles.label, { color: muted }]}>{t('auction.create.reservePrice')}</Text>
@@ -195,6 +297,24 @@ export default function AuctionCreateScreen() {
           value={minIncrement}
           onChangeText={setMinIncrement}
           keyboardType="numeric"
+          style={[styles.input, { backgroundColor: card, color: text, borderColor: border }]}
+        />
+
+        <Text style={[styles.label, { color: muted }]}>{t('auction.create.startsAt')}</Text>
+        <TextInput
+          value={startsAt}
+          onChangeText={setStartsAt}
+          placeholder="2026-09-08 18:00"
+          placeholderTextColor={muted}
+          style={[styles.input, { backgroundColor: card, color: text, borderColor: border }]}
+        />
+
+        <Text style={[styles.label, { color: muted }]}>{t('auction.create.endsAt')}</Text>
+        <TextInput
+          value={endsAt}
+          onChangeText={setEndsAt}
+          placeholder="2026-09-11 20:00"
+          placeholderTextColor={muted}
           style={[styles.input, { backgroundColor: card, color: text, borderColor: border }]}
         />
 
@@ -232,7 +352,9 @@ export default function AuctionCreateScreen() {
           {submitting ? (
             <ActivityIndicator color="#FFF" />
           ) : (
-            <Text style={styles.publishText}>{t('auction.create.publish')}</Text>
+            <Text style={styles.publishText}>
+              {isEdit ? t('auction.create.save') : t('auction.create.publish')}
+            </Text>
           )}
         </Pressable>
       </ScrollView>

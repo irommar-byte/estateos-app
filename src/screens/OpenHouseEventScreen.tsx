@@ -521,9 +521,19 @@ export default function OpenHouseEventScreen() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12, backgroundColor: card, borderTopColor: border }]}>
         {event.isHost ? (
-          <Pressable onPress={cancelEvent} style={[styles.secondaryBtn, submitting && { opacity: 0.6 }]}>
-            <Text style={styles.secondaryBtnText}>{t('openHouse.event.manageCancel')}</Text>
-          </Pressable>
+          <View style={{ gap: 8 }}>
+            {event.status !== 'CANCELLED' && event.status !== 'COMPLETED' ? (
+              <Pressable
+                onPress={() => navigation.navigate('OpenHouseCreate', { eventId: event.id })}
+                style={[styles.secondaryBtn, { borderColor: '#F59E0B' }]}
+              >
+                <Text style={[styles.secondaryBtnText, { color: '#F59E0B' }]}>{t('openHouse.event.manageEdit')}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={cancelEvent} style={[styles.secondaryBtn, submitting && { opacity: 0.6 }]}>
+              <Text style={styles.secondaryBtnText}>{t('openHouse.event.manageCancel')}</Text>
+            </Pressable>
+          </View>
         ) : myReservation ? (
           <Pressable
             onPress={() => void cancelMyReservation(myReservation.id)}

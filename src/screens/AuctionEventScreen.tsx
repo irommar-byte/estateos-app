@@ -335,9 +335,19 @@ export default function AuctionEventScreen() {
                 <Text style={styles.hostBadgeText}>{t('auction.event.hostBadge')}</Text>
               </View>
               {event.status === 'LIVE' || event.status === 'SCHEDULED' ? (
-                <Pressable onPress={onCancel} style={styles.cancelBtn}>
-                  <Text style={styles.cancelBtnText}>{t('auction.event.cancelAuction')}</Text>
-                </Pressable>
+                <View style={{ gap: 8 }}>
+                  {event.status === 'SCHEDULED' ? (
+                    <Pressable
+                      onPress={() => navigation.navigate('AuctionCreate', { eventId: event.id })}
+                      style={[styles.cancelBtn, { borderColor: accent }]}
+                    >
+                      <Text style={[styles.cancelBtnText, { color: accent }]}>{t('auction.event.manageEdit')}</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable onPress={onCancel} style={styles.cancelBtn}>
+                    <Text style={styles.cancelBtnText}>{t('auction.event.cancelAuction')}</Text>
+                  </Pressable>
+                </View>
               ) : null}
             </>
           ) : null}

@@ -10,6 +10,7 @@ import {
   datetimeLocalToIso,
   defaultAuctionEndLocal,
   defaultAuctionStartLocal,
+  toDatetimeLocalValue,
 } from "@/lib/datetimeLocal";
 import type { AuctionEventRecord } from "@/lib/auctionTypes";
 
@@ -73,6 +74,8 @@ export default function ProAuctionManageModal({
   const [endsAt, setEndsAt] = useState(defaultAuctionEndLocal);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [startPriceLocked, setStartPriceLocked] = useState(false);
   const alertRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMounted(true), []);
@@ -101,6 +104,8 @@ export default function ProAuctionManageModal({
     setError("");
     setSuccess("");
     setPublishedOfferId(null);
+    setEditingId(null);
+    setStartPriceLocked(false);
     const first = activeOffers[0] ?? null;
     setOfferId(first?.id ?? null);
     if (first?.price) setStartPrice(String(Math.round(first.price)));
@@ -119,6 +124,22 @@ export default function ProAuctionManageModal({
     if (!error && !success) return;
     alertRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [error, success]);
+
+  const beginEdit = (ev: AuctionEventRecord) => {
+    setEditingId(ev.id);
+    setOfferId(ev.offerId);
+    setTitle(ev.title || "");
+    setDescription(ev.description || "");
+    setStartPrice(String(Math.round(ev.startPrice)));
+    setReservePrice(ev.reservePrice ? String(Math.round(ev.reservePrice)) : "");
+    setMinIncrement(ev.minIncrement ? String(Math.round(ev.minIncrement)) : "");
+    setStartsAt(toDatetimeLocalValue(new Date(ev.startsAt)));
+    setEndsAt(toDatetimeLocalValue(new Date(ev.endsAt)));
+    setStartPriceLocked(ev.bidCount > 0);
+    setTab("create");
+    setError("");
+    setSuccess("");
+  };
 
   const validateForm = (): string | null => {
     if (!offerId) return copy.auctionNoOffers;
@@ -158,21 +179,33 @@ export default function ProAuctionManageModal({
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/auction/events", {
-        method: "POST",
+      const res = await fetch(editingId ? `/api/auction/events/${editingId}` : "/api/auction/events", {
+        method: editingId ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          offerId,
-          title: title.trim() || undefined,
-          description: description.trim() || undefined,
-          startPrice: Number(startPrice),
-          reservePrice: reservePrice ? Number(reservePrice) : undefined,
-          minIncrement: minIncrement ? Number(minIncrement) : undefined,
-          startsAt: datetimeLocalToIso(startsAt),
-          endsAt: datetimeLocalToIso(endsAt),
-          publish: true,
-        }),
+        body: JSON.stringify(
+          editingId
+            ? {
+                title: title.trim() || undefined,
+                description: description.trim() || undefined,
+                startPrice: startPriceLocked ? undefined : Number(startPrice),
+                reservePrice: reservePrice ? Number(reservePrice) : undefined,
+                minIncrement: minIncrement ? Number(minIncrement) : undefined,
+                startsAt: datetimeLocalToIso(startsAt),
+                endsAt: datetimeLocalToIso(endsAt),
+              }
+            : {
+                offerId,
+                title: title.trim() || undefined,
+                description: description.trim() || undefined,
+                startPrice: Number(startPrice),
+                reservePrice: reservePrice ? Number(reservePrice) : undefined,
+                minIncrement: minIncrement ? Number(minIncrement) : undefined,
+                startsAt: datetimeLocalToIso(startsAt),
+                endsAt: datetimeLocalToIso(endsAt),
+                publish: true,
+              },
+        ),
       });
       const data = await res.json();
       if (!res.ok || !data?.event) {
@@ -180,7 +213,9 @@ export default function ProAuctionManageModal({
         return;
       }
       setPublishedOfferId(offerId);
-      setSuccess(copy.auctionPublishSuccessBody);
+      setSuccess(editingId ? copy.auctionUpdateSuccess : copy.auctionPublishSuccessBody);
+      setEditingId(null);
+      setStartPriceLocked(false);
       setTab("list");
       await loadEvents();
       onChanged?.();
@@ -221,7 +256,7 @@ export default function ProAuctionManageModal({
   const modal = (
     <AnimatePresence>
       {isOpen ? (
-        <div className="fixed inset-0 z-[999998] flex items-start justify-center overflow-y-auto p-4 pb-10 pt-10 sm:pt-16">
+        <div className="fixed inset-0 eos-z-modal flex items-start justify-center overflow-y-auto p-4 pb-10 pt-10 sm:pt-16">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -262,7 +297,13 @@ export default function ProAuctionManageModal({
                     tab === key ? "bg-violet-500/15 eos-violet-accent-strong" : "text-[var(--eos-muted)]"
                   }`}
                 >
-                  {key === "create" ? copy.auctionCreateTab : key === "list" ? copy.auctionListTab : copy.auctionGuideTab}
+                  {key === "create"
+                    ? editingId
+                      ? copy.auctionSave
+                      : copy.auctionCreateTab
+                    : key === "list"
+                      ? copy.auctionListTab
+                      : copy.auctionGuideTab}
                 </button>
               ))}
             </div>
@@ -363,6 +404,7 @@ export default function ProAuctionManageModal({
                           min={1}
                           value={startPrice}
                           onChange={(e) => setStartPrice(e.target.value)}
+                          disabled={startPriceLocked}
                           className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
                         />
                       </label>
@@ -440,7 +482,7 @@ export default function ProAuctionManageModal({
                       className="eos-primary-cta flex w-full items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50"
                     >
                       {submitting ? <Loader2 size={16} className="animate-spin" /> : <Gavel size={16} />}
-                      {copy.auctionPublish}
+                      {editingId ? copy.auctionSave : copy.auctionPublish}
                     </button>
                   </>
                 ) : (
@@ -472,15 +514,29 @@ export default function ProAuctionManageModal({
                             <ExternalLink size={12} />
                           </Link>
                         </div>
-                        {["SCHEDULED", "LIVE", "DRAFT"].includes(ev.status) && ev.bidCount === 0 ? (
-                          <button
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => void cancelEvent(ev.id)}
-                            className="mt-3 text-xs font-semibold text-red-400"
-                          >
-                            {copy.auctionCancel}
-                          </button>
+                        {["SCHEDULED", "LIVE", "DRAFT"].includes(ev.status) ? (
+                          <div className="mt-3 flex items-center gap-4">
+                            {ev.status === "SCHEDULED" || ev.status === "DRAFT" ? (
+                              <button
+                                type="button"
+                                disabled={submitting}
+                                onClick={() => beginEdit(ev)}
+                                className="text-xs font-semibold eos-violet-accent"
+                              >
+                                {copy.auctionEdit}
+                              </button>
+                            ) : null}
+                            {ev.bidCount === 0 ? (
+                              <button
+                                type="button"
+                                disabled={submitting}
+                                onClick={() => void cancelEvent(ev.id)}
+                                className="text-xs font-semibold text-red-400"
+                              >
+                                {copy.auctionCancel}
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     ))}

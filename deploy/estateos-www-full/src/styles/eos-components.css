@@ -1400,10 +1400,87 @@ html:not(.light) .listing-path-card {
   background: currentColor;
 }
 .listing-path-card__badge {
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.listing-path-card__brand-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.marketing-channel-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.marketing-channel-brand__mark {
+  display: flex;
+  height: 1.85rem;
+  width: 1.85rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.55rem;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+.marketing-channel-brand__word {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--eos-text);
+}
+.marketing-channel-brand__mark--facebook {
+  color: #fff;
+  background: #1877f2;
+}
+.marketing-channel-brand__mark--olx {
+  color: #002f34;
+  background: #23e5db;
+}
+.marketing-channel-brand__mark--otodom {
+  color: #fff;
+  background: #00a651;
+}
+.marketing-channel-brand__mark--estateos {
+  color: #7a5910;
+  background: linear-gradient(180deg, #fde68a, #d4a017);
+}
+.marketing-channel-brand__mark--gratka {
+  color: #fff;
+  background: #e85d04;
+}
+.marketing-channel-brand__mark--morizon {
+  color: #fff;
+  background: #1d4ed8;
+}
+.marketing-channel-brand__mark--portal,
+.marketing-channel-brand__mark--system {
+  color: #fff;
+  background: #0f766e;
+}
+.listing-path-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.listing-path-channel + .listing-path-channel {
+  margin-top: 0.35rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--eos-border);
+}
+.listing-path-channel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.listing-path-channel__count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--eos-muted);
 }
 .listing-path-card__when {
   font-size: 11px;

@@ -126,6 +126,15 @@ export default function AuctionHubScreen() {
             {statusLabel} · {t('auction.hub.bidCount', { n: item.bidCount })}
             {item.timeRemainingMs > 0 ? ` · ${t('auction.hub.timeLeft', { time: formatCountdown(item.timeRemainingMs) })}` : ''}
           </Text>
+          {tab === 'host' && (item.status === 'DRAFT' || item.status === 'SCHEDULED') ? (
+            <Pressable
+              onPress={() => navigation.navigate('AuctionCreate', { eventId: item.id })}
+              hitSlop={8}
+              style={{ marginTop: 8 }}
+            >
+              <Text style={{ color: accent, fontWeight: '800' }}>{t('auction.hub.edit')}</Text>
+            </Pressable>
+          ) : null}
         </View>
         <Ionicons name="chevron-forward" size={18} color="#C7C7CC" />
       </Pressable>

@@ -21,7 +21,7 @@ import { Image } from 'expo-image';
 import { useThemeStore } from '../../store/useThemeStore';
 import { useOpenHouseLiveStore } from '../../store/useOpenHouseLiveStore';
 import { useAuthStore } from '../../store/useAuthStore';
-import type { OpenHouseTickerItem } from '../../contracts/openHouseContract';
+import type { OpenHouseEventRecord, OpenHouseTickerItem } from '../../contracts/openHouseContract';
 import type { AuctionEventRecord } from '../../contracts/auctionContract';
 import { useI18n, getAppLocale } from '../../i18n';
 import { resolveMediaUrl } from '../../utils/userAvatar';
@@ -32,7 +32,8 @@ import {
 } from './openHouseLiveFormat';
 import LiveEventCountdown from './LiveEventCountdown';
 import ScrollingNewsLine from './ScrollingNewsLine';
-import { fetchLiveAuctionEvents, placeAuctionBid } from '../../services/auctionService';
+import { fetchLiveAuctionEvents, fetchHostAuctionEvents, placeAuctionBid } from '../../services/auctionService';
+import { fetchHostOpenHouseEvents } from '../../services/openHouseService';
 import { formatAmountWithCurrency } from '../../money/format';
 import { normalizeListingCurrency } from '../../money/convert';
 import { auctionCanBid, auctionHasStarted } from '../../utils/auctionUi';
@@ -62,6 +63,8 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
 
   const [auctionEvents, setAuctionEvents] = useState<AuctionEventRecord[]>([]);
+  const [hostOpenHouses, setHostOpenHouses] = useState<OpenHouseEventRecord[]>([]);
+  const [hostAuctions, setHostAuctions] = useState<AuctionEventRecord[]>([]);
   const [bidDrafts, setBidDrafts] = useState<Record<number, string>>({});
   const [submittingBidId, setSubmittingBidId] = useState<number | null>(null);
   const [userLat, setUserLat] = useState<number | null>(null);
@@ -75,6 +78,21 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
         setAuctionEvents(await fetchLiveAuctionEvents(token));
       } catch {
         setAuctionEvents([]);
+      }
+      if (token) {
+        try {
+          setHostOpenHouses(await fetchHostOpenHouseEvents(token));
+        } catch {
+          setHostOpenHouses([]);
+        }
+        try {
+          setHostAuctions(await fetchHostAuctionEvents(token));
+        } catch {
+          setHostAuctions([]);
+        }
+      } else {
+        setHostOpenHouses([]);
+        setHostAuctions([]);
       }
       try {
         const perm = await Location.requestForegroundPermissionsAsync();
@@ -150,6 +168,28 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
     });
   }, [items, reservedSet]);
 
+  const mineOpenHouses = useMemo(
+    () => hostOpenHouses.filter((event) => event.status === 'PUBLISHED' || event.status === 'DRAFT'),
+    [hostOpenHouses],
+  );
+  const mineAuctions = useMemo(
+    () =>
+      hostAuctions.filter(
+        (event) => event.status === 'DRAFT' || event.status === 'SCHEDULED' || event.status === 'LIVE',
+      ),
+    [hostAuctions],
+  );
+  const mineOhIds = useMemo(() => new Set(mineOpenHouses.map((event) => event.id)), [mineOpenHouses]);
+  const mineAucIds = useMemo(() => new Set(mineAuctions.map((event) => event.id)), [mineAuctions]);
+  const publicOpenHouse = useMemo(
+    () => sortedOpenHouse.filter((item) => !mineOhIds.has(item.eventId)),
+    [sortedOpenHouse, mineOhIds],
+  );
+  const publicAuctions = useMemo(
+    () => auctionEvents.filter((event) => !mineAucIds.has(event.id)),
+    [auctionEvents, mineAucIds],
+  );
+
   const divisionTabs = useMemo(
     () =>
       [
@@ -157,28 +197,30 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
           key: 'open_house' as const,
           label: t('openHouse.live.sectionOpenHouse'),
           accent: '#10B981',
-          count: sortedOpenHouse.length,
+          count: publicOpenHouse.length + mineOpenHouses.length,
           icon: 'home-outline' as const,
         },
         {
           key: 'auction' as const,
           label: t('openHouse.live.sectionAuction'),
           accent: '#8B5CF6',
-          count: auctionEvents.length,
+          count: publicAuctions.length + mineAuctions.length,
           icon: 'hammer-outline' as const,
         },
       ] as const,
-    [sortedOpenHouse.length, auctionEvents.length, t],
+    [publicOpenHouse.length, mineOpenHouses.length, publicAuctions.length, mineAuctions.length, t],
   );
 
   useEffect(() => {
     if (!visible) return;
-    if (division === 'open_house' && sortedOpenHouse.length === 0 && auctionEvents.length > 0) {
+    const ohCount = publicOpenHouse.length + mineOpenHouses.length;
+    const aucCount = publicAuctions.length + mineAuctions.length;
+    if (division === 'open_house' && ohCount === 0 && aucCount > 0) {
       setDivision('auction');
-    } else if (division === 'auction' && auctionEvents.length === 0 && sortedOpenHouse.length > 0) {
+    } else if (division === 'auction' && aucCount === 0 && ohCount > 0) {
       setDivision('open_house');
     }
-  }, [visible, division, sortedOpenHouse.length, auctionEvents.length]);
+  }, [visible, division, publicOpenHouse.length, mineOpenHouses.length, publicAuctions.length, mineAuctions.length]);
 
   const openOpenHouse = useCallback(
     (eventId: number) => {
@@ -192,6 +234,32 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
     (eventId: number) => {
       onClose();
       navigation.dispatch(CommonActions.navigate({ name: 'AuctionEvent', params: { eventId } }));
+    },
+    [navigation, onClose],
+  );
+
+  const goCreateOpenHouse = useCallback(() => {
+    onClose();
+    navigation.navigate('OpenHouseCreate', { returnToLive: true });
+  }, [navigation, onClose]);
+
+  const goEditOpenHouse = useCallback(
+    (eventId: number) => {
+      onClose();
+      navigation.navigate('OpenHouseCreate', { eventId, returnToLive: true });
+    },
+    [navigation, onClose],
+  );
+
+  const goCreateAuction = useCallback(() => {
+    onClose();
+    navigation.navigate('AuctionCreate', { returnToLive: true });
+  }, [navigation, onClose]);
+
+  const goEditAuction = useCallback(
+    (eventId: number) => {
+      onClose();
+      navigation.navigate('AuctionCreate', { eventId, returnToLive: true });
     },
     [navigation, onClose],
   );
@@ -264,6 +332,7 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
             <Text style={[styles.spotsText, { color: muted, marginTop: 2 }]}>
               {t('openHouse.hub.spotsLeft', { n: item.spotsLeft })}
             </Text>
+            <Text style={[styles.actionHint, { color: '#10B981' }]}>{t('openHouse.live.reserveCta')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={14} color={muted} style={styles.chevron} />
         </View>
@@ -338,6 +407,9 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
             <Text style={[styles.spotsText, { color: muted }]}>
               {t('openHouse.live.auctionBids', { n: event.bidCount })}
             </Text>
+            {!event.isHost ? (
+              <Text style={[styles.actionHint, { color: '#8B5CF6' }]}>{t('openHouse.live.bidCta')}</Text>
+            ) : null}
             {event.isLeading ? (
               <Text style={styles.leadingHint}>{t('openHouse.live.yourOfferLeading')}</Text>
             ) : event.bidCount > 0 && event.recentBids.some((b) => b.isMine) ? (
@@ -494,24 +566,126 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
 
         {division === 'open_house' ? (
           <FlatList
-            data={sortedOpenHouse}
+            data={publicOpenHouse}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => renderOpenHouseCard(item)}
             contentContainerStyle={{ gap: 8, paddingBottom: 16, flexGrow: 1 }}
+            ListHeaderComponent={
+              token ? (
+                <View style={styles.mineBlock}>
+                  <Text style={[styles.mineTitle, { color: text }]}>{t('openHouse.live.mineTitle')}</Text>
+                  {mineOpenHouses.length === 0 ? (
+                    <Pressable onPress={goCreateOpenHouse} style={[styles.mineCta, { borderColor: cardBorder, backgroundColor: cardBg }]}>
+                      <Ionicons name="add-circle-outline" size={18} color="#10B981" />
+                      <Text style={[styles.mineCtaText, { color: text }]}>{t('openHouse.live.planOpenHouse')}</Text>
+                    </Pressable>
+                  ) : (
+                    mineOpenHouses.map((event) => {
+                      const thumb = resolveMediaUrl(event.offer.imageUrl);
+                      return (
+                        <View key={event.id} style={[styles.card, styles.mineCard, { backgroundColor: cardBg, borderColor: '#10B981' }]}>
+                          {renderCountdownStrip(event.nextSlotStartsAt, '#10B981', { untilEnd: false })}
+                          <View style={styles.cardRow}>
+                            {thumb ? (
+                              <Image source={{ uri: thumb }} style={styles.thumb} contentFit="cover" />
+                            ) : (
+                              <View style={[styles.thumb, styles.thumbFallback]}>
+                                <Ionicons name="home-outline" size={16} color={muted} />
+                              </View>
+                            )}
+                            <View style={styles.cardBody}>
+                              <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
+                                {event.title || event.offer.title}
+                              </Text>
+                              <Text style={[styles.metaLine, { color: muted }]} numberOfLines={1}>
+                                {event.offer.city} · {event.offer.district} · {event.status}
+                              </Text>
+                              <View style={styles.mineActions}>
+                                <Pressable onPress={() => goEditOpenHouse(event.id)} hitSlop={8}>
+                                  <Text style={styles.mineEdit}>{t('openHouse.live.edit')}</Text>
+                                </Pressable>
+                                <Pressable onPress={() => openOpenHouse(event.id)} hitSlop={8}>
+                                  <Text style={styles.mineOpen}>{t('openHouse.live.open')}</Text>
+                                </Pressable>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                  <Text style={[styles.publicTitle, { color: muted }]}>{t('openHouse.live.publicTitle')}</Text>
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
-              <Text style={{ color: muted, textAlign: 'center', marginTop: 32, fontSize: 13 }}>
+              <Text style={{ color: muted, textAlign: 'center', marginTop: 12, fontSize: 13 }}>
                 {t('openHouse.live.openHouseEmpty')}
               </Text>
             }
           />
         ) : (
           <FlatList
-            data={auctionEvents}
+            data={publicAuctions}
             keyExtractor={(item) => `auc-${item.id}`}
             renderItem={({ item }) => renderAuctionCard(item)}
             contentContainerStyle={{ gap: 8, paddingBottom: 16, flexGrow: 1 }}
+            ListHeaderComponent={
+              token ? (
+                <View style={styles.mineBlock}>
+                  <Text style={[styles.mineTitle, { color: text }]}>{t('openHouse.live.mineTitle')}</Text>
+                  {mineAuctions.length === 0 ? (
+                    <Pressable onPress={goCreateAuction} style={[styles.mineCta, { borderColor: cardBorder, backgroundColor: cardBg }]}>
+                      <Ionicons name="add-circle-outline" size={18} color="#8B5CF6" />
+                      <Text style={[styles.mineCtaText, { color: text }]}>{t('openHouse.live.planAuction')}</Text>
+                    </Pressable>
+                  ) : (
+                    mineAuctions.map((event) => {
+                      const thumb = resolveMediaUrl(event.offer.imageUrl);
+                      const started = auctionHasStarted(event);
+                      return (
+                        <View key={event.id} style={[styles.card, styles.mineCard, { backgroundColor: cardBg, borderColor: 'rgba(139,92,246,0.45)' }]}>
+                          {renderCountdownStrip(started ? event.effectiveEndsAt : event.startsAt, '#8B5CF6', {
+                            live: event.status === 'LIVE' || started,
+                            untilEnd: started,
+                          })}
+                          <View style={styles.cardRow}>
+                            {thumb ? (
+                              <Image source={{ uri: thumb }} style={styles.thumb} contentFit="cover" />
+                            ) : (
+                              <View style={[styles.thumb, styles.thumbFallback, { backgroundColor: 'rgba(139,92,246,0.12)' }]}>
+                                <Ionicons name="hammer-outline" size={16} color="#8B5CF6" />
+                              </View>
+                            )}
+                            <View style={styles.cardBody}>
+                              <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
+                                {event.title || event.offer.title}
+                              </Text>
+                              <Text style={[styles.metaLine, { color: muted }]} numberOfLines={1}>
+                                {event.offer.city} · {event.status} · {t('openHouse.live.auctionBids', { n: event.bidCount })}
+                              </Text>
+                              <View style={styles.mineActions}>
+                                {event.status === 'SCHEDULED' || event.status === 'DRAFT' ? (
+                                  <Pressable onPress={() => goEditAuction(event.id)} hitSlop={8}>
+                                    <Text style={[styles.mineEdit, { color: '#8B5CF6' }]}>{t('openHouse.live.edit')}</Text>
+                                  </Pressable>
+                                ) : null}
+                                <Pressable onPress={() => openAuction(event.id)} hitSlop={8}>
+                                  <Text style={styles.mineOpen}>{t('openHouse.live.open')}</Text>
+                                </Pressable>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                  <Text style={[styles.publicTitle, { color: muted }]}>{t('openHouse.live.publicTitle')}</Text>
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
-              <Text style={{ color: muted, textAlign: 'center', marginTop: 32, fontSize: 13 }}>
+              <Text style={{ color: muted, textAlign: 'center', marginTop: 12, fontSize: 13 }}>
                 {t('openHouse.live.auctionEmpty')}
               </Text>
             }
@@ -680,4 +854,22 @@ const styles = StyleSheet.create({
   bidSubmitText: { color: '#FFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   chevron: { marginTop: 10 },
   tickerText: { fontSize: 10, fontWeight: '500' },
+  actionHint: { fontSize: 12, fontWeight: '800', marginTop: 4 },
+  mineBlock: { gap: 8, marginBottom: 4 },
+  mineTitle: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
+  publicTitle: { fontSize: 11, fontWeight: '700', marginTop: 6, marginBottom: 2 },
+  mineCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  mineCtaText: { fontSize: 14, fontWeight: '700' },
+  mineCard: { marginBottom: 2 },
+  mineActions: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 8 },
+  mineEdit: { color: '#10B981', fontWeight: '800', fontSize: 13 },
+  mineOpen: { color: '#2563EB', fontWeight: '800', fontSize: 13 },
 });

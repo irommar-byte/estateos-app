@@ -16,6 +16,7 @@ type Props = {
   visitMode: OpenHouseVisitMode;
   slots: OpenHouseSlotDraft[];
   onChange: (slots: OpenHouseSlotDraft[]) => void;
+  locked?: boolean;
 };
 
 function defaultSlot(visitMode: OpenHouseVisitMode): OpenHouseSlotDraft {
@@ -28,7 +29,7 @@ function defaultSlot(visitMode: OpenHouseVisitMode): OpenHouseSlotDraft {
   };
 }
 
-export default function OpenHouseSlotBuilder({ isDark, visitMode, slots, onChange }: Props) {
+export default function OpenHouseSlotBuilder({ isDark, visitMode, slots, onChange, locked = false }: Props) {
   const { t, locale } = useI18n();
   const days = useMemo(() => buildOpenHouseDays(21), []);
   const hours = useMemo(() => buildOpenHouseHours(), []);
@@ -43,16 +44,19 @@ export default function OpenHouseSlotBuilder({ isDark, visitMode, slots, onChang
   const active = slots[activeSlotIndex] ?? defaultSlot(visitMode);
 
   const updateActive = (patch: Partial<OpenHouseSlotDraft>) => {
+    if (locked) return;
     const next = slots.map((slot, idx) => (idx === activeSlotIndex ? { ...slot, ...patch } : slot));
     onChange(next);
   };
 
   const addSlot = () => {
+    if (locked) return;
     onChange([...slots, defaultSlot(visitMode)]);
     setActiveSlotIndex(slots.length);
   };
 
   const removeSlot = (idx: number) => {
+    if (locked) return;
     const next = slots.filter((_, i) => i !== idx);
     onChange(next.length ? next : [defaultSlot(visitMode)]);
     setActiveSlotIndex(0);
@@ -75,9 +79,11 @@ export default function OpenHouseSlotBuilder({ isDark, visitMode, slots, onChang
             </Text>
           </Pressable>
         ))}
-        <Pressable onPress={addSlot} style={[styles.addTab, { borderColor: border }]}>
-          <Ionicons name="add" size={18} color="#F59E0B" />
-        </Pressable>
+        {locked ? null : (
+          <Pressable onPress={addSlot} style={[styles.addTab, { borderColor: border }]}>
+            <Ionicons name="add" size={18} color="#F59E0B" />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayRow}>
@@ -152,7 +158,7 @@ export default function OpenHouseSlotBuilder({ isDark, visitMode, slots, onChang
         })}
       </View>
 
-      {slots.length > 1 ? (
+      {slots.length > 1 && !locked ? (
         <Pressable onPress={() => removeSlot(activeSlotIndex)} style={styles.removeBtn}>
           <Text style={styles.removeText}>{t('openHouse.create.removeSlot')}</Text>
         </Pressable>

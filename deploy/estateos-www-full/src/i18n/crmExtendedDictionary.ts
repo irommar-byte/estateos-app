@@ -39,6 +39,10 @@ export type CrmExtendedDictionary = {
     openHouseSuccess: string;
     openHouseEmpty: string;
     openHouseCancel: string;
+    openHouseEdit: string;
+    openHouseSave: string;
+    openHouseSlotsLocked: string;
+    openHouseUpdateSuccess: string;
     openHouseViewOffer: string;
     visitModeFlex: string;
     visitMode30: string;
@@ -80,6 +84,9 @@ export type CrmExtendedDictionary = {
     auctionBidsCount: string;
     auctionViewOffer: string;
     auctionCancel: string;
+    auctionEdit: string;
+    auctionSave: string;
+    auctionUpdateSuccess: string;
     auctionEmpty: string;
     auctionPublishError: string;
     auctionCancelConfirm: string;
@@ -136,6 +143,14 @@ export type CrmExtendedDictionary = {
     noteSave: string;
     noteSaveCloud: string;
     noteSaveError: string;
+    quickNavTitle: string;
+    quickNavRadar: string;
+    quickNavPlanning: string;
+    quickNavOffers: string;
+    quickNavDeals: string;
+    notesMonthTitle: string;
+    notesEmpty: string;
+    notesCount: string;
     weekdays: string[];
     months: string[];
   };
@@ -405,6 +420,10 @@ const pl: CrmExtendedDictionary = {
     openHouseSuccess: "Dzień otwarty opublikowany.",
     openHouseEmpty: "Nie masz jeszcze zaplanowanych dni otwartych.",
     openHouseCancel: "Anuluj wydarzenie",
+    openHouseEdit: "Edytuj",
+    openHouseSave: "Zapisz zmiany",
+    openHouseSlotsLocked: "Są już rezerwacje — terminy zostają bez zmian. Możesz poprawić tytuł i opis.",
+    openHouseUpdateSuccess: "Zmiany dnia otwartego zapisane.",
     openHouseViewOffer: "Zobacz ogłoszenie",
     visitModeFlex: "Dowolna godzina w przedziale",
     visitMode30: "Sloty co 30 min",
@@ -451,6 +470,9 @@ const pl: CrmExtendedDictionary = {
     auctionBidsCount: "ofert",
     auctionViewOffer: "Zobacz ogłoszenie",
     auctionCancel: "Anuluj licytację",
+    auctionEdit: "Edytuj",
+    auctionSave: "Zapisz zmiany",
+    auctionUpdateSuccess: "Zmiany licytacji zapisane.",
     auctionEmpty: "Nie masz jeszcze opublikowanych licytacji.",
     auctionPublishError: "Nie udało się opublikować licytacji.",
     auctionCancelConfirm: "Anulować tę licytację? Aktywne oferty zostaną unieważnione.",
@@ -521,6 +543,14 @@ const pl: CrmExtendedDictionary = {
     noteSave: "Zapisz",
     noteSaveCloud: "Zapisz w chmurze",
     noteSaveError: "Błąd zapisu notatki",
+    quickNavTitle: "Szybkie przejścia",
+    quickNavRadar: "Radar",
+    quickNavPlanning: "Planowanie",
+    quickNavOffers: "Ogłoszenia",
+    quickNavDeals: "Transakcje",
+    notesMonthTitle: "Notatki miesiąca",
+    notesEmpty: "Kliknij dzień w kalendarzu, aby dodać prywatną notatkę.",
+    notesCount: "{n} zapisanych",
     weekdays: ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"],
     months: [
       "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
@@ -827,6 +857,10 @@ const en: CrmExtendedDictionary = {
     openHouseSuccess: "Open house published.",
     openHouseEmpty: "No open house events yet.",
     openHouseCancel: "Cancel event",
+    openHouseEdit: "Edit",
+    openHouseSave: "Save changes",
+    openHouseSlotsLocked: "Reservations already exist — time slots stay as they are. You can still edit the title and notes.",
+    openHouseUpdateSuccess: "Open house changes saved.",
     openHouseViewOffer: "View listing",
     visitModeFlex: "Flexible arrival window",
     visitMode30: "30-minute slots",
@@ -873,6 +907,9 @@ const en: CrmExtendedDictionary = {
     auctionBidsCount: "bids",
     auctionViewOffer: "View listing",
     auctionCancel: "Cancel auction",
+    auctionEdit: "Edit",
+    auctionSave: "Save changes",
+    auctionUpdateSuccess: "Auction changes saved.",
     auctionEmpty: "You have no published auctions yet.",
     auctionPublishError: "Could not publish auction.",
     auctionCancelConfirm: "Cancel this auction? Active bids will be voided.",
@@ -943,6 +980,14 @@ const en: CrmExtendedDictionary = {
     noteSave: "Save",
     noteSaveCloud: "Save to cloud",
     noteSaveError: "Could not save note",
+    quickNavTitle: "Quick links",
+    quickNavRadar: "Radar",
+    quickNavPlanning: "Planning",
+    quickNavOffers: "Listings",
+    quickNavDeals: "Deals",
+    notesMonthTitle: "Month notes",
+    notesEmpty: "Tap a day on the calendar to add a private note.",
+    notesCount: "{n} saved",
     weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     months: [
       "January", "February", "March", "April", "May", "June",
@@ -1238,6 +1283,10 @@ const uk: CrmExtendedDictionary = {
     openHouseSuccess: "День відкритих дверей опубліковано.",
     openHouseEmpty: "У вас ще немає запланованих днів відкритих дверей.",
     openHouseCancel: "Скасувати подію",
+    openHouseEdit: "Редагувати",
+    openHouseSave: "Зберегти зміни",
+    openHouseSlotsLocked: "Уже є бронювання — слоти залишаються без змін. Можна правити назву і опис.",
+    openHouseUpdateSuccess: "Зміни дня відкритих дверей збережено.",
     openHouseViewOffer: "Переглянути оголошення",
     visitModeFlex: "Будь-який час у вікні",
     visitMode30: "Слоти по 30 хв",
@@ -1284,6 +1333,9 @@ const uk: CrmExtendedDictionary = {
     auctionBidsCount: "ставок",
     auctionViewOffer: "Переглянути оголошення",
     auctionCancel: "Скасувати аукціон",
+    auctionEdit: "Редагувати",
+    auctionSave: "Зберегти зміни",
+    auctionUpdateSuccess: "Зміни аукціону збережено.",
     auctionEmpty: "У вас ще немає опублікованих аукціонів.",
     auctionPublishError: "Не вдалося опублікувати аукціон.",
     auctionCancelConfirm: "Скасувати цей аукціон? Активні ставки будуть анульовані.",
@@ -1354,6 +1406,14 @@ const uk: CrmExtendedDictionary = {
     noteSave: "Зберегти",
     noteSaveCloud: "Зберегти в хмарі",
     noteSaveError: "Помилка збереження нотатки",
+    quickNavTitle: "Швидкі переходи",
+    quickNavRadar: "Радар",
+    quickNavPlanning: "Планування",
+    quickNavOffers: "Оголошення",
+    quickNavDeals: "Угоди",
+    notesMonthTitle: "Нотатки місяця",
+    notesEmpty: "Натисніть день у календарі, щоб додати приватну нотатку.",
+    notesCount: "{n} збережено",
     weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"],
     months: [
       "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",

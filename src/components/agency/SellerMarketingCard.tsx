@@ -22,8 +22,9 @@ import {
 } from "../../services/agencyClientService";
 import { promoteMobileOfferListing } from "../../utils/mobileOfferPromote";
 import { shareListingLink } from "../../utils/offerShareUrls";
-import { isFacebookPostPermalink } from "../../lib/marketingChannel";
+import { groupPromotionsByChannel, isFacebookPostPermalink } from "../../lib/marketingChannel";
 import { groupPortalPath } from "../../lib/portalActivityStacks";
+import MarketingChannelBrand from "../marketing/MarketingChannelBrand";
 import { parseSellerEventProposal } from "../../lib/sellerEventStage";
 
 export type MarketingActivity = {
@@ -316,6 +317,14 @@ export default function SellerMarketingCard({
             typeof item.metadata?.groupName === "string"
               ? item.metadata.groupName
               : null,
+          url:
+            typeof item.metadata?.url === "string"
+              ? item.metadata.url
+              : typeof item.metadata?.externalUrl === "string"
+                ? item.metadata.externalUrl
+                : null,
+          status:
+            typeof item.metadata?.status === "string" ? item.metadata.status : null,
         })),
         {
           activePortals: (sellerMarketing?.activeChannels || []).map(
@@ -1997,7 +2006,43 @@ export default function SellerMarketingCard({
                       />
                     </Pressable>
                     {open
-                      ? items.map((item) => {
+                      ? (stack.kind === "promotions"
+                          ? groupPromotionsByChannel(stack.items).map((group) => (
+                              <View key={group.id} style={{ marginTop: 8, marginLeft: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, marginBottom: 4 }}>
+                                  <MarketingChannelBrand id={group.id} label={group.label} />
+                                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: "700" }}>
+                                    {group.items.length}
+                                  </Text>
+                                </View>
+                                {group.items.slice(0, feedLimit).map((item) => {
+                                  const full = allMarketingFeed.find((row) => row.id === item.id);
+                                  if (!full) return null;
+                                  return (
+                                    <View
+                                      key={item.id}
+                                      style={[styles.feedRow, { borderColor: colors.border, marginLeft: 6 }]}
+                                    >
+                                      <View style={{ flex: 1 }}>
+                                        <Text style={{ color: colors.text, fontWeight: "800", fontSize: 13 }}>
+                                          {full.title || full.kind}
+                                        </Text>
+                                        <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }}>
+                                          {formatDateLabel(full.createdAt)} ·{" "}
+                                          {full.visibleToClient ? "widoczne" : "tylko agent"}
+                                        </Text>
+                                      </View>
+                                      <Switch
+                                        value={Boolean(full.visibleToClient)}
+                                        disabled={Boolean(busy)}
+                                        onValueChange={(value) => void toggleVisibility(full.id, value)}
+                                      />
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            ))
+                          : items.map((item) => {
                           const full = allMarketingFeed.find((row) => row.id === item.id);
                           if (!full) return null;
                           return (
@@ -2021,7 +2066,7 @@ export default function SellerMarketingCard({
                               />
                             </View>
                           );
-                        })
+                        }))
                       : null}
                     {open && stack.items.length > items.length ? (
                       <Pressable

@@ -11,7 +11,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
@@ -22,8 +22,12 @@ import type { OpenHouseSlotDraft, OpenHouseVisitMode } from '../contracts/openHo
 import {
   createOpenHouseEvent,
   estimateOpenHouseSlotCount,
+  eventHasReservations,
+  eventSlotsToDrafts,
+  fetchOpenHouseEvent,
   fetchOpenHouseTicker,
   slotDraftToApiPayload,
+  updateOpenHouseEvent,
 } from '../services/openHouseService';
 import { useOpenHouseLiveStore } from '../store/useOpenHouseLiveStore';
 
@@ -38,6 +42,10 @@ function defaultSlots(): OpenHouseSlotDraft[] {
 
 export default function OpenHouseCreateScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const eventId = Number(route.params?.eventId) || 0;
+  const isEdit = eventId > 0;
+  const returnToLive = Boolean(route.params?.returnToLive);
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
@@ -54,6 +62,8 @@ export default function OpenHouseCreateScreen() {
   const [description, setDescription] = useState('');
   const [visitMode, setVisitMode] = useState<OpenHouseVisitMode>('SLOT_60');
   const [slots, setSlots] = useState<OpenHouseSlotDraft[]>(defaultSlots);
+  const [loadingEvent, setLoadingEvent] = useState(isEdit);
+  const [slotsLocked, setSlotsLocked] = useState(false);
 
   const bg = isDark ? '#000000' : '#F2F2F7';
   const card = isDark ? '#1C1C1E' : '#FFFFFF';
@@ -79,12 +89,46 @@ export default function OpenHouseCreateScreen() {
             district: String(o.district || ''),
           }));
         setOffers(rows);
-        if (rows[0]) setSelectedOfferId(rows[0].id);
+        if (!isEdit && rows[0]) setSelectedOfferId(rows[0].id);
       } finally {
         setLoadingOffers(false);
       }
     })();
-  }, [token, user?.id]);
+  }, [token, user?.id, isEdit]);
+
+  useEffect(() => {
+    if (!isEdit || !token) return;
+    void (async () => {
+      setLoadingEvent(true);
+      const event = await fetchOpenHouseEvent(token, eventId);
+      if (!event || !event.isHost) {
+        setLoadingEvent(false);
+        Alert.alert(t('openHouse.create.title'), t('openHouse.event.loadError'));
+        navigation.goBack();
+        return;
+      }
+      setSelectedOfferId(event.offerId);
+      setTitle(event.title || '');
+      setDescription(event.description || '');
+      setVisitMode(event.visitMode);
+      const drafts = eventSlotsToDrafts(event.slots, event.visitMode);
+      if (drafts.length) setSlots(drafts);
+      setSlotsLocked(eventHasReservations(event.slots));
+      setOffers((current) => {
+        if (current.some((row) => row.id === event.offerId)) return current;
+        return [
+          {
+            id: event.offer.id,
+            title: event.offer.title,
+            city: event.offer.city,
+            district: event.offer.district,
+          },
+          ...current,
+        ];
+      });
+      setLoadingEvent(false);
+    })();
+  }, [isEdit, eventId, token, navigation, t]);
 
   const generatedCount = useMemo(
     () => estimateOpenHouseSlotCount(slots, visitMode),
@@ -96,6 +140,19 @@ export default function OpenHouseCreateScreen() {
     [token, selectedOfferId, slots.length, generatedCount]
   );
 
+  const finishAfterSave = (savedId: number) => {
+    if (returnToLive) {
+      useOpenHouseLiveStore.getState().openPanel();
+      navigation.goBack();
+      return;
+    }
+    if (isEdit) {
+      navigation.goBack();
+      return;
+    }
+    navigation.replace('OpenHouseEvent', { eventId: savedId });
+  };
+
   const publish = async (asDraft = false) => {
     if (!token || !selectedOfferId) return;
     if (!slots.length) {
@@ -103,14 +160,20 @@ export default function OpenHouseCreateScreen() {
       return;
     }
     setSubmitting(true);
-    const result = await createOpenHouseEvent(token, {
-      offerId: selectedOfferId,
-      title: title.trim() || undefined,
-      description: description.trim() || undefined,
-      visitMode,
-      slots: slotDraftToApiPayload(slots),
-      publish: !asDraft,
-    });
+    const result = isEdit
+      ? await updateOpenHouseEvent(token, eventId, {
+          title: title.trim() || undefined,
+          description: description.trim() || undefined,
+          ...(slotsLocked ? {} : { visitMode, slots: slotDraftToApiPayload(slots) }),
+        })
+      : await createOpenHouseEvent(token, {
+          offerId: selectedOfferId,
+          title: title.trim() || undefined,
+          description: description.trim() || undefined,
+          visitMode,
+          slots: slotDraftToApiPayload(slots),
+          publish: !asDraft,
+        });
     setSubmitting(false);
 
     if (!result.event) {
@@ -125,13 +188,16 @@ export default function OpenHouseCreateScreen() {
       if (ticker.length) live.showBanner();
     }
 
-    Alert.alert(t('openHouse.create.successTitle'), t('openHouse.create.successBody'), [
-      {
-        text: 'OK',
-        onPress: () =>
-          navigation.replace('OpenHouseEvent', { eventId: result.event!.id }),
-      },
-    ]);
+    Alert.alert(
+      isEdit ? t('openHouse.create.updateSuccessTitle') : t('openHouse.create.successTitle'),
+      isEdit ? t('openHouse.create.updateSuccessBody') : t('openHouse.create.successBody'),
+      [
+        {
+          text: 'OK',
+          onPress: () => finishAfterSave(result.event!.id),
+        },
+      ],
+    );
   };
 
   return (
@@ -140,13 +206,15 @@ export default function OpenHouseCreateScreen() {
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="chevron-back" size={28} color={text} />
         </Pressable>
-        <Text style={[styles.title, { color: text }]}>{t('openHouse.create.title')}</Text>
+        <Text style={[styles.title, { color: text }]}>
+          {isEdit ? t('openHouse.create.editTitle') : t('openHouse.create.title')}
+        </Text>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32, gap: 16 }}>
         <View style={[styles.section, { backgroundColor: card }]}>
           <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.create.stepOffer')}</Text>
-          {loadingOffers ? (
+          {loadingOffers || loadingEvent ? (
             <ActivityIndicator color="#F59E0B" />
           ) : offers.length ? (
             offers.map((offer) => {
@@ -154,10 +222,11 @@ export default function OpenHouseCreateScreen() {
               return (
                 <Pressable
                   key={offer.id}
+                  disabled={isEdit}
                   onPress={() => setSelectedOfferId(offer.id)}
                   style={[
                     styles.offerRow,
-                    { borderColor: border, backgroundColor: selected ? 'rgba(245,158,11,0.12)' : 'transparent' },
+                    { borderColor: border, backgroundColor: selected ? 'rgba(245,158,11,0.12)' : 'transparent', opacity: isEdit ? 0.85 : 1 },
                   ]}
                 >
                   <Ionicons
@@ -215,6 +284,7 @@ export default function OpenHouseCreateScreen() {
               <Pressable
                 key={mode}
                 onPress={() => {
+                  if (slotsLocked) return;
                   setVisitMode(mode);
                   if (mode !== 'FLEX') {
                     setSlots((prev) => prev.map((s) => ({ ...s, capacity: 1 })));
@@ -241,16 +311,23 @@ export default function OpenHouseCreateScreen() {
 
         <View style={[styles.section, { backgroundColor: card }]}>
           <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.create.stepSlots')}</Text>
-          <Text style={{ color: muted, fontSize: 13 }}>
-            {generatedCount > 0
-              ? t('openHouse.create.slotsPreview', { n: String(generatedCount) })
-              : t('openHouse.create.slotRequired')}
-          </Text>
+          {slotsLocked ? (
+            <Text style={{ color: muted, fontSize: 13 }}>
+              {t('openHouse.create.slotsLocked')}
+            </Text>
+          ) : (
+            <Text style={{ color: muted, fontSize: 13 }}>
+              {generatedCount > 0
+                ? t('openHouse.create.slotsPreview', { n: String(generatedCount) })
+                : t('openHouse.create.slotRequired')}
+            </Text>
+          )}
           <OpenHouseSlotBuilder
             isDark={isDark}
             visitMode={visitMode}
             slots={slots}
             onChange={setSlots}
+            locked={slotsLocked}
           />
         </View>
 
@@ -262,7 +339,9 @@ export default function OpenHouseCreateScreen() {
           {submitting ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.primaryBtnText}>{t('openHouse.create.publish')}</Text>
+            <Text style={styles.primaryBtnText}>
+              {isEdit ? t('openHouse.create.save') : t('openHouse.create.publish')}
+            </Text>
           )}
         </Pressable>
       </ScrollView>

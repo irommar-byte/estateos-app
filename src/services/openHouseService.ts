@@ -2,6 +2,7 @@ import { API_URL } from '../config/network';
 import type {
   OpenHouseEventRecord,
   OpenHouseReservationRecord,
+  OpenHouseSlotDraft,
   OpenHouseTickerItem,
   OpenHouseVisitMode,
 } from '../contracts/openHouseContract';
@@ -182,6 +183,65 @@ export function slotDraftToApiPayload(
       capacity: draft.capacity,
     };
   });
+}
+
+function padTime(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+export function eventSlotsToDrafts(
+  slots: Array<{ startsAt: string; endsAt: string; capacity: number }>,
+  visitMode: OpenHouseVisitMode
+): OpenHouseSlotDraft[] {
+  if (!slots.length) return [];
+  const sorted = [...slots].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const toDraft = (slot: { startsAt: string; endsAt: string; capacity: number }): OpenHouseSlotDraft => {
+    const start = new Date(slot.startsAt);
+    const end = new Date(slot.endsAt);
+    const date = new Date(start);
+    date.setHours(0, 0, 0, 0);
+    return {
+      date,
+      startHour: `${padTime(start.getHours())}:${padTime(start.getMinutes())}`,
+      endHour: `${padTime(end.getHours())}:${padTime(end.getMinutes())}`,
+      capacity: slot.capacity,
+    };
+  };
+  if (visitMode === 'FLEX') return sorted.map(toDraft);
+  const windows: OpenHouseSlotDraft[] = [];
+  for (const slot of sorted) {
+    const draft = toDraft(slot);
+    const last = windows[windows.length - 1];
+    if (
+      last &&
+      sameDay(last.date, draft.date) &&
+      last.endHour === draft.startHour &&
+      last.capacity === draft.capacity
+    ) {
+      last.endHour = draft.endHour;
+    } else {
+      windows.push(draft);
+    }
+  }
+  return windows;
+}
+
+export function eventHasReservations(
+  slots: Array<{ reservedCount?: number; reservations?: unknown[] }>
+) {
+  return slots.some(
+    (slot) =>
+      Number(slot.reservedCount || 0) > 0 ||
+      (Array.isArray(slot.reservations) && slot.reservations.length > 0)
+  );
 }
 
 export function buildOpenHouseHours(): string[] {
