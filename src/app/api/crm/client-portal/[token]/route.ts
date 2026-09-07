@@ -55,6 +55,7 @@ import {
 import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 import {
   buildSellerListingPath,
+  extractOtherAgenciesPresence,
   isActivityVisibleToClient,
   isMarketingActivityKind,
   loadSellerPortalMarketing,
@@ -266,6 +267,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           managementStatus: true,
           images: true,
           promotedUntil: true,
+          createdAt: true,
         },
       },
       acquisition: {
@@ -307,6 +309,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               'EXTERNAL_PORTAL_LISTED',
               'EXTERNAL_PORTAL_UPDATED',
               'MARKETING_NOTE',
+              'OTHER_AGENCY_OUTREACH',
               'OPEN_HOUSE_PROPOSAL',
               'OPEN_HOUSE_CONFIRMED',
               'AUCTION_PROPOSAL',
@@ -505,6 +508,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               ? client.linkedOffer.promotedUntil.toISOString()
               : null,
             featured: isPromotionActive(client.linkedOffer.promotedUntil),
+            createdAt: client.linkedOffer.createdAt.toISOString(),
           }
         : null,
       listingProgress: listingVisible
@@ -529,6 +533,10 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           evidenceUrl: item.evidenceUrl ? absolutizeMediaUrl(item.evidenceUrl) : null,
         })) || [],
       activeChannels: sellerMarketing?.activeChannels || [],
+      otherAgencies:
+        client.type === 'SELLER'
+          ? extractOtherAgenciesPresence(client.activities)
+          : { live: false, body: null },
       sellerNextStep: sellerMarketing?.sellerNextStep || null,
       pendingDecisions: sellerMarketing?.pendingDecisions || [],
       sellerEvents: sellerMarketing?.sellerEvents || null,

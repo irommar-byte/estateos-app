@@ -710,7 +710,7 @@ function OfferDetails({
 
             {!isArchived ? (
             <div
-              className="pointer-events-auto hidden w-full flex-col gap-3 md:flex"
+              className="pointer-events-auto hidden w-full flex-col gap-3 sm:flex"
               onClick={(e) => e.stopPropagation()}
             >
               {offer.isPresentedByAgent ? (
@@ -796,6 +796,7 @@ function OfferDetails({
                   title: t.openHouse.bannerTitle,
                   subtitle: t.openHouse.bannerSubtitle,
                   cta: t.openHouse.bannerCta,
+                  liveBadge: t.openHouse.liveBadge,
                 }}
                 onPress={openOpenHouseModal}
               />
@@ -1024,6 +1025,7 @@ function OfferDetails({
                         title: t.openHouse.bannerTitle,
                         subtitle: t.openHouse.bannerSubtitle,
                         cta: t.openHouse.bannerCta,
+                        liveBadge: t.openHouse.liveBadge,
                       }}
                       onPress={openOpenHouseModal}
                     />
@@ -1536,6 +1538,7 @@ function OfferDetails({
         copy={t.guestAsk}
         defaultPhone={String(currentUser?.phone || '')}
         defaultName={String(currentUser?.name || '').split(' ')[0] || ''}
+        defaultEmail={String(currentUser?.email || '')}
       />
 
       <OpenHouseReserveModal

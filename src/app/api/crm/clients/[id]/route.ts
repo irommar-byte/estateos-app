@@ -778,6 +778,41 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
   }
 
+  if (action === 'publish_other_agencies') {
+    const bodyText = String(body.body || body.note || '').trim();
+    if (bodyText.length < 8) {
+      return NextResponse.json(
+        { error: 'Opisz krótko, z kim i co się dzieje (min. 8 znaków).' },
+        { status: 400 },
+      );
+    }
+    const clientRow = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      select: { linkedOfferId: true },
+    });
+    if (!clientRow) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+    const result = await recordMarketingActivity({
+      clientId,
+      agencyUserId,
+      kind: MARKETING_ACTIVITY.OTHER_AGENCY_OUTREACH,
+      title: 'Współpraca z innymi biurami',
+      body: bodyText.slice(0, 1200),
+      offerId: clientRow.linkedOfferId,
+      visibleToClient: body.visibleToClient !== false,
+      metadata: { note: bodyText.slice(0, 1200), status: 'active' },
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({
+      success: true,
+      activityId: result.activityId,
+      visibleToClient: result.visibleToClient,
+    });
+  }
+
   if (action === 'prepare_facebook_group_share') {
     const offerId = Number(body.offerId);
     if (!Number.isFinite(offerId) || offerId <= 0) {

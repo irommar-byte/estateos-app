@@ -102,6 +102,8 @@ export type OfferPageCopy = {
     questions: { key: string; label: string }[];
     phoneLabel: string;
     phonePlaceholder: string;
+    emailLabel: string;
+    emailPlaceholder: string;
     messageLabel: string;
     messagePlaceholder: string;
     nameLabel: string;
@@ -131,6 +133,7 @@ export type OfferPageCopy = {
     bannerTitle: string;
     bannerSubtitle: (date: string, spots: number) => string;
     bannerCta: string;
+    liveBadge: string;
     markLabel: string;
     markDate: (date: string) => string;
     modalTitle: string;
@@ -292,7 +295,7 @@ const PL: OfferPageCopy = {
   guestAsk: {
     title: "Zapytaj wystawcę",
     subtitle:
-      "Bez rejestracji — zostaw telefon i krótką wiadomość. Wystawca dostanie e-mail oraz powiadomienie w EstateOS.",
+      "Bez rejestracji — zostaw telefon, e-mail i krótką wiadomość. Wystawca dostanie e-mail oraz powiadomienie w EstateOS.",
     questionsLabel: "Popularne pytania",
     questions: [
       { key: "isAvailable", label: "Czy oferta jest nadal aktualna?" },
@@ -302,6 +305,8 @@ const PL: OfferPageCopy = {
     ],
     phoneLabel: "Twój telefon",
     phonePlaceholder: "+48 …",
+    emailLabel: "E-mail",
+    emailPlaceholder: "np. jan@example.com",
     messageLabel: "Krótka wiadomość",
     messagePlaceholder: "Napisz, o co chcesz zapytać…",
     nameLabel: "Imię",
@@ -333,6 +338,7 @@ const PL: OfferPageCopy = {
     bannerTitle: "Dzień otwartych drzwi",
     bannerSubtitle: (date, spots) => `Najbliższy termin: ${date} · ${spots} wolnych miejsc`,
     bannerCta: "Zarezerwuj wizytę",
+    liveBadge: "TRWA",
     markLabel: "Dzień otwarty",
     markDate: (date) => date,
     modalTitle: "Dzień otwarty",
@@ -493,7 +499,7 @@ const EN: OfferPageCopy = {
   guestAsk: {
     title: "Ask the seller",
     subtitle:
-      "No account needed — leave your phone and a short message. The seller gets an email and an EstateOS notification.",
+      "No account needed — leave your phone, email and a short message. The seller gets an email and an EstateOS notification.",
     questionsLabel: "Popular questions",
     questions: [
       { key: "isAvailable", label: "Is this listing still available?" },
@@ -503,6 +509,8 @@ const EN: OfferPageCopy = {
     ],
     phoneLabel: "Your phone",
     phonePlaceholder: "+48 …",
+    emailLabel: "Email",
+    emailPlaceholder: "you@example.com",
     messageLabel: "Short message",
     messagePlaceholder: "What would you like to ask?",
     nameLabel: "Name",
@@ -534,6 +542,7 @@ const EN: OfferPageCopy = {
     bannerTitle: "Open house day",
     bannerSubtitle: (date, spots) => `Next slot: ${date} · ${spots} spots left`,
     bannerCta: "Book a visit",
+    liveBadge: "NOW",
     markLabel: "Open house",
     markDate: (date) => date,
     modalTitle: "Open house",

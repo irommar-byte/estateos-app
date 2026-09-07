@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { sendTransactionalEmail, isEmailDeliveryEnabled, buildOfferGuestInquiryEmail } from '@/lib/email/transactional';
 import { notificationService } from '@/lib/services/notification.service';
+import { normalizePhoneE164 } from '@/lib/phoneE164';
 
 export const ONLINE_MS = 25 * 60 * 1000;
 
@@ -34,16 +35,11 @@ export function resolveGuestQuestionLabel(questionKey: string, customQuestion?: 
   return custom || QUESTION_LABELS_PL.moreInfo;
 }
 
-function normalizePhone(raw: string): string {
-  return String(raw || '')
-    .trim()
-    .replace(/[^\d+]/g, '')
-    .slice(0, 24);
-}
-
-function isPlausiblePhone(phone: string): boolean {
-  const digits = phone.replace(/\D/g, '');
-  return digits.length >= 9 && digits.length <= 15;
+export function normalizeGuestEmail(raw: string): string | null {
+  const email = String(raw || '').trim().toLowerCase();
+  if (!email || email.length > 160) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return email;
 }
 
 export async function submitOfferGuestInquiry(params: {
@@ -51,6 +47,7 @@ export async function submitOfferGuestInquiry(params: {
   questionKey: string;
   message: string;
   phone: string;
+  email?: string;
   guestName?: string;
 }): Promise<
   | { ok: true }
@@ -61,9 +58,14 @@ export async function submitOfferGuestInquiry(params: {
     return { ok: false, status: 400, error: 'Nieprawidłowa oferta.' };
   }
 
-  const phone = normalizePhone(params.phone);
-  if (!isPlausiblePhone(phone)) {
+  const phone = normalizePhoneE164(params.phone);
+  if (!phone) {
     return { ok: false, status: 400, error: 'Podaj prawidłowy numer telefonu.' };
+  }
+
+  const email = normalizeGuestEmail(String(params.email || ''));
+  if (!email) {
+    return { ok: false, status: 400, error: 'Podaj prawidłowy adres e-mail.' };
   }
 
   const message = String(params.message || '').trim();
@@ -116,6 +118,7 @@ export async function submitOfferGuestInquiry(params: {
     question: questionLabel,
     message,
     phone,
+    email,
     guestName,
   });
 
@@ -131,7 +134,7 @@ export async function submitOfferGuestInquiry(params: {
   }
 
   const notifTitle = 'Nowe zapytanie o ofertę';
-  const notifBody = `${questionLabel} · Tel. ${phone}${guestName ? ` · ${guestName}` : ''}. Szczegóły także na e-mailu.`;
+  const notifBody = `${questionLabel} · Tel. ${phone} · ${email}${guestName ? ` · ${guestName}` : ''}. Szczegóły także na e-mailu.`;
   const dayKey = new Date().toISOString().slice(0, 10);
   const idempotencyKey = `guest-inquiry:${offerId}:${phone}:${dayKey}`;
 
@@ -170,19 +173,16 @@ export async function submitOfferGuestInquiry(params: {
       }).catch(() => null);
     }
   } catch (error: any) {
-    // Duplicate same-day inquiry from same phone — still OK if email went out.
     if (error?.code !== 'P2002') {
       console.error('[guest-inquiry] notification failed', error);
     }
   }
 
   if (!emailSent && !isEmailDeliveryEnabled()) {
-    // Prefer success when notification was created; email may be disabled in some envs.
     return { ok: true };
   }
 
   if (!emailSent && isEmailDeliveryEnabled()) {
-    // Notification still delivered — soft success with warning path handled by client as ok.
     console.warn('[guest-inquiry] email failed for offer', offerId);
   }
 

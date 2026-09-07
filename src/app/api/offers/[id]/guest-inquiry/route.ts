@@ -38,6 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       questionKey: String(body?.questionKey || ''),
       message: String(body?.message || ''),
       phone: String(body?.phone || ''),
+      email: String(body?.email || ''),
       guestName: String(body?.guestName || ''),
     });
 

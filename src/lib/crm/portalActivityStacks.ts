@@ -73,7 +73,8 @@ export function portalStackKind(kind: string): PortalStackKind {
     k === "EXTERNAL_PORTAL_LISTED" ||
     k === "EXTERNAL_PORTAL_UPDATED" ||
     k === "EXTERNAL_PORTAL" ||
-    k === "MARKETING_NOTE"
+    k === "MARKETING_NOTE" ||
+    k === "OTHER_AGENCY_OUTREACH"
   ) {
     return "promotions";
   }

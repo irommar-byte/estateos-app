@@ -99,7 +99,7 @@ export const UK: OfferPageCopy = {
   guestAsk: {
     title: "Запитати продавця",
     subtitle:
-      "Без реєстрації — залиште телефон і коротке повідомлення. Продавець отримає email і сповіщення в EstateOS.",
+      "Без реєстрації — залиште телефон, email і коротке повідомлення. Продавець отримає email і сповіщення в EstateOS.",
     questionsLabel: "Популярні запитання",
     questions: [
       { key: "isAvailable", label: "Чи актуальна ще пропозиція?" },
@@ -109,6 +109,8 @@ export const UK: OfferPageCopy = {
     ],
     phoneLabel: "Ваш телефон",
     phonePlaceholder: "+48 …",
+    emailLabel: "Email",
+    emailPlaceholder: "you@example.com",
     messageLabel: "Коротке повідомлення",
     messagePlaceholder: "Про що хочете запитати?",
     nameLabel: "Ім'я",
@@ -140,6 +142,7 @@ export const UK: OfferPageCopy = {
     bannerTitle: "День відкритих дверей",
     bannerSubtitle: (date, spots) => `Найближчий термін: ${date} · ${spots} вільних місць`,
     bannerCta: "Забронювати візит",
+    liveBadge: "ТРИВАЄ",
     markLabel: "День відкритих дверей",
     markDate: (date: string) => date,
     modalTitle: "День відкритих дверей",

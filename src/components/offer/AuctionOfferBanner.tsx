@@ -23,15 +23,17 @@ type Props = {
 
 function formatDate(iso: string, locale: Locale): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  const tag = locale === "pl" ? "pl-PL" : locale === "uk" ? "uk-UA" : "en-GB";
-  return date.toLocaleString(tag, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (!Number.isNaN(date.getTime())) {
+    const tag = locale === "pl" ? "pl-PL" : locale === "uk" ? "uk-UA" : "en-GB";
+    return date.toLocaleString(tag, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  return "—";
 }
 
 function formatPrice(amount: number, currency: string, locale: Locale) {
@@ -54,35 +56,32 @@ export default function AuctionOfferBanner({
     <motion.button
       type="button"
       onClick={onPress}
-      className={`eos-offer-feature-banner group relative w-full overflow-hidden text-left transition-transform active:scale-[0.99] ${
-        isHero ? "eos-offer-feature-banner--hero" : ""
-      } rounded-2xl border border-violet-500/25 bg-violet-500/10 px-4 py-3.5 sm:px-5 sm:py-4`}
+      className={`eos-offer-feature-banner eos-offer-feature-banner--auction group relative w-full overflow-hidden text-left ${
+        isLive ? "is-live" : ""
+      } ${isHero ? "eos-offer-feature-banner--hero" : ""}`}
       whileTap={{ scale: 0.99 }}
     >
+      <span className="eos-offer-feature-banner__glass" aria-hidden />
       <div className="relative flex items-center gap-3 sm:gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-500 ring-1 ring-violet-500/20 sm:h-12 sm:w-12">
+        <div className="eos-offer-feature-banner__icon">
           <Gavel size={22} strokeWidth={2.2} />
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="eos-offer-feature-banner-title text-[13px] font-semibold tracking-tight eos-violet-accent-strong">
-              {copy.title}
-            </p>
+            <p className="eos-offer-feature-banner-title">{copy.title}</p>
             {isLive ? (
-              <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                {copy.liveBadge}
-              </span>
+              <span className="eos-offer-feature-banner__badge">{copy.liveBadge}</span>
             ) : null}
           </div>
-          <p className="eos-offer-feature-banner-subtitle mt-1 text-[13px] font-medium leading-snug text-[var(--eos-text)]">
+          <p className="eos-offer-feature-banner-subtitle">
             {isLive
               ? copy.subtitleLive(priceLabel, event.bidCount)
               : copy.subtitleScheduled(formatDate(event.startsAt, locale))}
           </p>
         </div>
 
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-600 px-3.5 py-2 text-[13px] font-semibold text-white transition group-hover:bg-violet-500">
+        <span className="eos-offer-feature-banner__cta">
           {copy.cta}
           <ChevronRight size={14} strokeWidth={2.5} />
         </span>
