@@ -1,11 +1,13 @@
 "use client";
 
-import { ExternalLink, Star } from "lucide-react";
+import { ExternalLink } from "lucide-react";
+import MarketingChannelBrand from "@/components/portal/MarketingChannelBrand";
 import {
   facebookClientOpenHref,
   facebookOpenLabel,
   formatPublicationStatus,
   listingThumbnailFallback,
+  promotionGroupLabel,
   resolveMarketingChannel,
 } from "@/lib/crm/marketingChannel";
 
@@ -26,14 +28,6 @@ export type ListingPathEvent = {
   promotedUntil?: string | null;
   reportId?: number | null;
 };
-
-function FacebookMark() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-4 fill-current" aria-hidden>
-      <path d="M13.5 21v-7.2h2.4l.36-2.76H13.5V9.3c0-.8.22-1.34 1.38-1.34h1.48V5.5c-.26-.03-1.14-.11-2.16-.11-2.14 0-3.6 1.3-3.6 3.7v2.05H8.1v2.76h2.5V21h2.9Z" />
-    </svg>
-  );
-}
 
 function whenLabel(item: ListingPathEvent) {
   const raw = item.startsAt || item.createdAt;
@@ -92,20 +86,15 @@ export default function ListingPathEventCard({
     <article className={`listing-path-card listing-path-card--${channel.id}`}>
       <div className="listing-path-card__glow" aria-hidden />
       <div className="listing-path-card__row">
-        <span className="listing-path-card__mark" aria-hidden>
-          {channel.id === "facebook" ? (
-            <FacebookMark />
-          ) : channel.id === "estateos" ? (
-            <Star className="size-4 fill-current" />
-          ) : (
-            <span className="listing-path-card__dot" />
-          )}
-        </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <p className="listing-path-card__badge">{channel.badge}</p>
+          <div className="listing-path-card__brand-row">
+            <MarketingChannelBrand
+              id={channel.id}
+              label={promotionGroupLabel(channel.id === "system" ? "portal" : channel.id)}
+            />
             <p className="listing-path-card__when">{whenLabel(item)}</p>
           </div>
+          <p className="listing-path-card__badge">{channel.badge}</p>
           <h3 className="listing-path-card__title">{headline}</h3>
           {item.body ? <p className="listing-path-card__body">{item.body}</p> : null}
           {status ? <p className="listing-path-card__status">{status}</p> : null}

@@ -390,13 +390,108 @@ export async function getActiveAuctionForOffer(offerId: number, viewerUserId?: n
   return serializeAuctionEvent(fresh as RawAuctionEvent, viewerUserId);
 }
 
-function validateAuctionWindow(startsAt: Date, endsAt: Date) {
-  const now = Date.now();
+function validateAuctionWindow(startsAt: Date, endsAt: Date, now = Date.now()) {
   if (startsAt.getTime() <= now) throw new Error('STARTS_IN_PAST');
   if (endsAt <= startsAt) throw new Error('INVALID_WINDOW');
   const duration = endsAt.getTime() - startsAt.getTime();
   if (duration < MIN_AUCTION_DURATION_MS) throw new Error('DURATION_TOO_SHORT');
   if (duration > MAX_AUCTION_DURATION_MS) throw new Error('DURATION_TOO_LONG');
+}
+
+export type AuctionUpdateInput = {
+  title?: string | null;
+  description?: string | null;
+  startPrice?: number | null;
+  reservePrice?: number | null;
+  minIncrement?: number | null;
+  startsAt?: string;
+  endsAt?: string;
+};
+
+export type AuctionUpdateSnapshot = {
+  status: string;
+  bidCount: number;
+  startPrice: number;
+  reservePrice: number | null;
+  minIncrement: number | null;
+  startsAt: Date;
+  endsAt: Date;
+};
+
+export function buildAuctionUpdatePatch(
+  event: AuctionUpdateSnapshot,
+  input: AuctionUpdateInput,
+  now = Date.now(),
+) {
+  if (!['DRAFT', 'SCHEDULED'].includes(event.status)) throw new Error('CANNOT_EDIT');
+
+  const data: {
+    title?: string | null;
+    description?: string | null;
+    startPrice?: number;
+    reservePrice?: number | null;
+    minIncrement?: number | null;
+    startsAt?: Date;
+    endsAt?: Date;
+  } = {};
+
+  if (input.title !== undefined) data.title = input.title?.trim() || null;
+  if (input.description !== undefined) data.description = input.description?.trim() || null;
+
+  const wantsPricingOrWindow =
+    input.startPrice != null ||
+    input.reservePrice !== undefined ||
+    input.minIncrement !== undefined ||
+    Boolean(input.startsAt) ||
+    Boolean(input.endsAt);
+
+  if (event.bidCount > 0 && wantsPricingOrWindow) {
+    if (input.startPrice != null && Number(input.startPrice) !== event.startPrice) {
+      throw new Error('START_PRICE_LOCKED');
+    }
+    if (input.startsAt || input.endsAt || input.reservePrice !== undefined || input.minIncrement !== undefined) {
+      throw new Error('EDIT_HAS_BIDS');
+    }
+  }
+
+  if (event.bidCount === 0 && input.startPrice != null) {
+    const startPrice = Number(input.startPrice);
+    if (!Number.isFinite(startPrice) || startPrice <= 0) throw new Error('INVALID_START_PRICE');
+    data.startPrice = startPrice;
+  }
+
+  if (event.bidCount === 0 && input.reservePrice !== undefined) {
+    data.reservePrice =
+      input.reservePrice != null && Number(input.reservePrice) > 0 ? Number(input.reservePrice) : null;
+  }
+
+  if (event.bidCount === 0 && input.minIncrement !== undefined) {
+    data.minIncrement =
+      input.minIncrement != null && Number(input.minIncrement) > 0 ? Number(input.minIncrement) : null;
+  }
+
+  const nextStart = input.startsAt ? new Date(input.startsAt) : event.startsAt;
+  const nextEnd = input.endsAt ? new Date(input.endsAt) : event.endsAt;
+  if (input.startsAt || input.endsAt) {
+    if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) throw new Error('INVALID_WINDOW');
+    const startChanged = nextStart.getTime() !== event.startsAt.getTime();
+    if (startChanged) {
+      validateAuctionWindow(nextStart, nextEnd, now);
+    } else {
+      if (nextEnd <= nextStart) throw new Error('INVALID_WINDOW');
+      const duration = nextEnd.getTime() - nextStart.getTime();
+      if (duration < MIN_AUCTION_DURATION_MS) throw new Error('DURATION_TOO_SHORT');
+      if (duration > MAX_AUCTION_DURATION_MS) throw new Error('DURATION_TOO_LONG');
+    }
+    data.startsAt = nextStart;
+    data.endsAt = nextEnd;
+  }
+
+  const nextStartPrice = data.startPrice ?? event.startPrice;
+  const nextReserve = data.reservePrice !== undefined ? data.reservePrice : event.reservePrice;
+  if (nextReserve != null && nextReserve < nextStartPrice) throw new Error('RESERVE_BELOW_START');
+
+  return data;
 }
 
 export async function createAuctionEvent(
@@ -491,6 +586,25 @@ export async function cancelAuctionEvent(hostUserId: number, eventId: number) {
     data: { status: 'CANCELLED' },
   });
 
+  return loadAndSerialize(eventId, hostUserId);
+}
+
+export async function updateAuctionEvent(
+  hostUserId: number,
+  eventId: number,
+  input: AuctionUpdateInput,
+) {
+  await ensureAuctionSchema();
+  const event = await prisma.auctionEvent.findFirst({
+    where: { id: eventId, hostUserId },
+  });
+  if (!event) throw new Error('NOT_FOUND');
+
+  const data = buildAuctionUpdatePatch(event, input);
+  await prisma.auctionEvent.update({
+    where: { id: eventId },
+    data,
+  });
   return loadAndSerialize(eventId, hostUserId);
 }
 
@@ -640,6 +754,11 @@ export function mapAuctionError(error: unknown): { code: string; message: string
     case 'CANNOT_CANCEL':
     case 'HAS_BIDS':
       return { code, message: 'Nie można anulować tej licytacji.', status: 409 };
+    case 'CANNOT_EDIT':
+      return { code, message: 'Tej licytacji nie można już edytować.', status: 409 };
+    case 'START_PRICE_LOCKED':
+    case 'EDIT_HAS_BIDS':
+      return { code, message: 'Po złożeniu ofert można zmienić tylko tytuł i opis.', status: 409 };
     case 'HOST_CANNOT_BID':
       return { code, message: 'Właściciel nie może licytować własnej oferty.', status: 403 };
     case 'OFFER_INACTIVE':

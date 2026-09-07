@@ -51,6 +51,8 @@ export default function ProOpenHouseManageModal({
   const [capacity, setCapacity] = useState(8);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [slotsLocked, setSlotsLocked] = useState(false);
 
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   const openSessionRef = useRef(0);
@@ -99,6 +101,8 @@ export default function ProOpenHouseManageModal({
     setTitle("");
     setDescription("");
     setVisitMode("SLOT_60");
+    setEditingId(null);
+    setSlotsLocked(false);
     setOfferId(activeOffers[0]?.id ?? null);
     void loadEvents();
     return () => {
@@ -137,31 +141,69 @@ export default function ProOpenHouseManageModal({
     ];
   };
 
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  const beginEdit = (event: OpenHouseEventRecord) => {
+    const sorted = [...event.slots].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    setEditingId(event.id);
+    setOfferId(event.offerId);
+    setTitle(event.title || "");
+    setDescription(event.description || "");
+    setVisitMode(event.visitMode);
+    setSlotsLocked(sorted.some((slot) => slot.reservedCount > 0));
+    if (first) {
+      const start = new Date(first.startsAt);
+      const end = new Date((last || first).endsAt);
+      setDay(`${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`);
+      setStartHour(`${pad(start.getHours())}:${pad(start.getMinutes())}`);
+      setEndHour(`${pad(end.getHours())}:${pad(end.getMinutes())}`);
+      setCapacity(event.visitMode === "FLEX" ? first.capacity : 8);
+    }
+    setTab("create");
+    setError("");
+    setSuccess("");
+    bodyScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const publish = async () => {
     if (!offerId) return;
     setSubmitting(true);
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/open-house/events", {
-        method: "POST",
+      const res = await fetch(editingId ? `/api/open-house/events/${editingId}` : "/api/open-house/events", {
+        method: editingId ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          offerId,
-          title: title.trim() || undefined,
-          description: description.trim() || undefined,
-          visitMode,
-          slots: buildSlotPayload(),
-          publish: true,
-        }),
+        body: JSON.stringify(
+          editingId
+            ? {
+                title: title.trim() || undefined,
+                description: description.trim() || undefined,
+                ...(slotsLocked
+                  ? {}
+                  : { visitMode, slots: buildSlotPayload(), replaceSlots: buildSlotPayload() }),
+              }
+            : {
+                offerId,
+                title: title.trim() || undefined,
+                description: description.trim() || undefined,
+                visitMode,
+                slots: buildSlotPayload(),
+                publish: true,
+              },
+        ),
       });
       const data = await res.json();
       if (!res.ok || !data?.event) {
         setError(data?.message || copy.openHousePublishError);
         return;
       }
-      setSuccess(copy.openHouseSuccess);
+      setSuccess(editingId ? copy.openHouseUpdateSuccess : copy.openHouseSuccess);
+      setEditingId(null);
+      setSlotsLocked(false);
       setTab("list");
       bodyScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       await loadEvents();
@@ -245,7 +287,11 @@ export default function ProOpenHouseManageModal({
                     tab === key ? "bg-amber-500/15 eos-amber-accent" : "text-[var(--eos-muted)]"
                   }`}
                 >
-                  {key === "create" ? copy.openHouseCreateTab : copy.openHouseListTab}
+                  {key === "create"
+                    ? editingId
+                      ? copy.openHouseSave
+                      : copy.openHouseCreateTab
+                    : copy.openHouseListTab}
                 </button>
               ))}
             </div>
@@ -402,14 +448,17 @@ export default function ProOpenHouseManageModal({
                       />
                     </section>
 
-                    <button
+                      {slotsLocked ? (
+                        <p className="text-xs text-[var(--eos-muted)]">{copy.openHouseSlotsLocked}</p>
+                      ) : null}
+                      <button
                       type="button"
                       disabled={submitting || !offerId}
                       onClick={() => void publish()}
                       className="eos-primary-cta w-full bg-amber-500 hover:bg-amber-400"
                     >
                       {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-                      {copy.openHousePublish}
+                      {editingId ? copy.openHouseSave : copy.openHousePublish}
                     </button>
                   </div>
                 ) : (
@@ -440,15 +489,27 @@ export default function ProOpenHouseManageModal({
                           {copy.openHouseViewOffer} <ExternalLink size={12} />
                         </Link>
                       </div>
-                      {event.status === "PUBLISHED" ? (
-                        <button
-                          type="button"
-                          disabled={submitting}
-                          onClick={() => void cancelEvent(event.id)}
-                          className="mt-3 text-[13px] font-medium text-red-500 hover:text-red-600"
-                        >
-                          {copy.openHouseCancel}
-                        </button>
+                      {event.status === "PUBLISHED" || event.status === "DRAFT" ? (
+                        <div className="mt-3 flex items-center gap-4">
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => beginEdit(event)}
+                            className="text-[13px] font-medium eos-amber-accent"
+                          >
+                            {copy.openHouseEdit}
+                          </button>
+                          {event.status === "PUBLISHED" ? (
+                            <button
+                              type="button"
+                              disabled={submitting}
+                              onClick={() => void cancelEvent(event.id)}
+                              className="text-[13px] font-medium text-red-500 hover:text-red-600"
+                            >
+                              {copy.openHouseCancel}
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ))}

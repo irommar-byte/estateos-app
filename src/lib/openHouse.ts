@@ -394,6 +394,7 @@ export async function updateOpenHouseEvent(
     description?: string | null;
     status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
     replaceSlots?: OpenHouseSlotInput[];
+    visitMode?: OpenHouseVisitMode | string | null;
   }
 ) {
   const event = await prisma.openHouseEvent.findFirst({
@@ -409,7 +410,7 @@ export async function updateOpenHouseEvent(
     if (hasConfirmed) throw new Error('HAS_RESERVATIONS');
 
     const normalized = normalizeSlots(input.replaceSlots);
-    const visitMode = parseOpenHouseVisitMode(String(event.visitMode ?? 'FLEX'));
+    const visitMode = parseOpenHouseVisitMode(String(input.visitMode ?? event.visitMode ?? 'FLEX'));
     const expanded = expandSlotWindows(normalized, visitMode);
     if (expanded.length > 48) throw new Error('TOO_MANY_SLOTS');
 
@@ -427,6 +428,9 @@ export async function updateOpenHouseEvent(
       title: input.title !== undefined ? input.title?.trim() || null : undefined,
       description: input.description !== undefined ? input.description?.trim() || null : undefined,
       status: input.status,
+      visitMode: input.visitMode
+        ? parseOpenHouseVisitMode(String(input.visitMode))
+        : undefined,
       publishedAt:
         input.status === 'PUBLISHED' && !event.publishedAt ? new Date() : undefined,
     },

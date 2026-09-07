@@ -337,6 +337,85 @@ export function formatPublicationStatus(status: string | null | undefined): stri
   return raw;
 }
 
+export type PromotionGroupable = {
+  id?: number;
+  kind?: string | null;
+  portal?: string | null;
+  siteName?: string | null;
+  url?: string | null;
+  externalUrl?: string | null;
+  groupName?: string | null;
+  groupUrl?: string | null;
+  title?: string | null;
+  createdAt: string;
+  status?: string | null;
+};
+
+export type PromotionChannelGroup<T extends PromotionGroupable = PromotionGroupable> = {
+  id: MarketingChannelId;
+  label: string;
+  accent: string;
+  latestAt: string;
+  items: T[];
+};
+
+export function isActivePublicationStatus(status: string | null | undefined): boolean {
+  const key = String(status || "").trim().toLowerCase();
+  return !key || key === "active";
+}
+
+export function promotionGroupId(input: PromotionGroupable): MarketingChannelId {
+  const id = resolveMarketingChannel({
+    kind: input.kind,
+    portal: input.portal,
+    siteName: input.siteName,
+    url: input.url || input.externalUrl,
+    groupName: input.groupName,
+    groupUrl: input.groupUrl,
+    title: input.title,
+  }).id;
+  return id === "system" ? "portal" : id;
+}
+
+export function promotionGroupLabel(id: MarketingChannelId): string {
+  if (id === "portal" || id === "system") return "Inne";
+  return CHANNELS[id].label;
+}
+
+export function groupPromotionsByChannel<T extends PromotionGroupable>(
+  items: T[],
+): PromotionChannelGroup<T>[] {
+  const buckets = new Map<MarketingChannelId, T[]>();
+  for (const item of items) {
+    const id = promotionGroupId(item);
+    const list = buckets.get(id) || [];
+    list.push(item);
+    buckets.set(id, list);
+  }
+  const groups: PromotionChannelGroup<T>[] = [];
+  for (const [id, list] of buckets) {
+    const sorted = [...list].sort((a, b) => {
+      const activeDelta =
+        (isActivePublicationStatus(a.status) ? 0 : 1) -
+        (isActivePublicationStatus(b.status) ? 0 : 1);
+      if (activeDelta !== 0) return activeDelta;
+      return a.createdAt < b.createdAt ? 1 : -1;
+    });
+    const latestAt = list.reduce(
+      (max, item) => (item.createdAt > max ? item.createdAt : max),
+      "",
+    );
+    groups.push({
+      id,
+      label: promotionGroupLabel(id),
+      accent: CHANNELS[id].accent,
+      latestAt,
+      items: sorted,
+    });
+  }
+  return groups.sort((a, b) => (a.latestAt < b.latestAt ? 1 : -1));
+}
+
 export function extractFacebookDestinations(
   items: Array<{
     createdAt: string;

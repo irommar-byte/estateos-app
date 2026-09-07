@@ -12,6 +12,7 @@ import {
   parseFacebookDestination,
   publicationHeadline,
   resolveMarketingChannel,
+  groupPromotionsByChannel,
 } from "../src/lib/crm/marketingChannel";
 
 test("parseFacebookDestination reads group slug and name", () => {
@@ -160,4 +161,36 @@ test("listing thumbnail falls back for EstateOS and Facebook", () => {
     }),
     null,
   );
+});
+
+test("groupPromotionsByChannel orders by latest activity and active first", () => {
+  const groups = groupPromotionsByChannel([
+    {
+      createdAt: "2026-08-01T10:00:00.000Z",
+      url: "https://www.facebook.com/groups/abc/posts/1",
+      kind: "EXTERNAL_PORTAL_LISTED",
+      status: "active",
+      groupName: "Warszawa",
+    },
+    {
+      createdAt: "2026-09-01T10:00:00.000Z",
+      url: "https://www.olx.pl/d/oferta/x",
+      kind: "EXTERNAL_PORTAL_LISTED",
+      portal: "OLX",
+      status: "expired",
+    },
+    {
+      createdAt: "2026-07-01T10:00:00.000Z",
+      url: "https://www.olx.pl/d/oferta/old",
+      kind: "EXTERNAL_PORTAL_LISTED",
+      portal: "OLX",
+      status: "active",
+    },
+  ]);
+  assert.equal(groups[0].id, "olx");
+  assert.equal(groups[0].label, "OLX");
+  assert.equal(groups[1].id, "facebook");
+  assert.equal(groups[1].label, "Facebook");
+  assert.equal(groups[0].items[0].status, "active");
+  assert.equal(groups[0].items[1].status, "expired");
 });
