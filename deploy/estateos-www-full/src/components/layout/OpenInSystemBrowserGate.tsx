@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, Smartphone, X } from "lucide-react";
+import { openIosAppOrAppStore } from "@/lib/estateosAppLinks";
 import {
   detectInAppBrowser,
   dismissIabBanner,
@@ -17,6 +18,7 @@ import {
 export default function OpenInSystemBrowserGate() {
   const ctx = useMemo(() => detectInAppBrowser(), []);
   const [visible, setVisible] = useState(false);
+  const [appHint, setAppHint] = useState("");
 
   useEffect(() => {
     if (!ctx.isSocialInAppBrowser) return;
@@ -33,7 +35,7 @@ export default function OpenInSystemBrowserGate() {
     <div
       className="fixed inset-x-0 top-0 z-[2147483646] px-3 pt-[max(0.5rem,env(safe-area-inset-top))]"
       role="dialog"
-      aria-label="Otwórz w przeglądarce systemowej"
+      aria-label="Otwórz w przeglądarce systemowej lub aplikacji"
     >
       <div className="mx-auto flex max-w-lg items-start gap-3 rounded-2xl border border-amber-400/40 bg-[#111]/95 px-3.5 py-3 text-white shadow-[0_16px_48px_rgba(0,0,0,0.55)] backdrop-blur-xl">
         <div className="min-w-0 flex-1">
@@ -41,7 +43,9 @@ export default function OpenInSystemBrowserGate() {
             Podgląd Facebook / Instagram
           </p>
           <p className="mt-1 text-sm leading-snug text-white/90">
-            Galeria i powiększanie zdjęć działają w pełnej przeglądarce. Otwórz EstateOS w {browserName}.
+            {ctx.isIOS
+              ? "Galeria i powiększanie zdjęć działają w Safari albo w aplikacji EstateOS."
+              : `Galeria i powiększanie zdjęć działają w pełnej przeglądarce. Otwórz EstateOS w ${browserName}.`}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -53,6 +57,21 @@ export default function OpenInSystemBrowserGate() {
               Otwórz w {browserName}
             </button>
             {ctx.isIOS ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setAppHint("Jeśli apka nie jest zainstalowana, otworzy się App Store.");
+                  openIosAppOrAppStore({ href: window.location.href });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-black"
+              >
+                <Smartphone className="size-3.5" aria-hidden />
+                Pobierz i otwórz w apce
+              </button>
+            ) : null}
+            {appHint ? (
+              <p className="w-full text-[10px] leading-relaxed text-amber-200/90">{appHint}</p>
+            ) : ctx.isIOS ? (
               <p className="w-full text-[10px] leading-relaxed text-white/55">
                 Albo: ⋯ u dołu → <span className="text-white/85">Otwórz w Safari</span>
               </p>
