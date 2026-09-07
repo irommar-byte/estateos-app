@@ -16,7 +16,11 @@ test('extracts offer id from /oferta and Facebook query', () => {
   assert.equal(extractOfferIdFromHref('https://estateos.pl/oferty'), null);
 });
 
-test('iOS app URL deep-links the offer or launches the app', () => {
+test('iOS app URL deep-links the offer, portal, or launches the app', () => {
   assert.equal(buildIosAppOpenUrl(1228), 'estateos://o/1228');
   assert.equal(buildIosAppOpenUrl(null), 'estateos://');
+  assert.equal(
+    buildIosAppOpenUrl(null, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    'estateos://klient/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  );
 });

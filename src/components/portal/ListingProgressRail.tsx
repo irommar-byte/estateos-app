@@ -36,9 +36,10 @@ export default function ListingProgressRail({ stages }: { stages: ProgressStage[
                 stage.done
                   ? "border-emerald-500 bg-emerald-500 text-white"
                   : stage.current
-                    ? "border-emerald-300 bg-emerald-700 text-white ring-4 ring-emerald-500/15"
+                    ? "eos-portal-stage-now border-emerald-300 bg-emerald-700 text-white ring-4 ring-emerald-500/15"
                     : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-muted)]"
               }`}
+              aria-current={stage.current && !stage.done ? "step" : undefined}
             >
               {stage.done ? <Check className="size-3.5" strokeWidth={3} /> : null}
             </span>
