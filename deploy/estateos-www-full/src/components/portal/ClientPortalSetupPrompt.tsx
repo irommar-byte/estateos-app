@@ -54,9 +54,11 @@ export default function ClientPortalSetupPrompt({
     }
     if (!canEnablePortalPush({ surface, standalone: isPortalStandalone() })) {
       setNotifyState("idle");
-      setHint(
-        "Na iPhonie powiadomienia działają dopiero po dodaniu znaczka i otwarciu panelu z ikony na ekranie początkowym.",
-      );
+      if (askPermission) {
+        setHint(
+          "Na iPhonie powiadomienia działają dopiero po dodaniu znaczka i otwarciu panelu z ikony na ekranie początkowym.",
+        );
+      }
       return;
     }
 
