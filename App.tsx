@@ -113,6 +113,7 @@ import { useDiscoveryStore } from './src/store/useDiscoveryStore';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
 import AdminAutomationScreen from './src/screens/AdminAutomationScreen';
+import AdminCoreConsoleScreen from './src/screens/AdminCoreConsoleScreen';
 import AgencyOfficeScreen from './src/screens/AgencyOfficeScreen';
 import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
 import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
@@ -2036,6 +2037,11 @@ export default function App() {
             <AppStack.Screen
               name="AdminAutomation"
               component={AdminAutomationScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AdminCoreConsole"
+              component={AdminCoreConsoleScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

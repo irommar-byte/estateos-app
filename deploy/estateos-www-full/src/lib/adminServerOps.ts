@@ -796,7 +796,10 @@ export function deleteAbsoluteFiles(absPaths: string[]) {
   return { deleted, errors };
 }
 
+export type Pm2ProcessKind = 'daemon' | 'cron';
+
 export type Pm2Process = {
+  id: number;
   name: string;
   status: string;
   cpu: number;
@@ -804,7 +807,50 @@ export type Pm2Process = {
   uptimeMs: number;
   restarts: number;
   pid: number | null;
+  commitSha: string;
+  cronRestart: string | null;
+  execMode: string;
+  kind: Pm2ProcessKind;
 };
+
+export const DAEMON_PM2_NAMES = new Set([
+  'nieruchomosci',
+  'lineage-movies-downloader',
+  'lineage-movies-proxy',
+]);
+
+export const ALLOWED_PM2_ACTIONS = new Set(['restart', 'start', 'stop', 'reload']);
+export const ALLOWED_PM2_NAMES = new Set([
+  'nieruchomosci',
+  'lineage-movies-downloader',
+  'lineage-movies-proxy',
+  'partner-growth-nurture',
+  'reviews-finalization-fallback',
+  'kei-auto-import',
+  'client-intelligence',
+  'seller-marketing-renewals',
+  'rcn-market-ingest',
+]);
+
+export function isAllowedPm2Name(name: string) {
+  return ALLOWED_PM2_NAMES.has(name);
+}
+
+export function isAllowedPm2Action(action: string) {
+  return ALLOWED_PM2_ACTIONS.has(action);
+}
+
+export function pm2ProcessKind(name: string): Pm2ProcessKind {
+  return DAEMON_PM2_NAMES.has(name) ? 'daemon' : 'cron';
+}
+
+function readPm2CommitSha(env: Record<string, unknown> | undefined): string {
+  if (!env) return '';
+  const nested = env.env && typeof env.env === 'object' ? (env.env as Record<string, unknown>) : null;
+  const fromNested = nested ? String(nested.COMMIT_SHA || '').trim() : '';
+  if (fromNested) return fromNested;
+  return String(env.COMMIT_SHA || '').trim();
+}
 
 export async function readPm2Processes(): Promise<Pm2Process[]> {
   const out = await run('pm2', ['jlist'], 5000);
@@ -813,18 +859,37 @@ export async function readPm2Processes(): Promise<Pm2Process[]> {
     const list = JSON.parse(out) as Array<{
       name?: string;
       pid?: number;
-      pm2_env?: { status?: string; pm_uptime?: number; restart_time?: number };
+      pm_id?: number;
+      pm2_env?: {
+        status?: string;
+        pm_uptime?: number;
+        restart_time?: number;
+        pm_id?: number;
+        cron_restart?: string;
+        exec_mode?: string;
+        COMMIT_SHA?: string;
+        env?: Record<string, unknown>;
+      };
       monit?: { cpu?: number; memory?: number };
     }>;
-    return list.map((item) => ({
-      name: String(item.name || 'unknown'),
-      status: String(item.pm2_env?.status || 'unknown'),
-      cpu: Number(item.monit?.cpu || 0),
-      memoryBytes: Number(item.monit?.memory || 0),
-      uptimeMs: item.pm2_env?.pm_uptime ? Math.max(0, Date.now() - Number(item.pm2_env.pm_uptime)) : 0,
-      restarts: Number(item.pm2_env?.restart_time || 0),
-      pid: Number.isFinite(Number(item.pid)) && Number(item.pid) > 0 ? Number(item.pid) : null,
-    }));
+    return list.map((item) => {
+      const name = String(item.name || 'unknown');
+      const env = item.pm2_env as Record<string, unknown> | undefined;
+      return {
+        id: Number(item.pm_id ?? item.pm2_env?.pm_id ?? 0),
+        name,
+        status: String(item.pm2_env?.status || 'unknown'),
+        cpu: Number(item.monit?.cpu || 0),
+        memoryBytes: Number(item.monit?.memory || 0),
+        uptimeMs: item.pm2_env?.pm_uptime ? Math.max(0, Date.now() - Number(item.pm2_env.pm_uptime)) : 0,
+        restarts: Number(item.pm2_env?.restart_time || 0),
+        pid: Number.isFinite(Number(item.pid)) && Number(item.pid) > 0 ? Number(item.pid) : null,
+        commitSha: readPm2CommitSha(env),
+        cronRestart: item.pm2_env?.cron_restart ? String(item.pm2_env.cron_restart) : null,
+        execMode: String(item.pm2_env?.exec_mode || ''),
+        kind: pm2ProcessKind(name),
+      };
+    });
   } catch {
     return [];
   }
@@ -839,18 +904,9 @@ export async function readMariaDbStatus() {
   };
 }
 
-const ALLOWED_PM2_ACTIONS = new Set(['restart', 'start', 'stop']);
-const ALLOWED_PM2_NAMES = new Set([
-  'nieruchomosci',
-  'lineage-movies-downloader',
-  'lineage-movies-proxy',
-  'partner-growth-nurture',
-  'reviews-finalization-fallback',
-]);
-
 export async function controlPm2(name: string, action: string) {
-  if (!ALLOWED_PM2_NAMES.has(name)) throw new Error('Nieznany proces.');
-  if (!ALLOWED_PM2_ACTIONS.has(action)) throw new Error('Nieznana akcja.');
+  if (!isAllowedPm2Name(name)) throw new Error('Nieznany proces.');
+  if (!isAllowedPm2Action(action)) throw new Error('Nieznana akcja.');
   const out = await run('pm2', [action, name], 15000);
   return { ok: true, output: out.slice(0, 2000) };
 }

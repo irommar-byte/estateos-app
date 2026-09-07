@@ -44,7 +44,6 @@ import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import { useProfileTabBadgeStore } from '../store/useProfileTabBadgeStore';
 import AdminLegalVerificationModal from '../components/AdminLegalVerificationModal';
 import AdminContentReportsModal from '../components/AdminContentReportsModal';
-import AdminCoreCommandCenterModal from '../components/admin/AdminCoreCommandCenterModal';
 import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection';
 import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
 import AdminStatisticsModal from '../components/admin/AdminStatisticsModal';
@@ -3017,7 +3016,6 @@ function ProfileScreenLoggedIn({
   const [isAdminStatisticsVisible, setIsAdminStatisticsVisible] = useState(false);
   const [isAdminDealroomCheckVisible, setIsAdminDealroomCheckVisible] = useState(false);
   const [isAdminLegalVerifyVisible, setIsAdminLegalVerifyVisible] = useState(false);
-  const [isAdminCoreVisible, setIsAdminCoreVisible] = useState(false);
   const [isAdminReportsVisible, setIsAdminReportsVisible] = useState(false);
   const [isAdminPromoWindowsVisible, setIsAdminPromoWindowsVisible] = useState(false);
   const [isAdminPhotoSessionsVisible, setIsAdminPhotoSessionsVisible] = useState(false);
@@ -3638,7 +3636,6 @@ function ProfileScreenLoggedIn({
     setIsAdminRadarVisible(false);
     setIsAdminDealroomCheckVisible(false);
     setIsAdminLegalVerifyVisible(false);
-    setIsAdminCoreVisible(false);
     setIsAdminReportsVisible(false);
     setIsAdminPromoWindowsVisible(false);
     setIsOwnPublicProfileOpen(false);
@@ -4862,10 +4859,10 @@ function ProfileScreenLoggedIn({
                 icon="pulse"
                 color="#10b981"
                 title="EstateOS™ CORE"
-                subtitle="Otwórz tylko gdy potrzeba — CPU, RAM, dysk"
+                subtitle="Konsola produkcji — flota, logi, deploy, naprawa"
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setIsAdminCoreVisible(true);
+                  (navigation as any).navigate('AdminCoreConsole');
                 }}
                 isDark={isDark}
               />
@@ -5104,11 +5101,6 @@ function ProfileScreenLoggedIn({
             adminPhotoSessionsReturnRef.current = false;
           }
         }}
-        theme={theme}
-      />
-      <AdminCoreCommandCenterModal
-        visible={isAdminCoreVisible}
-        onClose={() => setIsAdminCoreVisible(false)}
         theme={theme}
       />
       <AdminRadarAnalyticsModal visible={isAdminRadarVisible} onClose={() => setIsAdminRadarVisible(false)} theme={theme} />
