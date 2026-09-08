@@ -105,6 +105,46 @@ export async function generateMarketReport(token: string | null, body: Record<st
   return sendMarketReport(token, { ...body, generate: true });
 }
 
+export type StoredOfferReport = {
+  id: number;
+  createdAt: string;
+  mid: number | null;
+  city: string | null;
+  address: string | null;
+  sentClassic: boolean;
+  sentPro: boolean;
+};
+
+export async function fetchOfferMarketReports(
+  token: string | null,
+  params: { clientId: number; offerId: number },
+): Promise<{ quota: MarketReportQuota | null; reports: StoredOfferReport[] }> {
+  const res = await fetch(
+    `${API_URL}/api/market/report?clientId=${params.clientId}&offerId=${params.offerId}`,
+    { headers: authHeaders(token) },
+  );
+  const json = await res.json().catch(() => ({}));
+  return {
+    quota: json?.quota || null,
+    reports: Array.isArray(json?.reports) ? (json.reports as StoredOfferReport[]) : [],
+  };
+}
+
+export async function fetchMarketReportPreview(
+  token: string | null,
+  reportId: number,
+): Promise<{ ok: boolean; html?: string; htmlPro?: string; message?: string }> {
+  const res = await fetch(
+    `${API_URL}/api/market/report?reportId=${reportId}&preview=both`,
+    { headers: authHeaders(token) },
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!json?.ok) {
+    return { ok: false, message: String(json?.message || 'Nie udało się otworzyć podglądu.') };
+  }
+  return { ok: true, html: String(json.html || ''), htmlPro: String(json.htmlPro || json.html || '') };
+}
+
 export async function fetchMarketReportQuota(token: string | null): Promise<MarketReportQuota | null> {
   const res = await fetch(`${API_URL}/api/market/report`, { headers: authHeaders(token) });
   const json = await res.json().catch(() => ({}));

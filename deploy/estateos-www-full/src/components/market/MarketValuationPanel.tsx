@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import type { MarketComp, PriceScore, ValuationResult } from "@/lib/market/types";
+import { MarketReportDualPreview } from "@/components/market/OfferClientReportCard";
 
 type ReportQuota = {
   kind: "admin" | "investor" | "office" | "credits" | "none";
@@ -30,6 +31,7 @@ type Props = {
   showReport?: boolean;
   reportEmail?: string;
   clientId?: number | null;
+  offerId?: number | null;
 };
 
 function pln(n: number) {
@@ -139,6 +141,7 @@ export default function MarketValuationPanel({
   showReport = true,
   reportEmail,
   clientId,
+  offerId,
 }: Props) {
   const [result, setResult] = useState<(ValuationResult & { access?: { quota?: ReportQuota | null } }) | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,8 +153,11 @@ export default function MarketValuationPanel({
   const [quota, setQuota] = useState<ReportQuota | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewHtmlPro, setPreviewHtmlPro] = useState<string | null>(null);
-  const [previewVariant, setPreviewVariant] = useState<"classic" | "pro">("pro");
+  const [showPreview, setShowPreview] = useState(false);
   const [generatedReportId, setGeneratedReportId] = useState<number | null>(null);
+  const [sentClassic, setSentClassic] = useState(false);
+  const [sentPro, setSentPro] = useState(false);
+  const [sendingVariant, setSendingVariant] = useState<"classic" | "pro" | null>(null);
 
   useEffect(() => {
     setEmail(reportEmail || "");
@@ -230,6 +236,7 @@ export default function MarketValuationPanel({
     email,
     alternateEmail,
     clientId: clientId || undefined,
+    offerId: offerId || undefined,
   });
 
   const propertyLabel = [address, district, city].filter(Boolean).join(", ") || "tej nieruchomości";
@@ -273,7 +280,9 @@ export default function MarketValuationPanel({
       setGeneratedReportId(Number.isFinite(id) && id > 0 ? id : null);
       setPreviewHtml(String(json.html || ""));
       setPreviewHtmlPro(String(json.htmlPro || json.html || ""));
-      setPreviewVariant("pro");
+      setSentClassic(false);
+      setSentPro(false);
+      setShowPreview(true);
       setReportState("idle");
       setReportMsg("Wygenerowano dwie wersje — 1 punkt z limitu. Wybierz, którą wysłać klientowi. Wysyłka nic więcej nie zdejmie.");
       void loadQuota();
@@ -283,7 +292,7 @@ export default function MarketValuationPanel({
     }
   };
 
-  const confirmSend = async () => {
+  const confirmSend = async (variant: "classic" | "pro") => {
     if (!generatedReportId) {
       setReportMsg("Najpierw wygeneruj raport — dopiero to schodzi z limitu.");
       return;
@@ -292,34 +301,38 @@ export default function MarketValuationPanel({
       setReportMsg("Wpisz e-mail klienta albo adres alternatywny. Wysyłka nie zużyje kolejnego punktu.");
       return;
     }
+    setSendingVariant(variant);
     setReportState("sending");
     try {
       const res = await fetch("/api/market/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ...reportBody(), reportId: generatedReportId, variant: previewVariant }),
+        body: JSON.stringify({ ...reportBody(), reportId: generatedReportId, variant }),
       });
       const json = await res.json();
       if (json?.quota) setQuota(json.quota);
       if (!json?.ok) {
         setReportState("idle");
+        setSendingVariant(null);
         setReportMsg(String(json?.message || "Nie wysłano raportu."));
         return;
       }
-      setPreviewHtml(null);
-      setPreviewHtmlPro(null);
+      if (variant === "pro") setSentPro(true);
+      else setSentClassic(true);
       setReportState("sent");
       const dest = Array.isArray(json.emails) ? json.emails.join(", ") : email;
       setReportMsg(
         json.emailed
-          ? `Raport wyszedł na ${dest}.${json.clientRecorded ? " Zapisaliśmy to też w panelu klienta." : ""} Limit się nie zmienił.`
+          ? `Raport wyszedł na ${dest}.${json.clientRecorded ? " Zapisaliśmy go w panelu klienta i wysłaliśmy powiadomienie." : ""} Limit się nie zmienił.`
           : "Raport zapisany — sprawdź skrzynkę, jeśli mail nie doszedł. Limit się nie zmienił.",
       );
       void loadQuota();
     } catch {
       setReportState("idle");
       setReportMsg("Nie udało się wysłać raportu.");
+    } finally {
+      setSendingVariant(null);
     }
   };
 
@@ -459,10 +472,10 @@ export default function MarketValuationPanel({
                     <button
                       type="button"
                       disabled={reportState === "sending"}
-                      onClick={() => void confirmSend()}
+                      onClick={() => setShowPreview(true)}
                       className="eos-lux-btn eos-lux-btn--platinum px-5 py-2.5 text-[11px] disabled:opacity-50"
                     >
-                      {reportState === "sending" ? "Wysyłam…" : "Wyślij e-mail"}
+                      Wyślij do klienta
                     </button>
                   ) : null}
                   {reportState === "pay" ? (
@@ -517,65 +530,17 @@ export default function MarketValuationPanel({
         </div>
       ) : null}
 
-      {previewHtml || previewHtmlPro ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="eos-lux-panel flex h-[min(92dvh,900px)] max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] shadow-2xl">
-            <div className="shrink-0 border-b border-[rgba(196,163,90,0.2)] px-5 py-4">
-              <p className="eos-portal-label eos-portal-label--ok">Dwie wersje raportu</p>
-              <h3 className="mt-1 text-lg font-black text-[var(--eos-text)]">Wybierz, którą wysłać klientowi</h3>
-              <p className="mt-1 text-sm text-[var(--eos-muted)]">
-                Limit już pobrany. {email.trim() || alternateEmail.trim() || reportEmail
-                  ? `Wyślemy na: ${[email, alternateEmail, reportEmail].filter(Boolean).join(", ")}.`
-                  : "Wpisz e-mail poniżej albo zamknij i wyślij później."}
-              </p>
-              <div className="mt-3 flex flex-nowrap gap-2 overflow-x-auto">
-                <button
-                  type="button"
-                  onClick={() => setPreviewVariant("pro")}
-                  className={`!w-auto shrink-0 ${previewVariant === "pro" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}`}
-                >
-                  Dla klienta · mapa i rekomendacja
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewVariant("classic")}
-                  className={`!w-auto shrink-0 ${previewVariant === "classic" ? "eos-lux-btn eos-lux-btn--primary px-4 py-2 text-[11px]" : "eos-lux-btn eos-lux-btn--platinum px-4 py-2 text-[11px]"}`}
-                >
-                  Wersja dotychczasowa
-                </button>
-              </div>
-            </div>
-            <iframe
-              title={previewVariant === "pro" ? "Podgląd raportu dla klienta" : "Podgląd dotychczasowego raportu"}
-              srcDoc={previewVariant === "pro" ? (previewHtmlPro || previewHtml || "") : (previewHtml || previewHtmlPro || "")}
-              className="min-h-0 w-full flex-1 bg-white"
-            />
-            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-[rgba(196,163,90,0.2)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <button
-                type="button"
-                onClick={() => {
-                  setPreviewHtml(null);
-                  setPreviewHtmlPro(null);
-                }}
-                className="eos-lux-btn eos-lux-btn--platinum !w-auto px-4 py-2 text-[11px]"
-              >
-                Zostaw bez wysyłki
-              </button>
-              <button
-                type="button"
-                disabled={reportState === "sending"}
-                onClick={() => void confirmSend()}
-                className="eos-lux-btn eos-lux-btn--primary !w-auto px-5 py-2 text-[11px] disabled:opacity-50"
-              >
-                {reportState === "sending"
-                  ? "Wysyłam…"
-                  : previewVariant === "pro"
-                    ? "Wyślij wersję z mapą"
-                    : "Wyślij wersję dotychczasową"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {showPreview && (previewHtml || previewHtmlPro) ? (
+        <MarketReportDualPreview
+          htmlClassic={previewHtml || ""}
+          htmlPro={previewHtmlPro || previewHtml || ""}
+          sending={sendingVariant}
+          sentClassic={sentClassic}
+          sentPro={sentPro}
+          destLabel={[email, alternateEmail, reportEmail].filter(Boolean).join(", ")}
+          onSend={(variant) => void confirmSend(variant)}
+          onClose={() => setShowPreview(false)}
+        />
       ) : null}
     </>
   );

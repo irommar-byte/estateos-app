@@ -2326,6 +2326,8 @@ export default function CrmClientsWorkspace() {
                     )}
                     <CrmSellerCollaborationPanel
                       linkedOfferId={detail.linkedOfferId || null}
+                      clientId={detail.id}
+                      clientEmail={detail.email || null}
                       busy={busy}
                       sellerNextStep={detail.sellerMarketing?.sellerNextStep || null}
                       sellerEvents={detail.sellerMarketing?.sellerEvents || null}

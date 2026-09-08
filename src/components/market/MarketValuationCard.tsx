@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {
+  fetchMarketReportPreview,
   fetchMarketReportQuota,
   fetchMarketValuation,
+  fetchOfferMarketReports,
   formatPln,
   formatPpsm,
   generateMarketReport,
   sendMarketReport,
   type MarketReportQuota,
+  type StoredOfferReport,
   type ValuationResult,
 } from '../../services/marketService';
 import { getSafeWebView } from '../messaging/safeWebView';
@@ -24,11 +27,13 @@ type Props = {
   address?: string | null;
   listingPrice?: number | null;
   purpose?: 'crm' | 'listing' | 'consumer' | 'hub';
-  colors: { card: string; text: string; secondary: string; border: string; accent: string };
+  colors: { card: string; text: string; secondary: string; border: string; accent: string; bg?: string };
   onApply?: (price: number) => void;
   onResultChange?: (result: ValuationResult | null) => void;
   reportEmail?: string | null;
   clientId?: number | null;
+  offerId?: number | null;
+  compact?: boolean;
 };
 
 export default function MarketValuationCard({
@@ -48,6 +53,8 @@ export default function MarketValuationCard({
   onResultChange,
   reportEmail,
   clientId,
+  offerId,
+  compact = false,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +68,9 @@ export default function MarketValuationCard({
   const [htmlClassic, setHtmlClassic] = useState('');
   const [htmlPro, setHtmlPro] = useState('');
   const [previewVariant, setPreviewVariant] = useState<'classic' | 'pro' | null>(null);
+  const [savedReports, setSavedReports] = useState<StoredOfferReport[]>([]);
+  const [sentClassic, setSentClassic] = useState(false);
+  const [sentPro, setSentPro] = useState(false);
 
   useEffect(() => {
     setEmail(reportEmail || '');
@@ -73,10 +83,24 @@ export default function MarketValuationCard({
   }, [token]);
 
   useEffect(() => {
+    if (!clientId || !offerId) return;
+    let cancelled = false;
+    void fetchOfferMarketReports(token, { clientId, offerId }).then((loaded) => {
+      if (cancelled) return;
+      if (loaded.quota) setQuota(loaded.quota);
+      setSavedReports(loaded.reports);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, clientId, offerId]);
+
+  useEffect(() => {
     if (lat == null || lng == null || !area) {
       setResult(null);
       onResultChange?.(null);
-      setError('Uzupełnij adres na mapie i powierzchnię.');
+      if (!offerId) setError('Uzupełnij adres na mapie i powierzchnię.');
+      else setError(null);
       return;
     }
     let cancelled = false;
@@ -104,13 +128,14 @@ export default function MarketValuationCard({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [token, lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose, onResultChange]);
+  }, [token, lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose, onResultChange, offerId]);
 
   const payload = {
     lat, lng, area, rooms, floor, city, district, address, listingPrice,
     email,
     alternateEmail,
     clientId: clientId || undefined,
+    offerId: offerId || undefined,
   };
 
   const destLabel = [email.trim(), alternateEmail.trim()].filter(Boolean).join(', ');
@@ -126,12 +151,38 @@ export default function MarketValuationCard({
     void sendMarketReport(token, { ...payload, reportId: id, variant }).then((sent) => {
       setBusy(false);
       if (sent.json?.quota) setQuota(sent.json.quota);
-      setPreviewVariant(null);
-      setReportMsg(
-        sent.ok
-          ? `Wysłano ${variant === 'pro' ? 'wersję z mapą' : 'wersję dotychczasową'} na ${destLabel}.${sent.json?.clientRecorded ? ' Zapisano w panelu klienta.' : ''} Limit się nie zmienił.`
-          : String(sent.json?.message || 'Nie wysłano raportu.'),
-      );
+      if (sent.ok) {
+        if (variant === 'pro') setSentPro(true);
+        else setSentClassic(true);
+        setReportMsg(
+          `Wysłano ${variant === 'pro' ? 'wersję z mapą' : 'zestawienie transakcji'} na ${destLabel}.${sent.json?.clientRecorded ? ' Zapisano w panelu klienta i wysłano powiadomienie.' : ''} Limit się nie zmienił.`,
+        );
+        if (clientId && offerId) {
+          void fetchOfferMarketReports(token, { clientId, offerId }).then((loaded) => {
+            if (loaded.quota) setQuota(loaded.quota);
+            setSavedReports(loaded.reports);
+          });
+        }
+      } else {
+        setReportMsg(String(sent.json?.message || 'Nie wysłano raportu.'));
+      }
+    });
+  };
+
+  const openSaved = (row: StoredOfferReport) => {
+    setBusy(true);
+    void fetchMarketReportPreview(token, row.id).then((preview) => {
+      setBusy(false);
+      if (!preview.ok) {
+        setReportMsg(preview.message || 'Nie udało się otworzyć podglądu.');
+        return;
+      }
+      setReportId(row.id);
+      setHtmlClassic(String(preview.html || ''));
+      setHtmlPro(String(preview.htmlPro || preview.html || ''));
+      setSentClassic(row.sentClassic);
+      setSentPro(row.sentPro);
+      setReportMsg('Dwie wersje gotowe — przy każdej jest wysyłka do klienta.');
     });
   };
 
@@ -150,13 +201,20 @@ export default function MarketValuationCard({
       setReportId(storedId);
       setHtmlClassic(String(r.json?.html || ''));
       setHtmlPro(String(r.json?.htmlPro || r.json?.html || ''));
-      setReportMsg('Wygenerowano dwie wersje — 1 punkt z limitu. Wybierz, którą wysłać. Wysyłka nic więcej nie zdejmie.');
-      if (!storedId) return;
+      setSentClassic(false);
+      setSentPro(false);
+      setReportMsg('Raport zapisany przy tej ofercie — 1 kredyt. Przy każdej wersji jest wysyłka do klienta.');
+      if (clientId && offerId) {
+        void fetchOfferMarketReports(token, { clientId, offerId }).then((loaded) => {
+          if (loaded.quota) setQuota(loaded.quota);
+          setSavedReports(loaded.reports);
+        });
+      }
     });
   };
 
   const startReport = () => {
-    if (!result) return;
+    if (!result && !offerId) return;
     if (quota && quota.remaining <= 0) {
       setReportMsg(quota.message);
       return;
@@ -169,7 +227,7 @@ export default function MarketValuationCard({
           : '';
     Alert.alert(
       'Wygenerować raport?',
-      `Czy chcesz wygenerować raport dla:\n${propertyLabel}${propertyMeta ? `\n${propertyMeta}` : ''}\n\nTo zużyje 1 punkt z limitu.${remainingHint}\nWysyłka e-mail później nic już nie zdejmie.`,
+      `Czy chcesz wygenerować raport dla:\n${propertyLabel}${propertyMeta ? `\n${propertyMeta}` : ''}\n\nTo zużyje 1 kredyt.${remainingHint}\nRaport zostanie zapisany przy tej ofercie. Wysyłka do klienta nic już nie zdejmie.`,
       [
         { text: 'Nie', style: 'cancel' },
         { text: 'Tak, wygeneruj', onPress: doGenerate },
@@ -181,13 +239,17 @@ export default function MarketValuationCard({
     <>
     <View style={{ borderRadius: 18, borderWidth: 1, borderColor: 'rgba(52,199,89,0.28)', backgroundColor: colors.card, overflow: 'hidden', marginBottom: 14 }}>
       <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 10, letterSpacing: 1.2 }}>ESTATEOS™ MARKET</Text>
-        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13, marginTop: 3 }}>Rzeczywiste ceny transakcyjne (RCN)</Text>
+        <Text style={{ color: colors.accent, fontWeight: '900', fontSize: 10, letterSpacing: 1.2 }}>
+          {compact ? 'RAPORT DLA KLIENTA' : 'ESTATEOS™ MARKET'}
+        </Text>
+        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13, marginTop: 3 }}>
+          {compact ? 'Analiza wartości tej oferty (RCN)' : 'Rzeczywiste ceny transakcyjne (RCN)'}
+        </Text>
       </View>
       <View style={{ padding: 14, gap: 10 }}>
         {loading ? <ActivityIndicator color={colors.accent} /> : null}
-        {error ? <Text style={{ color: '#F59E0B', fontSize: 13, lineHeight: 18 }}>{error}</Text> : null}
-        {result ? (
+        {error && !compact ? <Text style={{ color: '#F59E0B', fontSize: 13, lineHeight: 18 }}>{error}</Text> : null}
+        {result && !compact ? (
           <>
             <Text style={{ color: colors.text, fontSize: 26, fontWeight: '900' }}>{formatPln(result.estimated.mid)}</Text>
             <Text style={{ color: colors.secondary, fontSize: 13 }}>
@@ -220,11 +282,21 @@ export default function MarketValuationCard({
                 <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 13 }}>Zastosuj cenę rekomendowaną · {formatPln(result.estimated.recommendedAsk)}</Text>
               </Pressable>
             ) : null}
+          </>
+        ) : null}
+        {compact || result || offerId ? (
+          <>
+            {compact && result ? (
+              <Text style={{ color: colors.text, fontSize: 22, fontWeight: '900' }}>{formatPln(result.estimated.mid)}</Text>
+            ) : null}
             {quota ? (
               <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
                 {quota.cap != null ? `Wygenerowania: ${quota.remaining} / ${quota.cap} (${quota.windowLabel})` : quota.message}
               </Text>
             ) : null}
+            <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 17 }}>
+              Wygenerowanie zużywa 1 kredyt i zapisuje raport przy tej ofercie. Potem „Wyślij do klienta” pokazuje dwie wersje — każdą wysyłasz osobno.
+            </Text>
             <TextInput
               value={email}
               onChangeText={setEmail}
@@ -242,6 +314,7 @@ export default function MarketValuationCard({
                 fontSize: 14,
               }}
             />
+            {compact ? null : (
             <TextInput
               value={alternateEmail}
               onChangeText={setAlternateEmail}
@@ -259,48 +332,103 @@ export default function MarketValuationCard({
                 fontSize: 14,
               }}
             />
-            <Pressable onPress={startReport} disabled={busy}>
-              <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>
-                {busy ? 'Generuję…' : reportId ? 'Wygeneruj kolejny raport' : 'Generuj raport dla właściciela'}
+            )}
+            <Pressable
+              onPress={startReport}
+              disabled={busy}
+              style={{
+                backgroundColor: colors.accent,
+                borderRadius: 12,
+                paddingVertical: 12,
+                alignItems: 'center',
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: '#000', fontWeight: '900', fontSize: 13 }}>
+                {busy ? 'Generuję…' : reportId ? 'Wygeneruj kolejny raport' : 'Wygeneruj raport dla tej oferty'}
               </Text>
             </Pressable>
             {reportId ? (
               <View style={{ gap: 8 }}>
                 <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>
-                  Dwie wersje gotowe — wybierz, którą wysłać
+                  Dwie wersje gotowe — przy każdej wyślij do klienta
                 </Text>
                 <View style={{ borderWidth: 1, borderColor: colors.accent, borderRadius: 12, padding: 12 }}>
                   <Text style={{ color: colors.text, fontWeight: '800' }}>Dla klienta · mapa i rekomendacja</Text>
                   <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
-                    List na właściciela, wyróżniona cena ofertowa i z metra, mapa aktów.
+                    {sentPro ? 'Wysłano do klienta.' : 'List z mapą aktów i rekomendacją ceny.'}
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 8 }}>
                     <Pressable onPress={() => setPreviewVariant('pro')}>
                       <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 13 }}>Podgląd</Text>
                     </Pressable>
                     <Pressable onPress={() => sendExisting(reportId, 'pro')} disabled={busy}>
-                      <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>Wyślij tę wersję</Text>
+                      <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>
+                        {sentPro ? 'Wyślij ponownie' : 'Wyślij do klienta'}
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
                 <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-                  <Text style={{ color: colors.text, fontWeight: '800' }}>Wersja dotychczasowa</Text>
+                  <Text style={{ color: colors.text, fontWeight: '800' }}>Zestawienie transakcji</Text>
                   <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
-                    Obecny list z tabelą transakcji, bez mapy.
+                    {sentClassic ? 'Wysłano do klienta.' : 'List z tabelą aktów, bez mapy.'}
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 8 }}>
                     <Pressable onPress={() => setPreviewVariant('classic')}>
                       <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 13 }}>Podgląd</Text>
                     </Pressable>
                     <Pressable onPress={() => sendExisting(reportId, 'classic')} disabled={busy}>
-                      <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>Wyślij tę wersję</Text>
+                      <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>
+                        {sentClassic ? 'Wyślij ponownie' : 'Wyślij do klienta'}
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
               </View>
+            ) : savedReports[0] ? (
+              <Pressable
+                onPress={() => openSaved(savedReports[0])}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>Wyślij do klienta</Text>
+              </Pressable>
             ) : null}
-            {reportMsg ? <Text style={{ color: colors.secondary, fontSize: 12 }}>{reportMsg}</Text> : null}
-            <Text style={{ color: colors.secondary, fontSize: 10, lineHeight: 14 }}>{result.coverage.disclaimer}</Text>
+            {savedReports.length > 1 ? (
+              <View style={{ gap: 6 }}>
+                {savedReports.slice(0, 4).map((row) => (
+                  <Pressable
+                    key={row.id}
+                    onPress={() => openSaved(row)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>
+                      {row.mid ? formatPln(row.mid) : 'Raport zapisany'}
+                    </Text>
+                    <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                      {new Date(row.createdAt).toLocaleDateString('pl-PL')}
+                      {row.sentPro || row.sentClassic ? ' · wysłany' : ' · do wysyłki'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {reportMsg ? <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 17 }}>{reportMsg}</Text> : null}
+            {result && !compact ? (
+              <Text style={{ color: colors.secondary, fontSize: 10, lineHeight: 14 }}>{result.coverage.disclaimer}</Text>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -340,7 +468,7 @@ function ReportPreviewModal({
   const WebView = getSafeWebView();
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 54 }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg || colors.card, paddingTop: 54 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10 }}>
           <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>{title}</Text>
           <Pressable onPress={onClose} hitSlop={10}>

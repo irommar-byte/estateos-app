@@ -7,8 +7,10 @@ import { parseLooseNumber } from '@/lib/market/format';
 import {
   collectReportEmails,
   emailMarketReport,
+  listUserOfferReports,
   loadUserMarketReport,
   parseReportVariant,
+  previewUserMarketReport,
   recordMarketReportGeneration,
   stampReportEmails,
 } from '@/lib/market/deliverReport';
@@ -20,8 +22,53 @@ import {
 } from '@/lib/market/reportQuota';
 import { loadMarketUser } from '@/lib/market/access';
 import { recordMarketReportForClient } from '@/lib/crm/sellerSaleUpdates';
+import { resolveOfferReportInput } from '@/lib/market/offerReportSubject';
+import { buildPortalUrl } from '@/lib/agencyClientNotify';
+import { marketReportPortalHref } from '@/lib/crm/portalActivityStacks';
 
 export const dynamic = 'force-dynamic';
+
+async function resolveClient(userId: number, body: Record<string, unknown>) {
+  const clientId = Number(body.clientId);
+  if (!Number.isFinite(clientId) || clientId <= 0) return null;
+  return prisma.agencyClient.findFirst({
+    where: { id: clientId, agencyUserId: userId, status: 'ACTIVE' },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      portalToken: true,
+      linkedOfferId: true,
+    },
+  });
+}
+
+function recipientName(
+  body: Record<string, unknown>,
+  client: { firstName: string; lastName: string } | null,
+  fallback: string,
+) {
+  return (
+    String(body.name || '').trim() ||
+    (client ? `${client.firstName} ${client.lastName}`.trim() : '') ||
+    fallback
+  );
+}
+
+function resolveOfferId(
+  body: Record<string, unknown>,
+  client: { linkedOfferId: number | null } | null,
+) {
+  const fromBody = Number(body.offerId);
+  if (Number.isFinite(fromBody) && fromBody > 0) return fromBody;
+  const linked = Number(client?.linkedOfferId);
+  return Number.isFinite(linked) && linked > 0 ? linked : null;
+}
+
+function portalHomeUrl(token?: string | null) {
+  return token ? buildPortalUrl(token) : null;
+}
 
 export async function GET(req: Request) {
   try {
@@ -34,29 +81,69 @@ export async function GET(req: Request) {
     if (!user) {
       return NextResponse.json({ ok: false, code: 'AUTH', message: 'Zaloguj się.' }, { status: 401 });
     }
+
+    const url = new URL(req.url);
+    const reportId = Number(url.searchParams.get('reportId'));
+    const preview = url.searchParams.get('preview');
+    const clientId = Number(url.searchParams.get('clientId'));
+    const offerId = Number(url.searchParams.get('offerId'));
     const quota = await getMarketReportQuota(user);
-    return NextResponse.json({ ok: true, quota });
+
+    if (Number.isFinite(reportId) && reportId > 0 && preview) {
+      const variantParam = String(preview).toLowerCase();
+      const name = String(url.searchParams.get('name') || '').trim();
+      if (variantParam === '1' || variantParam === 'true' || variantParam === 'both') {
+        const [classic, pro] = await Promise.all([
+          previewUserMarketReport({ userId: user.id, reportId, variant: 'classic', name }),
+          previewUserMarketReport({ userId: user.id, reportId, variant: 'pro', name }),
+        ]);
+        if (!classic && !pro) {
+          return NextResponse.json(
+            { ok: false, code: 'NOT_FOUND', message: 'Nie znaleziono tego raportu.' },
+            { status: 404 },
+          );
+        }
+        return NextResponse.json({
+          ok: true,
+          reportId,
+          html: classic?.html || pro?.html || '',
+          htmlPro: pro?.html || classic?.html || '',
+          quota,
+        });
+      }
+      const variant = parseReportVariant(variantParam);
+      const previewed = await previewUserMarketReport({
+        userId: user.id,
+        reportId,
+        variant,
+        name,
+      });
+      if (!previewed) {
+        return NextResponse.json(
+          { ok: false, code: 'NOT_FOUND', message: 'Nie znaleziono tego raportu.' },
+          { status: 404 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        reportId,
+        variant,
+        html: previewed.html,
+        quota,
+      });
+    }
+
+    const reports = await listUserOfferReports({
+      userId: user.id,
+      clientId: Number.isFinite(clientId) && clientId > 0 ? clientId : null,
+      offerId: Number.isFinite(offerId) && offerId > 0 ? offerId : null,
+    });
+
+    return NextResponse.json({ ok: true, quota, reports });
   } catch (error) {
     console.error('[market.report.quota]', error);
     return NextResponse.json({ ok: false, message: 'Nie udało się pobrać limitu raportów.' }, { status: 500 });
   }
-}
-
-async function resolveClient(userId: number, body: Record<string, unknown>) {
-  const clientId = Number(body.clientId);
-  if (!Number.isFinite(clientId) || clientId <= 0) return null;
-  return prisma.agencyClient.findFirst({
-    where: { id: clientId, agencyUserId: userId, status: 'ACTIVE' },
-    select: { id: true, email: true, firstName: true, lastName: true },
-  });
-}
-
-function recipientName(body: Record<string, unknown>, client: { firstName: string; lastName: string } | null, fallback: string) {
-  return (
-    String(body.name || '').trim() ||
-    (client ? `${client.firstName} ${client.lastName}`.trim() : '') ||
-    fallback
-  );
 }
 
 export async function POST(req: Request) {
@@ -81,6 +168,7 @@ export async function POST(req: Request) {
     const emails = collectReportEmails(body, client?.email);
     const name = recipientName(body, client, '');
     const variant = parseReportVariant(body.variant ?? body.reportVariant);
+    const offerId = resolveOfferId(body, client);
 
     if (previewOnly && !generateOnly && !sendExisting) {
       const quota = await getMarketReportQuota(user);
@@ -116,20 +204,35 @@ export async function POST(req: Request) {
           { status: 404 },
         );
       }
-      const sent = await emailMarketReport({ emails, name, result: stored.result, variant });
       await stampReportEmails(reportId, emails);
+      let portalUrl = portalHomeUrl(client?.portalToken);
+      let clientRecorded = false;
+      let activityId: number | null = null;
       if (client) {
-        await recordMarketReportForClient({
+        const recorded = await recordMarketReportForClient({
           clientId: client.id,
           agencyUserId: user.id,
           emails,
           reportId,
           reportVariant: variant,
+          offerId: offerId || (stored.row as { offerId?: number | null }).offerId || null,
           mid: stored.result.estimated.mid,
           score: stored.result.vsListing?.score ?? null,
           summary: `Najbardziej prawdopodobna wartość: ${Math.round(stored.result.estimated.mid).toLocaleString('pl-PL')} zł (${stored.result.stats.count} aktów, ${stored.result.stats.windowMonths} mies.).`,
         });
+        clientRecorded = recorded.ok;
+        if (recorded.ok && recorded.activityId && client.portalToken) {
+          activityId = recorded.activityId;
+          portalUrl = marketReportPortalHref(client.portalToken, recorded.activityId);
+        }
       }
+      const sent = await emailMarketReport({
+        emails,
+        name,
+        result: stored.result,
+        variant,
+        portalUrl,
+      });
       const quota = await getMarketReportQuota(user);
       return NextResponse.json({
         ok: true,
@@ -139,15 +242,33 @@ export async function POST(req: Request) {
         generated: false,
         quota,
         result: stored.result,
-        clientRecorded: Boolean(client),
+        clientRecorded,
+        activityId,
+        notified: clientRecorded,
       });
     }
 
-    const subject = parseValuationSubject(body);
+    let subject = parseValuationSubject(body);
+    let listingPrice = parseLooseNumber(body.listingPrice ?? body.price);
+    if (offerId) {
+      const fromOffer = await resolveOfferReportInput({
+        agencyUserId: user.id,
+        offerId,
+        clientId: client?.id || null,
+        body,
+      });
+      if ('error' in fromOffer) {
+        if ('error' in subject) {
+          return NextResponse.json({ ok: false, code: 'INVALID', message: fromOffer.error }, { status: 422 });
+        }
+      } else {
+        subject = fromOffer.subject;
+        if (listingPrice == null) listingPrice = fromOffer.listingPrice;
+      }
+    }
     if ('error' in subject) {
       return NextResponse.json({ ok: false, code: 'INVALID', message: subject.error }, { status: 422 });
     }
-    const listingPrice = parseLooseNumber(body.listingPrice ?? body.price);
     const result = await valueProperty(subject, listingPrice);
     if (!result.ok) {
       return NextResponse.json(result, { status: result.code === 'SYNCING' ? 503 : 422 });
@@ -185,6 +306,8 @@ export async function POST(req: Request) {
         creditUsed: consumed.creditUsed,
         subject,
         result,
+        clientId: client?.id || null,
+        offerId,
       });
     } catch (error) {
       await refundMarketReportCreditIfUsed(user.id, consumed.creditUsed);
@@ -211,19 +334,32 @@ export async function POST(req: Request) {
       });
     }
 
-    const sent = await emailMarketReport({ emails, name, result: recorded.result, variant });
+    let portalUrl = portalHomeUrl(client?.portalToken);
+    let activityId: number | null = null;
     if (client) {
-      await recordMarketReportForClient({
+      const clientRecord = await recordMarketReportForClient({
         clientId: client.id,
         agencyUserId: user.id,
         emails,
         reportId: recorded.reportId,
         reportVariant: variant,
+        offerId,
         mid: recorded.result.estimated.mid,
         score: recorded.result.vsListing?.score ?? null,
         summary: `Najbardziej prawdopodobna wartość: ${Math.round(recorded.result.estimated.mid).toLocaleString('pl-PL')} zł (${recorded.result.stats.count} aktów, ${recorded.result.stats.windowMonths} mies.).`,
       });
+      if (clientRecord.ok && clientRecord.activityId && client.portalToken) {
+        activityId = clientRecord.activityId;
+        portalUrl = marketReportPortalHref(client.portalToken, clientRecord.activityId);
+      }
     }
+    const sent = await emailMarketReport({
+      emails,
+      name,
+      result: recorded.result,
+      variant,
+      portalUrl,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -235,6 +371,8 @@ export async function POST(req: Request) {
       quota: nextQuota,
       result,
       clientRecorded: Boolean(client),
+      activityId,
+      notified: Boolean(client),
     });
   } catch (error) {
     console.error('[market.report]', error);

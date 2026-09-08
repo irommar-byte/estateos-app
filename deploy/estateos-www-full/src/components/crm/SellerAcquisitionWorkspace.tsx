@@ -33,6 +33,7 @@ import NumberStepper from "@/components/crm/NumberStepper";
 import CommissionRateSlider from "@/components/crm/CommissionRateSlider";
 import MarketValuationPanel from "@/components/market/MarketValuationPanel";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import OfferClientReportCard from "@/components/market/OfferClientReportCard";
 import { COMMISSION_RATE_DEFAULT, storeCommissionPercent } from "@/lib/leadTransferShared";
 import { PROPERTY_AMENITIES } from "@/lib/crm/clientJourney";
 import { getDistrictsForCity } from "@/lib/location/locationCatalog";
@@ -746,6 +747,7 @@ export default function SellerAcquisitionWorkspace({
               purpose="crm"
               reportEmail={client.email || undefined}
               clientId={client.id}
+              offerId={linkedOffer?.id || undefined}
               applyLabel="Zastosuj cenę rekomendowaną"
               onApply={(price) => {
                 const formatted = String(price).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -1011,6 +1013,13 @@ export default function SellerAcquisitionWorkspace({
                         Kierownik poprosił o poprawki przed aktywacją. Po korekcie wyślij ponownie.
                       </p>
                     ) : null}
+                    <div className="mt-4">
+                      <OfferClientReportCard
+                        clientId={client.id}
+                        offerId={linkedOffer.id}
+                        reportEmail={client.email}
+                      />
+                    </div>
                   </div>
                 ) : null}
               </div>

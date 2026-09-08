@@ -2157,6 +2157,7 @@ export default function AgencyClientDetailScreen() {
                         colors={colors}
                         reportEmail={client?.email}
                         clientId={client?.id}
+                        offerId={linkedOffer?.id || client?.linkedOfferId || undefined}
                         onApply={
                           signed
                             ? undefined
@@ -2484,6 +2485,26 @@ export default function AgencyClientDetailScreen() {
                             </Text>
                           ) : null}
                         </View>
+                      ) : null}
+                      {linkedOffer ? (
+                        <MarketValuationCard
+                          token={token}
+                          lat={Number.isFinite(latNum) ? latNum : null}
+                          lng={Number.isFinite(lngNum) ? lngNum : null}
+                          area={areaNum || null}
+                          rooms={roomsNum || null}
+                          floor={floorNum}
+                          city={form?.property?.city || client?.sellerCity || 'Warszawa'}
+                          district={String(form?.property?.district || client?.sellerDistrict || '')}
+                          address={form?.property?.address}
+                          listingPrice={parseGroupedNumber(String(form?.strategy?.expectedPrice ?? ''))}
+                          purpose="crm"
+                          colors={colors}
+                          reportEmail={client?.email}
+                          clientId={client?.id}
+                          offerId={linkedOffer.id}
+                          compact
+                        />
                       ) : null}
                     </View>
                   ) : null}
