@@ -3804,6 +3804,7 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .eos-crm-tab-scroller {
   scroll-snap-type: x proximity;
   scroll-padding-inline: 12px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .eos-crm-tab-scroller [role='tablist'] > button {
@@ -3826,6 +3827,27 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 .eos-crm-lux-tabs .eos-lux-switch__well,
 .eos-crm-lux-tabs .eos-lux-switch__pill {
   border-radius: 999px;
+}
+
+@media (max-width: 767px) {
+  .eos-crm-lux-tabs {
+    width: max-content !important;
+    min-width: 100%;
+  }
+  .eos-crm-lux-tabs .eos-lux-switch__seg {
+    flex: 0 0 auto !important;
+    min-width: 4.55rem;
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+  }
+  .eos-crm-lux-tabs .eos-lux-switch__seg span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /* Unified stage: tabs + section body as one luxury block */

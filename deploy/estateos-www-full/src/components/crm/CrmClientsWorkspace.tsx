@@ -276,6 +276,27 @@ function initialClientIdFromUrl(): number | null {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
+const CLIENT_LIST_CACHE_KEY = "eos_crm_clients_list_v1";
+
+function readClientListCache(): AgencyClientListItem[] | null {
+  try {
+    const raw = sessionStorage.getItem(CLIENT_LIST_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { clients?: AgencyClientListItem[] };
+    return Array.isArray(parsed?.clients) ? parsed.clients : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeClientListCache(clients: AgencyClientListItem[]) {
+  try {
+    sessionStorage.setItem(CLIENT_LIST_CACHE_KEY, JSON.stringify({ clients, at: Date.now() }));
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export default function CrmClientsWorkspace() {
   const { dict } = useLocale();
   const cl = dict.crmClients;
@@ -322,6 +343,7 @@ export default function CrmClientsWorkspace() {
   }>({ strictCities: [], strictCityDistricts: {} });
   const hadClientSelection = useRef(false);
   const skipPersonReset = useRef(false);
+  const hasListRef = useRef(false);
   const [workspaceView, setWorkspaceView] = useState<"person" | "lane" | "project">("person");
   const [workspaceLane, setWorkspaceLane] = useState<"SELL" | "BUY" | null>(null);
   const [taskReplyDrafts, setTaskReplyDrafts] = useState<Record<string, string>>({});
@@ -384,26 +406,36 @@ export default function CrmClientsWorkspace() {
   }, []);
 
   const loadClients = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
-    try {
+    const fetchList = async () => {
       const listRes = await fetch(`/api/crm/clients`, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(20_000),
+        credentials: "same-origin",
       });
       const listJson = await listRes.json();
-      if (listJson.success) {
-        const nextClients: AgencyClientListItem[] = listJson.clients || [];
-        setClients(nextClients);
-        setSelectedId((prev) => {
-          if (prev && nextClients.some((client) => client.id === prev)) return prev;
-          return null;
-        });
-      } else {
-        setLoadError("Nie udało się wczytać klientów.");
-      }
+      if (!listJson.success) throw new Error("bad_list");
+      const nextClients: AgencyClientListItem[] = listJson.clients || [];
+      hasListRef.current = true;
+      writeClientListCache(nextClients);
+      setClients(nextClients);
+      setLoadError("");
+      setSelectedId((prev) => {
+        if (prev && nextClients.some((client) => client.id === prev)) return prev;
+        return null;
+      });
+    };
+
+    if (!hasListRef.current) setLoading(true);
+    setLoadError("");
+    try {
+      await fetchList();
     } catch {
-      setLoadError("Lista klientów nie odpowiedziała. Spróbuj ponownie.");
+      try {
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+        await fetchList();
+      } catch {
+        if (!hasListRef.current) {
+          setLoadError("Lista klientów nie odpowiedziała. Spróbuj ponownie.");
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -411,6 +443,12 @@ export default function CrmClientsWorkspace() {
   }, [loadReport]);
 
   useEffect(() => {
+    const cached = readClientListCache();
+    if (cached?.length) {
+      hasListRef.current = true;
+      setClients(cached);
+      setLoading(false);
+    }
     void loadClients();
   }, [loadClients]);
 

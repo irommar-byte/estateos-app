@@ -105,7 +105,7 @@ export default function CrmSectionTabBar({
         ref={shellRef}
         role="tablist"
         aria-label="Sekcje konta"
-        className="eos-lux-switch eos-crm-lux-tabs relative mx-auto flex w-full min-w-0 items-stretch gap-0.5 p-1"
+        className="eos-lux-switch eos-crm-lux-tabs relative mx-auto flex min-w-full items-stretch gap-0.5 p-1 md:w-full"
         whileTap={reduceMotion ? undefined : { scale: 0.995 }}
         transition={spring}
       >
@@ -142,7 +142,7 @@ export default function CrmSectionTabBar({
               aria-selected={pressed}
               aria-pressed={pressed}
               onClick={() => onChange(tab)}
-              className={`eos-lux-switch__seg eos-lux-switch__seg--${accent} relative z-[3] flex min-h-[2.75rem] flex-1 items-center justify-center px-2.5 py-2 text-[9px] sm:min-h-[3rem] sm:px-3.5 sm:text-[10px] md:px-4 md:text-[11px]`}
+              className={`eos-lux-switch__seg eos-lux-switch__seg--${accent} relative z-[3] flex min-h-[2.75rem] flex-none items-center justify-center px-2.5 py-2 text-[9px] md:min-h-[3rem] md:flex-1 md:px-3.5 md:text-[10px] lg:px-4 lg:text-[11px]`}
               whileHover={reduceMotion ? undefined : { y: -0.5 }}
               whileTap={reduceMotion ? undefined : { scale: 0.97 }}
               transition={spring}
