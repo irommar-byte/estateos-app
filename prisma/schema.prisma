@@ -1250,6 +1250,7 @@ model AgencyClientMatch {
 
   @@unique([clientId, offerId])
   @@index([clientId, score])
+  @@index([clientId, notifiedAt])
 }
 
 model AgencyClientActivity {
@@ -1267,6 +1268,7 @@ model AgencyClientActivity {
   marketingNotifications SellerMarketingNotification[]
 
   @@index([clientId, createdAt])
+  @@index([clientId, kind, createdAt])
 }
 
 /// Trwała kolejka wysyłki wpisów marketingowych widocznych dla klienta.

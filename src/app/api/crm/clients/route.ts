@@ -23,6 +23,12 @@ import {
   apartmentNumberForType,
   parseSellerPropertyType,
 } from '@/lib/crm/sellerProperty';
+import {
+  clientActivityLatestSql,
+  clientMatchStatsSql,
+  indexActivities,
+  indexMatchStats,
+} from '@/lib/crm/clientListQuery';
 
 function normalizePhone(raw: unknown): string | null {
   const input = String(raw || '').trim();
@@ -61,10 +67,8 @@ export async function GET(req: Request) {
       lastName: true,
       email: true,
       phone: true,
-      pesel: true,
       emailVerifiedAt: true,
       phoneVerifiedAt: true,
-      notes: true,
       updatedAt: true,
       sellerCity: true,
       sellerPrice: true,
@@ -84,73 +88,56 @@ export async function GET(req: Request) {
     ),
   ).filter((id) => Number.isFinite(id) && id > 0);
 
-  const emptyMatchStats: Array<{ clientId: number; _count: { _all: number }; _max: { score: number | null } }> = [];
-  const [matchStats, activities, closedDeals, sentGroups] = await Promise.all([
+  const [matchRows, activityRows, closedDeals] = await Promise.all([
+    ids.length ? prisma.$queryRaw<Array<{
+      clientId: number;
+      matchCount: bigint | number | string;
+      topScore: number | null;
+      sentCount: bigint | number | string;
+    }>>(clientMatchStatsSql(ids)) : [],
     ids.length
-      ? prisma.agencyClientMatch.groupBy({
-          by: ['clientId'],
-          where: { clientId: { in: ids } },
-          _count: { _all: true },
-          _max: { score: true },
-        })
-      : emptyMatchStats,
-    ids.length
-      ? prisma.agencyClientActivity.findMany({
-          where: {
-            clientId: { in: ids },
-            kind: { in: ['ACQUISITION_MEETING', 'PRESENTATION_CONFIRMED'] },
-          },
-          orderBy: { createdAt: 'desc' },
-          select: { clientId: true, kind: true, metadata: true },
-        })
+      ? prisma.$queryRaw<Array<{ clientId: number; kind: string; metadata: unknown }>>(
+          clientActivityLatestSql(ids),
+        )
       : [],
     buyerUserIds.length
-      ? prisma.deal.findMany({
+      ? prisma.deal.groupBy({
+          by: ['buyerId'],
           where: { buyerId: { in: buyerUserIds }, status: 'FINALIZED' },
-          select: { buyerId: true },
-        })
-      : [],
-    ids.length
-      ? prisma.agencyClientMatch.groupBy({
-          by: ['clientId'],
-          where: { clientId: { in: ids }, notifiedAt: { not: null } },
           _count: { _all: true },
         })
       : [],
   ]);
 
-  const matchByClient = new Map(
-    matchStats.map((row) => [row.clientId, { count: row._count._all, top: row._max.score }]),
-  );
-  const actsByClient = new Map<number, Array<{ kind: string; metadata: unknown }>>();
-  for (const act of activities) {
-    const list = actsByClient.get(act.clientId) || [];
-    if (list.length < 8) list.push({ kind: act.kind, metadata: act.metadata });
-    actsByClient.set(act.clientId, list);
-  }
+  const matchByClient = indexMatchStats(matchRows);
+  const actsByClient = indexActivities(activityRows);
   const closedBuyerIds = new Set(closedDeals.map((row) => row.buyerId));
-  const sentByClient = new Map(sentGroups.map((row) => [row.clientId, row._count._all]));
 
-  return NextResponse.json({
-    success: true,
-    clients: clients.map((client) => {
-      const match = matchByClient.get(client.id);
-      return shapeClientListItem(
-        {
-          ...client,
-          buyerPreference: client.buyerPreference,
-          _count: { matches: match?.count ?? 0 },
-          matches: match?.top != null ? [{ score: match.top }] : [],
-          activities: actsByClient.get(client.id) || [],
-          linkedUser: client.linkedUser,
-        },
-        {
-          dealClosed: Boolean(client.linkedUserId && closedBuyerIds.has(client.linkedUserId)),
-          sentCount: sentByClient.get(client.id) ?? 0,
-        },
-      );
-    }),
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      clients: clients.map((client) => {
+        const match = matchByClient.get(client.id);
+        return shapeClientListItem(
+          {
+            ...client,
+            pesel: null,
+            notes: null,
+            buyerPreference: client.buyerPreference,
+            _count: { matches: match?.count ?? 0 },
+            matches: match?.top != null ? [{ score: match.top }] : [],
+            activities: actsByClient.get(client.id) || [],
+            linkedUser: client.linkedUser,
+          },
+          {
+            dealClosed: Boolean(client.linkedUserId && closedBuyerIds.has(client.linkedUserId)),
+            sentCount: match?.sent ?? 0,
+          },
+        );
+      }),
+    },
+    { headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=45' } },
+  );
 }
 
 export async function POST(req: Request) {
