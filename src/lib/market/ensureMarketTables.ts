@@ -5,13 +5,18 @@ function ignorable(error: unknown) {
   return /already exists|Duplicate column|Duplicate key name/i.test(message);
 }
 
-async function hasUserColumn(columnName: string): Promise<boolean> {
+async function hasColumn(tableName: string, columnName: string): Promise<boolean> {
   const rows = await prisma.$queryRawUnsafe<Array<{ total: number | string | bigint }>>(
     `SELECT COUNT(*) AS total FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = 'User' AND column_name = ?`,
+     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+    tableName,
     columnName,
   );
   return Number(rows?.[0]?.total ?? 0) > 0;
+}
+
+async function hasUserColumn(columnName: string): Promise<boolean> {
+  return hasColumn('User', columnName);
 }
 
 export async function ensureMarketTables() {
@@ -117,6 +122,39 @@ export async function ensureMarketTables() {
       KEY MarketValuationReport_userId_createdAt_idx (userId, createdAt)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  if (!(await hasColumn('MarketValuationReport', 'clientId'))) {
+    try {
+      await prisma.$executeRawUnsafe(
+        'ALTER TABLE `MarketValuationReport` ADD COLUMN `clientId` INTEGER NULL',
+      );
+    } catch (error) {
+      if (!ignorable(error)) throw error;
+    }
+  }
+  if (!(await hasColumn('MarketValuationReport', 'offerId'))) {
+    try {
+      await prisma.$executeRawUnsafe(
+        'ALTER TABLE `MarketValuationReport` ADD COLUMN `offerId` INTEGER NULL',
+      );
+    } catch (error) {
+      if (!ignorable(error)) throw error;
+    }
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX `MarketValuationReport_clientId_createdAt_idx` ON `MarketValuationReport` (`clientId`, `createdAt`)',
+    );
+  } catch (error) {
+    if (!ignorable(error)) throw error;
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX `MarketValuationReport_offerId_createdAt_idx` ON `MarketValuationReport` (`offerId`, `createdAt`)',
+    );
+  } catch (error) {
+    if (!ignorable(error)) throw error;
+  }
 
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS MarketValuationDraft (

@@ -7,6 +7,8 @@ import {
   recordEstateosPromotion,
   recordMarketingActivity,
 } from '@/lib/crm/sellerMarketing';
+import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
+import { marketReportPortalPath } from '@/lib/crm/portalActivityStacks';
 
 export const SELLER_SALE_ACTIVITY = {
   MARKET_REPORT: MARKETING_ACTIVITY.MARKET_REPORT,
@@ -136,22 +138,54 @@ export async function recordMarketReportForClient(params: {
   score?: number | null;
   reportId?: number | null;
   reportVariant?: 'classic' | 'pro' | null;
+  offerId?: number | null;
   visibleToClient?: boolean;
+  portalUrl?: string | null;
 }) {
   const emailsLabel = params.emails.join(', ');
-  return recordSellerSaleUpdate({
+  const variant = params.reportVariant || 'classic';
+  const title =
+    variant === 'pro'
+      ? 'Raport wartości nieruchomości · mapa i rekomendacja'
+      : 'Raport wartości nieruchomości · zestawienie transakcji';
+  const recorded = await recordSellerSaleUpdate({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     kind: SELLER_SALE_ACTIVITY.MARKET_REPORT,
-    title: 'Raport z Rejestru Cen Nieruchomości',
-    body: `Przekazaliśmy Państwu analizę wartości nieruchomości na podstawie rzeczywistych aktów notarialnych (GUGiK). Dokument jest dostępny w panelu i można go odczytać w każdej chwili.${emailsLabel ? ` Wysłano na: ${emailsLabel}.` : ''}`,
+    offerId: params.offerId ?? null,
+    title,
+    body: `Przygotowaliśmy i wysłaliśmy raport z analizy wartości Państwa nieruchomości na podstawie aktów notarialnych (RCN / GUGiK). Dokument zostaje w panelu współpracy — można go otworzyć w każdej chwili.${emailsLabel ? ` Wysłano też e-mailem na: ${emailsLabel}.` : ''} ${params.summary}`.trim(),
     metadata: {
       emails: params.emails,
       reportId: params.reportId ?? null,
-      reportVariant: params.reportVariant || 'classic',
+      reportVariant: variant,
       score: params.score ?? null,
+      mid: params.mid,
     },
     visibleToClient: params.visibleToClient !== false,
     skipClientNotify: true,
   });
+
+  if (recorded.ok) {
+    const client = await prisma.agencyClient.findUnique({
+      where: { id: params.clientId },
+      select: { portalToken: true },
+    });
+    const reportPath =
+      client?.portalToken && recorded.activityId
+        ? marketReportPortalPath(client.portalToken, recorded.activityId)
+        : params.portalUrl || undefined;
+    await sendClientPortalWebPush(params.clientId, {
+      title: 'Raport nieruchomości jest gotowy',
+      body: 'Przygotowaliśmy i wysłaliśmy raport z analizy wartości Państwa oferty. Otwórz panel, żeby zawsze mieć do niego dostęp.',
+      url: reportPath,
+      tag: `market-report-${recorded.activityId || params.reportId || params.clientId}`,
+      notificationType: 'MARKET_REPORT',
+      native: true,
+    }).catch((error) => {
+      console.error('[sellerSaleUpdates.marketReport.notify]', error);
+    });
+  }
+
+  return recorded;
 }

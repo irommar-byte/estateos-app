@@ -6,6 +6,7 @@ import FacebookGroupPromotePanel, {
 } from "@/components/crm/FacebookGroupPromotePanel";
 import type { FacebookGroupDestination } from "@/lib/crm/marketingChannel";
 import { parseSellerEventProposal, SELLER_EVENT_STAGE_LABELS } from "@/lib/crm/sellerEventStage";
+import OfferClientReportCard from "@/components/market/OfferClientReportCard";
 
 type NextStep = {
   currentStep: string;
@@ -45,6 +46,8 @@ type SellerEventsBundle = {
 
 type Props = {
   linkedOfferId: number | null;
+  clientId: number;
+  clientEmail?: string | null;
   busy: boolean;
   sellerNextStep: NextStep;
   sellerEvents?: SellerEventsBundle;
@@ -125,6 +128,8 @@ function stageChipClass(id: string | undefined) {
 
 export default function CrmSellerCollaborationPanel({
   linkedOfferId,
+  clientId,
+  clientEmail,
   busy,
   sellerNextStep,
   sellerEvents = null,
@@ -340,6 +345,13 @@ export default function CrmSellerCollaborationPanel({
 
   return (
     <div className="space-y-4">
+      {linkedOfferId ? (
+        <OfferClientReportCard
+          clientId={clientId}
+          offerId={linkedOfferId}
+          reportEmail={clientEmail}
+        />
+      ) : null}
       <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4">
         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">
           Inny portal

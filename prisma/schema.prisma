@@ -1499,6 +1499,8 @@ model MarketIngestRun {
 model MarketValuationReport {
   id          Int      @id @default(autoincrement())
   userId      Int?
+  clientId    Int?
+  offerId     Int?
   email       String   @db.VarChar(191)
   purpose     String   @db.VarChar(24)
   creditUsed  Boolean  @default(false)
@@ -1510,6 +1512,8 @@ model MarketValuationReport {
 
   @@index([email, createdAt])
   @@index([userId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([offerId, createdAt])
 }
 
 model MarketValuationDraft {

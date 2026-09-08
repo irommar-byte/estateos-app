@@ -754,6 +754,7 @@ export function DeskCaseInspector({
             area={offer.area || undefined}
             rooms={offer.rooms || undefined}
             clientId={deskCase.client.id}
+            offerId={offer.id}
             showReport
           />
         </div>

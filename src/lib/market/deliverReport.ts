@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { buildMarketReportHtml, buildMarketReportPair, type ReportHtmlOpts } from '@/lib/market/reportHtml';
+import { wrapReportEmailWithPortal } from '@/lib/market/reportEmailWrap';
 import { resolveRcnAsOfDate } from '@/lib/market/asOf';
 import { buildPricePulse } from '@/lib/market/pricePulse';
 import type { MarketReportVariant, ValuationResult, ValuationSubject } from '@/lib/market/types';
@@ -75,6 +76,16 @@ export function collectReportEmails(body: Record<string, unknown>, clientEmail?:
   ]);
 }
 
+export type StoredOfferReport = {
+  id: number;
+  createdAt: string;
+  mid: number | null;
+  city: string | null;
+  address: string | null;
+  sentClassic: boolean;
+  sentPro: boolean;
+};
+
 export async function recordMarketReportGeneration(params: {
   userId: number | null;
   emails: string[];
@@ -84,6 +95,8 @@ export async function recordMarketReportGeneration(params: {
   creditUsed: boolean;
   subject: ValuationSubject;
   result: ValuationResult;
+  clientId?: number | null;
+  offerId?: number | null;
 }) {
   const emails = uniqEmails(params.emails);
   const emailLabel = (emails.join(', ') || params.fallbackEmail || 'generated').slice(0, 191);
@@ -91,6 +104,8 @@ export async function recordMarketReportGeneration(params: {
   const row = await prisma.marketValuationReport.create({
     data: {
       userId: params.userId,
+      clientId: params.clientId || null,
+      offerId: params.offerId || null,
       email: emailLabel,
       purpose: params.purpose,
       creditUsed: params.creditUsed,
@@ -108,23 +123,136 @@ export async function emailMarketReport(params: {
   name?: string | null;
   result: ValuationResult;
   variant?: MarketReportVariant;
+  portalUrl?: string | null;
 }) {
   const emails = uniqEmails(params.emails);
   if (!emails.length) return { emailed: false, emails: [] as string[], html: '' };
-  const html = await buildMarketReportHtml(
-    params.result,
-    reportLetterOpts({ name: params.name, emails, variant: params.variant || 'classic' }),
+  const html = wrapReportEmailWithPortal(
+    await buildMarketReportHtml(
+      params.result,
+      reportLetterOpts({ name: params.name, emails, variant: params.variant || 'classic' }),
+    ),
+    params.portalUrl,
   );
+  const place = params.result.subject.address
+    ? `${params.result.subject.city}, ${params.result.subject.address}`
+    : params.result.subject.city;
+  const variantLabel =
+    params.variant === 'pro' ? 'wersja z mapą i rekomendacją' : 'zestawienie transakcji';
   let emailed = false;
   for (const to of emails) {
     const ok = await sendTransactionalEmail({
       to,
-      subject: `Analiza wartości nieruchomości — ${params.result.subject.city}${params.result.subject.address ? `, ${params.result.subject.address}` : ''}`,
+      subject: `Raport wartości nieruchomości — ${place} (${variantLabel})`,
       html,
     });
     if (ok) emailed = true;
   }
   return { emailed, emails, html };
+}
+
+export async function previewUserMarketReport(params: {
+  userId: number;
+  reportId: number;
+  variant: MarketReportVariant;
+  name?: string | null;
+  email?: string | null;
+}) {
+  const stored = await loadUserMarketReport(params.userId, params.reportId);
+  if (!stored) return null;
+  const html = await buildMarketReportHtml(
+    stored.result,
+    reportLetterOpts({
+      name: params.name,
+      emails: params.email ? [params.email] : [],
+      generatedAt: stored.row.createdAt,
+      variant: params.variant,
+    }),
+  );
+  return { html, result: stored.result, createdAt: stored.row.createdAt.toISOString() };
+}
+
+function parseStoredResult(row: { resultJson: string; subjectJson: string; createdAt: Date; id: number }) {
+  try {
+    const result = JSON.parse(row.resultJson) as ValuationResult;
+    const subject = JSON.parse(row.subjectJson) as ValuationSubject;
+    return {
+      id: row.id,
+      createdAt: row.createdAt.toISOString(),
+      mid: Number.isFinite(result?.estimated?.mid) ? Math.round(result.estimated.mid) : null,
+      city: subject?.city || result?.subject?.city || null,
+      address: subject?.address || result?.subject?.address || null,
+    };
+  } catch {
+    return {
+      id: row.id,
+      createdAt: row.createdAt.toISOString(),
+      mid: null,
+      city: null,
+      address: null,
+    };
+  }
+}
+
+export async function listUserOfferReports(params: {
+  userId: number;
+  clientId?: number | null;
+  offerId?: number | null;
+}): Promise<StoredOfferReport[]> {
+  const clientId = Number(params.clientId);
+  const offerId = Number(params.offerId);
+  const hasClient = Number.isFinite(clientId) && clientId > 0;
+  const hasOffer = Number.isFinite(offerId) && offerId > 0;
+  if (!hasClient && !hasOffer) return [];
+
+  const or: Array<{ clientId?: number; offerId?: number }> = [];
+  if (hasClient) or.push({ clientId });
+  if (hasOffer) or.push({ offerId });
+
+  const rows = await prisma.marketValuationReport.findMany({
+    where: { userId: params.userId, OR: or },
+    orderBy: { createdAt: 'desc' },
+    take: 12,
+    select: { id: true, resultJson: true, subjectJson: true, createdAt: true },
+  });
+
+  const sent = hasClient
+    ? await prisma.agencyClientActivity.findMany({
+        where: {
+          clientId,
+          agencyUserId: params.userId,
+          kind: 'MARKET_REPORT_SENT',
+          ...(hasOffer ? { offerId } : {}),
+        },
+        select: { metadata: true },
+        take: 80,
+      })
+    : [];
+
+  const sentByReport = new Map<number, { classic: boolean; pro: boolean }>();
+  for (const activity of sent) {
+    const meta =
+      activity.metadata && typeof activity.metadata === 'object'
+        ? (activity.metadata as Record<string, unknown>)
+        : {};
+    const reportId = Number(meta.reportId);
+    if (!Number.isFinite(reportId) || reportId <= 0) continue;
+    const variant = parseReportVariant(meta.reportVariant);
+    const prev = sentByReport.get(reportId) || { classic: false, pro: false };
+    if (variant === 'pro') prev.pro = true;
+    else prev.classic = true;
+    sentByReport.set(reportId, prev);
+  }
+
+  return rows.map((row) => {
+    const parsed = parseStoredResult(row);
+    const flags = sentByReport.get(row.id) || { classic: false, pro: false };
+    return {
+      ...parsed,
+      sentClassic: flags.classic,
+      sentPro: flags.pro,
+    };
+  });
 }
 
 export async function loadUserMarketReport(userId: number, reportId: number) {
