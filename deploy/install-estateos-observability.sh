@@ -16,7 +16,8 @@ if [ -f "$ROOT/deploy/nginx-lineage-upstreams.conf" ]; then
 fi
 LINEAGE_SITE="/etc/nginx/sites-enabled/lineage"
 if [ -f "$ROOT/deploy/nginx-lineage-site.conf" ] && [ -f "$LINEAGE_SITE" ]; then
-  sudo cp "$LINEAGE_SITE" "${LINEAGE_SITE}.bak-${STAMP}"
+  sudo mkdir -p /var/backups/estateos-nginx
+  sudo cp "$LINEAGE_SITE" "/var/backups/estateos-nginx/lineage.bak-${STAMP}"
   sudo install -m 0644 "$ROOT/deploy/nginx-lineage-site.conf" "$LINEAGE_SITE"
 fi
 sudo install -m 0644 "$ROOT/deploy/logrotate-estateos" /etc/logrotate.d/estateos
