@@ -3,7 +3,7 @@ import { getCarOgJpeg, getOfferOgJpeg } from '@/lib/buildShareOgJpeg';
 
 const OG_HEADERS = {
   'Content-Type': 'image/jpeg',
-  'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400',
+  'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
   'X-Content-Type-Options': 'nosniff',
 };
 

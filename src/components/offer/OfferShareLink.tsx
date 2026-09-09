@@ -5,6 +5,7 @@ import { Link2, Check, ExternalLink } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
 import { offerCardPreviewPath, offerSharePath } from "@/lib/publicListingPath";
+import { offerOgContentStamp } from "@/lib/ogCardVersion";
 
 const DEFAULT_ORIGIN = "https://estateos.pl";
 
@@ -18,15 +19,28 @@ type OfferShareLinkProps = {
   offerId: number;
   presentingAgentId?: number;
   portalToken?: string | null;
+  pricePln?: number | null;
+  price?: number | null;
+  updatedAt?: string | Date | number | null;
+  title?: string | null;
 };
 
-export default function OfferShareLink({ offerId, presentingAgentId, portalToken }: OfferShareLinkProps) {
+export default function OfferShareLink({
+  offerId,
+  presentingAgentId,
+  portalToken,
+  pricePln,
+  price,
+  updatedAt,
+  title,
+}: OfferShareLinkProps) {
   const { locale } = useLocale();
   const copy = getOfferModalsDictionary(locale).shareLink;
   const [copied, setCopied] = useState(false);
   const shareUrl = useMemo(() => {
-    return `${resolveOrigin()}${offerSharePath(offerId, { presentingAgentId, portalToken })}`;
-  }, [offerId, presentingAgentId, portalToken]);
+    const ogStamp = offerOgContentStamp({ pricePln, price, updatedAt, title });
+    return `${resolveOrigin()}${offerSharePath(offerId, { presentingAgentId, portalToken, ogStamp })}`;
+  }, [offerId, presentingAgentId, portalToken, pricePln, price, updatedAt, title]);
   const previewHref = useMemo(() => {
     return offerCardPreviewPath(offerId, { presentingAgentId, portalToken });
   }, [offerId, presentingAgentId, portalToken]);

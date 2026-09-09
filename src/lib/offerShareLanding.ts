@@ -14,7 +14,8 @@ import {
 } from '@/lib/sellerDisplay';
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { formatPublicAddressLine, formatPublicOfferLocation } from '@/lib/publicOfferLocation';
-import { offerOgImagePath } from '@/lib/ogCardVersion';
+import { offerOgImagePath, offerOgContentStamp } from '@/lib/ogCardVersion';
+import { offerSharePath } from '@/lib/publicListingPath';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 
 export function resolvePublicAppOrigin(): string {
@@ -99,9 +100,14 @@ export type OfferShareCard = {
   ogTitle: string;
   ogDescription: string;
   canonicalUrl: string;
+  /** og:url with content stamp — Facebook follows this and will not reuse the previous price card. */
+  facebookObjectUrl: string;
   imageUrl: string;
   /** JPEG 1200×630 pod Facebook / Messenger. */
   socialImageUrl: string;
+  /** Fragment ścieżki og:image — zmienia się po cenie / zapisie, żeby FB nie trzymał starej karty. */
+  ogStamp: string;
+  updatedAtIso: string | null;
   images: string[];
   priceLabel: string;
   isRent: boolean;
@@ -174,6 +180,12 @@ export async function loadOfferShareCard(
 
   const images = parseImageList(row.images);
   const primary = absolutizeMediaUrl(resolveOfferPrimaryImage(row)) || images[0] || '';
+  const ogStamp = offerOgContentStamp({
+    pricePln: row.pricePln ?? row.price,
+    updatedAt: row.updatedAt,
+    title,
+  });
+  const updatedAtIso = row.updatedAt ? new Date(row.updatedAt).toISOString() : null;
   const canonicalUrl = `${resolvePublicAppOrigin()}/o/${offerId}`;
   const ogDescription = `${detailLine} — ${priceLabel}. Galeria, parametry i kontakt na EstateOS™.`;
   const ogTitle = `${title} — ${priceLabel}`;
@@ -264,8 +276,14 @@ export async function loadOfferShareCard(
     ogTitle,
     ogDescription,
     canonicalUrl,
+    facebookObjectUrl: `${resolvePublicAppOrigin()}${offerSharePath(offerId, {
+      ogStamp,
+      presentingAgentId: agentUserId ? Number(agentUserId) : null,
+    })}`,
     imageUrl: primary,
-    socialImageUrl: `${resolvePublicAppOrigin()}${offerOgImagePath(offerId)}`,
+    socialImageUrl: `${resolvePublicAppOrigin()}${offerOgImagePath(offerId, ogStamp)}`,
+    ogStamp,
+    updatedAtIso,
     images: images.length ? images : primary ? [primary] : [],
     priceLabel,
     isRent,

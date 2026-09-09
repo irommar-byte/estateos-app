@@ -71,6 +71,7 @@ export async function GET(req: Request, ctx: Ctx) {
           status: true,
           pricePln: true,
           listPricePln: true,
+          updatedAt: true,
           city: true,
           district: true,
           street: true,

@@ -7,6 +7,7 @@ import OfferShareLink from "@/components/offer/OfferShareLink";
 import { useLocale } from "@/contexts/LocaleContext";
 import { getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
 import { offerCardPreviewPath, offerSharePath } from "@/lib/publicListingPath";
+import { offerOgContentStamp } from "@/lib/ogCardVersion";
 
 const DEFAULT_ORIGIN = "https://estateos.pl";
 
@@ -19,16 +20,25 @@ function resolveOrigin(): string {
 export default function OfferOwnerPublishPanel({
   offerId,
   presentingAgentId,
+  pricePln,
+  price,
+  updatedAt,
+  title,
 }: {
   offerId: number;
   presentingAgentId?: number;
+  pricePln?: number | null;
+  price?: number | null;
+  updatedAt?: string | Date | number | null;
+  title?: string | null;
 }) {
   const { locale } = useLocale();
   const copy = getOfferModalsDictionary(locale).ownerPublish;
 
   const shareUrl = useMemo(() => {
-    return `${resolveOrigin()}${offerSharePath(offerId, { presentingAgentId })}`;
-  }, [offerId, presentingAgentId]);
+    const ogStamp = offerOgContentStamp({ pricePln, price, updatedAt, title });
+    return `${resolveOrigin()}${offerSharePath(offerId, { presentingAgentId, ogStamp })}`;
+  }, [offerId, presentingAgentId, pricePln, price, updatedAt, title]);
 
   const previewHref = useMemo(() => {
     return offerCardPreviewPath(offerId, { presentingAgentId });
@@ -46,7 +56,14 @@ export default function OfferOwnerPublishPanel({
         <p className="mt-2 text-sm leading-relaxed text-white/75">{copy.lead}</p>
       </div>
 
-      <OfferShareLink offerId={offerId} presentingAgentId={presentingAgentId} />
+      <OfferShareLink
+        offerId={offerId}
+        presentingAgentId={presentingAgentId}
+        pricePln={pricePln}
+        price={price}
+        updatedAt={updatedAt}
+        title={title}
+      />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <a
