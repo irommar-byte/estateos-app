@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -32,6 +33,8 @@ import type {
 } from '../contracts/adminCoreOpsContract';
 import { CORE_LOG_APP_NAMES } from '../contracts/adminCoreOpsContract';
 import {
+  ADMIN_CORE_SERVER_CONTROL_ENABLED,
+  controlAdminCoreServer,
   fetchAdminCoreMetrics,
   formatBytesShort,
   formatUptime,
@@ -46,9 +49,13 @@ import {
   runCoreOptimize,
   runCoreGuardAction,
 } from '../services/adminCoreOpsService';
+import { fetchAdminCoreMonitor, type AdminCoreMonitor } from '../services/adminSimulatorService';
 
 type TabId = 'overview' | 'fleet' | 'logs' | 'prod' | 'repair';
+type CoreTraffic = 'offline' | 'loading' | 'online';
 type ConsoleTheme = ReturnType<typeof useConsoleTheme>;
+const CORE_GOLD = '#CBA135';
+const BRAND_MARK = require('../../assets/icon.png');
 
 const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 const METRICS_MS = 4000;
@@ -120,6 +127,11 @@ function formatWhen(iso?: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString('pl-PL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatCount(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return new Intl.NumberFormat('pl-PL').format(value);
 }
 
 function processTitle(name: string) {
@@ -279,6 +291,51 @@ function TextBtn({
   );
 }
 
+function TrafficPills({
+  status,
+  busy,
+  colors,
+  onOffline,
+  onOnline,
+}: {
+  status: CoreTraffic;
+  busy: boolean;
+  colors: ConsoleTheme;
+  onOffline: () => void;
+  onOnline: () => void;
+}) {
+  const pills: Array<{ id: CoreTraffic; label: string; color: string; onPress?: () => void }> = [
+    { id: 'offline', label: 'OFFLINE', color: colors.crit, onPress: onOffline },
+    { id: 'loading', label: 'ŁADOWANIE', color: colors.warn },
+    { id: 'online', label: 'ONLINE', color: colors.ok, onPress: onOnline },
+  ];
+  return (
+    <View style={styles.trafficRow}>
+      {pills.map((pill) => {
+        const active = status === pill.id;
+        return (
+          <Pressable
+            key={pill.id}
+            disabled={!pill.onPress || busy || status === pill.id}
+            onPress={pill.onPress}
+            style={[
+              styles.trafficPill,
+              active
+                ? { backgroundColor: pill.color, borderColor: pill.color }
+                : { backgroundColor: colors.input, borderColor: colors.separator },
+              { opacity: !pill.onPress || busy ? 0.7 : 1 },
+            ]}
+          >
+            <Text style={[styles.trafficPillLabel, { color: active ? '#111111' : colors.secondary }]}>
+              {pill.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function isErrorLine(line: string) {
   return /error|fatal|econnrefused|exception|unhandled|crash/i.test(line);
 }
@@ -302,6 +359,9 @@ export default function AdminCoreConsoleScreen() {
   const [production, setProduction] = useState<CoreProductionSnapshot | null>(null);
   const [actions, setActions] = useState<CoreOptimizeAction[]>([]);
   const [guard, setGuard] = useState<CoreGuardDashboard | null>(null);
+  const [monitor, setMonitor] = useState<AdminCoreMonitor | null>(null);
+  const [panelOffline, setPanelOffline] = useState(false);
+  const [serverCommand, setServerCommand] = useState<'idle' | 'starting' | 'stopping'>('idle');
 
   const [logApp, setLogApp] = useState<CoreLogAppName>('nieruchomosci');
   const [logStream, setLogStream] = useState<CoreLogStream>('both');
@@ -344,6 +404,18 @@ export default function AdminCoreConsoleScreen() {
     setGuard(await fetchCoreGuard(token, '24h'));
   }, [getAdminToken]);
 
+  const loadMonitor = useCallback(async () => {
+    const token = getAdminToken();
+    if (!token) return;
+    try {
+      setMonitor(await fetchAdminCoreMonitor(token));
+      setPanelOffline(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (/offline/i.test(message)) setPanelOffline(true);
+    }
+  }, [getAdminToken]);
+
   const loadLogs = useCallback(async () => {
     const token = getAdminToken();
     if (!token) return;
@@ -360,13 +432,20 @@ export default function AdminCoreConsoleScreen() {
       return;
     }
     setError('');
-    const results = await Promise.allSettled([loadDiagnose(), loadMetrics(), loadFleet(), loadProduction(), loadGuard()]);
+    const results = await Promise.allSettled([
+      loadDiagnose(),
+      loadMetrics(),
+      loadFleet(),
+      loadProduction(),
+      loadGuard(),
+      loadMonitor(),
+    ]);
     const diagnoseFailed = results[0];
     if (diagnoseFailed.status === 'rejected') {
       const reason = diagnoseFailed.reason;
       setError(reason instanceof Error ? reason.message : 'Nie udało się odświeżyć CORE.');
     }
-  }, [getAdminToken, loadDiagnose, loadFleet, loadGuard, loadMetrics, loadProduction]);
+  }, [getAdminToken, loadDiagnose, loadFleet, loadGuard, loadMetrics, loadMonitor, loadProduction]);
 
   const refreshAll = useCallback(async () => {
     await refreshChrome();
@@ -385,7 +464,7 @@ export default function AdminCoreConsoleScreen() {
         void loadMetrics().catch(() => undefined);
       }, METRICS_MS);
       const diagnoseTimer = setInterval(() => {
-        void Promise.all([loadDiagnose(), loadFleet(), loadProduction()]).catch(() => undefined);
+        void Promise.all([loadDiagnose(), loadFleet(), loadProduction(), loadMonitor()]).catch(() => undefined);
       }, DIAGNOSE_MS);
       const guardTimer = setInterval(() => {
         void loadGuard().catch(() => undefined);
@@ -395,7 +474,7 @@ export default function AdminCoreConsoleScreen() {
         clearInterval(diagnoseTimer);
         clearInterval(guardTimer);
       };
-    }, [loadDiagnose, loadFleet, loadGuard, loadMetrics, loadProduction, refreshChrome]),
+    }, [loadDiagnose, loadFleet, loadGuard, loadMetrics, loadMonitor, loadProduction, refreshChrome]),
   );
 
   useEffect(() => {
@@ -428,6 +507,17 @@ export default function AdminCoreConsoleScreen() {
   const fleetStopped = processes.filter((item) => item.status === 'stopped').length;
   const daemons = groupByName(processes.filter((item) => item.kind !== 'cron'));
   const crons = groupByName(processes.filter((item) => item.kind === 'cron'));
+  const controlBusy = busy || optimizing || serverCommand !== 'idle';
+  const coreTraffic: CoreTraffic =
+    serverCommand !== 'idle'
+      ? 'loading'
+      : panelOffline
+        ? 'offline'
+        : webOnline || Boolean(metrics?.live)
+          ? 'online'
+          : processes.length
+            ? 'offline'
+            : 'loading';
 
   const runOptimize = async () => {
     const token = getAdminToken();
@@ -448,6 +538,66 @@ export default function AdminCoreConsoleScreen() {
     } finally {
       setOptimizing(false);
     }
+  };
+
+  const turnCoreOffline = () => {
+    const token = getAdminToken();
+    if (!token || !ADMIN_CORE_SERVER_CONTROL_ENABLED) return;
+    Alert.alert(
+      'Przełączyć CORE w OFFLINE?',
+      'Wyłącza metryki i monitor w konsoli. PM2 i estateos.pl zostają online — to nie jest stop produkcji.',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'OFFLINE',
+          style: 'destructive',
+          onPress: () => {
+            setServerCommand('stopping');
+            void controlAdminCoreServer(token, 'stop')
+              .then(() => {
+                setPanelOffline(true);
+                setMetrics(null);
+                setMonitor(null);
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              })
+              .catch((err) => {
+                setPanelOffline(false);
+                setError(err instanceof Error ? err.message : 'Nie udało się wyłączyć panelu CORE.');
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              })
+              .finally(() => setServerCommand('idle'));
+          },
+        },
+      ],
+    );
+  };
+
+  const turnCoreOnline = () => {
+    const token = getAdminToken();
+    if (!token || !ADMIN_CORE_SERVER_CONTROL_ENABLED || controlBusy) return;
+    setServerCommand('starting');
+    setError('');
+    void (async () => {
+      try {
+        await controlAdminCoreServer(token, 'start');
+        for (let i = 0; i < 12; i += 1) {
+          try {
+            await Promise.all([loadMetrics(), loadMonitor(), loadFleet()]);
+            setPanelOffline(false);
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            return;
+          } catch {
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+          }
+        }
+        setError('CORE nie wrócił online — sprawdź logi WWW.');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Nie udało się włączyć CORE.');
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } finally {
+        setServerCommand('idle');
+      }
+    })();
   };
 
   const confirmOptimize = () => {
@@ -628,14 +778,23 @@ export default function AdminCoreConsoleScreen() {
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={10}>
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </Pressable>
+        <Image source={BRAND_MARK} style={styles.brandLogo} />
         <View style={{ flex: 1 }}>
-          <Text style={[styles.kicker, { color: colors.muted }]}>EstateOS™ CORE</Text>
+          <View style={styles.brandRow}>
+            <Text style={[styles.kicker, { color: colors.text }]}>EstateOS™</Text>
+            <View style={styles.coreBadge}>
+              <Text style={styles.coreBadgeText}>CORE</Text>
+            </View>
+          </View>
           <View style={styles.liveLine}>
-            <StatusDot level={webOnline ? 'ok' : processes.length ? 'critical' : 'warning'} colors={colors} />
+            <StatusDot
+              level={panelOffline ? 'warning' : webOnline ? 'ok' : processes.length ? 'critical' : 'warning'}
+              colors={colors}
+            />
             <Text style={[styles.hostLine, { color: colors.secondary }]} numberOfLines={1}>
               {host}
               {'  ·  '}
-              {metrics && metrics.live === false ? 'podgląd' : webOnline ? 'live' : 'offline'}
+              {panelOffline ? 'panel offline' : metrics && metrics.live === false ? 'podgląd' : webOnline ? 'live' : 'offline'}
               {'  ·  '}
               {mariadb?.up ? 'MariaDB' : 'MariaDB down'}
               {'  ·  '}
@@ -648,6 +807,14 @@ export default function AdminCoreConsoleScreen() {
         </Pressable>
         <ScoreRing score={score} level={level} colors={colors} />
       </View>
+
+      <TrafficPills
+        status={coreTraffic}
+        busy={controlBusy}
+        colors={colors}
+        onOffline={turnCoreOffline}
+        onOnline={turnCoreOnline}
+      />
 
       <SegmentBar
         value={tab}
@@ -775,11 +942,72 @@ export default function AdminCoreConsoleScreen() {
                 <Text style={[styles.lede, { color: colors.secondary }]}>
                   {optimizing
                     ? 'Wykonuję zatwierdzony, bezpieczny podzbiór napraw.'
-                    : guardIncidents.length
-                      ? `${guardIncidents.length} aktywnych incydentów CORE Guard.`
-                      : report?.summary || 'Sprawdzam dysk, logi, PM2, bazę i tożsamość deployu.'}
+                    : panelOffline
+                      ? 'Panel CORE jest wyłączony. WWW i baza mogą działać — włącz ONLINE, żeby wrócić do metryk.'
+                      : guardIncidents.length
+                        ? `${guardIncidents.length} aktywnych incydentów CORE Guard.`
+                        : report?.summary || 'Jedna konsola: flota, logi, deploy, diagnostyka i Guard.'}
                 </Text>
               </View>
+              <View style={styles.quickRow}>
+                {[
+                  { id: 'fleet' as TabId, label: 'Flota' },
+                  { id: 'logs' as TabId, label: 'Logi' },
+                  { id: 'prod' as TabId, label: 'Deploy' },
+                  { id: 'repair' as TabId, label: 'Naprawa' },
+                ].map((item) => (
+                  <Pressable key={item.id} onPress={() => setTab(item.id)} style={[styles.quickChip, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+                    <Text style={[styles.quickChipText, { color: colors.text }]}>{item.label}</Text>
+                  </Pressable>
+                ))}
+                <Pressable
+                  onPress={() => confirmProcess(WWW_NAME, 'reload')}
+                  disabled={controlBusy || !webOnline}
+                  style={[styles.quickChip, { backgroundColor: colors.card, borderColor: colors.separator, opacity: controlBusy || !webOnline ? 0.4 : 1 }]}
+                >
+                  <Text style={[styles.quickChipText, { color: colors.text }]}>Reload WWW</Text>
+                </Pressable>
+              </View>
+              <SectionLabel label="SaaS · ruch i baza" colors={colors} />
+              <Panel colors={colors}>
+                <View style={styles.metricRow}>
+                  <MetricTile label="Wizyty 24h" value={formatCount(monitor?.visits24h)} hint={`${formatCount(monitor?.uniqueIps24h)} unikalnych IP`} colors={colors} />
+                  <View style={[styles.vRule, { backgroundColor: colors.hairline }]} />
+                  <MetricTile label="Użytkownicy" value={formatCount(monitor?.users)} hint={`${formatCount(monitor?.activeUsers24h ?? metrics?.app?.activeUsers)} aktywnych 24h`} colors={colors} />
+                </View>
+                <View style={[styles.hRule, { backgroundColor: colors.hairline }]} />
+                <View style={styles.metricRow}>
+                  <MetricTile
+                    label="Oferty"
+                    value={formatCount(monitor?.activeOffers)}
+                    hint={`pending ${formatCount(monitor?.pendingOffers ?? metrics?.app?.offersPending)}`}
+                    colors={colors}
+                  />
+                  <View style={[styles.vRule, { backgroundColor: colors.hairline }]} />
+                  <MetricTile
+                    label="IP publiczne"
+                    value={monitor?.publicIp || '—'}
+                    hint={`uptime ${formatUptime(monitor?.osUptimeSec || metrics?.uptimeSec || 0)}`}
+                    colors={colors}
+                  />
+                </View>
+                <View style={[styles.hRule, { backgroundColor: colors.hairline }]} />
+                <View style={styles.metricRow}>
+                  <MetricTile
+                    label="Ruch / min"
+                    value={metrics?.network?.requestsPerMin != null ? String(metrics.network.requestsPerMin) : '—'}
+                    hint={`p95 ${metrics?.network?.latencyP95Ms != null ? `${Math.round(metrics.network.latencyP95Ms)} ms` : '—'}`}
+                    colors={colors}
+                  />
+                  <View style={[styles.vRule, { backgroundColor: colors.hairline }]} />
+                  <MetricTile
+                    label="Błędy 5xx"
+                    value={formatCount(metrics?.network?.status5xx)}
+                    hint={`odrzuty 499 ${formatCount(metrics?.network?.status499)}`}
+                    colors={colors}
+                  />
+                </View>
+              </Panel>
               <SectionLabel label="CORE Guard · historia trwała" colors={colors} />
               <Panel colors={colors}>
                 {guardIncidents.length === 0 ? (
@@ -874,12 +1102,26 @@ export default function AdminCoreConsoleScreen() {
                   </View>
                   <Text style={[styles.mono, { color: colors.secondary }]}>{production?.git.sha || '—'}</Text>
                 </View>
+                <View style={[styles.listRow, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.hairline }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.rowTitle, { color: colors.text }]}>WWW RSS</Text>
+                    <Text style={[styles.rowMeta, { color: colors.secondary }]}>
+                      heap {formatBytesShort(metrics?.process?.heapUsedBytes || 0)}
+                      {metrics?.process?.eventLoopP95Ms != null ? ` · loop p95 ${Math.round(metrics.process.eventLoopP95Ms)} ms` : ''}
+                    </Text>
+                  </View>
+                  <Text style={[styles.mono, { color: colors.text }]}>{formatBytesShort(metrics?.process?.rssBytes || 0)}</Text>
+                </View>
                 <View style={styles.listRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.rowTitle, { color: colors.text }]}>Oferty pending</Text>
-                    <Text style={[styles.rowMeta, { color: colors.secondary }]}>Aktywni 24h · {metrics?.app?.activeUsers ?? '—'}</Text>
+                    <Text style={[styles.rowMeta, { color: colors.secondary }]}>
+                      odsłony {formatCount(monitor?.pageViews)} · IP {formatCount(monitor?.uniqueIps)}
+                    </Text>
                   </View>
-                  <Text style={[styles.metricValue, { color: colors.text, marginTop: 0 }]}>{metrics?.app?.offersPending ?? '—'}</Text>
+                  <Text style={[styles.metricValue, { color: colors.text, marginTop: 0 }]}>
+                    {formatCount(monitor?.pendingOffers ?? metrics?.app?.offersPending)}
+                  </Text>
                 </View>
               </Panel>
               {fixable.length > 0 ? (
@@ -1091,12 +1333,49 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   backBtn: { padding: 4 },
+  brandLogo: { width: 28, height: 28, borderRadius: 7 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  coreBadge: {
+    backgroundColor: CORE_GOLD,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  coreBadgeText: {
+    color: '#111111',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
   kicker: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
   liveLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  trafficRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    gap: 6,
+  },
+  trafficPill: {
+    flex: 1,
+    minHeight: 30,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trafficPillLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  quickChip: {
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  quickChipText: { fontSize: 12, fontWeight: '600' },
   hostLine: { fontSize: 12, flex: 1 },
   refreshBtn: { padding: 4 },
   scoreWrap: { width: 44, height: 44 },

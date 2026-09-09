@@ -57,8 +57,20 @@ fetch_and_extract() {
     echo "[rn-dsyms] fetching ${artifact} (${RN_VERSION}, ${BUILD_TYPE})"
     rm -rf "${extract_dir}"
     mkdir -p "${extract_dir}"
-    curl -fsSL "${url}" -o "${tarball}"
-    tar -xzf "${tarball}" -C "${extract_dir}"
+    # Official Maven sometimes 404s optional RN dSYMs (e.g. reactnative-core).
+    # Never fail the archive for missing debug symbols.
+    if ! curl -fL --retry 2 --retry-delay 1 --connect-timeout 20 --max-time 90 "${url}" -o "${tarball}"; then
+      echo "warning: [rn-dsyms] ${artifact} dSYM unavailable — archive continues without ${dsym_name}" >&2
+      rm -f "${tarball}"
+      rm -rf "${extract_dir}"
+      return 0
+    fi
+    if ! tar -xzf "${tarball}" -C "${extract_dir}"; then
+      echo "warning: [rn-dsyms] ${artifact} tarball unreadable — skipped" >&2
+      rm -f "${tarball}"
+      rm -rf "${extract_dir}"
+      return 0
+    fi
   fi
 
   local src="${extract_dir}/${inner_path}"

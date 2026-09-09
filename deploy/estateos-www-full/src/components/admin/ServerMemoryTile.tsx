@@ -96,7 +96,10 @@ export default function ServerMemoryTile() {
             {status || error ? (level === "critical" ? "Krytycznie" : level === "warning" ? "Uwaga" : "Stabilnie") : "…"}
           </span>
         </div>
-        <h3 className="mb-3 text-2xl font-black text-[var(--eos-text)]">Pamięć i serwer</h3>
+        <h3 className="mb-3 text-2xl font-black text-[var(--eos-text)]">EstateOS™ CORE</h3>
+        <p className="mb-6 text-sm leading-relaxed text-[var(--eos-muted)]">
+          Konsola SaaS — Guard, diagnostyka, flota i dysk w jednym miejscu.
+        </p>
         {!status && !error ? (
           <p className="mb-8 flex items-center gap-2 text-sm text-[var(--eos-muted)]">
             <Loader2 size={14} className="animate-spin" /> Odczytuję stan…

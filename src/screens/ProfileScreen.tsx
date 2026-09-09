@@ -4859,7 +4859,7 @@ function ProfileScreenLoggedIn({
                 icon="pulse"
                 color="#10b981"
                 title="EstateOS™ CORE"
-                subtitle="Konsola produkcji — flota, logi, deploy, naprawa"
+                subtitle="Jedna konsola SaaS — flota, logi, deploy, Guard"
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   (navigation as any).navigate('AdminCoreConsole');
