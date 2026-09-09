@@ -1,0 +1,289 @@
+/* Nostalgie™ — global overflow / tablet / phone fixes (loads last) */
+
+html {
+  overflow-x: clip;
+}
+
+body.l2-world {
+  overflow-x: clip;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+.shop-container,
+.donate-wrapper,
+.faq-wrapper,
+.mk,
+.np,
+.hero-wrapper,
+.nostalgie-login-wrapper {
+  width: 100%;
+  padding-left: clamp(14px, 4vw, 24px);
+  padding-right: clamp(14px, 4vw, 24px);
+}
+
+.shop-container {
+  max-width: 920px !important;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-wrapper {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-wrapper h2,
+h2.nst-brand,
+.n-title,
+.dashboard-title,
+.section-title,
+.faq-hero h1,
+.shop-hero__title,
+.rates-board__head h2,
+.nc-feature-card h3,
+.n-header .n-title {
+  font-size: clamp(1.05rem, 3.6vw, 2rem) !important;
+  letter-spacing: clamp(0.02em, 0.35vw, 0.1em) !important;
+  line-height: 1.15 !important;
+  max-width: 100%;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  hyphens: none !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.n-header {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.n-subtitle,
+.shop-hero__sub,
+.faq-hero p,
+.nst-subtitle {
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+  max-width: 100%;
+}
+
+.shop-hero {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 8px;
+  padding: 4px 0 12px;
+}
+
+.shop-hero__title {
+  margin: 0 0 6px;
+  font-family: Cinzel, Georgia, serif;
+  color: #f3d98a;
+}
+
+.shop-hero__sub {
+  margin: 0;
+  color: #8d7f68;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: clamp(0.68rem, 2.4vw, 0.82rem);
+}
+
+.lore-card {
+  overflow: visible !important;
+  isolation: isolate;
+  padding: clamp(22px, 5vw, 48px) clamp(14px, 4vw, 32px) !important;
+}
+
+.lore-text {
+  text-align: left !important;
+  max-width: 100% !important;
+  padding: clamp(16px, 3vw, 25px) !important;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.shop-rates {
+  width: 100%;
+  max-width: 100%;
+  margin: 28px auto 0;
+  text-align: left;
+}
+
+.rates-board {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-top: 12px;
+  position: relative;
+  z-index: auto;
+  padding: clamp(14px, 3vw, 22px) !important;
+}
+
+.nc-stats-row {
+  position: relative;
+  z-index: 2;
+}
+
+.nc-hero .rates-board {
+  margin-top: 4px;
+}
+
+.rates-board__head h2 {
+  /* sized by shared title rules + fit script */
+}
+
+.rates-col li {
+  gap: 8px;
+  align-items: baseline;
+}
+
+.rates-col li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.checkbox-wrapper {
+  max-width: 100%;
+  flex-wrap: wrap;
+  box-sizing: border-box;
+}
+
+.btn-ritual {
+  max-width: 100%;
+  white-space: normal;
+  padding-left: clamp(16px, 4vw, 50px) !important;
+  padding-right: clamp(16px, 4vw, 50px) !important;
+  letter-spacing: 0.08em !important;
+}
+
+.wallet-status-bar {
+  flex-wrap: wrap !important;
+  gap: 16px;
+}
+
+.ranking-table,
+.np-table {
+  width: 100%;
+  max-width: 100%;
+}
+
+.hero-wrapper .ranking-table,
+.mk .np-table,
+.np .np-table {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.podium-container {
+  flex-wrap: wrap !important;
+  justify-content: center;
+}
+
+.podium-card {
+  max-width: 100%;
+}
+
+.epic-btn {
+  max-width: 100%;
+}
+
+.nostalgie-login-wrapper {
+  min-height: auto;
+  padding-top: 24px;
+  padding-bottom: 48px;
+}
+
+.nostalgie-card {
+  width: 100%;
+  max-width: min(800px, 100%) !important;
+}
+
+.n-input,
+textarea.n-input {
+  width: 100%;
+  max-width: 100%;
+}
+
+.packages-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)) !important;
+}
+
+.nc-page {
+  padding-top: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  .nc-stats-row {
+    grid-template-columns: 1fr !important;
+    max-width: 340px;
+    width: 100%;
+  }
+
+  .rates-board__grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .wallet-status-bar {
+    flex-direction: column;
+    align-items: stretch !important;
+    text-align: left;
+  }
+
+  .wallet-status-bar .value {
+    font-size: clamp(1.4rem, 6vw, 2.2rem) !important;
+  }
+
+  .faq-block {
+    padding: 20px 16px !important;
+  }
+
+  .np-card,
+  .mk .np-card {
+    padding: 16px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .hero-wrapper h2,
+  h2.nst-brand,
+  .n-title,
+  .section-title,
+  .faq-hero h1 {
+    letter-spacing: 0.03em !important;
+  }
+
+  .epic-btn {
+    min-width: 0 !important;
+    width: min(100%, 280px);
+    font-size: 15px !important;
+    padding: 12px 16px !important;
+  }
+
+  .ranking-table th,
+  .ranking-table td,
+  .np-table th,
+  .np-table td {
+    white-space: nowrap;
+  }
+}
