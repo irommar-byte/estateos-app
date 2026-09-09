@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildPortalSyncVersion } from '@/lib/crm/portalSyncVersion';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
 import { loadPresentationOfferPreview } from '@/lib/crm/presentationOfferPreview';
 import { absolutizeMediaUrl } from '@/lib/offerShareLanding';
@@ -269,6 +270,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           images: true,
           promotedUntil: true,
           createdAt: true,
+          updatedAt: true,
         },
       },
       acquisition: {
@@ -333,8 +335,6 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   if (!client) {
     return NextResponse.json({ error: 'Nie znaleziono panelu klienta.' }, { status: 404 });
   }
-
-  await touchPortalLinkedPresence(client.linkedUserId);
 
   const agent = client.agencyUser;
   const member = agent.agencyMembership;
@@ -430,6 +430,16 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     account.status === 'anonymous'
       ? resolvePortalActivationHint({ clientEmail: client.email, clientPhone: client.phone })
       : null;
+  const syncVersion = buildPortalSyncVersion([
+    client.updatedAt,
+    client.acquisition?.updatedAt,
+    client.linkedOffer?.updatedAt,
+    client.matches.reduce<Date | null>(
+      (latest, match) => (!latest || match.updatedAt > latest ? match.updatedAt : latest),
+      null,
+    ),
+    client.activities[0]?.createdAt,
+  ]);
 
   return NextResponse.json({
     success: true,
@@ -448,6 +458,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agencyPhone,
       agencyEmail,
       agencyAddress,
+      syncVersion,
       searchCriteria,
       intelligenceEnabled: Boolean(client.intelligenceEnabled),
       pendingCheckback,

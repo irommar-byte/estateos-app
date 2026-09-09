@@ -606,6 +606,8 @@ export default function AdminCoreConsoleScreen() {
             <Text style={[styles.hostLine, { color: colors.secondary }]} numberOfLines={1}>
               {host}
               {'  ·  '}
+              {metrics && metrics.live === false ? 'podgląd' : webOnline ? 'live' : 'offline'}
+              {'  ·  '}
               {mariadb?.up ? 'MariaDB' : 'MariaDB down'}
               {'  ·  '}
               {production?.inSync ? production.git.sha || 'commit' : 'dryf commita'}

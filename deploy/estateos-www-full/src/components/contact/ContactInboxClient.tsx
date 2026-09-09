@@ -239,6 +239,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
   useEffect(() => {
     if (!activeThreadId) return;
     pollRef.current = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void fetchContactMessagesWeb(activeThreadId)
         .then((data) => {
           setMessages(data.messages);
@@ -247,7 +248,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
         .catch(() => undefined);
       void loadThreads();
       void loadAttachmentsInfo(activeThreadId);
-    }, 3500);
+    }, 8_000);
     return () => {
       if (pollRef.current != null) window.clearInterval(pollRef.current);
     };
@@ -255,8 +256,8 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      void loadThreads();
-    }, 4000);
+      if (document.visibilityState === "visible") void loadThreads();
+    }, 20_000);
     return () => window.clearInterval(id);
   }, [loadThreads]);
 

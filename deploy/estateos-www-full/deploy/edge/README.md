@@ -9,6 +9,10 @@ Kolejność bezpiecznego przełączenia:
 2. Przed aktywacją TLS pozyskaj oba certyfikaty przez HTTP-01.
 3. Sprawdź z edge: `192.168.50.128:80`, `192.168.50.200:80`,
    `192.168.50.200:4321` i `192.168.50.200:4322`.
+   Do końca okna obserwacji UI `/admin_pro/movies/` nadal leży na EstateOS;
+   API filmów ma iść na `192.168.50.200:4322`, nie na localhost EstateOS.
+   Do końca okna obserwacji UI `/admin_pro/movies/` nadal leży na EstateOS;
+   API filmów ma iść na `192.168.50.200:4322`, nie na localhost EstateOS.
 4. W routerze przekieruj publiczne `80/443` wyłącznie na edge.
 5. Wykonaj smoke obu domen i zachowaj poprzedni NAT jako rollback.
 6. Dopiero po obserwacji ogranicz `80/443` VM aplikacyjnych do adresu edge
