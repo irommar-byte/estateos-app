@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { evaluateCoreGuardSample, type CoreGuardSample } from '../src/lib/coreGuard';
 import { getCoreGuardRunbook } from '../src/lib/coreGuardRunbooks';
+import { isKernelCriticalEvent } from '../src/lib/coreGuardSystem';
 
 function sample(overrides: Partial<CoreGuardSample> = {}): CoreGuardSample {
   return {
@@ -114,6 +115,44 @@ test('CORE Guard ignores a single stray 5xx in the five-minute window', () => {
     }),
   );
   assert.equal(candidates.some((item) => item.fingerprint === 'quick:nginx-5xx'), false);
+});
+
+test('kernel critical events ignore journalctl empty output', () => {
+  assert.equal(isKernelCriticalEvent('-- No entries --'), false);
+  assert.equal(isKernelCriticalEvent('No entries'), false);
+  assert.equal(isKernelCriticalEvent('watchdog: BUG: soft lockup - CPU#1 stuck for 22s!'), true);
+});
+
+test('CORE Guard ignores journalctl chrome as a kernel lockup', () => {
+  const candidates = evaluateCoreGuardSample(
+    sample({
+      full: {
+        findings: [
+          {
+            id: 'junk',
+            severity: 'info',
+            title: 'Pliki tymczasowe i niedokończone pobrania',
+            detail: 'Cache',
+            fixable: true,
+          },
+        ],
+        systemdFailed: [],
+        timers: [],
+        docker: [],
+        listeningPorts: [],
+        kernelWarnings: ['-- No entries --', 'No entries'],
+        deploySha: 'abc',
+        backupAgeHours: 3,
+        cron: [],
+        pressure: {},
+        inodeUsage: [],
+        tls: { host: 'estateos.pl', daysRemaining: 80, validTo: null, error: null },
+        dbDigests: [],
+      } as never,
+    }),
+  );
+  assert.equal(candidates.some((item) => item.fingerprint === 'full:kernel-watchdog'), false);
+  assert.equal(candidates.some((item) => item.type === 'junk'), false);
 });
 
 test('CORE Guard exposes only allowlisted runbooks', () => {

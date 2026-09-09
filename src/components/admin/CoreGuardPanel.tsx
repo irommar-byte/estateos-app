@@ -233,7 +233,10 @@ export default function CoreGuardPanel() {
   };
 
   const activeIncidents = useMemo(
-    () => data?.incidents.filter((incident) => incident.status === "open") || [],
+    () =>
+      data?.incidents.filter(
+        (incident) => incident.status === "open" && incident.severity !== "info",
+      ) || [],
     [data],
   );
   const history = data?.history || [];
