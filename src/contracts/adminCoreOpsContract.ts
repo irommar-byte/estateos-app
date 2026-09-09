@@ -6,7 +6,8 @@ export const CORE_LOG_APP_NAMES = [
   'lineage-movies-proxy',
   'partner-growth-nurture',
   'reviews-finalization-fallback',
-  'kei-auto-import',
+  'kei-import-worker',
+  'estateos-core-guard',
   'client-intelligence',
   'seller-marketing-renewals',
   'rcn-market-ingest',
@@ -107,4 +108,33 @@ export type CoreLogsResult = {
   apps?: string[];
   pm2?: string;
   collectedAt?: string;
+};
+
+export type CoreGuardIncident = {
+  id: string;
+  severity: 'info' | 'warning' | 'critical';
+  status: 'pending' | 'open' | 'resolved';
+  title: string;
+  detail: string;
+  recommendedAction?: string | null;
+  autoFixable?: boolean;
+  occurrences: number;
+  lastSeenAt: string;
+};
+
+export type CoreGuardDashboard = {
+  score: number;
+  level: 'ok' | 'warning' | 'critical';
+  collectedAt: string;
+  latest?: {
+    cpuPercent?: number;
+    memoryUsedBytes?: number;
+    memoryTotalBytes?: number;
+    requestsPerMin?: number;
+    latencyP95Ms?: number | null;
+    status5xx?: number;
+  } | null;
+  incidents: CoreGuardIncident[];
+  history: Array<Record<string, unknown>>;
+  audits: Array<Record<string, unknown>>;
 };

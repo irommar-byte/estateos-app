@@ -77,14 +77,14 @@ export function normalizeAdminCoreMetrics(raw: Record<string, unknown>, live: bo
   const appRaw = (raw.app ?? raw.application ?? {}) as Record<string, unknown>;
 
   const memory = bytesPair(
-    memRaw.usedBytes ?? memRaw.used ?? memRaw.usedMb != null ? num(memRaw.usedMb) * 1024 ** 2 : undefined,
-    memRaw.totalBytes ?? memRaw.total ?? memRaw.totalMb != null ? num(memRaw.totalMb) * 1024 ** 2 : undefined,
+    memRaw.usedBytes ?? memRaw.used ?? (memRaw.usedMb != null ? num(memRaw.usedMb) * 1024 ** 2 : undefined),
+    memRaw.totalBytes ?? memRaw.total ?? (memRaw.totalMb != null ? num(memRaw.totalMb) * 1024 ** 2 : undefined),
   );
   if (memRaw.percent != null) memory.percent = num(memRaw.percent);
 
   const disk = bytesPair(
-    diskRaw.usedBytes ?? diskRaw.used ?? diskRaw.usedGb != null ? num(diskRaw.usedGb) * 1024 ** 3 : undefined,
-    diskRaw.totalBytes ?? diskRaw.total ?? diskRaw.totalGb != null ? num(diskRaw.totalGb) * 1024 ** 3 : undefined,
+    diskRaw.usedBytes ?? diskRaw.used ?? (diskRaw.usedGb != null ? num(diskRaw.usedGb) * 1024 ** 3 : undefined),
+    diskRaw.totalBytes ?? diskRaw.total ?? (diskRaw.totalGb != null ? num(diskRaw.totalGb) * 1024 ** 3 : undefined),
   );
   if (diskRaw.percent != null) disk.percent = num(diskRaw.percent);
 
@@ -102,22 +102,41 @@ export function normalizeAdminCoreMetrics(raw: Record<string, unknown>, live: bo
     memory,
     disk,
     process: {
-      rssBytes: num(procRaw.rssBytes ?? procRaw.rss ?? procRaw.rssMb != null ? num(procRaw.rssMb) * 1024 ** 2 : 0),
+      pid: num(procRaw.pid),
+      rssBytes: num(
+        procRaw.rssBytes ?? procRaw.rss ?? (procRaw.rssMb != null ? num(procRaw.rssMb) * 1024 ** 2 : 0),
+      ),
       heapUsedBytes: num(
-        procRaw.heapUsedBytes ?? procRaw.heapUsed ?? procRaw.heapUsedMb != null ? num(procRaw.heapUsedMb) * 1024 ** 2 : 0,
+        procRaw.heapUsedBytes ??
+          procRaw.heapUsed ??
+          (procRaw.heapUsedMb != null ? num(procRaw.heapUsedMb) * 1024 ** 2 : 0),
       ),
       heapTotalBytes: num(
-        procRaw.heapTotalBytes ?? procRaw.heapTotal ?? procRaw.heapTotalMb != null ? num(procRaw.heapTotalMb) * 1024 ** 2 : 0,
+        procRaw.heapTotalBytes ??
+          procRaw.heapTotal ??
+          (procRaw.heapTotalMb != null ? num(procRaw.heapTotalMb) * 1024 ** 2 : 0),
       ),
+      externalBytes: num(procRaw.externalBytes),
+      arrayBuffersBytes: num(procRaw.arrayBuffersBytes),
+      eventLoopP95Ms: num(procRaw.eventLoopP95Ms),
+      eventLoopP99Ms: num(procRaw.eventLoopP99Ms),
     },
     network: {
       requestsPerMin: num(netRaw.requestsPerMin ?? netRaw.rpm ?? raw.requestsPerMin),
       activeConnections: num(netRaw.activeConnections ?? netRaw.connections ?? raw.activeConnections),
+      latencyP50Ms: netRaw.latencyP50Ms == null ? null : num(netRaw.latencyP50Ms),
+      latencyP95Ms: netRaw.latencyP95Ms == null ? null : num(netRaw.latencyP95Ms),
+      latencyP99Ms: netRaw.latencyP99Ms == null ? null : num(netRaw.latencyP99Ms),
+      upstreamLatencyP95Ms:
+        netRaw.upstreamLatencyP95Ms == null ? null : num(netRaw.upstreamLatencyP95Ms),
+      status499: num(netRaw.status499),
+      status5xx: num(netRaw.status5xx),
     },
     database: {
       poolActive: num(dbRaw.poolActive ?? dbRaw.active ?? dbRaw.connections),
       poolMax: num(dbRaw.poolMax ?? dbRaw.max, 20),
       latencyMs: num(dbRaw.latencyMs ?? dbRaw.latency ?? dbRaw.pingMs),
+      abortedClients: dbRaw.abortedClients == null ? null : num(dbRaw.abortedClients),
     },
     app: {
       offersPending: num(appRaw.offersPending ?? appRaw.pendingOffers),
@@ -204,7 +223,7 @@ export async function fetchAdminCoreMetrics(
   token: string,
   options?: { allowPreviewFallback?: boolean },
 ): Promise<AdminCoreMetrics> {
-  const allowPreviewFallback = options?.allowPreviewFallback ?? true;
+  const allowPreviewFallback = options?.allowPreviewFallback ?? false;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',

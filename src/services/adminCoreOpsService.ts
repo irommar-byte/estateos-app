@@ -1,6 +1,7 @@
 import { API_URL } from '../config/network';
 import type {
   CoreDiagnoseReport,
+  CoreGuardDashboard,
   CoreLogAppName,
   CoreLogStream,
   CoreLogsResult,
@@ -50,10 +51,22 @@ export async function runCoreOptimize(token: string): Promise<CoreOptimizeResult
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 70_000);
   try {
-    const res = await fetch(`${API_URL}/api/mobile/v1/admin/core/optimize`, {
+    const previewRes = await fetch(`${API_URL}/api/mobile/v1/admin/core/optimize`, {
       method: 'POST',
       headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
       body: '{}',
+      signal: controller.signal,
+    });
+    const preview = (await previewRes.json().catch(() => ({}))) as Record<string, unknown>;
+    if (previewRes.status !== 409 || preview.requiresConfirmation !== true) {
+      if (!previewRes.ok) {
+        throw new Error(String(preview.error || preview.message || `HTTP ${previewRes.status}`));
+      }
+    }
+    const res = await fetch(`${API_URL}/api/mobile/v1/admin/core/optimize`, {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation: 'CONFIRM:SAFE' }),
       signal: controller.signal,
     });
     const data = await parseJson<CoreOptimizeResult>(res);
@@ -71,6 +84,53 @@ export async function runCoreOptimize(token: string): Promise<CoreOptimizeResult
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function fetchCoreGuard(
+  token: string,
+  range: '1h' | '24h' | '7d' = '24h',
+): Promise<CoreGuardDashboard> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/core/guard?range=${range}`, {
+    headers: authHeaders(token),
+    cache: 'no-store',
+  });
+  const data = await parseJson<{ guard?: CoreGuardDashboard }>(res);
+  const guard = data.guard;
+  if (!guard) throw new Error('Brak danych CORE Guard.');
+  return {
+    ...guard,
+    score: Number(guard.score || 0),
+    level: guard.level === 'critical' || guard.level === 'warning' ? guard.level : 'ok',
+    incidents: Array.isArray(guard.incidents) ? guard.incidents : [],
+    history: Array.isArray(guard.history) ? guard.history : [],
+    audits: Array.isArray(guard.audits) ? guard.audits : [],
+  };
+}
+
+export async function runCoreGuardAction(
+  token: string,
+  actionId: string,
+  incidentId?: string,
+): Promise<void> {
+  const previewRes = await fetch(`${API_URL}/api/mobile/v1/admin/core/guard`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ operation: 'plan', actionId }),
+  });
+  const preview = await parseJson<{
+    plan?: { requiresConfirmation?: boolean; confirmation?: string | null };
+  }>(previewRes);
+  const res = await fetch(`${API_URL}/api/mobile/v1/admin/core/guard`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      operation: 'execute',
+      actionId,
+      incidentId,
+      confirmation: preview.plan?.confirmation || null,
+    }),
+  });
+  await parseJson(res);
 }
 
 export async function fetchCoreProcesses(
@@ -95,7 +155,7 @@ export async function controlCoreProcess(
   const res = await fetch(`${API_URL}/api/mobile/v1/admin/core/processes`, {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, action }),
+    body: JSON.stringify({ name, action, confirmation: `CONFIRM:${action}:${name}` }),
   });
   return parseJson(res);
 }

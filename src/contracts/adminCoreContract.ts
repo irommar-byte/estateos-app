@@ -21,18 +21,30 @@ export type AdminCoreMetrics = {
     percent: number;
   };
   process?: {
+    pid?: number;
     rssBytes: number;
     heapUsedBytes: number;
     heapTotalBytes: number;
+    externalBytes?: number;
+    arrayBuffersBytes?: number;
+    eventLoopP95Ms?: number;
+    eventLoopP99Ms?: number;
   };
   network?: {
     requestsPerMin: number;
     activeConnections: number;
+    latencyP50Ms?: number | null;
+    latencyP95Ms?: number | null;
+    latencyP99Ms?: number | null;
+    upstreamLatencyP95Ms?: number | null;
+    status499?: number;
+    status5xx?: number;
   };
   database?: {
     poolActive: number;
     poolMax: number;
     latencyMs: number;
+    abortedClients?: number | null;
   };
   app?: {
     offersPending?: number;

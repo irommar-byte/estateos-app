@@ -557,8 +557,6 @@ export default function AgencyOfficeScreen() {
           </View>
         ) : null}
 
-        ) : null}
-
         {canManageOffers ? (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.secondary }]}>KOLEJKA AKTYWACJI OFERT</Text>
