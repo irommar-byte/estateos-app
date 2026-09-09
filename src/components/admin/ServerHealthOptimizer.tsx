@@ -183,7 +183,7 @@ export default function ServerHealthOptimizer({ compact = false }: { compact?: b
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-xl">
               <p className="text-[11px] font-medium tracking-[0.18em] text-[var(--eos-subtle)] uppercase">
-                Optymalizator serwera
+                Diagnostyka CORE
               </p>
               <h2 className="mt-1 text-[28px] font-semibold leading-tight tracking-tight text-[var(--eos-text)] md:text-[32px]">
                 {headline}

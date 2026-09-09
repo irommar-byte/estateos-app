@@ -502,14 +502,21 @@ export default function ServerMemoryPage() {
         </Link>
 
         <header className="mb-10 flex flex-wrap items-end justify-between gap-6">
-          <div>
-            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.28em] text-[var(--eos-accent)]">
-              Centrala · NAS
-            </p>
-            <h1 className="text-4xl font-black tracking-tight md:text-5xl">Pamięć i serwer</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
-              Diagnostyka, optymalizacja i mapa dysku — filmy, muzyka, oferty i system osobno.
-            </p>
+          <div className="flex items-start gap-4">
+            <img
+              src="/apple-touch-icon.png"
+              alt="EstateOS"
+              className="h-14 w-14 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] object-cover shadow-[var(--eos-shadow-soft)]"
+            />
+            <div>
+              <p className="mb-2 text-[10px] font-black uppercase tracking-[0.28em] text-[var(--eos-accent)]">
+                EstateOS™ CORE
+              </p>
+              <h1 className="text-4xl font-black tracking-tight md:text-5xl">Konsola zarządzania SaaS</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
+                Jedno centrum: Guard, diagnostyka, flota procesów, logi napraw i mapa dysku.
+              </p>
+            </div>
           </div>
           <span className={`rounded-full border px-4 py-2 text-[11px] font-medium ${levelMeta.cls}`}>
             {levelMeta.text}
