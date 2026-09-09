@@ -23,6 +23,10 @@ fi
 sudo install -m 0644 "$ROOT/deploy/logrotate-estateos" /etc/logrotate.d/estateos
 sudo install -m 0644 "$ROOT/deploy/journald-estateos.conf" /etc/systemd/journald.conf.d/estateos-retention.conf
 sudo install -m 0644 "$ROOT/deploy/mariadb-estateos-observability.cnf" /etc/mysql/mariadb.conf.d/70-estateos-observability.cnf
+if [ -f "$ROOT/deploy/sudoers-estateos-core-guard" ]; then
+  sudo install -m 0440 "$ROOT/deploy/sudoers-estateos-core-guard" /etc/sudoers.d/estateos-core-guard
+  sudo visudo -cf /etc/sudoers.d/estateos-core-guard >/dev/null
+fi
 
 python3 - "$SITE" "$ROOT/deploy/nginx-estateos-proxy-location.inc" "/tmp/nieruchomosci.${STAMP}" <<'PY'
 import pathlib
@@ -53,5 +57,5 @@ sudo systemctl reload nginx
 sudo systemctl restart systemd-journald
 sudo logrotate --debug /etc/logrotate.d/estateos >/dev/null
 
-echo "Konfiguracja Nginx/logrotate/journald gotowa."
-echo "Performance Schema zacznie działać po kontrolowanym restarcie MariaDB."
+echo "Konfiguracja Nginx/logrotate/journald/sudoers gotowa."
+echo "Slow log: SET GLOBAL albo restart MariaDB. Performance Schema też po restarcie."

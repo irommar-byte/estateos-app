@@ -22,6 +22,8 @@ const migration = fs.readFileSync(
 test('incident persistence deduplicates, cools down and resolves with hysteresis', () => {
   assert.match(migration, /UNIQUE KEY `CoreIncident_fingerprint_key`/);
   assert.match(guard, /INCIDENT_RESOLVE_MINUTES\s*=\s*7/);
+  assert.match(guard, /WHERE status IN \('open', 'pending'\)/);
+  assert.match(runbooks, /status = 'resolved'/);
   assert.match(guard, /ALERT_COOLDOWN_MINUTES\s*=\s*30/);
   assert.match(guard, /ON DUPLICATE KEY UPDATE/);
   assert.match(guard, /cooldownUntil < NOW/);
@@ -29,6 +31,9 @@ test('incident persistence deduplicates, cools down and resolves with hysteresis
   assert.match(guard, /ignoreRestartDeltas/);
   assert.match(guard, /12 \* 60_000/);
   assert.match(guard, /status5xx >= 3/);
+  const ops = fs.readFileSync(path.join(ROOT, 'src/lib/adminServerOps.ts'), 'utf8');
+  assert.match(ops, /ESTATEOS_GUARD_SCAN_LINEAGE_MOVIES/);
+  assert.doesNotMatch(ops.split('ALLOWED_PM2_NAMES')[0], /lineage-movies-downloader/);
 });
 
 test('repairs are serialized and both Guard APIs require administrators', () => {

@@ -58,41 +58,8 @@ export type CarRadarPreferenceInput = {
 let ensured = false;
 
 export async function ensureCarRadarStorage() {
-  if (ensured) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS CarRadarPreference (
-      id INT NOT NULL AUTO_INCREMENT,
-      userId INT NOT NULL,
-      queryText VARCHAR(512) NOT NULL DEFAULT '',
-      vehicleType VARCHAR(64) NOT NULL DEFAULT '',
-      make VARCHAR(128) NOT NULL DEFAULT '',
-      model VARCHAR(128) NOT NULL DEFAULT '',
-      generation VARCHAR(128) NOT NULL DEFAULT '',
-      fuelType VARCHAR(64) NOT NULL DEFAULT '',
-      bodyType VARCHAR(64) NOT NULL DEFAULT '',
-      exteriorColor VARCHAR(64) NOT NULL DEFAULT '',
-      transmission VARCHAR(64) NOT NULL DEFAULT '',
-      city VARCHAR(128) NOT NULL DEFAULT '',
-      minPrice DOUBLE NULL,
-      maxPrice DOUBLE NULL,
-      minYear INT NULL,
-      maxYear INT NULL,
-      minMileage INT NULL,
-      maxMileage INT NULL,
-      lat DOUBLE NULL,
-      lng DOUBLE NULL,
-      radius DOUBLE NULL,
-      pushNotifications TINYINT(1) NOT NULL DEFAULT 1,
-      enabled TINYINT(1) NOT NULL DEFAULT 0,
-      minMatchThreshold INT NOT NULL DEFAULT 70,
-      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (id),
-      UNIQUE KEY CarRadarPreference_userId_key (userId),
-      KEY CarRadarPreference_push_enabled_idx (pushNotifications, enabled)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
-  ensured = true;
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 function asFiniteNumber(value: unknown): number | null {

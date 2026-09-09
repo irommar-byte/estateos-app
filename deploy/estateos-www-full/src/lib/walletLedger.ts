@@ -42,30 +42,9 @@ export type WalletTimelineEntry = {
   source: 'ledger' | 'reconstructed';
 };
 
-let ledgerTableReady = false;
-
 export async function ensureWalletLedgerTable() {
-  if (ledgerTableReady) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS WalletLedgerEvent (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      userId INT NOT NULL,
-      direction VARCHAR(8) NOT NULL,
-      assetType VARCHAR(32) NOT NULL,
-      amount INT NOT NULL DEFAULT 1,
-      balanceAfter INT NULL,
-      purpose VARCHAR(64) NOT NULL,
-      referenceType VARCHAR(32) NULL,
-      referenceId VARCHAR(128) NULL,
-      label VARCHAR(255) NOT NULL,
-      meta JSON NULL,
-      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (id),
-      KEY WalletLedgerEvent_user_created_idx (userId, createdAt),
-      KEY WalletLedgerEvent_ref_idx (referenceType, referenceId)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
-  ledgerTableReady = true;
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 function hasActivePlusCredit(user: {

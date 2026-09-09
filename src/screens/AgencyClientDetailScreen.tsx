@@ -619,8 +619,6 @@ export default function AgencyClientDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void load({ silent: true });
-      const interval = setInterval(() => void load({ silent: true }), 12_000);
-      return () => clearInterval(interval);
     }, [load]),
   );
 

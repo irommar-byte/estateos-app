@@ -26,7 +26,7 @@ async function fetchOfferStatus(token: string, offerId: number): Promise<string 
 }
 
 async function enrichSellerClient(token: string, client: AgencyClientListItem) {
-  const detailRes = await fetchAgencyClient(token, client.id);
+  const detailRes = await fetchAgencyClient(token, client.id, { lite: true });
   if (!detailRes.ok) return null;
   const acqRes = await fetchAcquisition(token, client.id);
   const acquisition = acqRes.ok ? acqRes.acquisition : null;

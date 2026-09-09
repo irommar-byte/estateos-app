@@ -82,6 +82,7 @@ import {
   syncAppleMusicPlaylistFolder,
   findMusicFolderForImport,
   readFolderCoverFile,
+  reconcileMusicLibraryAssets,
 } from "./music-library.js";
 import {
   getListeningStats,
@@ -2463,8 +2464,11 @@ function startAppleMusicPlayJob({ jobId, url }) {
 
 function musicJobReady(job) {
   if (!job || job.kind !== "music") return false;
+  if (job.status === "error" || job.cancelled) return false;
   if (job.file && fs.existsSync(job.file)) return true;
-  return job.mode === "stream-proxy" && job.status === "done" && !!job.streamUrl;
+  // Live pipe / remote proxy stays playable even while NAS persist sets status=downloading.
+  if (isPipedMusicStream(job) && job.streamUrl) return true;
+  return job.mode === "stream-proxy" && !!job.streamUrl;
 }
 
 function movieJobReady(job) {
@@ -4972,6 +4976,23 @@ app.post("/api/search", async (req, res) => {
     }
     results = filterByAccess(results, access);
     results = mapSearchThumbnails(results);
+    if (source === "cda-hd" || source === "all") {
+      const pool = [];
+      if (Array.isArray(cdaHdLatestCache.items)) pool.push(...cdaHdLatestCache.items);
+      for (const entry of Object.values(cdaHdCatalogCache.entries || {})) {
+        if (Array.isArray(entry?.items)) pool.push(...entry.items);
+      }
+      const byUrl = new Map();
+      for (const it of pool) {
+        const key = String(it?.url || "").replace(/\/$/, "");
+        if (key && it.thumbnail && !byUrl.has(key)) byUrl.set(key, it.thumbnail);
+      }
+      results = results.map((r) => {
+        if (r.thumbnail) return r;
+        const hit = byUrl.get(String(r.url || "").replace(/\/$/, ""));
+        return hit ? { ...r, thumbnail: hit } : r;
+      });
+    }
     const paged = paginateSearchResults(results, page, pageSize);
     res.json({ query, source, sort, access, ...paged });
   } catch (err) {
@@ -5289,6 +5310,10 @@ app.put("/api/music/listening-stats", express.json({ limit: "4mb" }), (req, res)
 // GET /api/music/library — foldery + utwory użytkownika
 app.get("/api/music/library", (req, res) => {
   try {
+    const userKey = favoritesUserKeyFromReq(req);
+    if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+    const assets = listMusicAssets(userKey, MUSIC_PLAYLIST_DOWNLOADS_DIR);
+    reconcileMusicLibraryAssets(userKey, assets.items || []);
     res.json(listMusicLibrary(req, MUSIC_PLAYLIST_DOWNLOADS_DIR));
   } catch (err) {
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
@@ -5627,7 +5652,7 @@ app.get("/api/music/stream/:jobId", async (req, res) => {
   if (job.file && fs.existsSync(job.file)) {
     return serveAudioFile(req, res, job.file);
   }
-  if (isPipedMusicStream(job) && job.status === "done") {
+  if (isPipedMusicStream(job) && job.streamUrl) {
     try {
       return await pipeAppleMusicAudio(job.url, res, { trackMeta: job.trackMeta });
     } catch (err) {
@@ -5636,7 +5661,7 @@ app.get("/api/music/stream/:jobId", async (req, res) => {
       return;
     }
   }
-  if (job.mode === "stream-proxy" && job.streamUrl && job.status === "done") {
+  if (job.mode === "stream-proxy" && job.streamUrl) {
     try {
       // APLMate often serves application/octet-stream — AVPlayer needs audio/mpeg.
       return await proxyRemoteUrl(req, res, job, job.streamUrl, {
@@ -5676,7 +5701,7 @@ app.head("/api/music/stream/:jobId", async (req, res) => {
     });
     return res.end();
   }
-  if (isPipedMusicStream(job) && job.status === "done") {
+  if (isPipedMusicStream(job) && job.streamUrl) {
     res.status(200);
     res.set({
       "Content-Type": "audio/mpeg",
@@ -5684,7 +5709,7 @@ app.head("/api/music/stream/:jobId", async (req, res) => {
     });
     return res.end();
   }
-  if (job.mode === "stream-proxy" && job.streamUrl && job.status === "done") {
+  if (job.mode === "stream-proxy" && job.streamUrl) {
     try {
       let streamHeaders = { "User-Agent": UA, Referer: job.streamReferer || "" };
       try {
@@ -6104,6 +6129,9 @@ app.post("/api/download", async (req, res) => {
         reused: !!result.reused,
         ready: !!result.ready,
         token: result.token || undefined,
+        persistent: !!result.persistent,
+        onServer: !!result.onServer,
+        mode: result.mode || undefined,
       });
     } catch (err) {
       const status = Number(err?.status) || 500;
@@ -6396,7 +6424,7 @@ app.get("/api/job/:jobId", (req, res) => {
     ready,
     fullReady,
     cdaFullPending: cdaPending,
-    downloadPath: ready ? `/api/file/${job.id}` : null,
+    downloadPath: fileOnDisk ? `/api/file/${job.id}` : null,
     reused: !!(job.file && fs.existsSync(job.file)),
     mode: job.file && fs.existsSync(job.file) ? "file" : (job.mode || null),
     persistent: !!(job.file && fs.existsSync(job.file)),
@@ -6726,7 +6754,7 @@ app.post("/api/prepare-airplay/:jobId", async (req, res) => {
 ensureBinary()
   .then(() => {
     ytDlp = new YTDlpWrap(BINARY_PATH);
-    app.listen(PORT, "0.0.0.0", () => {
+    app.listen(PORT, process.env.LISTEN_HOST || "192.168.50.200", () => {
       restoreQueuedMovieJobs();
       movieDownloadQueue.start();
       cleanupStaleJobDirs();

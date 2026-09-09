@@ -14,3 +14,18 @@
         fi
     endscript
 }
+
+/var/log/mysql/mariadb-slow.log {
+    daily
+    rotate 14
+    size 50M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 mysql mysql
+    sharedscripts
+    postrotate
+        mysqladmin --defaults-file=/etc/mysql/debian.cnf flush-logs >/dev/null 2>&1 || true
+    endscript
+}

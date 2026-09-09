@@ -170,6 +170,7 @@ function upsertEnv(key: string, value: string) {
 }
 
 function listCoreDumps() {
+  if (process.env.ESTATEOS_GUARD_SCAN_LINEAGE_MOVIES !== '1') return [];
   if (!fs.existsSync(DOWNLOADER_DIR)) return [];
   return fs
     .readdirSync(DOWNLOADER_DIR)

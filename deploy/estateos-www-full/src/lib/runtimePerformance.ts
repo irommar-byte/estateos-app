@@ -31,6 +31,7 @@ export function readRuntimePerformance() {
     },
     eventLoop: {
       meanMs: toMs(delay.mean),
+      p50Ms: toMs(delay.percentile(50)),
       p95Ms: toMs(delay.percentile(95)),
       p99Ms: toMs(delay.percentile(99)),
       maxMs: toMs(delay.max),

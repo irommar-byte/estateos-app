@@ -333,8 +333,9 @@ export async function fetchAgencyClients(token: string, type?: 'BUYER' | 'SELLER
   return { ok: true as const, clients };
 }
 
-export async function fetchAgencyClient(token: string, id: number) {
-  const res = await fetch(`${API_URL}/api/crm/clients/${id}`, { headers: authHeaders(token) });
+export async function fetchAgencyClient(token: string, id: number, options?: { lite?: boolean }) {
+  const qs = options?.lite ? '?lite=1' : '';
+  const res = await fetch(`${API_URL}/api/crm/clients/${id}${qs}`, { headers: authHeaders(token) });
   const json = await parseJson(res);
   if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie znaleziono klienta.') };
   return { ok: true as const, client: json.client as AgencyClientDetail };

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PKG="$ROOT/deploy/lineage-movies"
-REMOTE="estateos"
+REMOTE="${LINEAGE_MOVIES_HOST:-192.168.50.200}"
 REMOTE_DIR="/home/rommar/lineage-movies"
 NGINX_SITE="/etc/nginx/sites-available/lineage"
 MARKER="# LINEAGE-MOVIES-AUTO"

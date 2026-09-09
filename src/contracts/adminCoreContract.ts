@@ -27,6 +27,7 @@ export type AdminCoreMetrics = {
     heapTotalBytes: number;
     externalBytes?: number;
     arrayBuffersBytes?: number;
+    eventLoopP50Ms?: number;
     eventLoopP95Ms?: number;
     eventLoopP99Ms?: number;
   };

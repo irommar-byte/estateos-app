@@ -114,10 +114,20 @@ async function fetchUserPanelHtml(cookie, req) {
   return res.text();
 }
 
+function panelHasActivePatron(html) {
+  if (!html) return false;
+  if (/data-patron=["']1["']/i.test(html)) return true;
+  if (/Patron Fundamentu/i.test(html) && /np-chip[^>]*\bon\b/i.test(html)) return true;
+  return /np-chip on[^>]*>\s*Patron Fundamentu/i.test(html);
+}
+
 async function checkUserPanelSession(cookie, req) {
   try {
     const html = await fetchUserPanelHtml(cookie, req);
     if (isLoginRedirect(html)) return null;
+
+    // Movies tylko dla aktywnego Patrona
+    if (!panelHasActivePatron(html)) return null;
 
     const clientLogin = normalizeLogin(
       req.headers["x-movies-user-login"] || req.headers["X-Movies-User-Login"] || ""
@@ -191,6 +201,7 @@ function isTokenizedPlay(req) {
 function isPublicPath(req) {
   const raw = req.path || req.originalUrl || req.url || "";
   if (req.method === "POST" && raw.includes("/api/auth/login")) return true;
+  if (req.method === "POST" && (raw.includes("/api/search") || raw.includes("/api/info"))) return true;
   if (
     req.method === "GET" &&
     (raw.includes("/api/cda-hd/latest") ||
@@ -199,6 +210,7 @@ function isPublicPath(req) {
       raw.includes("/api/films/catalog") ||
       raw.includes("/api/films/home") ||
       raw.includes("/api/films/service-home") ||
+      raw.includes("/api/cda-hd/browse") ||
       raw.includes("/api/thumb"))
   ) {
     return true;
@@ -262,9 +274,18 @@ function upstreamRequest(targetUrl, req, res, extraHeaders = {}) {
 app.all("/admin_pro/api/movies/proxy/*", async (req, res) => {
   const tokenPlay = isTokenizedPlay(req);
   const publicPath = isPublicPath(req);
-  const auth = tokenPlay || publicPath
-    ? { authorized: true, userId: null, role: publicPath ? "login" : "play" }
-    : await resolveAuth(req);
+  let auth = null;
+  if (publicPath) {
+    auth = { authorized: true, userId: null, role: "login" };
+  } else if (tokenPlay) {
+    auth = { authorized: true, userId: null, role: "play" };
+    if (req.headers.authorization) {
+      const session = await resolveAuth(req);
+      if (session?.authorized) auth = session;
+    }
+  } else {
+    auth = await resolveAuth(req);
+  }
 
   if (!auth?.authorized) {
     res.status(401).json({ error: "unauthorized" });
@@ -280,9 +301,9 @@ app.all("/admin_pro/api/movies/proxy/*", async (req, res) => {
   const extra = {
     ...(auth.userId ? { "X-Movies-User-Id": auth.userId } : {}),
     ...(auth.login ? { "X-Movies-User-Login": auth.login } : {}),
-    ...(!tokenPlay && auth.authorized ? { "X-Movies-Authorized": "1" } : {}),
+    ...(auth.authorized && auth.role !== "play" ? { "X-Movies-Authorized": "1" } : {}),
     "X-Movies-Public-Prefix": "/admin_pro/api/movies/proxy",
-    "X-Movies-Session": hashCookie(req.headers.cookie || auth.userId || ""),
+    ...(req.headers.cookie ? { "X-Movies-Session": hashCookie(req.headers.cookie) } : {}),
   };
   if (req.headers.authorization) {
     extra.Authorization = req.headers.authorization;
@@ -298,6 +319,6 @@ app.get("/admin_pro/api/movies/health", async (req, res) => {
   res.json({ ok: true, service: "lineage-movies-auth-proxy" });
 });
 
-app.listen(PORT, "127.0.0.1", () => {
+app.listen(PORT, process.env.LISTEN_HOST || "192.168.50.200", () => {
   console.log(`lineage movies auth-proxy on 127.0.0.1:${PORT} → ${DOWNLOADER}`);
 });

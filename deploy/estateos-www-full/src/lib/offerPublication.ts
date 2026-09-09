@@ -58,9 +58,6 @@ export type PublicationQuote = {
   productId: string;
 };
 
-let schemaEnsured = false;
-let schemaPromise: Promise<void> | null = null;
-
 function asDb(db?: any): any {
   return db || prisma;
 }
@@ -119,97 +116,9 @@ function hasPlusCreditOnUser(user: { extraListings?: number | null; plusExpiresA
   return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
-function isIgnorableSchemaError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /Duplicate column name|already exists/i.test(message);
-}
-
-function isIfNotExistsSyntaxError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /syntax/i.test(message) && /if not exists/i.test(message);
-}
-
-async function hasColumn(tableName: string, columnName: string) {
-  const rows = await prisma.$queryRawUnsafe<Array<{ total: number | string | bigint }>>(
-    `
-      SELECT COUNT(*) AS total
-      FROM information_schema.columns
-      WHERE table_schema = DATABASE()
-        AND table_name = ?
-        AND column_name = ?
-    `,
-    tableName,
-    columnName
-  );
-  return Number(rows?.[0]?.total ?? 0) > 0;
-}
-
-async function addColumnIfMissing(tableName: string, columnName: string, definition: string) {
-  if (await hasColumn(tableName, columnName)) return;
-  try {
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE \`${tableName}\` ADD COLUMN IF NOT EXISTS \`${columnName}\` ${definition}`
-    );
-  } catch (error) {
-    if (isIgnorableSchemaError(error)) return;
-    if (!isIfNotExistsSyntaxError(error)) throw error;
-    if (!(await hasColumn(tableName, columnName))) {
-      await prisma.$executeRawUnsafe(
-        `ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`
-      );
-    }
-  }
-}
-
 export async function ensureOfferPublicationSchema() {
-  if (schemaEnsured) return;
-  if (schemaPromise) return schemaPromise;
-
-  schemaPromise = (async () => {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS OfferPublication (
-        id BIGINT NOT NULL AUTO_INCREMENT,
-        offerId INT NOT NULL,
-        userId INT NOT NULL,
-        kind VARCHAR(20) NOT NULL,
-        status VARCHAR(20) NOT NULL,
-        startedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        endsAt DATETIME(3) NOT NULL,
-        endedAt DATETIME(3) NULL,
-        endReason VARCHAR(30) NULL,
-        iapTransactionId VARCHAR(128) NULL,
-        iapProductId VARCHAR(64) NULL,
-        dealId INT NULL,
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        KEY OfferPublication_offer_status_idx (offerId, status),
-        KEY OfferPublication_user_status_idx (userId, status),
-        KEY OfferPublication_ends_at_idx (endsAt, status),
-        KEY OfferPublication_deal_idx (dealId),
-        UNIQUE KEY OfferPublication_iap_tx_unique (iapTransactionId),
-        CONSTRAINT OfferPublication_offer_fk FOREIGN KEY (offerId) REFERENCES Offer(id) ON DELETE CASCADE,
-        CONSTRAINT OfferPublication_user_fk FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE,
-        CONSTRAINT OfferPublication_deal_fk FOREIGN KEY (dealId) REFERENCES Deal(id) ON DELETE SET NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
-
-    await addColumnIfMissing('User', 'firstFreePublicationUsed', 'TINYINT(1) NOT NULL DEFAULT 0');
-    await addColumnIfMissing(
-      'MobileIapPurchase',
-      'verifyStatus',
-      "VARCHAR(24) NOT NULL DEFAULT 'VERIFIED'"
-    );
-    await addColumnIfMissing('MobileIapPurchase', 'targetOfferId', 'INT NULL');
-    await addColumnIfMissing('MobileIapPurchase', 'offerId', 'INT NULL');
-    await addColumnIfMissing('MobileIapPurchase', 'consumedAt', 'DATETIME(3) NULL');
-    schemaEnsured = true;
-  })();
-
-  try {
-    await schemaPromise;
-  } finally {
-    schemaPromise = null;
-  }
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 async function readOfferOwnership(db: any, offerId: number) {
@@ -758,6 +667,18 @@ export async function endOfferPublicationInTx(
     params.offerId
   )) as OfferPublicationRow[];
   return rows[0] ?? null;
+}
+
+export async function allActivePublicationOfferIds() {
+  await ensureOfferPublicationSchema();
+  const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
+    `
+      SELECT offerId
+      FROM OfferPublication
+      WHERE status = 'ACTIVE'
+    `,
+  );
+  return new Set(rows.map((row) => Number(row.offerId)).filter((id) => Number.isFinite(id)));
 }
 
 export async function activePublicationOfferIds(offerIds: number[]) {

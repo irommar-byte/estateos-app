@@ -25,6 +25,7 @@ export async function GET(req: Request) {
         rssBytes: runtime.memory.rssBytes,
         heapUsedBytes: runtime.memory.heapUsedBytes,
         externalBytes: runtime.memory.externalBytes,
+        eventLoopP50Ms: runtime.eventLoop.p50Ms,
         eventLoopP95Ms: runtime.eventLoop.p95Ms,
         eventLoopP99Ms: runtime.eventLoop.p99Ms,
       },

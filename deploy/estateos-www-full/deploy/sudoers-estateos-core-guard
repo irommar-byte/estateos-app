@@ -1,0 +1,3 @@
+# EstateOS CORE Guard — only the MariaDB start runbook.
+# Install: sudo install -m 0440 deploy/sudoers-estateos-core-guard /etc/sudoers.d/estateos-core-guard
+rommar ALL=(root) NOPASSWD: /bin/systemctl start mariadb, /usr/bin/systemctl start mariadb

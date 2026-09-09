@@ -736,8 +736,7 @@ export async function persistCoreGuardCycle(
   const openRows = (await prisma.$queryRawUnsafe(
     `SELECT id, fingerprint
      FROM CoreIncident
-     WHERE status IN ('open', 'pending')
-       AND lastSeenAt < DATE_SUB(NOW(3), INTERVAL ${INCIDENT_RESOLVE_MINUTES} MINUTE)`,
+     WHERE status IN ('open', 'pending')`,
   )) as Array<{ id: string; fingerprint: string }>;
   for (const row of openRows) {
     if (activeFingerprints.has(row.fingerprint)) continue;

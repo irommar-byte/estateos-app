@@ -16,38 +16,9 @@ function stripPortalUrl(url: string): string {
   }
 }
 
-let lockTableReady: Promise<void> | null = null;
-
 export async function ensureImportExternalLockTable(): Promise<void> {
-  if (!lockTableReady) {
-    lockTableReady = prisma
-      .$executeRawUnsafe(
-        `
-      CREATE TABLE IF NOT EXISTS ImportExternalLock (
-        source VARCHAR(32) NOT NULL,
-        externalId VARCHAR(64) NOT NULL,
-        offerId INT NOT NULL DEFAULT 0,
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (source, externalId),
-        KEY ImportExternalLock_offerId_idx (offerId)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `,
-      )
-      .then(() => undefined)
-      .catch((error) => {
-        lockTableReady = null;
-        throw error;
-      });
-  }
-  await lockTableReady;
-  await prisma.$executeRawUnsafe(
-    `INSERT IGNORE INTO ImportExternalLock (source, externalId, offerId)
-     SELECT importSource, importExternalId, MIN(offerId)
-     FROM OfferPrivateNote
-     WHERE importSource IS NOT NULL AND TRIM(importSource) <> ''
-       AND importExternalId IS NOT NULL AND TRIM(importExternalId) <> ''
-     GROUP BY importSource, importExternalId`,
-  ).catch(() => undefined);
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 export function importUrlLookupCandidates(portalUrl: string): string[] {

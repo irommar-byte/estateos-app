@@ -21,34 +21,9 @@ export type ProfilePromoCardRow = {
   createdAt: Date;
 };
 
-let tableReady = false;
-
 export async function ensureProfilePromoCardTable() {
-  if (tableReady) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS MobileProfilePromoCard (
-      id VARCHAR(64) NOT NULL,
-      userId INT NOT NULL,
-      kind VARCHAR(32) NOT NULL DEFAULT 'admin_promo',
-      title VARCHAR(191) NOT NULL,
-      subtitle VARCHAR(255) NOT NULL DEFAULT '',
-      meta TEXT NULL,
-      accentColor VARCHAR(32) NULL,
-      iconName VARCHAR(64) NULL,
-      pillLabel VARCHAR(64) NULL,
-      templateId VARCHAR(64) NULL,
-      grantsFreeListing TINYINT(1) NOT NULL DEFAULT 0,
-      couponUsed TINYINT(1) NOT NULL DEFAULT 0,
-      purpose VARCHAR(32) NULL,
-      birthdayYear INT NULL,
-      expiresAt DATETIME(3) NULL,
-      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (id),
-      KEY MobileProfilePromoCard_user_idx (userId, couponUsed, createdAt)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
-  tableReady = true;
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 function newCardId(userId: number): string {

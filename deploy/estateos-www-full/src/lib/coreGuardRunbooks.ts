@@ -246,6 +246,15 @@ export async function executeCoreGuardRunbook(params: {
 
     const result = await executeAllowedRunbook(runbook.id);
     const after = await diagnoseServer();
+    if (params.incidentId) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE CoreIncident
+         SET status = 'resolved', resolvedAt = NOW(3),
+             cooldownUntil = DATE_ADD(NOW(3), INTERVAL 20 MINUTE)
+         WHERE id = ? AND status IN ('open', 'pending')`,
+        params.incidentId,
+      );
+    }
     if (auditId != null) {
       await prisma.$executeRawUnsafe(
         `UPDATE CoreRemediationAudit

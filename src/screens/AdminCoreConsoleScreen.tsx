@@ -731,13 +731,19 @@ export default function AdminCoreConsoleScreen() {
 
   const headline = optimizing
     ? 'Przywracam zdrowy stan'
-    : !report
-      ? 'Łączę z produkcją'
-      : report.healthy
-        ? 'Produkcja jest w zdrowym stanie'
-        : fixable.length === 1
-          ? '1 odchylenie do naprawy'
-          : `${fixable.length} odchylenia do naprawy`;
+    : panelOffline
+      ? 'Panel CORE jest wyłączony'
+      : guardIncidents.length
+        ? guardIncidents.length === 1
+          ? '1 aktywny incydent CORE Guard'
+          : `${guardIncidents.length} aktywnych incydentów CORE Guard`
+        : !report
+          ? 'Łączę z produkcją'
+          : report.healthy
+            ? 'Produkcja jest w zdrowym stanie'
+            : fixable.length === 1
+              ? '1 odchylenie do naprawy'
+              : `${fixable.length} odchylenia do naprawy`;
 
   const renderFleetGroup = (name: string, items: CorePm2Process[], last: boolean) => {
     const online = items.some((item) => item.status === 'online');
