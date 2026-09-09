@@ -6,6 +6,8 @@ import { ExternalLink, Facebook, Pencil, Share2 } from "lucide-react";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import { useLocale } from "@/contexts/LocaleContext";
 import { getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
+import { offerCardPreviewPath, offerSharePath } from "@/lib/publicListingPath";
+import { offerOgContentStamp } from "@/lib/ogCardVersion";
 
 const DEFAULT_ORIGIN = "https://estateos.pl";
 
@@ -18,17 +20,28 @@ function resolveOrigin(): string {
 export default function OfferOwnerPublishPanel({
   offerId,
   presentingAgentId,
+  pricePln,
+  price,
+  updatedAt,
+  title,
 }: {
   offerId: number;
   presentingAgentId?: number;
+  pricePln?: number | null;
+  price?: number | null;
+  updatedAt?: string | Date | number | null;
+  title?: string | null;
 }) {
   const { locale } = useLocale();
   const copy = getOfferModalsDictionary(locale).ownerPublish;
 
   const shareUrl = useMemo(() => {
-    const base = `${resolveOrigin()}/o/${offerId}`;
-    if (presentingAgentId) return `${base}?agent=${presentingAgentId}`;
-    return base;
+    const ogStamp = offerOgContentStamp({ pricePln, price, updatedAt, title });
+    return `${resolveOrigin()}${offerSharePath(offerId, { presentingAgentId, ogStamp })}`;
+  }, [offerId, presentingAgentId, pricePln, price, updatedAt, title]);
+
+  const previewHref = useMemo(() => {
+    return offerCardPreviewPath(offerId, { presentingAgentId });
   }, [offerId, presentingAgentId]);
 
   const facebookHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
@@ -43,7 +56,14 @@ export default function OfferOwnerPublishPanel({
         <p className="mt-2 text-sm leading-relaxed text-white/75">{copy.lead}</p>
       </div>
 
-      <OfferShareLink offerId={offerId} presentingAgentId={presentingAgentId} />
+      <OfferShareLink
+        offerId={offerId}
+        presentingAgentId={presentingAgentId}
+        pricePln={pricePln}
+        price={price}
+        updatedAt={updatedAt}
+        title={title}
+      />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <a
@@ -56,7 +76,7 @@ export default function OfferOwnerPublishPanel({
           {copy.facebook}
         </a>
         <a
-          href={shareUrl}
+          href={previewHref}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 py-3.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/85 transition hover:bg-white/10 hover:text-white"

@@ -49,6 +49,7 @@ import { emailClientSchedule, emailGuestAgencyPresentation } from '@/lib/crm/cli
 import { findPresentationCounterpartId, mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { facebookShareRecordGate } from '@/lib/crm/marketingChannel';
+import { offerOgContentStamp } from '@/lib/ogCardVersion';
 import { recordExternalPortalListing } from '@/lib/crm/sellerSaleUpdates';
 import {
   createClientDecisionRequest,
@@ -820,14 +821,22 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
     const offer = await prisma.offer.findFirst({
       where: { id: offerId, userId: agencyUserId },
-      select: { id: true, title: true },
+      select: { id: true, title: true, pricePln: true, price: true, updatedAt: true },
     });
     if (!offer) {
       return NextResponse.json({ error: 'Nie znaleziono ogłoszenia.' }, { status: 404 });
     }
     const groupUrl = body.groupUrl ? String(body.groupUrl).trim() : '';
     const groupName = body.groupName ? String(body.groupName).trim() : '';
-    const shareUrl = listingFacebookShareUrl(offer.id, agencyUserId);
+    const shareUrl = listingFacebookShareUrl(
+      offer.id,
+      agencyUserId,
+      offerOgContentStamp({
+        pricePln: offer.pricePln ?? offer.price,
+        updatedAt: offer.updatedAt,
+        title: offer.title,
+      }),
+    );
     return NextResponse.json({
       success: true,
       shareUrl,

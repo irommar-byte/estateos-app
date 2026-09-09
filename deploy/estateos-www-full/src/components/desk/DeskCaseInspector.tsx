@@ -86,6 +86,7 @@ type DetailPayload = {
     status: string;
     pricePln: number | null;
     listPricePln: number | null;
+    updatedAt?: string | Date | null;
     city: string | null;
     district: string | null;
     street: string | null;
@@ -740,7 +741,12 @@ export function DeskCaseInspector({
 
       {section === 'MARKETING' && offer ? (
         <div style={{ marginTop: '0.75rem' }}>
-          <OfferOwnerPublishPanel offerId={offer.id} />
+          <OfferOwnerPublishPanel
+            offerId={offer.id}
+            pricePln={offer.pricePln}
+            updatedAt={offer.updatedAt}
+            title={offer.title}
+          />
           <div style={{ marginTop: '0.75rem' }}>
             <a className="eos-desk-btn" href={`/kampania?offerId=${offer.id}`} target="_blank" rel="noreferrer">
               Campaign kit

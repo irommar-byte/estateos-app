@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { Link2, Check, ExternalLink } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
+import { offerCardPreviewPath, offerSharePath } from "@/lib/publicListingPath";
+import { offerOgContentStamp } from "@/lib/ogCardVersion";
 
 const DEFAULT_ORIGIN = "https://estateos.pl";
 
@@ -17,19 +19,33 @@ type OfferShareLinkProps = {
   offerId: number;
   presentingAgentId?: number;
   portalToken?: string | null;
+  pricePln?: number | null;
+  price?: number | null;
+  updatedAt?: string | Date | number | null;
+  title?: string | null;
 };
 
-export default function OfferShareLink({ offerId, presentingAgentId, portalToken }: OfferShareLinkProps) {
+export default function OfferShareLink({
+  offerId,
+  presentingAgentId,
+  portalToken,
+  pricePln,
+  price,
+  updatedAt,
+  title,
+}: OfferShareLinkProps) {
   const { locale } = useLocale();
   const copy = getOfferModalsDictionary(locale).shareLink;
-  if (!Number.isFinite(offerId)) return null;
   const [copied, setCopied] = useState(false);
   const shareUrl = useMemo(() => {
-    const base = `${resolveOrigin()}/o/${offerId}`;
-    if (portalToken) return `${base}?portal=${encodeURIComponent(portalToken)}`;
-    if (presentingAgentId) return `${base}?agent=${presentingAgentId}`;
-    return base;
+    const ogStamp = offerOgContentStamp({ pricePln, price, updatedAt, title });
+    return `${resolveOrigin()}${offerSharePath(offerId, { presentingAgentId, portalToken, ogStamp })}`;
+  }, [offerId, presentingAgentId, portalToken, pricePln, price, updatedAt, title]);
+  const previewHref = useMemo(() => {
+    return offerCardPreviewPath(offerId, { presentingAgentId, portalToken });
   }, [offerId, presentingAgentId, portalToken]);
+
+  if (!Number.isFinite(offerId)) return null;
 
   const copyLink = async () => {
     try {
@@ -71,7 +87,7 @@ export default function OfferShareLink({ offerId, presentingAgentId, portalToken
             )}
           </button>
           <a
-            href={shareUrl}
+            href={previewHref}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center px-3 py-2 rounded-xl border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"

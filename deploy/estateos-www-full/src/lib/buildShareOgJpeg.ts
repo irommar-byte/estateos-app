@@ -3,7 +3,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { loadOfferShareCard } from '@/lib/offerShareLanding';
 import { loadCarShareMeta } from '@/lib/carShareLanding';
-import { OG_CARD_VERSION, carOgImagePath, offerOgImagePath } from '@/lib/ogCardVersion';
+import { OG_CARD_VERSION, carOgImagePath, offerOgImagePath, sanitizeOgStamp } from '@/lib/ogCardVersion';
 
 export { OG_CARD_VERSION, carOgImagePath, offerOgImagePath };
 
@@ -240,22 +240,38 @@ async function writeCache(filePath: string, buf: Buffer): Promise<void> {
   }
 }
 
-export function offerOgPublicUrl(offerId: number): string {
-  return `${resolvePublicAppOrigin()}${offerOgImagePath(offerId)}`;
+async function pruneOtherOgCache(filePrefix: string, keepFile: string): Promise<void> {
+  try {
+    const dir = cacheDir();
+    const names = await fs.readdir(dir);
+    await Promise.all(
+      names
+        .filter((name) => name.startsWith(filePrefix) && path.join(dir, name) !== keepFile)
+        .map((name) => fs.unlink(path.join(dir, name)).catch(() => undefined)),
+    );
+  } catch {
+    /* non-fatal */
+  }
 }
 
-export function carOgPublicUrl(carId: number): string {
-  return `${resolvePublicAppOrigin()}${carOgImagePath(carId)}`;
+export function offerOgPublicUrl(offerId: number, stamp?: string | null): string {
+  return `${resolvePublicAppOrigin()}${offerOgImagePath(offerId, stamp)}`;
+}
+
+export function carOgPublicUrl(carId: number, stamp?: string | null): string {
+  return `${resolvePublicAppOrigin()}${carOgImagePath(carId, stamp)}`;
 }
 
 export async function getOfferOgJpeg(offerId: number): Promise<Buffer | null> {
   if (!Number.isFinite(offerId) || offerId <= 0) return null;
-  const filePath = path.join(cacheDir(), `offer-${offerId}-${OG_CARD_VERSION}.jpg`);
-  const cached = await readCache(filePath);
-  if (cached) return cached;
 
   const card = await loadOfferShareCard(offerId);
   if (!card) return null;
+
+  const stamp = sanitizeOgStamp(card.ogStamp) || 'x';
+  const filePath = path.join(cacheDir(), `offer-${offerId}-${OG_CARD_VERSION}-${stamp}.jpg`);
+  const cached = await readCache(filePath);
+  if (cached) return cached;
 
   const chips = [card.propertyTypeLabel, card.transactionLabel];
   if (card.area != null && card.area > 0) chips.push(`${card.area} m²`);
@@ -270,18 +286,21 @@ export async function getOfferOgJpeg(offerId: number): Promise<Buffer | null> {
   });
 
   const jpeg = await composeOgJpeg(card.imageUrl, overlay, '#1a2e28');
+  await pruneOtherOgCache(`offer-${offerId}-`, filePath);
   await writeCache(filePath, jpeg);
   return jpeg;
 }
 
 export async function getCarOgJpeg(carId: number): Promise<Buffer | null> {
   if (!Number.isFinite(carId) || carId <= 0) return null;
-  const filePath = path.join(cacheDir(), `car-${carId}-${OG_CARD_VERSION}.jpg`);
-  const cached = await readCache(filePath);
-  if (cached) return cached;
 
   const meta = await loadCarShareMeta(carId);
   if (!meta) return null;
+
+  const stamp = sanitizeOgStamp(meta.ogStamp) || 'x';
+  const filePath = path.join(cacheDir(), `car-${carId}-${OG_CARD_VERSION}-${stamp}.jpg`);
+  const cached = await readCache(filePath);
+  if (cached) return cached;
 
   const overlay = buildOverlaySvg({
     theme: CAR_THEME,
@@ -292,6 +311,7 @@ export async function getCarOgJpeg(carId: number): Promise<Buffer | null> {
   });
 
   const jpeg = await composeOgJpeg(meta.photoUrl, overlay, '#0c1e33');
+  await pruneOtherOgCache(`car-${carId}-`, filePath);
   await writeCache(filePath, jpeg);
   return jpeg;
 }

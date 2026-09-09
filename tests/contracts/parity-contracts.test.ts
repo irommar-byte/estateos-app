@@ -16,7 +16,7 @@ import {
   validateSharedDealReviewPayload,
   validateSharedDealEventPayload,
 } from '../../src/contracts/parityContracts';
-import { buildOfferAppDeepLink, buildOfferLandingPageUrl } from '../../src/utils/offerShareUrls';
+import { buildOfferAppDeepLink, buildOfferLandingPageUrl } from '../../src/utils/offerShareLinks';
 import { extractIdFromDeeplink } from '../../src/utils/deeplinkParse';
 
 test('owner acceptance -> finalized/review contracts', () => {
@@ -119,6 +119,22 @@ test('share /o/:id keeps app/web fallback parity', () => {
   assert.equal(appUrl, 'estateos://o/123');
   assert.equal(extractIdFromDeeplink(webUrl, 'offer'), '123');
   assert.equal(extractIdFromDeeplink(appUrl, 'offer'), '123');
+});
+
+test('facebook share url changes after a listing price or title edit', () => {
+  const before = buildOfferLandingPageUrl(1228, {
+    pricePln: 975000,
+    updatedAt: '2026-09-01T10:00:00.000Z',
+    title: 'Komfortowe 3 pokoje',
+  });
+  const after = buildOfferLandingPageUrl(1228, {
+    pricePln: 949000,
+    updatedAt: '2026-09-09T06:00:00.000Z',
+    title: 'Komfortowe 3 pokoje',
+  });
+  assert.match(before, /\/o\/1228\?og=p975000-/);
+  assert.match(after, /\/o\/1228\?og=p949000-/);
+  assert.notEqual(before, after);
 });
 
 test('radar preferences use canonical DTO names', () => {

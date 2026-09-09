@@ -1453,6 +1453,10 @@ function OfferDetails({
                           ? Number(currentUser.id)
                           : undefined
                     }
+                    pricePln={offer.pricePln ?? listingPrice.plnAmount}
+                    price={offer.price}
+                    updatedAt={offer.updatedAt}
+                    title={offer.title}
                   />
 
                   </>
@@ -1468,6 +1472,10 @@ function OfferDetails({
                         ? Number(currentUser.id)
                         : undefined
                   }
+                  pricePln={offer.pricePln ?? listingPrice.plnAmount}
+                  price={offer.price}
+                  updatedAt={offer.updatedAt}
+                  title={offer.title}
                 />
                 )}
               </div>

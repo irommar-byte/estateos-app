@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import { findCarById } from "@/lib/carsStorage";
-import { carOgImagePath } from '@/lib/ogCardVersion';
+import { carOgImagePath, offerOgContentStamp } from '@/lib/ogCardVersion';
 
 function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://estateos.pl").replace(
@@ -50,6 +50,7 @@ export type CarShareMeta = {
   imageUrl: string;
   /** Oryginalne zdjęcie auta (webp/jpeg) do kompozycji karty. */
   photoUrl: string;
+  ogStamp: string;
   priceLabel: string;
   locationLabel: string;
   summaryLine: string;
@@ -73,7 +74,12 @@ export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | nu
   const photoUrl = images[0] || "";
   const origin = resolvePublicAppOrigin();
   const canonicalUrl = `${origin}/cars/${carId}`;
-  const imageUrl = `${origin}${carOgImagePath(carId)}`;
+  const ogStamp = offerOgContentStamp({
+    pricePln: car.pricePln,
+    updatedAt: car.updatedAt,
+    title,
+  });
+  const imageUrl = `${origin}${carOgImagePath(carId, ogStamp)}`;
 
   return {
     id: carId,
@@ -83,6 +89,7 @@ export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | nu
     canonicalUrl,
     imageUrl,
     photoUrl,
+    ogStamp,
     priceLabel,
     locationLabel,
     summaryLine,

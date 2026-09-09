@@ -737,7 +737,12 @@ export default function OfferDetail({ route, navigation }: any) {
     try {
       const { shareListingLink, buildOfferLandingPageUrl } = await import('../utils/offerShareUrls');
       await shareListingLink({
-        url: buildOfferLandingPageUrl(offer.id),
+        url: buildOfferLandingPageUrl(offer.id, {
+          pricePln: listingPrice.plnAmount ?? offer.pricePln ?? offer.price,
+          price: offer.price,
+          updatedAt: offer.updatedAt,
+          title: offer.title,
+        }),
         sheetTitle: t('offer.detail.shareTitleIos'),
       });
     } catch {

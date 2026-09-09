@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { loadOfferShareCard, resolvePublicAppOrigin } from '@/lib/offerShareLanding';
+import { isSocialShareCrawler } from '@/lib/socialCrawler';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -23,14 +28,19 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
     },
     description: card.ogDescription,
     metadataBase: new URL(resolvePublicAppOrigin()),
-    alternates: { canonical: card.canonicalUrl },
+    alternates: {
+      canonical: isSocialShareCrawler((await headers()).get('user-agent'))
+        ? card.facebookObjectUrl
+        : card.canonicalUrl,
+    },
     openGraph: {
       type: 'website',
       siteName: 'EstateOS™',
       title: card.ogTitle,
       description: card.ogDescription,
-      url: card.canonicalUrl,
+      url: card.facebookObjectUrl,
       locale: 'pl_PL',
+      ...(card.updatedAtIso ? { modifiedTime: card.updatedAtIso } : {}),
       images: [
         {
           url: card.socialImageUrl,
@@ -47,6 +57,9 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
       description: card.ogDescription,
       images: [card.socialImageUrl],
     },
+    ...(card.updatedAtIso
+      ? { other: { 'og:updated_time': card.updatedAtIso } }
+      : {}),
   };
 }
 

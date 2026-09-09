@@ -1,16 +1,22 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import SingleOfferPage from '@/app/oferta/[id]/page';
 import { loadOfferShareCard, resolvePublicAppOrigin } from '@/lib/offerShareLanding';
+import { isSocialShareCrawler } from '@/lib/socialCrawler';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type PageProps = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ portal?: string; agent?: string }>;
 };
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { id } = await params;
+  const query = await searchParams;
   const offerId = Number(id);
-  const card = await loadOfferShareCard(offerId);
+  const card = await loadOfferShareCard(offerId, { agentUserId: query.agent });
   if (!card) {
     return {
       title: 'Oferta niedostępna — EstateOS™',
@@ -24,14 +30,19 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     },
     description: card.ogDescription,
     metadataBase: new URL(resolvePublicAppOrigin()),
-    alternates: { canonical: card.canonicalUrl },
+    alternates: {
+      canonical: isSocialShareCrawler((await headers()).get('user-agent'))
+        ? card.facebookObjectUrl
+        : card.canonicalUrl,
+    },
     openGraph: {
       type: 'website',
       siteName: 'EstateOS™',
       title: card.ogTitle,
       description: card.ogDescription,
-      url: card.canonicalUrl,
+      url: card.facebookObjectUrl,
       locale: 'pl_PL',
+      ...(card.updatedAtIso ? { modifiedTime: card.updatedAtIso } : {}),
       images: [
         {
           url: card.socialImageUrl,
@@ -49,6 +60,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       images: [card.socialImageUrl],
     },
     robots: { index: true, follow: true },
+    ...(card.updatedAtIso
+      ? { other: { 'og:updated_time': card.updatedAtIso } }
+      : {}),
     appleWebApp: {
       capable: true,
       title: 'EstateOS™',

@@ -19,6 +19,7 @@ import {
   type FacebookGroupDestination,
 } from "@/lib/crm/marketingChannel";
 import { offerSharePath } from "@/lib/publicListingPath";
+import { offerOgContentStamp } from "@/lib/ogCardVersion";
 import { resolveOfferImageUrls, resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import { absolutizeMediaUrl, resolvePublicAppOrigin } from "@/lib/offerShareLanding";
 
@@ -1481,8 +1482,15 @@ export type ManagedOfferOption = FacebookShareOffer & {
   area?: number | null;
 };
 
-export function listingFacebookShareUrl(offerId: number, agencyUserId: number) {
-  return `${resolvePublicAppOrigin()}${offerSharePath(offerId, { presentingAgentId: agencyUserId })}`;
+export function listingFacebookShareUrl(
+  offerId: number,
+  agencyUserId: number,
+  ogStamp?: string | null,
+) {
+  return `${resolvePublicAppOrigin()}${offerSharePath(offerId, {
+    presentingAgentId: agencyUserId,
+    ogStamp,
+  })}`;
 }
 
 export async function loadAgentFacebookDestinations(
@@ -1646,7 +1654,7 @@ export async function recordFacebookGroupShare(params: {
 
   const offer = await prisma.offer.findFirst({
     where: { id: params.offerId, userId: params.agencyUserId },
-    select: { id: true, title: true, images: true },
+    select: { id: true, title: true, images: true, pricePln: true, price: true, updatedAt: true },
   });
   if (!offer) {
     return { ok: false as const, error: "Nie znaleziono ogłoszenia do wystawienia." };
@@ -1671,7 +1679,15 @@ export async function recordFacebookGroupShare(params: {
   const facebook = parseFacebookDestination(params.postUrl || params.groupUrl);
   const groupName = params.groupName?.trim() || facebook?.groupName || "Facebook";
   const groupUrl = facebook?.groupUrl || params.groupUrl || null;
-  const shareUrl = listingFacebookShareUrl(offer.id, params.agencyUserId);
+  const shareUrl = listingFacebookShareUrl(
+    offer.id,
+    params.agencyUserId,
+    offerOgContentStamp({
+      pricePln: offer.pricePln ?? offer.price,
+      updatedAt: offer.updatedAt,
+      title: offer.title,
+    }),
+  );
   const recordedUrl = String(params.postUrl || "").trim();
   const listingImage =
     absolutizeMediaUrl(resolveOfferPrimaryImage(offer)) || null;
