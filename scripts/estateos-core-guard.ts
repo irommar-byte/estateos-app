@@ -9,9 +9,11 @@ import { prisma } from '@/lib/prisma';
 
 const SAMPLE_INTERVAL_MS = 60_000;
 const FULL_SCAN_INTERVAL_MS = 5 * 60_000;
+const STARTUP_GRACE_MS = 10 * 60_000;
 
 let stopping = false;
-let nextFullScanAt = 0;
+const startedAt = Date.now();
+let nextFullScanAt = startedAt + STARTUP_GRACE_MS;
 
 function requestStop(signal: string) {
   stopping = true;
@@ -35,7 +37,9 @@ async function main() {
       const sample = await collectCoreGuardSample({ full });
       const candidates = evaluateCoreGuardSample(sample);
       await persistCoreGuardCycle(sample, candidates);
-      await deliverCoreGuardAlerts();
+          if (Date.now() >= startedAt + STARTUP_GRACE_MS) {
+            await deliverCoreGuardAlerts();
+          }
       if (full) nextFullScanAt = cycleStartedAt + FULL_SCAN_INTERVAL_MS;
       console.info(
         `[core-guard] sample level=${sample.level} candidates=${candidates.length} full=${full}`,

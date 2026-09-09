@@ -4,8 +4,12 @@ set -euo pipefail
 ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAMP="$(date +%Y%m%d%H%M%S)"
 SITE="/etc/nginx/sites-available/nieruchomosci"
+ENABLED_SITE="/etc/nginx/sites-enabled/nieruchomosci"
 
 sudo cp "$SITE" "${SITE}.bak-${STAMP}"
+if [ -e "$ENABLED_SITE" ] && [ ! "$SITE" -ef "$ENABLED_SITE" ]; then
+  sudo cp "$ENABLED_SITE" "${SITE}.enabled.bak-${STAMP}"
+fi
 sudo install -m 0644 "$ROOT/deploy/nginx-estateos-tuning.conf" /etc/nginx/conf.d/estateos-tuning.conf
 sudo install -m 0644 "$ROOT/deploy/logrotate-estateos" /etc/logrotate.d/estateos
 sudo install -m 0644 "$ROOT/deploy/journald-estateos.conf" /etc/systemd/journald.conf.d/estateos-retention.conf
@@ -28,6 +32,9 @@ temporary_path.write_text(patched)
 PY
 
 sudo install -m 0644 "/tmp/nieruchomosci.${STAMP}" "$SITE"
+if [ -e "$ENABLED_SITE" ] && [ ! "$SITE" -ef "$ENABLED_SITE" ]; then
+  sudo install -m 0644 "/tmp/nieruchomosci.${STAMP}" "$ENABLED_SITE"
+fi
 rm -f "/tmp/nieruchomosci.${STAMP}"
 sudo nginx -t
 sudo systemctl reload nginx
