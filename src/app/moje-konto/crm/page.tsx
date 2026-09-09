@@ -494,7 +494,17 @@ export default function CRMDashboard() {
               if (data.success && data.deals) setIsolatedDeals(data.deals);
           } catch(e) {}
       };
-      if (currentUser?.id) { loadDeals(); const i = setInterval(loadDeals, 10000); return () => clearInterval(i); }
+      if (!currentUser?.id) return;
+      const tick = () => {
+        if (document.visibilityState === 'visible') void loadDeals();
+      };
+      tick();
+      const i = window.setInterval(tick, 45_000);
+      document.addEventListener('visibilitychange', tick);
+      return () => {
+        window.clearInterval(i);
+        document.removeEventListener('visibilitychange', tick);
+      };
   }, [currentUser?.id]);
 
   useEffect(() => {
@@ -890,14 +900,18 @@ export default function CRMDashboard() {
     if (crmPollingRef.current) {
       window.clearInterval(crmPollingRef.current);
     }
-    crmPollingRef.current = window.setInterval(() => {
-      fetchData(currentUser.id);
-    }, 10000);
+    const tick = () => {
+      if (document.visibilityState === 'visible') void fetchData(currentUser.id);
+    };
+    tick();
+    crmPollingRef.current = window.setInterval(tick, 45_000);
+    document.addEventListener('visibilitychange', tick);
     return () => {
       if (crmPollingRef.current) {
         window.clearInterval(crmPollingRef.current);
         crmPollingRef.current = null;
       }
+      document.removeEventListener('visibilitychange', tick);
     };
   }, [currentUser?.id]);
 

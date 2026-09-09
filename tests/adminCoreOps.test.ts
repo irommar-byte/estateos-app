@@ -15,15 +15,16 @@ test('log query clamps name stream and lines', () => {
   assert.equal(fallback.stream, 'both');
   assert.equal(fallback.lines, 500);
 
-  const floor = parseCoreLogQuery(new URLSearchParams('name=kei-auto-import&stream=out&lines=1'));
-  assert.equal(floor.name, 'kei-auto-import');
+  const floor = parseCoreLogQuery(new URLSearchParams('name=kei-import-worker&stream=out&lines=1'));
+  assert.equal(floor.name, 'kei-import-worker');
   assert.equal(floor.stream, 'out');
   assert.equal(floor.lines, 20);
 });
 
 test('pm2 whitelist includes cron jobs and reload', () => {
   assert.equal(isAllowedPm2Name('nieruchomosci'), true);
-  assert.equal(isAllowedPm2Name('kei-auto-import'), true);
+  assert.equal(isAllowedPm2Name('kei-import-worker'), true);
+  assert.equal(isAllowedPm2Name('kei-auto-import'), false);
   assert.equal(isAllowedPm2Name('seller-marketing-renewals'), true);
   assert.equal(isAllowedPm2Name('not-a-process'), false);
   assert.equal(isAllowedPm2Action('reload'), true);

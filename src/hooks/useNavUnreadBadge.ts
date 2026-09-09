@@ -22,20 +22,26 @@ export function useNavUnreadBadge(enabled: boolean): NavUnread {
   const lastMessageUnread = useRef(0);
   const seenNotifIds = useRef<Set<string>>(new Set());
 
+  const authedRef = useRef(false);
+
   const refresh = useCallback(async () => {
     if (!enabled) {
       setUnread(EMPTY);
+      authedRef.current = false;
       return;
     }
     try {
-      const profileRes = await fetch("/api/user/profile", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      const profile = await profileRes.json().catch(() => ({}));
-      if (!profileRes.ok || !(profile?.id || profile?.user?.id)) {
-        setUnread(EMPTY);
-        return;
+      if (!authedRef.current) {
+        const profileRes = await fetch("/api/user/profile", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const profile = await profileRes.json().catch(() => ({}));
+        if (!profileRes.ok || !(profile?.id || profile?.user?.id)) {
+          setUnread(EMPTY);
+          return;
+        }
+        authedRef.current = true;
       }
 
       const [threads, notifRes] = await Promise.all([
@@ -90,16 +96,21 @@ export function useNavUnreadBadge(enabled: boolean): NavUnread {
   }, [enabled]);
 
   useEffect(() => {
-    void refresh();
+    const tick = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    void tick();
     if (!enabled) return;
-    const interval = window.setInterval(() => void refresh(), 8_000);
+    const interval = window.setInterval(tick, 30_000);
     const onRefresh = () => void refresh();
     window.addEventListener(CONTACT_UNREAD_REFRESH_EVENT, onRefresh);
     window.addEventListener("focus", onRefresh);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener(CONTACT_UNREAD_REFRESH_EVENT, onRefresh);
       window.removeEventListener("focus", onRefresh);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [enabled, refresh]);
 

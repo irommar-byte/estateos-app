@@ -1,11 +1,7 @@
 #!/usr/bin/env node
 /**
- * Heartbeat PM2: only wakes Next.js. The import itself must live in `nieruchomosci`.
- * Plain Node (no npx/tsx) so the every-5-minute cron does not compile TypeScript.
+ * Legacy PM2 cron. Import execution belongs to `kei-import-worker`.
+ * This script is a no-op so an old catalog click cannot wake HTTP workers.
  */
-const { runCronHeartbeat } = require("./lib/cronHeartbeat.cjs");
-
-runCronHeartbeat("kei-auto-import", "/api/cron/kei-auto-import").catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+console.info('[kei-auto-import] disabled; use kei-import-worker');
+process.exit(0);

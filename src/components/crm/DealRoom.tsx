@@ -108,7 +108,11 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
     // Podłączamy się do strumienia wydarzeń
     const sse = new EventSource(`/api/realtime?userId=${currentUserId}`);
     sseRef.current = sse;
-    const fallbackInterval = setInterval(fetchDeal, 1500);
+    const fallbackInterval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (sseRef.current?.readyState === EventSource.OPEN) return;
+      void fetchDeal();
+    }, 12_000);
 
     sse.onmessage = (event) => {
       try {

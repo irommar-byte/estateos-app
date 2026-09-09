@@ -108,12 +108,17 @@ export default function NotificationCenter() {
   }, []);
 
   useEffect(() => {
-    void fetchNotifications();
-    const interval = window.setInterval(fetchNotifications, 15_000);
+    const tick = () => {
+      if (document.visibilityState === "visible") void fetchNotifications();
+    };
+    void tick();
+    const interval = window.setInterval(tick, 30_000);
     window.addEventListener("refreshNotifications", fetchNotifications);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("refreshNotifications", fetchNotifications);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [dict.notifications.title]);
 

@@ -50,7 +50,7 @@ export async function buildAutomationOverview() {
   const scheduled: ScheduledJobView[] = AUTOMATION_CRON_CATALOG.map((job) => {
     const proc = pm2ByName.get(job.id);
     let nextHint: string | null = null;
-    if (job.id === 'kei-auto-import' && keiAuto?.enabled) {
+    if (job.id === 'kei-import-worker' && keiAuto?.enabled) {
       const when = formatWhen(keiAuto.nextRunAt);
       nextHint = when ? `Następny import KEI: ${when}` : 'Auto-import włączony';
     }

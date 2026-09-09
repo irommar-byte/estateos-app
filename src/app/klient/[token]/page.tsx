@@ -74,6 +74,7 @@ type JourneyStage = {
 
 type PortalData = {
   clientName: string;
+  syncVersion?: string;
   type: "BUYER" | "SELLER";
   agencyName: string;
   agentName: string;
@@ -264,6 +265,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const matchesSectionRef = useRef<HTMLDivElement | null>(null);
   const knownMatchIdsRef = useRef<number[]>([]);
+  const syncVersionRef = useRef("");
+  const syncBusyRef = useRef(false);
   const [freshMatchBanner, setFreshMatchBanner] = useState<string | null>(null);
 
   useEffect(() => {
@@ -293,6 +296,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Błąd ładowania");
       setPortal(json.portal);
+      syncVersionRef.current = String(json.portal?.syncVersion || "");
     } catch (e) {
       if (!options?.silent) setError(e instanceof Error ? e.message : "Błąd");
     } finally {
@@ -319,10 +323,34 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
   useEffect(() => {
     if (!livePortalSync || !token) return;
-    const timer = window.setInterval(() => {
-      void load({ silent: true });
-    }, 2500);
-    return () => window.clearInterval(timer);
+    const checkForChanges = async () => {
+      if (document.visibilityState !== "visible" || syncBusyRef.current) return;
+      syncBusyRef.current = true;
+      try {
+        const response = await fetch(`/api/crm/client-portal/${token}/sync`, {
+          cache: "no-store",
+        });
+        const json = await response.json();
+        if (!response.ok) return;
+        const version = String(json.version || "");
+        if (version && syncVersionRef.current && version !== syncVersionRef.current) {
+          await load({ silent: true });
+        } else if (version) {
+          syncVersionRef.current = version;
+        }
+      } finally {
+        syncBusyRef.current = false;
+      }
+    };
+    const timer = window.setInterval(() => void checkForChanges(), 15_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void checkForChanges();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [livePortalSync, token, load]);
 
   useEffect(() => {

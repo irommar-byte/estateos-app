@@ -11,6 +11,14 @@ if [ -e "$ENABLED_SITE" ] && [ ! "$SITE" -ef "$ENABLED_SITE" ]; then
   sudo cp "$ENABLED_SITE" "${SITE}.enabled.bak-${STAMP}"
 fi
 sudo install -m 0644 "$ROOT/deploy/nginx-estateos-tuning.conf" /etc/nginx/conf.d/estateos-tuning.conf
+if [ -f "$ROOT/deploy/nginx-lineage-upstreams.conf" ]; then
+  sudo install -m 0644 "$ROOT/deploy/nginx-lineage-upstreams.conf" /etc/nginx/conf.d/lineage-upstreams.conf
+fi
+LINEAGE_SITE="/etc/nginx/sites-enabled/lineage"
+if [ -f "$ROOT/deploy/nginx-lineage-site.conf" ] && [ -f "$LINEAGE_SITE" ]; then
+  sudo cp "$LINEAGE_SITE" "${LINEAGE_SITE}.bak-${STAMP}"
+  sudo install -m 0644 "$ROOT/deploy/nginx-lineage-site.conf" "$LINEAGE_SITE"
+fi
 sudo install -m 0644 "$ROOT/deploy/logrotate-estateos" /etc/logrotate.d/estateos
 sudo install -m 0644 "$ROOT/deploy/journald-estateos.conf" /etc/systemd/journald.conf.d/estateos-retention.conf
 sudo install -m 0644 "$ROOT/deploy/mariadb-estateos-observability.cnf" /etc/mysql/mariadb.conf.d/70-estateos-observability.cnf

@@ -10,12 +10,12 @@ export type AutomationCronJob = {
 /** Katalog zadań PM2 cron — zsynchronizowany z ecosystem.config.cjs */
 export const AUTOMATION_CRON_CATALOG: AutomationCronJob[] = [
   {
-    id: 'kei-auto-import',
-    name: 'KEI auto-import',
-    schedule: '*/5 * * * *',
-    scheduleLabel: 'Co 5 minut',
-    description: 'Automatyczny import ofert z KEI / portali (Otodom, N-O).',
-    script: 'scripts/kei-auto-import.cjs',
+    id: 'kei-import-worker',
+    name: 'KEI import worker',
+    schedule: 'ciągły',
+    scheduleLabel: 'Jeden trwały worker',
+    description: 'Kolejka i import KEI poza procesem HTTP, concurrency 1, lease w bazie.',
+    script: 'scripts/kei-import-worker.ts',
   },
   {
     id: 'client-intelligence',
