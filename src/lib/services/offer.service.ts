@@ -22,7 +22,6 @@ import { applyOfferReapproval, diffOfferForReview, withPriceChangeIfReviewing } 
 import { syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
-  isOfferAlterPrivilegeError,
   isOfferLegalColumnMissingError,
   isOfferLocalityColumnMissingError,
   isOfferMoneyColumnMissingError,
@@ -98,178 +97,20 @@ function stripLocalityColumns(data: Record<string, unknown>) {
   delete data.localityCountryCode;
 }
 
-let offerLegalColumnsEnsured = false;
-let offerLegalColumnsPromise: Promise<void> | null = null;
-let offerMoneyColumnsEnsured = false;
-let offerMoneyColumnsPromise: Promise<void> | null = null;
-let offerLocalityColumnsEnsured = false;
-let offerLocalityColumnsPromise: Promise<void> | null = null;
-let extendedAmenityColumnsEnsured = false;
-let extendedAmenityColumnsPromise: Promise<void> | null = null;
-
-function isIgnorableAddColumnError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /Duplicate column name/i.test(message) || /already exists/i.test(message);
-}
-
-function isAddColumnSyntaxError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /syntax/i.test(message) && /if not exists/i.test(message);
-}
-
-async function hasOfferColumn(columnName: string): Promise<boolean> {
-  const rows = await prisma.$queryRawUnsafe<any[]>(
-    `
-      SELECT COUNT(*) AS total
-      FROM information_schema.columns
-      WHERE table_schema = DATABASE()
-        AND table_name = 'Offer'
-        AND column_name = ?
-    `,
-    columnName
-  );
-  return Number(rows?.[0]?.total || 0) > 0;
-}
-
-async function ensureOfferColumn(columnName: string, columnSqlType: string) {
-  const quotedColumn = `\`${columnName}\``;
-  const alterSql = `ALTER TABLE \`Offer\` ADD COLUMN IF NOT EXISTS ${quotedColumn} ${columnSqlType} NULL`;
-  try {
-    await prisma.$executeRawUnsafe(alterSql);
-    return;
-  } catch (error) {
-    if (isIgnorableAddColumnError(error)) return;
-    if (!isAddColumnSyntaxError(error)) throw error;
-  }
-
-  // Fallback for older MySQL/MariaDB that don't support ADD COLUMN IF NOT EXISTS.
-  const exists = await hasOfferColumn(columnName);
-  if (!exists) {
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE \`Offer\` ADD COLUMN ${quotedColumn} ${columnSqlType} NULL`
-    );
-  }
-}
-
-/**
- * Self-healing guard for production environments where DB schema lagged behind Prisma schema.
- * Keeps offer create/update usable even if deploy omitted the Offer legal columns migration.
- */
 export async function ensureOfferLegalColumns() {
-  if (offerLegalColumnsEnsured) return;
-  if (offerLegalColumnsPromise) return offerLegalColumnsPromise;
-
-  offerLegalColumnsPromise = (async () => {
-    await ensureOfferColumn('landRegistryNumber', 'VARCHAR(64)');
-    await ensureOfferColumn('apartmentNumber', 'VARCHAR(32)');
-    await ensureOfferColumn('legalCheckStatus', 'VARCHAR(16)');
-    await ensureOfferColumn('legalCheckSubmittedAt', 'DATETIME(3)');
-    await ensureOfferColumn('legalCheckReviewedAt', 'DATETIME(3)');
-    await ensureOfferColumn('legalCheckReviewedBy', 'INT');
-    await ensureOfferColumn('legalCheckRejectionReason', 'VARCHAR(64)');
-    await ensureOfferColumn('legalCheckRejectionText', 'TEXT');
-    await ensureOfferColumn('legalCheckOwnerNote', 'TEXT');
-    await ensureOfferColumn('isLegalSafeVerified', 'BOOLEAN');
-    await ensureOfferColumn('pendingEditChanges', 'JSON');
-    // Legacy rows may have NULL in fields now modeled as non-null in Prisma.
-    await prisma.$executeRawUnsafe(
-      `UPDATE \`Offer\` SET \`legalCheckStatus\` = 'NONE' WHERE \`legalCheckStatus\` IS NULL OR TRIM(\`legalCheckStatus\`) = ''`
-    );
-    await prisma.$executeRawUnsafe(
-      `UPDATE \`Offer\` SET \`isLegalSafeVerified\` = 0 WHERE \`isLegalSafeVerified\` IS NULL`
-    );
-
-    offerLegalColumnsEnsured = true;
-  })();
-
-  try {
-    await offerLegalColumnsPromise;
-  } catch (error) {
-    if (isOfferAlterPrivilegeError(error) || isOfferLegalColumnMissingError(error)) {
-      // Fallback mode: DB user cannot ALTER or legacy schema still missing columns.
-      offerLegalColumnsEnsured = true;
-      return;
-    }
-    throw error;
-  } finally {
-    offerLegalColumnsPromise = null;
-  }
+  // Schemat jest wersjonowany i wdrażany przed startem aplikacji.
 }
 
 export async function ensureOfferMoneyColumns() {
-  if (offerMoneyColumnsEnsured) return;
-  if (offerMoneyColumnsPromise) return offerMoneyColumnsPromise;
-
-  offerMoneyColumnsPromise = (async () => {
-    await ensureOfferColumn('priceCurrency', "VARCHAR(8) NOT NULL DEFAULT 'PLN'");
-    await ensureOfferColumn('pricePln', 'DOUBLE NULL');
-    await ensureOfferColumn('exchangeRateUsed', 'DOUBLE NULL');
-    await ensureOfferColumn('exchangeRateDate', 'DATE NULL');
-    await prisma.$executeRawUnsafe(
-      `UPDATE \`Offer\` SET \`priceCurrency\` = 'PLN' WHERE \`priceCurrency\` IS NULL OR TRIM(\`priceCurrency\`) = ''`
-    );
-    await prisma.$executeRawUnsafe(
-      `UPDATE \`Offer\` SET \`pricePln\` = \`price\` WHERE \`pricePln\` IS NULL`
-    );
-    offerMoneyColumnsEnsured = true;
-  })();
-
-  try {
-    await offerMoneyColumnsPromise;
-  } catch (error) {
-    if (isOfferAlterPrivilegeError(error) || isOfferMoneyColumnMissingError(error)) {
-      offerMoneyColumnsEnsured = true;
-      return;
-    }
-    throw error;
-  } finally {
-    offerMoneyColumnsPromise = null;
-  }
+  // Schemat jest wersjonowany i wdrażany przed startem aplikacji.
 }
 
 export async function ensureOfferExtendedAmenityColumns() {
-  if (extendedAmenityColumnsEnsured) return;
-  if (extendedAmenityColumnsPromise) return extendedAmenityColumnsPromise;
-  extendedAmenityColumnsPromise = (async () => {
-    await ensureOfferColumn("hasAirConditioning", "BOOLEAN NOT NULL DEFAULT false");
-    await ensureOfferColumn("isDuplex", "BOOLEAN NOT NULL DEFAULT false");
-    await ensureOfferColumn("floorPlanExtraUrls", "TEXT");
-    extendedAmenityColumnsEnsured = true;
-  })();
-  try {
-    await extendedAmenityColumnsPromise;
-  } finally {
-    extendedAmenityColumnsPromise = null;
-  }
+  // Schemat jest wersjonowany i wdrażany przed startem aplikacji.
 }
 
 export async function ensureOfferLocalityCountryColumns() {
-  if (offerLocalityColumnsEnsured) return;
-  if (offerLocalityColumnsPromise) return offerLocalityColumnsPromise;
-
-  offerLocalityColumnsPromise = (async () => {
-    await ensureOfferColumn('localityCountry', "VARCHAR(64) NULL DEFAULT 'Polska'");
-    await ensureOfferColumn('localityCountryCode', "VARCHAR(8) NULL DEFAULT 'PL'");
-    await prisma.$executeRawUnsafe(
-      `UPDATE \`Offer\` SET \`localityCountry\` = 'Polska' WHERE \`localityCountry\` IS NULL OR TRIM(\`localityCountry\`) = ''`
-    );
-    await prisma.$executeRawUnsafe(
-      `UPDATE \`Offer\` SET \`localityCountryCode\` = 'PL' WHERE \`localityCountryCode\` IS NULL OR TRIM(\`localityCountryCode\`) = ''`
-    );
-    offerLocalityColumnsEnsured = true;
-  })();
-
-  try {
-    await offerLocalityColumnsPromise;
-  } catch (error) {
-    if (isOfferAlterPrivilegeError(error)) {
-      offerLocalityColumnsEnsured = true;
-      return;
-    }
-    throw error;
-  } finally {
-    offerLocalityColumnsPromise = null;
-  }
+  // Schemat jest wersjonowany i wdrażany przed startem aplikacji.
 }
 
 // =======================

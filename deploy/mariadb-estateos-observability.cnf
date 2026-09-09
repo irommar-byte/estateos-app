@@ -1,0 +1,7 @@
+[mariadb]
+# Znormalizowane digesty zapytań (literały nie trafiają do CORE Guard).
+# Włączenie wymaga jednego kontrolowanego restartu MariaDB.
+performance_schema=ON
+performance_schema_consumer_events_statements_current=ON
+performance_schema_consumer_events_statements_history=OFF
+performance_schema_consumer_events_statements_history_long=OFF

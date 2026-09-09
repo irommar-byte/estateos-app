@@ -58,7 +58,10 @@ const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
 };
 const IMAGE_FETCH_TIMEOUT_MS = 25_000;
 const MAX_IMPORT_IMAGES = MAX_IMAGES_PER_OFFER;
-const IMAGE_UPLOAD_CONCURRENCY = 2;
+const configuredImageConcurrency = Number(process.env.KEI_IMAGE_UPLOAD_CONCURRENCY || 1);
+const IMAGE_UPLOAD_CONCURRENCY = Number.isFinite(configuredImageConcurrency)
+  ? Math.min(2, Math.max(1, Math.floor(configuredImageConcurrency)))
+  : 1;
 
 function mapConditionCode(code: string | null): string {
   const value = String(code ?? '').trim().toLowerCase();

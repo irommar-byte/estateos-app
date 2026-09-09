@@ -3,8 +3,6 @@ import {
   enqueueKeiImportJob,
   getKeiImportJob,
   hasActiveKeiImportJob,
-  reapStaleKeiImportJobs,
-  resumeOrphanKeiImportJobs,
 } from '@/lib/keiAmerImportJobs';
 import { pickNewestKeiListingsForImport } from '@/lib/keiAmerPreview';
 import {
@@ -42,64 +40,8 @@ const DEFAULTS: KeiAutoImportConfig = {
   nextRunAt: null,
 };
 
-let tableReady: Promise<void> | null = null;
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let heartbeatBusy = false;
-
-async function ensureSessionColumns() {
-  const cols = (await prisma.$queryRawUnsafe<Array<{ COLUMN_NAME: string }>>(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'KeiAutoImportSchedule'`,
-  )) as Array<{ COLUMN_NAME: string }>;
-  const names = new Set(cols.map((row) => row.COLUMN_NAME));
-  const add: Array<[string, string]> = [
-    ['sessionStartedAt', 'DATETIME(3) NULL'],
-    ['sessionImportedCount', 'INT NOT NULL DEFAULT 0'],
-    ['sessionSkippedCount', 'INT NOT NULL DEFAULT 0'],
-    ['sessionCycles', 'INT NOT NULL DEFAULT 0'],
-  ];
-  for (const [name, spec] of add) {
-    if (names.has(name)) continue;
-    try {
-      await prisma.$executeRawUnsafe(`ALTER TABLE KeiAutoImportSchedule ADD COLUMN ${name} ${spec}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/Duplicate column/i.test(message)) throw error;
-    }
-  }
-}
-
 async function ensureTable() {
-  if (!tableReady) {
-    tableReady = prisma
-      .$executeRawUnsafe(
-        `
-      CREATE TABLE IF NOT EXISTS KeiAutoImportSchedule (
-        id TINYINT NOT NULL PRIMARY KEY,
-        enabled TINYINT(1) NOT NULL DEFAULT 0,
-        intervalMinutes INT NOT NULL DEFAULT 60,
-        count INT NOT NULL DEFAULT 3,
-        targetUserId INT NOT NULL DEFAULT 55,
-        agentCommissionPercent DOUBLE NOT NULL DEFAULT 2,
-        propertyKind VARCHAR(32) NOT NULL DEFAULT 'apartment',
-        transactionKind VARCHAR(32) NOT NULL DEFAULT 'sale',
-        adminUserId INT NOT NULL DEFAULT 0,
-        lastRunAt DATETIME(3) NULL,
-        lastJobId VARCHAR(36) NULL,
-        lastError TEXT NULL,
-        updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    `,
-      )
-      .then(async () => {
-        await ensureSessionColumns();
-      })
-      .catch((error) => {
-        tableReady = null;
-        throw error;
-      });
-  }
-  await tableReady;
+  // Schemat powstaje przed startem procesów przez db:core-guard.
 }
 
 function clampInterval(n: number) {
@@ -230,8 +172,10 @@ export async function saveKeiAutoImportAndKick(
   const justTurnedOn = config.enabled && !previous.enabled;
   if (!config.enabled) return { config, tick: null };
   if (!justTurnedOn) return { config, tick: null };
-  const tick = await tickKeiAutoImport({ force: true });
-  return { config: await getKeiAutoImportConfig(), tick };
+  return {
+    config,
+    tick: { ran: false, reason: 'worker_scheduled' },
+  };
 }
 
 export async function recordKeiAutoImportCycle(result: {
@@ -267,9 +211,6 @@ export async function recordKeiAutoImportCycle(result: {
 export async function tickKeiAutoImport(opts?: {
   force?: boolean;
 }): Promise<{ ran: boolean; reason: string; jobId?: string; picked?: number }> {
-  await reapStaleKeiImportJobs();
-  const resumed = await resumeOrphanKeiImportJobs();
-  if (resumed > 0) return { ran: true, reason: 'resumed' };
   const cfg = await getKeiAutoImportConfig();
   if (!cfg.enabled) return { ran: false, reason: 'disabled' };
   if (!cfg.adminUserId) return { ran: false, reason: 'no_admin' };
@@ -321,19 +262,4 @@ export async function tickKeiAutoImport(opts?: {
     await prisma.$executeRawUnsafe(`UPDATE KeiAutoImportSchedule SET lastError = ? WHERE id = 1`, message.slice(0, 500));
     return { ran: false, reason: message };
   }
-}
-
-export function startKeiAutoImportHeartbeat(): void {
-  if (heartbeatTimer) return;
-  const tick = () => {
-    if (heartbeatBusy) return;
-    heartbeatBusy = true;
-    void tickKeiAutoImport()
-      .catch(() => undefined)
-      .finally(() => {
-        heartbeatBusy = false;
-      });
-  };
-  setTimeout(tick, 12_000);
-  heartbeatTimer = setInterval(tick, 60_000);
 }

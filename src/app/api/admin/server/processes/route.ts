@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin/requireAdmin';
-import { controlPm2, readMariaDbStatus, readPm2Processes, startMariaDb } from '@/lib/adminServerOps';
+import { readMariaDbStatus, readPm2Processes } from '@/lib/adminServerOps';
+import { executeCoreGuardProcessControl } from '@/lib/coreGuardRunbooks';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,19 +27,27 @@ export async function POST(req: Request) {
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const body = (await req.json()) as { name?: string; action?: string };
+    const body = (await req.json()) as { name?: string; action?: string; confirmation?: string };
     const name = String(body.name || '').trim();
     const action = String(body.action || '').trim();
-    if (name === 'mariadb' && action === 'start') {
-      const result = await startMariaDb();
-      return NextResponse.json(result);
+    if (!['start', 'stop', 'restart', 'reload'].includes(action)) {
+      return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });
     }
-    const result = await controlPm2(name, action);
-    return NextResponse.json(result);
+    const result = await executeCoreGuardProcessControl({
+      name,
+      action: action as 'start' | 'stop' | 'restart' | 'reload',
+      confirmation: body.confirmation,
+      actorUserId: admin.id,
+    });
+    return NextResponse.json(result, {
+      status: result.ok === false && result.requiresConfirmation ? 409 : 200,
+    });
   } catch (error) {
+    const status =
+      (error as Error & { code?: string })?.code === 'REPAIR_CONFLICT' ? 409 : 400;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Nie udało się wykonać akcji.' },
-      { status: 400 },
+      { status },
     );
   }
 }

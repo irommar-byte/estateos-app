@@ -51,40 +51,65 @@ function normalizedMessageText(value: string) {
   return value.trim().replace(/\s+/g, ' ');
 }
 
-export async function listPortalChat(clientId: number, viewer: 'client' | 'agent'): Promise<PortalChatMessage[]> {
+export function parsePortalChatCursor(value: unknown): Date | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = new Date(value);
+  const timestamp = parsed.getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  if (timestamp > Date.now() + 60_000) return null;
+  if (timestamp < Date.now() - 30 * 24 * 60 * 60_000) return null;
+  return parsed;
+}
+
+export async function listPortalChat(
+  clientId: number,
+  viewer: 'client' | 'agent',
+  options?: { updatedSince?: Date | null; limit?: number },
+): Promise<PortalChatMessage[]> {
+  const limit = Math.min(120, Math.max(20, options?.limit || 80));
+  const updatedSince = options?.updatedSince || null;
   const [client, activities] = await Promise.all([
     prisma.agencyClient.findUnique({
       where: { id: clientId },
       select: { agencyUserId: true, linkedUserId: true },
     }),
     prisma.agencyClientActivity.findMany({
-      where: { clientId, kind: JOURNEY_ACTIVITY.PORTAL_MESSAGE },
-      orderBy: { createdAt: 'asc' },
-      take: 200,
+      where: {
+        clientId,
+        kind: JOURNEY_ACTIVITY.PORTAL_MESSAGE,
+        ...(updatedSince ? { createdAt: { gte: updatedSince } } : {}),
+      },
+      orderBy: { createdAt: updatedSince ? 'asc' : 'desc' },
+      take: limit,
       select: { id: true, kind: true, title: true, body: true, createdAt: true, metadata: true },
     }),
   ]);
-  const portalMessages = parsePortalMessages(activities, viewer);
+  const orderedActivities = updatedSince ? activities : [...activities].reverse();
+  const portalMessages = parsePortalMessages(orderedActivities, viewer);
   if (!client?.linkedUserId) return portalMessages;
 
   const pair = contactThreadPair(client.agencyUserId, client.linkedUserId);
   const thread = await prisma.contactThread.findUnique({
     where: { userLowId_userHighId: pair },
-    select: {
-      messages: {
-        orderBy: { createdAt: 'asc' },
-        take: 200,
-        select: {
-          id: true,
-          senderId: true,
-          content: true,
-          attachment: true,
-          createdAt: true,
-        },
-      },
-    },
+    select: { id: true },
   });
   if (!thread) return portalMessages;
+  const contactRows = await prisma.contactMessage.findMany({
+    where: {
+      threadId: thread.id,
+      ...(updatedSince ? { createdAt: { gte: updatedSince } } : {}),
+    },
+    orderBy: { createdAt: updatedSince ? 'asc' : 'desc' },
+    take: limit,
+    select: {
+      id: true,
+      senderId: true,
+      content: true,
+      attachment: true,
+      createdAt: true,
+    },
+  });
+  const contactMessages = updatedSince ? contactRows : [...contactRows].reverse();
 
   const representedContactIds = new Set(
     activities
@@ -93,7 +118,7 @@ export async function listPortalChat(clientId: number, viewer: 'client' | 'agent
   );
   const merged = [...portalMessages];
 
-  for (const contact of thread.messages) {
+  for (const contact of contactMessages) {
     if (representedContactIds.has(contact.id)) continue;
     const parts = parseContactMessageParts(contact);
     const fromAgent = contact.senderId === client.agencyUserId;
@@ -128,16 +153,20 @@ export async function listPortalChat(clientId: number, viewer: 'client' | 'agent
 
   return merged
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .slice(-300);
+    .slice(-Math.max(limit, 120));
 }
 
-export async function getPortalChatState(clientId: number, viewer: 'client' | 'agent') {
+export async function getPortalChatState(
+  clientId: number,
+  viewer: 'client' | 'agent',
+  options?: { updatedSince?: Date | null },
+) {
   const [client, messages] = await Promise.all([
     prisma.clientPortalChatState.findUnique({
       where: { clientId },
       select: { clientLastReadAt: true, agentLastReadAt: true },
     }),
-    listPortalChat(clientId, viewer),
+    listPortalChat(clientId, viewer, { updatedSince: options?.updatedSince }),
   ]);
   const lastReadAt =
     viewer === 'client' ? client?.clientLastReadAt || null : client?.agentLastReadAt || null;
@@ -145,38 +174,86 @@ export async function getPortalChatState(clientId: number, viewer: 'client' | 'a
     const fromPeer = viewer === 'client' ? message.fromAgent : !message.fromAgent;
     return fromPeer && (!lastReadAt || new Date(message.createdAt) > lastReadAt);
   }).length;
-  return { messages, unreadCount };
+  const newestAt = messages.reduce(
+    (latest, message) => Math.max(latest, new Date(message.createdAt).getTime()),
+    options?.updatedSince?.getTime() || 0,
+  );
+  return {
+    messages,
+    unreadCount,
+    nextCursor: newestAt > 0 ? new Date(newestAt).toISOString() : new Date().toISOString(),
+    incremental: Boolean(options?.updatedSince),
+  };
 }
 
 export async function markPortalChatRead(clientId: number, viewer: 'client' | 'agent') {
-  const client = await prisma.agencyClient.findUnique({
-    where: { id: clientId },
-    select: { agencyUserId: true, linkedUserId: true },
-  });
+  const [client, state, latestActivityRows] = await Promise.all([
+    prisma.agencyClient.findUnique({
+      where: { id: clientId },
+      select: { agencyUserId: true, linkedUserId: true },
+    }),
+    prisma.clientPortalChatState.findUnique({
+      where: { clientId },
+      select: { clientLastReadAt: true, agentLastReadAt: true },
+    }),
+    prisma.$queryRawUnsafe<Array<{ createdAt: Date }>>(
+      `SELECT createdAt
+       FROM AgencyClientActivity
+       WHERE clientId = ?
+         AND kind = ?
+         AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.from')) = ?
+       ORDER BY createdAt DESC
+       LIMIT 1`,
+      clientId,
+      JOURNEY_ACTIVITY.PORTAL_MESSAGE,
+      viewer === 'client' ? 'agent' : 'client',
+    ),
+  ]);
   if (!client) return;
 
-  const now = new Date();
-  await prisma.clientPortalChatState.upsert({
-    where: { clientId },
-    create:
-      viewer === 'client'
-        ? { clientId, clientLastReadAt: now }
-        : { clientId, agentLastReadAt: now },
-    update: viewer === 'client' ? { clientLastReadAt: now } : { agentLastReadAt: now },
-  });
+  let threadId: number | null = null;
+  let latestContactAt: Date | null = null;
+  if (client.linkedUserId) {
+    const pair = contactThreadPair(client.agencyUserId, client.linkedUserId);
+    const thread = await prisma.contactThread.findUnique({
+      where: { userLowId_userHighId: pair },
+      select: { id: true },
+    });
+    threadId = thread?.id || null;
+    if (threadId) {
+      const latestContact = await prisma.contactMessage.findFirst({
+        where: {
+          threadId,
+          senderId: viewer === 'client' ? client.agencyUserId : client.linkedUserId,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      latestContactAt = latestContact?.createdAt || null;
+    }
+  }
+  const latestActivityAt = latestActivityRows[0]?.createdAt || null;
+  const targetMs = Math.max(latestActivityAt?.getTime() || 0, latestContactAt?.getTime() || 0);
+  const lastReadAt = viewer === 'client' ? state?.clientLastReadAt : state?.agentLastReadAt;
+  if (targetMs > 0 && (!lastReadAt || lastReadAt.getTime() < targetMs)) {
+    const target = new Date(targetMs);
+    await prisma.clientPortalChatState.upsert({
+      where: { clientId },
+      create:
+        viewer === 'client'
+          ? { clientId, clientLastReadAt: target }
+          : { clientId, agentLastReadAt: target },
+      update: viewer === 'client' ? { clientLastReadAt: target } : { agentLastReadAt: target },
+    });
+  }
 
-  if (!client.linkedUserId) return;
-  const pair = contactThreadPair(client.agencyUserId, client.linkedUserId);
-  const thread = await prisma.contactThread.findUnique({
-    where: { userLowId_userHighId: pair },
-    select: { id: true },
-  });
-  if (!thread) return;
-  const peerSenderId = viewer === 'client' ? client.agencyUserId : client.linkedUserId;
-  await prisma.contactMessage.updateMany({
-    where: { threadId: thread.id, senderId: peerSenderId, isRead: false },
-    data: { isRead: true },
-  });
+  if (threadId && client.linkedUserId) {
+    const peerSenderId = viewer === 'client' ? client.agencyUserId : client.linkedUserId;
+    await prisma.contactMessage.updateMany({
+      where: { threadId, senderId: peerSenderId, isRead: false },
+      data: { isRead: true },
+    });
+  }
 }
 
 export async function savePortalAttachment(params: {

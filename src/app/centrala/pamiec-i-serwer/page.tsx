@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
+import CoreGuardPanel from "@/components/admin/CoreGuardPanel";
 import ServerHealthOptimizer from "@/components/admin/ServerHealthOptimizer";
 import {
   ArrowLeft,
@@ -370,7 +371,7 @@ export default function ServerMemoryPage() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, action }),
+        body: JSON.stringify({ name, action, confirmation: `CONFIRM:${action}:${name}` }),
       });
       const data = await res.json();
       if (!res.ok || data.ok === false) throw new Error(data.error || "Akcja nie powiodła się.");
@@ -514,6 +515,10 @@ export default function ServerMemoryPage() {
             {levelMeta.text}
           </span>
         </header>
+
+        <div className="mb-6">
+          <CoreGuardPanel />
+        </div>
 
         <div className="mb-10">
           <ServerHealthOptimizer />

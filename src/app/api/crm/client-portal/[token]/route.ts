@@ -25,6 +25,7 @@ import {
   isPortalPeerTyping,
   markPortalChatRead,
   markPortalTyping,
+  parsePortalChatCursor,
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
@@ -1059,11 +1060,17 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'list_messages') {
-    const { messages, unreadCount } = await getPortalChatState(client.id, 'client');
+    const { messages, unreadCount, nextCursor, incremental } = await getPortalChatState(
+      client.id,
+      'client',
+      { updatedSince: parsePortalChatCursor(body.updatedSince) },
+    );
     return NextResponse.json({
       success: true,
       messages,
       unreadCount,
+      nextCursor,
+      incremental,
       peerTyping: isPortalPeerTyping(client.id, 'client'),
     });
   }

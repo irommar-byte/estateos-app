@@ -41,35 +41,59 @@ export default function CrmClientLiveChat({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const openRef = useRef(false);
+  const cursorRef = useRef<string | null>(null);
+  const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const listRef = useRef<HTMLDivElement | null>(null);
   const typingTimer = useRef<number | null>(null);
 
   const markRead = useCallback(async () => {
     setUnreadCount(0);
-    await fetch(`/api/crm/clients/${clientId}`, {
+    await fetch(`/api/crm/clients/${clientId}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark_portal_messages_read" }),
+      body: JSON.stringify({ action: "read" }),
     }).catch(() => {});
   }, [clientId]);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/crm/clients/${clientId}`, {
+      const res = await fetch(`/api/crm/clients/${clientId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ action: "list_portal_messages" }),
+        body: JSON.stringify({
+          action: "list",
+          updatedSince: cursorRef.current,
+        }),
       });
       const json = await res.json();
       if (!res.ok || !Array.isArray(json.messages)) return;
-      setMessages(json.messages);
+      const incoming = json.messages as PortalMessage[];
+      const fresh = incoming.filter((message) => !knownMessageIdsRef.current.has(String(message.id)));
+      for (const message of incoming) knownMessageIdsRef.current.add(String(message.id));
+      if (json.incremental) {
+        setMessages((current) => {
+          const merged = new Map(current.map((message) => [String(message.id), message]));
+          for (const message of incoming) merged.set(String(message.id), message);
+          return [...merged.values()]
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+            .slice(-160);
+        });
+      } else {
+        setMessages(incoming);
+      }
+      if (typeof json.nextCursor === "string") cursorRef.current = json.nextCursor;
       setPeerTyping(Boolean(json.peerTyping));
       if (openRef.current) {
-        if (Number(json.unreadCount) > 0) void markRead();
+        if (fresh.some((message) => !message.fromMe) || Number(json.unreadCount) > 0) void markRead();
         else setUnreadCount(0);
       } else {
-        setUnreadCount(Math.max(0, Number(json.unreadCount) || 0));
+        const freshPeerCount = fresh.filter((message) => !message.fromMe).length;
+        setUnreadCount((current) =>
+          json.incremental
+            ? current + freshPeerCount
+            : Math.max(0, Number(json.unreadCount) || 0),
+        );
       }
     } catch {
       /* chwilowa utrata sieci nie czyści rozmowy */
@@ -77,14 +101,26 @@ export default function CrmClientLiveChat({
   }, [clientId, markRead]);
 
   useEffect(() => {
+    cursorRef.current = null;
+    knownMessageIdsRef.current.clear();
+    setMessages([]);
     const frame = window.requestAnimationFrame(() => void load());
     return () => window.cancelAnimationFrame(frame);
-  }, [load]);
+  }, [clientId, load]);
 
   useEffect(() => {
     openRef.current = open;
-    const timer = window.setInterval(() => void load(), open ? 2_000 : 5_000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, open ? 5_000 : 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [load, open]);
 
   useEffect(() => {
@@ -97,17 +133,17 @@ export default function CrmClientLiveChat({
   const openChat = () => {
     openRef.current = true;
     setOpen(true);
-    void markRead();
+    if (unreadCount > 0) void markRead();
     void load();
   };
 
   const pingTyping = () => {
     if (typingTimer.current) window.clearTimeout(typingTimer.current);
     typingTimer.current = window.setTimeout(() => {
-      void fetch(`/api/crm/clients/${clientId}`, {
+      void fetch(`/api/crm/clients/${clientId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "portal_typing" }),
+        body: JSON.stringify({ action: "typing" }),
       });
     }, 280);
   };
@@ -130,10 +166,10 @@ export default function CrmClientLiveChat({
         if (!upload.ok) throw new Error(uploadJson.error || "Nie udało się wgrać załącznika.");
         attachments = [uploadJson.attachment];
       }
-      const res = await fetch(`/api/crm/clients/${clientId}`, {
+      const res = await fetch(`/api/crm/clients/${clientId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_portal_message", content, attachments }),
+        body: JSON.stringify({ action: "send", content, attachments }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Nie udało się wysłać wiadomości.");

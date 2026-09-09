@@ -561,135 +561,16 @@ export async function optimizeServer(): Promise<{
   after: DiagnoseReport;
 }> {
   const before = await diagnoseServer();
-  const actions: OptimizeAction[] = [];
-  const findingIds = new Set(before.findings.filter((item) => item.fixable).map((item) => item.id));
-
-  if (findingIds.has('junk') || findingIds.has('disk-critical') || findingIds.has('disk-warning')) {
-    const preview = await previewSafeCleanup();
-    const result = runSafeCleanup();
-    actions.push({
-      id: 'junk',
-      label: 'Usunięto śmieci',
-      detail: `${result.deleted.length} pozycji`,
-      freedBytes: preview.bytes,
-    });
-  }
-
-  if (findingIds.has('logs')) {
-    let freed = 0;
-    for (const item of listOversizedLogs()) {
-      try {
-        freed += trimLogTail(item.path, KEEP_LOG_BYTES);
-      } catch {
-        /* keep going */
-      }
-    }
-    actions.push({
-      id: 'logs',
-      label: 'Przycięto logi',
-      detail: `Zwolniono ${formatBytes(freed)}`,
-      freedBytes: freed,
-    });
-  }
-
-  if (findingIds.has('cores')) {
-    const cores = listCoreDumps();
-    let freed = 0;
-    for (const item of cores) {
-      try {
-        fs.rmSync(item.path, { force: true });
-        freed += item.bytes;
-      } catch {
-        /* keep going */
-      }
-    }
-    actions.push({
-      id: 'cores',
-      label: 'Usunięto zrzuty core',
-      detail: `${cores.length} plików`,
-      freedBytes: freed,
-    });
-  }
-
-  if (findingIds.has('hung-media') || findingIds.has('load')) {
-    const hung = await listHungMedia();
-    for (const item of hung) {
-      try {
-        process.kill(item.pid, 'SIGKILL');
-      } catch {
-        /* already gone */
-      }
-    }
-    if (hung.length) {
-      actions.push({
-        id: 'hung-media',
-        label: 'Przerwano zacięte streamy',
-        detail: `${hung.length} procesów`,
-      });
-    }
-  }
-
-  if (findingIds.has('build-leftovers') && !isBuildLocked()) {
-    const leftovers = leftoverBuildDirs();
-    for (const full of leftovers) {
-      try {
-        fs.rmSync(full, { recursive: true, force: true });
-      } catch {
-        /* keep going */
-      }
-    }
-    if (leftovers.length) {
-      actions.push({
-        id: 'build-leftovers',
-        label: 'Usunięto resztki buildu',
-        detail: leftovers.map((item) => path.basename(item)).join(', '),
-      });
-    }
-  }
-
-  if (findingIds.has('mariadb')) {
-    await run('sudo', ['-n', 'systemctl', 'start', 'mariadb'], 15_000);
-    actions.push({ id: 'mariadb', label: 'Uruchomiono MariaDB', detail: 'systemctl start mariadb' });
-  }
-
-  const needsReload =
-    findingIds.has('web-memory') ||
-    findingIds.has('health-slow') ||
-    findingIds.has('health-down') ||
-    findingIds.has('commit-stale') ||
-    findingIds.has('swap') ||
-    findingIds.has('restarts');
-
-  if (findingIds.has('commit-stale')) {
-    const sha = await gitShortSha();
-    if (sha) upsertEnv('COMMIT_SHA', sha);
-  }
-
-  if (needsReload && !isBuildLocked()) {
-    await run(
-      'pm2',
-      ['startOrReload', path.join(APP_ROOT, 'ecosystem.config.cjs'), '--only', 'nieruchomosci', '--env', 'production'],
-      45_000,
-    );
-    if (findingIds.has('restarts')) {
-      await run('pm2', ['reset', 'nieruchomosci'], 8_000);
-    }
-    await waitHealthy();
-    actions.push({
-      id: 'reload',
-      label: 'Odświeżono workery WWW',
-      detail: 'pm2 reload nieruchomosci — strona nie była wyłączana',
-    });
-  }
-
-  if (actions.length === 0) {
-    actions.push({
-      id: 'noop',
-      label: 'Nie było nic do automatycznej naprawy',
-      detail: 'Stan zostawiony bez zmian.',
-    });
-  }
-
-  const after = await diagnoseServer();
-  return { ok: after.healthy || after.level !== 'critical', actions, before, after };
+  return {
+    ok: before.healthy || before.level !== 'critical',
+    actions: [
+      {
+        id: 'guard-required',
+        label: 'Wymagany plan CORE Guard',
+        detail: 'Naprawa nie została wykonana. Użyj planu, podglądu skutków i zatwierdzonego runbooka.',
+      },
+    ],
+    before,
+    after: before,
+  };
 }

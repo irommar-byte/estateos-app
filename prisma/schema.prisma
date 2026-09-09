@@ -1264,7 +1264,7 @@ model AgencyClientActivity {
   metadata     Json?
   createdAt    DateTime @default(now())
 
-  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client                 AgencyClient                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   marketingNotifications SellerMarketingNotification[]
 
   @@index([clientId, createdAt])
@@ -1273,15 +1273,15 @@ model AgencyClientActivity {
 
 /// Trwała kolejka wysyłki wpisów marketingowych widocznych dla klienta.
 model SellerMarketingNotification {
-  id         Int      @id @default(autoincrement())
-  activityId Int      @unique
+  id         Int       @id @default(autoincrement())
+  activityId Int       @unique
   clientId   Int
-  status     String   @default("PENDING") @db.VarChar(24)
-  attempts   Int      @default(0)
-  lastError  String?  @db.Text
+  status     String    @default("PENDING") @db.VarChar(24)
+  attempts   Int       @default(0)
+  lastError  String?   @db.Text
   sentAt     DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   activity AgencyClientActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 
@@ -1586,4 +1586,123 @@ model DeskTask {
   @@index([agencyUserId, status, dueAt])
   @@index([caseId, status])
   @@index([clientId])
+}
+
+/// Trwała kolejka importu KEI. Wykonuje ją wyłącznie dedykowany worker PM2.
+model KeiAmerImportJob {
+  id              String    @id @db.VarChar(36)
+  adminUserId     Int
+  status          String    @db.VarChar(32)
+  message         String?   @db.Text
+  propertyKind    String?   @db.VarChar(32)
+  transactionKind String?   @db.VarChar(32)
+  payloadJson     String    @db.LongText
+  itemsJson       String    @db.LongText
+  resultJson      String?   @db.LongText
+  cancelRequested Boolean   @default(false)
+  leaseOwner      String?   @db.VarChar(191)
+  leaseUntil      DateTime?
+  heartbeatAt     DateTime?
+  attemptCount    Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  finishedAt      DateTime?
+
+  @@index([status])
+  @@index([adminUserId])
+  @@index([updatedAt])
+  @@index([status, leaseUntil])
+}
+
+model KeiAutoImportSchedule {
+  id                     Int       @id @db.TinyInt
+  enabled                Boolean   @default(false)
+  intervalMinutes        Int       @default(60)
+  count                  Int       @default(3)
+  targetUserId           Int       @default(55)
+  agentCommissionPercent Float     @default(2)
+  propertyKind           String    @default("apartment") @db.VarChar(32)
+  transactionKind        String    @default("sale") @db.VarChar(32)
+  adminUserId            Int       @default(0)
+  lastRunAt              DateTime?
+  lastJobId              String?   @db.VarChar(36)
+  lastError              String?   @db.Text
+  sessionStartedAt       DateTime?
+  sessionImportedCount   Int       @default(0)
+  sessionSkippedCount    Int       @default(0)
+  sessionCycles          Int       @default(0)
+  updatedAt              DateTime  @updatedAt
+}
+
+/// Próbki zbierane poza procesem WWW przez EstateOS CORE Guard.
+model CoreMetricSample {
+  id                   BigInt   @id @default(autoincrement())
+  collectedAt          DateTime @default(now())
+  host                 String   @db.VarChar(191)
+  level                String   @db.VarChar(16)
+  cpuPercent           Float
+  load1                Float
+  memoryUsedBytes      BigInt
+  memoryTotalBytes     BigInt
+  swapUsedBytes        BigInt
+  diskUsedBytes        BigInt
+  diskTotalBytes       BigInt
+  requestsPerMin       Int      @default(0)
+  activeConnections    Int      @default(0)
+  latencyP95Ms         Float?
+  upstreamLatencyP95Ms Float?
+  status499            Int      @default(0)
+  status5xx            Int      @default(0)
+  dbLatencyMs          Float?
+  dbConnections        Int?
+  dbMaxConnections     Int?
+  dbAbortedClients     BigInt?
+  webRestarts          Int      @default(0)
+  webRssBytes          BigInt   @default(0)
+  payloadJson          String?  @db.LongText
+
+  @@index([collectedAt])
+  @@index([host, collectedAt])
+}
+
+model CoreIncident {
+  id                String    @id @db.VarChar(36)
+  fingerprint       String    @unique @db.VarChar(191)
+  type              String    @db.VarChar(64)
+  severity          String    @db.VarChar(16)
+  status            String    @default("open") @db.VarChar(16)
+  title             String    @db.VarChar(255)
+  detail            String    @db.Text
+  evidenceJson      String?   @db.LongText
+  recommendedAction String?   @db.VarChar(64)
+  autoFixable       Boolean   @default(false)
+  occurrences       Int       @default(1)
+  firstSeenAt       DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  lastAlertAt       DateTime?
+  recoveryAlertAt   DateTime?
+  cooldownUntil     DateTime?
+  acknowledgedAt    DateTime?
+  resolvedAt        DateTime?
+
+  @@index([status, severity, lastSeenAt])
+  @@index([lastSeenAt])
+}
+
+model CoreRemediationAudit {
+  id          BigInt    @id @default(autoincrement())
+  incidentId  String?   @db.VarChar(36)
+  actionId    String    @db.VarChar(64)
+  mode        String    @db.VarChar(16)
+  actorUserId Int?
+  status      String    @db.VarChar(16)
+  detail      String?   @db.Text
+  beforeJson  String?   @db.LongText
+  afterJson   String?   @db.LongText
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+
+  @@index([createdAt])
+  @@index([incidentId, createdAt])
+  @@index([actorUserId, createdAt])
 }

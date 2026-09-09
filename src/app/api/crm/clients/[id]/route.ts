@@ -41,10 +41,10 @@ import {
   isPortalPeerTyping,
   markPortalChatRead,
   markPortalTyping,
+  parsePortalChatCursor,
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
-import { stampKwFromAcquisitionForm } from '@/lib/legalVerificationAgentStamp';
 import { emailClientSchedule, emailGuestAgencyPresentation } from '@/lib/crm/clientScheduleNotify';
 import { findPresentationCounterpartId, mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
@@ -111,17 +111,11 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   const meeting = resolveMeeting(client.activities);
   const presentation = resolvePresentation(client.activities);
-  const portalChat = await getPortalChatState(client.id, 'agent');
-  const acquisition = await prisma.agencyClientAcquisition.findUnique({
-    where: { clientId: client.id },
-    select: { status: true, currentStep: true, signedAt: true, formData: true },
-  });
-  await stampKwFromAcquisitionForm({
-    offerId: client.linkedOfferId,
-    agentUserId: agencyUserId,
-    formData: acquisition?.formData,
-  }).catch(() => {});
-  const [pendingCheckback, sentCount, closedDeal, openHandoff] = await Promise.all([
+  const [acquisition, pendingCheckback, sentCount, closedDeal, openHandoff] = await Promise.all([
+    prisma.agencyClientAcquisition.findUnique({
+      where: { clientId: client.id },
+      select: { status: true, currentStep: true, signedAt: true, formData: true },
+    }),
     getPendingCheckback(client.id),
     prisma.agencyClientMatch.count({
       where: { clientId: client.id, notifiedAt: { not: null } },
@@ -166,31 +160,38 @@ export async function GET(req: Request, ctx: RouteCtx) {
       ? buildBuyerAgentTasks(client.matches, client.activities)
       : [];
 
-  const sellerMarketing =
-    client.type === 'SELLER'
-      ? await loadSellerPortalMarketing(client.id).catch(() => ({
-          estateos: null,
-          activeChannels: [],
-          sellerNextStep: null,
-          pendingDecisions: [],
-          marketingTimeline: [],
-          facebookGroups: [],
-          sellerEvents: null,
-        }))
-      : null;
-
-  const [facebookNetwork, facebookShareOffers, managedOffers] =
-    client.type === 'SELLER'
-      ? await Promise.all([
-          loadAgentFacebookDestinations(agencyUserId).catch(() => []),
-          loadAgentShareOffers(agencyUserId).catch(() => []),
-          loadAgentManagedOffers(agencyUserId).catch(() => []),
-        ])
-      : await Promise.all([
-          Promise.resolve([]),
-          Promise.resolve([]),
-          loadAgentManagedOffers(agencyUserId).catch(() => []),
-        ]);
+  const [sellerMarketing, facebookNetwork, facebookShareOffers, managedOffers, relatedProjects, matchBriefs] =
+    await Promise.all([
+      client.type === 'SELLER'
+        ? loadSellerPortalMarketing(client.id).catch(() => ({
+            estateos: null,
+            activeChannels: [],
+            sellerNextStep: null,
+            pendingDecisions: [],
+            marketingTimeline: [],
+            facebookGroups: [],
+            sellerEvents: null,
+          }))
+        : Promise.resolve(null),
+      client.type === 'SELLER'
+        ? loadAgentFacebookDestinations(agencyUserId).catch(() => [])
+        : Promise.resolve([]),
+      client.type === 'SELLER'
+        ? loadAgentShareOffers(agencyUserId).catch(() => [])
+        : Promise.resolve([]),
+      loadAgentManagedOffers(agencyUserId).catch(() => []),
+      loadClientPersonProjects({
+        agencyUserId,
+        client: {
+          id: client.id,
+          email: client.email,
+          phone: client.phone,
+          peselHash: client.peselHash,
+          linkedUserId: client.linkedUserId,
+        },
+      }),
+      listMatchImportBriefs(client.matches.map((match) => match.offer.id)),
+    ]);
 
   const nextStep = resolveClientNextStep({
     type: client.type,
@@ -215,17 +216,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
     acquisitionStatus: acquisition?.status ?? null,
     linkedOfferId: client.linkedOfferId,
     pendingIntelligenceCheckback: Boolean(pendingCheckback),
-  });
-
-  const relatedProjects = await loadClientPersonProjects({
-    agencyUserId,
-    client: {
-      id: client.id,
-      email: client.email,
-      phone: client.phone,
-      peselHash: client.peselHash,
-      linkedUserId: client.linkedUserId,
-    },
   });
 
   return NextResponse.json({
@@ -266,7 +256,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
           intelligenceReason: m.intelligenceReason || null,
           offer: shapeAgencyClientMatchOffer(m.offer),
         })),
-        await listMatchImportBriefs(client.matches.map((m) => m.offer.id)),
+        matchBriefs,
       ),
       intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
       pendingCheckback,
@@ -275,8 +265,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
       meeting,
       presentation,
       journey,
-      messages: portalChat.messages,
-      portalUnreadCount: portalChat.unreadCount,
       activities: client.activities.map((a) => ({
         id: a.id,
         kind: a.kind,
@@ -1145,11 +1133,17 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'list_portal_messages') {
-    const { messages, unreadCount } = await getPortalChatState(clientId, 'agent');
+    const { messages, unreadCount, nextCursor, incremental } = await getPortalChatState(
+      clientId,
+      'agent',
+      { updatedSince: parsePortalChatCursor(body.updatedSince) },
+    );
     return NextResponse.json({
       success: true,
       messages,
       unreadCount,
+      nextCursor,
+      incremental,
       peerTyping: isPortalPeerTyping(clientId, 'agent'),
     });
   }

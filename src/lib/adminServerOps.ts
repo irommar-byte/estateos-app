@@ -254,7 +254,26 @@ type MetricSample = {
   disk: number;
 };
 
+export type NginxWindowMetrics = {
+  sourceAvailable: boolean;
+  requestsPerMin: number;
+  activeConnections: number;
+  windowRequests: number;
+  status499: number;
+  status5xx: number;
+  status502: number;
+  status504: number;
+  latencyMs: { p50: number | null; p95: number | null; p99: number | null };
+  upstreamLatencyMs: { p95: number | null };
+  routes: Record<
+    'crmClients' | 'crmClientDetail' | 'portalChat',
+    { requests: number; p50Ms: number | null; p95Ms: number | null; p99Ms: number | null }
+  >;
+};
+
 const metricHistory: MetricSample[] = [];
+const NGINX_METRICS_LOG =
+  process.env.ADMIN_CORE_NGINX_METRICS_LOG || '/var/log/nginx/estateos-access.log';
 
 function round1(n: number) {
   return Math.round(n * 10) / 10;
@@ -288,6 +307,101 @@ export function readMemoryMetrics() {
   const usedBytes = Math.max(0, totalBytes - freeBytes);
   const percent = totalBytes > 0 ? round1((usedBytes / totalBytes) * 100) : 0;
   return { usedBytes, totalBytes, freeBytes, percent };
+}
+
+function percentile(values: number[], quantile: number): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * quantile) - 1));
+  return Math.round(sorted[index] * 1000) / 1000;
+}
+
+function nginxSeconds(value: unknown): number | null {
+  const values = String(value ?? '')
+    .split(/[,:]/)
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item >= 0);
+  return values.length ? Math.max(...values) : null;
+}
+
+export async function readNginxWindowMetrics(windowMs = 5 * 60_000): Promise<NginxWindowMetrics> {
+  const [raw, sockets] = await Promise.all([
+    run('tail', ['-n', '5000', NGINX_METRICS_LOG], 4000),
+    run('ss', ['-Htan'], 3000),
+  ]);
+  const now = Date.now();
+  const rows: Array<{
+    at: number;
+    uri: string;
+    status: number;
+    requestSec: number;
+    upstreamSec: number | null;
+  }> = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim().startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const at = new Date(String(parsed.ts || '')).getTime();
+      const requestSec = Number(parsed.request_time);
+      const status = Number(parsed.status);
+      if (!Number.isFinite(at) || !Number.isFinite(requestSec) || !Number.isFinite(status)) continue;
+      if (at < now - windowMs || at > now + 60_000) continue;
+      rows.push({
+        at,
+        uri: String(parsed.uri || ''),
+        status,
+        requestSec,
+        upstreamSec: nginxSeconds(parsed.upstream_time),
+      });
+    } catch {
+      // A partially written line is ignored and retried on the next sample.
+    }
+  }
+  const lastMinute = rows.filter((row) => row.at >= now - 60_000);
+  const requestMs = rows.map((row) => row.requestSec * 1000);
+  const upstreamMs = rows
+    .map((row) => row.upstreamSec)
+    .filter((value): value is number => value != null)
+    .map((value) => value * 1000);
+  const activeConnections = sockets
+    .split('\n')
+    .filter((line) => /^ESTAB\s/.test(line) && /\s(?:127\.0\.0\.1|\[::1\]|\*|0\.0\.0\.0):(?:3000|443)\s/.test(line))
+    .length;
+  const routeMetric = (matches: (uri: string) => boolean) => {
+    const values = rows.filter((row) => matches(row.uri)).map((row) => row.requestSec * 1000);
+    return {
+      requests: values.length,
+      p50Ms: percentile(values, 0.5),
+      p95Ms: percentile(values, 0.95),
+      p99Ms: percentile(values, 0.99),
+    };
+  };
+
+  return {
+    sourceAvailable: raw.trim().length > 0,
+    requestsPerMin: lastMinute.length,
+    activeConnections,
+    windowRequests: rows.length,
+    status499: rows.filter((row) => row.status === 499).length,
+    status5xx: rows.filter((row) => row.status >= 500).length,
+    status502: rows.filter((row) => row.status === 502).length,
+    status504: rows.filter((row) => row.status === 504).length,
+    latencyMs: {
+      p50: percentile(requestMs, 0.5),
+      p95: percentile(requestMs, 0.95),
+      p99: percentile(requestMs, 0.99),
+    },
+    upstreamLatencyMs: { p95: percentile(upstreamMs, 0.95) },
+    routes: {
+      crmClients: routeMetric((uri) => uri === '/api/crm/clients'),
+      crmClientDetail: routeMetric((uri) => /^\/api\/crm\/clients\/\d+$/.test(uri)),
+      portalChat: routeMetric(
+        (uri) =>
+          /^\/api\/crm\/clients\/\d+\/chat$/.test(uri) ||
+          uri === '/api/crm/client-portal/:token/chat',
+      ),
+    },
+  };
 }
 
 export async function readDiskMetrics(targetPath = '/') {
@@ -816,6 +930,8 @@ export type Pm2Process = {
 
 export const DAEMON_PM2_NAMES = new Set([
   'nieruchomosci',
+  'kei-import-worker',
+  'estateos-core-guard',
   'lineage-movies-downloader',
   'lineage-movies-proxy',
 ]);
@@ -827,7 +943,8 @@ export const ALLOWED_PM2_NAMES = new Set([
   'lineage-movies-proxy',
   'partner-growth-nurture',
   'reviews-finalization-fallback',
-  'kei-auto-import',
+  'kei-import-worker',
+  'estateos-core-guard',
   'client-intelligence',
   'seller-marketing-renewals',
   'rcn-market-ingest',

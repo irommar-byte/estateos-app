@@ -116,9 +116,33 @@ export default function ServerHealthOptimizer({ compact = false }: { compact?: b
     setOptimizing(true);
     setError(null);
     try {
+      const previewRes = await fetch("/api/admin/server/optimize", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const preview = await previewRes.json();
+      if (!previewRes.ok && previewRes.status !== 409) {
+        throw new Error(preview.error || "Optymalizacja nie powiodła się.");
+      }
+      const planned = Array.isArray(preview.plan?.actions) ? preview.plan.actions : [];
+      if (planned.length === 0) {
+        setActions([{ id: "noop", label: "Brak bezpiecznych napraw", detail: "Stan pozostawiono bez zmian." }]);
+        await scan();
+        return;
+      }
+      const accepted = window.confirm(
+        `CORE Guard wykona ${planned.length} bezpiecznych napraw:\n\n${planned
+          .map((item: { label?: string; impact?: string }) => `• ${item.label || "Naprawa"} — ${item.impact || ""}`)
+          .join("\n")}`,
+      );
+      if (!accepted) return;
       const res = await fetch("/api/admin/server/optimize", {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation: "CONFIRM:SAFE" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Optymalizacja nie powiodła się.");
@@ -166,7 +190,7 @@ export default function ServerHealthOptimizer({ compact = false }: { compact?: b
               </h2>
               <p className="mt-2 text-[15px] leading-relaxed text-[var(--eos-muted)]">
                 {optimizing
-                  ? "Czyszczę śmieci, przycinam logi i przeładowuję workery. Strona zostaje online."
+                  ? "Wykonuję zatwierdzony, bezpieczny podzbiór napraw."
                   : report?.summary || "Sprawdzam dysk, logi, PM2, bazę i zacięte procesy."}
               </p>
             </div>
