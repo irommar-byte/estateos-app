@@ -39,13 +39,13 @@ const nodeOpts = String(env.NODE_OPTIONS || "")
   .split(/\s+/)
   .filter(Boolean);
 if (!nodeOpts.some((opt) => opt.startsWith("--max-old-space-size"))) {
-  nodeOpts.push("--max-old-space-size=1536");
+  nodeOpts.push("--max-old-space-size=2048");
 }
 env.NODE_OPTIONS = nodeOpts.join(" ");
 
-console.log(JSON.stringify({ ok: true, step: "atomic-build-start", distDir: ".next-build" }));
+console.log(JSON.stringify({ ok: true, step: "atomic-build-start", distDir: ".next-build", bundler: "webpack" }));
 
-const build = spawnSync(process.execPath, [nextBin, "build"], {
+const build = spawnSync(process.execPath, [nextBin, "build", "--webpack"], {
   cwd: root,
   env,
   stdio: "inherit",
