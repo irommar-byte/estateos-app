@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { isControlEnabled } from '@/lib/adminCoreControl';
-import { diagnoseServer, optimizeServer } from '@/lib/adminServerDiagnose';
+import { diagnoseServer } from '@/lib/adminServerDiagnose';
 import { isServerOptimizeRunning, runServerOptimizeExclusive } from '@/lib/adminServerOptimizeLock';
 import { collectProductionSnapshot } from '@/lib/adminCoreProduction';
-import { controlPm2, readMariaDbStatus, readPm2Processes, startMariaDb } from '@/lib/adminServerOps';
+import { readMariaDbStatus, readPm2Processes } from '@/lib/adminServerOps';
+import {
+  buildCoreGuardRemediationPlan,
+  executeCoreGuardProcessControl,
+  executeCoreGuardRunbook,
+} from '@/lib/coreGuardRunbooks';
 
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' };
 
@@ -52,7 +57,33 @@ export async function handleAdminCoreOptimizePOST(req: Request) {
   if (!isControlEnabled()) return controlDenied();
 
   try {
-    const exclusive = await runServerOptimizeExclusive(() => optimizeServer());
+    const body = (await req.json().catch(() => ({}))) as { confirmation?: string };
+    const plan = await buildCoreGuardRemediationPlan();
+    if (body.confirmation !== 'CONFIRM:SAFE') {
+      return NextResponse.json(
+        {
+          ok: false,
+          requiresConfirmation: true,
+          expectedConfirmation: 'CONFIRM:SAFE',
+          plan,
+        },
+        { status: 409, headers: NO_CACHE },
+      );
+    }
+    const exclusive = await runServerOptimizeExclusive(async () => {
+      const before = await diagnoseServer();
+      const actions = [];
+      for (const action of plan.actions) {
+        const result = await executeCoreGuardRunbook({
+          actionId: action.id,
+          actorUserId: gate.adminId,
+          mode: 'automatic',
+        });
+        actions.push({ id: action.id, label: action.label, detail: JSON.stringify(result.result) });
+      }
+      const after = await diagnoseServer();
+      return { ok: true, before, after, actions };
+    });
     if (exclusive.conflict) {
       return NextResponse.json({ ok: false, error: 'Optymalizacja już trwa.' }, { status: 409, headers: NO_CACHE });
     }
@@ -85,15 +116,22 @@ export async function handleAdminCoreProcessesPOST(req: Request) {
   if (!isControlEnabled()) return controlDenied();
 
   try {
-    const body = (await req.json()) as { name?: string; action?: string };
+    const body = (await req.json()) as { name?: string; action?: string; confirmation?: string };
     const name = String(body.name || '').trim();
     const action = String(body.action || '').trim();
-    if (name === 'mariadb' && action === 'start') {
-      const result = await startMariaDb();
-      return NextResponse.json(result, { headers: NO_CACHE });
+    if (!['start', 'stop', 'restart', 'reload'].includes(action)) {
+      return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400, headers: NO_CACHE });
     }
-    const result = await controlPm2(name, action);
-    return NextResponse.json(result, { headers: NO_CACHE });
+    const result = await executeCoreGuardProcessControl({
+      name,
+      action: action as 'start' | 'stop' | 'restart' | 'reload',
+      confirmation: body.confirmation,
+      actorUserId: gate.adminId,
+    });
+    return NextResponse.json(result, {
+      status: result.ok === false && result.requiresConfirmation ? 409 : 200,
+      headers: NO_CACHE,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Nie udało się wykonać akcji.' },

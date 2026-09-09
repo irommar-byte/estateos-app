@@ -38,12 +38,16 @@ import {
 } from '@/lib/importDuplicateGuard';
 import {
   buildAppliedPatch,
+  descriptionImpliesAmenity,
+  importDescriptionBlob,
   inferAmenitySuggestions,
   parseSmartAddDecisions,
   portalFeaturesIncludeAmenity,
+  previewImportSmartAdd,
   type IntelligenceAmenityField,
   type IntelligenceAmenityPatchMap,
   type IntelligenceAmenitySuggestion,
+  INTELLIGENCE_AMENITY_FIELDS,
 } from '@/lib/intelligenceAmenityBrain';
 import { writeOfferAmenityPatches } from '@/lib/intelligenceAmenityPatches';
 
@@ -54,7 +58,10 @@ const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
 };
 const IMAGE_FETCH_TIMEOUT_MS = 25_000;
 const MAX_IMPORT_IMAGES = MAX_IMAGES_PER_OFFER;
-const IMAGE_UPLOAD_CONCURRENCY = 2;
+const configuredImageConcurrency = Number(process.env.KEI_IMAGE_UPLOAD_CONCURRENCY || 1);
+const IMAGE_UPLOAD_CONCURRENCY = Number.isFinite(configuredImageConcurrency)
+  ? Math.min(2, Math.max(1, Math.floor(configuredImageConcurrency)))
+  : 1;
 
 function mapConditionCode(code: string | null): string {
   const value = String(code ?? '').trim().toLowerCase();
@@ -142,36 +149,76 @@ export function suggestionsFromOtodomDraft(draft: OtodomImportDraft): Intelligen
 
 export function resolveImportSmartAdd(params: {
   draft: OtodomImportDraft;
-  enabled?: boolean;
-  autoApply?: boolean;
+  /** Jawne odrzucenie pojedynczego pola (np. z UI importu). */
   decisions?: unknown;
+  /** Gdy false — tylko checkboxy portalu, bez inferencji z opisu. */
+  enabled?: boolean;
+  /** Gdy false — podpowiedzi bez auto-zapisu patchy / amenity z opisu. */
+  autoApply?: boolean;
 }): {
   amenities: Record<IntelligenceAmenityField, boolean>;
+  hasAirConditioning: boolean;
+  heating: string | null;
   patches: IntelligenceAmenityPatchMap;
   suggestions: IntelligenceAmenitySuggestion[];
 } {
-  const features = params.draft.features || [];
-  const suggestions = suggestionsFromOtodomDraft(params.draft);
+  const preview = previewImportSmartAdd(params.draft);
   const decisions = parseSmartAddDecisions(params.decisions);
-  const amenities: Record<IntelligenceAmenityField, boolean> = {
-    hasBalcony: portalFeaturesIncludeAmenity(features, 'hasBalcony'),
-    hasElevator: portalFeaturesIncludeAmenity(features, 'hasElevator'),
-    hasStorage: portalFeaturesIncludeAmenity(features, 'hasStorage'),
-    hasParking: portalFeaturesIncludeAmenity(features, 'hasParking'),
-    hasGarden: portalFeaturesIncludeAmenity(features, 'hasGarden'),
-    isFurnished: portalFeaturesIncludeAmenity(features, 'isFurnished'),
-  };
+  const features = params.draft.features || [];
+  const enabled = params.enabled !== false;
+  const autoApply = params.autoApply !== false;
+
+  if (!enabled) {
+    const amenities = Object.fromEntries(
+      INTELLIGENCE_AMENITY_FIELDS.map((field) => [
+        field,
+        portalFeaturesIncludeAmenity(features, field),
+      ]),
+    ) as Record<IntelligenceAmenityField, boolean>;
+    return {
+      amenities,
+      hasAirConditioning: amenities.hasAirConditioning,
+      heating: preview.heating,
+      patches: {},
+      suggestions: preview.suggestions,
+    };
+  }
+
+  const amenities = { ...preview.amenities };
   const patches: IntelligenceAmenityPatchMap = {};
-  if (params.enabled) {
-    for (const suggestion of suggestions) {
-      const decided = decisions[suggestion.field];
-      const apply = decided === true || (params.autoApply && decided !== false);
-      if (!apply) continue;
-      amenities[suggestion.field] = true;
-      patches[suggestion.field] = buildAppliedPatch(suggestion, 'import');
+  const description = importDescriptionBlob(params.draft);
+
+  for (const field of Object.keys(amenities) as IntelligenceAmenityField[]) {
+    if (decisions[field] === false) {
+      amenities[field] = portalFeaturesIncludeAmenity(features, field);
+      continue;
+    }
+    if (!autoApply) {
+      amenities[field] = portalFeaturesIncludeAmenity(features, field);
+      continue;
+    }
+    const fromPortal = portalFeaturesIncludeAmenity(features, field);
+    const fromDescription = descriptionImpliesAmenity(description, field);
+    if (!fromPortal && fromDescription && amenities[field]) {
+      const suggestion =
+        preview.suggestions.find((item) => item.field === field) ||
+        ({
+          field,
+          label: field,
+          question: '',
+          quotes: [],
+        } as IntelligenceAmenitySuggestion);
+      patches[field] = buildAppliedPatch(suggestion, 'import');
     }
   }
-  return { amenities, patches, suggestions };
+
+  return {
+    amenities,
+    hasAirConditioning: amenities.hasAirConditioning,
+    heating: preview.heating,
+    patches,
+    suggestions: preview.suggestions,
+  };
 }
 
 export async function draftToOfferCreateBody(
@@ -191,9 +238,9 @@ export async function draftToOfferCreateBody(
   const country = await inferCountryFromCoordinates(draft.lat, draft.lng);
   const smart = resolveImportSmartAdd({
     draft,
-    enabled: options?.smartAddEnabled,
-    autoApply: options?.smartAddAutoApply,
     decisions: options?.smartAddDecisions,
+    enabled: options?.smartAddEnabled !== false,
+    autoApply: options?.smartAddAutoApply !== false,
   });
 
   return {
@@ -227,7 +274,9 @@ export async function draftToOfferCreateBody(
     hasParking: smart.amenities.hasParking,
     hasGarden: smart.amenities.hasGarden,
     isFurnished: smart.amenities.isFurnished,
-    heating: sanitizeImportHeating(draft.heating, draft.heatingCode),
+    isDuplex: smart.amenities.isDuplex,
+    hasAirConditioning: smart.hasAirConditioning,
+    heating: smart.heating ?? sanitizeImportHeating(draft.heating, draft.heatingCode),
     status: 'PENDING',
     images: '[]',
     ...(options?.agentCommissionPercent != null
@@ -616,9 +665,9 @@ export async function createOfferFromOtodomDraft(
 
     const smart = resolveImportSmartAdd({
       draft,
-      enabled: options?.smartAddEnabled,
-      autoApply: options?.smartAddAutoApply,
       decisions: options?.smartAddDecisions,
+      enabled: options?.smartAddEnabled !== false,
+      autoApply: options?.smartAddAutoApply !== false,
     });
     if (Object.keys(smart.patches).length) {
       await writeOfferAmenityPatches(offerId, smart.patches);

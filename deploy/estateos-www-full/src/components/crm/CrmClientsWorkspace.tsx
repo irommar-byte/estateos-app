@@ -482,13 +482,11 @@ export default function CrmClientsWorkspace() {
   }, [selectedId, loadDetail]);
 
   useEffect(() => {
-    if (!selectedId) return;
-    const interval = window.setInterval(
-      () => void loadDetail(selectedId, { silent: true }),
-      12_000,
-    );
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadClients();
+    }, 60_000);
     return () => window.clearInterval(interval);
-  }, [selectedId, loadDetail]);
+  }, [loadClients]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

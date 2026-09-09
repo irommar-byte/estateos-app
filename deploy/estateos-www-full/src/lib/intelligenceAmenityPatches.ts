@@ -7,24 +7,8 @@ import {
   parseAmenityPatchMap,
 } from '@/lib/intelligenceAmenityBrain';
 
-let patchesColumnReady: Promise<void> | null = null;
-
 export async function ensureIntelligenceAmenityPatchesColumn(): Promise<void> {
-  if (!patchesColumnReady) {
-    patchesColumnReady = prisma
-      .$executeRawUnsafe(
-        `ALTER TABLE \`Offer\` ADD COLUMN \`intelligenceAmenityPatches\` JSON NULL`,
-      )
-      .then(() => undefined)
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!/Duplicate column|exists/i.test(message)) {
-          patchesColumnReady = null;
-          throw error;
-        }
-      });
-  }
-  await patchesColumnReady;
+  // Kolumna jest wersjonowana i wdrażana przed startem aplikacji.
 }
 
 export async function readOfferAmenityPatches(offerId: number): Promise<IntelligenceAmenityPatchMap> {

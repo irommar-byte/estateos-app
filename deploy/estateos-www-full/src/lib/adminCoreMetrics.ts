@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { isAdminCoreOfflineFlagSet } from '@/lib/adminCoreControl';
-import { ensurePageVisitLogTable } from '@/lib/pageVisitLogTable';
+import { readNginxWindowMetrics } from '@/lib/adminServerOps';
+import { readRuntimePerformance } from '@/lib/runtimePerformance';
 
 export type AdminCoreMetricsPayload = {
   collectedAt: string;
@@ -28,18 +29,30 @@ export type AdminCoreMetricsPayload = {
     percent: number;
   };
   process: {
+    pid: number;
     rssBytes: number;
     heapUsedBytes: number;
     heapTotalBytes: number;
+    externalBytes: number;
+    arrayBuffersBytes: number;
+    eventLoopP95Ms: number;
+    eventLoopP99Ms: number;
   };
   network: {
     requestsPerMin: number;
     activeConnections: number;
+    latencyP50Ms: number | null;
+    latencyP95Ms: number | null;
+    latencyP99Ms: number | null;
+    upstreamLatencyP95Ms: number | null;
+    status499: number;
+    status5xx: number;
   };
   database: {
     poolActive: number | null;
     poolMax: number | null;
     latencyMs: number | null;
+    abortedClients: number | null;
   };
   app: {
     offersPending: number;
@@ -97,11 +110,16 @@ function readMemoryMetrics() {
 }
 
 function readProcessMetrics() {
-  const mem = process.memoryUsage();
+  const runtime = readRuntimePerformance();
   return {
-    rssBytes: mem.rss,
-    heapUsedBytes: mem.heapUsed,
-    heapTotalBytes: mem.heapTotal,
+    pid: runtime.pid,
+    rssBytes: runtime.memory.rssBytes,
+    heapUsedBytes: runtime.memory.heapUsedBytes,
+    heapTotalBytes: runtime.memory.heapTotalBytes,
+    externalBytes: runtime.memory.externalBytes,
+    arrayBuffersBytes: runtime.memory.arrayBuffersBytes,
+    eventLoopP95Ms: runtime.eventLoop.p95Ms,
+    eventLoopP99Ms: runtime.eventLoop.p99Ms,
   };
 }
 
@@ -112,6 +130,33 @@ async function measureDbLatencyMs(): Promise<number | null> {
     return Date.now() - started;
   } catch {
     return null;
+  }
+}
+
+async function readDbConnectionMetrics(): Promise<{
+  poolActive: number | null;
+  poolMax: number | null;
+  abortedClients: number | null;
+}> {
+  try {
+    const [statusRows, variableRows] = await Promise.all([
+      prisma.$queryRawUnsafe<Array<{ Variable_name: string; Value: string }>>(
+        "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected', 'Aborted_clients')",
+      ),
+      prisma.$queryRawUnsafe<Array<{ Variable_name: string; Value: string }>>(
+        "SHOW GLOBAL VARIABLES WHERE Variable_name = 'max_connections'",
+      ),
+    ]);
+    const status = new Map(statusRows.map((row) => [String(row.Variable_name), Number(row.Value)]));
+    const variables = new Map(variableRows.map((row) => [String(row.Variable_name), Number(row.Value)]));
+    const finite = (value: number | undefined) => (Number.isFinite(value) ? value! : null);
+    return {
+      poolActive: finite(status.get('Threads_connected')),
+      poolMax: finite(variables.get('max_connections')),
+      abortedClients: finite(status.get('Aborted_clients')),
+    };
+  } catch {
+    return { poolActive: null, poolMax: null, abortedClients: null };
   }
 }
 
@@ -135,7 +180,12 @@ async function collectAppMetrics() {
 
 export async function collectAdminCoreMetrics(): Promise<AdminCoreMetricsPayload> {
   const diskPath = process.env.CORE_METRICS_DISK_PATH || process.cwd();
-  const [dbLatencyMs, app] = await Promise.all([measureDbLatencyMs(), collectAppMetrics()]);
+  const [dbLatencyMs, dbConnections, app, nginx] = await Promise.all([
+    measureDbLatencyMs(),
+    readDbConnectionMetrics(),
+    collectAppMetrics(),
+    readNginxWindowMetrics(),
+  ]);
 
   const memory = readMemoryMetrics();
   const disk = readDiskBytes(diskPath);
@@ -149,13 +199,20 @@ export async function collectAdminCoreMetrics(): Promise<AdminCoreMetricsPayload
     disk,
     process: readProcessMetrics(),
     network: {
-      requestsPerMin: 0,
-      activeConnections: 0,
+      requestsPerMin: nginx.requestsPerMin,
+      activeConnections: nginx.activeConnections,
+      latencyP50Ms: nginx.latencyMs.p50,
+      latencyP95Ms: nginx.latencyMs.p95,
+      latencyP99Ms: nginx.latencyMs.p99,
+      upstreamLatencyP95Ms: nginx.upstreamLatencyMs.p95,
+      status499: nginx.status499,
+      status5xx: nginx.status5xx,
     },
     database: {
-      poolActive: null,
-      poolMax: null,
+      poolActive: dbConnections.poolActive,
+      poolMax: dbConnections.poolMax,
       latencyMs: dbLatencyMs,
+      abortedClients: dbConnections.abortedClients,
     },
     app,
   };
@@ -175,7 +232,6 @@ function readPublicIpv4(): string | null {
 }
 
 export async function collectAdminCoreMonitor() {
-  await ensurePageVisitLogTable();
   const metrics = await collectAdminCoreMetrics();
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [users, activeOffers, visitsTotalRows, uniqueAllRows, visits24hRows, unique24hRows] = await Promise.all([

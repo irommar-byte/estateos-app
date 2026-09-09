@@ -66,6 +66,7 @@ export default function ClientPortalLiveChat({
   const openRef = useRef(false);
   const initializedRef = useRef(false);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
+  const cursorRef = useRef<string | null>(null);
   const holdTimer = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const typingTimer = useRef<number | null>(null);
@@ -73,30 +74,32 @@ export default function ClientPortalLiveChat({
   const markRead = useCallback(async () => {
     if (!token) return;
     setUnreadCount(0);
-    await fetch(`/api/crm/client-portal/${token}`, {
+    await fetch(`/api/crm/client-portal/${token}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark_messages_read" }),
+      body: JSON.stringify({ action: "read" }),
     }).catch(() => {});
   }, [token]);
 
   const loadMessages = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/crm/client-portal/${token}`, {
+      const res = await fetch(`/api/crm/client-portal/${token}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ action: "list_messages" }),
+        body: JSON.stringify({ action: "list", updatedSince: cursorRef.current }),
       });
       const json = await res.json();
       if (!res.ok || !Array.isArray(json.messages)) return;
       const nextMessages = json.messages as PortalMessage[];
+      const freshFromAgent = initializedRef.current
+        ? nextMessages.filter(
+            (message) => message.fromAgent && !knownMessageIdsRef.current.has(String(message.id)),
+          )
+        : [];
 
       if (initializedRef.current) {
-        const freshFromAgent = nextMessages.filter(
-          (message) => message.fromAgent && !knownMessageIdsRef.current.has(String(message.id)),
-        );
         if (freshFromAgent.length > 0 && (!openRef.current || document.hidden)) {
           const latest = freshFromAgent[freshFromAgent.length - 1];
           const visibleContent = cleanAttachmentOnlyMessage(latest.content, latest.attachments);
@@ -112,13 +115,28 @@ export default function ClientPortalLiveChat({
 
       for (const message of nextMessages) knownMessageIdsRef.current.add(String(message.id));
       initializedRef.current = true;
-      setMessages(nextMessages);
+      if (json.incremental) {
+        setMessages((current) => {
+          const merged = new Map(current.map((message) => [String(message.id), message]));
+          for (const message of nextMessages) merged.set(String(message.id), message);
+          return [...merged.values()]
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+            .slice(-160);
+        });
+      } else {
+        setMessages(nextMessages);
+      }
+      if (typeof json.nextCursor === "string") cursorRef.current = json.nextCursor;
       setPeerTyping(Boolean(json.peerTyping));
       if (openRef.current) {
-        if (Number(json.unreadCount) > 0) void markRead();
+        if (freshFromAgent.length > 0 || Number(json.unreadCount) > 0) void markRead();
         else setUnreadCount(0);
       } else {
-        setUnreadCount(Math.max(0, Number(json.unreadCount) || 0));
+        setUnreadCount((current) =>
+          json.incremental
+            ? current + freshFromAgent.length
+            : Math.max(0, Number(json.unreadCount) || 0),
+        );
       }
     } catch {
       /* zachowaj poprzedni stan przy chwilowej utracie sieci */
@@ -130,12 +148,15 @@ export default function ClientPortalLiveChat({
   }, [open]);
 
   useEffect(() => {
+    cursorRef.current = null;
+    initializedRef.current = false;
+    knownMessageIdsRef.current.clear();
+    setMessages([]);
     const shouldOpen = new URLSearchParams(window.location.search).get("chat") === "1";
     const frame = window.requestAnimationFrame(() => {
       if (shouldOpen) {
           openRef.current = true;
           setOpen(true);
-          void markRead();
       }
       void loadMessages();
     });
@@ -145,9 +166,13 @@ export default function ClientPortalLiveChat({
   }, [loadMessages, markRead]);
 
   useEffect(() => {
-    const delay = open ? 2_000 : 4_000;
-    const timer = window.setInterval(() => void loadMessages(), delay);
-    const onVisibility = () => void loadMessages();
+    const delay = open ? 5_000 : 30_000;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadMessages();
+    }, delay);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void loadMessages();
+    };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearInterval(timer);
@@ -167,7 +192,7 @@ export default function ClientPortalLiveChat({
     openRef.current = next;
     setOpen(next);
     if (next) {
-      void markRead();
+      if (unreadCount > 0) void markRead();
       void loadMessages();
     }
   };
@@ -175,7 +200,7 @@ export default function ClientPortalLiveChat({
   const pingTyping = () => {
     if (typingTimer.current) window.clearTimeout(typingTimer.current);
     typingTimer.current = window.setTimeout(() => {
-      void fetch(`/api/crm/client-portal/${token}`, {
+      void fetch(`/api/crm/client-portal/${token}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "typing" }),

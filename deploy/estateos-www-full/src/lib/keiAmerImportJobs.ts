@@ -6,7 +6,12 @@ import {
 } from '@/lib/keiAmerExport';
 import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
 import type { KeiPropertyKind, KeiTransactionKind } from '@/lib/keiAmerClient';
-import { getIntelligenceSmartAddEnabled } from '@/lib/intelligenceSmartAdd';
+import {
+  KEI_LEASE_HEARTBEAT_MS,
+  ownsKeiImportLease,
+  releaseKeiImportLease,
+  renewKeiImportLease,
+} from '@/lib/keiImportLease';
 
 export type KeiImportJobItemStatus = 'pending' | 'active' | 'done' | 'skipped';
 
@@ -103,36 +108,9 @@ type JobRow = {
 };
 
 const KEI_STEPS = ['check_duplicate', 'fetch_portal', 'create_offer', 'images', 'activate'] as const;
-const runningJobs = new Set<string>();
-let tableReady: Promise<void> | null = null;
 
 export async function ensureKeiAmerImportJobTable(): Promise<void> {
-  if (!tableReady) {
-    tableReady = prisma
-      .$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS KeiAmerImportJob (
-        id VARCHAR(36) NOT NULL,
-        adminUserId INT NOT NULL,
-        status VARCHAR(32) NOT NULL,
-        message TEXT NULL,
-        propertyKind VARCHAR(32) NULL,
-        transactionKind VARCHAR(32) NULL,
-        payloadJson LONGTEXT NOT NULL,
-        itemsJson LONGTEXT NOT NULL,
-        resultJson LONGTEXT NULL,
-        cancelRequested TINYINT(1) NOT NULL DEFAULT 0,
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-        finishedAt DATETIME(3) NULL,
-        PRIMARY KEY (id),
-        KEY KeiAmerImportJob_status_idx (status),
-        KEY KeiAmerImportJob_admin_idx (adminUserId),
-        KEY KeiAmerImportJob_updated_idx (updatedAt)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `)
-      .then(() => undefined);
-  }
-  await tableReady;
+  // Schemat powstaje przed startem aplikacji przez db:core-guard.
 }
 
 function mergeCompletedSteps(
@@ -333,6 +311,7 @@ async function writeJobFields(
     resultJson?: string | null;
     finishedAt?: Date | null;
   },
+  leaseOwner?: string,
 ): Promise<void> {
   await ensureKeiAmerImportJobTable();
   const sets: string[] = [];
@@ -357,14 +336,22 @@ async function writeJobFields(
     sets.push('finishedAt = ?');
     values.push(fields.finishedAt);
   }
+  if (fields.status && ['done', 'error', 'cancelled'].includes(fields.status)) {
+    sets.push('leaseOwner = NULL', 'leaseUntil = NULL');
+  }
   if (sets.length === 0) return;
   values.push(jobId);
+  if (leaseOwner) values.push(leaseOwner);
   const protectCancelled =
     fields.status && fields.status !== 'cancelled'
       ? ` AND status NOT IN ('cancelled') AND cancelRequested = 0`
       : '';
   await prisma.$executeRawUnsafe(
-    `UPDATE KeiAmerImportJob SET ${sets.join(', ')} WHERE id = ?${protectCancelled}`,
+    `UPDATE KeiAmerImportJob
+     SET ${sets.join(', ')}
+     WHERE id = ?
+       ${leaseOwner ? 'AND leaseOwner = ?' : ''}
+       ${protectCancelled}`,
     ...values,
   );
 }
@@ -417,6 +404,41 @@ export async function listActiveKeiImportJobs(adminUserId?: number): Promise<Kei
   return mapped;
 }
 
+export async function listKeiImportJobs(params: {
+  limit?: number;
+  offset?: number;
+  status?: KeiImportJobStatus | 'all';
+}): Promise<{ jobs: KeiImportJobSnapshot[]; total: number }> {
+  await ensureKeiAmerImportJobTable();
+  const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
+  const offset = Math.max(params.offset ?? 0, 0);
+  const status = params.status ?? 'all';
+
+  const where = status !== 'all' ? 'WHERE status = ?' : '';
+  const countParams = status !== 'all' ? [status] : [];
+  const listParams = status !== 'all' ? [status, limit, offset] : [limit, offset];
+
+  const countRows = (await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(
+    `SELECT COUNT(*) AS total FROM KeiAmerImportJob ${where}`,
+    ...countParams,
+  )) as Array<{ total: bigint | number }>;
+
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT id, adminUserId, status, message, propertyKind, transactionKind, payloadJson, itemsJson,
+            resultJson, cancelRequested, createdAt, updatedAt, finishedAt
+     FROM KeiAmerImportJob
+     ${where}
+     ORDER BY updatedAt DESC
+     LIMIT ? OFFSET ?`,
+    ...listParams,
+  )) as JobRow[];
+
+  return {
+    jobs: rows.map(mapRow),
+    total: Number(countRows[0]?.total ?? 0),
+  };
+}
+
 export async function requestCancelKeiImportJob(jobId: string): Promise<KeiImportJobSnapshot | null> {
   await ensureKeiAmerImportJobTable();
   await prisma.$executeRawUnsafe(
@@ -424,7 +446,9 @@ export async function requestCancelKeiImportJob(jobId: string): Promise<KeiImpor
      SET cancelRequested = 1,
          status = 'cancelled',
          message = ?,
-         finishedAt = NOW(3)
+         finishedAt = NOW(3),
+         leaseOwner = NULL,
+         leaseUntil = NULL
      WHERE id = ? AND status IN ('queued', 'running')`,
     'Import zatrzymany — ukończone pozycje zostają na serwerze.',
     jobId,
@@ -432,12 +456,15 @@ export async function requestCancelKeiImportJob(jobId: string): Promise<KeiImpor
   return getKeiImportJob(jobId);
 }
 
-async function isCancelRequested(jobId: string): Promise<boolean> {
+async function isCancelRequested(jobId: string, leaseOwner: string): Promise<boolean> {
   const rows = (await prisma.$queryRawUnsafe(
-    `SELECT cancelRequested FROM KeiAmerImportJob WHERE id = ? LIMIT 1`,
+    `SELECT cancelRequested, leaseOwner
+     FROM KeiAmerImportJob
+     WHERE id = ?
+     LIMIT 1`,
     jobId,
-  )) as Array<{ cancelRequested: number | boolean }>;
-  return Boolean(rows[0]?.cancelRequested);
+  )) as Array<{ cancelRequested: number | boolean; leaseOwner: string | null }>;
+  return Boolean(rows[0]?.cancelRequested) || rows[0]?.leaseOwner !== leaseOwner;
 }
 
 export async function createKeiImportJob(input: KeiImportJobCreateInput): Promise<KeiImportJobSnapshot> {
@@ -495,10 +522,14 @@ export async function createKeiImportJob(input: KeiImportJobCreateInput): Promis
   return (await getKeiImportJob(id))!;
 }
 
-export async function runKeiImportJob(jobId: string): Promise<void> {
-  if (runningJobs.has(jobId)) return;
-  runningJobs.add(jobId);
-
+export async function runKeiImportJob(jobId: string, leaseOwner: string): Promise<void> {
+  if (!(await ownsKeiImportLease(jobId, leaseOwner))) return;
+  const heartbeat = setInterval(() => {
+    void renewKeiImportLease(jobId, leaseOwner).catch((error) => {
+      console.error('[kei-import-worker] lease heartbeat failed', jobId, error);
+    });
+  }, KEI_LEASE_HEARTBEAT_MS);
+  heartbeat.unref();
   try {
     const job = await getKeiImportJob(jobId);
     if (!job) return;
@@ -507,7 +538,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
     await writeJobFields(jobId, {
       status: 'running',
       message: 'Import w toku na serwerze…',
-    });
+    }, leaseOwner);
 
     const rows = (await prisma.$queryRawUnsafe(
       `SELECT payloadJson, itemsJson FROM KeiAmerImportJob WHERE id = ? LIMIT 1`,
@@ -522,15 +553,15 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         await writeJobFields(jobId, {
           message: `Import ${event.total} ogłoszeń…`,
           items,
-        });
+        }, leaseOwner);
         return;
       }
       if (event.type === 'batch_done') {
-        await writeJobFields(jobId, { message: event.message, items });
+        await writeJobFields(jobId, { message: event.message, items }, leaseOwner);
         return;
       }
       if (event.type === 'error') {
-        await writeJobFields(jobId, { message: event.message, items });
+        await writeJobFields(jobId, { message: event.message, items }, leaseOwner);
         return;
       }
       if (event.type === 'result') {
@@ -538,7 +569,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
           message: event.message,
           items,
           resultJson: JSON.stringify({ exported: event.exported, skipped: event.skipped }),
-        });
+        }, leaseOwner);
         return;
       }
       items = applyEventToItems(items, event);
@@ -546,7 +577,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
       if (event.type === 'item_start') {
         message = `Import ${event.index + 1}/${event.total}…`;
       }
-      await writeJobFields(jobId, { items, message });
+      await writeJobFields(jobId, { items, message }, leaseOwner);
     };
 
     let progressChain: Promise<void> = Promise.resolve();
@@ -565,15 +596,15 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         floorPlanOverrides: payload.floorPlanOverrides,
         floorPlanSelections: payload.floorPlanSelections,
         fillUntilPublished: payload.source === 'auto',
-        shouldCancel: () => isCancelRequested(jobId),
+        shouldCancel: () => isCancelRequested(jobId, leaseOwner),
         onProgress: enqueueProgress,
-        smartAddEnabled:
-          payload.smartAddEnabled ?? (await getIntelligenceSmartAddEnabled(payload.adminUserId)),
+        smartAddEnabled: true,
         smartAddDecisionsByUrl: payload.smartAddDecisionsByUrl,
       });
       await progressChain;
 
-      const cancelled = await isCancelRequested(jobId);
+      if (!(await ownsKeiImportLease(jobId, leaseOwner))) return;
+      const cancelled = await isCancelRequested(jobId, leaseOwner);
       items = items.map((item) =>
         cancelled && (item.status === 'pending' || item.status === 'active')
           ? {
@@ -594,7 +625,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         items,
         resultJson: JSON.stringify({ exported: result.exported, skipped: result.skipped }),
         finishedAt: new Date(),
-      });
+      }, leaseOwner);
       if (payload.source === 'auto') {
         const { recordKeiAutoImportCycle } = await import('@/lib/keiAutoImport');
         await recordKeiAutoImportCycle({
@@ -604,7 +635,8 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
         });
       }
     } catch (error) {
-      const cancelled = await isCancelRequested(jobId);
+      if (!(await ownsKeiImportLease(jobId, leaseOwner))) return;
+      const cancelled = await isCancelRequested(jobId, leaseOwner);
       const message =
         error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
       if (/anulow/i.test(message) || cancelled) {
@@ -624,7 +656,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
           message: 'Import zatrzymany.',
           items,
           finishedAt: new Date(),
-        });
+        }, leaseOwner);
         if (payload.source === 'auto') {
           const { recordKeiAutoImportCycle } = await import('@/lib/keiAutoImport');
           await recordKeiAutoImportCycle({ imported: 0, skipped: 0, error: 'Przerwano ręcznie.' });
@@ -635,7 +667,7 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
           message,
           items,
           finishedAt: new Date(),
-        });
+        }, leaseOwner);
         if (payload.source === 'auto') {
           const { recordKeiAutoImportCycle } = await import('@/lib/keiAutoImport');
           await recordKeiAutoImportCycle({ imported: 0, skipped: 0, error: message });
@@ -643,84 +675,28 @@ export async function runKeiImportJob(jobId: string): Promise<void> {
       }
     }
   } finally {
-    runningJobs.delete(jobId);
+    clearInterval(heartbeat);
+    await releaseKeiImportLease(jobId, leaseOwner).catch(() => undefined);
   }
-}
-
-export async function resumeOrphanKeiImportJobs(): Promise<number> {
-  await ensureKeiAmerImportJobTable();
-  const rows = (await prisma.$queryRawUnsafe(
-    `SELECT id FROM KeiAmerImportJob
-     WHERE cancelRequested = 0
-       AND (
-         (status = 'queued' AND updatedAt < DATE_SUB(NOW(3), INTERVAL 90 SECOND))
-         OR (status = 'running' AND updatedAt < DATE_SUB(NOW(3), INTERVAL 90 SECOND))
-       )
-     ORDER BY createdAt ASC
-     LIMIT 1`,
-  )) as Array<{ id: string }>;
-  let resumed = 0;
-  for (const row of rows) {
-    if (runningJobs.has(row.id)) continue;
-    scheduleKeiImportJobRun(row.id);
-    resumed += 1;
-  }
-  return resumed;
-}
-
-export async function reapStaleKeiImportJobs(): Promise<number> {
-  await ensureKeiAmerImportJobTable();
-  const queued = await prisma.$executeRawUnsafe(
-    `UPDATE KeiAmerImportJob
-     SET status = 'error',
-         message = 'Import nie wystartował — proces roboczy zakończył się za wcześnie.',
-         finishedAt = NOW(3)
-     WHERE status = 'queued'
-       AND cancelRequested = 0
-       AND updatedAt < DATE_SUB(NOW(3), INTERVAL 2 MINUTE)`,
-  );
-  const running = await prisma.$executeRawUnsafe(
-    `UPDATE KeiAmerImportJob
-     SET status = 'error',
-         message = 'Import utknął — brak postępu. Kolejny cykl spróbuje ponownie.',
-         finishedAt = NOW(3)
-     WHERE status = 'running'
-       AND cancelRequested = 0
-       AND updatedAt < DATE_SUB(NOW(3), INTERVAL 12 MINUTE)`,
-  );
-  return Number(queued || 0) + Number(running || 0);
 }
 
 export async function hasActiveKeiImportJob(): Promise<boolean> {
   await ensureKeiAmerImportJobTable();
   const rows = (await prisma.$queryRawUnsafe<Array<{ total: number | bigint }>>(
     `SELECT COUNT(*) AS total FROM KeiAmerImportJob
-     WHERE (status = 'running' AND updatedAt > DATE_SUB(NOW(3), INTERVAL 12 MINUTE))
-        OR (status = 'queued' AND updatedAt > DATE_SUB(NOW(3), INTERVAL 2 MINUTE))`,
+     WHERE status IN ('queued', 'running')`,
   )) as Array<{ total: number | bigint }>;
   return Number(rows[0]?.total || 0) > 0;
 }
 
-function scheduleKeiImportJobRun(jobId: string) {
-  // Job musi żyć w procesie `nieruchomosci` (PM2). Cron wcześniej robił process.exit
-  // i zabijał `void runKeiImportJob` — stąd pasek 0%.
-  void runKeiImportJob(jobId).catch((error) => {
-    console.error('[kei-import] job failed', jobId, error);
-  });
-}
-
 /**
- * Kolejkuje job i odpala worker w procesie Next.js (nie w cronie PM2).
- * Cron `process.exit` zabijał `void runKeiImportJob` i pasek wisiał na 0%.
+ * Kolejkuje job. Wykonanie należy wyłącznie do procesu `kei-import-worker`.
  */
 export async function enqueueKeiImportJob(input: KeiImportJobCreateInput): Promise<KeiImportJobSnapshot> {
-  await reapStaleKeiImportJobs();
   if (await hasActiveKeiImportJob()) {
     throw new Error('Inny import KEI już trwa. Poczekaj, aż się skończy — automatyczny i ręczny nie mogą iść naraz.');
   }
-  const job = await createKeiImportJob(input);
-  scheduleKeiImportJobRun(job.id);
-  return job;
+  return createKeiImportJob(input);
 }
 
 export function isKeiImportJobTerminal(status: KeiImportJobStatus): boolean {

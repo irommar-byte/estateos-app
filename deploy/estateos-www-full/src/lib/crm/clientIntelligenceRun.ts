@@ -130,23 +130,8 @@ function overlayBalconyIds(offers: OfferRow[]): number[] {
   return [...new Set(offers.filter((offer) => shouldPersistBalcony(offer)).map((offer) => offer.id))];
 }
 
-let locksColumnReady = false;
-
 export async function ensureIntelligenceLockedFieldsColumn(): Promise<void> {
-  if (locksColumnReady) return;
-  try {
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE \`AgencyClient\` ADD COLUMN \`intelligenceLockedFields\` JSON NULL`,
-    );
-    locksColumnReady = true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/Duplicate column|exists/i.test(message)) {
-      locksColumnReady = true;
-      return;
-    }
-    throw error;
-  }
+  // Kolumna jest wersjonowana i wdrażana przed startem aplikacji.
 }
 
 /** Zapisuje naukę z reakcji i odświeża kolejkę — bez wysyłki. */
