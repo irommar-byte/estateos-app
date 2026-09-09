@@ -510,6 +510,108 @@ export async function persistCoreGuardCycle(
   candidates: CoreGuardCandidate[],
 ): Promise<void> {
   const web = sample.processes.filter((process) => process.name === 'nieruchomosci');
+  const previousRows = (await prisma.$queryRawUnsafe(
+    `SELECT payloadJson
+     FROM CoreMetricSample
+     WHERE host = ?
+     ORDER BY collectedAt DESC
+     LIMIT 1`,
+    sample.host,
+  )) as Array<{ payloadJson: string | null }>;
+  try {
+    const previousPayload = JSON.parse(previousRows[0]?.payloadJson || '{}') as {
+      processes?: CoreGuardSample['processes'];
+    };
+    const restartTotals = (processes: CoreGuardSample['processes'] = []) => {
+      const totals = new Map<string, number>();
+      for (const process of processes) {
+        if (process.kind !== 'daemon') continue;
+        totals.set(process.name, (totals.get(process.name) || 0) + process.restarts);
+      }
+      return totals;
+    };
+    const previousRestarts = restartTotals(previousPayload.processes);
+    for (const [name, current] of restartTotals(sample.processes)) {
+      const prior = previousRestarts.get(name);
+      if (prior == null || current <= prior) continue;
+      candidates.push({
+        fingerprint: `quick:process-restarts:${name}`,
+        type: 'process-restarts',
+        severity: name === 'nieruchomosci' ? 'critical' : 'warning',
+        title: `Proces ${name} uruchomił się ponownie`,
+        detail: `Licznik restartów wzrósł z ${prior} do ${current}.`,
+        evidence: { name, prior, current, delta: current - prior },
+        recommendedAction: name === 'nieruchomosci' ? 'reload-web' : undefined,
+        requiredOccurrences: 1,
+      });
+    }
+  } catch {
+    // Uszkodzona historyczna próbka nie blokuje bieżącego monitoringu.
+  }
+  const baselineRows = (await prisma.$queryRawUnsafe(
+    `SELECT
+       COUNT(*) AS samples,
+       AVG(latencyP95Ms) AS latencyP95Ms,
+       AVG(webRssBytes) AS webRssBytes,
+       AVG(dbLatencyMs) AS dbLatencyMs
+     FROM CoreMetricSample
+     WHERE host = ?
+       AND collectedAt >= DATE_SUB(NOW(3), INTERVAL 1 HOUR)
+       AND level <> 'critical'`,
+    sample.host,
+  )) as Array<{
+    samples: bigint | number;
+    latencyP95Ms: number | string | null;
+    webRssBytes: number | string | null;
+    dbLatencyMs: number | string | null;
+  }>;
+  const baseline = baselineRows[0];
+  if (Number(baseline?.samples || 0) >= 10) {
+    const baselineLatency = Number(baseline.latencyP95Ms || 0);
+    const baselineWebRss = Number(baseline.webRssBytes || 0);
+    const baselineDbLatency = Number(baseline.dbLatencyMs || 0);
+    if (
+      sample.nginx.latencyMs.p95 != null &&
+      sample.nginx.latencyMs.p95 > Math.max(800, baselineLatency * 3)
+    ) {
+      candidates.push({
+        fingerprint: 'trend:nginx-latency',
+        type: 'nginx-latency-trend',
+        severity: sample.nginx.latencyMs.p95 > 3000 ? 'critical' : 'warning',
+        title: 'Czas odpowiedzi odchylił się od stabilnej bazy',
+        detail: 'p95 Nginx przekroczył trzykrotność godzinowej bazy.',
+        evidence: { currentP95Ms: sample.nginx.latencyMs.p95, baselineP95Ms: baselineLatency },
+        requiredOccurrences: 3,
+      });
+    }
+    const currentWebRss = web.reduce((sum, process) => sum + process.memoryBytes, 0);
+    if (currentWebRss > Math.max(1_300 * 1024 * 1024, baselineWebRss * 1.5)) {
+      candidates.push({
+        fingerprint: 'trend:web-memory',
+        type: 'web-memory-trend',
+        severity: 'warning',
+        title: 'Pamięć WWW rośnie ponad stabilną bazę',
+        detail: 'Suma RSS workerów przekroczyła 150% godzinowej bazy.',
+        evidence: { currentWebRss, baselineWebRss },
+        recommendedAction: 'reload-web',
+        requiredOccurrences: 3,
+      });
+    }
+    if (
+      sample.database.latencyMs != null &&
+      sample.database.latencyMs > Math.max(100, baselineDbLatency * 4)
+    ) {
+      candidates.push({
+        fingerprint: 'trend:database-latency',
+        type: 'database-latency-trend',
+        severity: 'warning',
+        title: 'Opóźnienie bazy odchyliło się od stabilnej bazy',
+        detail: 'Czas SELECT 1 przekroczył czterokrotność godzinowej bazy.',
+        evidence: { currentMs: sample.database.latencyMs, baselineMs: baselineDbLatency },
+        requiredOccurrences: 3,
+      });
+    }
+  }
   await prisma.$executeRawUnsafe(
     `INSERT INTO CoreMetricSample
       (collectedAt, host, level, cpuPercent, load1, memoryUsedBytes, memoryTotalBytes,
