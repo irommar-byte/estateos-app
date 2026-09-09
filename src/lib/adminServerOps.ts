@@ -1029,6 +1029,19 @@ export async function controlPm2(name: string, action: string) {
   return { ok: true, output: out.slice(0, 2000) };
 }
 
+const RESET_COUNTER_DEFAULTS = ['nieruchomosci', 'kei-import-worker', 'estateos-core-guard'];
+
+/** Zeruje historyczny licznik `restart_time`. Nie restartuje procesu. */
+export async function resetPm2RestartCounters(name?: string) {
+  const names = name ? [name] : RESET_COUNTER_DEFAULTS;
+  const outputs: string[] = [];
+  for (const processName of names) {
+    if (!isAllowedPm2Name(processName)) throw new Error('Nieznany proces.');
+    outputs.push(await run('pm2', ['reset', processName], 15_000));
+  }
+  return { ok: true, names, output: outputs.join('\n').slice(0, 2000) };
+}
+
 export async function startMariaDb() {
   const out = await run('sudo', ['-n', 'systemctl', 'start', 'mariadb'], 15000);
   const status = await readMariaDbStatus();

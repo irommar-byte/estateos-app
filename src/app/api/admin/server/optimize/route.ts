@@ -51,20 +51,27 @@ export async function POST(req: Request) {
     );
   }
 
-  const exclusive = await runServerOptimizeExclusive(async () => {
-    const before = await diagnoseServer();
-    const actions = [];
-    for (const action of plan.actions) {
-      const result = await executeCoreGuardRunbook({
-        actionId: action.id,
-        actorUserId: admin.id,
-        mode: 'automatic',
-      });
-      actions.push({ id: action.id, label: action.label, detail: JSON.stringify(result.result) });
-    }
-    const after = await diagnoseServer();
-    return { ok: true, before, after, actions };
-  });
+    const exclusive = await runServerOptimizeExclusive(async () => {
+      const before = await diagnoseServer();
+      const actions = [];
+      for (const action of plan.actions) {
+        const result = await executeCoreGuardRunbook({
+          actionId: action.id,
+          actorUserId: admin.id,
+          mode: 'automatic',
+        });
+        actions.push({ id: action.id, label: action.label, detail: JSON.stringify(result.result) });
+      }
+      if (actions.length === 0) {
+        actions.push({
+          id: 'noop',
+          label: 'Nie było automatycznej naprawy',
+          detail: 'Licznik i śmieci są czyste, albo WWW wymaga osobnego przycisku Napraw.',
+        });
+      }
+      const after = await diagnoseServer();
+      return { ok: true, before, after, actions };
+    });
   if (exclusive.conflict) {
     return NextResponse.json({ ok: false, error: 'Optymalizacja już trwa.' }, { status: 409, headers: NO_CACHE });
   }

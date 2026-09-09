@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { diagnoseServer, type ServerFinding } from '@/lib/adminServerDiagnose';
+import { diagnoseServer, FINDING_RUNBOOK_ID, type ServerFinding } from '@/lib/adminServerDiagnose';
 import { collectCoreGuardSystemSnapshot, isKernelCriticalEvent } from '@/lib/coreGuardSystem';
 import {
   readCpuMetrics,
@@ -24,6 +24,9 @@ const APP_ROOT = process.env.ADMIN_CORE_CWD || process.cwd();
 const SAMPLE_RETENTION_DAYS = 30;
 const INCIDENT_RESOLVE_MINUTES = 7;
 const ALERT_COOLDOWN_MINUTES = 30;
+const WEB_RSS_RECYCLE_BYTES = 800 * 1024 * 1024;
+const WEB_RSS_TOTAL_INCIDENT_BYTES = 1800 * 1024 * 1024;
+const WEB_RECYCLE_MIN_UPTIME_MS = 10 * 60_000;
 
 export type CoreGuardSeverity = 'info' | 'warning' | 'critical';
 
@@ -306,6 +309,7 @@ export async function collectCoreGuardSample(options?: { full?: boolean }): Prom
 }
 
 function candidateFromFinding(finding: ServerFinding): CoreGuardCandidate {
+  const recommendedAction = FINDING_RUNBOOK_ID[finding.id];
   return {
     fingerprint: `diagnose:${finding.id}`,
     type: finding.id,
@@ -313,8 +317,8 @@ function candidateFromFinding(finding: ServerFinding): CoreGuardCandidate {
     title: finding.title,
     detail: finding.detail,
     evidence: Object.fromEntries((finding.evidence || []).map((item) => [item.label, item.value])),
-    recommendedAction: finding.id === 'web-memory' ? 'reload-web' : undefined,
-    autoFixable: ['junk', 'logs', 'build-leftovers'].includes(finding.id),
+    recommendedAction,
+    autoFixable: recommendedAction === 'safe-cleanup' || recommendedAction === 'reset-pm2-counters',
     requiredOccurrences: 1,
   };
 }
@@ -328,6 +332,10 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
   const worker = sample.processes.find((process) => process.name === 'kei-import-worker');
   const guard = sample.processes.find((process) => process.name === 'estateos-core-guard');
   const webRss = web.reduce((sum, process) => sum + process.memoryBytes, 0);
+  const needsRecycle = web.some(
+    (process) =>
+      process.memoryBytes >= WEB_RSS_RECYCLE_BYTES && process.uptimeMs >= WEB_RECYCLE_MIN_UPTIME_MS,
+  );
 
   add(
     {
@@ -367,15 +375,35 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
   );
   add(
     {
+      fingerprint: 'quick:web-recycle',
+      type: 'web-recycle',
+      severity: 'warning',
+      title: 'Workery WWW zbliżają się do limitu PM2',
+      detail: 'Dwie instancje przeładują się kolejno, zanim twardy limit 1 GiB zerwie żądania.',
+      evidence: {
+        workers: web.map((process) => ({
+          id: process.id,
+          rssBytes: process.memoryBytes,
+          uptimeMs: process.uptimeMs,
+        })),
+      },
+      recommendedAction: 'recycle-web',
+      autoFixable: true,
+      requiredOccurrences: 2,
+    },
+    needsRecycle,
+  );
+  add(
+    {
       fingerprint: 'quick:web-memory',
       type: 'web-memory',
-      severity: webRss >= 1_800 * 1024 * 1024 ? 'critical' : 'warning',
+      severity: webRss >= 2_200 * 1024 * 1024 ? 'critical' : 'warning',
       title: 'Rosnące użycie pamięci workerów WWW',
-      detail: 'Suma RSS procesów Next.js przekroczyła stabilny budżet.',
+      detail: 'Suma RSS procesów Next.js przekroczyła budżet, a rolling recycle nie zdążył zejść poniżej limitu.',
       evidence: { totalRssBytes: webRss, workers: web.map((process) => process.memoryBytes) },
       recommendedAction: 'reload-web',
     },
-    webRss >= 1_300 * 1024 * 1024,
+    webRss >= WEB_RSS_TOTAL_INCIDENT_BYTES && !needsRecycle,
   );
   add(
     {
@@ -457,7 +485,7 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
   if (sample.full) {
     candidates.push(
       ...sample.full.findings
-        .filter((finding) => finding.severity !== 'info')
+        .filter((finding) => finding.severity !== 'info' && finding.id !== 'web-memory')
         .map(candidateFromFinding),
     );
     for (const warning of sample.full.kernelWarnings) {
@@ -602,7 +630,7 @@ export async function persistCoreGuardCycle(
       });
     }
     const currentWebRss = web.reduce((sum, process) => sum + process.memoryBytes, 0);
-    if (currentWebRss > Math.max(1_300 * 1024 * 1024, baselineWebRss * 1.5)) {
+    if (currentWebRss > Math.max(WEB_RSS_TOTAL_INCIDENT_BYTES, baselineWebRss * 1.5)) {
       candidates.push({
         fingerprint: 'trend:web-memory',
         type: 'web-memory-trend',
