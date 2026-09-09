@@ -26,9 +26,9 @@ function requestStop(signal: string) {
 process.once('SIGTERM', () => requestStop('SIGTERM'));
 process.once('SIGINT', () => requestStop('SIGINT'));
 
-async function sleepUntil(timestamp: number) {
+function sleepUntil(timestamp: number) {
   const remaining = Math.max(0, timestamp - Date.now());
-  await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+  return new Promise<void>((resolve) => setTimeout(resolve, remaining));
 }
 
 function deploymentInProgress() {
@@ -42,18 +42,17 @@ async function main() {
   console.info('[core-guard] start');
   while (!stopping) {
     const cycleStartedAt = Date.now();
-      const maintenance = deploymentInProgress();
-      const full = !maintenance && cycleStartedAt >= nextFullScanAt;
+    const maintenance = deploymentInProgress();
+    const quiet = maintenance || Date.now() < startedAt + STARTUP_GRACE_MS;
+    const full = !quiet && cycleStartedAt >= nextFullScanAt;
     try {
       const sample = await collectCoreGuardSample({ full });
-        const candidates = maintenance ? [] : evaluateCoreGuardSample(sample);
-      await persistCoreGuardCycle(sample, candidates);
-        if (!maintenance && Date.now() >= startedAt + STARTUP_GRACE_MS) {
-            await deliverCoreGuardAlerts();
-          }
+      const candidates = quiet ? [] : evaluateCoreGuardSample(sample);
+      await persistCoreGuardCycle(sample, candidates, { ignoreRestartDeltas: quiet });
+      if (!quiet) await deliverCoreGuardAlerts();
       if (full) nextFullScanAt = cycleStartedAt + FULL_SCAN_INTERVAL_MS;
       console.info(
-          `[core-guard] sample level=${sample.level} candidates=${candidates.length} full=${full} maintenance=${maintenance}`,
+        `[core-guard] sample level=${sample.level} candidates=${candidates.length} full=${full} maintenance=${maintenance} quiet=${quiet}`,
       );
     } catch (error) {
       console.error('[core-guard] cycle failed', error);

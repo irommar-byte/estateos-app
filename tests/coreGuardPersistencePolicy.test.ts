@@ -26,6 +26,9 @@ test('incident persistence deduplicates, cools down and resolves with hysteresis
   assert.match(guard, /ON DUPLICATE KEY UPDATE/);
   assert.match(guard, /cooldownUntil < NOW/);
   assert.match(guard, /recoveryAlertAt IS NULL/);
+  assert.match(guard, /ignoreRestartDeltas/);
+  assert.match(guard, /12 \* 60_000/);
+  assert.match(guard, /status5xx >= 3/);
 });
 
 test('repairs are serialized and both Guard APIs require administrators', () => {

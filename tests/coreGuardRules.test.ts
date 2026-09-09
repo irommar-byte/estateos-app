@@ -103,6 +103,19 @@ test('CORE Guard emits stable fingerprints for sustained thresholds', () => {
   assert.equal(candidates.find((item) => item.fingerprint === 'quick:nginx-5xx')?.severity, 'critical');
 });
 
+test('CORE Guard ignores a single stray 5xx in the five-minute window', () => {
+  const candidates = evaluateCoreGuardSample(
+    sample({
+      nginx: {
+        ...sample().nginx,
+        status5xx: 1,
+        status502: 1,
+      },
+    }),
+  );
+  assert.equal(candidates.some((item) => item.fingerprint === 'quick:nginx-5xx'), false);
+});
+
 test('CORE Guard exposes only allowlisted runbooks', () => {
   assert.equal(getCoreGuardRunbook('safe-cleanup')?.automatic, true);
   assert.equal(getCoreGuardRunbook('reload-web')?.automatic, false);

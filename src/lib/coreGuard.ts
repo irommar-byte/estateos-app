@@ -391,7 +391,7 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
       },
       recommendedAction: 'reload-web',
     },
-    sample.nginx.status5xx > 0,
+    sample.nginx.status5xx >= 3,
   );
   add(
     {
@@ -508,6 +508,7 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
 export async function persistCoreGuardCycle(
   sample: CoreGuardSample,
   candidates: CoreGuardCandidate[],
+  options?: { ignoreRestartDeltas?: boolean },
 ): Promise<void> {
   const web = sample.processes.filter((process) => process.name === 'nieruchomosci');
   const previousRows = (await prisma.$queryRawUnsafe(
@@ -531,9 +532,20 @@ export async function persistCoreGuardCycle(
       return totals;
     };
     const previousRestarts = restartTotals(previousPayload.processes);
+    const currentUptime = new Map<string, number>();
+    for (const process of sample.processes) {
+      if (process.kind !== 'daemon') continue;
+      const previous = currentUptime.get(process.name);
+      currentUptime.set(
+        process.name,
+        previous == null ? process.uptimeMs : Math.min(previous, process.uptimeMs),
+      );
+    }
     for (const [name, current] of restartTotals(sample.processes)) {
       const prior = previousRestarts.get(name);
       if (prior == null || current <= prior) continue;
+      if (options?.ignoreRestartDeltas) continue;
+      if ((currentUptime.get(name) || 0) < 12 * 60_000) continue;
       candidates.push({
         fingerprint: `quick:process-restarts:${name}`,
         type: 'process-restarts',
