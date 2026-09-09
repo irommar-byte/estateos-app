@@ -107,6 +107,7 @@ export type SafeCleanupItem = {
 };
 
 const HOME = (process.env.ADMIN_SERVER_HOME || process.env.HOME || '/home/rommar').replace(/\/+$/, '');
+const SCAN_LOCAL_LINEAGE_MOVIES = process.env.ESTATEOS_GUARD_SCAN_LINEAGE_MOVIES === '1';
 const DOWNLOADS = path.join(HOME, 'lineage-movies/downloads');
 const UPLOADS = path.join(HOME, 'uploads');
 const BLOCKED_NAME_RE = /(\.env($|\.)|^id_rsa|^id_ed25519|\.pem$|\.key$|schema\.prisma$)/i;
@@ -768,11 +769,13 @@ function walkSafeCleanup(dir: string, out: SafeCleanupItem[], depth = 0) {
 
 export async function previewSafeCleanup() {
   await new Promise<void>((resolve) => setImmediate(resolve));
-  const roots = [
-    path.join(HOME, 'lineage-movies'),
-    path.join(HOME, 'lineage-movies/video-downloader/tmp'),
-    path.join(HOME, 'lineage-movies/video-downloader/data'),
-  ];
+  const roots = SCAN_LOCAL_LINEAGE_MOVIES
+    ? [
+        path.join(HOME, 'lineage-movies'),
+        path.join(HOME, 'lineage-movies/video-downloader/tmp'),
+        path.join(HOME, 'lineage-movies/video-downloader/data'),
+      ]
+    : [];
   const items: SafeCleanupItem[] = [];
   for (const root of roots) walkSafeCleanup(root, items);
   for (const item of items) {
@@ -793,9 +796,9 @@ export async function previewSafeCleanup() {
 export function runSafeCleanup(paths?: string[]) {
   const deleted: string[] = [];
   const errors: Array<{ path: string; error: string }> = [];
-  const allowRoots = [
-    path.join(HOME, 'lineage-movies'),
-  ].map((p) => path.resolve(p));
+  const allowRoots = (
+    SCAN_LOCAL_LINEAGE_MOVIES ? [path.join(HOME, 'lineage-movies')] : []
+  ).map((p) => path.resolve(p));
 
   const targets = paths?.length
     ? paths
@@ -838,6 +841,7 @@ export function runSafeCleanup(paths?: string[]) {
   }
 
   // Discover then delete.
+  if (!SCAN_LOCAL_LINEAGE_MOVIES) return { deleted, errors };
   const previewSync: SafeCleanupItem[] = [];
   walkSafeCleanup(path.join(HOME, 'lineage-movies'), previewSync);
   for (const item of previewSync) removeOne(item.path);
@@ -932,8 +936,6 @@ export const DAEMON_PM2_NAMES = new Set([
   'nieruchomosci',
   'kei-import-worker',
   'estateos-core-guard',
-  'lineage-movies-downloader',
-  'lineage-movies-proxy',
 ]);
 
 export const ALLOWED_PM2_ACTIONS = new Set(['restart', 'start', 'stop', 'reload']);

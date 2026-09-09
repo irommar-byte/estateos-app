@@ -4,15 +4,8 @@ import { prisma } from '@/lib/prisma';
 export const dynamic = 'force-dynamic';
 
 async function ensureTable() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS CarEngagement (
-      carId INT NOT NULL,
-      viewsCount INT NOT NULL DEFAULT 0,
-      favoritesCount INT NOT NULL DEFAULT 0,
-      updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (carId)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 export async function POST(

@@ -11,27 +11,9 @@ export type KeiAmerListingDisposition = {
   importedAt: string | null;
 };
 
-let tableReady: Promise<void> | null = null;
-
 export async function ensureKeiAmerListingStateTable(): Promise<void> {
-  if (!tableReady) {
-    tableReady = prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS KeiAmerListingState (
-        id INT NOT NULL AUTO_INCREMENT,
-        portalUrl VARCHAR(512) NOT NULL,
-        keiListingId VARCHAR(64) NULL,
-        outreachSentAt DATETIME(3) NULL,
-        outreachByAdminId INT NULL,
-        importedOfferId INT NULL,
-        importedAt DATETIME(3) NULL,
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        UNIQUE KEY KeiAmerListingState_portalUrl_key (portalUrl(191))
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `).then(() => undefined);
-  }
-  await tableReady;
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 export function normalizeKeiPortalUrl(url: string): string {

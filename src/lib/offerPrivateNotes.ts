@@ -147,28 +147,8 @@ function stripHtml(value: string): string {
 }
 
 export async function ensureOfferPrivateNoteTable() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS OfferPrivateNote (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      offerId INT NOT NULL,
-      userId INT NOT NULL,
-      userNote TEXT NULL,
-      importSource VARCHAR(64) NULL,
-      importExternalUrl TEXT NULL,
-      importExternalId VARCHAR(64) NULL,
-      importSnapshotJson LONGTEXT NULL,
-      sourceIsActive TINYINT(1) NULL,
-      sourceLastCheckAt DATETIME(3) NULL,
-      sourceLastHttpStatus INT NULL,
-      sourceLastError VARCHAR(512) NULL,
-      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (id),
-      UNIQUE KEY OfferPrivateNote_offerId_userId_key (offerId, userId),
-      KEY OfferPrivateNote_offerId_idx (offerId),
-      KEY OfferPrivateNote_userId_idx (userId)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 export async function listInactiveImportedOfferIds(offerIds: number[]): Promise<Set<number>> {

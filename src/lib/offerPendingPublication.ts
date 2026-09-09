@@ -2,71 +2,9 @@ import { prisma } from "@/lib/prisma";
 
 export type PendingPublicationKind = "FREE_FIRST" | "PLUS_CREDIT" | "PLUS_PAID";
 
-let ensured = false;
-let ensuring: Promise<void> | null = null;
-
-function isIgnorableSchemaError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /Duplicate column name|already exists/i.test(message);
-}
-
-function isIfNotExistsSyntaxError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /syntax/i.test(message) && /if not exists/i.test(message);
-}
-
-async function hasColumn(tableName: string, columnName: string) {
-  const rows = await prisma.$queryRawUnsafe<Array<{ total: number | string | bigint }>>(
-    `
-      SELECT COUNT(*) AS total
-      FROM information_schema.columns
-      WHERE table_schema = DATABASE()
-        AND table_name = ?
-        AND column_name = ?
-    `,
-    tableName,
-    columnName,
-  );
-  return Number(rows?.[0]?.total ?? 0) > 0;
-}
-
-async function addColumnIfMissing(tableName: string, columnName: string, definition: string) {
-  if (await hasColumn(tableName, columnName)) return;
-  try {
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE \`${tableName}\` ADD COLUMN IF NOT EXISTS \`${columnName}\` ${definition}`,
-    );
-  } catch (error) {
-    if (isIgnorableSchemaError(error)) return;
-    if (!isIfNotExistsSyntaxError(error)) throw error;
-    if (!(await hasColumn(tableName, columnName))) {
-      await prisma.$executeRawUnsafe(
-        `ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`,
-      );
-    }
-  }
-}
-
 export async function ensureOfferPendingPublicationColumns() {
-  if (ensured) return;
-  if (ensuring) return ensuring;
-  ensuring = (async () => {
-    await addColumnIfMissing("Offer", "pendingPublicationKind", "VARCHAR(20) NULL");
-    await addColumnIfMissing("Offer", "pendingBonusCouponId", "VARCHAR(64) NULL");
-    await addColumnIfMissing("Offer", "pendingIapTransactionId", "VARCHAR(128) NULL");
-    await addColumnIfMissing("Offer", "pendingPublicationCreatedAt", "DATETIME(3) NULL");
-    await addColumnIfMissing(
-      "Offer",
-      "pendingPublicationEntitlementConsumed",
-      "TINYINT(1) NOT NULL DEFAULT 0",
-    );
-    ensured = true;
-  })();
-  try {
-    await ensuring;
-  } finally {
-    ensuring = null;
-  }
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 export async function setPendingPublication(params: {

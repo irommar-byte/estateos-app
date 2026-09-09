@@ -104,6 +104,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   const { id } = await ctx.params;
   const clientId = Number(id);
+  const lite = new URL(req.url).searchParams.get('lite') === '1';
   const client = await getAgencyClientForUser(clientId, agencyUserId);
   if (!client) {
     return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
@@ -162,8 +163,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   const [sellerMarketing, facebookNetwork, facebookShareOffers, managedOffers, relatedProjects, matchBriefs] =
     await Promise.all([
-      client.type === 'SELLER'
-        ? loadSellerPortalMarketing(client.id).catch(() => ({
+      lite || client.type !== 'SELLER'
+        ? Promise.resolve(null)
+        : loadSellerPortalMarketing(client.id).catch(() => ({
             estateos: null,
             activeChannels: [],
             sellerNextStep: null,
@@ -171,26 +173,27 @@ export async function GET(req: Request, ctx: RouteCtx) {
             marketingTimeline: [],
             facebookGroups: [],
             sellerEvents: null,
-          }))
-        : Promise.resolve(null),
-      client.type === 'SELLER'
-        ? loadAgentFacebookDestinations(agencyUserId).catch(() => [])
-        : Promise.resolve([]),
-      client.type === 'SELLER'
-        ? loadAgentShareOffers(agencyUserId).catch(() => [])
-        : Promise.resolve([]),
-      loadAgentManagedOffers(agencyUserId).catch(() => []),
-      loadClientPersonProjects({
-        agencyUserId,
-        client: {
-          id: client.id,
-          email: client.email,
-          phone: client.phone,
-          peselHash: client.peselHash,
-          linkedUserId: client.linkedUserId,
-        },
-      }),
-      listMatchImportBriefs(client.matches.map((match) => match.offer.id)),
+          })),
+      lite || client.type !== 'SELLER'
+        ? Promise.resolve([])
+        : loadAgentFacebookDestinations(agencyUserId).catch(() => []),
+      lite || client.type !== 'SELLER'
+        ? Promise.resolve([])
+        : loadAgentShareOffers(agencyUserId).catch(() => []),
+      lite ? Promise.resolve([]) : loadAgentManagedOffers(agencyUserId).catch(() => []),
+      lite
+        ? Promise.resolve([])
+        : loadClientPersonProjects({
+            agencyUserId,
+            client: {
+              id: client.id,
+              email: client.email,
+              phone: client.phone,
+              peselHash: client.peselHash,
+              linkedUserId: client.linkedUserId,
+            },
+          }),
+      lite ? Promise.resolve(new Map()) : listMatchImportBriefs(client.matches.map((match) => match.offer.id)),
     ]);
 
   const nextStep = resolveClientNextStep({

@@ -120,34 +120,8 @@ export type MailAliasCheckResult =
     };
 
 export async function ensureEstateOsMailAliasSchema() {
-  if (schemaEnsured) return;
-  if (schemaPromise) return schemaPromise;
-
-  schemaPromise = (async () => {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS EstateOsMailAlias (
-        id INT NOT NULL AUTO_INCREMENT,
-        userId INT NOT NULL,
-        localPart VARCHAR(32) NOT NULL,
-        domain VARCHAR(64) NOT NULL DEFAULT 'estateos.pl',
-        forwardTo VARCHAR(191) NOT NULL,
-        improvmxId INT NULL,
-        status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        UNIQUE KEY EstateOsMailAlias_local_unique (localPart, domain),
-        KEY EstateOsMailAlias_user_idx (userId),
-        CONSTRAINT EstateOsMailAlias_user_fk FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
-    schemaEnsured = true;
-  })();
-
-  try {
-    await schemaPromise;
-  } finally {
-    schemaPromise = null;
-  }
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 export function normalizeMailLocalPart(raw: string): string {

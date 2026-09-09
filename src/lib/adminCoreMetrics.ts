@@ -35,6 +35,7 @@ export type AdminCoreMetricsPayload = {
     heapTotalBytes: number;
     externalBytes: number;
     arrayBuffersBytes: number;
+    eventLoopP50Ms: number;
     eventLoopP95Ms: number;
     eventLoopP99Ms: number;
   };
@@ -118,6 +119,7 @@ function readProcessMetrics() {
     heapTotalBytes: runtime.memory.heapTotalBytes,
     externalBytes: runtime.memory.externalBytes,
     arrayBuffersBytes: runtime.memory.arrayBuffersBytes,
+    eventLoopP50Ms: runtime.eventLoop.p50Ms,
     eventLoopP95Ms: runtime.eventLoop.p95Ms,
     eventLoopP99Ms: runtime.eventLoop.p99Ms,
   };
@@ -139,20 +141,18 @@ async function readDbConnectionMetrics(): Promise<{
   abortedClients: number | null;
 }> {
   try {
-    const [statusRows, variableRows] = await Promise.all([
+    const [statusRows] = await Promise.all([
       prisma.$queryRawUnsafe<Array<{ Variable_name: string; Value: string }>>(
         "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected', 'Aborted_clients')",
       ),
-      prisma.$queryRawUnsafe<Array<{ Variable_name: string; Value: string }>>(
-        "SHOW GLOBAL VARIABLES WHERE Variable_name = 'max_connections'",
-      ),
     ]);
     const status = new Map(statusRows.map((row) => [String(row.Variable_name), Number(row.Value)]));
-    const variables = new Map(variableRows.map((row) => [String(row.Variable_name), Number(row.Value)]));
     const finite = (value: number | undefined) => (Number.isFinite(value) ? value! : null);
+    const prismaLimit = Number(process.env.PRISMA_CONNECTION_LIMIT);
+    const perWorker = Number.isFinite(prismaLimit) ? Math.min(20, Math.max(1, Math.floor(prismaLimit))) : 4;
     return {
       poolActive: finite(status.get('Threads_connected')),
-      poolMax: finite(variables.get('max_connections')),
+      poolMax: perWorker,
       abortedClients: finite(status.get('Aborted_clients')),
     };
   } catch {

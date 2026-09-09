@@ -190,11 +190,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
     acquisition.formData.meeting.startsAt = fallbackForm.meeting.startsAt;
     if (fallbackForm.meeting.location) acquisition.formData.meeting.location = fallbackForm.meeting.location;
   }
-  await stampKwFromAcquisitionForm({
-    offerId: client.linkedOfferId,
-    agentUserId: agencyUserId,
-    formData: acquisition?.formData || fallbackForm,
-  }).catch(() => {});
 
   const linkedOfferRaw = client.linkedOfferId
     ? await prisma.offer.findFirst({

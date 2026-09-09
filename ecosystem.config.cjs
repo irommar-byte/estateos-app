@@ -107,7 +107,7 @@ module.exports = {
       env: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
       env_production: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
       autorestart: false,
-      cron_restart: "0 8 * * *",
+      cron_restart: "40 8 * * *",
       time: true,
     },
     {

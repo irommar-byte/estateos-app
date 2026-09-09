@@ -389,6 +389,7 @@ export async function importOtodomImagesForOffer(params: {
   maxImages?: number;
   lastImageAsFloorPlan?: boolean;
   floorPlanImageIndex?: number | null;
+  preloadedImages?: Record<string, Buffer>;
   onProgress?: (progress: ImportImageProgress) => void;
   shouldCancel?: () => boolean | Promise<boolean>;
 }): Promise<{ uploaded: number; failed: number; urls: string[]; floorPlanUrl: string | null }> {
@@ -423,7 +424,10 @@ export async function importOtodomImagesForOffer(params: {
       asFloorPlan: false,
     });
 
-    const file = await downloadRemoteImage(remoteUrl, params.source);
+    const preloaded = params.preloadedImages?.[remoteUrl];
+    const file = preloaded
+      ? { buffer: preloaded, mimeType: 'image/jpeg', fileName: 'otodom-import.jpg' }
+      : await downloadRemoteImage(remoteUrl, params.source);
     if (!file) {
       failed += 1;
       return null;
@@ -494,7 +498,9 @@ export async function importOtodomImagesForOffer(params: {
         asFloorPlan: true,
       });
 
-      const file = await downloadRemoteImage(floorPlanRemoteUrl, params.source);
+      const file = params.preloadedImages?.[floorPlanRemoteUrl]
+        ? { buffer: params.preloadedImages[floorPlanRemoteUrl], mimeType: 'image/jpeg', fileName: 'otodom-import.jpg' }
+        : await downloadRemoteImage(floorPlanRemoteUrl, params.source);
       if (!file) {
         failed += 1;
       } else {
@@ -683,6 +689,8 @@ export async function createOfferFromOtodomDraft(
     await throwIfCancelled();
 
     let floorPlanImageIndex: number | null = null;
+    let lastUrl: string | null = null;
+    let lastImageBuffer: Buffer | null = null;
     if (options?.floorPlanImageIndex !== undefined) {
       floorPlanImageIndex = options.floorPlanImageIndex;
     } else if (options?.lastImageFloorPlan === false) {
@@ -694,8 +702,7 @@ export async function createOfferFromOtodomDraft(
       !options?.skipAutoFloorPlanProbe &&
       draft.imageUrls.length > 0
     ) {
-      let lastImageBuffer: Buffer | null = null;
-      const lastUrl = draft.imageUrls[draft.imageUrls.length - 1];
+      lastUrl = draft.imageUrls[draft.imageUrls.length - 1];
       const lastFile = await downloadRemoteImage(lastUrl, draft.source);
       lastImageBuffer = lastFile?.buffer ?? null;
       const autoLast = await resolveLastImageIsFloorPlan(draft, undefined, lastImageBuffer);
@@ -709,6 +716,7 @@ export async function createOfferFromOtodomDraft(
       source: draft.source,
       maxImages: options?.maxImportImages,
       floorPlanImageIndex,
+      preloadedImages: lastImageBuffer && lastUrl ? { [lastUrl]: lastImageBuffer } : undefined,
       onProgress: options?.onImageProgress,
       shouldCancel: options?.shouldCancel,
     });

@@ -44,51 +44,6 @@ export type CarListingRecord = {
   updatedAt: string;
 };
 
-const CREATE_SQL = `
-  CREATE TABLE IF NOT EXISTS CarListing (
-    id INT NOT NULL AUTO_INCREMENT,
-    userId INT NULL,
-    title VARCHAR(255) NOT NULL,
-    make VARCHAR(120) NOT NULL,
-    model VARCHAR(120) NOT NULL,
-    year INT NOT NULL,
-    mileageKm INT NOT NULL DEFAULT 0,
-    fuelType VARCHAR(80) NOT NULL,
-    transmission VARCHAR(80) NOT NULL,
-    bodyType VARCHAR(80) NOT NULL,
-    pricePln DECIMAL(12,2) NOT NULL,
-    city VARCHAR(120) NOT NULL,
-    imageUrl TEXT NULL,
-    images TEXT NULL,
-    description TEXT NULL,
-    cityLat DECIMAL(10,7) NULL,
-    cityLng DECIMAL(10,7) NULL,
-    generation VARCHAR(120) NULL,
-    enginePower VARCHAR(80) NULL,
-    engineCapacity VARCHAR(40) NULL,
-    trimVersion VARCHAR(160) NULL,
-    doorCount TINYINT NULL,
-    createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-    PRIMARY KEY (id),
-    KEY CarListing_createdAt_idx (createdAt),
-    KEY CarListing_userId_idx (userId)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-`;
-
-const SEED_SQL = `
-  INSERT INTO CarListing
-    (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType, pricePln, city, imageUrl)
-  SELECT * FROM (
-    SELECT NULL, 'BMW X5 xDrive30d M Sport', 'BMW', 'X5', 2022, 42800, 'Diesel', 'Automatyczna', 'SUV', 319000, 'Warszawa', 'https://images.unsplash.com/photo-1556189250-72ba954cfc2b?auto=format&fit=crop&w=1400&q=80'
-    UNION ALL
-    SELECT NULL, 'Porsche Taycan 4S Performance Plus', 'Porsche', 'Taycan', 2023, 16800, 'Elektryczny', 'Automatyczna', 'Sedan', 499000, 'Kraków', 'https://images.unsplash.com/photo-1614200187524-dc4b892acf16?auto=format&fit=crop&w=1400&q=80'
-    UNION ALL
-    SELECT NULL, 'Audi A6 Avant 45 TFSI Quattro', 'Audi', 'A6', 2021, 61200, 'Benzyna', 'Automatyczna', 'Kombi', 224900, 'Wrocław', 'https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=1400&q=80'
-  ) seed
-  WHERE NOT EXISTS (SELECT 1 FROM CarListing LIMIT 1);
-`;
-
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -173,96 +128,9 @@ function mapRow(row: any): CarListingRecord {
   };
 }
 
-const ALLOWED_CAR_LISTING_COLUMNS = new Set([
-  "price",
-  "priceCurrency",
-  "exchangeRateUsed",
-  "exchangeRateDate",
-  "generation",
-  "enginePower",
-  "engineCapacity",
-  "trimVersion",
-  "doorCount",
-  "images",
-  "description",
-  "cityLat",
-  "cityLng",
-  "localityCountry",
-  "vin",
-  "registrationNumber",
-  "firstRegistrationDate",
-  "insuranceValidUntil",
-  "restrictVehicleDocs",
-  "showContactPhone",
-  "promotedUntil",
-  "exteriorColor",
-  "vehicleType",
-]);
-
-async function ensureCarListingColumn(column: string, definition: string) {
-  if (!ALLOWED_CAR_LISTING_COLUMNS.has(column)) return;
-
-  const rows = await prisma.$queryRawUnsafe<any[]>(
-    `
-      SELECT COUNT(*) AS count
-      FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'CarListing'
-        AND COLUMN_NAME = '${column}'
-    `,
-  );
-  const exists = Number(rows?.[0]?.count || 0) > 0;
-  if (!exists) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE CarListing ADD COLUMN ${column} ${definition}`);
-  }
-}
-
-let carsStorageReady = false;
-let carsStoragePromise: Promise<void> | null = null;
-
-async function ensureCarsStorageOnce() {
-  await prisma.$executeRawUnsafe(CREATE_SQL);
-  await ensureCarListingColumn("generation", "VARCHAR(120) NULL");
-  await ensureCarListingColumn("enginePower", "VARCHAR(80) NULL");
-  await ensureCarListingColumn("engineCapacity", "VARCHAR(40) NULL");
-  await ensureCarListingColumn("trimVersion", "VARCHAR(160) NULL");
-  await ensureCarListingColumn("doorCount", "TINYINT NULL");
-  await ensureCarListingColumn("images", "TEXT NULL");
-  await ensureCarListingColumn("description", "TEXT NULL");
-  await ensureCarListingColumn("cityLat", "DECIMAL(10,7) NULL");
-  await ensureCarListingColumn("cityLng", "DECIMAL(10,7) NULL");
-  await ensureCarListingColumn("localityCountry", "VARCHAR(80) NULL");
-  await ensureCarListingColumn("vin", "VARCHAR(17) NULL");
-  await ensureCarListingColumn("registrationNumber", "VARCHAR(16) NULL");
-  await ensureCarListingColumn("firstRegistrationDate", "VARCHAR(20) NULL");
-  await ensureCarListingColumn("insuranceValidUntil", "VARCHAR(20) NULL");
-  await ensureCarListingColumn("restrictVehicleDocs", "TINYINT(1) NOT NULL DEFAULT 0");
-  await ensureCarListingColumn("showContactPhone", "TINYINT(1) NOT NULL DEFAULT 0");
-  await ensureCarListingColumn("promotedUntil", "DATETIME(3) NULL");
-  await ensureCarListingColumn("exteriorColor", "VARCHAR(80) NULL");
-  await ensureCarListingColumn("vehicleType", "VARCHAR(32) NULL DEFAULT 'car'");
-  await ensureCarListingColumn("price", "DECIMAL(12,2) NULL");
-  await ensureCarListingColumn("priceCurrency", "VARCHAR(8) NOT NULL DEFAULT 'PLN'");
-  await ensureCarListingColumn("exchangeRateUsed", "DOUBLE NULL");
-  await ensureCarListingColumn("exchangeRateDate", "DATETIME(3) NULL");
-  await prisma.$executeRawUnsafe(`
-    UPDATE CarListing
-    SET price = COALESCE(NULLIF(price, 0), pricePln),
-        priceCurrency = COALESCE(NULLIF(priceCurrency, ''), 'PLN')
-    WHERE price IS NULL OR price = 0 OR priceCurrency IS NULL OR priceCurrency = ''
-  `);
-  await prisma.$executeRawUnsafe(SEED_SQL);
-  carsStorageReady = true;
-}
-
 export async function ensureCarsStorage() {
-  if (carsStorageReady) return;
-  if (!carsStoragePromise) {
-    carsStoragePromise = ensureCarsStorageOnce().finally(() => {
-      carsStoragePromise = null;
-    });
-  }
-  await carsStoragePromise;
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 export async function listCars(limit = 50): Promise<CarListingRecord[]> {

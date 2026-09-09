@@ -9,29 +9,9 @@ import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 import { resolveOfferPriceFromBody } from "@/lib/money/offerPrice.server";
 import { enrichOfferMoneyFields } from "@/lib/money/offerPrice";
 
-let carEngagementReady = false;
-let carEngagementPromise: Promise<void> | null = null;
-
 async function ensureCarEngagementTable() {
-  if (carEngagementReady) return;
-  if (!carEngagementPromise) {
-    carEngagementPromise = (async () => {
-      const { prisma } = await import("@/lib/prisma");
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS CarEngagement (
-          carId INT NOT NULL,
-          viewsCount INT NOT NULL DEFAULT 0,
-          favoritesCount INT NOT NULL DEFAULT 0,
-          updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-          PRIMARY KEY (carId)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-      `);
-      carEngagementReady = true;
-    })().finally(() => {
-      carEngagementPromise = null;
-    });
-  }
-  await carEngagementPromise;
+  // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
+  return;
 }
 
 async function loadCarEngagement(ids: number[]): Promise<Map<number, { viewsCount: number; favoritesCount: number }>> {
