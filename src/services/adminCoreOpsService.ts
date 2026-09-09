@@ -58,10 +58,10 @@ export async function runCoreOptimize(token: string): Promise<CoreOptimizeResult
       signal: controller.signal,
     });
     const preview = (await previewRes.json().catch(() => ({}))) as Record<string, unknown>;
-    if (previewRes.status !== 409 || preview.requiresConfirmation !== true) {
-      if (!previewRes.ok) {
-        throw new Error(String(preview.error || preview.message || `HTTP ${previewRes.status}`));
-      }
+    const safePreview =
+      previewRes.status === 409 && preview.expectedConfirmation === 'CONFIRM:SAFE';
+    if (!safePreview && !previewRes.ok) {
+      throw new Error(String(preview.error || preview.message || `HTTP ${previewRes.status}`));
     }
     const res = await fetch(`${API_URL}/api/mobile/v1/admin/core/optimize`, {
       method: 'POST',

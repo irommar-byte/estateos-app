@@ -7,6 +7,7 @@ import {
   evaluateCoreGuardSample,
   persistCoreGuardCycle,
 } from '@/lib/coreGuard';
+import { executeAutomaticCoreGuardRepairs } from '@/lib/coreGuardRunbooks';
 import { prisma } from '@/lib/prisma';
 
 const SAMPLE_INTERVAL_MS = 60_000;
@@ -49,7 +50,11 @@ async function main() {
       const sample = await collectCoreGuardSample({ full });
       const candidates = quiet ? [] : evaluateCoreGuardSample(sample);
       await persistCoreGuardCycle(sample, candidates, { ignoreRestartDeltas: quiet });
-      if (!quiet) await deliverCoreGuardAlerts();
+      if (!quiet) {
+        const auto = await executeAutomaticCoreGuardRepairs();
+        if (auto.length) console.info(`[core-guard] auto-repair ${auto.join(',')}`);
+        await deliverCoreGuardAlerts();
+      }
       if (full) nextFullScanAt = cycleStartedAt + FULL_SCAN_INTERVAL_MS;
       console.info(
         `[core-guard] sample level=${sample.level} candidates=${candidates.length} full=${full} maintenance=${maintenance} quiet=${quiet}`,

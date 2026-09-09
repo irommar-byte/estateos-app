@@ -1,9 +1,12 @@
-import { diagnoseServer } from '@/lib/adminServerDiagnose';
+import {
+  applySafeHygiene,
+  diagnoseServer,
+  FINDING_RUNBOOK_ID,
+} from '@/lib/adminServerDiagnose';
 import {
   controlPm2,
-  previewSafeCleanup,
   readPm2Processes,
-  runSafeCleanup,
+  resetPm2RestartCounters,
   startMariaDb,
 } from '@/lib/adminServerOps';
 import { prisma } from '@/lib/prisma';
@@ -11,6 +14,8 @@ import { prisma } from '@/lib/prisma';
 export type CoreGuardRunbookId =
   | 'safe-cleanup'
   | 'recover-kei-lease'
+  | 'reset-pm2-counters'
+  | 'recycle-web'
   | 'reload-web'
   | 'restart-kei-worker'
   | 'start-mariadb';
@@ -32,6 +37,22 @@ export const CORE_GUARD_RUNBOOKS: Runbook[] = [
     automatic: true,
     impact: 'Usuwa wyłącznie znane pliki .part/.tmp/.download oraz stare resztki cache.',
     rollback: 'Brak — pliki są nieukończonymi artefaktami, nie danymi klientów.',
+  },
+  {
+    id: 'reset-pm2-counters',
+    label: 'Wyzeruj historyczny licznik restartów PM2',
+    risk: 'low',
+    automatic: true,
+    impact: 'Zeruje restart_time. Nie restartuje procesów i nie zmienia ruchu.',
+    rollback: 'Licznik znowu urośnie przy następnym restarcie — to tylko etykieta PM2.',
+  },
+  {
+    id: 'recycle-web',
+    label: 'Przeładuj workery WWW zanim PM2 je zabije',
+    risk: 'low',
+    automatic: true,
+    impact: 'Kolejny rolling reload dwóch instancji Next.js, potem zeruje licznik restartów.',
+    rollback: 'PM2 trzyma poprzedni proces do przejęcia ruchu przez nowy.',
   },
   {
     id: 'recover-kei-lease',
@@ -72,28 +93,38 @@ export function getCoreGuardRunbook(id: string) {
 }
 
 export async function buildCoreGuardRemediationPlan(actionId?: string) {
-  const incidents = (await prisma.$queryRawUnsafe(
-    `SELECT id, title, recommendedAction, autoFixable
-     FROM CoreIncident
-     WHERE status = 'open'
-     ORDER BY FIELD(severity, 'critical', 'warning', 'info'), lastSeenAt DESC`,
-  )) as Array<{
-    id: string;
-    title: string;
-    recommendedAction: string | null;
-    autoFixable: number | boolean;
-  }>;
+  const [incidents, report] = await Promise.all([
+    prisma.$queryRawUnsafe(
+      `SELECT id, title, recommendedAction, autoFixable
+       FROM CoreIncident
+       WHERE status = 'open'
+       ORDER BY FIELD(severity, 'critical', 'warning', 'info'), lastSeenAt DESC`,
+    ) as Promise<
+      Array<{
+        id: string;
+        title: string;
+        recommendedAction: string | null;
+        autoFixable: number | boolean;
+      }>
+    >,
+    diagnoseServer(),
+  ]);
   const requested = actionId ? getCoreGuardRunbook(actionId) : null;
+  const wanted = new Set<CoreGuardRunbookId>();
+  for (const finding of report.findings) {
+    const mapped = FINDING_RUNBOOK_ID[finding.id];
+    const runbook = mapped ? getCoreGuardRunbook(mapped) : null;
+    if (runbook?.automatic) wanted.add(runbook.id);
+  }
+  for (const incident of incidents) {
+    const runbook = incident.recommendedAction ? getCoreGuardRunbook(incident.recommendedAction) : null;
+    if (runbook?.automatic && (Boolean(incident.autoFixable) || runbook.id === 'reset-pm2-counters')) {
+      wanted.add(runbook.id);
+    }
+  }
   const selected = requested
     ? [requested]
-    : CORE_GUARD_RUNBOOKS.filter(
-        (runbook) =>
-          runbook.automatic &&
-          incidents.some(
-            (incident) =>
-              Boolean(incident.autoFixable) && incident.recommendedAction === runbook.id,
-          ),
-      );
+    : CORE_GUARD_RUNBOOKS.filter((runbook) => wanted.has(runbook.id) && runbook.automatic);
   return {
     generatedAt: new Date().toISOString(),
     requiresConfirmation: selected.some((runbook) => !runbook.automatic),
@@ -120,15 +151,30 @@ async function releaseRepairLock() {
   await prisma.$queryRawUnsafe(`SELECT RELEASE_LOCK('estateos_core_guard_repair')`);
 }
 
+async function reloadWebAndResetCounters() {
+  const reload = await controlPm2('nieruchomosci', 'reload');
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+  const reset = await resetPm2RestartCounters('nieruchomosci');
+  return {
+    detail: 'Przeładowano workery WWW kolejno i wyzerowano licznik restartów.',
+    reload,
+    reset,
+  };
+}
+
 async function executeAllowedRunbook(actionId: CoreGuardRunbookId) {
   if (actionId === 'safe-cleanup') {
-    const preview = await previewSafeCleanup();
-    const result = runSafeCleanup();
+    const hygiene = await applySafeHygiene();
     return {
-      detail: `Usunięto ${result.deleted.length} bezpiecznych artefaktów.`,
-      freedBytes: preview.bytes,
-      errors: result.errors,
+      detail: `Usunięto ${hygiene.cleanup.deleted.length} artefaktów, przycięto ${hygiene.logs.length} logów, katalogi build: ${hygiene.leftovers.removed.length}.`,
+      freedBytes: hygiene.preview.bytes,
+      errors: hygiene.cleanup.errors,
+      leftovers: hygiene.leftovers,
     };
+  }
+  if (actionId === 'reset-pm2-counters') {
+    const reset = await resetPm2RestartCounters();
+    return { detail: `Wyzerowano licznik restartów: ${reset.names.join(', ')}.`, reset };
   }
   if (actionId === 'recover-kei-lease') {
     const updated = await prisma.$executeRawUnsafe(
@@ -144,8 +190,8 @@ async function executeAllowedRunbook(actionId: CoreGuardRunbookId) {
     );
     return { detail: `Do kolejki wróciło ${Number(updated)} zadań.` };
   }
-  if (actionId === 'reload-web') {
-    return controlPm2('nieruchomosci', 'reload');
+  if (actionId === 'reload-web' || actionId === 'recycle-web') {
+    return reloadWebAndResetCounters();
   }
   if (actionId === 'restart-kei-worker') {
     return controlPm2('kei-import-worker', 'restart');
@@ -159,7 +205,7 @@ async function executeAllowedRunbook(actionId: CoreGuardRunbookId) {
 export async function executeCoreGuardRunbook(params: {
   actionId: string;
   confirmation?: string;
-  actorUserId: number;
+  actorUserId?: number | null;
   incidentId?: string;
   mode?: 'manual' | 'automatic';
 }) {
@@ -190,7 +236,7 @@ export async function executeCoreGuardRunbook(params: {
         incidentId: params.incidentId || null,
         actionId: runbook.id,
         mode: params.mode || 'manual',
-        actorUserId: params.actorUserId,
+        actorUserId: params.actorUserId ?? null,
         status: 'running',
         beforeJson: JSON.stringify(before),
       },
@@ -301,4 +347,45 @@ export async function executeCoreGuardProcessControl(params: {
   } finally {
     await releaseRepairLock().catch(() => undefined);
   }
+}
+
+const AUTOMATIC_ACTIONS = new Set<CoreGuardRunbookId>([
+  'safe-cleanup',
+  'recover-kei-lease',
+  'reset-pm2-counters',
+  'recycle-web',
+]);
+
+export async function executeAutomaticCoreGuardRepairs() {
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT id, recommendedAction
+     FROM CoreIncident
+     WHERE status = 'open'
+       AND autoFixable = 1
+       AND recommendedAction IS NOT NULL
+       AND (cooldownUntil IS NULL OR cooldownUntil < NOW(3))
+     ORDER BY lastSeenAt DESC
+     LIMIT 8`,
+  )) as Array<{ id: string; recommendedAction: string | null }>;
+  const seen = new Set<string>();
+  const executed: string[] = [];
+  for (const row of rows) {
+    const actionId = String(row.recommendedAction || '');
+    if (!AUTOMATIC_ACTIONS.has(actionId as CoreGuardRunbookId) || seen.has(actionId)) continue;
+    seen.add(actionId);
+    const result = await executeCoreGuardRunbook({
+      actionId,
+      incidentId: row.id,
+      mode: 'automatic',
+    });
+    if (result.ok === false) continue;
+    executed.push(actionId);
+    await prisma.$executeRawUnsafe(
+      `UPDATE CoreIncident
+       SET cooldownUntil = DATE_ADD(NOW(3), INTERVAL 20 MINUTE)
+       WHERE id = ?`,
+      row.id,
+    );
+  }
+  return executed;
 }

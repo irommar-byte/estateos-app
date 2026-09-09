@@ -79,7 +79,21 @@ export async function handleAdminCoreOptimizePOST(req: Request) {
           actorUserId: gate.adminId,
           mode: 'automatic',
         });
-        actions.push({ id: action.id, label: action.label, detail: JSON.stringify(result.result) });
+        actions.push({
+          id: action.id,
+          label: action.label,
+          detail:
+            result && typeof result === 'object' && 'result' in result
+              ? JSON.stringify((result as { result?: unknown }).result)
+              : action.impact,
+        });
+      }
+      if (actions.length === 0) {
+        actions.push({
+          id: 'noop',
+          label: 'Nie było automatycznej naprawy',
+          detail: 'Licznik i śmieci są czyste, albo WWW wymaga osobnego przycisku Napraw.',
+        });
       }
       const after = await diagnoseServer();
       return { ok: true, before, after, actions };

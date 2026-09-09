@@ -10,6 +10,7 @@ import {
   readMariaDbStatus,
   readMemoryMetrics,
   readPm2Processes,
+  resetPm2RestartCounters,
   runSafeCleanup,
 } from './adminServerOps';
 
@@ -22,8 +23,17 @@ const DOWNLOADER_DIR = path.join(HOME, 'lineage-movies', 'video-downloader');
 const KEEP_LOG_BYTES = 8 * 1024 * 1024;
 const BIG_LOG_BYTES = 16 * 1024 * 1024;
 const HUNG_MEDIA_SEC = 10 * 60;
-const WEB_RSS_WARN = 700 * 1024 * 1024;
-const WEB_RSS_TOTAL_WARN = 1200 * 1024 * 1024;
+const WEB_RSS_WARN = 900 * 1024 * 1024;
+const WEB_RSS_TOTAL_WARN = 1800 * 1024 * 1024;
+
+export const FINDING_RUNBOOK_ID: Record<string, string> = {
+  junk: 'safe-cleanup',
+  logs: 'safe-cleanup',
+  'build-leftovers': 'safe-cleanup',
+  restarts: 'reset-pm2-counters',
+  'web-memory': 'reload-web',
+  mariadb: 'start-mariadb',
+};
 
 export type FindingSeverity = 'critical' | 'warning' | 'info';
 
@@ -35,6 +45,7 @@ export type ServerFinding = {
   evidence?: Array<{ label: string; value: string }>;
   action?: string;
   fixable: boolean;
+  runbookId?: string;
 };
 
 export type DiagnoseReport = {
@@ -77,9 +88,9 @@ export function parsePsEtimeToSec(etime: string): number {
 export function healthScore(findings: ServerFinding[]): number {
   let score = 100;
   for (const item of findings) {
+    if (item.severity === 'info') continue;
     if (item.severity === 'critical') score -= 35;
     else if (item.severity === 'warning') score -= 12;
-    else score -= 5;
   }
   return Math.max(0, Math.min(100, score));
 }
@@ -447,7 +458,7 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       id: 'web-memory',
       severity: 'warning',
       title: 'Workery WWW zużywają za dużo RAM',
-      detail: 'Łagodny reload zwalnia stertę bez wyłączania strony.',
+      detail: 'Dwa workery PM2 przeładują się kolejno. Guard robi to sam, zanim limit 1 GiB zabije proces.',
       evidence: [
         { label: 'Największy', value: formatBytes(maxWebRss) },
         { label: 'Suma', value: formatBytes(webRss) },
@@ -523,13 +534,43 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
     });
   }
 
-  const rollup = summarizeFindings(findings);
+  const annotated = findings.map((finding) => {
+    const runbookId = FINDING_RUNBOOK_ID[finding.id];
+    return runbookId ? { ...finding, runbookId } : finding;
+  });
+  const rollup = summarizeFindings(annotated);
   return {
     ok: true,
     ...rollup,
-    findings,
+    findings: annotated,
     collectedAt: new Date().toISOString(),
   };
+}
+
+export function trimOversizedPm2Logs() {
+  const trimmed: Array<{ path: string; freedBytes: number }> = [];
+  for (const item of listOversizedLogs()) {
+    trimmed.push({ path: item.path, freedBytes: trimLogTail(item.path, KEEP_LOG_BYTES) });
+  }
+  return trimmed;
+}
+
+export function removeLeftoverBuildDirs() {
+  if (isBuildLocked()) return { removed: [] as string[], skipped: true };
+  const removed: string[] = [];
+  for (const dir of leftoverBuildDirs()) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    removed.push(dir);
+  }
+  return { removed, skipped: false };
+}
+
+export async function applySafeHygiene() {
+  const preview = await previewSafeCleanup();
+  const cleanup = runSafeCleanup();
+  const logs = trimOversizedPm2Logs();
+  const leftovers = removeLeftoverBuildDirs();
+  return { preview, cleanup, logs, leftovers };
 }
 
 function trimLogTail(filePath: string, keepBytes: number) {
@@ -561,16 +602,30 @@ export async function optimizeServer(): Promise<{
   after: DiagnoseReport;
 }> {
   const before = await diagnoseServer();
+  const hygiene = await applySafeHygiene();
+  const reset = before.findings.some((item) => item.id === 'restarts')
+    ? await resetPm2RestartCounters()
+    : null;
+  const after = await diagnoseServer();
+  const actions: OptimizeAction[] = [
+    {
+      id: 'safe-cleanup',
+      label: 'Higiena plików i logów',
+      detail: `Usunięto ${hygiene.cleanup.deleted.length} artefaktów, przycięto ${hygiene.logs.length} logów.`,
+      freedBytes: hygiene.preview.bytes,
+    },
+  ];
+  if (reset) {
+    actions.push({
+      id: 'reset-pm2-counters',
+      label: 'Wyzerowano licznik restartów PM2',
+      detail: reset.names.join(', '),
+    });
+  }
   return {
-    ok: before.healthy || before.level !== 'critical',
-    actions: [
-      {
-        id: 'guard-required',
-        label: 'Wymagany plan CORE Guard',
-        detail: 'Naprawa nie została wykonana. Użyj planu, podglądu skutków i zatwierdzonego runbooka.',
-      },
-    ],
+    ok: after.level !== 'critical',
+    actions,
     before,
-    after: before,
+    after,
   };
 }

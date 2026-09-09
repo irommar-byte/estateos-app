@@ -461,6 +461,35 @@ export default function AdminCoreConsoleScreen() {
     );
   };
 
+  const confirmFindingAction = (finding: CoreFinding) => {
+    if (!finding.runbookId) return;
+    Alert.alert(
+      finding.title,
+      `${finding.detail}\n\nZostanie wykonany wyłącznie przypisany runbook CORE Guard.`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Wykonaj',
+          onPress: () => {
+            const token = getAdminToken();
+            if (!token) return;
+            setBusy(true);
+            void runCoreGuardAction(token, finding.runbookId!, finding.id)
+              .then(async () => {
+                await Promise.all([loadGuard(), loadDiagnose(), loadFleet(), loadMetrics()]);
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              })
+              .catch((err) => {
+                setError(err instanceof Error ? err.message : 'Naprawa nie powiodła się.');
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              })
+              .finally(() => setBusy(false));
+          },
+        },
+      ],
+    );
+  };
+
   const confirmGuardAction = (incident: CoreGuardIncident) => {
     if (!incident.recommendedAction) return;
     Alert.alert(
@@ -1028,9 +1057,18 @@ export default function AdminCoreConsoleScreen() {
                           <Text style={[styles.mono, { color: colors.text, flex: 1 }]}>{row.value}</Text>
                         </View>
                       ))}
-                      <Text style={[styles.findingAction, { color: colors.muted }]}>
-                        {finding.action || (finding.fixable ? 'Automatyczna' : 'Tylko podgląd')}
-                      </Text>
+                      {finding.runbookId ? (
+                        <TextBtn
+                          label={finding.action || 'Napraw'}
+                          disabled={busy || optimizing}
+                          colors={colors}
+                          onPress={() => confirmFindingAction(finding)}
+                        />
+                      ) : (
+                        <Text style={[styles.findingAction, { color: colors.muted }]}>
+                          {finding.action || (finding.fixable ? 'Automatyczna' : 'Tylko podgląd')}
+                        </Text>
+                      )}
                     </View>
                   ))
                 )}

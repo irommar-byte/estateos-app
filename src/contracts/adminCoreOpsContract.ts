@@ -48,6 +48,7 @@ export type CoreFinding = {
   evidence?: Array<{ label: string; value: string }>;
   action?: string;
   fixable: boolean;
+  runbookId?: string;
 };
 
 export type CoreDiagnoseReport = {

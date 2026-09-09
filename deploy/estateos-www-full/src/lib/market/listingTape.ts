@@ -154,6 +154,15 @@ export async function buildListingTape(opts?: {
   const cacheKey = locale;
   const now = Date.now();
   const hit = cache.get(cacheKey);
+  if (cache.size > 24) {
+    for (const [key, value] of cache) {
+      if (now - value.at >= CACHE_MS) cache.delete(key);
+    }
+    if (cache.size > 24) {
+      const oldest = [...cache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) cache.delete(oldest[0]);
+    }
+  }
   if (hit && now - hit.at < CACHE_MS) {
     const items = hit.items.slice(offset, offset + limit);
     return {
