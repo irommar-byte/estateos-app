@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { diagnoseServer, type ServerFinding } from '@/lib/adminServerDiagnose';
-import { collectCoreGuardSystemSnapshot } from '@/lib/coreGuardSystem';
+import { collectCoreGuardSystemSnapshot, isKernelCriticalEvent } from '@/lib/coreGuardSystem';
 import {
   readCpuMetrics,
   readDiskMetrics,
@@ -455,8 +455,13 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
     guard?.status !== 'online',
   );
   if (sample.full) {
-    candidates.push(...sample.full.findings.map(candidateFromFinding));
+    candidates.push(
+      ...sample.full.findings
+        .filter((finding) => finding.severity !== 'info')
+        .map(candidateFromFinding),
+    );
     for (const warning of sample.full.kernelWarnings) {
+      if (!isKernelCriticalEvent(warning)) continue;
       candidates.push({
         fingerprint: 'full:kernel-watchdog',
         type: 'kernel-watchdog',
@@ -896,7 +901,9 @@ export async function readCoreGuardDashboard(range = '24h') {
   const score = Math.max(
     0,
     100 -
-      active.reduce(
+      active
+        .filter((incident) => incident.severity !== 'info')
+        .reduce(
         (sum, incident) =>
           sum + (incident.severity === 'critical' ? 35 : incident.severity === 'warning' ? 12 : 4),
         0,

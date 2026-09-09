@@ -419,7 +419,7 @@ export default function AdminCoreConsoleScreen() {
   const fixable = report?.findings.filter((item) => item.fixable) || [];
   const score = guard?.score ?? report?.score ?? (report?.healthy ? 100 : 0);
   const level = guard?.level || report?.level || 'ok';
-  const guardIncidents = guard?.incidents.filter((item) => item.status === 'open') || [];
+  const guardIncidents = guard?.incidents.filter((item) => item.status === 'open' && item.severity !== 'info') || [];
   const host = metrics?.host || 'nieruchomosci';
   const webOnline =
     processes.some((item) => item.name === WWW_NAME && item.status === 'online') ||

@@ -27,6 +27,12 @@ function lines(output: string) {
   return output.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
+export function isKernelCriticalEvent(line: string) {
+  const text = String(line || '').trim();
+  if (!text || text.startsWith('-- ') || /^no entries\b/i.test(text)) return false;
+  return /\b(oom|out of memory|soft lockup|rcu[_ ]stall|blocked for more than)\b/i.test(text);
+}
+
 async function readPressure() {
   const result: Record<string, string> = {};
   await Promise.all(
@@ -140,7 +146,7 @@ export async function collectCoreGuardSystemSnapshot() {
     cron,
     docker: { available: docker.available, containers: lines(docker.output) },
     network: { listeners: lines(listeners.output).slice(0, 200) },
-    kernel: { recentCriticalEvents: lines(kernel.output).slice(-100) },
+    kernel: { recentCriticalEvents: lines(kernel.output).filter(isKernelCriticalEvent).slice(-100) },
     inodeUsage: lines(inodes.output),
     pressure,
     tls: tlsState,

@@ -494,7 +494,7 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       fixable: !isBuildLocked(),
     });
   }
-  if (swapUsed > 400 * 1024 * 1024) {
+  if (swapUsed > 400 * 1024 * 1024 && memory.percent >= 75) {
     findings.push({
       id: 'swap',
       severity: 'warning',
