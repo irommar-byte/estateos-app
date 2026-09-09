@@ -23,11 +23,14 @@ import sys
 site_path, location_path, temporary_path = map(pathlib.Path, sys.argv[1:4])
 site = site_path.read_text()
 location = location_path.read_text().strip()
-pattern = re.compile(r"(?ms)^    location / \{\n.*?^    \}\n")
-matches = list(pattern.finditer(site))
-if len(matches) != 1:
-    raise SystemExit(f"Oczekiwano jednego bloku location /, znaleziono {len(matches)}")
-patched = site[:matches[0].start()] + "\n".join(f"    {line}" for line in location.splitlines()) + "\n" + site[matches[0].end():]
+if "estateos-access.log estateos_timed" in site:
+    patched = site
+else:
+    pattern = re.compile(r"(?ms)^    location / \{\n.*?^    \}\n")
+    matches = list(pattern.finditer(site))
+    if len(matches) != 1:
+        raise SystemExit(f"Oczekiwano jednego bloku location /, znaleziono {len(matches)}")
+    patched = site[:matches[0].start()] + "\n".join(f"    {line}" for line in location.splitlines()) + "\n" + site[matches[0].end():]
 temporary_path.write_text(patched)
 PY
 
