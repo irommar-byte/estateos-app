@@ -1,9 +1,9 @@
+import { Prisma } from '@prisma/client';
 import { decryptSession } from "@/lib/sessionUtils";
 import { cookies } from "next/headers";
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
-import { readPendingPublication } from "@/lib/offerPendingPublication";
 import { listEnrichedLeadTransfersForUser } from "@/lib/leadTransfer";
 import { acquisitionActivityToAppointment } from "@/lib/crm/planningCalendar";
 import { resolveMeeting, resolvePresentation } from "@/lib/crm/clientJourney";
@@ -27,7 +27,8 @@ export async function GET(req: Request) {
     } catch {}
 
     const user = await prisma.user.findUnique({
-      where: { email: emailToSearch }
+      where: { email: emailToSearch },
+      select: { id: true },
     });
 
     if (!user) {
@@ -36,60 +37,96 @@ export async function GET(req: Request) {
 
     const finalUserId = user.id;
 
-    // ==========================================
-    // OFERTY
-    // ==========================================
-    const myOffersRaw = await prisma.offer.findMany({
-      where: { userId: finalUserId },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const myOffers = await Promise.all(
-      myOffersRaw.map(async (offer) => {
-        const pending = await readPendingPublication(Number(offer.id));
-        return {
-          ...offer,
-          imageUrl: resolveOfferPrimaryImage(offer),
-          pendingPublicationKind: pending?.kind ?? null,
-          awaitingModeration: Boolean(pending?.kind),
-        };
+    const [myOffersRaw, deals, acquisitionActs, leads, bids] = await Promise.all([
+      prisma.offer.findMany({
+        where: { userId: finalUserId },
+        orderBy: { createdAt: 'desc' },
       }),
-    );
-
-    // ==========================================
-    // DEALS (🔥 KLUCZOWY FIX)
-    // ==========================================
-    const deals = await prisma.deal.findMany({
-      where: {
-        OR: [
-          { sellerId: finalUserId },
-          { buyerId: finalUserId }
-        ]
-      },
-      include: { offer: true, buyer: true, seller: true },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const dealIds = deals.map(d => d.id);
-
-    // ==========================================
-    // APPOINTMENTS (🔥 POPRAWIONE)
-    // ==========================================
-    const appointmentsRaw = await prisma.appointment.findMany({
-      where: {
-        dealId: { in: dealIds }
-      },
-      include: {
-        deal: {
-          include: {
-            offer: true,
-            buyer: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
-            seller: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
+      prisma.deal.findMany({
+        where: {
+          OR: [
+            { sellerId: finalUserId },
+            { buyerId: finalUserId },
+          ],
+        },
+        include: { offer: true, buyer: true, seller: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.agencyClientActivity.findMany({
+        where: {
+          agencyUserId: finalUserId,
+          kind: {
+            in: [
+              'ACQUISITION_MEETING',
+              'MEETING_CHANGE_PROPOSED',
+              'MEETING_CONFIRMED',
+              'PRESENTATION_PROPOSED',
+              'PRESENTATION_CHANGE_PROPOSED',
+              'PRESENTATION_CONFIRMED',
+            ],
           },
         },
-        proposedBy: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { proposedDate: 'asc' }
+        include: {
+          client: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        },
+        take: 250,
+      }),
+      listEnrichedLeadTransfersForUser(finalUserId),
+      prisma.bid.findMany({
+        where: {
+          OR: [
+            { senderId: finalUserId },
+            { deal: { sellerId: finalUserId } },
+            { deal: { buyerId: finalUserId } },
+          ],
+        },
+        include: { deal: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const dealIds = deals.map((d) => d.id);
+    const offerIds = myOffersRaw.map((offer) => offer.id);
+
+    const [appointmentsRaw, pendingRows] = await Promise.all([
+      dealIds.length
+        ? prisma.appointment.findMany({
+            where: { dealId: { in: dealIds } },
+            include: {
+              deal: {
+                include: {
+                  offer: true,
+                  buyer: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
+                  seller: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
+                },
+              },
+              proposedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: { proposedDate: 'asc' },
+          })
+        : Promise.resolve([]),
+      offerIds.length
+        ? prisma.$queryRaw<Array<{ id: number; pendingPublicationKind: string | null }>>`
+            SELECT id, pendingPublicationKind
+            FROM Offer
+            WHERE id IN (${Prisma.join(offerIds)})
+          `
+        : Promise.resolve([]),
+    ]);
+
+    const pendingByOfferId = new Map(
+      pendingRows.map((row) => [Number(row.id), row.pendingPublicationKind]),
+    );
+    const myOffers = myOffersRaw.map((offer) => {
+      const kind = pendingByOfferId.get(Number(offer.id));
+      const pendingKind =
+        kind === 'FREE_FIRST' || kind === 'PLUS_CREDIT' || kind === 'PLUS_PAID' ? kind : null;
+      return {
+        ...offer,
+        imageUrl: resolveOfferPrimaryImage(offer),
+        pendingPublicationKind: pendingKind,
+        awaitingModeration: Boolean(pendingKind),
+      };
     });
 
     const appointments = appointmentsRaw.map((item) => {
@@ -118,25 +155,6 @@ export async function GET(req: Request) {
       };
     });
 
-    const acquisitionActs = await prisma.agencyClientActivity.findMany({
-      where: {
-        agencyUserId: finalUserId,
-        kind: {
-          in: [
-            'ACQUISITION_MEETING',
-            'MEETING_CHANGE_PROPOSED',
-            'MEETING_CONFIRMED',
-            'PRESENTATION_PROPOSED',
-            'PRESENTATION_CHANGE_PROPOSED',
-            'PRESENTATION_CONFIRMED',
-          ],
-        },
-      },
-      include: {
-        client: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
-      },
-      take: 250,
-    });
     const grouped = new Map<number, typeof acquisitionActs>();
     for (const row of acquisitionActs) {
       const list = grouped.get(row.client.id) || [];
@@ -173,29 +191,6 @@ export async function GET(req: Request) {
     });
     const allAppointments = [...appointments, ...acquisitionAppointments];
 
-    // ==========================================
-    // LEADY
-    // ==========================================
-    const leads = await listEnrichedLeadTransfersForUser(finalUserId);
-
-    // ==========================================
-    // BIDS
-    // ==========================================
-    const bids = await prisma.bid.findMany({
-      where: {
-        OR: [
-          { senderId: finalUserId },
-          { deal: { sellerId: finalUserId } },
-          { deal: { buyerId: finalUserId } },
-        ]
-      },
-      include: { deal: true },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    // ==========================================
-    // KONTAKTY
-    // ==========================================
     const contactIds = new Set<number>();
 
     allAppointments.forEach(item => {

@@ -31,6 +31,10 @@ export type AgencyClientListItem = {
   upcomingMeetingStartsAt?: string | null;
   upcomingMeetingLocation?: string | null;
   portalUrl?: string | null;
+  linkedOfferId?: number | null;
+  linkedOfferStatus?: string | null;
+  acquisitionSigned?: boolean;
+  meetingConfirmed?: boolean;
 };
 
 export type AgencyClientMatchImportBrief = {

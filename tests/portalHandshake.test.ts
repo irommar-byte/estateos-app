@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { portalStackKind } from '../src/lib/portalActivityStacks';
 import { collectAgentOfferReplies } from '../src/utils/clientPortalFeedback';
-import { computeBuyerPipeline, buyerPipelineFromClientDetail } from '../src/lib/sellerClientPipeline';
+import {
+  computeBuyerPipeline,
+  buyerPipelineFromClientDetail,
+  sellerPipelineFromListItem,
+} from '../src/lib/sellerClientPipeline';
 
 test('portal stacks map real presentation and sale event kinds', () => {
   assert.equal(portalStackKind('PRESENTATION_PROPOSED'), 'presentations');
@@ -53,4 +57,19 @@ test('buyer pipeline uses sentCount and dealClosed from the client record', () =
   assert.equal(fromDetail.find((s) => s.id === 'sending')?.done, true);
   assert.equal(fromDetail.find((s) => s.id === 'deal')?.done, true);
   assert.equal(fromDetail.find((s) => s.id === 'presentation')?.done, true);
+});
+
+test('seller pipeline on the client list uses list payload only', () => {
+  const stages = sellerPipelineFromListItem({
+    meetingConfirmed: true,
+    acquisitionSigned: true,
+    linkedOfferId: 1228,
+    linkedOfferStatus: 'ACTIVE',
+    presentationConfirmed: false,
+  });
+  assert.equal(stages.find((s) => s.id === 'meeting')?.done, true);
+  assert.equal(stages.find((s) => s.id === 'acquisition')?.done, true);
+  assert.equal(stages.find((s) => s.id === 'sale')?.done, true);
+  assert.equal(stages.find((s) => s.id === 'transaction')?.done, false);
+  assert.equal(stages.find((s) => s.id === 'transaction')?.current, true);
 });

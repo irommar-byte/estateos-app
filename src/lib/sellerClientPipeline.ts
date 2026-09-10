@@ -79,6 +79,29 @@ function activityHintsHandover(activities: Array<{ kind?: string; title?: string
   });
 }
 
+export function sellerPipelineFromListItem(client: {
+  upcomingMeetingStartsAt?: string | null;
+  meetingConfirmed?: boolean;
+  acquisitionSigned?: boolean;
+  linkedOfferId?: number | null;
+  linkedOfferStatus?: string | null;
+  presentationConfirmed?: boolean;
+}): SellerPipelineStage[] {
+  const normalizedOfferStatus = String(client.linkedOfferStatus || '').toUpperCase();
+  return computeSellerPipeline({
+    meetingConfirmed: Boolean(client.meetingConfirmed || client.upcomingMeetingStartsAt),
+    acquisitionSigned: Boolean(client.acquisitionSigned),
+    offerActive:
+      Boolean(client.linkedOfferId) ||
+      normalizedOfferStatus === 'ACTIVE' ||
+      normalizedOfferStatus === 'PUBLISHED' ||
+      normalizedOfferStatus === 'PENDING' ||
+      normalizedOfferStatus === 'IN_DEAL',
+    notaryScheduled: client.presentationConfirmed === true,
+    handoverComplete: normalizedOfferStatus === 'SOLD' || normalizedOfferStatus === 'ARCHIVED',
+  });
+}
+
 export function sellerPipelineFromClientDetail(
   client: AgencyClientDetail,
   acquisition: AcquisitionRecord | null,

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAgencyClientForUser, requireAgencyUserId } from '@/lib/agencyClientAuth';
+import { getAgencyClientForUser, getAgencyClientLiteForUser, requireAgencyUserId } from '@/lib/agencyClientAuth';
 import {
   buyerPrefToWebRadarFilters,
   shapeClientListItem,
@@ -105,6 +105,51 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const { id } = await ctx.params;
   const clientId = Number(id);
   const lite = new URL(req.url).searchParams.get('lite') === '1';
+  if (lite) {
+    const client = await getAgencyClientLiteForUser(clientId, agencyUserId);
+    if (!client) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+    const meeting = resolveMeeting(client.activities);
+    const presentation = resolvePresentation(client.activities);
+    const [acquisition, sentCount, closedDeal] = await Promise.all([
+      prisma.agencyClientAcquisition.findUnique({
+        where: { clientId: client.id },
+        select: { status: true, currentStep: true, signedAt: true },
+      }),
+      prisma.agencyClientMatch.count({
+        where: { clientId: client.id, notifiedAt: { not: null } },
+      }),
+      client.linkedUserId
+        ? prisma.deal.findFirst({
+            where: { buyerId: client.linkedUserId, status: 'FINALIZED' },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    return NextResponse.json({
+      success: true,
+      client: {
+        ...shapeClientListItem(client, {
+          dealClosed: Boolean(closedDeal),
+          sentCount,
+          acquisitionSigned: acquisition?.status === 'SIGNED' || Boolean(acquisition?.signedAt),
+          linkedOfferStatus: client.linkedOffer?.status ?? null,
+        }),
+        linkedOfferId: client.linkedOfferId,
+        portalToken: client.portalToken,
+        portalUrl: client.portalToken ? buildPortalUrl(client.portalToken) : null,
+        meeting,
+        presentation,
+        matches: [],
+        activities: [],
+        sellerMarketing: null,
+        relatedProjects: { selling: [], buying: [] },
+        managedOffers: [],
+      },
+    });
+  }
+
   const client = await getAgencyClientForUser(clientId, agencyUserId);
   if (!client) {
     return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });

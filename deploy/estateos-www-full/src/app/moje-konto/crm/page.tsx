@@ -769,12 +769,6 @@ export default function CRMDashboard() {
         sessionStorage.setItem('pro_booted', 'true');
       }
 
-      const loadCrmHeavyData = async () => {
-        await fetchRadarCatalog();
-        setRadarDisplayFilters(await loadRadarFiltersForUser(uData));
-        await Promise.all([fetchData(uData.id), fetchRadarData()]);
-      };
-
       if (clientsFirst) {
         if (agencyUser) {
           void loadAgencyContextForUser(uData);
@@ -783,10 +777,6 @@ export default function CRMDashboard() {
           setAgencyGrowthInsight(null);
         }
         setLoading(false);
-        if (tabFromUrl !== 'klienci') {
-          crmHeavyLoadedRef.current = true;
-          void loadCrmHeavyData();
-        }
         return;
       }
 
@@ -899,10 +889,25 @@ export default function CRMDashboard() {
     if (!currentUser?.id) return;
     if (crmPollingRef.current) {
       window.clearInterval(crmPollingRef.current);
+      crmPollingRef.current = null;
     }
+
     const tick = () => {
-      if (document.visibilityState === 'visible') void fetchData(currentUser.id);
+      if (document.visibilityState !== 'visible') return;
+      if (activeTab === 'klienci' && !crmHeavyLoadedRef.current) return;
+      void fetchData(currentUser.id);
     };
+
+    if (activeTab === 'klienci' && !crmHeavyLoadedRef.current) {
+      const delay = window.setTimeout(() => {
+        crmHeavyLoadedRef.current = true;
+        tick();
+        crmPollingRef.current = window.setInterval(tick, 45_000);
+      }, 8000);
+      return () => window.clearTimeout(delay);
+    }
+
+    crmHeavyLoadedRef.current = true;
     tick();
     crmPollingRef.current = window.setInterval(tick, 45_000);
     document.addEventListener('visibilitychange', tick);
@@ -913,7 +918,7 @@ export default function CRMDashboard() {
       }
       document.removeEventListener('visibilitychange', tick);
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, activeTab]);
 
   const activeOffersForProTools = useMemo(
     () =>
