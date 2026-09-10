@@ -6493,21 +6493,62 @@ html:not(.light) .eos-car-form-cancel {
   pointer-events: none;
 }
 
+.eos-offer-page {
+  --offer-slide-peek: 0px;
+}
+@media (min-width: 640px) {
+  .eos-offer-page {
+    --offer-slide-peek: 5.75rem;
+  }
+}
+@media (min-width: 1280px) {
+  .eos-offer-page {
+    --offer-slide-peek: 6.5rem;
+  }
+}
+@media (min-width: 640px) {
+  .eos-offer-page:has(.eos-offer-hero-overlay--features) {
+    --offer-slide-peek: 3.25rem;
+  }
+}
+@media (min-width: 1280px) {
+  .eos-offer-page:has(.eos-offer-hero-overlay--features) {
+    --offer-slide-peek: 3.75rem;
+  }
+}
+
 .eos-offer-hero-overlay {
   display: flex;
   flex-direction: column;
+  bottom: var(--offer-slide-peek, 0px);
   min-height: 0;
   overflow: hidden;
 }
 .eos-offer-hero-overlay__inner {
+  display: flex;
+  height: 100%;
   min-height: 0;
+  flex-direction: column;
 }
 .eos-offer-hero-overlay__dock {
   position: relative;
   z-index: 2;
+  flex-shrink: 0;
+}
+.eos-offer-hero-overlay__promo {
+  min-width: 0;
+}
+.eos-offer-hero-overlay--features .eos-offer-hero-overlay__promo {
+  display: none !important;
+}
+@media (max-height: 860px) {
+  .eos-offer-hero-overlay__promo {
+    display: none !important;
+  }
 }
 
 .eos-offer-hero-title {
+  overflow: hidden;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
   font-size: clamp(1.35rem, 3.6vw, 3.15rem);
@@ -6516,6 +6557,37 @@ html:not(.light) .eos-car-form-cancel {
     0 8px 28px rgba(0, 0, 0, 0.55),
     0 0 40px rgba(0, 0, 0, 0.35);
   filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.45));
+}
+.eos-offer-hero-overlay--features .eos-offer-hero-title {
+  font-size: clamp(1.15rem, 2.8vw, 2.4rem);
+}
+
+.eos-offer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  align-items: stretch;
+}
+.eos-offer-body__main,
+.eos-offer-body__aside {
+  min-width: 0;
+}
+@media (min-width: 640px) {
+  .eos-offer-body:not(.is-archived) {
+    margin-top: calc(-1 * var(--offer-slide-peek, 0px) + 0.9rem);
+  }
+}
+@media (min-width: 1280px) {
+  .eos-offer-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(19rem, 1fr);
+    align-items: start;
+    gap: 1.75rem 1.5rem;
+  }
+  .eos-offer-body__aside {
+    margin-top: 0;
+  }
 }
 
 @media (max-height: 780px) {

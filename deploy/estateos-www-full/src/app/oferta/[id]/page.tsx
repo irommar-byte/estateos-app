@@ -644,7 +644,7 @@ function OfferDetails({
     : "🌍";
 
   return (
-    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] font-sans text-[var(--eos-text)] selection:bg-emerald-500/20 sm:pb-32">
+    <main className="theme-aware-dashboard eos-offer-page min-h-screen bg-[var(--eos-bg)] pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] font-sans text-[var(--eos-text)] selection:bg-emerald-500/20 sm:pb-32">
       {portalToken ? <ClientPortalReturnBar token={portalToken} /> : null}
       
       <div className="eos-cinematic-dark relative h-[58svh] min-h-[52svh] w-full overflow-hidden bg-black sm:h-[100dvh] sm:min-h-[100vh]">
@@ -654,7 +654,9 @@ function OfferDetails({
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
         <div
-          className="eos-offer-hero-overlay pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 sm:px-6"
+          className={`eos-offer-hero-overlay pointer-events-none absolute inset-x-0 z-40 px-3 sm:px-6${
+            showAuctionBanner || showOpenHouseBanner ? " eos-offer-hero-overlay--features" : ""
+          }`}
           style={{ top: HERO_BELOW_NAV }}
         >
           <div className="eos-offer-hero-overlay__inner mx-auto flex h-full max-w-5xl min-h-0 flex-col">
@@ -691,7 +693,10 @@ function OfferDetails({
               </div>
             </div>
             {!isArchived && !isLocked ? (
-              <div className="pointer-events-auto hidden sm:block" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="eos-offer-hero-overlay__promo pointer-events-auto hidden sm:block"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <OfferDiscoveryActions
                   offerId={offer.id}
                   variant="full"
@@ -877,9 +882,9 @@ function OfferDetails({
         {isArchived ? (
           <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-30 pb-24" aria-hidden />
         ) : (
-        <div className={`relative z-30 mx-auto flex max-w-[1400px] flex-col gap-6 px-4 transition-all duration-1000 sm:gap-8 sm:px-6 lg:px-8 xl:flex-row ${isLocked ? "h-[850px] select-none overflow-hidden opacity-20 blur-2xl pointer-events-none" : ""} ${isArchived ? "-mt-8 pb-24" : "mt-6 sm:mt-8"}`}>
+        <div className={`eos-offer-body relative z-30 mx-auto max-w-[1400px] px-4 transition-all duration-1000 sm:px-6 lg:px-8 ${isLocked ? "h-[850px] select-none overflow-hidden opacity-20 blur-2xl pointer-events-none" : ""} ${isArchived ? "is-archived -mt-8 pb-24" : ""}`}>
           
-          <div className="flex flex-col gap-8 sm:gap-12 xl:w-2/3 xl:gap-16">
+          <div className="eos-offer-body__main flex flex-col gap-8 sm:gap-12 xl:gap-16">
             {!isArchived ? (
               <div className="md:hidden">
                 {offer.isPresentedByAgent ? (
@@ -1192,8 +1197,8 @@ function OfferDetails({
             </div>
           </div>
 
-          <div className="xl:w-1/3 flex flex-col relative mt-8 xl:mt-0">
-            <div className="xl:sticky top-32 space-y-6 pt-2">
+          <div className="eos-offer-body__aside relative mt-8 xl:mt-0">
+            <div className="space-y-6 pt-2 xl:sticky xl:top-28">
               
               <div className="space-y-8">
                 <div className="eos-offer-panel p-6">
