@@ -187,7 +187,7 @@ async function syntheticHealth() {
   try {
     const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/health`, {
       signal: controller.signal,
-      headers: { Host: 'estateos.pl', Connection: 'close' },
+      headers: { Connection: 'close' },
       cache: 'no-store',
     });
     return {
@@ -215,7 +215,6 @@ async function readRuntimeWorkers() {
         {
           signal: controller.signal,
           headers: {
-            Host: 'estateos.pl',
             Connection: 'close',
             'x-core-guard-token': token,
           },
@@ -318,7 +317,10 @@ function candidateFromFinding(finding: ServerFinding): CoreGuardCandidate {
     detail: finding.detail,
     evidence: Object.fromEntries((finding.evidence || []).map((item) => [item.label, item.value])),
     recommendedAction,
-    autoFixable: recommendedAction === 'safe-cleanup' || recommendedAction === 'reset-pm2-counters',
+    autoFixable:
+      recommendedAction === 'safe-cleanup' ||
+      recommendedAction === 'reset-pm2-counters' ||
+      recommendedAction === 'recycle-web',
     requiredOccurrences: 1,
   };
 }
@@ -345,7 +347,9 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
       title: 'Test syntetyczny WWW nie odpowiada',
       detail: 'Lokalny health-check EstateOS nie zakończył się poprawnie.',
       evidence: sample.synthetic,
-      recommendedAction: 'reload-web',
+      recommendedAction: 'recycle-web',
+      autoFixable: true,
+      requiredOccurrences: 2,
     },
     !sample.synthetic.ok,
   );
@@ -369,7 +373,9 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
       title: 'Worker WWW nie jest online',
       detail: 'Co najmniej jedna instancja nieruchomosci w PM2 jest poza stanem online.',
       evidence: { instances: web.map((process) => ({ id: process.id, status: process.status })) },
-      recommendedAction: 'reload-web',
+      recommendedAction: 'recycle-web',
+      autoFixable: true,
+      requiredOccurrences: 2,
     },
     web.length < 2 || web.some((process) => process.status !== 'online'),
   );

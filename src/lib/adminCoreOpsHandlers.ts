@@ -92,7 +92,7 @@ export async function handleAdminCoreOptimizePOST(req: Request) {
         actions.push({
           id: 'noop',
           label: 'Nie było automatycznej naprawy',
-          detail: 'Licznik i śmieci są czyste, albo WWW wymaga osobnego przycisku Napraw.',
+          detail: 'Nie było śmieci, licznika restartów ani realnego błędu WWW do przeładowania.',
         });
       }
       const after = await diagnoseServer();

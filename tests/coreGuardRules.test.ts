@@ -191,3 +191,12 @@ test('CORE Guard exposes only allowlisted runbooks', () => {
   assert.equal(getCoreGuardRunbook('reload-web')?.automatic, false);
   assert.equal(getCoreGuardRunbook('rm-rf'), null);
 });
+
+test('synthetic WWW outage schedules automatic recycle after confirmation ticks', () => {
+  const hit = evaluateCoreGuardSample(
+    sample({ synthetic: { ok: false, status: null, latencyMs: null } }),
+  ).find((item) => item.fingerprint === 'quick:synthetic-health');
+  assert.equal(hit?.recommendedAction, 'recycle-web');
+  assert.equal(hit?.autoFixable, true);
+  assert.equal(hit?.requiredOccurrences, 2);
+});

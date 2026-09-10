@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  FINDING_RUNBOOK_ID,
   healthScore,
   parsePsEtimeToSec,
+  sameCommitSha,
+  shouldFlagStaleWwwCommit,
   summarizeFindings,
   type ServerFinding,
 } from '../src/lib/adminServerDiagnose';
@@ -29,4 +32,17 @@ test('critical beats warning', () => {
   const rollup = summarizeFindings(findings);
   assert.equal(rollup.level, 'critical');
   assert.equal(rollup.healthy, false);
+});
+
+test('git HEAD after nginx-only deploy is not a stale WWW worker', () => {
+  assert.equal(sameCommitSha('e296bb76e', 'e296bb76'), true);
+  assert.equal(shouldFlagStaleWwwCommit('e296bb76e', 'e296bb76e'), false);
+  assert.equal(shouldFlagStaleWwwCommit('e296bb76e', ''), false);
+  assert.equal(shouldFlagStaleWwwCommit('e296bb76e', '2f6b3f8d4'), true);
+  assert.equal(shouldFlagStaleWwwCommit('e296bb76e', 'unknown'), true);
+});
+
+test('real WWW outage maps to automatic recycle', () => {
+  assert.equal(FINDING_RUNBOOK_ID['health-down'], 'recycle-web');
+  assert.equal(FINDING_RUNBOOK_ID['commit-stale'], 'recycle-web');
 });

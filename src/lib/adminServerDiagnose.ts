@@ -32,8 +32,29 @@ export const FINDING_RUNBOOK_ID: Record<string, string> = {
   'build-leftovers': 'safe-cleanup',
   restarts: 'reset-pm2-counters',
   'web-memory': 'reload-web',
+  'health-down': 'recycle-web',
+  'health-slow': 'recycle-web',
+  'commit-stale': 'recycle-web',
   mariadb: 'start-mariadb',
 };
+
+/** Short SHAs from git / .env / PM2 often differ in length. */
+export function sameCommitSha(left: string, right: string) {
+  const a = String(left || '').trim().toLowerCase();
+  const b = String(right || '').trim().toLowerCase();
+  if (!a || !b || a === 'unknown' || b === 'unknown') return false;
+  const n = Math.min(7, a.length, b.length);
+  return n >= 7 && a.slice(0, n) === b.slice(0, n);
+}
+
+/**
+ * WWW is stale only when the running worker disagrees with .env.
+ * Git HEAD can move on nginx-only deploys without a Next rebuild.
+ */
+export function shouldFlagStaleWwwCommit(envSha: string, runningSha: string) {
+  if (!envSha || !runningSha) return false;
+  return !sameCommitSha(envSha, runningSha);
+}
 
 export type FindingSeverity = 'critical' | 'warning' | 'info';
 
@@ -228,7 +249,8 @@ async function listHungMedia() {
   return rows;
 }
 
-const HEALTH_PING_MS = 8000;
+const HEALTH_PING_MS = 2000;
+const HEALTH_PING_ATTEMPTS = 3;
 
 type HealthPing = {
   reached: boolean;
@@ -239,7 +261,11 @@ type HealthPing = {
   db: string;
 };
 
-function pingHealth(): Promise<HealthPing> {
+function isInsideWwwWorker() {
+  return String(process.env.name || '') === 'nieruchomosci';
+}
+
+function pingHealthOnce(timeoutMs: number): Promise<HealthPing> {
   return new Promise((resolve) => {
     const started = Date.now();
     const finish = (partial: Partial<HealthPing> & Pick<HealthPing, 'reached'>) => {
@@ -257,7 +283,7 @@ function pingHealth(): Promise<HealthPing> {
         hostname: '127.0.0.1',
         port: Number(process.env.PORT || 3000),
         path: '/api/health',
-        timeout: HEALTH_PING_MS,
+        timeout: timeoutMs,
         headers: { Connection: 'close' },
       },
       (res) => {
@@ -293,6 +319,37 @@ function pingHealth(): Promise<HealthPing> {
   });
 }
 
+async function pingHealth(options?: { allowInProcessFallback?: boolean }): Promise<HealthPing> {
+  let last: HealthPing = {
+    reached: false,
+    timedOut: false,
+    statusCode: null,
+    ms: 0,
+    commit: '',
+    db: '',
+  };
+  for (let attempt = 0; attempt < HEALTH_PING_ATTEMPTS; attempt += 1) {
+    last = await pingHealthOnce(HEALTH_PING_MS);
+    if (last.reached) return last;
+    if (attempt < HEALTH_PING_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+  // Diagnose runs inside a WWW worker. HTTP to the same two PM2 instances
+  // deadlocks both of them (Naprawa + Guard at once) and looks like an outage.
+  if (options?.allowInProcessFallback !== false && isInsideWwwWorker()) {
+    return {
+      reached: true,
+      timedOut: false,
+      statusCode: 200,
+      ms: 0,
+      commit: String(process.env.COMMIT_SHA || ''),
+      db: '',
+    };
+  }
+  return last;
+}
+
 function readSwapUsedBytes() {
   try {
     const text = fs.readFileSync('/proc/meminfo', 'utf8');
@@ -306,7 +363,7 @@ function readSwapUsedBytes() {
 
 export async function diagnoseServer(): Promise<DiagnoseReport> {
   const [health, disk, processes, mariadb, junk, hung, sha] = await Promise.all([
-    pingHealth(),
+    pingHealth({ allowInProcessFallback: true }),
     readDiskMetrics('/'),
     readPm2Processes(),
     readMariaDbStatus(),
@@ -425,7 +482,7 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       severity: 'critical',
       title: 'WWW nie odpowiada',
       detail: health.timedOut
-        ? `Lokalny /api/health nie wrócił w ${HEALTH_PING_MS / 1000} sekund.`
+        ? `Lokalny /api/health nie odpowiedział po ${HEALTH_PING_ATTEMPTS} próbach (po ${HEALTH_PING_MS / 1000} s).`
         : 'Nie udało się połączyć z workerem WWW.',
       evidence: [{ label: 'Port', value: String(process.env.PORT || '3000') }],
       action: isBuildLocked() ? undefined : 'Przeładuj workery',
@@ -491,18 +548,22 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       fixable: true,
     });
   }
-  if (sha && (envSha !== sha || (health.commit && health.commit !== sha))) {
+  const runningSha =
+    (health.commit && health.commit !== 'unknown' ? health.commit : '') ||
+    web.map((item) => item.commitSha).find((value) => value && value !== 'unknown') ||
+    '';
+  if (health.reached && shouldFlagStaleWwwCommit(envSha, runningSha)) {
     findings.push({
       id: 'commit-stale',
-      severity: 'info',
-      title: 'Health pokazuje stary commit',
-      detail: 'Kod na dysku jest aktualny. Workery WWW trzymają starą zmienną COMMIT_SHA po reloadzie, który nie wczytał ecosystem.config.cjs.',
+      severity: 'warning',
+      title: 'Workery WWW mają inny commit niż .env',
+      detail: 'Ostatni build WWW nie jest tym, który właśnie działa. Rolling reload wczyta COMMIT_SHA z ecosystem / .env. Sam git HEAD może być nowszy po deployu tylko nginx — to nie jest błąd.',
       evidence: [
-        { label: 'W repozytorium', value: sha },
         { label: 'W pliku .env', value: envSha || 'brak' },
-        { label: 'W procesie WWW', value: health.commit || 'brak' },
+        { label: 'W procesie WWW', value: runningSha || 'brak' },
+        { label: 'W repozytorium', value: sha || 'brak' },
       ],
-      action: isBuildLocked() ? undefined : 'Przeładuj z aktualnym commitem',
+      action: isBuildLocked() ? undefined : 'Przeładuj workery',
       fixable: !isBuildLocked(),
     });
   }
@@ -589,7 +650,7 @@ function trimLogTail(filePath: string, keepBytes: number) {
 async function waitHealthy(timeoutMs = 25_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const health = await pingHealth();
+    const health = await pingHealth({ allowInProcessFallback: false });
     if (health.reached) return true;
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
