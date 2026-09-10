@@ -1,0 +1,10 @@
+[Unit]
+Description=Quiet nightly Lineage backup to QNAP
+After=network-online.target mariadb.service mysql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+ExecStart=/usr/local/bin/l2-backup-to-qnap.sh

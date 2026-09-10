@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Lineage backup at 04:25
+
+[Timer]
+OnCalendar=*-*-* 04:25:00
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

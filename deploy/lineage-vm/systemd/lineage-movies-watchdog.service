@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart Lineage movies listeners if they stop answering
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lineage-movies-watchdog.sh
