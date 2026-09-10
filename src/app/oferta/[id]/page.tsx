@@ -654,10 +654,11 @@ function OfferDetails({
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
         <div
-          className="pointer-events-none absolute inset-x-0 z-40 max-h-[min(92%,calc(100%-0.75rem))] overflow-y-auto overscroll-contain px-3 sm:px-6"
+          className="eos-offer-hero-overlay pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 sm:px-6"
           style={{ top: HERO_BELOW_NAV }}
         >
-          <div className="mx-auto flex max-w-5xl flex-col gap-2.5 sm:gap-4">
+          <div className="eos-offer-hero-overlay__inner mx-auto flex h-full max-w-5xl min-h-0 flex-col">
+            <div className="eos-offer-hero-overlay__top flex shrink-0 flex-col gap-2 sm:gap-3">
             <div className="eos-offer-hero-chrome pointer-events-auto">
               <Link href="/odkryj-mape" className="eos-offer-hero-back">
                 {t.backToMap}
@@ -701,16 +702,19 @@ function OfferDetails({
                 />
               </div>
             ) : null}
+            </div>
 
             {!isArchived ? (
-              <h1 className="eos-offer-hero-title pointer-events-none hidden max-w-4xl self-center px-2 text-center text-3xl font-light leading-tight tracking-tighter [text-wrap:balance] sm:block sm:text-5xl md:text-5xl lg:text-6xl">
+              <h1 className="eos-offer-hero-title pointer-events-none hidden min-h-0 flex-1 items-center justify-center self-center px-2 text-center font-light leading-tight tracking-tighter [text-wrap:balance] sm:flex">
                 {isLocked ? t.beforeLaunchTitle : offer.title}
               </h1>
-            ) : null}
+            ) : (
+              <div className="hidden min-h-0 flex-1 sm:block" aria-hidden />
+            )}
 
             {!isArchived ? (
             <div
-              className="pointer-events-auto hidden w-full flex-col gap-3 sm:flex"
+              className="eos-offer-hero-overlay__dock pointer-events-auto hidden w-full shrink-0 flex-col gap-2 pb-3 pt-2 sm:flex sm:gap-2.5 sm:pb-4"
               onClick={(e) => e.stopPropagation()}
             >
               {offer.isPresentedByAgent ? (
@@ -772,34 +776,38 @@ function OfferDetails({
                 onLegalShieldPress={() => router.push(`/edytuj-oferte/${offer?.id || offer?._id}?focus=kw`)}
               />
 
-            {showAuctionBanner && auctionEvent ? (
-              <AuctionOfferBanner
-                variant="hero"
-                event={auctionEvent}
-                locale={offerLocale}
-                copy={{
-                  title: t.auction.bannerTitle,
-                  subtitleLive: t.auction.bannerSubtitleLive,
-                  subtitleScheduled: t.auction.bannerSubtitleScheduled,
-                  cta: t.auction.bannerCta,
-                  liveBadge: t.auction.liveBadge,
-                }}
-                onPress={openAuctionModal}
-              />
-            ) : null}
-            {showOpenHouseBanner && openHouseEvent ? (
-              <OpenHouseOfferBanner
-                variant="hero"
-                event={openHouseEvent}
-                locale={offerLocale}
-                copy={{
-                  title: t.openHouse.bannerTitle,
-                  subtitle: t.openHouse.bannerSubtitle,
-                  cta: t.openHouse.bannerCta,
-                  liveBadge: t.openHouse.liveBadge,
-                }}
-                onPress={openOpenHouseModal}
-              />
+            {showAuctionBanner || showOpenHouseBanner ? (
+              <div className="eos-offer-hero-features">
+                {showAuctionBanner && auctionEvent ? (
+                  <AuctionOfferBanner
+                    variant="hero"
+                    event={auctionEvent}
+                    locale={offerLocale}
+                    copy={{
+                      title: t.auction.bannerTitle,
+                      subtitleLive: t.auction.bannerSubtitleLive,
+                      subtitleScheduled: t.auction.bannerSubtitleScheduled,
+                      cta: t.auction.bannerCta,
+                      liveBadge: t.auction.liveBadge,
+                    }}
+                    onPress={openAuctionModal}
+                  />
+                ) : null}
+                {showOpenHouseBanner && openHouseEvent ? (
+                  <OpenHouseOfferBanner
+                    variant="hero"
+                    event={openHouseEvent}
+                    locale={offerLocale}
+                    copy={{
+                      title: t.openHouse.bannerTitle,
+                      subtitle: t.openHouse.bannerSubtitle,
+                      cta: t.openHouse.bannerCta,
+                      liveBadge: t.openHouse.liveBadge,
+                    }}
+                    onPress={openOpenHouseModal}
+                  />
+                ) : null}
+              </div>
             ) : null}
             </div>
             ) : null}
@@ -869,7 +877,7 @@ function OfferDetails({
         {isArchived ? (
           <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-30 pb-24" aria-hidden />
         ) : (
-        <div className={`relative z-30 mx-auto flex max-w-[1400px] flex-col gap-6 px-4 transition-all duration-1000 sm:gap-8 sm:px-6 lg:px-8 xl:flex-row ${isLocked ? "h-[850px] select-none overflow-hidden opacity-20 blur-2xl pointer-events-none" : ""} ${isArchived ? "-mt-8 pb-24" : "mt-4 sm:-mt-10 md:-mt-14"}`}>
+        <div className={`relative z-30 mx-auto flex max-w-[1400px] flex-col gap-6 px-4 transition-all duration-1000 sm:gap-8 sm:px-6 lg:px-8 xl:flex-row ${isLocked ? "h-[850px] select-none overflow-hidden opacity-20 blur-2xl pointer-events-none" : ""} ${isArchived ? "-mt-8 pb-24" : "mt-6 sm:mt-8"}`}>
           
           <div className="flex flex-col gap-8 sm:gap-12 xl:w-2/3 xl:gap-16">
             {!isArchived ? (
