@@ -2047,11 +2047,13 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
   };
 
   const openOfferPreview = (offer) => {
+    const offerId = Number(offer?.id);
+    if (!Number.isFinite(offerId) || offerId <= 0) return;
     Haptics.selectionAsync();
     onClose?.({ resumeUsersList: false });
-    setTimeout(() => {
-      navigation.navigate('OfferDetail', { offer });
-    }, 160);
+    InteractionManager.runAfterInteractions(() => {
+      navigation.navigate('OfferDetail', { offerId });
+    });
   };
 
   const renderOffer = ({ item }) => (
@@ -2246,14 +2248,32 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
   const [fetchError, setFetchError] = useState<string | null>(null);
   const txFilterTranslateX = useRef(new Animated.Value(0)).current;
   const openOfferPreview = (offer) => {
+    const offerId = Number(offer?.id);
+    if (!Number.isFinite(offerId) || offerId <= 0) return;
     Haptics.selectionAsync();
     onClose?.();
-    setTimeout(() => {
-      navigation.navigate('OfferDetail', { offer });
-    }, 160);
+    InteractionManager.runAfterInteractions(() => {
+      navigation.navigate('OfferDetail', { offerId });
+    });
+  };
+
+  const openOfferComments = (offer) => {
+    const offerId = Number(offer?.id);
+    if (!Number.isFinite(offerId) || offerId <= 0) return;
+    Haptics.selectionAsync();
+    onClose?.();
+    InteractionManager.runAfterInteractions(() => {
+      navigation.navigate('OfferComments', {
+        offerId,
+        offerTitle: String(offer?.title || ''),
+      });
+    });
   };
 
   const [offers, setOffers] = useState([]);
+  const [idQuery, setIdQuery] = useState('');
+  const [idHit, setIdHit] = useState<any | null>(null);
+  const [idSearching, setIdSearching] = useState(false);
   const [loading, setLoading] = useState(false);
   const isDark = theme.glass === 'dark';
   const txFilterSegmentWidth = txFilterContainerWidth > 0 ? txFilterContainerWidth / 3 : 0;
@@ -2337,6 +2357,56 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
     fetchOffers();
     fetchPendingCount();
   }, [visible, activeTab, token]);
+
+  useEffect(() => {
+    if (!visible) {
+      setIdQuery('');
+      setIdHit(null);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !token) return;
+    const q = idQuery.trim();
+    if (!/^\d+$/.test(q)) {
+      setIdHit(null);
+      setIdSearching(false);
+      return;
+    }
+    const wanted = Number(q);
+    if (offers.some((item) => Number(item?.id) === wanted)) {
+      setIdHit(null);
+      setIdSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setIdSearching(true);
+    const timer = setTimeout(() => {
+      void fetch(`${API_URL}/api/mobile/v1/admin/offers?id=${encodeURIComponent(q)}`, {
+        cache: 'no-store',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+        .then((res) => res.json().catch(() => ({})))
+        .then((data) => {
+          if (cancelled) return;
+          const found = Array.isArray(data?.offers) ? data.offers[0] : data?.offer;
+          setIdHit(found && Number(found.id) === wanted ? found : null);
+        })
+        .catch(() => {
+          if (!cancelled) setIdHit(null);
+        })
+        .finally(() => {
+          if (!cancelled) setIdSearching(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [visible, token, idQuery, offers]);
 
   const changeStatus = async (offerId, newStatus) => {
     if (!token) {
@@ -2429,7 +2499,8 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
             </View>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.offerTitle, { color: theme.text, flex: 1 }]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[styles.offerTitle, { color: theme.text, flex: 1, marginBottom: 2 }]} numberOfLines={2}>{item.title}</Text>
+            <Text style={{ fontSize: 12, color: '#8E8E93', fontWeight: '700', marginBottom: 4 }}>ID {item.id}</Text>
             <View style={[styles.adminStatusPill, { backgroundColor: statusMeta.bg, borderColor: statusMeta.border, alignSelf: 'flex-start', marginTop: 4 }]}>
               <Text style={[styles.adminStatusPillText, { color: statusMeta.text }]}>{statusMeta.label}</Text>
             </View>
@@ -2452,16 +2523,17 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
           </View>
         ) : null}
         <View style={styles.adminActionRow}>
-        {activeTab === 'PENDING' && (
+        <AdminActionButton icon="chatbubble-ellipses" label="Komentarz" tint="#5856D6" fill="rgba(88,86,214,0.12)" onPress={() => openOfferComments(item)} />
+        {normalizeOfferTabStatus(item?.status) === 'PENDING' && (
           <>
               <AdminActionButton icon="checkmark-circle" label="Akceptuj" tint="#34C759" fill="rgba(52,199,89,0.12)" onPress={() => changeStatus(item.id, 'ACTIVE')} />
               <AdminActionButton icon="close-circle" label="Odrzuć" tint="#FF3B30" fill="rgba(255,59,48,0.12)" onPress={() => changeStatus(item.id, 'REJECTED')} />
           </>
         )}
-        {activeTab === 'ACTIVE' && (
+        {normalizeOfferTabStatus(item?.status) === 'ACTIVE' && (
             <AdminActionButton icon="archive" label="Archiwizuj" tint="#FF9F0A" fill="rgba(255,159,10,0.14)" onPress={() => changeStatus(item.id, 'ARCHIVED')} />
         )}
-        {activeTab === 'ARCHIVED' && (
+        {normalizeOfferTabStatus(item?.status) === 'ARCHIVED' && (
             <>
               <AdminActionButton icon="refresh-circle" label="Przywróć" tint="#0A84FF" fill="rgba(10,132,255,0.14)" onPress={() => changeStatus(item.id, 'ACTIVE')} />
               <AdminActionButton icon="trash" label="Usuń" tint="#FF3B30" fill="rgba(255,59,48,0.12)" onPress={() => deleteOfferPermanently(item)} />
@@ -2472,12 +2544,24 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
   );
   };
 
-  const filteredOffers = offers.filter((item) => {
-    if (transactionFilter === 'ALL') return true;
-    const raw = String(item?.transactionType ?? item?.offerType ?? item?.listingType ?? item?.type ?? '').toUpperCase();
-    const isRent = raw === 'RENT' || raw === 'WYNAJEM' || raw === 'NAJEM';
-    return transactionFilter === 'RENT' ? isRent : !isRent;
-  });
+  const filteredOffers = (() => {
+    const q = idQuery.trim();
+    const byTx = offers.filter((item) => {
+      if (transactionFilter === 'ALL') return true;
+      const raw = String(item?.transactionType ?? item?.offerType ?? item?.listingType ?? item?.type ?? '').toUpperCase();
+      const isRent = raw === 'RENT' || raw === 'WYNAJEM' || raw === 'NAJEM';
+      return transactionFilter === 'RENT' ? isRent : !isRent;
+    });
+    const matchesQuery = (item: any) => {
+      if (!q) return true;
+      return String(item?.id ?? '').includes(q);
+    };
+    const local = byTx.filter(matchesQuery);
+    if (idHit && matchesQuery(idHit) && !local.some((item) => Number(item?.id) === Number(idHit.id))) {
+      return [idHit, ...local];
+    }
+    return local;
+  })();
 
   if (!visible) return null;
 
@@ -2527,6 +2611,25 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
             <Text style={[styles.adminTxFilterText, transactionFilter === 'RENT' && styles.adminTxFilterTextActive]}>Wynajem</Text>
           </Pressable>
         </View>
+        <View style={[styles.adminSearchRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+          <Ionicons name="search" size={16} color="#8E8E93" />
+          <TextInput
+            value={idQuery}
+            onChangeText={setIdQuery}
+            placeholder="Szukaj po ID oferty"
+            placeholderTextColor="#8E8E93"
+            keyboardType="number-pad"
+            returnKeyType="search"
+            autoCorrect={false}
+            style={[styles.adminSearchInput, { color: theme.text }]}
+          />
+          {idSearching ? <ActivityIndicator size="small" color="#8E8E93" /> : null}
+          {idQuery.length > 0 && !idSearching ? (
+            <Pressable onPress={() => setIdQuery('')} hitSlop={10}>
+              <Ionicons name="close-circle" size={18} color="#8E8E93" />
+            </Pressable>
+          ) : null}
+        </View>
         {activeTab === 'PENDING' && offers.length > 0 && (
           <View style={[styles.adminPendingInfo, { backgroundColor: isDark ? 'rgba(255,159,10,0.14)' : 'rgba(255,149,0,0.10)', borderColor: 'rgba(255,159,10,0.35)' }]}>
             <Ionicons name="notifications" size={16} color="#FF9F0A" />
@@ -2535,7 +2638,7 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
             </Text>
           </View>
         )}
-        {loading ? <ActivityIndicator size="large" color="#10b981" style={{ marginTop: 50 }} /> : <FlatList data={filteredOffers} keyExtractor={item => item.id.toString()} renderItem={renderOffer} contentContainerStyle={{ padding: 20 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert dla tego filtra.</Text>} />}
+        {loading ? <ActivityIndicator size="large" color="#10b981" style={{ marginTop: 50 }} /> : <FlatList data={filteredOffers} keyExtractor={item => item.id.toString()} renderItem={renderOffer} contentContainerStyle={{ padding: 20 }} initialNumToRender={8} maxToRenderPerBatch={6} windowSize={7} removeClippedSubviews={Platform.OS === 'android'} keyboardShouldPersistTaps="handled" ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>{idQuery.trim() ? 'Brak oferty o tym ID.' : 'Brak ofert dla tego filtra.'}</Text>} />}
       </View>
     </Modal>
   );
@@ -5652,6 +5755,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  adminSearchRow: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adminSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    paddingVertical: 8,
   },
   adminTxFilterSlider: {
     position: 'absolute',

@@ -105,7 +105,6 @@ import ProfileWriteMessageButton from '../components/messaging/ProfileWriteMessa
 import { openDirectContactChat } from '../utils/openDirectContact';
 import { API_URL } from '../config/network';
 import { preferHdrDisplayUri, type OfferHdrMetaEntry } from '../utils/offerHdrDisplay';
-import { findWebOfferById } from '../utils/webOffersFallback';
 import { useMoneyContext } from '../money/useMoneyContext';
 import {
   isFavoriteId,
@@ -352,15 +351,6 @@ export default function OfferDetail({ route, navigation }: any) {
           /* endpoint może nie istnieć na starszym backendzie */
         }
 
-        if (!candidate) {
-          const mobileRes = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, { headers });
-          if (mobileRes.ok) {
-            const mobileJson = await mobileRes.json();
-          const offers = Array.isArray(mobileJson?.offers) ? mobileJson.offers : [];
-          candidate = offers.find((o: any) => Number(o?.id || 0) === id) || null;
-          }
-        }
-
         let webCandidate: any = null;
         const webRes = await fetch(`${API_URL}/api/offers/${id}`);
         if (webRes.ok) {
@@ -370,9 +360,6 @@ export default function OfferDetail({ route, navigation }: any) {
             webJson?.data?.offer ||
             webJson?.data ||
             (webJson?.id ? webJson : null);
-        }
-        if (!webCandidate) {
-          webCandidate = await findWebOfferById(id);
         }
 
         if (webCandidate) {

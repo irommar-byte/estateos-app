@@ -8,8 +8,42 @@ import { notifyOwnerOfferModeration } from '@/lib/ownerLifecyclePush';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { loadPendingEditChangesByOfferIds } from '@/lib/offerEditReview';
 import { ensureOfferLegalColumns } from '@/lib/services/offer.service';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 const OFFER_ADMIN_STATUSES: OfferStatus[] = ['PENDING', 'ACTIVE', 'ARCHIVED', 'REJECTED', 'SOLD', 'IN_DEAL'];
+
+const ADMIN_OFFER_LIST_SELECT = {
+  id: true,
+  title: true,
+  status: true,
+  transactionType: true,
+  city: true,
+  district: true,
+  street: true,
+  price: true,
+  pricePln: true,
+  priceCurrency: true,
+  images: true,
+  createdAt: true,
+  updatedAt: true,
+  user: { select: { email: true, name: true, phone: true } },
+} as const;
+
+function slimOfferImages(images: unknown) {
+  const thumb = resolveOfferPrimaryImage({ images });
+  return thumb ? JSON.stringify([thumb]) : null;
+}
+
+function shapeAdminListOffer<T extends { id: number; images?: unknown }>(
+  offer: T,
+  pendingEdits: Map<number, unknown[]>,
+) {
+  return {
+    ...offer,
+    images: slimOfferImages(offer.images),
+    pendingEditChanges: pendingEdits.get(offer.id) || [],
+  };
+}
 
 export async function GET(req: Request) {
   const gate = await requireMobileAdmin(req);
@@ -18,22 +52,31 @@ export async function GET(req: Request) {
   try {
     await ensureOfferLegalColumns();
     const { searchParams } = new URL(req.url);
+    const idLookup = Number(searchParams.get('id') || '');
+    if (Number.isFinite(idLookup) && idLookup > 0) {
+      const offer = await prisma.offer.findUnique({
+        where: { id: idLookup },
+        select: ADMIN_OFFER_LIST_SELECT,
+      });
+      if (!offer) {
+        return NextResponse.json({ success: true, offers: [], offer: null });
+      }
+      const pendingEdits = await loadPendingEditChangesByOfferIds([offer.id]);
+      const shaped = shapeAdminListOffer(offer, pendingEdits);
+      return NextResponse.json({ success: true, offers: [shaped], offer: shaped });
+    }
+
     const rawStatus = searchParams.get('status') || 'PENDING';
     const status = (OFFER_ADMIN_STATUSES.includes(rawStatus as OfferStatus) ? rawStatus : 'PENDING') as OfferStatus;
 
     const offers = await prisma.offer.findMany({
       where: { status },
       orderBy: { createdAt: 'desc' },
-      include: { 
-        user: { select: { email: true, name: true, phone: true } } 
-      }
+      select: ADMIN_OFFER_LIST_SELECT,
     });
 
     const pendingEdits = await loadPendingEditChangesByOfferIds(offers.map((o) => o.id));
-    const shaped = offers.map((offer) => ({
-      ...offer,
-      pendingEditChanges: pendingEdits.get(offer.id) || [],
-    }));
+    const shaped = offers.map((offer) => shapeAdminListOffer(offer, pendingEdits));
 
     return NextResponse.json({ success: true, offers: shaped });
   } catch (error: any) {
