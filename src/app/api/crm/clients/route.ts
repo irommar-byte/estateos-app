@@ -73,13 +73,17 @@ export async function GET(req: Request) {
       sellerCity: true,
       sellerPrice: true,
       linkedUserId: true,
+      linkedOfferId: true,
       portalToken: true,
       linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
+      linkedOffer: { select: { status: true } },
       buyerPreference: { select: { city: true, maxPrice: true } },
     },
   });
 
   const ids = clients.map((client) => client.id);
+  const buyerIds = clients.filter((client) => client.type === 'BUYER').map((client) => client.id);
+  const sellerIds = clients.filter((client) => client.type === 'SELLER').map((client) => client.id);
   const buyerUserIds = Array.from(
     new Set(
       clients
@@ -88,13 +92,13 @@ export async function GET(req: Request) {
     ),
   ).filter((id) => Number.isFinite(id) && id > 0);
 
-  const [matchRows, activityRows, closedDeals] = await Promise.all([
-    ids.length ? prisma.$queryRaw<Array<{
+  const [matchRows, activityRows, closedDeals, acquisitions] = await Promise.all([
+    buyerIds.length ? prisma.$queryRaw<Array<{
       clientId: number;
       matchCount: bigint | number | string;
       topScore: number | null;
       sentCount: bigint | number | string;
-    }>>(clientMatchStatsSql(ids)) : [],
+    }>>(clientMatchStatsSql(buyerIds)) : [],
     ids.length
       ? prisma.$queryRaw<Array<{ clientId: number; kind: string; metadata: unknown }>>(
           clientActivityLatestSql(ids),
@@ -107,11 +111,23 @@ export async function GET(req: Request) {
           _count: { _all: true },
         })
       : [],
+    sellerIds.length
+      ? prisma.agencyClientAcquisition.findMany({
+          where: { clientId: { in: sellerIds } },
+          select: { clientId: true, status: true, signedAt: true },
+        })
+      : [],
   ]);
 
   const matchByClient = indexMatchStats(matchRows);
   const actsByClient = indexActivities(activityRows);
   const closedBuyerIds = new Set(closedDeals.map((row) => row.buyerId));
+  const acquisitionByClient = new Map(
+    acquisitions.map((row) => [
+      row.clientId,
+      row.status === 'SIGNED' || Boolean(row.signedAt),
+    ]),
+  );
 
   return NextResponse.json(
     {
@@ -128,10 +144,14 @@ export async function GET(req: Request) {
             matches: match?.top != null ? [{ score: match.top }] : [],
             activities: actsByClient.get(client.id) || [],
             linkedUser: client.linkedUser,
+            linkedOfferId: client.linkedOfferId,
+            linkedOffer: client.linkedOffer,
           },
           {
             dealClosed: Boolean(client.linkedUserId && closedBuyerIds.has(client.linkedUserId)),
             sentCount: match?.sent ?? 0,
+            acquisitionSigned: acquisitionByClient.get(client.id) === true,
+            linkedOfferStatus: client.linkedOffer?.status ?? null,
           },
         );
       }),

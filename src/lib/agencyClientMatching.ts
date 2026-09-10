@@ -213,43 +213,56 @@ export async function matchPublishedOfferToAgencyClients(
 }
 
 export async function buildAgencyClientReport(agencyUserId: number) {
-  const [buyers, sellers, matches, activities] = await Promise.all([
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [buyers, sellers, matchRows, activities, topMatches] = await Promise.all([
     prisma.agencyClient.count({ where: { agencyUserId, type: 'BUYER', status: 'ACTIVE' } }),
     prisma.agencyClient.count({ where: { agencyUserId, type: 'SELLER', status: 'ACTIVE' } }),
-    prisma.agencyClientMatch.count({
-      where: { client: { agencyUserId, status: 'ACTIVE' } },
-    }),
+    prisma.$queryRaw<Array<{ n: bigint | number | string }>>`
+      SELECT COUNT(*) AS n
+      FROM AgencyClientMatch m
+      INNER JOIN AgencyClient c ON c.id = m.clientId
+      WHERE c.agencyUserId = ${agencyUserId} AND c.status = 'ACTIVE'
+    `,
     prisma.agencyClientActivity.count({
       where: {
         agencyUserId,
         kind: { in: ['OFFER_SHARED', 'CLIENT_NOTIFIED'] },
-        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        createdAt: { gte: since },
       },
     }),
+    prisma.$queryRaw<Array<{
+      offerId: number;
+      score: number;
+      firstName: string;
+      lastName: string;
+      title: string;
+      city: string | null;
+      price: number | null;
+    }>>`
+      SELECT m.offerId, m.score, c.firstName, c.lastName, o.title, o.city, o.price
+      FROM AgencyClientMatch m
+      INNER JOIN AgencyClient c ON c.id = m.clientId
+      INNER JOIN Offer o ON o.id = m.offerId
+      WHERE c.agencyUserId = ${agencyUserId}
+        AND c.status = 'ACTIVE'
+        AND c.type = 'BUYER'
+      ORDER BY m.score DESC
+      LIMIT 5
+    `,
   ]);
-
-  const topMatches = await prisma.agencyClientMatch.findMany({
-    where: { client: { agencyUserId, status: 'ACTIVE', type: 'BUYER' } },
-    orderBy: { score: 'desc' },
-    take: 5,
-    include: {
-      client: { select: { firstName: true, lastName: true } },
-      offer: { select: { id: true, title: true, city: true, price: true } },
-    },
-  });
 
   return {
     buyers,
     sellers,
-    totalMatches: matches,
+    totalMatches: Number(matchRows[0]?.n || 0),
     outreachLast30Days: activities,
     topMatches: topMatches.map((m) => ({
-      clientName: `${m.client.firstName} ${m.client.lastName}`.trim(),
-      offerId: m.offer.id,
-      offerTitle: m.offer.title,
-      city: m.offer.city,
-      price: m.offer.price,
-      score: m.score,
+      clientName: `${m.firstName} ${m.lastName}`.trim(),
+      offerId: Number(m.offerId),
+      offerTitle: m.title,
+      city: m.city,
+      price: m.price,
+      score: Number(m.score),
     })),
   };
 }

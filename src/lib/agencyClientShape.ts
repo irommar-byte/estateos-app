@@ -29,6 +29,10 @@ export type AgencyClientListItem = {
   upcomingMeetingStartsAt?: string | null;
   upcomingMeetingLocation?: string | null;
   portalUrl?: string | null;
+  linkedOfferId?: number | null;
+  linkedOfferStatus?: string | null;
+  acquisitionSigned?: boolean;
+  meetingConfirmed?: boolean;
 };
 
 export function buyerPrefToRadarRecord(pref: AgencyClientBuyerPreference | null): Record<string, unknown> {
@@ -138,8 +142,15 @@ export function shapeClientListItem(
     matches?: { score: number; notifiedAt?: Date | null }[];
     linkedUser?: { id: number; email: string; lastLoginAt: Date | null } | null;
     activities?: Array<{ kind?: string; metadata: unknown }>;
+    linkedOfferId?: number | null;
+    linkedOffer?: { status?: string | null } | null;
   },
-  extras?: { dealClosed?: boolean; sentCount?: number },
+  extras?: {
+    dealClosed?: boolean;
+    sentCount?: number;
+    acquisitionSigned?: boolean;
+    linkedOfferStatus?: string | null;
+  },
 ): AgencyClientListItem {
   const top = client.matches?.[0]?.score ?? null;
   const meetingAct = client.activities?.find((item) => item.kind === 'ACQUISITION_MEETING') || client.activities?.[0];
@@ -156,6 +167,10 @@ export function shapeClientListItem(
   const presentationConfirmed = (client.activities || []).some(
     (item) => String(item.kind || '') === 'PRESENTATION_CONFIRMED',
   );
+  const meetingConfirmed = Boolean(rawMeetingStart);
+  const linkedOfferStatus =
+    extras?.linkedOfferStatus ??
+    (typeof client.linkedOffer?.status === 'string' ? client.linkedOffer.status : null);
 
   return {
     id: client.id,
@@ -186,6 +201,10 @@ export function shapeClientListItem(
     portalUrl: client.portalToken
       ? `${(process.env.NEXT_PUBLIC_SITE_URL || 'https://estateos.pl').replace(/\/$/, '')}/klient/${client.portalToken}`
       : null,
+    linkedOfferId: client.linkedOfferId ?? null,
+    linkedOfferStatus,
+    acquisitionSigned: extras?.acquisitionSigned === true,
+    meetingConfirmed,
   };
 }
 

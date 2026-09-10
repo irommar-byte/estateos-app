@@ -20,11 +20,48 @@ export async function requireAgencyUserId(req?: Request): Promise<number | null>
   return user.id;
 }
 
+const LITE_ACTIVITY_KINDS = [
+  'ACQUISITION_MEETING',
+  'MEETING_CHANGE_PROPOSED',
+  'MEETING_CONFIRMED',
+  'PRESENTATION_PROPOSED',
+  'PRESENTATION_CHANGE_PROPOSED',
+  'PRESENTATION_CONFIRMED',
+] as const;
+
+export async function getAgencyClientLiteForUser(clientId: number, agencyUserId: number) {
+  return prisma.agencyClient.findFirst({
+    where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+    include: {
+      linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
+      linkedOffer: { select: { status: true } },
+      buyerPreference: true,
+      matches: {
+        orderBy: { score: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          score: true,
+          notifiedAt: true,
+          clientFeedback: true,
+          clientFeedbackAt: true,
+        },
+      },
+      activities: {
+        where: { kind: { in: [...LITE_ACTIVITY_KINDS] } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      },
+    },
+  });
+}
+
 export async function getAgencyClientForUser(clientId: number, agencyUserId: number) {
   return prisma.agencyClient.findFirst({
     where: { id: clientId, agencyUserId, status: 'ACTIVE' },
     include: {
       linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
+      linkedOffer: { select: { status: true } },
       buyerPreference: true,
       matches: {
         orderBy: { score: 'desc' },
