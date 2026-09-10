@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart Lineage Login/Game screens if Java is missing
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/l2-gameserver-watchdog.sh
