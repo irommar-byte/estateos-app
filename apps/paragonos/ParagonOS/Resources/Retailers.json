@@ -1,0 +1,148 @@
+{
+  "retailers": [
+    {
+      "id": "biedronka",
+      "name": "Biedronka",
+      "keywords": [
+        "biedronka",
+        "jeronimo martins",
+        "recyclomat",
+        "recyklomat",
+        "recyklobox",
+        "biedronka sp",
+        "moja biedronka"
+      ],
+      "taxIDs": [],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": 30 }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": true,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Papierowy voucher możesz zrealizować przy kasie albo wymienić na gotówkę. Jeśli kasa nie odczyta kodu z ekranu, pokaż zdjęcie lub papier. e-Portfel w aplikacji Moja Biedronka to osobna ścieżka — ParagonOS™ pilnuje wydrukowanego kwitka."
+    },
+    {
+      "id": "lidl",
+      "name": "Lidl",
+      "keywords": ["lidl", "lidl sp", "lidl polska"],
+      "taxIDs": [],
+      "validityRules": [
+        { "effectiveFrom": "2025-10-01", "days": 30 },
+        { "effectiveFrom": "2026-10-01", "days": 100 }
+      ],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": true,
+      "checkoutHint": "Kupon Lidl realizujesz przy kasie w dowolnym sklepie sieci. Wartość zakupów musi być co najmniej równa kwocie kuponu."
+    },
+    {
+      "id": "kaufland",
+      "name": "Kaufland",
+      "keywords": [
+        "kaufland",
+        "kaufland polska",
+        "kaufland polska markety",
+        "polska markety",
+        "kautiond",
+        "kautiand",
+        "kauflnd",
+        "kaufiand",
+        "kaufand",
+        "kaufiad",
+        "kauiland",
+        "kanfland"
+      ],
+      "taxIDs": ["8982367273", "000013346"],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": 100 }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": true,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Bon Kaufland możesz wykorzystać przy zakupach albo wymienić na gotówkę w Punkcie Informacyjnym. Ważny w dowolnym sklepie sieci."
+    },
+    {
+      "id": "netto",
+      "name": "Netto",
+      "keywords": ["netto", "netto sp", "dansk supermarket"],
+      "taxIDs": [],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": 90 }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Zrealizuj bon Netto przy kasie przed upływem terminu."
+    },
+    {
+      "id": "stokrotka",
+      "name": "Stokrotka",
+      "keywords": ["stokrotka", "stokrotk", "stokrotka sp", "tomra", "trisort", "butelkomaty"],
+      "taxIDs": [],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": 90 }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Zrealizuj bon Stokrotka przy kasie przed upływem terminu."
+    },
+    {
+      "id": "carrefour",
+      "name": "Carrefour",
+      "keywords": ["carrefour", "carrefour polska"],
+      "taxIDs": [],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": 60 }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Zrealizuj bon Carrefour przy kasie przed upływem terminu."
+    },
+    {
+      "id": "aldi",
+      "name": "ALDI",
+      "keywords": ["aldi", "aldi sp", "hofer"],
+      "taxIDs": ["1070002973"],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": 30 }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Zrealizuj bon ALDI przy kasie przed upływem terminu."
+    },
+    {
+      "id": "auchan",
+      "name": "Auchan",
+      "keywords": ["auchan", "auchan polska"],
+      "taxIDs": [],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": null }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Bon Auchan nie ma nadrukowanego limitu ważności — i tak trzymaj kopię w ParagonOS™."
+    },
+    {
+      "id": "dino",
+      "name": "Dino",
+      "keywords": ["dino", "dino polska", "dino s.a.", "market dino"],
+      "taxIDs": [],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": null }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Bon Dino nie ma nadrukowanego limitu ważności — i tak trzymaj kopię w ParagonOS™."
+    },
+    {
+      "id": "unknown",
+      "name": "Inna sieć",
+      "keywords": [],
+      "taxIDs": [],
+      "validityRules": [],
+      "screenBarcode": "photoPreferred",
+      "networkWide": false,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Jeśli kasa nie odczyta kodu z ekranu, pokaż zdjęcie kwitka."
+    }
+  ]
+}

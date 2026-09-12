@@ -1,0 +1,196 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1CD081B7B3C1444A8FD8271A /* App/WalletModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75D07328797F4139A557770E /* App/WalletModel.swift */; };
+		D0B0FDDDBB134DFDBBFB8D19 /* Core/Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 971D1A2A3CA748C1A27EFEA3 /* Core/Brand.swift */; };
+		FC72725EDAF14C1CB232800F /* Core/Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 705476F4BF73417597FB2518 /* Core/Models.swift */; };
+		4109BD3D54F34FD9BAB68366 /* Core/ReceiptModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27721DEED1594CA19CD1B5B7 /* Core/ReceiptModels.swift */; };
+		0867912E5B1942FF9E9853B5 /* Core/ReceiptParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E2F436A298A477E9F589DA2 /* Core/ReceiptParser.swift */; };
+		DCD5AD74B61346838DC9917B /* Core/RetailerCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD04106E0E1F4D298EE5A0A2 /* Core/RetailerCatalog.swift */; };
+		25BA45FB1AC74E3CB9F3EA3C /* Core/TicketStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55136DA925DC4B1C9A331332 /* Core/TicketStatus.swift */; };
+		95B4C1CF33384643A2150CD4 /* Core/VoucherParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF08C6F120A445A79832B64B /* Core/VoucherParser.swift */; };
+		FFB76E4628A94600853032F1 /* Intents/ScanVoucherIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C81072265DD4B6F80A2168A /* Intents/ScanVoucherIntent.swift */; };
+		8560821055C94EF4A637EDD2 /* ParagonOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03C9B76939204F768C36C552 /* ParagonOSApp.swift */; };
+		AA27B478972D4DA1B1D260BD /* Services/BarcodePresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFB2466436F74B768751A618 /* Services/BarcodePresenter.swift */; };
+		877AFCDCFE364E8D8804D5AA /* Services/BiometricLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BB0A108DAC4637A7C0249C /* Services/BiometricLock.swift */; };
+		1AA3A544294A4C5280F56EE6 /* Services/CloudKitFamilyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB96E32D079404997C3152B /* Services/CloudKitFamilyService.swift */; };
+		992A5142D6EF4D1C80E198D3 /* Services/CloudSharingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E384A3F5471E47E9A776CEFA /* Services/CloudSharingView.swift */; };
+		180B9020D9E24172AA756007 /* Services/ExpiryNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17C7914C63094514BA0276F5 /* Services/ExpiryNotificationService.swift */; };
+		D9F0F68B1D794C88B51113CE /* Services/LaunchSounds.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2CE3C80EF3D453EB32386F2 /* Services/LaunchSounds.swift */; };
+		A978E297C02949049F9B95D7 /* Services/ScanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12ED49AE4373456387C551D7 /* Services/ScanService.swift */; };
+		5008A336F259466B9B2F4910 /* Theme/ParagonTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A238552D8C141E2A5B3FA54 /* Theme/ParagonTheme.swift */; };
+		ACE3AB28E3304ACB82438BD9 /* Views/CheckoutCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B5507D2423491C93DBD151 /* Views/CheckoutCodeView.swift */; };
+		827C67DFADE64A448C1786F9 /* Views/Components/CascadeSpendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9564DA67313048B391512847 /* Views/Components/CascadeSpendChart.swift */; };
+		AF3B2F3BA21148B7A98301F8 /* Views/Components/FirstScanTip.swift in Sources */ = {isa = PBXBuildFile; fileRef = D659E88BBFB1417D87F8AC60 /* Views/Components/FirstScanTip.swift */; };
+		7579F5783233466780C442F3 /* Views/Components/LaunchSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED575EC8B82A4F68BD4D89C4 /* Views/Components/LaunchSplashView.swift */; };
+		A7A2F0E47ABE4578B69F5289 /* Views/Components/MotifBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B0E392341854DB286B923FA /* Views/Components/MotifBackground.swift */; };
+		ED6C9CF81C3E4D3CA7EC47D3 /* Views/Components/RetailerLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDBB1BF8BDB3441E9DD5D0B7 /* Views/Components/RetailerLogo.swift */; };
+		9F389DF97165430688CC1D59 /* Views/Components/ScannerHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64AD376C173B4FAFBB3F3646 /* Views/Components/ScannerHost.swift */; };
+		DFC5D83E64AF44388A465339 /* Views/Components/VoucherPassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E57C32E65B4CFB9F0FF287 /* Views/Components/VoucherPassCard.swift */; };
+		718C23A48FDB4FF79090D6D1 /* Views/FamilyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B2DA1589DD4E6AAC9C1380 /* Views/FamilyView.swift */; };
+		9C8FD91EB1084090AC3ECA9E /* Views/HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59F503672BCF4BBE9A8A3E0C /* Views/HistoryView.swift */; };
+		4FC2DBC7FAB84832A7392F7A /* Views/OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD02F2DC595B442A81C5FED4 /* Views/OnboardingView.swift */; };
+		920E76FB8C824BCEA336408C /* Views/ReceiptDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F72CAD3842714CDEB2DD807E /* Views/ReceiptDetailView.swift */; };
+		1CDF74C837D3446B8C15E02C /* Views/ReceiptScanReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57EB8A726F7C4E27AA4E267F /* Views/ReceiptScanReviewView.swift */; };
+		DFAB656C654744EAB9B00671 /* Views/ReceiptsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57BAF4F3A7140A092A6B22A /* Views/ReceiptsHomeView.swift */; };
+		3736B22E9A72412F9D48995F /* Views/RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06DECE43966452EACAAEFF4 /* Views/RootTabView.swift */; };
+		22D83724BFA0454A9820C0AC /* Views/ScanReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E04609D6004C93BA7CC863 /* Views/ScanReviewView.swift */; };
+		06DDEC13C4C74934836427D5 /* Views/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 231C4C683C4247D7BC40C153 /* Views/SettingsView.swift */; };
+		0788D9821B7D402C8DE49B07 /* Views/TicketDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E0E3EEF87044ABE91113B80 /* Views/TicketDetailView.swift */; };
+		864A3F2040804E8ABF7E64B8 /* Views/WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CDE08700ADF4AE181DCBDB7 /* Views/WalletView.swift */; };
+		F0D5A537A84F41A89678553F /* FamilySharePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7881768CFFDE46678D13E1AB /* FamilySharePolicyTests.swift */; };
+		7613E5708EA247509C11DC54 /* ReceiptParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 477EB86059E04A1BBB00440E /* ReceiptParserTests.swift */; };
+		E46558A524D04FAAAC554661 /* VoucherParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083CF1E659BA4A0395799262 /* VoucherParserTests.swift */; };
+		860FD83316514FE09877B5DF /* Resources/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D24A4DFB5C124DC99C111025 /* Resources/Assets.xcassets */; };
+		62C335457A52487196D4C6C9 /* Resources/PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DBB27024CBE94C9FBB2A9036 /* Resources/PrivacyInfo.xcprivacy */; };
+		C2474915D4C840CD8F534622 /* Resources/Retailers.json in Resources */ = {isa = PBXBuildFile; fileRef = 6AFC31A2D673444FAE37C8DE /* Resources/Retailers.json */; };
+		E9257387CBDE4C56B2BB0BF9 /* Resources/Sounds/cash-register-open.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 189460C7B20F45F08E5A8118 /* Resources/Sounds/cash-register-open.mp3 */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3EA3AAFF0A854BA4BA707BBA = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A386D55174F348288ADE8F17 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 69E2D2EBB5DC43A881E2C711;
+			remoteInfo = ParagonOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		2444D5B9205F476181B85F58 /* ParagonOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ParagonOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		25266E12CEE84B3486A9CD26 /* ParagonOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ParagonOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		75D07328797F4139A557770E /* App/WalletModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletModel.swift; sourceTree = "<group>"; };
+		971D1A2A3CA748C1A27EFEA3 /* Core/Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
+		705476F4BF73417597FB2518 /* Core/Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		27721DEED1594CA19CD1B5B7 /* Core/ReceiptModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptModels.swift; sourceTree = "<group>"; };
+		2E2F436A298A477E9F589DA2 /* Core/ReceiptParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptParser.swift; sourceTree = "<group>"; };
+		CD04106E0E1F4D298EE5A0A2 /* Core/RetailerCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetailerCatalog.swift; sourceTree = "<group>"; };
+		55136DA925DC4B1C9A331332 /* Core/TicketStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketStatus.swift; sourceTree = "<group>"; };
+		DF08C6F120A445A79832B64B /* Core/VoucherParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoucherParser.swift; sourceTree = "<group>"; };
+		2C81072265DD4B6F80A2168A /* Intents/ScanVoucherIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanVoucherIntent.swift; sourceTree = "<group>"; };
+		03C9B76939204F768C36C552 /* ParagonOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParagonOSApp.swift; sourceTree = "<group>"; };
+		AFB2466436F74B768751A618 /* Services/BarcodePresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodePresenter.swift; sourceTree = "<group>"; };
+		B4BB0A108DAC4637A7C0249C /* Services/BiometricLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricLock.swift; sourceTree = "<group>"; };
+		8DB96E32D079404997C3152B /* Services/CloudKitFamilyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitFamilyService.swift; sourceTree = "<group>"; };
+		E384A3F5471E47E9A776CEFA /* Services/CloudSharingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSharingView.swift; sourceTree = "<group>"; };
+		17C7914C63094514BA0276F5 /* Services/ExpiryNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpiryNotificationService.swift; sourceTree = "<group>"; };
+		F2CE3C80EF3D453EB32386F2 /* Services/LaunchSounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSounds.swift; sourceTree = "<group>"; };
+		12ED49AE4373456387C551D7 /* Services/ScanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanService.swift; sourceTree = "<group>"; };
+		8A238552D8C141E2A5B3FA54 /* Theme/ParagonTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParagonTheme.swift; sourceTree = "<group>"; };
+		52B5507D2423491C93DBD151 /* Views/CheckoutCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutCodeView.swift; sourceTree = "<group>"; };
+		9564DA67313048B391512847 /* Views/Components/CascadeSpendChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadeSpendChart.swift; sourceTree = "<group>"; };
+		D659E88BBFB1417D87F8AC60 /* Views/Components/FirstScanTip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstScanTip.swift; sourceTree = "<group>"; };
+		ED575EC8B82A4F68BD4D89C4 /* Views/Components/LaunchSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSplashView.swift; sourceTree = "<group>"; };
+		4B0E392341854DB286B923FA /* Views/Components/MotifBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotifBackground.swift; sourceTree = "<group>"; };
+		EDBB1BF8BDB3441E9DD5D0B7 /* Views/Components/RetailerLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetailerLogo.swift; sourceTree = "<group>"; };
+		64AD376C173B4FAFBB3F3646 /* Views/Components/ScannerHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerHost.swift; sourceTree = "<group>"; };
+		21E57C32E65B4CFB9F0FF287 /* Views/Components/VoucherPassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoucherPassCard.swift; sourceTree = "<group>"; };
+		A5B2DA1589DD4E6AAC9C1380 /* Views/FamilyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyView.swift; sourceTree = "<group>"; };
+		59F503672BCF4BBE9A8A3E0C /* Views/HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		DD02F2DC595B442A81C5FED4 /* Views/OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		F72CAD3842714CDEB2DD807E /* Views/ReceiptDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptDetailView.swift; sourceTree = "<group>"; };
+		57EB8A726F7C4E27AA4E267F /* Views/ReceiptScanReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScanReviewView.swift; sourceTree = "<group>"; };
+		E57BAF4F3A7140A092A6B22A /* Views/ReceiptsHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptsHomeView.swift; sourceTree = "<group>"; };
+		B06DECE43966452EACAAEFF4 /* Views/RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
+		D6E04609D6004C93BA7CC863 /* Views/ScanReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanReviewView.swift; sourceTree = "<group>"; };
+		231C4C683C4247D7BC40C153 /* Views/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		0E0E3EEF87044ABE91113B80 /* Views/TicketDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketDetailView.swift; sourceTree = "<group>"; };
+		9CDE08700ADF4AE181DCBDB7 /* Views/WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
+		7881768CFFDE46678D13E1AB /* FamilySharePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilySharePolicyTests.swift; sourceTree = "<group>"; };
+		477EB86059E04A1BBB00440E /* ReceiptParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptParserTests.swift; sourceTree = "<group>"; };
+		083CF1E659BA4A0395799262 /* VoucherParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoucherParserTests.swift; sourceTree = "<group>"; };
+		D24A4DFB5C124DC99C111025 /* Resources/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		DBB27024CBE94C9FBB2A9036 /* Resources/PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		6AFC31A2D673444FAE37C8DE /* Resources/Retailers.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Retailers.json; sourceTree = "<group>"; };
+		189460C7B20F45F08E5A8118 /* Resources/Sounds/cash-register-open.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = cash-register-open.mp3; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DB1944ED2AD84B259D45007D = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BBD34AEDE2154428AA87F3C2 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		572506FBC03A47D789067664 = {isa = PBXGroup; children = (2444D5B9205F476181B85F58 /* ParagonOS.app */, 25266E12CEE84B3486A9CD26 /* ParagonOSTests.xctest */); name = Products; sourceTree = "<group>"; };
+		DF8027B280684543BADC456F = {isa = PBXGroup; children = (7881768CFFDE46678D13E1AB /* FamilySharePolicyTests.swift */, 477EB86059E04A1BBB00440E /* ReceiptParserTests.swift */, 083CF1E659BA4A0395799262 /* VoucherParserTests.swift */); path = ParagonOSTests; sourceTree = "<group>"; };
+		8859B189D33548B59242E026 = {isa = PBXGroup; children = (5B36627F91DF436BB69DD710 /* ParagonOS */, DF8027B280684543BADC456F /* ParagonOSTests */, 572506FBC03A47D789067664 /* Products */); sourceTree = "<group>"; };
+		2682A58CC3314077AFA3E5AE = {isa = PBXGroup; children = (75D07328797F4139A557770E /* WalletModel.swift */); path = App; sourceTree = "<group>"; };
+		CE1367EEDA94473DA19A4710 = {isa = PBXGroup; children = (971D1A2A3CA748C1A27EFEA3 /* Brand.swift */, 705476F4BF73417597FB2518 /* Models.swift */, 27721DEED1594CA19CD1B5B7 /* ReceiptModels.swift */, 2E2F436A298A477E9F589DA2 /* ReceiptParser.swift */, CD04106E0E1F4D298EE5A0A2 /* RetailerCatalog.swift */, 55136DA925DC4B1C9A331332 /* TicketStatus.swift */, DF08C6F120A445A79832B64B /* VoucherParser.swift */); path = Core; sourceTree = "<group>"; };
+		955F0ADA0ACE4BAE900C3686 = {isa = PBXGroup; children = (2C81072265DD4B6F80A2168A /* ScanVoucherIntent.swift */); path = Intents; sourceTree = "<group>"; };
+		DBEAD377C49C4411A233B183 = {isa = PBXGroup; children = (D24A4DFB5C124DC99C111025 /* Assets.xcassets */, DBB27024CBE94C9FBB2A9036 /* PrivacyInfo.xcprivacy */, 6AFC31A2D673444FAE37C8DE /* Retailers.json */, 15103D52461B4EE9A4CAAD54 /* Sounds */); path = Resources; sourceTree = "<group>"; };
+		4957D56462A64B0AB20879B4 = {isa = PBXGroup; children = (AFB2466436F74B768751A618 /* BarcodePresenter.swift */, B4BB0A108DAC4637A7C0249C /* BiometricLock.swift */, 8DB96E32D079404997C3152B /* CloudKitFamilyService.swift */, E384A3F5471E47E9A776CEFA /* CloudSharingView.swift */, 17C7914C63094514BA0276F5 /* ExpiryNotificationService.swift */, F2CE3C80EF3D453EB32386F2 /* LaunchSounds.swift */, 12ED49AE4373456387C551D7 /* ScanService.swift */); path = Services; sourceTree = "<group>"; };
+		3C8C8F7EC23C4A7ABF8ACAEA = {isa = PBXGroup; children = (8A238552D8C141E2A5B3FA54 /* ParagonTheme.swift */); path = Theme; sourceTree = "<group>"; };
+		1B5F481B914744F2B0B742FF = {isa = PBXGroup; children = (52B5507D2423491C93DBD151 /* CheckoutCodeView.swift */, A5B2DA1589DD4E6AAC9C1380 /* FamilyView.swift */, 59F503672BCF4BBE9A8A3E0C /* HistoryView.swift */, DD02F2DC595B442A81C5FED4 /* OnboardingView.swift */, F72CAD3842714CDEB2DD807E /* ReceiptDetailView.swift */, 57EB8A726F7C4E27AA4E267F /* ReceiptScanReviewView.swift */, E57BAF4F3A7140A092A6B22A /* ReceiptsHomeView.swift */, B06DECE43966452EACAAEFF4 /* RootTabView.swift */, D6E04609D6004C93BA7CC863 /* ScanReviewView.swift */, 231C4C683C4247D7BC40C153 /* SettingsView.swift */, 0E0E3EEF87044ABE91113B80 /* TicketDetailView.swift */, 9CDE08700ADF4AE181DCBDB7 /* WalletView.swift */, 70B47E40C03A4CB8BBF74C92 /* Components */); path = Views; sourceTree = "<group>"; };
+		15103D52461B4EE9A4CAAD54 = {isa = PBXGroup; children = (189460C7B20F45F08E5A8118 /* cash-register-open.mp3 */); path = Sounds; sourceTree = "<group>"; };
+		70B47E40C03A4CB8BBF74C92 = {isa = PBXGroup; children = (9564DA67313048B391512847 /* CascadeSpendChart.swift */, D659E88BBFB1417D87F8AC60 /* FirstScanTip.swift */, ED575EC8B82A4F68BD4D89C4 /* LaunchSplashView.swift */, 4B0E392341854DB286B923FA /* MotifBackground.swift */, EDBB1BF8BDB3441E9DD5D0B7 /* RetailerLogo.swift */, 64AD376C173B4FAFBB3F3646 /* ScannerHost.swift */, 21E57C32E65B4CFB9F0FF287 /* VoucherPassCard.swift */); path = Components; sourceTree = "<group>"; };
+		5B36627F91DF436BB69DD710 = {isa = PBXGroup; children = (03C9B76939204F768C36C552 /* ParagonOSApp.swift */, 2682A58CC3314077AFA3E5AE /* App */, CE1367EEDA94473DA19A4710 /* Core */, 955F0ADA0ACE4BAE900C3686 /* Intents */, DBEAD377C49C4411A233B183 /* Resources */, 4957D56462A64B0AB20879B4 /* Services */, 3C8C8F7EC23C4A7ABF8ACAEA /* Theme */, 1B5F481B914744F2B0B742FF /* Views */); path = ParagonOS; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		69E2D2EBB5DC43A881E2C711 = {
+			isa = PBXNativeTarget; buildConfigurationList = C9C7F0D248504A91B4BA5084;
+			buildPhases = (261445C52B0A4A5BBBA125C2 /* Sources */, DB1944ED2AD84B259D45007D /* Frameworks */, CB4129A46848491CAD0DD96F /* Resources */);
+			buildRules = (); dependencies = (); name = ParagonOS;
+			packageProductDependencies = ();
+			productReference = 2444D5B9205F476181B85F58; productType = "com.apple.product-type.application";
+		};
+		7399F9D7BD984F6DA7817EA7 = {
+			isa = PBXNativeTarget; buildConfigurationList = 98CDE85E52EF4A70AC052258;
+			buildPhases = (13DBEF8436C54BC098BA6756 /* Sources */, BBD34AEDE2154428AA87F3C2 /* Frameworks */);
+			buildRules = (); dependencies = (BD27D7B590214E179FBD1426 /* PBXTargetDependency */); name = ParagonOSTests;
+			packageProductDependencies = ();
+			productReference = 25266E12CEE84B3486A9CD26; productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A386D55174F348288ADE8F17 = {
+			isa = PBXProject; buildConfigurationList = 0195FB1EA65748DC8DD1C57D; compatibilityVersion = "Xcode 14.0";
+			developmentRegion = pl; hasScannedForEncodings = 0;
+			mainGroup = 8859B189D33548B59242E026; productRefGroup = 572506FBC03A47D789067664;
+			packageReferences = ();
+			projectDirPath = ""; projectRoot = "";
+			targets = (69E2D2EBB5DC43A881E2C711 /* ParagonOS */, 7399F9D7BD984F6DA7817EA7 /* ParagonOSTests */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CB4129A46848491CAD0DD96F = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (860FD83316514FE09877B5DF /* Resources/Assets.xcassets in Resources */, 62C335457A52487196D4C6C9 /* Resources/PrivacyInfo.xcprivacy in Resources */, C2474915D4C840CD8F534622 /* Resources/Retailers.json in Resources */, E9257387CBDE4C56B2BB0BF9 /* Resources/Sounds/cash-register-open.mp3 in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		261445C52B0A4A5BBBA125C2 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (1CD081B7B3C1444A8FD8271A /* App/WalletModel.swift in Sources */, D0B0FDDDBB134DFDBBFB8D19 /* Core/Brand.swift in Sources */, FC72725EDAF14C1CB232800F /* Core/Models.swift in Sources */, 4109BD3D54F34FD9BAB68366 /* Core/ReceiptModels.swift in Sources */, 0867912E5B1942FF9E9853B5 /* Core/ReceiptParser.swift in Sources */, DCD5AD74B61346838DC9917B /* Core/RetailerCatalog.swift in Sources */, 25BA45FB1AC74E3CB9F3EA3C /* Core/TicketStatus.swift in Sources */, 95B4C1CF33384643A2150CD4 /* Core/VoucherParser.swift in Sources */, FFB76E4628A94600853032F1 /* Intents/ScanVoucherIntent.swift in Sources */, 8560821055C94EF4A637EDD2 /* ParagonOSApp.swift in Sources */, AA27B478972D4DA1B1D260BD /* Services/BarcodePresenter.swift in Sources */, 877AFCDCFE364E8D8804D5AA /* Services/BiometricLock.swift in Sources */, 1AA3A544294A4C5280F56EE6 /* Services/CloudKitFamilyService.swift in Sources */, 992A5142D6EF4D1C80E198D3 /* Services/CloudSharingView.swift in Sources */, 180B9020D9E24172AA756007 /* Services/ExpiryNotificationService.swift in Sources */, D9F0F68B1D794C88B51113CE /* Services/LaunchSounds.swift in Sources */, A978E297C02949049F9B95D7 /* Services/ScanService.swift in Sources */, 5008A336F259466B9B2F4910 /* Theme/ParagonTheme.swift in Sources */, ACE3AB28E3304ACB82438BD9 /* Views/CheckoutCodeView.swift in Sources */, 827C67DFADE64A448C1786F9 /* Views/Components/CascadeSpendChart.swift in Sources */, AF3B2F3BA21148B7A98301F8 /* Views/Components/FirstScanTip.swift in Sources */, 7579F5783233466780C442F3 /* Views/Components/LaunchSplashView.swift in Sources */, A7A2F0E47ABE4578B69F5289 /* Views/Components/MotifBackground.swift in Sources */, ED6C9CF81C3E4D3CA7EC47D3 /* Views/Components/RetailerLogo.swift in Sources */, 9F389DF97165430688CC1D59 /* Views/Components/ScannerHost.swift in Sources */, DFC5D83E64AF44388A465339 /* Views/Components/VoucherPassCard.swift in Sources */, 718C23A48FDB4FF79090D6D1 /* Views/FamilyView.swift in Sources */, 9C8FD91EB1084090AC3ECA9E /* Views/HistoryView.swift in Sources */, 4FC2DBC7FAB84832A7392F7A /* Views/OnboardingView.swift in Sources */, 920E76FB8C824BCEA336408C /* Views/ReceiptDetailView.swift in Sources */, 1CDF74C837D3446B8C15E02C /* Views/ReceiptScanReviewView.swift in Sources */, DFAB656C654744EAB9B00671 /* Views/ReceiptsHomeView.swift in Sources */, 3736B22E9A72412F9D48995F /* Views/RootTabView.swift in Sources */, 22D83724BFA0454A9820C0AC /* Views/ScanReviewView.swift in Sources */, 06DDEC13C4C74934836427D5 /* Views/SettingsView.swift in Sources */, 0788D9821B7D402C8DE49B07 /* Views/TicketDetailView.swift in Sources */, 864A3F2040804E8ABF7E64B8 /* Views/WalletView.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		13DBEF8436C54BC098BA6756 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F0D5A537A84F41A89678553F /* FamilySharePolicyTests.swift in Sources */, 7613E5708EA247509C11DC54 /* ReceiptParserTests.swift in Sources */, E46558A524D04FAAAC554661 /* VoucherParserTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BD27D7B590214E179FBD1426 = {
+			isa = PBXTargetDependency;
+			target = 69E2D2EBB5DC43A881E2C711 /* ParagonOS */;
+			targetProxy = 3EA3AAFF0A854BA4BA707BBA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		311356D7801F485480FE13F3 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = 5; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_DYNAMIC_NO_PIC = NO; GCC_OPTIMIZATION_LEVEL = 0; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; VERSIONING_SYSTEM = "apple-generic"; }; };
+		38F38FBED534447182A4DFD9 = {isa = XCBuildConfiguration; name = Release; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = 5; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 5.0; VALIDATE_PRODUCT = YES; VERSIONING_SYSTEM = "apple-generic"; }; };
+		0F3EC31242474594956A375B = {isa = XCBuildConfiguration; name = Debug; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = ParagonOS/Resources/ParagonOS.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; VERSIONING_SYSTEM = "apple-generic"; DEVELOPMENT_TEAM = NW3YW69KL9; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ParagonOS/Resources/Info.plist; INFOPLIST_KEY_CFBundleDisplayName = "ParagonOS™"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; };
+		E0837B966166403BA29D9AAD = {isa = XCBuildConfiguration; name = Release; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = ParagonOS/Resources/ParagonOS.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; VERSIONING_SYSTEM = "apple-generic"; DEVELOPMENT_TEAM = NW3YW69KL9; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ParagonOS/Resources/Info.plist; INFOPLIST_KEY_CFBundleDisplayName = "ParagonOS™"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; };
+		99B24A5AE6574E73ADE9235B = {isa = XCBuildConfiguration; name = Debug; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; DEVELOPMENT_TEAM = NW3YW69KL9; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ParagonOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ParagonOS"; }; };
+		AAC5F66D75EB4020A7B6E418 = {isa = XCBuildConfiguration; name = Release; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; DEVELOPMENT_TEAM = NW3YW69KL9; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ParagonOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ParagonOS"; }; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0195FB1EA65748DC8DD1C57D = {isa = XCConfigurationList; buildConfigurations = (311356D7801F485480FE13F3 /* Debug */, 38F38FBED534447182A4DFD9 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		C9C7F0D248504A91B4BA5084 = {isa = XCConfigurationList; buildConfigurations = (0F3EC31242474594956A375B /* Debug */, E0837B966166403BA29D9AAD /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		98CDE85E52EF4A70AC052258 = {isa = XCConfigurationList; buildConfigurations = (99B24A5AE6574E73ADE9235B /* Debug */, AAC5F66D75EB4020A7B6E418 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A386D55174F348288ADE8F17;
+}
