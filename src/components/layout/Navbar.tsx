@@ -95,6 +95,7 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
+  const isParagonOsLegal = Boolean(pathname?.startsWith("/paragonos"));
   const { navHighlight, requestVerticalSwitch } = useEcosystem();
   const highlightHome = navHighlight === "home";
   const highlightCar = navHighlight === "car";
@@ -280,6 +281,8 @@ export default function Navbar() {
         ? "99+"
         : String(unread.total)
       : null;
+
+  if (isParagonOsLegal) return null;
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-md [padding-top:env(safe-area-inset-top)]">

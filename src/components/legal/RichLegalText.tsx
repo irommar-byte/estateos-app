@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-const EMAIL_RE = /([a-zA-Z0-9._%+-]+@estateos\.pl)/g;
+const EMAIL_RE = /([a-zA-Z0-9._%+-]+@(?:estateos\.pl|paragonos\.app))/g;
 const MD_LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g;
 
 function renderSegment(segment: string, keyPrefix: string): React.ReactNode[] {
