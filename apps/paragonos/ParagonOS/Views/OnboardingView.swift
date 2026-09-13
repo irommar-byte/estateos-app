@@ -21,9 +21,14 @@ struct OnboardingView: View {
                     text: "Elektronika, ubrania, AGD — ParagonOS™ rozpoznaje sklep, kwotę i NIP, układa w kategorie i pilnuje gwarancji oraz 14 dni na zwrot."
                 )
                 onboardingPage(
+                    symbol: "creditcard.fill",
+                    title: "Karty lojalnościowe",
+                    text: "Zeskanuj kartę. Jeśli sieć się nie rozpozna, wybierzesz sklep z bazy z oryginalnym logotypem. Przy kasie pokazujesz kod albo dodajesz kartę do Apple Wallet."
+                )
+                onboardingPage(
                     symbol: "person.2.fill",
                     title: "Rodzina osobno",
-                    text: "Kaucje i paragony udostępniasz bliskim niezależnie. Na drugim iPhonie wrócą przez iCloud."
+                    text: "Kaucje, paragony i karty udostępniasz bliskim niezależnie. Na drugim iPhonie wrócą przez iCloud."
                 )
                 onboardingPage(
                     symbol: "bell.badge",
@@ -42,6 +47,7 @@ struct OnboardingView: View {
                     .padding(.vertical, 14)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }

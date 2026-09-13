@@ -5,10 +5,11 @@ import TipKit
 struct RootTabView: View {
     @EnvironmentObject private var wallet: WalletModel
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \Ticket.createdAt, order: .reverse) private var tickets: [Ticket]
     @Query(sort: \Receipt.issuedAt, order: .reverse) private var receipts: [Receipt]
+    @Query(sort: \LoyaltyCard.createdAt, order: .reverse) private var cards: [LoyaltyCard]
     @State private var tab: AppTab = .wallet
-    @State private var previousTab: AppTab = .wallet
 
     var body: some View {
         tabs
@@ -20,18 +21,26 @@ struct RootTabView: View {
                     .environmentObject(wallet)
             }
             .task {
-                await wallet.bootstrap(context: context, tickets: tickets, receipts: receipts)
+                await wallet.bootstrap(context: context, tickets: tickets, receipts: receipts, cards: cards)
                 if wallet.showOnboarding == false {
                     try? Tips.configure()
                 }
             }
             .modifier(RootTabAlerts())
-            .onChange(of: tab, handleTabChange)
             .onChange(of: wallet.showOnboarding, handleOnboarding)
             .onChange(of: notificationFingerprint, handleNotifications)
             .onChange(of: wallet.pendingTicketID, handlePendingTicket)
             .onChange(of: wallet.pendingReceiptID) { _, _ in openPendingReceipt() }
-            .onChange(of: wallet.showScanner) { _, _ in openPendingReceipt() }
+            .onChange(of: wallet.pendingLoyaltyID) { _, _ in openPendingCard() }
+            .onChange(of: wallet.showScanner) { _, _ in
+                openPendingReceipt()
+                openPendingCard()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    Task { await wallet.refreshFamilyFromCloud() }
+                }
+            }
     }
 
     private var tabs: some View {
@@ -48,8 +57,10 @@ struct RootTabView: View {
                         .navigationDestination(for: ReceiptRoute.self, destination: receiptDestination)
                 }
             }
-            Tab("Skanuj", systemImage: "viewfinder", value: AppTab.scan) {
-                Color.clear
+            Tab("Karty", systemImage: "creditcard.fill", value: AppTab.cards) {
+                NavigationStack(path: $wallet.loyaltyPath) {
+                    LoyaltyHomeView()
+                }
             }
             Tab("Historia", systemImage: "clock.arrow.circlepath", value: AppTab.history) {
                 NavigationStack {
@@ -75,6 +86,8 @@ struct RootTabView: View {
             } else {
                 ContentUnavailableView("Nie ma już tego kwitka", systemImage: "ticket")
             }
+        case .bottleMap:
+            BottleReturnMapView()
         }
     }
 
@@ -108,16 +121,6 @@ struct RootTabView: View {
         ].map(String.init(describing:)).joined(separator: "|")
     }
 
-    private func handleTabChange(_ old: AppTab, _ newValue: AppTab) {
-        if newValue == .scan {
-            tab = previousTab
-            wallet.askScanIntent = true
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } else {
-            previousTab = newValue
-        }
-    }
-
     private func handleOnboarding(_ old: Bool, _ showing: Bool) {
         if showing == false {
             try? Tips.configure()
@@ -142,9 +145,19 @@ struct RootTabView: View {
         wallet.pendingReceiptID = nil
     }
 
+    private func openPendingCard() {
+        guard wallet.showScanner == false, let id = wallet.pendingLoyaltyID else { return }
+        tab = .cards
+        wallet.loyaltyPath.append(LoyaltyRoute.card(id))
+        wallet.pendingLoyaltyID = nil
+    }
+
     @ViewBuilder
     private var scannerFlow: some View {
-        if wallet.receiptDraft != nil {
+        if wallet.loyaltyDraft != nil {
+            LoyaltyScanReviewView()
+                .environmentObject(wallet)
+        } else if wallet.receiptDraft != nil {
             ReceiptScanReviewView()
                 .environmentObject(wallet)
         } else if wallet.scanDraft != nil {
@@ -177,9 +190,12 @@ private struct RootTabAlerts: ViewModifier {
                 Button("Paragon lub faktura") {
                     wallet.openScanner(for: .receipt)
                 }
+                Button("Karta lojalnościowa") {
+                    wallet.openScanner(for: .loyalty)
+                }
                 Button("Anuluj", role: .cancel) {}
             } message: {
-                Text("Kaucje i paragony są osobno — rodzina dostaje tylko to, co włączysz.")
+                Text("Kaucje, paragony i karty są osobno — rodzina dostaje tylko to, co włączysz.")
             }
             .confirmationDialog(
                 redeemTitle,
@@ -217,7 +233,7 @@ private struct RootTabAlerts: ViewModifier {
 enum AppTab: Hashable {
     case wallet
     case receipts
-    case scan
+    case cards
     case history
     case family
 }

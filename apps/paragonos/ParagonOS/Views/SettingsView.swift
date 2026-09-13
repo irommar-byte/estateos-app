@@ -10,6 +10,34 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
+                TextField("Twoje imię", text: $wallet.settings.displayName)
+                    .textInputAutocapitalization(.words)
+                    .onChange(of: wallet.settings.displayName) { _, name in
+                        wallet.schedulePersistDisplayName(name)
+                    }
+            } header: {
+                Text("Konto")
+            } footer: {
+                Text("Imię widać przy kaucjach, paragonach i kartach, które udostępnisz bliskim.")
+            }
+
+            Section {
+                LabeledContent("Synchronizacja") {
+                    Text(wallet.cloudSync.statusTitle)
+                }
+                if let last = wallet.cloudSync.lastSuccessText {
+                    LabeledContent("Ostatnio") { Text(last) }
+                }
+                Button("Synchronizuj teraz") {
+                    wallet.requestCloudSync()
+                }
+            } header: {
+                Text("Twoje urządzenia")
+            } footer: {
+                Text("Ten sam Apple ID na iPhonie i iPadzie synchronizuje kaucje, paragony i karty automatycznie. Zaproszenie rodziny jest osobno.")
+            }
+
+            Section {
                 Toggle("7 dni przed terminem", isOn: $wallet.settings.reminder7Days)
                 Toggle("1 dzień przed terminem", isOn: $wallet.settings.reminder1Day)
                 Toggle("W dniu wygaśnięcia", isOn: $wallet.settings.reminderOnDay)
@@ -34,7 +62,18 @@ struct SettingsView: View {
             } footer: {
                 Text(wallet.family.familyWalletID == nil
                      ? "Elektronika, RTV i AGD dostają 24 miesiące gwarancji. Ubrania, buty i rozrywka — 14 dni na zwrot."
-                     : "Gwarancja i zwroty. Nowe paragony idą do rodziny osobno od kaucji.")
+                     : "Gwarancja i zwroty. Nowe paragony idą do rodziny osobno od kaucji i kart.")
+            }
+
+            Section {
+                Toggle("Udostępniaj nowe karty lojalnościowe rodzinie", isOn: $wallet.settings.shareNewLoyaltyCardsWithFamily)
+                    .disabled(wallet.family.familyWalletID == nil)
+            } header: {
+                Text("Karty")
+            } footer: {
+                Text(wallet.family.familyWalletID == nil
+                     ? "Karty z Twoim Apple ID idą na iPhone’y i iPady przez iCloud. Ten przełącznik jest tylko dla innych osób w Rodzinie."
+                     : "Nowe karty idą do rodziny osobno od kaucji i paragonów.")
             }
 
             Section {
@@ -43,7 +82,7 @@ struct SettingsView: View {
             } header: {
                 Text("Ochrona")
             } footer: {
-                Text("Po zablokowaniu ekranu \(Brand.displayName) pyta o \(lock.biometryTitle), zanim pokaże kaucje i paragony.")
+                Text("Po zablokowaniu ekranu \(Brand.displayName) pyta o \(lock.biometryTitle), zanim pokaże kaucje, paragony i karty.")
             }
 
             Section("Kasa") {
@@ -51,11 +90,11 @@ struct SettingsView: View {
             }
 
             Section("Skanowanie") {
-                Toggle("Po Skanuj od razu włącz aparat", isOn: $wallet.settings.scanOpensImmediately)
+                Toggle("Po plusie od razu włącz aparat", isOn: $wallet.settings.scanOpensImmediately)
             }
 
             Section("Prywatność") {
-                Text("Zdjęcia kaucji i paragonów zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont.")
+                Text("Zdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

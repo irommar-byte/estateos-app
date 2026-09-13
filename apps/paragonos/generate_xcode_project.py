@@ -16,11 +16,11 @@ RES = []
 res_dir = SRC / "Resources"
 if res_dir.exists():
     for p in sorted(res_dir.iterdir()):
-        if p.suffix in {".xcassets", ".json", ".xcprivacy"}:
+        if p.suffix in {".xcassets", ".json", ".xcprivacy", ".cer", ".key"}:
             RES.append(f"Resources/{p.name}")
         elif p.is_dir():
             for child in sorted(p.iterdir()):
-                if child.suffix in {".wav", ".caf", ".mp3"}:
+                if child.suffix in {".wav", ".caf", ".mp3", ".png", ".pdf"}:
                     RES.append(f"Resources/{p.name}/{child.name}")
 
 
@@ -34,7 +34,7 @@ def read_build_number() -> str:
         match = re.search(r"CURRENT_PROJECT_VERSION = (\d+);", pbx.read_text())
         if match:
             return match.group(1)
-    return "5"
+    return "2"
 
 
 BUILD_NUMBER = read_build_number()
@@ -64,6 +64,9 @@ DBG_TEST = gid()
 REL_TEST = gid()
 CONTAINER_PROXY = gid()
 XC_TARGET_DEP = gid()
+X509_PKG = gid()
+X509_PROD = gid()
+X509_BF = gid()
 
 swift_ref = {f: gid() for f in SWIFT}
 swift_bf = {f: gid() for f in SWIFT}
@@ -96,6 +99,7 @@ for f in TEST_SWIFT:
     o(f"\t\t{test_bf[f]} /* {f} in Sources */ = {{isa = PBXBuildFile; fileRef = {test_ref[f]} /* {f} */; }};")
 for f in RES:
     o(f"\t\t{res_bf[f]} /* {f} in Resources */ = {{isa = PBXBuildFile; fileRef = {res_ref[f]} /* {f} */; }};")
+o(f"\t\t{X509_BF} /* X509 in Frameworks */ = {{isa = PBXBuildFile; productRef = {X509_PROD} /* X509 */; }};")
 o("/* End PBXBuildFile section */")
 
 o("\n/* Begin PBXContainerItemProxy section */")
@@ -128,13 +132,21 @@ for f in RES:
         t = "audio.mp3"
     elif f.endswith(".caf"):
         t = "audio.caf"
+    elif f.endswith(".cer"):
+        t = "data"
+    elif f.endswith(".key"):
+        t = "text"
+    elif f.endswith(".png"):
+        t = "image.png"
+    elif f.endswith(".pdf"):
+        t = "image.pdf"
     else:
         t = "text"
     o(f"\t\t{res_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = {t}; path = {Path(f).name}; sourceTree = \"<group>\"; }};")
 o("/* End PBXFileReference section */")
 
 o("\n/* Begin PBXFrameworksBuildPhase section */")
-o(f"\t\t{FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
+o(f"\t\t{FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({X509_BF} /* X509 in Frameworks */); runOnlyForDeploymentPostprocessing = 0; }};")
 o(f"\t\t{TEST_FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
 o("/* End PBXFrameworksBuildPhase section */")
 
@@ -174,7 +186,7 @@ o(f"\t\t{TARGET} = {{")
 o(f"\t\t\tisa = PBXNativeTarget; buildConfigurationList = {CL_TGT};")
 o(f"\t\t\tbuildPhases = ({SRC_PHASE} /* Sources */, {FWK_PHASE} /* Frameworks */, {RES_PHASE} /* Resources */);")
 o("\t\t\tbuildRules = (); dependencies = (); name = ParagonOS;")
-o("\t\t\tpackageProductDependencies = ();")
+o(f"\t\t\tpackageProductDependencies = ({X509_PROD} /* X509 */);")
 o(f"\t\t\tproductReference = {APP_REF}; productType = \"com.apple.product-type.application\";")
 o("\t\t};")
 o(f"\t\t{TEST_TARGET} = {{")
@@ -191,7 +203,7 @@ o(f"\t\t{PROJ} = {{")
 o(f"\t\t\tisa = PBXProject; buildConfigurationList = {CL_PROJ}; compatibilityVersion = \"Xcode 14.0\";")
 o("\t\t\tdevelopmentRegion = pl; hasScannedForEncodings = 0;")
 o(f"\t\t\tmainGroup = {MAIN_GRP}; productRefGroup = {PROD_GRP};")
-o("\t\t\tpackageReferences = ();")
+o(f"\t\t\tpackageReferences = ({X509_PKG} /* XCRemoteSwiftPackageReference \"swift-certificates\" */);")
 o("\t\t\tprojectDirPath = \"\"; projectRoot = \"\";")
 o(f"\t\t\ttargets = ({TARGET} /* ParagonOS */, {TEST_TARGET} /* ParagonOSTests */);")
 o("\t\t};")
@@ -221,7 +233,7 @@ o("\n/* Begin XCBuildConfiguration section */")
 o(f"\t\t{DBG_PROJ} = {{isa = XCBuildConfiguration; name = Debug; buildSettings = {{ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = {BUILD_NUMBER}; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_DYNAMIC_NO_PIC = NO; GCC_OPTIMIZATION_LEVEL = 0; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = \"-Onone\"; SWIFT_VERSION = 5.0; VERSIONING_SYSTEM = \"apple-generic\"; }}; }};")
 o(f"\t\t{REL_PROJ} = {{isa = XCBuildConfiguration; name = Release; buildSettings = {{ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = {BUILD_NUMBER}; DEBUG_INFORMATION_FORMAT = \"dwarf-with-dsym\"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 5.0; VALIDATE_PRODUCT = YES; VERSIONING_SYSTEM = \"apple-generic\"; }}; }};")
 
-tgt_settings = (
+tgt_settings_debug = (
     "ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; "
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; "
     "CODE_SIGN_ENTITLEMENTS = ParagonOS/Resources/ParagonOS.entitlements; "
@@ -237,6 +249,10 @@ tgt_settings = (
     "PRODUCT_NAME = \"$(TARGET_NAME)\"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; "
     "TARGETED_DEVICE_FAMILY = \"1,2\";"
 )
+tgt_settings_release = tgt_settings_debug.replace(
+    "CODE_SIGN_ENTITLEMENTS = ParagonOS/Resources/ParagonOS.entitlements; ",
+    'CODE_SIGN_ENTITLEMENTS = "ParagonOS/Resources/ParagonOS-Release.entitlements"; ',
+)
 test_settings = (
     "BUNDLE_LOADER = \"$(TEST_HOST)\"; "
     "CODE_SIGN_STYLE = Automatic; "
@@ -251,8 +267,8 @@ test_settings = (
     "TARGETED_DEVICE_FAMILY = \"1,2\"; "
     "TEST_HOST = \"$(BUILT_PRODUCTS_DIR)/ParagonOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ParagonOS\";"
 )
-o(f"\t\t{DBG_TGT} = {{isa = XCBuildConfiguration; name = Debug; buildSettings = {{{tgt_settings} }}; }};")
-o(f"\t\t{REL_TGT} = {{isa = XCBuildConfiguration; name = Release; buildSettings = {{{tgt_settings} }}; }};")
+o(f"\t\t{DBG_TGT} = {{isa = XCBuildConfiguration; name = Debug; buildSettings = {{{tgt_settings_debug} }}; }};")
+o(f"\t\t{REL_TGT} = {{isa = XCBuildConfiguration; name = Release; buildSettings = {{{tgt_settings_release} }}; }};")
 o(f"\t\t{DBG_TEST} = {{isa = XCBuildConfiguration; name = Debug; buildSettings = {{{test_settings} }}; }};")
 o(f"\t\t{REL_TEST} = {{isa = XCBuildConfiguration; name = Release; buildSettings = {{{test_settings} }}; }};")
 o("/* End XCBuildConfiguration section */")
@@ -262,6 +278,25 @@ o(f"\t\t{CL_PROJ} = {{isa = XCConfigurationList; buildConfigurations = ({DBG_PRO
 o(f"\t\t{CL_TGT} = {{isa = XCConfigurationList; buildConfigurations = ({DBG_TGT} /* Debug */, {REL_TGT} /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
 o(f"\t\t{CL_TEST} = {{isa = XCConfigurationList; buildConfigurations = ({DBG_TEST} /* Debug */, {REL_TEST} /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
 o("/* End XCConfigurationList section */")
+
+o("\n/* Begin XCRemoteSwiftPackageReference section */")
+o(f"\t\t{X509_PKG} /* XCRemoteSwiftPackageReference \"swift-certificates\" */ = {{")
+o("\t\t\tisa = XCRemoteSwiftPackageReference;")
+o('\t\t\trepositoryURL = "https://github.com/apple/swift-certificates.git";')
+o("\t\t\trequirement = {")
+o("\t\t\t\tkind = upToNextMajorVersion;")
+o("\t\t\t\tminimumVersion = 1.17.1;")
+o("\t\t\t};")
+o("\t\t};")
+o("/* End XCRemoteSwiftPackageReference section */")
+
+o("\n/* Begin XCSwiftPackageProductDependency section */")
+o(f"\t\t{X509_PROD} /* X509 */ = {{")
+o("\t\t\tisa = XCSwiftPackageProductDependency;")
+o(f"\t\t\tpackage = {X509_PKG} /* XCRemoteSwiftPackageReference \"swift-certificates\" */;")
+o("\t\t\tproductName = X509;")
+o("\t\t};")
+o("/* End XCSwiftPackageProductDependency section */")
 
 o("\t};")
 o(f"\trootObject = {PROJ};")

@@ -4,13 +4,13 @@ import SwiftUI
 enum Brand {
     static let displayName = "ParagonOS™"
     static let legalName = "ParagonOS"
-    static let slogan = "Kaucje i paragony w jednym miejscu. Terminy, gwarancje, rodzina."
+    static let slogan = "Kaucje, paragony i karty lojalnościowe. Terminy, gwarancje, rodzina."
     static let bundleID = "pl.paragonos.app"
     static let iCloudContainer = "iCloud.pl.paragonos.app"
     static let urlScheme = "paragonos"
     static let teamID = "NW3YW69KL9"
 
-    static let disclaimer = "ParagonOS™ nie jest powiązany z Biedronką, Lidlem, Kauflandem ani innymi sieciami. Nie gwarantujemy, że kasa zeskanuje kod z ekranu telefonu."
+    static let disclaimer = "ParagonOS™ nie jest powiązany z Biedronką, Lidlem, Kauflandem ani innymi sieciami i programami lojalnościowymi. Nie gwarantujemy, że kasa zeskanuje kod z ekranu telefonu."
 }
 
 struct BrandWordmark: View {

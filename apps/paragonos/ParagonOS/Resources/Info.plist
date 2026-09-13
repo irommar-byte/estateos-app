@@ -32,7 +32,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<string>5</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.finance</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -42,16 +42,22 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>ParagonOS™ używa Face ID, żeby chronić kaucje i paragony na tym iPhonie.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>ParagonOS™ używa kamery, żeby zeskanować papierowy kwitek z butelkomatu.</string>
+	<string>ParagonOS™ używa kamery, żeby zeskanować kwitek z butelkomatu, paragon albo kartę lojalnościową.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>ParagonOS™ wczytuje zdjęcie kwitka z galerii, gdy skaner na żywo jest niedostępny.</string>
+	<string>ParagonOS™ wczytuje zdjęcie kwitka, paragonu albo karty z galerii, gdy skaner na żywo jest niedostępny.</string>
 	<key>NSUserNotificationsUsageDescription</key>
-	<string>ParagonOS™ przypomina, zanim kwitek z kaucją straci ważność.</string>
+	<string>ParagonOS™ przypomina o końcu ważności kaucji, gwarancji i terminie zwrotu.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ParagonOS™ używa lokalizacji, żeby pokazać butelkomaty i sklepy z kaucją w pobliżu. Położenie zostaje na tym iPhonie.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -30,6 +30,21 @@ struct ScanReceiptIntent: AppIntent {
     }
 }
 
+struct ScanLoyaltyIntent: AppIntent {
+    static var title: LocalizedStringResource = "Skanuj kartę lojalnościową"
+    static var description = IntentDescription("Otwiera skaner kart lojalnościowych w ParagonOS™.")
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        await MainActor.run {
+            WalletScanBridge.pendingIntent = .loyalty
+            OpenScanBridge.pending = true
+            NotificationCenter.default.post(name: .paragonOpenScanner, object: nil)
+        }
+        return .result()
+    }
+}
+
 enum WalletScanBridge {
     static var pendingIntent: ScanIntent?
 }
@@ -53,6 +68,15 @@ struct ParagonOSShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Skanuj paragon",
             systemImageName: "doc.text.viewfinder"
+        )
+        AppShortcut(
+            intent: ScanLoyaltyIntent(),
+            phrases: [
+                "Skanuj kartę w \(.applicationName)",
+                "Dodaj kartę lojalnościową w \(.applicationName)"
+            ],
+            shortTitle: "Skanuj kartę",
+            systemImageName: "creditcard.fill"
         )
     }
 }

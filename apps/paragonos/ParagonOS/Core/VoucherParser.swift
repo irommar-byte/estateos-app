@@ -408,7 +408,7 @@ enum VoucherParser {
     private static func appendDate(day: Int, month: Int, year rawYear: Int, calendar: Calendar, into dates: inout [Date]) {
         var year = rawYear
         if year < 100 { year += 2000 }
-        guard (2020...2035).contains(year), (1...12).contains(month), (1...31).contains(day) else { return }
+        guard (2010...2036).contains(year), (1...12).contains(month), (1...31).contains(day) else { return }
         var components = DateComponents()
         components.calendar = calendar
         components.year = year

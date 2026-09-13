@@ -64,6 +64,10 @@ struct ParagonOSApp: App {
             wallet.pendingReceiptID = id
             return
         }
+        if url.host == "card", let id = UUID(uuidString: url.lastPathComponent) {
+            wallet.pendingLoyaltyID = id
+            return
+        }
         if url.host == "ticket", let id = UUID(uuidString: url.lastPathComponent) {
             wallet.pendingTicketID = id
         }
@@ -72,23 +76,35 @@ struct ParagonOSApp: App {
 
 enum Persistence {
     static func makeContainer() -> ModelContainer {
-        let schema = Schema([Ticket.self, Receipt.self, AppProfile.self])
+        let schema = Schema([Ticket.self, Receipt.self, LoyaltyCard.self, AppProfile.self])
         let inTests = NSClassFromString("XCTestCase") != nil
             || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-        let useCloud = inTests == false && FileManager.default.ubiquityIdentityToken != nil
-        let configuration: ModelConfiguration
         if inTests {
-            configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        } else if useCloud {
-            configuration = ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)
-        } else {
-            configuration = ModelConfiguration(schema: schema, cloudKitDatabase: .none)
+            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            return try! ModelContainer(for: schema, configurations: [configuration])
         }
+        let cloud = ModelConfiguration(
+            schema: schema,
+            cloudKitDatabase: .private(Brand.iCloudContainer)
+        )
         do {
-            return try ModelContainer(for: schema, configurations: [configuration])
+            return try ModelContainer(for: schema, configurations: [cloud])
         } catch {
-            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inTests, cloudKitDatabase: .none)
-            return try! ModelContainer(for: schema, configurations: [fallback])
+            let message = error.localizedDescription
+            Task { @MainActor in
+                CloudSyncMonitor.shared.reportContainerFailureMessage(message)
+            }
+            let local = ModelConfiguration(schema: schema, cloudKitDatabase: .none)
+            do {
+                return try ModelContainer(for: schema, configurations: [local])
+            } catch {
+                let fallbackMessage = error.localizedDescription
+                Task { @MainActor in
+                    CloudSyncMonitor.shared.reportContainerFailureMessage(fallbackMessage)
+                }
+                let lastResort = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+                return try! ModelContainer(for: schema, configurations: [lastResort])
+            }
         }
     }
 }

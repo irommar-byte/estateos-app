@@ -5,6 +5,7 @@ import UIKit
 struct CloudSharingView: UIViewControllerRepresentable {
     let share: CKShare
     let container: CKContainer
+    var onShareChanged: () -> Void = {}
     var onDismiss: () -> Void
 
     func makeUIViewController(context: Context) -> UICloudSharingController {
@@ -14,18 +15,26 @@ struct CloudSharingView: UIViewControllerRepresentable {
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: UICloudSharingController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UICloudSharingController, context: Context) {
+        context.coordinator.onShareChanged = onShareChanged
+        context.coordinator.onDismiss = onDismiss
+    }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onDismiss: onDismiss)
+        Coordinator(onShareChanged: onShareChanged, onDismiss: onDismiss)
     }
 
     final class Coordinator: NSObject, UICloudSharingControllerDelegate {
+        var onShareChanged: () -> Void
         var onDismiss: () -> Void
-        init(onDismiss: @escaping () -> Void) { self.onDismiss = onDismiss }
+
+        init(onShareChanged: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+            self.onShareChanged = onShareChanged
+            self.onDismiss = onDismiss
+        }
 
         func cloudSharingControllerDidSaveShare(_ csc: UICloudSharingController) {
-            onDismiss()
+            onShareChanged()
         }
 
         func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) {
@@ -38,6 +47,10 @@ struct CloudSharingView: UIViewControllerRepresentable {
 
         func itemTitle(for csc: UICloudSharingController) -> String? {
             Brand.displayName
+        }
+
+        func itemThumbnailData(for csc: UICloudSharingController) -> Data? {
+            ParagonMark.png(size: 120)
         }
     }
 }

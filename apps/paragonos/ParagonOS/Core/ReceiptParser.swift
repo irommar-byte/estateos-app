@@ -9,18 +9,6 @@ enum ReceiptParser {
         pattern: #"\bPL[\s-]*([0-9]{10})\b"#,
         options: [.caseInsensitive]
     )
-    private static let sumRegex = try! NSRegularExpression(
-        pattern: #"(?:suma|razem|do zaplaty|do zapłaty|wartosc faktury|wartość faktury|gross|total|brutto)[^\d]{0,24}(\d{1,3}(?:[ \u00a0]\d{3})*|\d{1,7})[.,](\d{2})"#,
-        options: [.caseInsensitive]
-    )
-    private static let currencyAmountRegex = try! NSRegularExpression(
-        pattern: #"(?<!\d)(\d{1,3}(?:[ \u00a0]\d{3})*|\d{1,7})[.,](\d{2})\s*(?:zł|pln|zl|zt)\b"#,
-        options: [.caseInsensitive]
-    )
-    private static let vatRegex = try! NSRegularExpression(
-        pattern: #"(?:VAT|PTU)[^\d]{0,12}(\d{1,5})[.,](\d{2})"#,
-        options: [.caseInsensitive]
-    )
     private static let documentNumberRegex = try! NSRegularExpression(
         pattern: #"\b(?:fv|faktura|paragon|nr)[:\s#]*([A-Z0-9][A-Z0-9\/-]{3,})\b"#,
         options: [.caseInsensitive]
@@ -42,6 +30,7 @@ enum ReceiptParser {
         ("Komputronik", .elektronika, ["komputronik"]),
         ("Neonet", .agd, ["neonet"]),
         ("Zelmer", .agd, ["zelmer"]),
+        ("Dyson", .agd, ["dyson"]),
         ("Reserved", .ubrania, ["reserved"]),
         ("H&M", .ubrania, ["h&m", "h & m"]),
         ("Zara", .ubrania, ["zara"]),
@@ -104,10 +93,14 @@ enum ReceiptParser {
             "usb", "router", "słuchawki", "sluchawki", "kamera", "camera", "hub",
             "aqara", "xiaomi", "smartwatch", "zegarek", "dysk", "ssd", "pendrive",
             "klawiatura", "mysz", "powerbank", "ładowark", "ladowark", "monitor",
-            "tablet", "drukarka", "czujnik", "gniazdko", "inteligentn"
+            "tablet", "drukarka", "czujnik", "gniazdko", "inteligentn", "yeelight",
+            "laserjet", "oswietl", "oświetl"
         ]),
         (.rtv, ["telewizor", "tv ", "soundbar", "kino domowe", "projektor"]),
-        (.agd, ["pralka", "lodowka", "lodówka", "odkurzacz", "zmywarka", "piekarnik", "mikrofal", "ekspres", "czajnik"]),
+        (.agd, [
+            "pralka", "lodowka", "lodówka", "odkurzacz", "zmywarka", "piekarnik", "mikrofal", "ekspres", "czajnik",
+            "dyson", "vacuum", "dtslim", "v12", "v15", "v11", "v10"
+        ]),
         (.samochod, ["olej silnik", "klocki ham", "filtr kabin", "opony", "akumulator", "plyn do spryski"]),
         (.paliwo, ["benzyna", "on ", "diesel", "lpg", "paliwo"]),
         (.ubrania, ["koszula", "spodnie", "kurtka", "sukienka", "bluza", "t-shirt", "tshirt"]),
@@ -132,14 +125,15 @@ enum ReceiptParser {
         let text = lines.joined(separator: "\n")
         let merchant = parseMerchant(lines: lines)
         let nip = parseNIP(in: text)
-        let amount = parseAmount(in: text)
-        let tax = parseVAT(in: text)
-        let dates = VoucherParser.parseDates(in: text, calendar: calendar)
+        let money = parseMoney(in: text)
+        let amount = money.gross
+        let tax = money.vat
+        let dates = parseIssuedDates(in: text, calendar: calendar)
         let issued = dates.first ?? calendar.startOfDay(for: now)
         let documentType: ReceiptDocumentType = fold(text).contains("faktura") ? .invoice : .receipt
         let number = parseDocumentNumber(in: text) ?? barcodes.first?.payload ?? ""
         let payment = parsePayment(in: text)
-        let items = parseItems(lines: lines)
+        let items = uniquedItems(parseItems(lines: lines))
         let itemName = items.joined(separator: " · ")
         let category = inferCategory(merchant: merchant, items: items, text: text)
         let warranty = category.warrantyMonths.flatMap { calendar.date(byAdding: .month, value: $0, to: issued) }
@@ -170,11 +164,21 @@ enum ReceiptParser {
     }
 
     static func parseMerchant(lines: [String]) -> String {
-        let joined = fold(lines.joined(separator: "\n"))
+        let full = lines.joined(separator: "\n")
+        let seller = fold(sellerSlice(of: full))
+        let joined = fold(full)
         for merchant in merchants {
-            if merchant.keys.contains(where: { joined.contains($0) }) {
+            if merchant.keys.contains(where: { matchesMerchantKey(seller, key: $0) }) {
                 return merchant.name
             }
+        }
+        for merchant in merchants {
+            if merchant.keys.contains(where: { matchesMerchantKey(joined, key: $0) }) {
+                return merchant.name
+            }
+        }
+        if let company = sellerCompanyName(in: sellerSlice(of: full)) {
+            return company
         }
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -183,6 +187,7 @@ enum ReceiptParser {
             if skipMerchant.contains(where: { folded.contains($0) }) { continue }
             if trimmed.contains(where: \.isLetter) == false { continue }
             if folded.contains("nip") { continue }
+            if folded.contains("netto") || folded.contains("brutto") { continue }
             return trimmed
         }
         return ""
@@ -197,11 +202,7 @@ enum ReceiptParser {
     }
 
     static func parseAmount(in text: String) -> Double {
-        let folded = fold(text)
-        if let fromSum = firstAmount(in: folded, regex: sumRegex) {
-            return fromSum
-        }
-        return amountCandidates(in: text).max() ?? 0
+        parseMoney(in: text).gross
     }
 
     static func parseItems(lines: [String]) -> [String] {
@@ -216,7 +217,8 @@ enum ReceiptParser {
                 skippingBuyer = true
                 continue
             }
-            if folded.contains("towar lub") || folded.contains("nazwa towar") || folded.hasPrefix("lp.") {
+            if folded.contains("towar lub") || folded.contains("nazwa towar") || folded.hasPrefix("lp.")
+                || (folded.contains("nazwa") && (folded.contains("ilosc") || folded.contains("ilość") || folded.contains("stawka") || folded.contains("lp"))) {
                 skippingBuyer = false
                 inTable = true
                 continue
@@ -231,11 +233,21 @@ enum ReceiptParser {
             }
             guard let cleaned = cleanedItemName(trimmed) else { continue }
             let cleanedFold = fold(cleaned)
-            if itemSkip.contains(where: { cleanedFold.contains($0) }) { continue }
+            if itemSkip.contains(where: { skip in
+                skip.count <= 6
+                    ? cleanedFold.split(whereSeparator: { $0.isWhitespace || $0.isPunctuation }).contains { $0 == skip }
+                    : cleanedFold.contains(skip)
+            }) { continue }
             if cleanedFold.range(of: #"\d{2}-\d{3}"#, options: .regularExpression) != nil { continue }
             let hadPrice = trimmed.range(of: #"\d+[.,]\d{2}"#, options: .regularExpression) != nil
             let isProduct = looksLikeItem(cleaned) && (inTable || hadPrice || categoryFromKeywords(cleaned) != nil)
             guard isProduct else { continue }
+            if let last = items.last, itemsLookSame(last, cleaned) {
+                if cleaned.count > last.count {
+                    items[items.count - 1] = cleaned
+                }
+                continue
+            }
             if let last = items.last, shouldMergeItem(previous: last, next: cleaned) {
                 items[items.count - 1] = last + " " + cleaned
             } else {
@@ -243,6 +255,26 @@ enum ReceiptParser {
             }
         }
         return items
+    }
+
+    static func collapsedItemName(_ raw: String) -> String {
+        uniquedItems(splitItemChunks(raw)).joined(separator: " · ")
+    }
+
+    static func uniquedItems(_ items: [String]) -> [String] {
+        var kept: [String] = []
+        for item in items {
+            let trimmed = item.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.count >= 4 else { continue }
+            if let index = kept.firstIndex(where: { itemsLookSame($0, trimmed) }) {
+                if trimmed.count > kept[index].count {
+                    kept[index] = trimmed
+                }
+            } else {
+                kept.append(trimmed)
+            }
+        }
+        return kept
     }
 
     static func inferCategory(merchant: String, text: String) -> ReceiptCategory {
@@ -271,12 +303,19 @@ enum ReceiptParser {
     }
 
     private static func parseVAT(in text: String) -> Double {
-        firstAmount(in: fold(text), regex: vatRegex) ?? 0
+        parseMoney(in: text).vat
     }
 
     private static func parseDocumentNumber(in text: String) -> String? {
         let ns = text as NSString
         let range = NSRange(location: 0, length: ns.length)
+        let labeled = try! NSRegularExpression(
+            pattern: #"(?:faktura(?:\s+vat)?(?:\s+numer)?|nr(?:\s*faktury)?|numer(?:\s+faktury)?)[:\s#]*([0-9]{6,})"#,
+            options: [.caseInsensitive]
+        )
+        if let match = labeled.firstMatch(in: text, range: range), match.numberOfRanges >= 2 {
+            return ns.substring(with: match.range(at: 1))
+        }
         guard let match = documentNumberRegex.firstMatch(in: text, range: range), match.numberOfRanges >= 2 else {
             return nil
         }
@@ -285,11 +324,32 @@ enum ReceiptParser {
 
     private static func parsePayment(in text: String) -> ReceiptPaymentMethod {
         let folded = fold(text)
+        let cash = paymentAmount(after: ["gotowka", "gotowke", "gotowk", "cash"], in: folded)
+        let card = paymentAmount(after: ["karta", "visa", "mastercard", "apple pay", "google pay"], in: folded)
+        if cash > 0, card > 0 {
+            return card >= cash ? .card : .cash
+        }
         let section = paymentSection(from: folded)
         if let fromSection = payment(inFolded: section), fromSection != .unknown {
             return fromSection
         }
         return payment(inFolded: folded) ?? .unknown
+    }
+
+    private static func paymentAmount(after labels: [String], in folded: String) -> Double {
+        var best: Double = 0
+        for label in labels {
+            var search = folded.startIndex
+            while let range = folded.range(of: label, range: search..<folded.endIndex) {
+                let window = String(folded[range.upperBound...].prefix(18))
+                let value = parseMoney(in: window).gross
+                if value > best {
+                    best = value
+                }
+                search = range.upperBound
+            }
+        }
+        return best
     }
 
     private static func paymentSection(from folded: String) -> String {
@@ -363,12 +423,15 @@ enum ReceiptParser {
     private static func cleanedItemName(_ line: String) -> String? {
         var value = line.trimmingCharacters(in: .whitespacesAndNewlines)
         value = value.replacingOccurrences(of: #"^\d{1,3}[\.\)]\s+"#, with: "", options: .regularExpression)
-        value = value.replacingOccurrences(of: #"\s+\d+(?:[.,]\d{2})(?:\s+\d+(?:[.,]\d{2}))*\s*$"#, with: "", options: .regularExpression)
-        value = value.replacingOccurrences(of: #"\s+\d+\s*(?:szt|szt\.|kg|g|l|mb)\b.*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        value = value.replacingOccurrences(of: #"^\d{1,3}\s+(?=[A-Z0-9])"#, with: "", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"\s+\d+\*\d+(?:[.,]\d{2})?"#, with: "", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"\s+\d{1,3}(?:,\d{3})+\.\d{2}A?"#, with: "", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"\s+\d+(?:[.,]\d{2})A?(?:\s+\d+(?:[.,]\d{2})A?)*\s*$"#, with: "", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"\s+\d+\s*(?:szt|szt\.|kg|g|l|mb|ea)\b.*"#, with: "", options: [.regularExpression, .caseInsensitive])
         value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let folded = fold(value)
         if folded.range(of: #"^\d+\s*(szt|kg|g|l)\b"#, options: .regularExpression) != nil { return nil }
-        guard value.count >= 4, value.count <= 90 else { return nil }
+        guard value.count >= 4, value.count <= 120 else { return nil }
         return value
     }
 
@@ -377,13 +440,33 @@ enum ReceiptParser {
         guard letters >= 4 else { return false }
         let folded = fold(name)
         if folded.contains("nip") || folded.contains("http") || folded.contains("www") { return false }
-        if name.filter(\.isNumber).count > letters { return false }
+        if name.filter(\.isNumber).count > max(letters * 2, 8) { return false }
         return true
     }
 
     private static func shouldMergeItem(previous: String, next: String) -> Bool {
         next.count <= 24 && next.contains(where: \.isLetter) && next.filter(\.isNumber).count < 4
-            && previous.count <= 64
+            && previous.count <= 64 && itemsLookSame(previous, next) == false
+    }
+
+    private static func splitItemChunks(_ raw: String) -> [String] {
+        raw
+            .replacingOccurrences(of: " · ", with: "\u{1e}")
+            .replacingOccurrences(of: " - ", with: "\u{1e}")
+            .split(separator: "\u{1e}")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+    }
+
+    static func itemsLookSame(_ a: String, _ b: String) -> Bool {
+        let first = fold(a)
+        let second = fold(b)
+        if first == second { return true }
+        if first.count >= 8, second.count >= 8, first.contains(second) || second.contains(first) {
+            return true
+        }
+        let limit = max(2, min(first.count, second.count) / 5)
+        return levenshtein(first, second) <= limit
     }
 
     private static func levenshtein(_ a: String, _ b: String) -> Int {
@@ -404,31 +487,191 @@ enum ReceiptParser {
         return prev[bChars.count]
     }
 
-    private static func amountCandidates(in text: String) -> [Double] {
-        let ns = text as NSString
-        let range = NSRange(location: 0, length: ns.length)
-        var values: [Double] = []
-        currencyAmountRegex.enumerateMatches(in: text, range: range) { match, _, _ in
-            guard let match, match.numberOfRanges >= 3 else { return }
-            if let value = amountValue(whole: ns.substring(with: match.range(at: 1)), fraction: ns.substring(with: match.range(at: 2))) {
-                values.append(value)
-            }
-        }
-        return values
-    }
-
-    private static func firstAmount(in text: String, regex: NSRegularExpression) -> Double? {
-        let ns = text as NSString
-        let range = NSRange(location: 0, length: ns.length)
-        guard let match = regex.firstMatch(in: text, range: range), match.numberOfRanges >= 3 else { return nil }
-        return amountValue(whole: ns.substring(with: match.range(at: 1)), fraction: ns.substring(with: match.range(at: 2)))
-    }
-
     private static func amountValue(whole: String, fraction: String) -> Double? {
-        let compact = whole.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "\u{00a0}", with: "")
+        let compact = whole
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00a0}", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .replacingOccurrences(of: ".", with: "")
         let value = (Double(compact) ?? 0) + (Double(fraction) ?? 0) / 100
         guard value > 0, value <= 1_000_000 else { return nil }
         return value
+    }
+
+    private static func matchesMerchantKey(_ haystack: String, key: String) -> Bool {
+        let needle = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard needle.isEmpty == false, haystack.contains(needle) else { return false }
+        if needle == "netto" {
+            return isGroceryNetto(haystack)
+        }
+        if needle.count <= 4 {
+            let pattern = "(?<![a-z0-9])\(NSRegularExpression.escapedPattern(for: needle))(?![a-z0-9])"
+            return haystack.range(of: pattern, options: .regularExpression) != nil
+        }
+        return true
+    }
+
+    private static func isGroceryNetto(_ haystack: String) -> Bool {
+        haystack.range(
+            of: #"(?m)(^|\n)\s*netto(\s+sp|\s+sklep|\s*$)"#,
+            options: .regularExpression
+        ) != nil
+            || haystack.contains("sklep netto")
+            || haystack.contains("netto sp")
+    }
+
+    private static func sellerCompanyName(in text: String) -> String? {
+        let lines = text.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let folded = fold(trimmed)
+            guard folded.contains("sp. z") || folded.contains("sp z o") || folded.contains("spolka") else { continue }
+            let brand = trimmed.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? trimmed
+            if brand.count >= 3, skipMerchant.contains(where: { fold(brand).contains($0) }) == false {
+                return brand
+            }
+        }
+        return nil
+    }
+
+    private struct MoneyParse {
+        var gross: Double
+        var vat: Double
+    }
+
+    private enum MoneyKind {
+        case payable
+        case gross
+        case net
+        case vat
+        case rate
+        case other
+    }
+
+    private static func parseMoney(in text: String) -> MoneyParse {
+        let hits = moneyHits(in: text)
+        let payable = hits.filter { $0.kind == .payable || $0.kind == .gross }.map(\.value)
+        let net = hits.filter { $0.kind == .net }.map(\.value)
+        let vatHits = hits.filter { $0.kind == .vat }.map(\.value)
+        let other = hits.filter { $0.kind == .other }.map(\.value)
+        var gross = payable.max() ?? 0
+        if gross == 0 {
+            gross = other.max() ?? 0
+        }
+        if let bigger = other.max(), gross > 0, bigger > gross * 1.35 {
+            gross = bigger
+        }
+        if gross == 0, let netValue = net.max(), let vatValue = vatHits.max() {
+            gross = netValue + vatValue
+        }
+        var vat = vatHits.filter { $0 < max(gross * 0.45, 1) }.max() ?? 0
+        if isVATRate(vat), gross > 40 {
+            vat = vatHits.filter { isVATRate($0) == false && $0 < gross * 0.45 }.max() ?? 0
+        }
+        if vat == 0, gross > 40, let netValue = net.max(), netValue < gross {
+            vat = ((gross - netValue) * 100).rounded() / 100
+        }
+        return MoneyParse(gross: gross, vat: vat)
+    }
+
+    private static func isVATRate(_ value: Double) -> Bool {
+        [0, 5, 7, 8, 23].contains { abs(value - $0) < 0.001 }
+    }
+
+    private static func moneyHits(in text: String) -> [(value: Double, kind: MoneyKind)] {
+        let ns = text as NSString
+        var consumed = IndexSet()
+        var hits: [(value: Double, kind: MoneyKind)] = []
+        let patterns: [String] = [
+            #"(?<![\d.,])(\d{1,3}(?:,\d{3})+)\.(\d{2})"#,
+            #"(?<![\d.,])(\d{1,3}(?:[ \u00a0]\d{3})+),(\d{2})"#,
+            #"(?<![\d.,])(\d{1,3}(?:\.\d{3})+),(\d{2})"#,
+            #"(?<![\d.,])(\d{1,7})[.,](\d{2})A?(?![.,]\d)"#
+        ]
+        for pattern in patterns {
+            let regex = try! NSRegularExpression(pattern: pattern, options: [])
+            regex.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+                guard let match, match.numberOfRanges >= 3 else { return }
+                let full = match.range
+                if let span = Range(full), consumed.intersection(IndexSet(integersIn: span)).isEmpty == false {
+                    return
+                }
+                guard let value = amountValue(
+                    whole: ns.substring(with: match.range(at: 1)),
+                    fraction: ns.substring(with: match.range(at: 2))
+                ) else { return }
+                if let span = Range(full) {
+                    consumed.insert(integersIn: span)
+                }
+                let lineRange = ns.lineRange(for: full)
+                let offset = max(0, full.location - lineRange.location)
+                let line = ns.substring(with: lineRange)
+                let prefix = fold(String(line.prefix(offset)))
+                hits.append((value, classifyMoney(prefix: prefix, value: value)))
+            }
+        }
+        return hits
+    }
+
+    private static func classifyMoney(prefix: String, value: Double) -> MoneyKind {
+        let local = fold(prefix)
+        if isVATRate(value), local.contains("stawka") || local.contains("%") || local.contains("ptu") || local.contains("vat") {
+            return .rate
+        }
+        if local.contains("suma ptu") || local.contains("suma vat") || local.contains("suma podatku")
+            || local.contains("kwota podatku") || local.contains("ptu:") || local.contains("ptu ") {
+            return .vat
+        }
+        if local.contains("do zaplaty") || local.contains("wartosc faktury")
+            || local.contains("zaplacono") || local.contains("suma pln") || local.contains("suma:")
+            || local.contains("razem do") || (local.contains("razem") && local.contains("brutto")) {
+            return .payable
+        }
+        if local.contains("suma"), local.contains("ptu") == false, local.contains("vat") == false, local.contains("podatek") == false {
+            return .payable
+        }
+        if local.contains("wartosc brutto") || local.contains("gross") {
+            return .gross
+        }
+        if local.contains("wartosc netto") || local.contains("cena netto") || local.contains("cena jednostkowa") {
+            return .net
+        }
+        if (local.contains("vat") || local.contains("ptu") || local.contains("podatek")) && isVATRate(value) == false {
+            return .vat
+        }
+        if local.contains("razem") {
+            return local.contains("netto") ? .net : .payable
+        }
+        return .other
+    }
+
+    private static func parseIssuedDates(in text: String, calendar: Calendar) -> [Date] {
+        let folded = fold(text)
+        let labels = [
+            "data sprzedazy",
+            "data wystawienia faktury",
+            "data wystawienia",
+            "data zakupu",
+            "sprzedano dnia"
+        ]
+        for label in labels {
+            if let range = folded.range(of: label) {
+                let window = String(folded[range.upperBound...].prefix(72))
+                let dates = VoucherParser.parseDates(in: window, calendar: calendar)
+                if dates.isEmpty == false {
+                    return dates
+                }
+            }
+        }
+        var cleaned = folded
+        let skipped = ["fault report date", "fault report", "termin platnosci", "data waznosci"]
+        for skip in skipped {
+            while let range = cleaned.range(of: skip) {
+                let end = cleaned.index(range.upperBound, offsetBy: 56, limitedBy: cleaned.endIndex) ?? cleaned.endIndex
+                cleaned.replaceSubrange(range.lowerBound..<end, with: " ")
+            }
+        }
+        return VoucherParser.parseDates(in: cleaned, calendar: calendar)
     }
 
     private static func fold(_ text: String) -> String {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct VoucherPassCard: View {
     let retailerID: String
@@ -115,6 +116,11 @@ struct VoucherPassCard: View {
                             lineWidth: 1
                         )
                 }
+                .overlay {
+                    GyroFoilOverlay(cornerRadius: 16, intensity: 0.52)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .allowsHitTesting(false)
+                }
                 .overlay(alignment: .top) {
                     LinearGradient(
                         colors: [.white.opacity(0.22), .white.opacity(0)],
@@ -181,32 +187,21 @@ struct WalletRetailerGroup: Identifiable {
 struct WalletPassStack: View {
     let tickets: [Ticket]
     var now: Date = .now
-    var peekHeight: CGFloat = 62
+    @Binding var expandedRetailerID: String?
     var onOpen: (Ticket) -> Void
     var onCheckout: (Ticket) -> Void
     var onRedeem: (Ticket) -> Void
-
-    @Namespace private var walletNamespace
-    @State private var expandedRetailerID: String?
 
     private var groups: [WalletRetailerGroup] {
         WalletRetailerGroup.groups(from: tickets)
     }
 
-    private let walletSpring = Animation.spring(response: 0.48, dampingFraction: 0.84)
-
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                groupBlock(group, index: index)
-                    .padding(.top, index == 0 ? 0 : (expandedRetailerID == nil ? -overlap : 14))
-                    .zIndex(expandedRetailerID == group.retailerID ? 80 : Double(index))
-                    .opacity(dimmed(group) ? 0.38 : 1)
-                    .scaleEffect(dimmed(group) ? 0.96 : 1, anchor: .top)
-                    .animation(walletSpring, value: expandedRetailerID)
+        VStack(spacing: 14) {
+            ForEach(groups) { group in
+                groupBlock(group)
             }
         }
-        .padding(.bottom, 10)
         .onChange(of: groups.map(\.id)) { _, ids in
             if let expandedRetailerID, ids.contains(expandedRetailerID) == false {
                 self.expandedRetailerID = nil
@@ -214,65 +209,49 @@ struct WalletPassStack: View {
         }
     }
 
-    private func dimmed(_ group: WalletRetailerGroup) -> Bool {
-        guard let expandedRetailerID else { return false }
-        return expandedRetailerID != group.retailerID
-    }
-
     @ViewBuilder
-    private func groupBlock(_ group: WalletRetailerGroup, index: Int) -> some View {
+    private func groupBlock(_ group: WalletRetailerGroup) -> some View {
         let expanded = expandedRetailerID == group.retailerID
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
             Button {
                 toggle(group)
             } label: {
                 stackedFace(group, expanded: expanded)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(LoyaltyPassPressStyle())
             .contextMenu {
                 if let first = group.tickets.first, group.tickets.count == 1 {
                     ticketMenu(first)
                 }
             }
-            .matchedGeometryEffect(id: "face-\(group.retailerID)", in: walletNamespace)
 
             if expanded {
-                VStack(spacing: 0) {
-                    ForEach(Array(group.tickets.enumerated()), id: \.element.id) { ticketIndex, ticket in
-                        ticketButton(ticket)
-                            .padding(.top, 12)
-                            .zIndex(Double(group.tickets.count - ticketIndex))
-                    }
+                ForEach(group.tickets) { ticket in
+                    ticketButton(ticket)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity
+                        ))
                 }
-                .padding(.top, 4)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity
-                            .combined(with: .scale(scale: 0.92, anchor: .top))
-                            .combined(with: .offset(y: -36)),
-                        removal: .opacity
-                            .combined(with: .scale(scale: 0.9, anchor: .top))
-                            .combined(with: .offset(y: -44))
-                    )
-                )
             }
         }
-        .shadow(color: .black.opacity(index == 0 ? 0.12 : 0.26), radius: index == 0 ? 8 : 14, y: 6)
+        .animation(PassStackMotion.snappy, value: expanded)
     }
 
     private func stackedFace(_ group: WalletRetailerGroup, expanded: Bool) -> some View {
         let extras = expanded ? 0 : min(max(group.tickets.count - 1, 0), 2)
+        let color = RetailerBrand.cardColor(for: group.retailerID)
         return ZStack(alignment: .top) {
             ForEach(0..<extras, id: \.self) { layer in
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(RetailerBrand.cardColor(for: group.retailerID).opacity(0.5 - Double(layer) * 0.14))
+                    .fill(color.opacity(0.55 - Double(layer) * 0.12))
                     .overlay {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                            .strokeBorder(.white.opacity(0.14), lineWidth: 0.5)
                     }
-                    .frame(height: 22)
-                    .padding(.horizontal, CGFloat(layer + 1) * 8)
-                    .offset(y: CGFloat(layer + 1) * 8)
+                    .frame(height: 118)
+                    .padding(.horizontal, CGFloat(layer + 1) * 9)
+                    .offset(y: CGFloat(layer + 1) * 9)
                     .allowsHitTesting(false)
             }
             VoucherPassCard(
@@ -287,7 +266,7 @@ struct WalletPassStack: View {
                 isExpanded: expanded
             )
         }
-        .padding(.bottom, CGFloat(extras) * 8)
+        .padding(.bottom, CGFloat(extras) * 9)
     }
 
     private func toggle(_ group: WalletRetailerGroup) {
@@ -296,8 +275,8 @@ struct WalletPassStack: View {
             return
         }
         let expanding = expandedRetailerID != group.retailerID
-        UIImpactFeedbackGenerator(style: expanding ? .medium : .light).impactOccurred()
-        withAnimation(walletSpring) {
+        UIImpactFeedbackGenerator(style: expanding ? .soft : .light).impactOccurred()
+        withAnimation(PassStackMotion.snappy) {
             expandedRetailerID = expanding ? group.retailerID : nil
         }
     }
@@ -308,7 +287,7 @@ struct WalletPassStack: View {
         } label: {
             VoucherPassCard(ticket: ticket, now: now)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LoyaltyPassPressStyle())
         .contextMenu { ticketMenu(ticket) }
         .shadow(color: .black.opacity(0.2), radius: 10, y: 5)
     }
@@ -326,6 +305,4 @@ struct WalletPassStack: View {
             Label("Wykorzystany", systemImage: "checkmark.circle")
         }
     }
-
-    private var overlap: CGFloat { 168 - peekHeight }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 enum AppMotif: Equatable {
     case deposit
     case receipt
+    case loyalty
 
     var symbols: [String] {
         switch self {
@@ -19,6 +20,13 @@ enum AppMotif: Equatable {
                 "doc.text.viewfinder",
                 "checkmark.seal.fill",
                 "doc.plaintext.fill"
+            ]
+        case .loyalty:
+            return [
+                "wallet.pass",
+                "barcode.viewfinder",
+                "creditcard.fill",
+                "qrcode"
             ]
         }
     }

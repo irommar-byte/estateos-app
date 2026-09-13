@@ -147,7 +147,7 @@ private struct ScatterBit: Identifiable {
     let size: CGFloat
 
     static func make(in size: CGSize) -> [ScatterBit] {
-        let count = 34
+        let count = 18
         return (0..<count).map { index in
             let angle = Double(index) / Double(count) * .pi * 2 + Double.random(in: -0.18...0.18)
             let radius = Double.random(in: 0.26...0.68) * max(size.width, size.height)

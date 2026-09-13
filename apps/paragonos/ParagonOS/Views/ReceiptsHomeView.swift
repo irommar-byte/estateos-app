@@ -2,12 +2,21 @@ import Charts
 import SwiftData
 import SwiftUI
 
+private enum ReceiptHomeFocus: Equatable {
+    case all
+    case warranties
+    case returns
+    case category(ReceiptCategory)
+}
+
 struct ReceiptsHomeView: View {
     @EnvironmentObject private var wallet: WalletModel
+    @Environment(\.modelContext) private var context
     @Query(sort: \Receipt.issuedAt, order: .reverse) private var receipts: [Receipt]
     @State private var query = ""
     @State private var isSearching = false
-    @State private var selectedCategory: ReceiptCategory?
+    @State private var focus: ReceiptHomeFocus = .all
+    @State private var expandedReceiptGroupID: String?
     @FocusState private var searchFocused: Bool
 
     private var calendar: Calendar { Calendar.current }
@@ -21,34 +30,55 @@ struct ReceiptsHomeView: View {
         ReceiptAnalytics.inMonth(receipts, month: thisMonth, calendar: calendar)
     }
 
-    private var filtered: [Receipt] {
-        receipts.filter { receipt in
-            if let selectedCategory, receipt.category != selectedCategory { return false }
-            if query.isEmpty { return true }
-                let haystack = "\(receipt.merchantName) \(receipt.merchantNIP) \(receipt.documentNumber) \(receipt.itemName) \(receipt.category.title) \(receipt.note)".lowercased()
-            return haystack.contains(query.lowercased())
+    private var warranties: [Receipt] { ReceiptAnalytics.activeWarranties(receipts) }
+    private var returns: [Receipt] { ReceiptAnalytics.activeReturns(receipts) }
+    private var soonWarranties: [Receipt] { ReceiptAnalytics.upcomingWarranties(receipts) }
+    private var soonReturns: [Receipt] { ReceiptAnalytics.upcomingReturns(receipts) }
+
+    private var usedCategories: [ReceiptCategory] {
+        ReceiptCategory.allCases.filter { category in
+            receipts.contains { $0.category == category }
         }
     }
 
-    private var monthGroups: [(month: Date, items: [Receipt])] {
+    private var filtered: [Receipt] {
+        receipts.filter { receipt in
+            switch focus {
+            case .all:
+                break
+            case .warranties:
+                if ReceiptAnalytics.isActiveWarranty(receipt) == false { return false }
+            case .returns:
+                if ReceiptAnalytics.isActiveReturn(receipt) == false { return false }
+            case .category(let category):
+                if receipt.category != category { return false }
+            }
+            if query.isEmpty { return true }
+            return ReceiptSearch.matches(receipt, query: query)
+        }
+    }
+
+    private var monthGroups: [(month: Date, groups: [ReceiptMerchantGroup])] {
         let grouped = Dictionary(grouping: filtered) { receipt in
             calendar.date(from: calendar.dateComponents([.year, .month], from: receipt.issuedAt)) ?? receipt.issuedAt
         }
         return grouped.keys.sorted(by: >).map { month in
-            (month, grouped[month]?.sorted { $0.issuedAt > $1.issuedAt } ?? [])
+            let items = grouped[month]?.sorted { $0.issuedAt > $1.issuedAt } ?? []
+            return (month, ReceiptMerchantGroup.groups(from: items))
         }
     }
 
     private var categorySlices: [(category: ReceiptCategory, total: Double)] {
-        ReceiptAnalytics.categoryTotals(selectedCategory == nil ? monthReceipts : filtered)
+        ReceiptAnalytics.categoryTotals(focus == .all ? monthReceipts : filtered)
     }
 
     private var monthSeries: [(month: Date, total: Double)] {
         ReceiptAnalytics.monthSeries(receipts, months: 6, now: now, calendar: calendar)
     }
 
-    private var warranties: [Receipt] { ReceiptAnalytics.upcomingWarranties(receipts) }
-    private var returns: [Receipt] { ReceiptAnalytics.upcomingReturns(receipts) }
+    private var showsSpendChart: Bool {
+        monthSeries.filter { $0.total > 0 }.count >= 2
+    }
 
     private var lastMonthTotal: Double {
         guard let previous = calendar.date(byAdding: .month, value: -1, to: thisMonth) else { return 0 }
@@ -57,7 +87,7 @@ struct ReceiptsHomeView: View {
 
     var body: some View {
         Group {
-            if receipts.isEmpty && query.isEmpty && selectedCategory == nil {
+            if receipts.isEmpty && query.isEmpty && focus == .all {
                 ContentUnavailableView {
                     Label("Brak paragonów", systemImage: "doc.text.viewfinder")
                 } description: {
@@ -68,43 +98,38 @@ struct ReceiptsHomeView: View {
                 }
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    LazyVStack(alignment: .leading, spacing: 18) {
                         if isSearching {
                             searchField
                         }
                         summaryCard
-                        if warranties.isEmpty == false || returns.isEmpty == false {
+                        if soonWarranties.isEmpty == false || soonReturns.isEmpty == false {
                             remindersStrip
                         }
-                        if monthSeries.contains(where: { $0.total > 0 }) {
+                        if showsSpendChart {
                             spendChart
                         }
-                        categoryChips
+                        filterChips
                         if filtered.isEmpty {
-                            Text(query.isEmpty ? "Brak paragonów w tej kategorii." : "Nic nie pasuje do wyszukiwania.")
+                            Text(emptyFilterText)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 4)
                         } else {
-                            ForEach(monthGroups, id: \.month) { group in
+                            ForEach(monthGroups, id: \.month) { month, groups in
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack {
-                                        Text(PolishDates.monthTitle(group.month).capitalized)
+                                        Text(PolishDates.monthTitle(month).capitalized)
                                             .font(.subheadline.weight(.semibold))
                                             .foregroundStyle(.secondary)
                                         Spacer()
-                                        Text(MoneyFormat.string(ReceiptAnalytics.total(group.items)))
+                                        Text(MoneyFormat.string(groups.reduce(0) { $0 + $1.total }))
                                             .font(.subheadline.weight(.semibold))
                                             .foregroundStyle(.secondary)
                                     }
                                     .padding(.horizontal, 4)
-                                    ForEach(group.items, id: \.id) { receipt in
-                                        Button {
-                                            wallet.receiptPath.append(ReceiptRoute.receipt(receipt.id))
-                                        } label: {
-                                            ReceiptRow(receipt: receipt)
-                                        }
-                                        .buttonStyle(.plain)
+                                    ForEach(groups) { group in
+                                        receiptGroup(group, month: month)
                                     }
                                 }
                             }
@@ -116,22 +141,10 @@ struct ReceiptsHomeView: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
-                .background {
-                    ZStack {
-                        Color(.systemGroupedBackground)
-                        MotifBackground(kind: .receipt)
-                    }
-                    .ignoresSafeArea()
-                }
+                .scrollBounceBehavior(.basedOnSize)
             }
         }
-        .background {
-            ZStack {
-                Color(.systemGroupedBackground)
-                MotifBackground(kind: .receipt)
-            }
-            .ignoresSafeArea()
-        }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Paragony")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -165,13 +178,33 @@ struct ReceiptsHomeView: View {
                 .accessibilityLabel("Skanuj paragon")
             }
         }
+        .onAppear {
+            if ReceiptAnalytics.healMissingDates(receipts) {
+                try? context.save()
+            }
+        }
+        .onChange(of: receipts.count) { _, _ in
+            if ReceiptAnalytics.healMissingDates(receipts) {
+                try? context.save()
+            }
+        }
+    }
+
+    private var emptyFilterText: String {
+        if query.isEmpty == false { return "Nic nie pasuje do wyszukiwania." }
+        switch focus {
+        case .warranties: return "Brak aktywnych gwarancji."
+        case .returns: return "Brak otwartego terminu zwrotu."
+        case .category: return "Brak paragonów w tej kategorii."
+        case .all: return "Brak paragonów."
+        }
     }
 
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Sklep, NIP lub kategoria", text: $query)
+            TextField("Sklep, towar lub NIP", text: $query)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .focused($searchFocused)
@@ -194,68 +227,169 @@ struct ReceiptsHomeView: View {
     }
 
     private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Ten miesiąc")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text(MoneyFormat.string(ReceiptAnalytics.total(monthReceipts)))
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-            HStack(spacing: 16) {
-                Label(PolishDates.receiptCount(monthReceipts.count), systemImage: "doc.text")
-                if lastMonthTotal > 0 {
-                    let delta = ReceiptAnalytics.total(monthReceipts) - lastMonthTotal
-                    Label(
-                        delta >= 0 ? "+\(MoneyFormat.string(delta))" : MoneyFormat.string(delta),
-                        systemImage: delta >= 0 ? "arrow.up.right" : "arrow.down.right"
-                    )
-                    .foregroundStyle(delta >= 0 ? Color.orange : ParagonTheme.osGreen)
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 16) {
+                summaryStat(
+                    title: "Ten miesiąc",
+                    amount: ReceiptAnalytics.total(monthReceipts),
+                    caption: PolishDates.receiptCount(monthReceipts.count)
+                )
+                summaryStat(
+                    title: "Wszystkie",
+                    amount: ReceiptAnalytics.total(receipts),
+                    caption: PolishDates.receiptCount(receipts.count)
+                )
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            if lastMonthTotal > 0 {
+                let delta = ReceiptAnalytics.total(monthReceipts) - lastMonthTotal
+                Label(
+                    delta >= 0 ? "+\(MoneyFormat.string(delta)) vs poprzedni miesiąc" : "\(MoneyFormat.string(delta)) vs poprzedni miesiąc",
+                    systemImage: delta >= 0 ? "arrow.up.right" : "arrow.down.right"
+                )
+                .font(.footnote)
+                .foregroundStyle(delta >= 0 ? Color.orange : ParagonTheme.osGreen)
+            }
             HStack(spacing: 10) {
-                reminderBadge(count: warranties.count, title: "Gwarancje", symbol: "checkmark.seal.fill", color: Color(red: 0.20, green: 0.48, blue: 0.96))
-                reminderBadge(count: returns.count, title: "Zwroty", symbol: "arrow.uturn.left", color: Color(red: 0.86, green: 0.28, blue: 0.48))
+                reminderBadge(
+                    count: warranties.count,
+                    title: "Gwarancje",
+                    subtitle: warrantyBadgeSubtitle,
+                    symbol: "checkmark.seal.fill",
+                    color: ParagonTheme.warranty,
+                    selected: focus == .warranties
+                ) {
+                    toggleFocus(.warranties)
+                }
+                reminderBadge(
+                    count: returns.count,
+                    title: "Zwroty",
+                    subtitle: returns.isEmpty ? "brak terminu" : PolishDates.returnCount(returns.count),
+                    symbol: "arrow.uturn.left",
+                    color: ParagonTheme.returning,
+                    selected: focus == .returns
+                ) {
+                    toggleFocus(.returns)
+                }
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
     }
 
-    private func reminderBadge(count: Int, title: String, symbol: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .foregroundStyle(color)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("\(count)")
-                    .font(.headline)
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+    private var warrantyBadgeSubtitle: String {
+        if warranties.isEmpty { return "brak aktywnych" }
+        if let date = warranties.first?.resolvedWarrantyUntil {
+            return PolishDates.warrantyRemaining(date)
+        }
+        return PolishDates.warrantyCount(warranties.count)
+    }
+
+    private func summaryStat(title: String, amount: Double, caption: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(MoneyFormat.string(amount))
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            Text(caption)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func receiptGroup(_ group: ReceiptMerchantGroup, month: Date) -> some View {
+        let groupID = "\(month.timeIntervalSince1970)-\(group.id)"
+        if group.receipts.count == 1, let receipt = group.receipts.first {
+            Button {
+                wallet.receiptPath.append(ReceiptRoute.receipt(receipt.id))
+            } label: {
+                ReceiptRow(receipt: receipt)
+            }
+            .buttonStyle(.plain)
+        } else {
+            VStack(spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                        expandedReceiptGroupID = expandedReceiptGroupID == groupID ? nil : groupID
+                    }
+                } label: {
+                    ReceiptGroupRow(group: group, expanded: expandedReceiptGroupID == groupID)
+                }
+                .buttonStyle(.plain)
+                if expandedReceiptGroupID == groupID {
+                    ForEach(group.receipts, id: \.id) { receipt in
+                        Button {
+                            wallet.receiptPath.append(ReceiptRoute.receipt(receipt.id))
+                        } label: {
+                            ReceiptRow(receipt: receipt)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func reminderBadge(
+        count: Int,
+        title: String,
+        subtitle: String,
+        symbol: String,
+        color: Color,
+        selected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(selected ? Color.white : color)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(count)")
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(selected ? Color.white : .primary)
+                    Text(title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(selected ? Color.white.opacity(0.9) : .secondary)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(selected ? Color.white.opacity(0.72) : Color.secondary.opacity(0.7))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(selected ? color : color.opacity(0.12))
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title), \(count)")
+        .accessibilityAddTraits(.isButton)
     }
 
     private var remindersStrip: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Terminy")
+            Text("Zbliżające się terminy")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(returns, id: \.id) { receipt in
+                    ForEach(soonReturns, id: \.id) { receipt in
                         deadlineChip(receipt: receipt, kind: .returning)
                     }
-                    ForEach(warranties, id: \.id) { receipt in
+                    ForEach(soonWarranties, id: \.id) { receipt in
                         deadlineChip(receipt: receipt, kind: .warranty)
                     }
                 }
@@ -269,7 +403,7 @@ struct ReceiptsHomeView: View {
     }
 
     private func deadlineChip(receipt: Receipt, kind: DeadlineKind) -> some View {
-        let date = kind == .warranty ? receipt.warrantyUntil : receipt.returnUntil
+        let date = kind == .warranty ? receipt.resolvedWarrantyUntil : receipt.resolvedReturnUntil
         return Button {
             wallet.receiptPath.append(ReceiptRoute.receipt(receipt.id))
         } label: {
@@ -279,7 +413,7 @@ struct ReceiptsHomeView: View {
                     systemImage: kind == .warranty ? "checkmark.seal.fill" : "arrow.uturn.left"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(kind == .warranty ? Color(red: 0.20, green: 0.48, blue: 0.96) : Color(red: 0.86, green: 0.28, blue: 0.48))
+                .foregroundStyle(kind == .warranty ? ParagonTheme.warranty : ParagonTheme.returning)
                 Text(receipt.merchantName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
@@ -307,7 +441,7 @@ struct ReceiptsHomeView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
             VStack(spacing: 16) {
-                if categorySlices.isEmpty == false {
+                if categorySlices.count >= 2 {
                     Chart(categorySlices, id: \.category) { item in
                         SectorMark(
                             angle: .value("Kwota", item.total),
@@ -336,12 +470,12 @@ struct ReceiptsHomeView: View {
                     }
                 }
                 Chart {
-                    ForEach(monthSeries, id: \.month) { item in
+                    ForEach(monthSeries.filter { $0.total > 0 }, id: \.month) { item in
                         BarMark(
                             x: .value("Miesiąc", PolishDates.shortMonth(item.month)),
                             y: .value("Kwota", item.total)
                         )
-                        .foregroundStyle(ParagonTheme.osGreen.gradient)
+                        .foregroundStyle(Color.primary.opacity(0.82))
                         .cornerRadius(5)
                     }
                 }
@@ -352,24 +486,57 @@ struct ReceiptsHomeView: View {
             }
             .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color(.secondarySystemGroupedBackground))
             )
         }
     }
 
-    private var categoryChips: some View {
+    private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                categoryChip(title: "Wszystkie", selected: selectedCategory == nil, color: ParagonTheme.osGreen) {
-                    selectedCategory = nil
+                categoryChip(
+                    title: "Wszystkie",
+                    selected: focus == .all,
+                    color: ParagonTheme.osGreen
+                ) {
+                    focus = .all
                 }
-                ForEach(ReceiptCategory.allCases) { category in
-                    categoryChip(title: category.title, selected: selectedCategory == category, color: category.color) {
-                        selectedCategory = selectedCategory == category ? nil : category
+                if warranties.isEmpty == false {
+                    categoryChip(
+                        title: "Gwarancje · \(warranties.count)",
+                        selected: focus == .warranties,
+                        color: ParagonTheme.warranty
+                    ) {
+                        toggleFocus(.warranties)
+                    }
+                }
+                if returns.isEmpty == false {
+                    categoryChip(
+                        title: "Zwroty · \(returns.count)",
+                        selected: focus == .returns,
+                        color: ParagonTheme.returning
+                    ) {
+                        toggleFocus(.returns)
+                    }
+                }
+                ForEach(usedCategories) { category in
+                    let count = receipts.filter { $0.category == category }.count
+                    categoryChip(
+                        title: count > 1 ? "\(category.title) · \(count)" : category.title,
+                        selected: focus == .category(category),
+                        color: category.color
+                    ) {
+                        toggleFocus(.category(category))
                     }
                 }
             }
+        }
+    }
+
+    private func toggleFocus(_ next: ReceiptHomeFocus) {
+        withAnimation(.snappy(duration: 0.24)) {
+            focus = focus == next ? .all : next
         }
     }
 
@@ -379,7 +546,7 @@ struct ReceiptsHomeView: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .foregroundStyle(selected ? Color.white : .primary)
+                .foregroundStyle(selected ? Color(.systemBackground) : .primary)
                 .background(selected ? color : Color(.tertiarySystemFill), in: Capsule())
         }
         .buttonStyle(.plain)
@@ -397,8 +564,8 @@ struct ReceiptRow: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                if receipt.itemName.isEmpty == false {
-                    Text(receipt.itemName)
+                if receipt.displayItemName.isEmpty == false {
+                    Text(receipt.displayItemName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -410,14 +577,14 @@ struct ReceiptRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                if let date = receipt.returnUntil, PolishDates.daysUntil(date) <= 14, PolishDates.daysUntil(date) >= 0 {
+                if let date = receipt.resolvedReturnUntil, PolishDates.daysUntil(date) >= 0, PolishDates.daysUntil(date) <= 14 {
                     Text("Zwrot \(PolishDates.relativeDeadline(date))")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color(red: 0.86, green: 0.28, blue: 0.48))
-                } else if let date = receipt.warrantyUntil, PolishDates.daysUntil(date) <= 60, PolishDates.daysUntil(date) >= 0 {
-                    Text("Gwarancja \(PolishDates.relativeDeadline(date))")
+                        .foregroundStyle(ParagonTheme.returning)
+                } else if let date = receipt.resolvedWarrantyUntil, PolishDates.daysUntil(date) >= 0 {
+                    Text("Gwarancja \(PolishDates.warrantyRemaining(date))")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.48, blue: 0.96))
+                        .foregroundStyle(ParagonTheme.warranty)
                 }
             }
             Spacer(minLength: 8)
@@ -430,5 +597,52 @@ struct ReceiptRow: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
+    }
+}
+
+struct ReceiptGroupRow: View {
+    let group: ReceiptMerchantGroup
+    var expanded: Bool
+
+    var body: some View {
+        let extras = expanded ? 0 : min(max(group.receipts.count - 1, 0), 2)
+        ZStack(alignment: .top) {
+            ForEach(0..<extras, id: \.self) { layer in
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
+                    }
+                    .frame(height: 20)
+                    .padding(.horizontal, CGFloat(layer + 1) * 8)
+                    .offset(y: CGFloat(layer + 1) * 7)
+                    .allowsHitTesting(false)
+            }
+            HStack(spacing: 12) {
+                ReceiptCategoryMark(category: group.category, size: 42)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(group.merchantName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(PolishDates.receiptCount(group.receipts.count))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Text(MoneyFormat.string(group.total))
+                    .font(.body.weight(.semibold).monospacedDigit())
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+        }
+        .padding(.bottom, CGFloat(extras) * 7)
     }
 }

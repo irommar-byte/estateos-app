@@ -308,15 +308,15 @@ struct HistoryView: View {
                     Text(MoneyFormat.string(receipt.amount))
                         .fontWeight(.semibold)
                 }
+                if receipt.displayItemName.isEmpty == false {
+                    Text(receipt.displayItemName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
                 Text("\(receipt.category.title) · \(PolishDates.display.string(from: receipt.issuedAt))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if receipt.itemName.isEmpty == false {
-                    Text(receipt.itemName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
             }
         }
     }

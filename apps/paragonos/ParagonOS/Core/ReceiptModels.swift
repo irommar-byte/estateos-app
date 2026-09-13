@@ -5,6 +5,7 @@ import SwiftUI
 enum ScanIntent: String, Equatable {
     case deposit
     case receipt
+    case loyalty
 }
 
 enum ReceiptDocumentType: String, Codable, CaseIterable, Identifiable {
@@ -265,11 +266,116 @@ final class Receipt {
         get { ReceiptPaymentMethod.fromStored(paymentMethod) }
         set { paymentMethod = newValue.rawValue }
     }
+
+    var displayItemName: String {
+        ReceiptParser.collapsedItemName(itemName)
+    }
+
+    var resolvedWarrantyUntil: Date? {
+        warrantyUntil ?? ReceiptParser.applyCategoryDates(category: category, issuedAt: issuedAt).warranty
+    }
+
+    var resolvedReturnUntil: Date? {
+        returnUntil ?? ReceiptParser.applyCategoryDates(category: category, issuedAt: issuedAt).returning
+    }
 }
 
 enum ReceiptRoute: Hashable {
     case settings
     case receipt(UUID)
+}
+
+enum ReceiptSearch {
+    private static let locale = Locale(identifier: "pl_PL")
+
+    static func matches(_ receipt: Receipt, query: String) -> Bool {
+        matches(
+            query: query,
+            fields: [
+                receipt.merchantName,
+                receipt.merchantNIP,
+                receipt.documentNumber,
+                receipt.itemName,
+                receipt.displayItemName,
+                receipt.ocrText,
+                receipt.category.title,
+                receipt.documentType.title,
+                receipt.note,
+                receipt.payment.title
+            ]
+        )
+    }
+
+    static func matches(query: String, fields: [String]) -> Bool {
+        let foldedQuery = fold(query).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard foldedQuery.isEmpty == false else { return true }
+        let haystack = fold(fields.joined(separator: " "))
+        let needles = tokens(foldedQuery)
+        if needles.isEmpty {
+            return haystack.contains(foldedQuery)
+        }
+        let hayTokens = tokens(haystack)
+        return needles.allSatisfy { needle in
+            haystack.contains(needle) || hayTokens.contains { sharesStem($0, needle) }
+        }
+    }
+
+    private static func fold(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: locale)
+            .replacingOccurrences(of: "-", with: " ")
+    }
+
+    private static func tokens(_ value: String) -> [String] {
+        value
+            .split { $0.isLetter == false && $0.isNumber == false }
+            .map(String.init)
+            .filter { $0.count >= 2 }
+    }
+
+    private static func sharesStem(_ a: String, _ b: String) -> Bool {
+        if a == b { return true }
+        if a.hasPrefix(b) || b.hasPrefix(a) { return true }
+        let length = min(5, min(a.count, b.count))
+        guard length >= 4 else { return false }
+        return a.prefix(length) == b.prefix(length)
+    }
+}
+
+struct ReceiptMerchantGroup: Identifiable {
+    var id: String { merchantKey }
+    var merchantKey: String
+    var merchantName: String
+    var receipts: [Receipt]
+
+    var total: Double { receipts.reduce(0) { $0 + $1.amount } }
+    var category: ReceiptCategory { receipts.first?.category ?? .inne }
+
+    static func groups(from receipts: [Receipt]) -> [ReceiptMerchantGroup] {
+        var order: [String] = []
+        var buckets: [String: [Receipt]] = [:]
+        var names: [String: String] = [:]
+        for receipt in receipts {
+            let key = fold(receipt.merchantName)
+            if buckets[key] == nil {
+                order.append(key)
+                names[key] = receipt.merchantName
+            }
+            buckets[key, default: []].append(receipt)
+        }
+        return order.map { key in
+            ReceiptMerchantGroup(
+                merchantKey: key,
+                merchantName: names[key] ?? key,
+                receipts: buckets[key] ?? []
+            )
+        }
+    }
+
+    private static func fold(_ value: String) -> String {
+        value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "pl_PL"))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 enum ReceiptAnalytics {
@@ -300,24 +406,63 @@ enum ReceiptAnalytics {
         }
     }
 
-    static func upcomingWarranties(_ receipts: [Receipt], withinDays: Int = 60, now: Date = .now) -> [Receipt] {
+    static func isActiveWarranty(_ receipt: Receipt, now: Date = .now) -> Bool {
+        guard let date = receipt.resolvedWarrantyUntil else { return false }
+        return PolishDates.daysUntil(date, now: now) >= 0
+    }
+
+    static func isActiveReturn(_ receipt: Receipt, now: Date = .now) -> Bool {
+        guard let date = receipt.resolvedReturnUntil else { return false }
+        return PolishDates.daysUntil(date, now: now) >= 0
+    }
+
+    static func activeWarranties(_ receipts: [Receipt], now: Date = .now) -> [Receipt] {
         receipts
-            .filter { receipt in
-                guard let date = receipt.warrantyUntil else { return false }
-                let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: now), to: Calendar.current.startOfDay(for: date)).day ?? 0
-                return days >= 0 && days <= withinDays
-            }
-            .sorted { ($0.warrantyUntil ?? .distantFuture) < ($1.warrantyUntil ?? .distantFuture) }
+            .filter { isActiveWarranty($0, now: now) }
+            .sorted { ($0.resolvedWarrantyUntil ?? .distantFuture) < ($1.resolvedWarrantyUntil ?? .distantFuture) }
+    }
+
+    static func activeReturns(_ receipts: [Receipt], now: Date = .now) -> [Receipt] {
+        receipts
+            .filter { isActiveReturn($0, now: now) }
+            .sorted { ($0.resolvedReturnUntil ?? .distantFuture) < ($1.resolvedReturnUntil ?? .distantFuture) }
+    }
+
+    static func upcomingWarranties(_ receipts: [Receipt], withinDays: Int = 60, now: Date = .now) -> [Receipt] {
+        activeWarranties(receipts, now: now).filter { receipt in
+            guard let date = receipt.resolvedWarrantyUntil else { return false }
+            return PolishDates.daysUntil(date, now: now) <= withinDays
+        }
     }
 
     static func upcomingReturns(_ receipts: [Receipt], withinDays: Int = 14, now: Date = .now) -> [Receipt] {
-        receipts
-            .filter { receipt in
-                guard let date = receipt.returnUntil else { return false }
-                let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: now), to: Calendar.current.startOfDay(for: date)).day ?? 0
-                return days >= 0 && days <= withinDays
+        activeReturns(receipts, now: now).filter { receipt in
+            guard let date = receipt.resolvedReturnUntil else { return false }
+            return PolishDates.daysUntil(date, now: now) <= withinDays
+        }
+    }
+
+    @discardableResult
+    static func healMissingDates(_ receipts: [Receipt], calendar: Calendar = .current) -> Bool {
+        var changed = false
+        for receipt in receipts {
+            let dates = ReceiptParser.applyCategoryDates(
+                category: receipt.category,
+                issuedAt: receipt.issuedAt,
+                calendar: calendar
+            )
+            if receipt.warrantyUntil == nil, let warranty = dates.warranty {
+                receipt.warrantyUntil = warranty
+                receipt.updatedAt = Date()
+                changed = true
             }
-            .sorted { ($0.returnUntil ?? .distantFuture) < ($1.returnUntil ?? .distantFuture) }
+            if receipt.returnUntil == nil, let returning = dates.returning {
+                receipt.returnUntil = returning
+                receipt.updatedAt = Date()
+                changed = true
+            }
+        }
+        return changed
     }
 }
 

@@ -50,13 +50,13 @@ final class ExpiryNotificationService: NSObject, UNUserNotificationCenterDelegat
             }
         }
         for receipt in receipts {
-            if settings.warrantyReminder30, let date = receipt.warrantyUntil {
+            if settings.warrantyReminder30, let date = receipt.resolvedWarrantyUntil {
                 await scheduleReceipt(receipt, fireDate: date, daysBefore: 30, kind: .warranty, calendar: calendar, now: now)
             }
-            if settings.warrantyReminder7, let date = receipt.warrantyUntil {
+            if settings.warrantyReminder7, let date = receipt.resolvedWarrantyUntil {
                 await scheduleReceipt(receipt, fireDate: date, daysBefore: 7, kind: .warranty, calendar: calendar, now: now)
             }
-            if settings.returnReminder3, let date = receipt.returnUntil {
+            if settings.returnReminder3, let date = receipt.resolvedReturnUntil {
                 await scheduleReceipt(receipt, fireDate: date, daysBefore: 3, kind: .returning, calendar: calendar, now: now)
             }
         }
@@ -166,6 +166,7 @@ extension Notification.Name {
     static let paragonOpenTicket = Notification.Name("paragonos.openTicket")
     static let paragonOpenReceipt = Notification.Name("paragonos.openReceipt")
     static let paragonOpenScanner = Notification.Name("paragonos.openScanner")
+    static let paragonFamilyRemoteChange = Notification.Name("paragonos.familyRemoteChange")
 }
 
 struct NotificationSettings: Equatable {

@@ -40,6 +40,10 @@ enum BarcodeSymbology: String, Codable, CaseIterable {
         case .unknown: return "Kod"
         }
     }
+
+    static var userSelectable: [BarcodeSymbology] {
+        allCases.filter { $0 != .unknown }
+    }
 }
 
 @Model
@@ -119,6 +123,7 @@ final class Ticket {
 enum WalletRoute: Hashable {
     case settings
     case ticket(UUID)
+    case bottleMap
 }
 
 enum CheckoutCode {

@@ -1,3 +1,4 @@
+import CloudKit
 import XCTest
 @testable import ParagonOS
 
@@ -35,6 +36,24 @@ final class FamilySharePolicyTests: XCTestCase {
                 familyWalletID: "family"
             )
         )
+        XCTAssertFalse(
+            FamilySharePolicy.shouldShare(
+                .loyalty,
+                depositsEnabled: true,
+                receiptsEnabled: true,
+                cardsEnabled: false,
+                familyWalletID: "family"
+            )
+        )
+        XCTAssertTrue(
+            FamilySharePolicy.shouldShare(
+                .loyalty,
+                depositsEnabled: false,
+                receiptsEnabled: false,
+                cardsEnabled: true,
+                familyWalletID: "family"
+            )
+        )
     }
 
     func testShareRequiresFamilyWallet() {
@@ -46,6 +65,35 @@ final class FamilySharePolicyTests: XCTestCase {
                 familyWalletID: nil
             )
         )
+    }
+}
+
+final class FamilyCloudTargetTests: XCTestCase {
+    func testDefaultOwnerNameWritesToPrivateDatabase() {
+        XCTAssertTrue(FamilyCloudTarget.isOwner(CKCurrentUserDefaultName))
+        XCTAssertTrue(FamilyCloudTarget.isOwner(""))
+        XCTAssertFalse(FamilyCloudTarget.isOwner("_abc123owner"))
+    }
+}
+
+final class FamilyIdentityTests: XCTestCase {
+    func testJoinsGivenAndFamilyName() {
+        XCTAssertEqual(FamilyIdentity.joinedName(given: "Marian", family: "Kowalski"), "Marian Kowalski")
+        XCTAssertEqual(FamilyIdentity.joinedName(given: "Marian", family: "  "), "Marian")
+        XCTAssertEqual(FamilyIdentity.joinedName(given: nil, family: nil), "")
+    }
+
+    func testInitialsUseTwoLetters() {
+        XCTAssertEqual(FamilyIdentity.initials("Marian Kowalski"), "MK")
+        XCTAssertEqual(FamilyIdentity.initials("Anna"), "A")
+        XCTAssertEqual(FamilyIdentity.initials("  "), "•")
+    }
+
+    func testUpgradesFirstNameOnlyToICloudFullName() {
+        XCTAssertTrue(FamilyIdentity.shouldUpgradeStoredName("", suggested: "Marian Kowalski"))
+        XCTAssertTrue(FamilyIdentity.shouldUpgradeStoredName("Marian", suggested: "Marian Kowalski"))
+        XCTAssertFalse(FamilyIdentity.shouldUpgradeStoredName("Ania", suggested: "Marian Kowalski"))
+        XCTAssertFalse(FamilyIdentity.shouldUpgradeStoredName("Marian Kowalski", suggested: "Marian"))
     }
 }
 

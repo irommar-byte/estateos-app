@@ -1,4 +1,5 @@
 import CloudKit
+import Combine
 import Foundation
 import SwiftData
 import SwiftUI
@@ -17,13 +18,20 @@ final class WalletModel: ObservableObject {
     @Published var pendingRedeem: Ticket?
     @Published var walletPath = NavigationPath()
     @Published var receiptPath = NavigationPath()
+    @Published var loyaltyPath = NavigationPath()
     @Published var scanIntent: ScanIntent = .deposit
     @Published var askScanIntent = false
     @Published var receiptDraft: ReceiptDraft?
+    @Published var loyaltyDraft: LoyaltyDraft?
     @Published var pendingReceiptID: UUID?
+    @Published var pendingLoyaltyID: UUID?
+    @Published var showLoyaltyCheckoutFor: UUID?
 
     let family = CloudKitFamilyService.shared
+    let cloudSync = CloudSyncMonitor.shared
     private var profileContext: ModelContext?
+    private var didBootstrap = false
+    private var cloudCancellables = Set<AnyCancellable>()
     @Published var settings = AppSettings.load() {
         didSet { settings.save() }
     }
@@ -31,23 +39,44 @@ final class WalletModel: ObservableObject {
     init() {
         showOnboarding = AppSettings.load().hasCompletedOnboarding == false
         ExpiryNotificationService.shared.configure()
+        cloudSync.start()
+        cloudSync.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cloudCancellables)
     }
 
-    func bootstrap(context: ModelContext, tickets: [Ticket], receipts: [Receipt]) async {
+    func bootstrap(context: ModelContext, tickets: [Ticket], receipts: [Receipt], cards: [LoyaltyCard] = []) async {
         profileContext = context
+        if FileManager.default.ubiquityIdentityToken == nil {
+            cloudSync.markLocalOnly()
+        }
         await refreshDisplayName(context: context)
         await family.refreshAccountStatus()
-        await ExpiryNotificationService.shared.requestAuthorization()
-        await ExpiryNotificationService.shared.reschedule(
-            tickets: tickets,
-            receipts: receipts,
-            settings: settings.notificationSettings
-        )
+        repairMissingBarcodes(tickets: tickets, context: context)
+        healReceiptDates(receipts: receipts, context: context)
+        await repairImpossibleDates(tickets: tickets, context: context)
         await mergeFamilyTickets(context: context, existing: tickets)
         await mergeFamilyReceipts(context: context, existing: receipts)
-        repairMissingBarcodes(tickets: tickets, context: context)
-        await repairImpossibleDates(tickets: tickets, context: context)
+        await mergeFamilyCards(context: context, existing: cards)
+        let latestTickets = storedTickets(in: context)
+        let latestReceipts = storedReceipts(in: context)
+        healReceiptDates(receipts: latestReceipts, context: context)
+        await ExpiryNotificationService.shared.reschedule(
+            tickets: latestTickets,
+            receipts: latestReceipts,
+            settings: settings.notificationSettings
+        )
+        await family.subscribeToRemoteChanges()
+        await family.repairMissingParents()
         observeNotifications()
+        cloudSync.requestExport(from: context)
+        didBootstrap = true
+        if settings.hasCompletedOnboarding {
+            await ExpiryNotificationService.shared.requestAuthorization()
+        }
         if let intent = WalletScanBridge.pendingIntent {
             WalletScanBridge.pendingIntent = nil
             OpenScanBridge.pending = false
@@ -62,6 +91,17 @@ final class WalletModel: ObservableObject {
         scanIntent = intent
         scanDraft = nil
         receiptDraft = nil
+        loyaltyDraft = nil
+        scanError = nil
+        showScanner = true
+    }
+
+    func openManualLoyalty(program: LoyaltyProgram) {
+        scanIntent = .loyalty
+        scanDraft = nil
+        receiptDraft = nil
+        loyaltyDraft = .blank(program: program)
+        scanPhoto = nil
         scanError = nil
         showScanner = true
     }
@@ -74,10 +114,57 @@ final class WalletModel: ObservableObject {
         )
     }
 
+    func requestCloudSync() {
+        guard let context = profileContext else { return }
+        cloudSync.requestExport(from: context)
+        Task { await refreshFamilyFromCloud() }
+    }
+
+    func refreshFamilyFromCloud() async {
+        guard didBootstrap, let context = profileContext else { return }
+        let tickets = storedTickets(in: context)
+        let receipts = storedReceipts(in: context)
+        let cards = storedCards(in: context)
+        await mergeFamilyTickets(context: context, existing: tickets)
+        await mergeFamilyReceipts(context: context, existing: receipts)
+        await mergeFamilyCards(context: context, existing: cards)
+        let latestReceipts = storedReceipts(in: context)
+        healReceiptDates(receipts: latestReceipts, context: context)
+        await ExpiryNotificationService.shared.reschedule(
+            tickets: storedTickets(in: context),
+            receipts: latestReceipts,
+            settings: settings.notificationSettings
+        )
+    }
+
+    private func prepareRedeem(id: UUID) {
+        guard let context = profileContext else {
+            pendingTicketID = id
+            return
+        }
+        pendingRedeem = storedTickets(in: context).first { $0.id == id }
+        if pendingRedeem == nil {
+            pendingTicketID = id
+        }
+    }
+
+    private func storedTickets(in context: ModelContext) -> [Ticket] {
+        (try? context.fetch(FetchDescriptor<Ticket>())) ?? []
+    }
+
+    private func storedReceipts(in context: ModelContext) -> [Receipt] {
+        (try? context.fetch(FetchDescriptor<Receipt>())) ?? []
+    }
+
+    private func storedCards(in context: ModelContext) -> [LoyaltyCard] {
+        (try? context.fetch(FetchDescriptor<LoyaltyCard>())) ?? []
+    }
+
     func completeOnboarding() {
         settings.hasCompletedOnboarding = true
         showOnboarding = false
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        Task { await ExpiryNotificationService.shared.requestAuthorization() }
     }
 
     func analyze(image: UIImage) async {
@@ -85,31 +172,55 @@ final class WalletModel: ObservableObject {
         scanError = nil
         defer { isAnalyzing = false }
         do {
+            if scanIntent == .loyalty {
+                let recognized = try await ScanService.recognize(image: image)
+                scanPhoto = ScanService.storedPhoto(image)
+                loyaltyDraft = LoyaltyParser.parse(lines: recognized.lines, barcodes: recognized.barcodes)
+                scanDraft = nil
+                receiptDraft = nil
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                return
+            }
             if scanIntent == .receipt {
                 let recognized = try await ScanService.recognize(image: image)
-                scanPhoto = image
+                scanPhoto = ScanService.storedPhoto(image)
                 receiptDraft = ReceiptParser.parse(lines: recognized.lines, barcodes: recognized.barcodes)
                 scanDraft = nil
+                loyaltyDraft = nil
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 return
             }
             let result = try await ScanService.analyze(image: image)
             if offerRedeemIfDuplicate(result.draft) { return }
-            scanPhoto = image
+            scanPhoto = ScanService.storedPhoto(image)
             scanDraft = Self.draftWithBarcode(result.draft)
             receiptDraft = nil
+            loyaltyDraft = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
             scanError = scanIntent == .receipt
                 ? "Nie udało się odczytać paragonu. Wpisz dane ręcznie."
-                : "Nie udało się odczytać kwitka. Wpisz dane ręcznie."
-            scanPhoto = image
+                : scanIntent == .loyalty
+                    ? "Nie udało się odczytać karty. Wybierz sklep i wpisz kod."
+                    : "Nie udało się odczytać kwitka. Wpisz dane ręcznie."
+            scanPhoto = ScanService.storedPhoto(image)
             if scanIntent == .receipt {
                 receiptDraft = .blank()
+            } else if scanIntent == .loyalty {
+                loyaltyDraft = .blank()
             } else {
                 scanDraft = .blank()
             }
         }
+    }
+
+    func finishLoyaltyScan(draft: LoyaltyDraft, photo: UIImage?) {
+        scanError = nil
+        scanPhoto = photo.map(ScanService.storedPhoto)
+        loyaltyDraft = draft
+        scanDraft = nil
+        receiptDraft = nil
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     func applyLiveScan(draft: VoucherDraft, photo: UIImage?) {
@@ -129,16 +240,18 @@ final class WalletModel: ObservableObject {
                 parsed.merchantName = RetailerCatalog.policy(id: draft.retailerID).name
                 parsed.category = ReceiptParser.inferCategory(merchant: parsed.merchantName, text: draft.ocrText)
             }
-            scanPhoto = photo
+            scanPhoto = photo.map(ScanService.storedPhoto)
             receiptDraft = parsed
             scanDraft = nil
+            loyaltyDraft = nil
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             return
         }
         if offerRedeemIfDuplicate(draft) { return }
-        scanPhoto = photo
+        scanPhoto = photo.map(ScanService.storedPhoto)
         scanDraft = Self.draftWithBarcode(draft)
         receiptDraft = nil
+        loyaltyDraft = nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
@@ -151,6 +264,7 @@ final class WalletModel: ObservableObject {
             target,
             depositsEnabled: settings.shareNewTicketsWithFamily,
             receiptsEnabled: settings.shareNewReceiptsWithFamily,
+            cardsEnabled: settings.shareNewLoyaltyCardsWithFamily,
             familyWalletID: family.familyWalletID
         )
     }
@@ -178,6 +292,7 @@ final class WalletModel: ObservableObject {
         }
         context.insert(ticket)
         try context.save()
+        cloudSync.requestExport(from: context)
         scanDraft = nil
         scanPhoto = nil
         showScanner = false
@@ -221,6 +336,7 @@ final class WalletModel: ObservableObject {
         }
         context.insert(receipt)
         try context.save()
+        cloudSync.requestExport(from: context)
         receiptDraft = nil
         scanPhoto = nil
         showScanner = false
@@ -230,6 +346,61 @@ final class WalletModel: ObservableObject {
         }
         pendingReceiptID = receipt.id
         return receipt
+    }
+
+    func saveLoyalty(draft: LoyaltyDraft, photo: UIImage?, context: ModelContext) throws -> LoyaltyCard {
+        let payload = draft.barcodePayload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard payload.isEmpty == false else {
+            throw ScanSaveError.missingBarcode
+        }
+        let name = draft.programName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name.isEmpty == false else {
+            throw ScanSaveError.missingMerchant
+        }
+        let photoData = photo.flatMap { ScanService.compressPhoto($0) }
+        let card = LoyaltyCard(
+            programID: draft.programID.isEmpty ? LoyaltyCatalog.customID : draft.programID,
+            programName: name,
+            holderName: draft.holderName.trimmingCharacters(in: .whitespacesAndNewlines),
+            barcodePayload: payload,
+            barcodeSymbology: draft.barcodeSymbology == .unknown
+                ? BarcodeSymbology.inferred(from: payload)
+                : draft.barcodeSymbology,
+            note: draft.note.trimmingCharacters(in: .whitespacesAndNewlines),
+            photoData: photoData,
+            scannedByName: settings.displayName,
+            ocrText: draft.ocrText
+        )
+        if shouldShare(.loyalty) {
+            card.familyShareID = family.familyWalletID
+        }
+        context.insert(card)
+        try context.save()
+        cloudSync.requestExport(from: context)
+        loyaltyDraft = nil
+        scanPhoto = nil
+        showScanner = false
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if shouldShare(.loyalty) {
+            Task { await family.upsertShared(card: card) }
+        }
+        pendingLoyaltyID = card.id
+        return card
+    }
+
+    func persistLoyalty(_ card: LoyaltyCard, context: ModelContext) throws {
+        card.updatedAt = Date()
+        try context.save()
+        if card.familyShareID != nil {
+            Task { await family.upsertShared(card: card) }
+        }
+    }
+
+    func shareLoyaltyWithFamily(_ card: LoyaltyCard, context: ModelContext) async {
+        card.familyShareID = family.familyWalletID
+        card.updatedAt = Date()
+        try? context.save()
+        await family.upsertShared(card: card)
     }
 
     func persistReceipt(_ receipt: Receipt, context: ModelContext) throws {
@@ -294,6 +465,12 @@ final class WalletModel: ObservableObject {
         return all.first { ticket in
             ticket.resolvedStatus() == .active
                 && keys.contains(ticket.displayBarcode.filter(\.isNumber))
+        }
+    }
+
+    private func healReceiptDates(receipts: [Receipt], context: ModelContext) {
+        if ReceiptAnalytics.healMissingDates(receipts) {
+            try? context.save()
         }
     }
 
@@ -498,6 +675,49 @@ final class WalletModel: ObservableObject {
         try? context.save()
     }
 
+    private func mergeFamilyCards(context: ModelContext, existing: [LoyaltyCard]) async {
+        let records = await family.fetchSharedCards()
+        guard records.isEmpty == false else { return }
+        let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id.uuidString, $0) })
+        for record in records {
+            let name = record.recordID.recordName
+            let programID = record["programID"] as? String ?? ""
+            let programName = record["programName"] as? String ?? ""
+            let holderName = record["holderName"] as? String ?? ""
+            let payload = record["barcodePayload"] as? String ?? ""
+            let symbology = BarcodeSymbology(rawValue: record["barcodeSymbology"] as? String ?? "") ?? .code128
+            let note = record["note"] as? String ?? ""
+            let scannedBy = record["scannedByName"] as? String ?? ""
+            var photo: Data?
+            if let asset = record["photo"] as? CKAsset, let url = asset.fileURL {
+                photo = try? Data(contentsOf: url)
+            }
+            if let card = byID[name] {
+                card.programName = programName
+                card.holderName = holderName
+                card.barcodePayload = payload
+                card.note = note
+                card.updatedAt = Date()
+            } else {
+                let card = LoyaltyCard(
+                    id: UUID(uuidString: name) ?? UUID(),
+                    programID: programID,
+                    programName: programName,
+                    holderName: holderName,
+                    barcodePayload: payload,
+                    barcodeSymbology: symbology,
+                    note: note,
+                    photoData: photo,
+                    scannedByName: scannedBy,
+                    ocrText: ""
+                )
+                card.familyShareID = family.familyWalletID
+                context.insert(card)
+            }
+        }
+        try? context.save()
+    }
+
     private var observers: [NSObjectProtocol] = []
 
     private func observeNotifications() {
@@ -509,7 +729,7 @@ final class WalletModel: ObservableObject {
         })
         observers.append(NotificationCenter.default.addObserver(forName: .paragonMarkRedeemed, object: nil, queue: .main) { [weak self] note in
             if let raw = note.object as? String, let id = UUID(uuidString: raw) {
-                Task { @MainActor in self?.pendingTicketID = id }
+                Task { @MainActor in self?.prepareRedeem(id: id) }
             }
         })
         observers.append(NotificationCenter.default.addObserver(forName: .paragonOpenReceipt, object: nil, queue: .main) { [weak self] note in
@@ -527,6 +747,9 @@ final class WalletModel: ObservableObject {
                     self.askScanIntent = true
                 }
             }
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: .paragonFamilyRemoteChange, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.refreshFamilyFromCloud() }
         })
         observers.append(NotificationCenter.default.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: NSUbiquitousKeyValueStore.default, queue: .main) { [weak self] _ in
             Task { @MainActor in
@@ -596,6 +819,12 @@ final class WalletModel: ObservableObject {
         }
     }
 
+    func applySuggestedIdentityIfNeeded() async {
+        let suggested = family.meFullName.isEmpty ? await family.suggestedGivenName() : family.meFullName
+        guard FamilyIdentity.shouldUpgradeStoredName(settings.displayName, suggested: suggested) else { return }
+        persistDisplayName(suggested)
+    }
+
     private static func profile(in context: ModelContext) -> AppProfile {
         let found = (try? context.fetch(FetchDescriptor<AppProfile>())) ?? []
         if let newest = found.max(by: { $0.updatedAt < $1.updatedAt }) {
@@ -613,6 +842,7 @@ final class WalletModel: ObservableObject {
 enum FamilyShareTarget: Equatable {
     case deposit
     case receipt
+    case loyalty
 }
 
 enum FamilySharePolicy {
@@ -622,10 +852,27 @@ enum FamilySharePolicy {
         receiptsEnabled: Bool,
         familyWalletID: String?
     ) -> Bool {
+        shouldShare(
+            target,
+            depositsEnabled: depositsEnabled,
+            receiptsEnabled: receiptsEnabled,
+            cardsEnabled: false,
+            familyWalletID: familyWalletID
+        )
+    }
+
+    static func shouldShare(
+        _ target: FamilyShareTarget,
+        depositsEnabled: Bool,
+        receiptsEnabled: Bool,
+        cardsEnabled: Bool,
+        familyWalletID: String?
+    ) -> Bool {
         guard familyWalletID != nil else { return false }
         switch target {
         case .deposit: return depositsEnabled
         case .receipt: return receiptsEnabled
+        case .loyalty: return cardsEnabled
         }
     }
 }
@@ -633,10 +880,12 @@ enum FamilySharePolicy {
 enum ScanSaveError: LocalizedError {
     case missingAmount
     case missingMerchant
+    case missingBarcode
     var errorDescription: String? {
         switch self {
         case .missingAmount: return "Podaj kwotę, zanim zapiszesz dokument."
         case .missingMerchant: return "Podaj nazwę sklepu lub sprzedawcy."
+        case .missingBarcode: return "Podaj numer karty albo zeskanuj kod."
         }
     }
 }
@@ -650,6 +899,7 @@ struct AppSettings: Equatable {
     var boostBrightness: Bool
     var shareNewTicketsWithFamily: Bool
     var shareNewReceiptsWithFamily: Bool
+    var shareNewLoyaltyCardsWithFamily: Bool
     var scanOpensImmediately: Bool
     var warrantyReminder30: Bool
     var warrantyReminder7: Bool
@@ -678,6 +928,7 @@ struct AppSettings: Equatable {
             boostBrightness: defaults.object(forKey: Keys.brightness) as? Bool ?? true,
             shareNewTicketsWithFamily: defaults.object(forKey: Keys.shareFamily) as? Bool ?? true,
             shareNewReceiptsWithFamily: defaults.object(forKey: Keys.shareReceipts) as? Bool ?? true,
+            shareNewLoyaltyCardsWithFamily: defaults.object(forKey: Keys.shareCards) as? Bool ?? true,
             scanOpensImmediately: defaults.object(forKey: Keys.scanImmediate) as? Bool ?? false,
             warrantyReminder30: defaults.object(forKey: Keys.warranty30) as? Bool ?? true,
             warrantyReminder7: defaults.object(forKey: Keys.warranty7) as? Bool ?? true,
@@ -696,6 +947,7 @@ struct AppSettings: Equatable {
         defaults.set(boostBrightness, forKey: Keys.brightness)
         defaults.set(shareNewTicketsWithFamily, forKey: Keys.shareFamily)
         defaults.set(shareNewReceiptsWithFamily, forKey: Keys.shareReceipts)
+        defaults.set(shareNewLoyaltyCardsWithFamily, forKey: Keys.shareCards)
         defaults.set(scanOpensImmediately, forKey: Keys.scanImmediate)
         defaults.set(warrantyReminder30, forKey: Keys.warranty30)
         defaults.set(warrantyReminder7, forKey: Keys.warranty7)
@@ -712,6 +964,7 @@ struct AppSettings: Equatable {
         static let brightness = "boostBrightness"
         static let shareFamily = "shareNewTicketsWithFamily"
         static let shareReceipts = "shareNewReceiptsWithFamily"
+        static let shareCards = "shareNewLoyaltyCardsWithFamily"
         static let scanImmediate = "scanOpensImmediately"
         static let warranty30 = "warrantyReminder30"
         static let warranty7 = "warrantyReminder7"

@@ -18,6 +18,12 @@ struct ReceiptDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(receipt.merchantName)
                             .font(.title3.weight(.bold))
+                        if receipt.displayItemName.isEmpty == false {
+                            Text(receipt.displayItemName)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                         Text(receipt.documentType.title)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -100,31 +106,31 @@ struct ReceiptDetailView: View {
 
             Section("Terminy") {
                 DatePicker("Zakup", selection: $receipt.issuedAt, displayedComponents: .date)
-                if receipt.returnUntil != nil {
+                if receipt.resolvedReturnUntil != nil || receipt.category.returnDays != nil {
                     DatePicker(
                         "Zwrot do",
                         selection: Binding(
-                            get: { receipt.returnUntil ?? receipt.issuedAt },
+                            get: { receipt.resolvedReturnUntil ?? receipt.issuedAt },
                             set: { receipt.returnUntil = $0 }
                         ),
                         displayedComponents: .date
                     )
                 }
-                if receipt.warrantyUntil != nil {
+                if receipt.resolvedWarrantyUntil != nil || receipt.category.warrantyMonths != nil {
                     DatePicker(
                         "Gwarancja do",
                         selection: Binding(
-                            get: { receipt.warrantyUntil ?? receipt.issuedAt },
+                            get: { receipt.resolvedWarrantyUntil ?? receipt.issuedAt },
                             set: { receipt.warrantyUntil = $0 }
                         ),
                         displayedComponents: .date
                     )
+                    if let date = receipt.resolvedWarrantyUntil {
+                        LabeledContent("Pozostało", value: PolishDates.warrantyRemaining(date).capitalized)
+                    }
                 }
                 Button("Przelicz terminy z kategorii") {
-                    let dates = ReceiptParser.applyCategoryDates(category: receipt.category, issuedAt: receipt.issuedAt)
-                    receipt.warrantyUntil = dates.warranty
-                    receipt.returnUntil = dates.returning
-                    try? wallet.persistReceipt(receipt, context: context)
+                    applyCategoryDates()
                 }
             }
 
@@ -163,10 +169,13 @@ struct ReceiptDetailView: View {
         }
         .navigationTitle(receipt.merchantName)
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: receipt.category) { _, category in
-            let dates = ReceiptParser.applyCategoryDates(category: category, issuedAt: receipt.issuedAt)
-            if receipt.warrantyUntil == nil { receipt.warrantyUntil = dates.warranty }
-            if receipt.returnUntil == nil { receipt.returnUntil = dates.returning }
+        .onAppear {
+            if ReceiptAnalytics.healMissingDates([receipt]) {
+                try? wallet.persistReceipt(receipt, context: context)
+            }
+        }
+        .onChange(of: receipt.category) { _, _ in
+            applyCategoryDates()
         }
         .onDisappear {
             try? wallet.persistReceipt(receipt, context: context)
@@ -194,5 +203,12 @@ struct ReceiptDetailView: View {
         } message: {
             Text("Zdjęcie i dane znikną z tego iPhone’a.")
         }
+    }
+
+    private func applyCategoryDates() {
+        let dates = ReceiptParser.applyCategoryDates(category: receipt.category, issuedAt: receipt.issuedAt)
+        receipt.warrantyUntil = dates.warranty
+        receipt.returnUntil = dates.returning
+        try? wallet.persistReceipt(receipt, context: context)
     }
 }

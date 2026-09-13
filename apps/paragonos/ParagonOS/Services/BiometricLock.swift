@@ -60,7 +60,7 @@ final class BiometricLock: ObservableObject {
         defer { isAuthenticating = false }
         let context = LAContext()
         context.localizedCancelTitle = "Anuluj"
-        let reason = "Odblokuj \(Brand.displayName), żeby zobaczyć kaucje i paragony."
+        let reason = "Odblokuj \(Brand.displayName), żeby zobaczyć kaucje, paragony i karty."
         do {
             let ok = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
             if ok {

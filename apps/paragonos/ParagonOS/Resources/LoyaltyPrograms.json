@@ -1,0 +1,1258 @@
+{
+  "programs": [
+    {
+      "id": "fourf",
+      "name": "4F",
+      "programName": "4F",
+      "domain": "4f.com.pl",
+      "color": "#000000",
+      "keywords": [
+        "4f"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "action",
+      "name": "Action",
+      "programName": "Action",
+      "domain": "action.com",
+      "color": "#0033A0",
+      "keywords": [
+        "action"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "aldi",
+      "name": "Aldi",
+      "programName": "Aldi",
+      "domain": "aldi.pl",
+      "color": "#00005F",
+      "keywords": [
+        "aldi"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "allegro",
+      "name": "Allegro",
+      "programName": "Allegro",
+      "domain": "allegro.pl",
+      "color": "#FF5A00",
+      "keywords": [
+        "allegro"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "apart",
+      "name": "Apart",
+      "programName": "Apart",
+      "domain": "apart.pl",
+      "color": "#C9A227",
+      "keywords": [
+        "apart"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "auchan",
+      "name": "Auchan",
+      "programName": "Auchan",
+      "domain": "auchan.pl",
+      "color": "#E4002B",
+      "keywords": [
+        "auchan"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "biedronka",
+      "name": "Biedronka",
+      "programName": "Moja Biedronka",
+      "domain": "biedronka.pl",
+      "color": "#E30613",
+      "keywords": [
+        "biedronka",
+        "moja biedronka"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "bp",
+      "name": "BP",
+      "programName": "BPme",
+      "domain": "bp.com",
+      "color": "#00965E",
+      "keywords": [
+        "bp ",
+        "bpme"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "canda",
+      "name": "C&A",
+      "programName": "C&A",
+      "domain": "c-and-a.com",
+      "color": "#0033A0",
+      "keywords": [
+        "c&a",
+        "c & a"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "carrefour",
+      "name": "Carrefour",
+      "programName": "Moje Carrefour",
+      "domain": "carrefour.pl",
+      "color": "#004E9F",
+      "keywords": [
+        "carrefour"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "castorama",
+      "name": "Castorama",
+      "programName": "Castorama",
+      "domain": "castorama.pl",
+      "color": "#0057B8",
+      "keywords": [
+        "castorama"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "ccc",
+      "name": "CCC",
+      "programName": "CCC Club",
+      "domain": "ccc.eu",
+      "color": "#000000",
+      "keywords": [
+        "ccc"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "cinemacity",
+      "name": "Cinema City",
+      "programName": "Cinema City",
+      "domain": "cinema-city.pl",
+      "color": "#000000",
+      "keywords": [
+        "cinema city"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "circlek",
+      "name": "Circle K",
+      "programName": "Circle K Extra",
+      "domain": "circlek.pl",
+      "color": "#E1251B",
+      "keywords": [
+        "circle k",
+        "circlek"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "costa",
+      "name": "Costa",
+      "programName": "Costa Coffee",
+      "domain": "costacoffee.pl",
+      "color": "#6B1F32",
+      "keywords": [
+        "costa",
+        "costa coffee",
+        "coffeeheaven",
+        "coffee heaven"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "cropp",
+      "name": "Cropp",
+      "programName": "Cropp",
+      "domain": "cropp.com",
+      "color": "#111111",
+      "keywords": [
+        "cropp"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "dealz",
+      "name": "Dealz",
+      "programName": "Dealz",
+      "domain": "dealz.pl",
+      "color": "#E30613",
+      "keywords": [
+        "dealz"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "decathlon",
+      "name": "Decathlon",
+      "programName": "Decathlon",
+      "domain": "decathlon.pl",
+      "color": "#0082C3",
+      "keywords": [
+        "decathlon"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "deichmann",
+      "name": "Deichmann",
+      "programName": "Deichmann",
+      "domain": "deichmann.com",
+      "color": "#E30613",
+      "keywords": [
+        "deichmann"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "dino",
+      "name": "Dino",
+      "programName": "Dino",
+      "domain": "dino.pl",
+      "color": "#009639",
+      "keywords": [
+        "dino"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "diverse",
+      "name": "Diverse",
+      "programName": "Diverse",
+      "domain": "diverse.pl",
+      "color": "#000000",
+      "keywords": [
+        "diverse"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "douglas",
+      "name": "Douglas",
+      "programName": "Douglas",
+      "domain": "douglas.pl",
+      "color": "#000000",
+      "keywords": [
+        "douglas"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "doz",
+      "name": "DOZ",
+      "programName": "DOZ",
+      "domain": "doz.pl",
+      "color": "#00A651",
+      "keywords": [
+        "doz"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "leclerc",
+      "name": "E.Leclerc",
+      "programName": "E.Leclerc",
+      "domain": "leclerc.pl",
+      "color": "#E30613",
+      "keywords": [
+        "leclerc"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "empik",
+      "name": "Empik",
+      "programName": "Empik Premium",
+      "domain": "empik.com",
+      "color": "#E30613",
+      "keywords": [
+        "empik"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "eobuwie",
+      "name": "eobuwie",
+      "programName": "eobuwie",
+      "domain": "eobuwie.pl",
+      "color": "#111111",
+      "keywords": [
+        "eobuwie"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "programName": "Gemini",
+      "domain": "gemini.pl",
+      "color": "#0072CE",
+      "keywords": [
+        "gemini"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "greenpoint",
+      "name": "Greenpoint",
+      "programName": "Greenpoint",
+      "domain": "greenpoint.pl",
+      "color": "#2E7D32",
+      "keywords": [
+        "greenpoint"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "groszek",
+      "name": "Groszek",
+      "programName": "Groszek",
+      "domain": "groszek.pl",
+      "color": "#F6A800",
+      "keywords": [
+        "groszek"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "hm",
+      "name": "H&M",
+      "programName": "H&M",
+      "domain": "hm.com",
+      "color": "#E50010",
+      "keywords": [
+        "h&m",
+        "h & m"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "halfprice",
+      "name": "HalfPrice",
+      "programName": "HalfPrice",
+      "domain": "halfprice.pl",
+      "color": "#E30613",
+      "keywords": [
+        "halfprice",
+        "half price"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "hebe",
+      "name": "Hebe",
+      "programName": "Hebe",
+      "domain": "hebe.pl",
+      "color": "#E1007A",
+      "keywords": [
+        "hebe"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "helios",
+      "name": "Helios",
+      "programName": "Helios",
+      "domain": "helios.pl",
+      "color": "#E30613",
+      "keywords": [
+        "helios"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "house",
+      "name": "House",
+      "programName": "House",
+      "domain": "housebrand.com",
+      "color": "#111111",
+      "keywords": [
+        "house"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "ikea",
+      "name": "IKEA Family",
+      "programName": "IKEA Family",
+      "domain": "ikea.com",
+      "color": "#0058A3",
+      "keywords": [
+        "ikea"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "inglot",
+      "name": "Inglot",
+      "programName": "Inglot",
+      "domain": "inglot.pl",
+      "color": "#000000",
+      "keywords": [
+        "inglot"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "inpost",
+      "name": "InPost",
+      "programName": "InPost",
+      "domain": "inpost.pl",
+      "color": "#FFD100",
+      "keywords": [
+        "inpost"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "intermarche",
+      "name": "Intermarché",
+      "programName": "Intermarché",
+      "domain": "intermarche.pl",
+      "color": "#E30613",
+      "keywords": [
+        "intermarche",
+        "intermarché"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "jula",
+      "name": "Jula",
+      "programName": "Jula",
+      "domain": "jula.pl",
+      "color": "#E30613",
+      "keywords": [
+        "jula"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "julaclub",
+      "name": "JulaClub",
+      "programName": "JulaClub",
+      "domain": "jula.pl",
+      "color": "#E30613",
+      "keywords": [
+        "julaclub",
+        "jula club"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "jysk",
+      "name": "Jysk",
+      "programName": "Jysk",
+      "domain": "jysk.pl",
+      "color": "#0057B8",
+      "keywords": [
+        "jysk"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "kappahl",
+      "name": "KappAhl",
+      "programName": "KappAhl",
+      "domain": "kappahl.com",
+      "color": "#000000",
+      "keywords": [
+        "kappahl",
+        "kapp ahl"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "kari",
+      "name": "kari",
+      "programName": "kari",
+      "domain": "kari.com",
+      "color": "#7A1FA2",
+      "keywords": [
+        "kari"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "kdr",
+      "name": "Karta Dużej Rodziny",
+      "programName": "KDR",
+      "domain": "rodzina.gov.pl",
+      "color": "#1F4B99",
+      "keywords": [
+        "duzej rodziny",
+        "dużej rodziny",
+        "kdr"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "kaufland",
+      "name": "Kaufland",
+      "programName": "Kaufland Card",
+      "domain": "kaufland.pl",
+      "color": "#7A0A24",
+      "keywords": [
+        "kaufland"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "kfc",
+      "name": "KFC",
+      "programName": "KFC",
+      "domain": "kfc.pl",
+      "color": "#E4002B",
+      "keywords": [
+        "kfc"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "kiabi",
+      "name": "Kiabi",
+      "programName": "Kiabi",
+      "domain": "kiabi.pl",
+      "color": "#111111",
+      "keywords": [
+        "kiabi"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "kubenz",
+      "name": "KUBENZ",
+      "programName": "KUBENZ",
+      "domain": "kubenz.pl",
+      "color": "#111111",
+      "keywords": [
+        "kubenz"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "lavantil",
+      "name": "La Vantil",
+      "programName": "La Vantil",
+      "domain": "lavantil.pl",
+      "color": "#F4F1EA",
+      "keywords": [
+        "la vantil",
+        "lavantil"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "leroymerlin",
+      "name": "Leroy Merlin",
+      "programName": "Leroy Merlin",
+      "domain": "leroymerlin.pl",
+      "color": "#78BE20",
+      "keywords": [
+        "leroy merlin",
+        "leroymerlin"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "lewiatan",
+      "name": "Lewiatan",
+      "programName": "Lewiatan",
+      "domain": "lewiatan.pl",
+      "color": "#E30613",
+      "keywords": [
+        "lewiatan"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "lidlplus",
+      "name": "Lidl Plus",
+      "programName": "Lidl Plus",
+      "domain": "lidl.pl",
+      "color": "#0050AA",
+      "keywords": [
+        "lidl plus",
+        "lidl"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "lotos",
+      "name": "Lotos",
+      "programName": "Lotos",
+      "domain": "lotos.pl",
+      "color": "#0A2F6B",
+      "keywords": [
+        "lotos"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "mcdonalds",
+      "name": "McDonald's",
+      "programName": "McDonald's",
+      "domain": "mcdonalds.pl",
+      "color": "#FFC72C",
+      "keywords": [
+        "mcdonald",
+        "mcdonalds"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "mediaexpert",
+      "name": "Media Expert",
+      "programName": "Media Expert",
+      "domain": "mediaexpert.pl",
+      "color": "#E30613",
+      "keywords": [
+        "media expert",
+        "mediaexpert"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "mediamarkt",
+      "name": "MediaMarkt",
+      "programName": "MediaMarkt",
+      "domain": "mediamarkt.pl",
+      "color": "#E30613",
+      "keywords": [
+        "mediamarkt",
+        "media markt"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "medicine",
+      "name": "Medicine",
+      "programName": "Medicine",
+      "domain": "medicine.pl",
+      "color": "#000000",
+      "keywords": [
+        "medicine"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "eobuwieworld",
+      "name": "Modivo",
+      "programName": "Modivo",
+      "domain": "modivo.pl",
+      "color": "#000000",
+      "keywords": [
+        "modivo"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "mohito",
+      "name": "Mohito",
+      "programName": "Mohito",
+      "domain": "mohito.com",
+      "color": "#000000",
+      "keywords": [
+        "mohito"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "multikino",
+      "name": "Multikino",
+      "programName": "Multikino",
+      "domain": "multikino.pl",
+      "color": "#E30613",
+      "keywords": [
+        "multikino"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "neonet",
+      "name": "Neonet",
+      "programName": "Neonet",
+      "domain": "neonet.pl",
+      "color": "#E30613",
+      "keywords": [
+        "neonet"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "netto",
+      "name": "Netto",
+      "programName": "Netto",
+      "domain": "netto.pl",
+      "color": "#F7C600",
+      "keywords": [
+        "netto"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "newyorker",
+      "name": "New Yorker",
+      "programName": "New Yorker",
+      "domain": "newyorker.de",
+      "color": "#000000",
+      "keywords": [
+        "new yorker",
+        "newyorker"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "notino",
+      "name": "Notino",
+      "programName": "Notino",
+      "domain": "notino.pl",
+      "color": "#E30613",
+      "keywords": [
+        "notino"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "obi",
+      "name": "OBI",
+      "programName": "OBI",
+      "domain": "obi.pl",
+      "color": "#E87722",
+      "keywords": [
+        "obi"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "orlen",
+      "name": "Orlen",
+      "programName": "Vitay",
+      "domain": "orlen.pl",
+      "color": "#E45A28",
+      "keywords": [
+        "orlen",
+        "vitay"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "payback",
+      "name": "Payback",
+      "programName": "Payback",
+      "domain": "payback.pl",
+      "color": "#0033A0",
+      "keywords": [
+        "payback"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "pepco",
+      "name": "Pepco",
+      "programName": "Pepco",
+      "domain": "pepco.pl",
+      "color": "#E30613",
+      "keywords": [
+        "pepco"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "pizza",
+      "name": "Pizza Hut",
+      "programName": "Pizza Hut",
+      "domain": "pizzahut.pl",
+      "color": "#E4002B",
+      "keywords": [
+        "pizza hut"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "pkp",
+      "name": "PKP Intercity",
+      "programName": "Bilet",
+      "domain": "intercity.pl",
+      "color": "#0033A0",
+      "keywords": [
+        "intercity",
+        "pkp"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "poczta",
+      "name": "Poczta Polska",
+      "programName": "Poczta",
+      "domain": "poczta-polska.pl",
+      "color": "#E30613",
+      "keywords": [
+        "poczta polska"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "reserved",
+      "name": "Reserved",
+      "programName": "Reserved",
+      "domain": "reserved.com",
+      "color": "#000000",
+      "keywords": [
+        "reserved"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "rossmann",
+      "name": "Rossmann",
+      "programName": "Rossne",
+      "domain": "rossmann.pl",
+      "color": "#C8102E",
+      "keywords": [
+        "rossmann"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "rossmannclub",
+      "name": "Rossmann Club",
+      "programName": "Rossmann",
+      "domain": "rossmann.pl",
+      "color": "#C8102E",
+      "keywords": [
+        "rossne"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "euroagd",
+      "name": "RTV Euro AGD",
+      "programName": "Euro",
+      "domain": "euro.com.pl",
+      "color": "#0033A0",
+      "keywords": [
+        "euro agd",
+        "rtv euro",
+        "euro.com"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "sephora",
+      "name": "Sephora",
+      "programName": "Sephora",
+      "domain": "sephora.pl",
+      "color": "#000000",
+      "keywords": [
+        "sephora"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "shell",
+      "name": "Shell",
+      "programName": "ClubSmart",
+      "domain": "shell.pl",
+      "color": "#FBCE07",
+      "keywords": [
+        "shell",
+        "clubsmart"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "sinsay",
+      "name": "Sinsay",
+      "programName": "Sinsay",
+      "domain": "sinsay.com",
+      "color": "#000000",
+      "keywords": [
+        "sinsay"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "reservedhome",
+      "name": "Sinsay Home",
+      "programName": "Sinsay",
+      "domain": "sinsay.com",
+      "color": "#000000",
+      "keywords": [
+        "sinsay home"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "sizeer",
+      "name": "Sizeer",
+      "programName": "Sizeer",
+      "domain": "sizeer.com",
+      "color": "#000000",
+      "keywords": [
+        "sizeer"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "smyk",
+      "name": "Smyk",
+      "programName": "Smyk",
+      "domain": "smyk.com",
+      "color": "#E30613",
+      "keywords": [
+        "smyk"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "spar",
+      "name": "SPAR",
+      "programName": "SPAR",
+      "domain": "spar.pl",
+      "color": "#E30613",
+      "keywords": [
+        "spar"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "starbucks",
+      "name": "Starbucks",
+      "programName": "Starbucks Rewards",
+      "domain": "starbucks.pl",
+      "color": "#00704A",
+      "keywords": [
+        "starbucks"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "stokrotka",
+      "name": "Stokrotka",
+      "programName": "Stokrotka",
+      "domain": "stokrotka.pl",
+      "color": "#2E9E48",
+      "keywords": [
+        "stokrotka"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "subway",
+      "name": "Subway",
+      "programName": "Subway",
+      "domain": "subway.com",
+      "color": "#008C15",
+      "keywords": [
+        "subway"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "superpharm",
+      "name": "Super-Pharm",
+      "programName": "Super-Pharm",
+      "domain": "super-pharm.pl",
+      "color": "#E31837",
+      "keywords": [
+        "super-pharm",
+        "superpharm"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "tkmaxx",
+      "name": "TK Maxx",
+      "programName": "TK Maxx",
+      "domain": "tkmaxx.pl",
+      "color": "#000000",
+      "keywords": [
+        "tk maxx",
+        "tkmaxx"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "wittchen",
+      "name": "Wittchen",
+      "programName": "Wittchen",
+      "domain": "wittchen.com",
+      "color": "#000000",
+      "keywords": [
+        "wittchen"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "xkom",
+      "name": "x-kom",
+      "programName": "x-kom",
+      "domain": "x-kom.pl",
+      "color": "#111111",
+      "keywords": [
+        "x-kom",
+        "xkom"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "yes",
+      "name": "YES",
+      "programName": "YES",
+      "domain": "yes.pl",
+      "color": "#C9A227",
+      "keywords": [
+        "yes biżuteria",
+        "yes bizuteria"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "zara",
+      "name": "Zara",
+      "programName": "Zara",
+      "domain": "zara.com",
+      "color": "#000000",
+      "keywords": [
+        "zara"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "zabka",
+      "name": "Żabka",
+      "programName": "Żappka",
+      "domain": "zabka.pl",
+      "color": "#7AC143",
+      "keywords": [
+        "zabka",
+        "żabka",
+        "zappka",
+        "żappka"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "atb",
+      "name": "ATB",
+      "programName": "ATB",
+      "domain": "atbmarket.com",
+      "color": "#1A1A1A",
+      "keywords": [
+        "atb",
+        "атб"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "comfy",
+      "name": "Comfy",
+      "programName": "Comfy",
+      "domain": "comfy.ua",
+      "color": "#FF6A00",
+      "keywords": [
+        "comfy",
+        "комфі",
+        "комфи"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "epicentr",
+      "name": "Epicentr",
+      "programName": "Epicentr K",
+      "domain": "epicentrk.ua",
+      "color": "#F15A24",
+      "keywords": [
+        "epicentr",
+        "епіцентр",
+        "эпицентр"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "eva",
+      "name": "Eva",
+      "programName": "Eva",
+      "domain": "eva.ua",
+      "color": "#E91E8C",
+      "keywords": [
+        "eva",
+        "єва",
+        "ева"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "fora",
+      "name": "Fora",
+      "programName": "Fora",
+      "domain": "fora.ua",
+      "color": "#FFCC00",
+      "keywords": [
+        "fora",
+        "фора"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "foxtrot",
+      "name": "Foxtrot",
+      "programName": "Foxtrot",
+      "domain": "foxtrot.com.ua",
+      "color": "#F37021",
+      "keywords": [
+        "foxtrot",
+        "фокстрот"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "metro",
+      "name": "METRO",
+      "programName": "METRO",
+      "domain": "metro.ua",
+      "color": "#003865",
+      "keywords": [
+        "metro",
+        "метро"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "novaposhta",
+      "name": "Nova Poshta",
+      "programName": "Nova Poshta",
+      "domain": "novaposhta.ua",
+      "color": "#ED1C24",
+      "keywords": [
+        "nova poshta",
+        "novaposhta",
+        "нова пошта",
+        "новая почта"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "novus",
+      "name": "Novus",
+      "programName": "Novus",
+      "domain": "novus.online",
+      "color": "#6BBF44",
+      "keywords": [
+        "novus",
+        "новус"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "okko",
+      "name": "OKKO",
+      "programName": "OKKO",
+      "domain": "okko.ua",
+      "color": "#111111",
+      "keywords": [
+        "okko",
+        "окко"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "rozetka",
+      "name": "Rozetka",
+      "programName": "Rozetka",
+      "domain": "rozetka.com.ua",
+      "color": "#00A046",
+      "keywords": [
+        "rozetka",
+        "розетка"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "selgros",
+      "name": "Selgros",
+      "programName": "Selgros",
+      "domain": "selgros.pl",
+      "color": "#F39200",
+      "keywords": [
+        "selgros"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "silpo",
+      "name": "Silpo",
+      "programName": "Silpo",
+      "domain": "silpo.ua",
+      "color": "#F15A22",
+      "keywords": [
+        "silpo",
+        "сільпо",
+        "сильпо"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "socar",
+      "name": "SOCAR",
+      "programName": "SOCAR",
+      "domain": "socar.com.ua",
+      "color": "#E30613",
+      "keywords": [
+        "socar",
+        "сокар"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "ukrnafta",
+      "name": "Ukrnafta",
+      "programName": "Ukrnafta",
+      "domain": "ukrnafta.com",
+      "color": "#0033A0",
+      "keywords": [
+        "ukrnafta",
+        "укрнафта"
+      ],
+      "barcode": "code128"
+    },
+    {
+      "id": "varus",
+      "name": "Varus",
+      "programName": "Varus",
+      "domain": "varus.ua",
+      "color": "#F15A22",
+      "keywords": [
+        "varus",
+        "варус"
+      ],
+      "barcode": "qr"
+    },
+    {
+      "id": "wog",
+      "name": "WOG",
+      "programName": "WOG",
+      "domain": "wog.ua",
+      "color": "#00A651",
+      "keywords": [
+        "wog",
+        "вог"
+      ],
+      "barcode": "qr"
+    }
+  ]
+}

@@ -5,17 +5,19 @@ enum BarcodePresenter {
     static func image(payload: String, symbology: BarcodeSymbology, width: CGFloat = 800, height: CGFloat = 220) -> UIImage? {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return nil }
-        if symbology == .qr || looksLikeQR(trimmed) {
+        switch symbology {
+        case .qr:
+            return ciImage("CIQRCodeGenerator", ["inputMessage": Data(trimmed.utf8)], width: width, height: width)
+        case .aztec:
+            return ciImage("CIAztecCodeGenerator", ["inputMessage": Data(trimmed.utf8)], width: width, height: width)
+        case .pdf417:
+            return ciImage("CIPDF417BarcodeGenerator", ["inputMessage": Data(trimmed.utf8)], width: width, height: height)
+        case .ean13, .code128, .unknown:
+            if let code128 = ciImage("CICode128BarcodeGenerator", ["inputMessage": Data(trimmed.utf8)], width: width, height: height) {
+                return code128
+            }
             return ciImage("CIQRCodeGenerator", ["inputMessage": Data(trimmed.utf8)], width: width, height: width)
         }
-        if let code128 = ciImage("CICode128BarcodeGenerator", ["inputMessage": Data(trimmed.utf8)], width: width, height: height) {
-            return code128
-        }
-        return ciImage("CIPDF417BarcodeGenerator", ["inputMessage": Data(trimmed.utf8)], width: width, height: height)
-    }
-
-    private static func looksLikeQR(_ payload: String) -> Bool {
-        payload.lowercased().contains("http") || payload.contains("\n")
     }
 
     private static func ciImage(_ name: String, _ params: [String: Any], width: CGFloat, height: CGFloat) -> UIImage? {
