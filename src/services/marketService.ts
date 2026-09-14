@@ -170,7 +170,7 @@ export function formatPpsm(n: number) {
 }
 
 export function formatSignedPct(value: number | null | undefined, digits = 2): string {
-  if (value == null || !Number.isFinite(value)) return 'n/d';
+  if (value == null || !Number.isFinite(value)) return '—';
   if (Math.abs(value) < Math.pow(10, -digits) / 2) {
     return `0,${'0'.repeat(digits)}%`;
   }
@@ -192,18 +192,37 @@ export type PricePulseWindow = {
   deedCount: number;
 };
 
+export type PricePulseTrendKey = 'day' | 'week' | 'month' | 'year';
+
+export type PricePulseTrend = {
+  key: PricePulseTrendKey;
+  changePct: number | null;
+  currentPpsm: number | null;
+  previousPpsm: number | null;
+  count: number;
+  points: Array<{ key: string; ppsm: number | null }>;
+};
+
 export type PricePulsePayload = {
   ok: true;
   city: string;
   source: string;
   disclaimer: string;
   updatedAt: string;
+  asOf?: string | null;
+  lagNote?: string | null;
   vsDeedsPct: number | null;
   listingPpsm: number | null;
   deedPpsm: number | null;
   tone: PricePulseTone;
   direction: PricePulseDirection;
   windows: { d7: PricePulseWindow; d30: PricePulseWindow; d90: PricePulseWindow };
+  trends?: {
+    day: PricePulseTrend;
+    week: PricePulseTrend;
+    month: PricePulseTrend;
+    year: PricePulseTrend;
+  };
   series: Array<{ date: string; listingPpsm: number | null; deedPpsm: number | null; vsDeedsPct: number | null }>;
   sparkline: Array<number | null>;
   districts: Array<{

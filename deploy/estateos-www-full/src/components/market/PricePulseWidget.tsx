@@ -39,10 +39,11 @@ const COPY = {
     tap: "Dotknij, aby zobaczyć szczegóły",
     heroListing: "Zmiana ofert · 30 dni",
     heroVsDeeds: "Oferty vs akty",
-    heroDeed: "Zmiana cen transakcyjnych",
-    boughtUp: "Nieruchomości kupowane drożej",
-    boughtDown: "Nieruchomości kupowane taniej",
-    boughtFlat: "Ceny transakcyjne stabilne",
+    heroDeed: "Zmiana cen mieszkań z aktów",
+    boughtUp: "Mieszkania kupowane drożej",
+    boughtDown: "Mieszkania kupowane taniej",
+    boughtFlat: "Ceny mieszkań z aktów stabilne",
+    thin: "Za mało kompletnych aktów, żeby podać zmianę.",
   },
   en: {
     title: "Price pulse",
@@ -67,10 +68,11 @@ const COPY = {
     tap: "Tap for details",
     heroListing: "Listing change · 30 days",
     heroVsDeeds: "Listings vs deeds",
-    heroDeed: "Transaction price change",
-    boughtUp: "Homes are selling for more",
-    boughtDown: "Homes are selling for less",
-    boughtFlat: "Transaction prices are stable",
+    heroDeed: "Flat deed-price change",
+    boughtUp: "Flats are selling for more",
+    boughtDown: "Flats are selling for less",
+    boughtFlat: "Flat deed prices are stable",
+    thin: "Not enough complete deeds to quote a change.",
   },
   uk: {
     title: "Пульс цін",
@@ -95,10 +97,11 @@ const COPY = {
     tap: "Натисніть, щоб побачити деталі",
     heroListing: "Зміна оголошень · 30 днів",
     heroVsDeeds: "Оголошення vs акти",
-    heroDeed: "Зміна цін угод",
-    boughtUp: "Нерухомість купують дорожче",
-    boughtDown: "Нерухомість купують дешевше",
-    boughtFlat: "Ціни угод стабільні",
+    heroDeed: "Зміна цін квартир з актів",
+    boughtUp: "Квартири купують дорожче",
+    boughtDown: "Квартири купують дешевше",
+    boughtFlat: "Ціни квартир з актів стабільні",
+    thin: "Замало повних актів, щоб показати зміну.",
   },
 } as const;
 
@@ -167,7 +170,7 @@ function narrative(locale: Locale, data: PricePulsePayload, win: PricePulseWindo
       : dir >= 1
         ? "Ceny ofertowe idą w górę."
         : "Ceny ofertowe stoją w miejscu.";
-  return `Oferty mieszkań, które wchodzą na rynek w Warszawie, są ${gap} względem cen z aktów notarialnych. ${trend} Zmiana w tym oknie: ${listingMove}.`;
+  return `Oferty mieszkań w Warszawie (bez domów) są ${gap} względem cen z aktów notarialnych. ${trend} Zmiana ofert w tym oknie: ${listingMove}.`;
 }
 
 function trendPath(values: Array<number | null>, width: number, height: number, pad = 6) {
@@ -279,12 +282,18 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
     );
   }, [data, windowKey]);
 
-  const heroPct = trend?.changePct ?? data?.windows.d30.deedChangePct ?? data?.vsDeedsPct ?? 0;
+  const heroPct = trend?.changePct ?? null;
   const pct = formatSignedPct(heroPct);
-  const trendTone = toneOfChange(trend?.changePct ?? null);
+  const trendTone = toneOfChange(heroPct);
   const waveColor = trendTone === "up" ? "#fb7185" : trendTone === "down" ? "#34d399" : "#94a3b8";
   const boughtLabel =
-    trendTone === "up" ? copy.boughtUp : trendTone === "down" ? copy.boughtDown : copy.boughtFlat;
+    heroPct == null
+      ? copy.thin
+      : trendTone === "up"
+        ? copy.boughtUp
+        : trendTone === "down"
+          ? copy.boughtDown
+          : copy.boughtFlat;
   const periodCaption =
     trendKey === "day" ? copy.day : trendKey === "week" ? copy.week : trendKey === "year" ? copy.year : copy.month;
 
@@ -309,7 +318,7 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
                 {copy.heroDeed} · {periodCaption}
               </p>
             </div>
-            <RollingPct className={`text-2xl font-black tracking-tight md:text-3xl ${toneClass(trendTone)}`} value={data ? pct : "0,0%"} />
+            <RollingPct className={`text-2xl font-black tracking-tight md:text-3xl ${toneClass(trendTone)}`} value={data ? pct : "—"} />
           </div>
 
           <div className="relative mt-2 h-[78px]">
@@ -358,6 +367,11 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
             {trend?.currentPpsm ? formatPpsm(trend.currentPpsm) : copy.tap}
           </p>
         </div>
+        {data?.lagNote ? (
+          <p className="relative z-10 mt-2 text-[9px] font-semibold leading-snug text-[var(--eos-subtle)]">
+            {data.lagNote}
+          </p>
+        ) : null}
       </div>
 
       <AnimatePresence>
@@ -366,7 +380,7 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="eos-modal-backdrop fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 pt-10 pb-10 sm:pt-16"
+            className="eos-modal-backdrop fixed inset-0 eos-z-modal flex items-start justify-center overflow-y-auto p-4 pt-10 pb-10 sm:pt-16"
             onClick={() => setOpen(false)}
           >
             <motion.div

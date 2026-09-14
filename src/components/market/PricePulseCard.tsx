@@ -19,13 +19,14 @@ import {
   fetchPricePulse,
   formatPpsm,
   formatSignedPct,
-  type PricePulseDirection,
   type PricePulsePayload,
   type PricePulseTone,
+  type PricePulseTrendKey,
   type PricePulseWindow,
 } from '../../services/marketService';
 
 type WindowKey = 'd7' | 'd30' | 'd90';
+type TrendKey = PricePulseTrendKey;
 type MetalVariant = 'gold' | 'titanium' | 'red';
 
 type Props = {
@@ -43,8 +44,8 @@ function sparklinePath(values: Array<number | null>, width: number, height: numb
     .filter((row): row is { index: number; value: number } => row.value != null && Number.isFinite(row.value));
   if (pts.length < 2) return { line: '', area: '', last: null as { x: number; y: number } | null };
   const ys = pts.map((p) => p.value);
-  const min = Math.min(...ys, 0);
-  const max = Math.max(...ys, 0);
+  const min = Math.min(...ys);
+  const max = Math.max(...ys);
   const span = max - min || 1;
   const n = Math.max(values.length - 1, 1);
   const drawn: Array<{ x: number; y: number }> = [];
@@ -88,10 +89,18 @@ function toneColor(tone: PricePulseTone) {
   return '#8E8E93';
 }
 
-function directionLabel(direction: PricePulseDirection) {
-  if (direction === 'falling') return 'Oferty schodzą';
-  if (direction === 'rising') return 'Oferty rosną';
-  return 'Oferty stabilne';
+function directionLabel(changePct: number | null) {
+  if (changePct == null) return 'Za mało kompletnych aktów';
+  if (changePct > 0.4) return 'Mieszkania kupowane drożej';
+  if (changePct < -0.4) return 'Mieszkania kupowane taniej';
+  return 'Ceny mieszkań z aktów stabilne';
+}
+
+function periodCaption(key: TrendKey) {
+  if (key === 'day') return 'Dzień';
+  if (key === 'week') return 'Tydzień';
+  if (key === 'year') return 'Rok';
+  return 'Miesiąc';
 }
 
 function narrative(data: PricePulsePayload, win: PricePulseWindow) {
@@ -100,7 +109,7 @@ function narrative(data: PricePulsePayload, win: PricePulseWindow) {
   const dir = win.listingChangePct ?? 0;
   const trend =
     dir <= -1 ? 'Ceny ofertowe schodzą.' : dir >= 1 ? 'Ceny ofertowe idą w górę.' : 'Ceny ofertowe stoją w miejscu.';
-  return `Oferty, które wchodzą na rynek w Warszawie, są ${gap} względem cen z aktów. ${trend} Zmiana w tym oknie: ${move}.`;
+  return `Oferty mieszkań w Warszawie (bez domów) są ${gap} względem cen z aktów. ${trend} Zmiana ofert w tym oknie: ${move}.`;
 }
 
 function toneOfChange(value: number | null): PricePulseTone {
@@ -122,6 +131,7 @@ export default function PricePulseCard({
   const [data, setData] = useState<PricePulsePayload | null>(null);
   const [open, setOpen] = useState(false);
   const [windowKey, setWindowKey] = useState<WindowKey>('d30');
+  const [trendKey, setTrendKey] = useState<TrendKey>('month');
   const [loading, setLoading] = useState(true);
 
   const text = textColor || (isDark ? '#F4E7C5' : '#3F2B05');
@@ -139,13 +149,17 @@ export default function PricePulseCard({
     }, [load]),
   );
 
-  const spark = useMemo(() => sparklinePath(data?.sparkline || [], 280, 64), [data]);
+  const trend = data?.trends?.[trendKey] ?? null;
+  const spark = useMemo(
+    () => sparklinePath((trend?.points || []).map((point) => point.ppsm), 280, 64),
+    [trend],
+  );
   const win = data?.windows[windowKey] ?? null;
-  const headlinePct = win?.listingChangePct ?? data?.windows.d30.listingChangePct ?? null;
+  const headlinePct = trend?.changePct ?? null;
   const tone = toneOfChange(headlinePct);
   const pctColor = toneColor(tone);
-  const stroke = tone === 'down' ? '#F43F5E' : '#34C759';
-  const pctLabel = formatSignedPct(headlinePct, 2);
+  const stroke = tone === 'down' ? '#F43F5E' : tone === 'up' ? '#34C759' : '#8E8E93';
+  const pctLabel = formatSignedPct(headlinePct, 1);
   const dual = useMemo(() => {
     const series = data?.series || [];
     const take = windowKey === 'd7' ? 14 : windowKey === 'd30' ? 30 : 90;
@@ -178,7 +192,7 @@ export default function PricePulseCard({
               <Text style={[styles.eyebrow, { color: muted }]}>PULS CENOWY</Text>
             </View>
             <Text style={[styles.hint, { color: muted }]} numberOfLines={1}>
-              {windowKey === 'd7' ? '7 dni' : windowKey === 'd90' ? '3 miesiące' : '30 dni'} · oferty
+              Zmiana cen mieszkań z aktów · {periodCaption(trendKey)}
             </Text>
           </View>
           {loading && !data ? (
@@ -192,7 +206,7 @@ export default function PricePulseCard({
           <View style={styles.chartWrap}>
             {spark.line ? (
               <Svg width="100%" height={64} viewBox="0 0 280 64" preserveAspectRatio="none">
-                <Path d={spark.area} fill={tone === 'down' ? 'rgba(244,63,94,0.18)' : 'rgba(52,199,89,0.18)'} />
+                <Path d={spark.area} fill={tone === 'down' ? 'rgba(244,63,94,0.18)' : tone === 'up' ? 'rgba(52,199,89,0.18)' : 'rgba(142,142,147,0.16)'} />
                 <Path d={spark.line} fill="none" stroke={stroke} strokeWidth={1.8} />
                 {spark.last ? <Circle cx={spark.last.x} cy={spark.last.y} r={3.2} fill={stroke} /> : null}
               </Svg>
@@ -203,9 +217,7 @@ export default function PricePulseCard({
         ) : null}
 
         <Text style={[styles.footer, { color: muted }]} numberOfLines={1}>
-          {data
-            ? `${directionLabel(data.direction)} · 30 dni ${formatSignedPct(data.windows.d30.listingChangePct, 2)}`
-            : 'Dotknij, aby zobaczyć trend'}
+          {data ? directionLabel(headlinePct) : 'Dotknij, aby zobaczyć trend'}
         </Text>
       </InsetMetalRecess>
 
@@ -214,7 +226,7 @@ export default function PricePulseCard({
           <View style={styles.modalHeader}>
             <View>
               <Text style={[styles.eyebrow, { color: muted }]}>PULS CENOWY</Text>
-              <Text style={[styles.modalTitle, { color: text }]}>Warszawa · mieszkania</Text>
+              <Text style={[styles.modalTitle, { color: text }]}>Warszawa · mieszkania, bez domów</Text>
             </View>
             <Pressable onPress={() => setOpen(false)} style={styles.closeBtn} hitSlop={12}>
               <Ionicons name="close" size={22} color={text} />
@@ -224,7 +236,7 @@ export default function PricePulseCard({
           <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} showsVerticalScrollIndicator={false}>
             <View style={styles.hero}>
               <Text style={[styles.hint, { color: muted }]}>
-                Zmiana cen ofertowych · {windowKey === 'd7' ? '7 dni' : windowKey === 'd90' ? '3 miesiące' : '30 dni'}
+                Zmiana cen mieszkań z aktów · {periodCaption(trendKey)}
               </Text>
               <Text style={[styles.heroPct, { color: pctColor }]}>{pctLabel}</Text>
               <Text style={[styles.narrative, { color: muted }]}>
@@ -238,6 +250,26 @@ export default function PricePulseCard({
                 <Text style={[styles.legend, { color: stroke }]}>● oferty</Text>
                 <Text style={[styles.legend, { color: '#C9A227' }]}>● akty</Text>
               </View>
+            </View>
+
+            <View style={styles.chipRow}>
+              {([
+                ['day', 'Dzień'],
+                ['week', 'Tydzień'],
+                ['month', 'Miesiąc'],
+                ['year', 'Rok'],
+              ] as const).map(([key, label]) => {
+                const active = trendKey === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setTrendKey(key)}
+                    style={[styles.chip, active && { borderColor: '#34C759', backgroundColor: 'rgba(52,199,89,0.14)' }]}
+                  >
+                    <Text style={[styles.chipText, { color: active ? '#34C759' : muted }]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
             <View style={styles.chipRow}>

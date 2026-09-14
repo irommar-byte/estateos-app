@@ -152,6 +152,8 @@ export type PricePulsePayload = {
   source: string;
   disclaimer: string;
   updatedAt: string;
+  asOf: string | null;
+  lagNote: string | null;
   vsDeedsPct: number | null;
   listingPpsm: number | null;
   deedPpsm: number | null;
