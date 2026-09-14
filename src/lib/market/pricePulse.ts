@@ -77,7 +77,7 @@ function vsPct(listing: number | null, deed: number | null): number | null {
   return ((listing - deed) / deed) * 100;
 }
 
-function directionOf(listingChangePct: number | null): PricePulseDirection {
+function toneOf(changePct: number | null): PricePulseTone {
   if (changePct == null) return 'flat';
   if (changePct >= 0.4) return 'up';
   if (changePct <= -0.4) return 'down';
