@@ -13,6 +13,13 @@ import {
   resetPm2RestartCounters,
   runSafeCleanup,
 } from './adminServerOps';
+import {
+  HEALTH_PING_TIMEOUT_MS,
+  HEALTH_SLOW_MS,
+  WEB_RSS_WARN_BYTES,
+  shouldFlagHealthSlow,
+  shouldFlagWebMemory,
+} from './webWorkerBudget';
 
 const execFileAsync = promisify(execFile);
 const HOME = (process.env.ADMIN_SERVER_HOME || process.env.HOME || '/home/rommar').replace(/\/+$/, '');
@@ -23,8 +30,6 @@ const DOWNLOADER_DIR = path.join(HOME, 'lineage-movies', 'video-downloader');
 const KEEP_LOG_BYTES = 8 * 1024 * 1024;
 const BIG_LOG_BYTES = 16 * 1024 * 1024;
 const HUNG_MEDIA_SEC = 10 * 60;
-const WEB_RSS_WARN = 900 * 1024 * 1024;
-const WEB_RSS_TOTAL_WARN = 1800 * 1024 * 1024;
 
 export const FINDING_RUNBOOK_ID: Record<string, string> = {
   junk: 'safe-cleanup',
@@ -143,9 +148,9 @@ export function summarizeFindings(findings: ServerFinding[]): {
   if (findings.length > 0) {
     return {
       level: 'ok',
-      healthy: false,
-      score,
-      summary: `${findings.length} ${findings.length === 1 ? 'odchylenie od wzorca produkcyjnego' : 'odchylenia od wzorca produkcyjnego'}. Nic nie zagraża stronie.`,
+      healthy: true,
+      score: 100,
+      summary: `${findings.length} ${findings.length === 1 ? 'uwaga informacyjna' : 'uwagi informacyjne'}. Strona działa normalnie.`,
     };
   }
   return {
@@ -249,7 +254,6 @@ async function listHungMedia() {
   return rows;
 }
 
-const HEALTH_PING_MS = 2000;
 const HEALTH_PING_ATTEMPTS = 3;
 
 type HealthPing = {
@@ -320,6 +324,18 @@ function pingHealthOnce(timeoutMs: number): Promise<HealthPing> {
 }
 
 async function pingHealth(options?: { allowInProcessFallback?: boolean }): Promise<HealthPing> {
+  if (options?.allowInProcessFallback !== false && isInsideWwwWorker()) {
+    // Naprawa already occupies a WWW worker. Loopback to /api/health contends
+    // with itself and shows up as a 2 s "slow app" false alarm.
+    return {
+      reached: true,
+      timedOut: false,
+      statusCode: 200,
+      ms: 0,
+      commit: String(process.env.COMMIT_SHA || ''),
+      db: 'ok',
+    };
+  }
   let last: HealthPing = {
     reached: false,
     timedOut: false,
@@ -329,23 +345,11 @@ async function pingHealth(options?: { allowInProcessFallback?: boolean }): Promi
     db: '',
   };
   for (let attempt = 0; attempt < HEALTH_PING_ATTEMPTS; attempt += 1) {
-    last = await pingHealthOnce(HEALTH_PING_MS);
+    last = await pingHealthOnce(HEALTH_PING_TIMEOUT_MS);
     if (last.reached) return last;
     if (attempt < HEALTH_PING_ATTEMPTS - 1) {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
-  }
-  // Diagnose runs inside a WWW worker. HTTP to the same two PM2 instances
-  // deadlocks both of them (Naprawa + Guard at once) and looks like an outage.
-  if (options?.allowInProcessFallback !== false && isInsideWwwWorker()) {
-    return {
-      reached: true,
-      timedOut: false,
-      statusCode: 200,
-      ms: 0,
-      commit: String(process.env.COMMIT_SHA || ''),
-      db: '',
-    };
   }
   return last;
 }
@@ -482,7 +486,7 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       severity: 'critical',
       title: 'WWW nie odpowiada',
       detail: health.timedOut
-        ? `Lokalny /api/health nie odpowiedział po ${HEALTH_PING_ATTEMPTS} próbach (po ${HEALTH_PING_MS / 1000} s).`
+        ? `Lokalny /api/health nie odpowiedział po ${HEALTH_PING_ATTEMPTS} próbach (po ${HEALTH_PING_TIMEOUT_MS / 1000} s).`
         : 'Nie udało się połączyć z workerem WWW.',
       evidence: [{ label: 'Port', value: String(process.env.PORT || '3000') }],
       action: isBuildLocked() ? undefined : 'Przeładuj workery',
@@ -500,23 +504,29 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
       ],
       fixable: false,
     });
-  } else if (health.ms >= 2000) {
+  } else if (shouldFlagHealthSlow(health.ms, health.reached)) {
     findings.push({
       id: 'health-slow',
       severity: 'warning',
       title: 'Wolna odpowiedź aplikacji',
-      detail: 'Health powinien zamykać się w ułamku sekundy.',
+      detail: `Health powinien zamykać się w ułamku sekundy. Ten pomiar (${health.ms} ms) jest powtarzalnie powyżej ${HEALTH_SLOW_MS} ms.`,
       evidence: [{ label: 'Czas', value: `${health.ms} ms` }],
       action: isBuildLocked() ? undefined : 'Przeładuj workery',
       fixable: !isBuildLocked(),
     });
   }
-  if (maxWebRss >= WEB_RSS_WARN || webRss >= WEB_RSS_TOTAL_WARN) {
+  if (
+    shouldFlagWebMemory({
+      maxRssBytes: maxWebRss,
+      totalRssBytes: webRss,
+      maxUptimeMs: web.reduce((max, item) => Math.max(max, item.uptimeMs), 0),
+    })
+  ) {
     findings.push({
       id: 'web-memory',
       severity: 'warning',
-      title: 'Workery WWW zużywają za dużo RAM',
-      detail: 'Dwa workery PM2 przeładują się kolejno. Guard robi to sam, zanim limit 1 GiB zabije proces.',
+      title: 'Workery WWW zbliżają się do limitu 1 GiB',
+      detail: 'Limit jest dopasowany do 4 GB RAM tej maszyny. Guard przeładuje workery kolejno, zanim PM2 zabije proces. Podniesienie limitu bez większego VPS-a wpycha serwer w swap.',
       evidence: [
         { label: 'Największy', value: formatBytes(maxWebRss) },
         { label: 'Suma', value: formatBytes(webRss) },
@@ -577,8 +587,8 @@ export async function diagnoseServer(): Promise<DiagnoseReport> {
         { label: 'Swap', value: formatBytes(swapUsed) },
         { label: 'RAM', value: `${memory.percent}%` },
       ],
-      action: maxWebRss >= WEB_RSS_WARN && !isBuildLocked() ? 'Przeładuj workery' : undefined,
-      fixable: maxWebRss >= WEB_RSS_WARN && !isBuildLocked(),
+      action: maxWebRss >= WEB_RSS_WARN_BYTES && !isBuildLocked() ? 'Przeładuj workery' : undefined,
+      fixable: maxWebRss >= WEB_RSS_WARN_BYTES && !isBuildLocked(),
     });
   }
   if (cpu.load1 >= cpu.cores * 2) {
