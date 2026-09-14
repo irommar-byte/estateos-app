@@ -41,18 +41,28 @@ enum ScanService {
         return (lines, barcodes)
     }
 
-    static func compressPhoto(_ image: UIImage, maxDimension: CGFloat = 1280, quality: CGFloat = 0.58) -> Data? {
+    static func compressPhoto(
+        _ image: UIImage,
+        maxDimension: CGFloat = 1280,
+        quality: CGFloat = 0.58,
+        maxBytes: Int = 280_000
+    ) -> Data? {
         let resized = resize(image, maxDimension: maxDimension)
         var quality = quality
         var data = resized.jpegData(compressionQuality: quality)
-        while let current = data, current.count > 280_000, quality > 0.36 {
-            quality -= 0.08
+        let floor = maxBytes > 500_000 ? 0.72 : 0.36
+        while let current = data, current.count > maxBytes, quality > floor {
+            quality -= 0.06
             data = resized.jpegData(compressionQuality: quality)
         }
-        if let current = data, current.count > 320_000 {
+        if maxBytes <= 320_000, let current = data, current.count > 320_000 {
             data = resize(image, maxDimension: 1024).jpegData(compressionQuality: 0.48)
         }
         return data
+    }
+
+    static func compressLoyaltyPhoto(_ image: UIImage) -> Data? {
+        compressPhoto(image, maxDimension: 2048, quality: 0.85, maxBytes: 720_000)
     }
 
     static func storedPhoto(_ image: UIImage) -> UIImage {
@@ -83,13 +93,17 @@ enum ScanService {
     static func map(_ symbology: VNBarcodeSymbology) -> BarcodeSymbology {
         switch symbology {
         case .qr: return .qr
-        case .ean13: return .ean13
+        case .ean13, .ean8, .upce: return .ean13
         case .pdf417: return .pdf417
         case .aztec: return .aztec
-        case .code128: return .code128
+        case .code128, .code39, .code93, .itf14, .i2of5, .codabar: return .code128
         default:
-            if symbology.rawValue.lowercased().contains("128") { return .code128 }
-            if symbology.rawValue.lowercased().contains("qr") { return .qr }
+            let raw = symbology.rawValue.lowercased()
+            if raw.contains("qr") { return .qr }
+            if raw.contains("ean") || raw.contains("upc") { return .ean13 }
+            if raw.contains("128") || raw.contains("39") || raw.contains("93") || raw.contains("itf") {
+                return .code128
+            }
             return .unknown
         }
     }

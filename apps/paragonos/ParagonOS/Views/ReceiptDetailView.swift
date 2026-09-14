@@ -85,7 +85,15 @@ struct ReceiptDetailView: View {
                         Label("Kopiuj NIP", systemImage: "doc.on.doc")
                     }
                 }
-                LabeledContent("Kwota", value: MoneyFormat.string(receipt.amount))
+                LabeledContent("Kwota") {
+                    TextField(
+                        "Kwota",
+                        value: $receipt.amount,
+                        format: .currency(code: "PLN").locale(Locale(identifier: "pl_PL"))
+                    )
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                }
                 if receipt.taxAmount > 0 {
                     LabeledContent("VAT", value: MoneyFormat.string(receipt.taxAmount))
                 }
@@ -156,6 +164,9 @@ struct ReceiptDetailView: View {
                 } else {
                     Label("Udostępniony rodzinie", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(ParagonTheme.osGreen)
+                    Button("Przestań udostępniać", role: .destructive) {
+                        Task { await wallet.stopSharingReceipt(receipt, context: context) }
+                    }
                 }
             }
 
@@ -173,9 +184,6 @@ struct ReceiptDetailView: View {
             if ReceiptAnalytics.healMissingDates([receipt]) {
                 try? wallet.persistReceipt(receipt, context: context)
             }
-        }
-        .onChange(of: receipt.category) { _, _ in
-            applyCategoryDates()
         }
         .onDisappear {
             try? wallet.persistReceipt(receipt, context: context)
@@ -201,7 +209,7 @@ struct ReceiptDetailView: View {
                 dismiss()
             }
         } message: {
-            Text("Zdjęcie i dane znikną z tego iPhone’a.")
+            Text("Zdjęcie i dane znikną z tego iPhone’a. Jeśli paragon był udostępniony, zniknie też u rodziny.")
         }
     }
 

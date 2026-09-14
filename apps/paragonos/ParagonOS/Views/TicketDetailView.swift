@@ -9,6 +9,7 @@ struct TicketDetailView: View {
     @State private var showCheckout = false
     @State private var confirmDelete = false
     @State private var confirmRestore = false
+    @State private var confirmRedeem = false
 
     private var policy: RetailerPolicy { RetailerCatalog.policy(id: ticket.retailerID) }
     private var status: TicketLifecycleStatus { ticket.resolvedStatus() }
@@ -44,6 +45,14 @@ struct TicketDetailView: View {
                 }
             }
 
+            Section("Notatka") {
+                TextField("Np. który automat, która kasa…", text: $ticket.note, axis: .vertical)
+                    .lineLimit(2...4)
+                    .onChange(of: ticket.note) { _, _ in
+                        try? wallet.persistTicket(ticket, context: context)
+                    }
+            }
+
             Section("Przy kasie") {
                 Text(policy.checkoutHint)
                     .font(.footnote)
@@ -51,14 +60,14 @@ struct TicketDetailView: View {
                 Button {
                     showCheckout = true
                 } label: {
-                    Label("Pokaż kod", systemImage: "barcode")
+                    Label("Pokaż przy kasie", systemImage: "barcode")
                 }
             }
 
             if status == .active {
                 Section {
                     Button {
-                        try? wallet.markRedeemed(ticket, context: context)
+                        confirmRedeem = true
                     } label: {
                         Label("Oznacz jako wykorzystany", systemImage: "checkmark.circle")
                     }
@@ -71,6 +80,24 @@ struct TicketDetailView: View {
                         confirmRestore = true
                     } label: {
                         Label("Przywróć do kaucji", systemImage: "arrow.uturn.backward.circle")
+                    }
+                }
+            }
+
+            if wallet.family.familyWalletID != nil {
+                Section("Rodzina") {
+                    if ticket.familyWalletID == nil {
+                        Button {
+                            Task { await wallet.shareTicketWithFamily(ticket, context: context) }
+                        } label: {
+                            Label("Udostępnij rodzinie", systemImage: "person.2")
+                        }
+                    } else {
+                        Label("Udostępniony rodzinie", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(ParagonTheme.osGreen)
+                        Button("Przestań udostępniać", role: .destructive) {
+                            Task { await wallet.stopSharingTicket(ticket, context: context) }
+                        }
                     }
                 }
             }
@@ -89,11 +116,25 @@ struct TicketDetailView: View {
             CheckoutCodeView(ticket: ticket)
                 .environmentObject(wallet)
         }
+        .confirmationDialog(
+            "Czy kasa przyjęła kupon?",
+            isPresented: $confirmRedeem,
+            titleVisibility: .visible
+        ) {
+            Button("Tak, wykorzystany") {
+                try? wallet.markRedeemed(ticket, context: context)
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Po skanie przy kasie oznacz kwitek jako wykorzystany, żeby nie leżał w portfelu.")
+        }
         .confirmationDialog("Usunąć kwitek z kaucji?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Usuń", role: .destructive) {
                 try? wallet.delete(ticket, context: context)
                 dismiss()
             }
+        } message: {
+            Text("Kwitek zniknie z tego iPhone’a. Jeśli był udostępniony, zniknie też u rodziny.")
         }
         .confirmationDialog("Przywrócić kwitek do kaucji?", isPresented: $confirmRestore, titleVisibility: .visible) {
             Button("Przywróć") {

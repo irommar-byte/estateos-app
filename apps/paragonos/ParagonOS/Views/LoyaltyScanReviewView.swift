@@ -8,6 +8,7 @@ struct LoyaltyScanReviewView: View {
     @State private var photo: UIImage?
     @State private var saveError: String?
     @State private var showPicker: Bool
+    @State private var photoTarget: CardPhotoTarget?
 
     init() {
         _draft = State(initialValue: .blank())
@@ -86,13 +87,21 @@ struct LoyaltyScanReviewView: View {
                         .lineLimit(2...4)
                 }
 
-                if let photo {
-                    Section("Zdjęcie karty") {
-                        Image(uiImage: photo)
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Section {
+                    if let photo {
+                        LoyaltyCardPhotoStrip(image: photo, title: draft.programName.isEmpty ? "Karta" : draft.programName)
+                            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 16))
                     }
+                    Button("Zrób przód ponownie") { photoTarget = .front }
+                    if (photo.map { CardScanPhotos.splitSides($0).count } ?? 0) >= 2 {
+                        Button("Zrób tył ponownie") { photoTarget = .back }
+                    } else {
+                        Button("Dodaj tył") { photoTarget = .back }
+                    }
+                } header: {
+                    Text("Zdjęcia karty")
+                } footer: {
+                    Text("Zapisuje tylko to, co było w ramce karty — bez stołu i palców wokół.")
                 }
             }
             .navigationTitle("Nowa karta")
@@ -121,13 +130,21 @@ struct LoyaltyScanReviewView: View {
                 LoyaltyProgramPicker { program in
                     draft.programID = program.id
                     draft.programName = program.name
-                    if draft.barcodeSymbology == .unknown {
-                        draft.barcodeSymbology = BarcodeSymbology.inferred(
-                            from: draft.barcodePayload,
-                            preferred: program.preferredBarcode
-                        )
-                    }
+                    draft.barcodeSymbology = BarcodeSymbology.resolved(
+                        scanned: draft.barcodeSymbology,
+                        payload: draft.barcodePayload,
+                        catalogHint: program.preferredBarcode
+                    )
                     draft.needsProgramPick = false
+                }
+            }
+            .sheet(item: $photoTarget) { target in
+                CardPhotoCaptureSheet { image in
+                    if let current = photo {
+                        photo = CardScanPhotos.replacingSide(target == .front ? 0 : 1, in: current, with: image)
+                    } else {
+                        photo = CardScanPhotos.cropCapturedCard(image)
+                    }
                 }
             }
         }

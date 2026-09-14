@@ -11,6 +11,7 @@ struct VoucherPassCard: View {
     var now: Date = .now
     var showsDisclosure: Bool = false
     var isExpanded: Bool = false
+    var foilActive: Bool = true
 
     init(
         retailerID: String,
@@ -21,7 +22,8 @@ struct VoucherPassCard: View {
         stackedCount: Int = 1,
         now: Date = .now,
         showsDisclosure: Bool = false,
-        isExpanded: Bool = false
+        isExpanded: Bool = false,
+        foilActive: Bool = true
     ) {
         self.retailerID = retailerID
         self.amount = amount
@@ -32,9 +34,10 @@ struct VoucherPassCard: View {
         self.now = now
         self.showsDisclosure = showsDisclosure
         self.isExpanded = isExpanded
+        self.foilActive = foilActive
     }
 
-    init(ticket: Ticket, now: Date = .now, stackedCount: Int = 1) {
+    init(ticket: Ticket, now: Date = .now, stackedCount: Int = 1, foilActive: Bool = true) {
         self.init(
             retailerID: ticket.retailerID,
             amount: ticket.amount,
@@ -42,7 +45,8 @@ struct VoucherPassCard: View {
             expiresAt: ticket.expiresAt,
             ticketNumber: ticket.ticketNumber,
             stackedCount: stackedCount,
-            now: now
+            now: now,
+            foilActive: foilActive
         )
     }
 
@@ -117,7 +121,7 @@ struct VoucherPassCard: View {
                         )
                 }
                 .overlay {
-                    GyroFoilOverlay(cornerRadius: 16, intensity: 0.52)
+                    GyroFoilOverlay(cornerRadius: 16, intensity: 0.52, isActive: foilActive)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .allowsHitTesting(false)
                 }
@@ -191,6 +195,7 @@ struct WalletPassStack: View {
     var onOpen: (Ticket) -> Void
     var onCheckout: (Ticket) -> Void
     var onRedeem: (Ticket) -> Void
+    var onDelete: ((Ticket) -> Void)? = nil
 
     private var groups: [WalletRetailerGroup] {
         WalletRetailerGroup.groups(from: tickets)
@@ -263,7 +268,8 @@ struct WalletPassStack: View {
                 stackedCount: group.tickets.count,
                 now: now,
                 showsDisclosure: group.tickets.count > 1,
-                isExpanded: expanded
+                isExpanded: expanded,
+                foilActive: true
             )
         }
         .padding(.bottom, CGFloat(extras) * 9)
@@ -285,7 +291,7 @@ struct WalletPassStack: View {
         Button {
             onOpen(ticket)
         } label: {
-            VoucherPassCard(ticket: ticket, now: now)
+            VoucherPassCard(ticket: ticket, now: now, foilActive: false)
         }
         .buttonStyle(LoyaltyPassPressStyle())
         .contextMenu { ticketMenu(ticket) }
@@ -297,12 +303,17 @@ struct WalletPassStack: View {
         Button {
             onCheckout(ticket)
         } label: {
-            Label("Kasa", systemImage: "barcode")
+            Label("Pokaż przy kasie", systemImage: "barcode")
         }
         Button {
             onRedeem(ticket)
         } label: {
             Label("Wykorzystany", systemImage: "checkmark.circle")
+        }
+        Button(role: .destructive) {
+            onDelete?(ticket)
+        } label: {
+            Label("Usuń", systemImage: "trash")
         }
     }
 }

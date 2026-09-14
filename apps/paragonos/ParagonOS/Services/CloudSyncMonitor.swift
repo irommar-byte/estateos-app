@@ -82,7 +82,7 @@ final class CloudSyncMonitor: ObservableObject {
     func markLocalOnly() {
         usesCloudKit = false
         phase = .idle
-        errorText = "Brak konta iCloud. Karty zostają na tym urządzeniu."
+        errorText = "Brak konta iCloud. Kaucje, paragony i karty zostają na tym urządzeniu."
     }
 
     func requestExport(from context: ModelContext) {

@@ -46,6 +46,11 @@ enum FamilyCloudTarget {
     }
 }
 
+struct FamilyRecordFetch {
+    var records: [CKRecord]
+    var succeeded: Bool
+}
+
 @MainActor
 final class CloudKitFamilyService: ObservableObject {
     static let shared = CloudKitFamilyService()
@@ -56,6 +61,10 @@ final class CloudKitFamilyService: ObservableObject {
     @Published var statusMessage: String?
     @Published var share: CKShare?
     @Published var meFullName: String = ""
+
+    var isFamilyOwner: Bool {
+        FamilyCloudTarget.isOwner(familyZoneOwnerName)
+    }
 
     private lazy var container = CKContainer(identifier: Brand.iCloudContainer)
     private let walletType = "FamilyWallet"
@@ -439,16 +448,57 @@ final class CloudKitFamilyService: ObservableObject {
         }
     }
 
-    func fetchSharedReceipts() async -> [CKRecord] {
+    func fetchSharedReceipts() async -> FamilyRecordFetch {
         await fetchFamilyRecords(ofType: receiptType)
     }
 
-    func fetchSharedCards() async -> [CKRecord] {
+    func fetchSharedCards() async -> FamilyRecordFetch {
         await fetchFamilyRecords(ofType: loyaltyType)
     }
 
-    func fetchSharedTickets() async -> [CKRecord] {
+    func fetchSharedTickets() async -> FamilyRecordFetch {
         await fetchFamilyRecords(ofType: ticketType)
+    }
+
+    func deleteSharedRecord(named name: String) async {
+        guard canUseCloudKit, familyWalletID != nil else { return }
+        let recordID = CKRecord.ID(recordName: name, zoneID: familyZoneID)
+        _ = try? await familyDatabase.modifyRecords(saving: [], deleting: [recordID])
+        if FamilyCloudTarget.isOwner(familyZoneOwnerName) == false {
+            _ = try? await container.privateCloudDatabase.modifyRecords(saving: [], deleting: [recordID])
+        }
+    }
+
+    func leaveFamily() async {
+        if canUseCloudKit, let share {
+            let owner = FamilyCloudTarget.isOwner(share.recordID.zoneID.ownerName)
+            if owner {
+                for type in [ticketType, receiptType, loyaltyType] {
+                    let recs = await records(ofType: type, in: familyDatabase)
+                    let ids = recs.map(\.recordID)
+                    if ids.isEmpty == false {
+                        _ = try? await familyDatabase.modifyRecords(saving: [], deleting: ids)
+                    }
+                }
+                _ = try? await container.privateCloudDatabase.modifyRecords(saving: [], deleting: [share.recordID])
+                self.share = nil
+                members = members.filter(\.isOwner)
+                statusMessage = "Udostępnianie rodzinie jest wyłączone."
+                await refreshParticipants()
+                return
+            }
+            _ = try? await container.sharedCloudDatabase.modifyRecords(saving: [], deleting: [share.recordID])
+        }
+        clearFamilyLink()
+        statusMessage = "Opuściłeś portfel rodzinny. Twoje kopie zostają na tym iPhonie."
+    }
+
+    func clearFamilyLink() {
+        familyWalletID = nil
+        share = nil
+        members = []
+        UserDefaults.standard.removeObject(forKey: familyWalletIDKey)
+        UserDefaults.standard.removeObject(forKey: familyZoneOwnerKey)
     }
 
     func repairMissingParents() async {
@@ -521,15 +571,20 @@ final class CloudKitFamilyService: ObservableObject {
         return record
     }
 
-    private func fetchFamilyRecords(ofType type: String) async -> [CKRecord] {
-        guard isICloudAvailable else { return [] }
+    private func fetchFamilyRecords(ofType type: String) async -> FamilyRecordFetch {
+        guard isICloudAvailable, familyWalletID != nil else {
+            return FamilyRecordFetch(records: [], succeeded: false)
+        }
         var map: [String: CKRecord] = [:]
+        var succeeded = false
         for database in [container.privateCloudDatabase, container.sharedCloudDatabase] {
-            for record in await records(ofType: type, in: database) {
+            let result = await recordsResult(ofType: type, in: database)
+            if result.ok { succeeded = true }
+            for record in result.records {
                 map[record.recordID.recordName] = record
             }
         }
-        return Array(map.values)
+        return FamilyRecordFetch(records: Array(map.values), succeeded: succeeded)
     }
 
     private func attachParent(_ record: CKRecord) {
@@ -539,6 +594,10 @@ final class CloudKitFamilyService: ObservableObject {
     }
 
     private func records(ofType type: String, in database: CKDatabase) async -> [CKRecord] {
+        await recordsResult(ofType: type, in: database).records
+    }
+
+    private func recordsResult(ofType type: String, in database: CKDatabase) async -> (records: [CKRecord], ok: Bool) {
         let query = CKQuery(recordType: type, predicate: NSPredicate(value: true))
         let zoneIDs: [CKRecordZone.ID]
         if database.databaseScope == .shared {
@@ -552,26 +611,38 @@ final class CloudKitFamilyService: ObservableObject {
             ]
         }
         var records: [CKRecord] = []
+        var ok = false
         for zoneID in zoneIDs {
-            let batch = await AsyncTimeout.value(seconds: 10) {
-                await self.query(query, in: database, zoneID: zoneID)
-            } ?? []
-            records.append(contentsOf: batch)
+            let batch = await queryResult(query, in: database, zoneID: zoneID)
+            if batch.ok { ok = true }
+            records.append(contentsOf: batch.records)
         }
-        return records
+        if database.databaseScope == .shared, zoneIDs.isEmpty {
+            ok = true
+        }
+        return (records, ok)
     }
 
     private func query(_ query: CKQuery, in database: CKDatabase, zoneID: CKRecordZone.ID) async -> [CKRecord] {
-        guard let (result, _) = try? await database.records(matching: query, inZoneWith: zoneID) else {
-            return []
-        }
-        var records: [CKRecord] = []
-        for (_, item) in result {
-            if let record = try? item.get() {
-                records.append(record)
+        await queryResult(query, in: database, zoneID: zoneID).records
+    }
+
+    private func queryResult(_ query: CKQuery, in database: CKDatabase, zoneID: CKRecordZone.ID) async -> (records: [CKRecord], ok: Bool) {
+        do {
+            let (result, _) = try await database.records(matching: query, inZoneWith: zoneID)
+            var records: [CKRecord] = []
+            for (_, item) in result {
+                if let record = try? item.get() {
+                    records.append(record)
+                }
             }
+            return (records, true)
+        } catch {
+            if let ck = error as? CKError, ck.code == .unknownItem || ck.code == .zoneNotFound {
+                return ([], true)
+            }
+            return ([], false)
         }
-        return records
     }
 
     private func isNoisyStatus(_ message: String?) -> Bool {
@@ -607,7 +678,22 @@ final class ParagonAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         application.registerForRemoteNotifications()
+        if let shortcut = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
+            ShortcutLaunch.pending = shortcut
+            LaunchSplashPolicy.skipNext = true
+        }
         return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        LaunchSplashPolicy.skipNext = true
+        ShortcutLaunch.pending = shortcutItem
+        NotificationCenter.default.post(name: .paragonShortcut, object: shortcutItem)
+        completionHandler(true)
     }
 
     func application(

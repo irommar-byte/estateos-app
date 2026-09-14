@@ -144,8 +144,12 @@ struct ScanReviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Wstecz") {
+                    Button(wallet.skipLiveScanner ? "Anuluj" : "Wstecz") {
                         wallet.scanDraft = nil
+                        if wallet.skipLiveScanner {
+                            wallet.scanPhoto = nil
+                            wallet.showScanner = false
+                        }
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {

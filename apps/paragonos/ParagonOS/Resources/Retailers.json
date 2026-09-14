@@ -133,6 +133,23 @@
       "checkoutHint": "Bon Dino nie ma nadrukowanego limitu ważności — i tak trzymaj kopię w ParagonOS™."
     },
     {
+      "id": "zabka",
+      "name": "Żabka",
+      "keywords": [
+        "zabka",
+        "żabka",
+        "zabka polska",
+        "żabka polska"
+      ],
+      "taxIDs": [],
+      "validityRules": [{ "effectiveFrom": "2025-10-01", "days": 30 }],
+      "screenBarcode": "tryAtCheckout",
+      "networkWide": true,
+      "cashoutAllowed": false,
+      "requiresPurchaseAtLeastAmount": false,
+      "checkoutHint": "Zrealizuj bon Żabka przy kasie przed upływem terminu. Jeśli kasa nie odczyta kodu z ekranu, pokaż zdjęcie lub papier."
+    },
+    {
       "id": "unknown",
       "name": "Inna sieć",
       "keywords": [],

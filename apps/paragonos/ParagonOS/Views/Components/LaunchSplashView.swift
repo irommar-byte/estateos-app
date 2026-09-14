@@ -2,6 +2,13 @@ import SwiftUI
 import UIKit
 
 struct LaunchSplashView: View {
+    enum Style {
+        case full
+        case brief
+        case none
+    }
+
+    var style: Style = .full
     var onFinished: () -> Void
 
     @State private var spin = false
@@ -13,7 +20,12 @@ struct LaunchSplashView: View {
     @State private var bits: [ScatterBit] = []
 
     var body: some View {
-        GeometryReader { geo in
+        if style == .none {
+            Color.clear
+                .ignoresSafeArea()
+                .onAppear { onFinished() }
+        } else {
+            GeometryReader { geo in
             ZStack {
                 Color.black.ignoresSafeArea()
                 RadialGradient(
@@ -67,9 +79,27 @@ struct LaunchSplashView: View {
         .ignoresSafeArea()
         .opacity(fadeOut ? 0 : 1)
         .allowsHitTesting(false)
+        }
     }
 
     private func run() {
+        if style == .none {
+            onFinished()
+            return
+        }
+        if style == .brief || UIAccessibility.isReduceMotionEnabled {
+            showWordmark = true
+            spin = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    fadeOut = true
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                onFinished()
+            }
+            return
+        }
         LaunchSounds.prepare()
         withAnimation(.easeOut(duration: 0.42)) {
             spin = true
@@ -102,6 +132,26 @@ struct LaunchSplashView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.7) {
             onFinished()
         }
+    }
+}
+
+enum LaunchSplashPolicy {
+    static let seenKey = "paragonos.didShowLaunchSplash"
+    static var skipNext = false
+
+    static var style: LaunchSplashView.Style {
+        if skipNext {
+            skipNext = false
+            return .none
+        }
+        if UIAccessibility.isReduceMotionEnabled { return .brief }
+        if OpenScanBridge.pending { return .brief }
+        if UserDefaults.standard.bool(forKey: seenKey) { return .brief }
+        return .full
+    }
+
+    static func markSeen() {
+        UserDefaults.standard.set(true, forKey: seenKey)
     }
 }
 

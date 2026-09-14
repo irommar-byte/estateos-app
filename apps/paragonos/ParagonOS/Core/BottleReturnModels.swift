@@ -1,8 +1,8 @@
 import CoreLocation
 import Foundation
 
-struct BottleReturnPoint: Identifiable, Hashable {
-    enum Kind: String {
+struct BottleReturnPoint: Identifiable, Hashable, Codable {
+    enum Kind: String, Codable, Hashable {
         case machine
         case store
     }

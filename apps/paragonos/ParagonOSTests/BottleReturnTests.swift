@@ -1,3 +1,5 @@
+import CoreLocation
+import MapKit
 import XCTest
 @testable import ParagonOS
 
@@ -32,7 +34,69 @@ final class BottleReturnTests: XCTestCase {
         XCTAssertEqual(status.isOpen, true)
     }
 
-    func testDistanceFormatMetersAndKilometers() {
+    func testDedupePrefersMachineOverStore() {
+        let store = BottleReturnPoint(
+            id: "s",
+            brand: "Lidl",
+            brandID: "lidl",
+            name: "Lidl",
+            address: "",
+            city: "Gdańsk",
+            postcode: "",
+            latitude: 54.35,
+            longitude: 18.65,
+            hoursRaw: "",
+            acceptsPET: true,
+            acceptsCans: true,
+            acceptsGlass: true,
+            kind: .store
+        )
+        let machine = BottleReturnPoint(
+            id: "m",
+            brand: "Lidl",
+            brandID: "lidl",
+            name: "Lidl",
+            address: "Grunwaldzka 1",
+            city: "Gdańsk",
+            postcode: "",
+            latitude: 54.3501,
+            longitude: 18.6501,
+            hoursRaw: "Mo-Su 06:00-22:00",
+            acceptsPET: true,
+            acceptsCans: true,
+            acceptsGlass: true,
+            kind: .machine
+        )
+        let merged = BottleReturnStore.dedupe([store, machine])
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.kind, .machine)
+        XCTAssertEqual(merged.first?.address, "Grunwaldzka 1")
+        XCTAssertFalse(merged.first?.hoursRaw.isEmpty ?? true)
+    }
+
+    func testViewportKeepsPointsAwayFromCenterWithoutCap() {
+        let box = MKRegionBox(
+            center: CLLocationCoordinate2D(latitude: 52.23, longitude: 21.01),
+            latitudeDelta: 0.2,
+            longitudeDelta: 0.2
+        )
+        XCTAssertTrue(box.contains(CLLocationCoordinate2D(latitude: 52.23, longitude: 21.01)))
+        XCTAssertTrue(box.padded.latitudeDelta > box.latitudeDelta)
+        XCTAssertTrue(box.showsIndividualPins)
+        let zoomedOut = MKRegionBox(
+            center: box.center,
+            latitudeDelta: 3,
+            longitudeDelta: 3
+        )
+        XCTAssertFalse(zoomedOut.showsIndividualPins)
+    }
+
+    func testOSMQueryDoesNotPullEverySupermarket() {
+        XCTAssertFalse(BottleReturnStore.osmQueryContainsShops("nwr[\"vending\"=\"bottle_return\"]"))
+        XCTAssertTrue(BottleReturnStore.osmQueryContainsShops("nwr[\"shop\"][\"brand\"~\"Biedronka\"]"))
+    }
+
+    func testDistanceFormat() {
         XCTAssertEqual(DistanceFormat.string(250), "250 m")
         XCTAssertEqual(DistanceFormat.string(999), "999 m")
         XCTAssertEqual(DistanceFormat.string(1000), "1 km")

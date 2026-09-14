@@ -89,6 +89,7 @@ struct LoyaltyCardPass: View {
     var isExpanded: Bool = false
     var showsCode: Bool = false
     var showsChevron: Bool = false
+    var foilActive: Bool = true
     @State private var visual: LoyaltyVisual?
 
     private var program: LoyaltyProgram { card.program }
@@ -215,7 +216,7 @@ struct LoyaltyCardPass: View {
                     )
             }
             .overlay {
-                GyroFoilOverlay(cornerRadius: corner, intensity: style == .detail ? 0.82 : 0.58)
+                GyroFoilOverlay(cornerRadius: corner, intensity: style == .detail ? 0.82 : 0.58, isActive: foilActive)
                     .clipShape(shape)
                     .allowsHitTesting(false)
             }
@@ -384,7 +385,8 @@ struct LoyaltyPassStack: View {
                 LoyaltyCardPass(
                     card: card,
                     style: .stack,
-                    isExpanded: isExpanded
+                    isExpanded: isExpanded,
+                    foilActive: isExpanded || index == cards.count - 1
                 )
             }
             .buttonStyle(LoyaltyPassPressStyle())
@@ -470,7 +472,11 @@ struct StackChevron: View {
 }
 
 enum PassStackMotion {
-    static let snappy = Animation.spring(response: 0.36, dampingFraction: 0.86)
+    static var snappy: Animation {
+        UIAccessibility.isReduceMotionEnabled
+            ? .easeOut(duration: 0.12)
+            : .spring(response: 0.36, dampingFraction: 0.86)
+    }
 }
 
 struct LoyaltyProgramGroup: Identifiable {

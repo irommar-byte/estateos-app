@@ -2,6 +2,7 @@ import CoreLocation
 import MapKit
 import SwiftData
 import SwiftUI
+import TipKit
 
 struct WalletView: View {
     @EnvironmentObject private var wallet: WalletModel
@@ -9,11 +10,11 @@ struct WalletView: View {
     @Query(sort: \Ticket.issuedAt, order: .reverse) private var tickets: [Ticket]
     @State private var query = ""
     @State private var isSearching = false
-    @FocusState private var searchFocused: Bool
     @StateObject private var location = LocationProvider()
     @State private var nearby: [BottleReturnPoint] = []
     @State private var nearbyOrigin: CLLocation?
     @State private var expandedStackID: String?
+    @State private var pendingRedeem: Ticket?
 
     private var now: Date { .now }
 
@@ -44,22 +45,26 @@ struct WalletView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if isSearching {
-                    searchField
-                }
-                if tickets.isEmpty {
-                    emptyCard
-                } else {
+                if tickets.isEmpty && query.isEmpty {
+                    emptyState
+                } else if tickets.isEmpty == false {
                     summaryCard
                 }
-                mapTeaser
+                if location.isAuthorized, tickets.isEmpty == false {
+                    mapTeaser
+                } else if location.isAuthorized == false {
+                    locationPrompt
+                }
                 if tickets.isEmpty == false {
                     if visible.isEmpty {
-                        Text(query.isEmpty ? "Brak aktywnych kwitków." : "Nic nie pasuje do wyszukiwania.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 4)
+                        ContentUnavailableView(
+                            query.isEmpty ? "Brak aktywnych kwitków" : "Nic nie pasuje",
+                            systemImage: query.isEmpty ? "ticket" : "magnifyingglass",
+                            description: Text(query.isEmpty
+                                ? "Wykorzystane i przeterminowane są w Historii."
+                                : "Spróbuj innej sieci albo kwoty.")
+                        )
+                        .frame(maxWidth: .infinity)
                     } else {
                         Text("Aktywne")
                             .font(.subheadline.weight(.semibold))
@@ -76,7 +81,10 @@ struct WalletView: View {
                                 wallet.showCheckoutFor = ticket.id
                             },
                             onRedeem: { ticket in
-                                try? wallet.markRedeemed(ticket, context: context)
+                                pendingRedeem = ticket
+                            },
+                            onDelete: { ticket in
+                                try? wallet.delete(ticket, context: context)
                             }
                         )
                     }
@@ -91,6 +99,9 @@ struct WalletView: View {
         .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Kaucje")
+        .searchable(text: $query, isPresented: $isSearching, prompt: "Sklep lub kwota")
+        .sensoryFeedback(.success, trigger: tickets.count)
+        .sensoryFeedback(.impact(flexibility: .solid), trigger: wallet.showCheckoutFor)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -109,78 +120,81 @@ struct WalletView: View {
                 .accessibilityLabel("Mapa butelkomatów")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSearching.toggle()
-                        if isSearching {
-                            searchFocused = true
-                        } else {
-                            query = ""
-                            searchFocused = false
-                        }
+                Menu {
+                    Button("Skanuj kaucję", systemImage: "viewfinder") {
+                        wallet.openScanner(for: .deposit)
                     }
-                } label: {
-                    Image(systemName: isSearching ? "xmark.circle.fill" : "magnifyingglass")
-                }
-                .accessibilityLabel(isSearching ? "Zamknij wyszukiwanie" : "Szukaj")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    wallet.openScanner(for: .deposit)
+                    Button("Wpisz ręcznie", systemImage: "keyboard") {
+                        wallet.openManualDeposit()
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("Skanuj kaucję")
+                .accessibilityLabel("Dodaj kaucję")
             }
         }
         .fullScreenCover(item: checkoutTicket) { ticket in
             CheckoutCodeView(ticket: ticket)
                 .environmentObject(wallet)
         }
+        .confirmationDialog(
+            "Czy kasa przyjęła kupon?",
+            isPresented: Binding(
+                get: { pendingRedeem != nil },
+                set: { if $0 == false { pendingRedeem = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Tak, wykorzystany") {
+                if let ticket = pendingRedeem {
+                    try? wallet.markRedeemed(ticket, context: context)
+                }
+                pendingRedeem = nil
+            }
+            Button("Anuluj", role: .cancel) {
+                pendingRedeem = nil
+            }
+        } message: {
+            Text("Po skanie przy kasie oznacz kwitek jako wykorzystany, żeby nie leżał w portfelu.")
+        }
         .task {
             location.request()
-            await loadNearby()
+            if location.isAuthorized {
+                await loadNearby()
+            }
         }
         .onChange(of: location.location?.timestamp) { _, _ in
+            guard location.isAuthorized else { return }
             Task { await loadNearby() }
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Sklep lub kwota", text: $query)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($searchFocused)
-            if query.isEmpty == false {
-                Button {
-                    query = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityLabel("Wyczyść")
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.tertiarySystemFill))
-        )
-    }
-
-    private var emptyCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var emptyState: some View {
+        ContentUnavailableView {
             Label("Brak kaucji", systemImage: "waterbottle")
-                .font(.headline)
-            Text("Skanuj kwitek z butelkomatu albo znajdź automat na mapie.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        } description: {
+            Text("Skanuj kwitek z butelkomatu, wpisz go ręcznie albo znajdź automat na mapie.")
+        } actions: {
             Button("Skanuj kaucję") { wallet.openScanner(for: .deposit) }
                 .buttonStyle(.borderedProminent)
+                .popoverTip(FirstScanTip.deposit)
+            Button("Wpisz ręcznie") { wallet.openManualDeposit() }
+        }
+    }
+
+    private var locationPrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Włącz lokalizację", systemImage: "location.fill")
+                .font(.headline)
+            Text("Wtedy pokażemy butelkomaty w pobliżu — bez zgody nie zgadujemy Warszawy.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Włącz") { location.locateOrOpenSettings() }
+                    .buttonStyle(.borderedProminent)
+                Button("Otwórz mapę") { openBottleMap() }
+                    .buttonStyle(.bordered)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -334,7 +348,11 @@ struct WalletView: View {
     }
 
     private func loadNearby() async {
-        let origin = location.location ?? CLLocation(latitude: 52.2297, longitude: 21.0122)
+        guard location.isAuthorized, let origin = location.location else {
+            nearby = []
+            nearbyOrigin = nil
+            return
+        }
         nearbyOrigin = origin
         nearby = await BottleReturnStore.shared.nearby(from: origin, limit: 8)
     }

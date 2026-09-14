@@ -37,6 +37,15 @@ final class GyroMotion: NSObject {
             },
             center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
                 self?.resumeHardwareIfNeeded()
+            },
+            center.addObserver(forName: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                if UIAccessibility.isReduceMotionEnabled {
+                    self.stop()
+                    self.broadcast(CGPoint(x: 0.18, y: -0.12))
+                } else if self.clients > 0 {
+                    self.start()
+                }
             }
         ]
     }
@@ -61,7 +70,11 @@ final class GyroMotion: NSObject {
 
     private func start() {
         purge()
-        if UIAccessibility.isReduceMotionEnabled == false, motion.isDeviceMotionAvailable {
+        if UIAccessibility.isReduceMotionEnabled {
+            broadcast(CGPoint(x: 0.18, y: -0.12))
+            return
+        }
+        if motion.isDeviceMotionAvailable {
             motion.deviceMotionUpdateInterval = 1.0 / 60.0
             motion.startDeviceMotionUpdates(using: .xArbitraryZVertical)
         }
@@ -146,6 +159,7 @@ final class GyroFoilView: UIView {
     private let sheen = CAGradientLayer()
     private let hologram = CAGradientLayer()
     private var attached = false
+    private var motionObserver: NSObjectProtocol?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -167,9 +181,29 @@ final class GyroFoilView: UIView {
         layer.addSublayer(hologram)
         layer.addSublayer(sheen)
         paint(light: CGPoint(x: 0.12, y: -0.08))
+        motionObserver = NotificationCenter.default.addObserver(
+            forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.syncAttachment()
+        }
+    }
+
+    deinit {
+        if let motionObserver {
+            NotificationCenter.default.removeObserver(motionObserver)
+        }
+        if attached {
+            GyroMotion.shared.release(self)
+        }
     }
 
     required init?(coder: NSCoder) { nil }
+
+    var isActive: Bool = true {
+        didSet { syncAttachment() }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -179,12 +213,18 @@ final class GyroFoilView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window != nil, attached == false {
+        syncAttachment()
+    }
+
+    private func syncAttachment() {
+        let want = window != nil && isActive && UIAccessibility.isReduceMotionEnabled == false
+        if want, attached == false {
             attached = true
             GyroMotion.shared.retain(self)
-        } else if window == nil, attached {
+        } else if want == false, attached {
             attached = false
             GyroMotion.shared.release(self)
+            paint(light: CGPoint(x: 0.18, y: -0.12))
         }
     }
 
@@ -226,16 +266,19 @@ final class GyroFoilView: UIView {
 struct GyroFoilOverlay: UIViewRepresentable {
     var cornerRadius: CGFloat
     var intensity: CGFloat = 0.7
+    var isActive: Bool = true
 
     func makeUIView(context: Context) -> GyroFoilView {
         let view = GyroFoilView()
         view.cornerRadius = cornerRadius
         view.intensity = intensity
+        view.isActive = isActive
         return view
     }
 
     func updateUIView(_ uiView: GyroFoilView, context: Context) {
         uiView.cornerRadius = cornerRadius
         uiView.intensity = intensity
+        uiView.isActive = isActive
     }
 }

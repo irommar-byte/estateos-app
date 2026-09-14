@@ -1,5 +1,6 @@
 import Charts
 import SwiftUI
+import UIKit
 
 enum HistoryGrain: String, CaseIterable, Identifiable {
     case year
@@ -168,13 +169,13 @@ struct CascadeSpendChart: View {
             .chartLegend(showsSecondary ? .visible : .hidden)
             .frame(height: 196)
             .rotation3DEffect(
-                .degrees(folded ? 82 : 0),
+                .degrees(UIAccessibility.isReduceMotionEnabled || folded == false ? 0 : 82),
                 axis: (x: 1, y: 0, z: 0),
                 anchor: .top,
                 perspective: 0.62
             )
-            .scaleEffect(x: 1, y: folded ? 0.16 : 1, anchor: .top)
-            .opacity(folded ? 0.18 : 1)
+            .scaleEffect(x: 1, y: UIAccessibility.isReduceMotionEnabled || folded == false ? 1 : 0.16, anchor: .top)
+            .opacity(UIAccessibility.isReduceMotionEnabled || folded == false ? 1 : 0.18)
             .shadow(color: .black.opacity(folded ? 0 : 0.12), radius: folded ? 0 : 14, y: folded ? 0 : 8)
         }
         .padding(.vertical, 6)
@@ -185,6 +186,11 @@ struct CascadeSpendChart: View {
     }
 
     private func cascade(reset: Bool) {
+        if UIAccessibility.isReduceMotionEnabled {
+            folded = false
+            revealed = points.count
+            return
+        }
         if reset {
             folded = true
             revealed = 0

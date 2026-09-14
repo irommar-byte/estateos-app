@@ -6,7 +6,6 @@ struct LoyaltyProgramPicker: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var customName = ""
-    @FocusState private var searchFocused: Bool
 
     private var programs: [LoyaltyProgram] {
         LoyaltyCatalog.search(query)
@@ -24,11 +23,11 @@ struct LoyaltyProgramPicker: View {
                     .listRowBackground(Color.clear)
                 } else {
                     ForEach(programs) { program in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onPick(program)
-                            dismiss()
-                        } label: {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                onPick(program)
+                                dismiss()
+                            } label: {
                             HStack(spacing: 14) {
                                 LoyaltyLogo(program: program, size: 44)
                                 VStack(alignment: .leading, spacing: 2) {
@@ -62,56 +61,18 @@ struct LoyaltyProgramPicker: View {
                 } header: {
                     Text("Inny sklep")
                 } footer: {
-                    Text("Logotypy pochodzą z ikon domen sklepów. \(Brand.displayName) nie jest powiązany z tymi sieciami.")
+                    Text("\(Brand.displayName) nie jest powiązany z tymi sieciami.")
                 }
             }
             .listStyle(.plain)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, prompt: "Szukaj sklepu")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 32, height: 32)
-                            .background(.thinMaterial, in: Circle())
-                    }
-                    .accessibilityLabel("Zamknij")
+                    Button("Anuluj") { dismiss() }
                 }
             }
-            .safeAreaInset(edge: .bottom) {
-                searchField
-            }
         }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Szukaj", text: $query)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($searchFocused)
-            if query.isEmpty == false {
-                Button {
-                    query = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityLabel("Wyczyść")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(.bar, in: Capsule())
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
-        .background(.ultraThinMaterial)
     }
 }

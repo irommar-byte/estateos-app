@@ -10,7 +10,11 @@ struct LoyaltyCheckoutView: View {
 
     init(card: LoyaltyCard) {
         self.card = card
-        _shownSymbology = State(initialValue: card.barcodeSymbology == .unknown ? .qr : card.barcodeSymbology)
+        _shownSymbology = State(
+            initialValue: card.barcodeSymbology == .unknown
+                ? BarcodeSymbology.inferred(from: card.barcodePayload)
+                : card.barcodeSymbology
+        )
     }
 
     private var program: LoyaltyProgram { card.program }
@@ -23,7 +27,9 @@ struct LoyaltyCheckoutView: View {
     }
 
     private var shownBase: BarcodeSymbology {
-        card.barcodeSymbology == .unknown ? .qr : card.barcodeSymbology
+        card.barcodeSymbology == .unknown
+            ? BarcodeSymbology.inferred(from: card.barcodePayload)
+            : card.barcodeSymbology
     }
 
     var body: some View {
@@ -96,12 +102,15 @@ struct LoyaltyCheckoutView: View {
                 }
             }
         }
+        .preferredColorScheme(.light)
+        .statusBarHidden(true)
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             previousBrightness = UIScreen.main.brightness
             if wallet.settings.boostBrightness {
                 UIScreen.main.brightness = 1
             }
+            wallet.rememberCheckoutCard(card.id)
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false

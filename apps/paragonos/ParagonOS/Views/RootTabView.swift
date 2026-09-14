@@ -36,6 +36,12 @@ struct RootTabView: View {
                 openPendingReceipt()
                 openPendingCard()
             }
+            .onChange(of: wallet.requestedTab) { _, tab in
+                if let tab {
+                    self.tab = tab
+                    wallet.requestedTab = nil
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     Task { await wallet.refreshFamilyFromCloud() }

@@ -1,11 +1,14 @@
 import CloudKit
+import SwiftData
 import SwiftUI
 
 struct FamilyView: View {
     @EnvironmentObject private var wallet: WalletModel
+    @Environment(\.modelContext) private var context
     @State private var shareToPresent: CKShare?
     @State private var showShareSheet = false
     @State private var isPreparingShare = false
+    @State private var confirmLeave = false
 
     private var accountName: String {
         let stored = wallet.settings.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,6 +111,18 @@ struct FamilyView: View {
                     }
                 }
             }
+
+            if wallet.family.familyWalletID != nil {
+                Section {
+                    Button(wallet.family.isFamilyOwner ? "Zatrzymaj udostępnianie" : "Opuść rodzinę", role: .destructive) {
+                        confirmLeave = true
+                    }
+                } footer: {
+                    Text(wallet.family.isFamilyOwner
+                         ? "Bliscy stracą dostęp do wspólnego portfela. Twoje kaucje, paragony i karty zostaną na tym iPhonie."
+                         : "Wypiszesz się ze wspólnego portfela. Kopie na tym iPhonie zostaną.")
+                }
+            }
         }
         .navigationTitle("Rodzina")
         .refreshable {
@@ -118,6 +133,16 @@ struct FamilyView: View {
             await wallet.applySuggestedIdentityIfNeeded()
             await wallet.family.refreshAccountStatus()
             await wallet.family.refreshParticipants()
+        }
+        .confirmationDialog(
+            wallet.family.isFamilyOwner ? "Zatrzymać udostępnianie?" : "Opuścić rodzinę?",
+            isPresented: $confirmLeave,
+            titleVisibility: .visible
+        ) {
+            Button(wallet.family.isFamilyOwner ? "Zatrzymaj" : "Opuść", role: .destructive) {
+                Task { await wallet.leaveFamily(context: context) }
+            }
+            Button("Anuluj", role: .cancel) {}
         }
         .sheet(isPresented: $showShareSheet, onDismiss: {
             shareToPresent = nil

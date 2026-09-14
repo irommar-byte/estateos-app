@@ -4,6 +4,7 @@ import Foundation
 import SwiftData
 import SwiftUI
 import UIKit
+import WidgetKit
 
 @MainActor
 final class WalletModel: ObservableObject {
@@ -26,6 +27,8 @@ final class WalletModel: ObservableObject {
     @Published var pendingReceiptID: UUID?
     @Published var pendingLoyaltyID: UUID?
     @Published var showLoyaltyCheckoutFor: UUID?
+    @Published var skipLiveScanner = false
+    @Published var requestedTab: AppTab?
 
     let family = CloudKitFamilyService.shared
     let cloudSync = CloudSyncMonitor.shared
@@ -74,6 +77,11 @@ final class WalletModel: ObservableObject {
         observeNotifications()
         cloudSync.requestExport(from: context)
         didBootstrap = true
+        publishHomeChrome(from: context)
+        if let pending = ShortcutLaunch.pending {
+            ShortcutLaunch.pending = nil
+            HomeQuickActions.handle(pending, wallet: self)
+        }
         if settings.hasCompletedOnboarding {
             await ExpiryNotificationService.shared.requestAuthorization()
         }
@@ -88,11 +96,17 @@ final class WalletModel: ObservableObject {
     }
 
     func openScanner(for intent: ScanIntent) {
+        switch intent {
+        case .deposit: requestedTab = .wallet
+        case .receipt: requestedTab = .receipts
+        case .loyalty: requestedTab = .cards
+        }
         scanIntent = intent
         scanDraft = nil
         receiptDraft = nil
         loyaltyDraft = nil
         scanError = nil
+        skipLiveScanner = false
         showScanner = true
     }
 
@@ -103,6 +117,20 @@ final class WalletModel: ObservableObject {
         loyaltyDraft = .blank(program: program)
         scanPhoto = nil
         scanError = nil
+        skipLiveScanner = true
+        showScanner = true
+    }
+
+    func openManualDeposit(retailerID: String = "unknown") {
+        scanIntent = .deposit
+        var draft = VoucherDraft.blank()
+        draft.retailerID = retailerID
+        scanDraft = draft
+        receiptDraft = nil
+        loyaltyDraft = nil
+        scanPhoto = nil
+        scanError = nil
+        skipLiveScanner = true
         showScanner = true
     }
 
@@ -160,6 +188,40 @@ final class WalletModel: ObservableObject {
         (try? context.fetch(FetchDescriptor<LoyaltyCard>())) ?? []
     }
 
+    func rememberCheckoutCard(_ id: UUID) {
+        let raw = id.uuidString
+        UserDefaults(suiteName: AppGroup.id)?.set(raw, forKey: AppGroup.lastCardKey)
+        UserDefaults.standard.set(raw, forKey: AppGroup.lastCardKey)
+    }
+
+    func publishHomeChrome(from context: ModelContext) {
+        let tickets = storedTickets(in: context)
+        let cards = storedCards(in: context)
+        let now = Date()
+        let next = tickets
+            .filter { $0.resolvedStatus(now: now) == .active }
+            .sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
+            .first
+        let lastID = (UserDefaults(suiteName: AppGroup.id)?.string(forKey: AppGroup.lastCardKey)
+            ?? UserDefaults.standard.string(forKey: AppGroup.lastCardKey))
+            .flatMap(UUID.init)
+        let snapshot = HomeSnapshot(
+            nextTicket: next.map {
+                SnapshotTicket(
+                    id: $0.id,
+                    brand: RetailerCatalog.policy(id: $0.retailerID).name,
+                    amount: $0.amount,
+                    expiresAt: $0.expiresAt
+                )
+            },
+            cards: cards.prefix(4).map { SnapshotCard(id: $0.id, name: $0.displayName) },
+            lastCardID: lastID
+        )
+        HomeSnapshotStore.save(snapshot)
+        HomeQuickActions.refresh(snapshot: snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     func completeOnboarding() {
         settings.hasCompletedOnboarding = true
         showOnboarding = false
@@ -173,8 +235,9 @@ final class WalletModel: ObservableObject {
         defer { isAnalyzing = false }
         do {
             if scanIntent == .loyalty {
-                let recognized = try await ScanService.recognize(image: image)
-                scanPhoto = ScanService.storedPhoto(image)
+                let framed = CardScanPhotos.cropToCardFrame(image)
+                let recognized = try await ScanService.recognize(image: framed)
+                scanPhoto = ScanService.storedPhoto(framed)
                 loyaltyDraft = LoyaltyParser.parse(lines: recognized.lines, barcodes: recognized.barcodes)
                 scanDraft = nil
                 receiptDraft = nil
@@ -300,6 +363,7 @@ final class WalletModel: ObservableObject {
         if shouldShare(.deposit) {
             Task { await family.upsertShared(ticket: ticket) }
         }
+        publishHomeChrome(from: context)
         return ticket
     }
 
@@ -357,7 +421,14 @@ final class WalletModel: ObservableObject {
         guard name.isEmpty == false else {
             throw ScanSaveError.missingMerchant
         }
-        let photoData = photo.flatMap { ScanService.compressPhoto($0) }
+        if let existing = matchingLoyaltyCard(payload: payload, in: context) {
+            pendingLoyaltyID = existing.id
+            loyaltyDraft = nil
+            scanPhoto = nil
+            showScanner = false
+            throw ScanSaveError.duplicateLoyalty
+        }
+        let photoData = photo.flatMap { ScanService.compressLoyaltyPhoto($0) }
         let card = LoyaltyCard(
             programID: draft.programID.isEmpty ? LoyaltyCatalog.customID : draft.programID,
             programName: name,
@@ -385,15 +456,67 @@ final class WalletModel: ObservableObject {
             Task { await family.upsertShared(card: card) }
         }
         pendingLoyaltyID = card.id
+        rememberCheckoutCard(card.id)
+        publishHomeChrome(from: context)
         return card
     }
 
     func persistLoyalty(_ card: LoyaltyCard, context: ModelContext) throws {
+        let payload = card.barcodePayload.trimmingCharacters(in: .whitespacesAndNewlines)
+        if payload.isEmpty == false,
+           let existing = matchingLoyaltyCard(payload: payload, excluding: card.id, in: context) {
+            card.barcodePayload = existing.barcodePayload
+            throw ScanSaveError.duplicateLoyalty
+        }
         card.updatedAt = Date()
         try context.save()
         if card.familyShareID != nil {
             Task { await family.upsertShared(card: card) }
         }
+        publishHomeChrome(from: context)
+    }
+
+    func matchingLoyaltyCard(payload: String, excluding: UUID? = nil, in context: ModelContext) -> LoyaltyCard? {
+        storedCards(in: context).first { card in
+            if let excluding, card.id == excluding { return false }
+            return LoyaltyIdentity.isSamePayload(card.barcodePayload, payload)
+        }
+    }
+
+    func persistTicket(_ ticket: Ticket, context: ModelContext) throws {
+        ticket.updatedAt = Date()
+        try context.save()
+        if ticket.familyWalletID != nil {
+            Task { await family.upsertShared(ticket: ticket) }
+        }
+    }
+
+    func shareTicketWithFamily(_ ticket: Ticket, context: ModelContext) async {
+        ticket.familyWalletID = family.familyWalletID
+        ticket.updatedAt = Date()
+        try? context.save()
+        await family.upsertShared(ticket: ticket)
+    }
+
+    func stopSharingTicket(_ ticket: Ticket, context: ModelContext) async {
+        await family.deleteSharedRecord(named: ticket.id.uuidString)
+        ticket.familyWalletID = nil
+        ticket.updatedAt = Date()
+        try? context.save()
+    }
+
+    func stopSharingReceipt(_ receipt: Receipt, context: ModelContext) async {
+        await family.deleteSharedRecord(named: receipt.id.uuidString)
+        receipt.familyShareID = nil
+        receipt.updatedAt = Date()
+        try? context.save()
+    }
+
+    func stopSharingLoyalty(_ card: LoyaltyCard, context: ModelContext) async {
+        await family.deleteSharedRecord(named: card.id.uuidString)
+        card.familyShareID = nil
+        card.updatedAt = Date()
+        try? context.save()
     }
 
     func shareLoyaltyWithFamily(_ card: LoyaltyCard, context: ModelContext) async {
@@ -429,6 +552,7 @@ final class WalletModel: ObservableObject {
         if ticket.familyWalletID != nil {
             Task { await family.upsertShared(ticket: ticket) }
         }
+        publishHomeChrome(from: context)
     }
 
     func restoreToWallet(_ ticket: Ticket, context: ModelContext) throws {
@@ -441,6 +565,7 @@ final class WalletModel: ObservableObject {
         if ticket.familyWalletID != nil {
             Task { await family.upsertShared(ticket: ticket) }
         }
+        publishHomeChrome(from: context)
     }
 
     private func offerRedeemIfDuplicate(_ draft: VoucherDraft) -> Bool {
@@ -559,19 +684,60 @@ final class WalletModel: ObservableObject {
     }
 
     func delete(_ ticket: Ticket, context: ModelContext) throws {
+        let id = ticket.id.uuidString
+        let shared = ticket.familyWalletID != nil
         context.delete(ticket)
         try context.save()
+        if shared {
+            Task { await family.deleteSharedRecord(named: id) }
+        }
+        publishHomeChrome(from: context)
     }
 
     func deleteReceipt(_ receipt: Receipt, context: ModelContext) throws {
+        let id = receipt.id.uuidString
+        let shared = receipt.familyShareID != nil
         context.delete(receipt)
         try context.save()
+        if shared {
+            Task { await family.deleteSharedRecord(named: id) }
+        }
+    }
+
+    func deleteLoyalty(_ card: LoyaltyCard, context: ModelContext) throws {
+        let id = card.id.uuidString
+        let shared = card.familyShareID != nil
+        context.delete(card)
+        try context.save()
+        if shared {
+            Task { await family.deleteSharedRecord(named: id) }
+        }
+        publishHomeChrome(from: context)
+    }
+
+    func leaveFamily(context: ModelContext) async {
+        await family.leaveFamily()
+        for ticket in storedTickets(in: context) where ticket.familyWalletID != nil {
+            ticket.familyWalletID = nil
+            ticket.updatedAt = Date()
+        }
+        for receipt in storedReceipts(in: context) where receipt.familyShareID != nil {
+            receipt.familyShareID = nil
+            receipt.updatedAt = Date()
+        }
+        for card in storedCards(in: context) where card.familyShareID != nil {
+            card.familyShareID = nil
+            card.updatedAt = Date()
+        }
+        try? context.save()
     }
 
     private func mergeFamilyTickets(context: ModelContext, existing: [Ticket]) async {
-        let records = await family.fetchSharedTickets()
-        guard records.isEmpty == false else { return }
+        let fetch = await family.fetchSharedTickets()
+        guard fetch.succeeded else { return }
+        let records = fetch.records
         let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id.uuidString, $0) })
+        let remote = Set(records.map(\.recordID.recordName))
         for record in records {
             let name = record.recordID.recordName
             let amount = record["amount"] as? Double ?? 0
@@ -593,6 +759,10 @@ final class WalletModel: ObservableObject {
                 ticket.statusRaw = status
                 ticket.redeemedByName = redeemedBy
                 ticket.expiresAt = expiresAt
+                ticket.barcodePayload = payload
+                ticket.barcodeSymbologyRaw = symbology
+                ticket.ticketNumber = number
+                if let photo { ticket.photoData = photo }
                 ticket.updatedAt = Date()
             } else {
                 let ticket = Ticket(
@@ -614,13 +784,20 @@ final class WalletModel: ObservableObject {
                 context.insert(ticket)
             }
         }
+        for ticket in existing where ticket.familyWalletID != nil {
+            if remote.contains(ticket.id.uuidString) == false {
+                context.delete(ticket)
+            }
+        }
         try? context.save()
     }
 
     private func mergeFamilyReceipts(context: ModelContext, existing: [Receipt]) async {
-        let records = await family.fetchSharedReceipts()
-        guard records.isEmpty == false else { return }
+        let fetch = await family.fetchSharedReceipts()
+        guard fetch.succeeded else { return }
+        let records = fetch.records
         let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id.uuidString, $0) })
+        let remote = Set(records.map(\.recordID.recordName))
         for record in records {
             let name = record.recordID.recordName
             let merchant = record["merchantName"] as? String ?? ""
@@ -643,10 +820,12 @@ final class WalletModel: ObservableObject {
             if let receipt = byID[name] {
                 receipt.amount = amount
                 receipt.merchantName = merchant
+                receipt.merchantNIP = nip
                 receipt.category = category
                 receipt.itemName = itemName
                 receipt.warrantyUntil = warrantyUntil
                 receipt.returnUntil = returnUntil
+                if let photo { receipt.photoData = photo }
                 receipt.updatedAt = Date()
             } else {
                 let receipt = Receipt(
@@ -672,13 +851,20 @@ final class WalletModel: ObservableObject {
                 context.insert(receipt)
             }
         }
+        for receipt in existing where receipt.familyShareID != nil {
+            if remote.contains(receipt.id.uuidString) == false {
+                context.delete(receipt)
+            }
+        }
         try? context.save()
     }
 
     private func mergeFamilyCards(context: ModelContext, existing: [LoyaltyCard]) async {
-        let records = await family.fetchSharedCards()
-        guard records.isEmpty == false else { return }
+        let fetch = await family.fetchSharedCards()
+        guard fetch.succeeded else { return }
+        let records = fetch.records
         let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id.uuidString, $0) })
+        let remote = Set(records.map(\.recordID.recordName))
         for record in records {
             let name = record.recordID.recordName
             let programID = record["programID"] as? String ?? ""
@@ -696,7 +882,9 @@ final class WalletModel: ObservableObject {
                 card.programName = programName
                 card.holderName = holderName
                 card.barcodePayload = payload
+                card.barcodeSymbology = symbology
                 card.note = note
+                if let photo { card.photoData = photo }
                 card.updatedAt = Date()
             } else {
                 let card = LoyaltyCard(
@@ -713,6 +901,11 @@ final class WalletModel: ObservableObject {
                 )
                 card.familyShareID = family.familyWalletID
                 context.insert(card)
+            }
+        }
+        for card in existing where card.familyShareID != nil {
+            if remote.contains(card.id.uuidString) == false {
+                context.delete(card)
             }
         }
         try? context.save()
@@ -746,6 +939,13 @@ final class WalletModel: ObservableObject {
                 } else {
                     self.askScanIntent = true
                 }
+            }
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: .paragonShortcut, object: nil, queue: .main) { [weak self] note in
+            guard let item = note.object as? UIApplicationShortcutItem else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                HomeQuickActions.handle(item, wallet: self)
             }
         })
         observers.append(NotificationCenter.default.addObserver(forName: .paragonFamilyRemoteChange, object: nil, queue: .main) { [weak self] _ in
@@ -881,11 +1081,13 @@ enum ScanSaveError: LocalizedError {
     case missingAmount
     case missingMerchant
     case missingBarcode
+    case duplicateLoyalty
     var errorDescription: String? {
         switch self {
         case .missingAmount: return "Podaj kwotę, zanim zapiszesz dokument."
         case .missingMerchant: return "Podaj nazwę sklepu lub sprzedawcy."
         case .missingBarcode: return "Podaj numer karty albo zeskanuj kod."
+        case .duplicateLoyalty: return "Ta karta już jest w portfelu."
         }
     }
 }
@@ -929,7 +1131,7 @@ struct AppSettings: Equatable {
             shareNewTicketsWithFamily: defaults.object(forKey: Keys.shareFamily) as? Bool ?? true,
             shareNewReceiptsWithFamily: defaults.object(forKey: Keys.shareReceipts) as? Bool ?? true,
             shareNewLoyaltyCardsWithFamily: defaults.object(forKey: Keys.shareCards) as? Bool ?? true,
-            scanOpensImmediately: defaults.object(forKey: Keys.scanImmediate) as? Bool ?? false,
+            scanOpensImmediately: defaults.object(forKey: Keys.scanImmediate) as? Bool ?? true,
             warrantyReminder30: defaults.object(forKey: Keys.warranty30) as? Bool ?? true,
             warrantyReminder7: defaults.object(forKey: Keys.warranty7) as? Bool ?? true,
             returnReminder3: defaults.object(forKey: Keys.return3) as? Bool ?? true,

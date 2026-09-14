@@ -331,6 +331,18 @@ final class RetailerPolicyTests: XCTestCase {
         XCTAssertNil(RetailerCatalog.validityDays(for: auchan, issuedAt: VoucherParserTests.date(2026, 9, 12, calendar: calendar), calendar: calendar))
         XCTAssertNil(RetailerCatalog.defaultExpiry(for: dino, issuedAt: VoucherParserTests.date(2026, 9, 12, calendar: calendar), calendar: calendar))
     }
+
+    func testZabkaIsInDepositCatalogWith30Days() throws {
+        let calendar = VoucherParserTests.warsawCalendar()
+        let catalog = try VoucherParserTests.catalog()
+        let zabka = try XCTUnwrap(catalog.first { $0.id == "zabka" })
+        XCTAssertEqual(zabka.name, "Żabka")
+        XCTAssertEqual(
+            RetailerCatalog.validityDays(for: zabka, issuedAt: VoucherParserTests.date(2026, 9, 12, calendar: calendar), calendar: calendar),
+            30
+        )
+        XCTAssertEqual(RetailerCatalog.policy(id: "zabka").id, "zabka")
+    }
 }
 
 final class TicketStatusTests: XCTestCase {

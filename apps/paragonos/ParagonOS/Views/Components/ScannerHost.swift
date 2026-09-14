@@ -14,6 +14,116 @@ enum CardScanMetrics {
     }
 }
 
+enum CardScanPhotos {
+    static func cropToCardFrame(_ image: UIImage, aspect: CGFloat = CardScanMetrics.aspect) -> UIImage {
+        let upright = normalized(image)
+        guard let cg = upright.cgImage else { return upright }
+        let width = CGFloat(cg.width)
+        let height = CGFloat(cg.height)
+        guard width > 16, height > 16 else { return upright }
+        let imageAspect = width / height
+        let box: CGRect
+        if imageAspect > aspect {
+            let cropWidth = height * aspect
+            box = CGRect(x: (width - cropWidth) / 2, y: 0, width: cropWidth, height: height)
+        } else {
+            let cropHeight = width / aspect
+            box = CGRect(x: 0, y: (height - cropHeight) / 2, width: width, height: cropHeight)
+        }
+        let inset = min(box.width, box.height) * 0.012
+        let tight = box.insetBy(dx: inset, dy: inset).integral.intersection(
+            CGRect(x: 0, y: 0, width: width, height: height)
+        )
+        guard tight.width > 16, tight.height > 16, let cut = cg.cropping(to: tight) else { return upright }
+        return UIImage(cgImage: cut, scale: 1, orientation: .up)
+    }
+
+    static func splitSides(_ image: UIImage) -> [UIImage] {
+        let upright = normalized(image)
+        guard let cg = upright.cgImage else { return [upright] }
+        let width = CGFloat(cg.width)
+        let height = CGFloat(cg.height)
+        let ratio = height / max(width, 1)
+        guard ratio > 1.05, ratio < 1.58 else { return [upright] }
+        let half = (height / 2).rounded(.down)
+        guard half > 24 else { return [upright] }
+        let pages = [
+            cg.cropping(to: CGRect(x: 0, y: 0, width: width, height: half)),
+            cg.cropping(to: CGRect(x: 0, y: half, width: width, height: height - half))
+        ].compactMap { $0 }
+        guard pages.count == 2 else { return [upright] }
+        return pages.map { UIImage(cgImage: $0, scale: 1, orientation: .up) }
+    }
+
+    static func cropCapturedCard(_ image: UIImage) -> UIImage {
+        cropToDetectedCard(image) ?? cropToCardFrame(image)
+    }
+
+    static func cropToDetectedCard(_ image: UIImage) -> UIImage? {
+        let upright = normalized(image)
+        guard let cg = upright.cgImage else { return nil }
+        let width = cg.width
+        let height = cg.height
+        guard width > 32, height > 32 else { return nil }
+        let request = VNDetectRectanglesRequest()
+        request.minimumAspectRatio = VNAspectRatio(1.28)
+        request.maximumAspectRatio = VNAspectRatio(1.92)
+        request.minimumSize = 0.28
+        request.maximumObservations = 6
+        request.quadratureTolerance = 22
+        let handler = VNImageRequestHandler(cgImage: cg, orientation: .up, options: [:])
+        try? handler.perform([request])
+        guard let best = (request.results ?? []).max(by: {
+            $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height
+        }) else { return nil }
+        let box = best.boundingBox
+        let rect = CGRect(
+            x: box.minX * CGFloat(width),
+            y: (1 - box.maxY) * CGFloat(height),
+            width: box.width * CGFloat(width),
+            height: box.height * CGFloat(height)
+        ).insetBy(dx: -8, dy: -8).integral.intersection(
+            CGRect(x: 0, y: 0, width: width, height: height)
+        )
+        guard rect.width > 24, rect.height > 16, let cut = cg.cropping(to: rect) else { return nil }
+        let plastic = UIImage(cgImage: cut, scale: 1, orientation: .up)
+        return cropToCardFrame(plastic)
+    }
+
+    static func replacingSide(_ index: Int, in image: UIImage, with side: UIImage) -> UIImage {
+        let cropped = cropCapturedCard(side)
+        var sides = splitSides(image)
+        if sides.isEmpty { return cropped }
+        if index <= 0 {
+            sides[0] = cropped
+        } else if sides.count >= 2 {
+            sides[1] = cropped
+        } else {
+            sides.append(cropped)
+        }
+        return sides.count == 1 ? sides[0] : DocumentScanComposer.combine(sides)
+    }
+
+    /// Camera stills often have a rotated `cgImage`. Crop and split in the pixels the user actually saw.
+    static func normalized(_ image: UIImage) -> UIImage {
+        let size = image.size
+        guard size.width > 1, size.height > 1 else { return image }
+        if image.imageOrientation == .up,
+           abs(image.scale - 1) < 0.01,
+           let cg = image.cgImage,
+           cg.width == Int(size.width.rounded()),
+           cg.height == Int(size.height.rounded()) {
+            return image
+        }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
 enum DocumentScanComposer {
     static func combine(_ pages: [UIImage]) -> UIImage {
         guard let first = pages.first else { return UIImage() }
@@ -108,142 +218,12 @@ struct ScanTorchButton: View {
 
 struct ScannerHost: View {
     @EnvironmentObject private var wallet: WalletModel
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var showCamera = false
-    @State private var showLive = false
-    @State private var showDocument = false
 
     var body: some View {
-        NavigationStack {
-            List {
-                if usesDocumentScanner {
-                    Section {
-                        Button {
-                            showDocument = true
-                        } label: {
-                            Label("Skanuj dokument", systemImage: "doc.viewfinder")
-                        }
-                    } footer: {
-                        Text(scanHint)
-                    }
-                } else if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
-                    Section {
-                        Button {
-                            showLive = true
-                        } label: {
-                            Label("Skanuj kartę", systemImage: "creditcard.viewfinder")
-                        }
-                    } footer: {
-                        Text(scanHint)
-                    }
-                }
-
-                Section(photoSectionTitle) {
-                    if usesDocumentScanner == false {
-                        Button {
-                            showCamera = true
-                        } label: {
-                            Label("Zrób zdjęcie", systemImage: "camera")
-                        }
-                    }
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
-                        Label("Wybierz z Zdjęć", systemImage: "photo.on.rectangle")
-                    }
-                }
-            }
-            .navigationTitle(scanTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zamknij") { wallet.showScanner = false }
-                }
-            }
-            .overlay {
-                if wallet.isAnalyzing {
-                    ProgressView("Odczytywanie…")
-                        .padding()
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-            }
-            .fullScreenCover(isPresented: $showLive) {
-                LiveScannerScreen(
-                    intent: wallet.scanIntent,
-                    onLoyaltyComplete: { draft, photo in
-                        showLive = false
-                        wallet.finishLoyaltyScan(draft: draft, photo: photo)
-                    },
-                    onComplete: { draft, photo in
-                        showLive = false
-                        wallet.applyLiveScan(draft: draft, photo: photo)
-                    }
-                )
-            }
-            .fullScreenCover(isPresented: $showDocument) {
-                DocumentCameraView(
-                    singlePage: wallet.scanIntent == .receipt,
-                    onComplete: { image in
-                        showDocument = false
-                        Task { await wallet.analyze(image: image) }
-                    },
-                    onCancel: { showDocument = false }
-                )
-                .ignoresSafeArea()
-            }
-            .fullScreenCover(isPresented: $showCamera) {
-                CameraCaptureView(
-                    onImage: { image in
-                        showCamera = false
-                        Task { await wallet.analyze(image: image) }
-                    },
-                    onCancel: { showCamera = false }
-                )
-                .ignoresSafeArea()
-            }
-            .onChange(of: pickerItem) { _, item in
-                guard let item else { return }
-                Task {
-                    if let data = try? await item.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
-                        await wallet.analyze(image: image)
-                    }
-                }
-            }
-        }
-    }
-
-    private var usesDocumentScanner: Bool {
-        (wallet.scanIntent == .deposit || wallet.scanIntent == .receipt)
-            && VNDocumentCameraViewController.isSupported
-    }
-
-    private var scanTitle: String {
-        switch wallet.scanIntent {
-        case .deposit: return "Skanuj kaucję"
-        case .receipt: return "Skanuj paragon"
-        case .loyalty: return "Skanuj kartę"
-        }
-    }
-
-    private var photoSectionTitle: String {
-        switch wallet.scanIntent {
-        case .deposit: return "Zdjęcie kwitka"
-        case .receipt: return "Zdjęcie paragonu"
-        case .loyalty: return "Zdjęcie karty"
-        }
-    }
-
-    private var scanHint: String {
-        switch wallet.scanIntent {
-        case .deposit:
-            return "Zeskanuj cały kwitek — Apple wyprostuje kartkę, a potem aplikacja odczyta sieć, kwotę, datę i kod."
-        case .receipt:
-            return "Zeskanuj cały paragon lub fakturę jedną stroną. Po pierwszym ujęciu kliknij Zapisz — nie dokładaj drugiego zdjęcia tego samego dokumentu. Potem aplikacja spokojnie odczyta sklep, kwotę, datę i NIP."
-        case .loyalty:
-            return "Włóż kartę w ramkę, zeskanuj jedną stronę, potem odwróć. Sieć i numer biorą się z obu stron razem."
-        }
+        ImmediateScanCover()
+            .environmentObject(wallet)
     }
 }
-
 struct ImmediateScanCover: View {
     @EnvironmentObject private var wallet: WalletModel
 
@@ -334,13 +314,15 @@ struct LiveScannerScreen: View {
         GeometryReader { geo in
             let card = CardScanMetrics.size(
                 fitting: geo.size.width - 40,
-                maxHeight: geo.size.height * 0.42
+                maxHeight: geo.size.height * 0.38
             )
-            VStack(spacing: 22) {
-                Spacer(minLength: 12)
-                Text(hud.cardSide == 1 ? "Strona 1 z 2 — włóż kartę" : "Strona 2 z 2 — odwróć kartę")
+            VStack(spacing: 14) {
+                Text(hud.cardSide == 1 ? "Strona 1 z 2 — włóż kartę" : "Strona 2 z 2 — odwróć kartę, albo pomiń tył")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.92))
+                    .padding(.top, 8)
+                scannerHUD
+                Spacer(minLength: 0)
                 ZStack {
                     LiveDataScanner(
                         hud: hud,
@@ -351,13 +333,15 @@ struct LiveScannerScreen: View {
                         onComplete: onComplete
                     )
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.92), lineWidth: 2.2)
+                        .strokeBorder(
+                            hud.hasFullCard ? ParagonTheme.osGreen : Color.white.opacity(0.92),
+                            lineWidth: 2.2
+                        )
                 }
                 .frame(width: card.width, height: card.height)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
-                scannerHUD
-                Spacer(minLength: 8)
+                .padding(.bottom, 12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 20)
@@ -373,8 +357,7 @@ struct LiveScannerScreen: View {
                     scanChip("Data", done: hud.hasDate)
                     scanChip("NIP", done: hud.hasCode)
                 } else if intent == .loyalty {
-                    scanChip("Przód", done: hud.cardSide > 1)
-                    scanChip("Tył", done: hud.cardSide > 1 && hud.isCapturing)
+                    scanChip("Cała karta", done: hud.hasFullCard)
                     scanChip("Sklep", done: hud.hasRetailer)
                     scanChip("Kod", done: hud.hasCode)
                 } else {
@@ -382,6 +365,12 @@ struct LiveScannerScreen: View {
                     scanChip("Kwota", done: hud.hasAmount)
                     scanChip("Data", done: hud.hasDate)
                     scanChip("Kod", done: hud.hasCode)
+                }
+            }
+            if intent == .loyalty {
+                HStack(spacing: 10) {
+                    scanChip("Przód", done: hud.cardSide > 1 || hud.capturedBack)
+                    scanChip("Tył", done: hud.capturedBack)
                 }
             }
             if hud.isExpired {
@@ -404,6 +393,15 @@ struct LiveScannerScreen: View {
                 .buttonStyle(.borderedProminent)
                 .tint(ParagonTheme.osGreen)
                 .foregroundStyle(.black)
+                Button(hud.cardSide == 1 ? "Wystarczy ta strona" : "Pomiń tył") {
+                    if hud.cardSide == 1 {
+                        hud.requestFinishSingle = true
+                    } else {
+                        hud.requestSkipSecond = true
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
             } else {
                 Button("Odczytaj ten kadr") {
                     hud.requestCapture = true
@@ -436,8 +434,12 @@ final class LiveScanHUD: ObservableObject {
     @Published var hasCode = false
     @Published var isCapturing = false
     @Published var requestCapture = false
+    @Published var requestFinishSingle = false
+    @Published var requestSkipSecond = false
     @Published var isExpired = false
     @Published var cardSide = 1
+    @Published var capturedBack = false
+    @Published var hasFullCard = false
     var lockedRetailer = false
     var lockedCode = false
 
@@ -447,10 +449,16 @@ final class LiveScanHUD: ObservableObject {
             if isCapturing {
                 return cardSide == 1 ? "Zapisuję pierwszą stronę…" : "Składam obie strony…"
             }
-            if cardSide == 1 {
-                return "Najpierw jedna strona — logo, nazwa sklepu albo kod."
+            if hasFullCard == false {
+                return "Włóż całą kartę w ramkę. Zdjęcie zrobi się samo, gdy widać plastik i sklep albo kod."
             }
-            return "Odwróć kartę. Druga strona uzupełni sklep albo numer."
+            if hasRetailer == false && hasCode == false {
+                return "Karta jest w ramce. Szukam nazwy sklepu albo kodu."
+            }
+            if cardSide == 1 {
+                return "Trzymaj nieruchomo — zapiszę tę stronę. Tył możesz pominąć."
+            }
+            return "Trzymaj nieruchomo tył karty — albo pomiń, jeśli nie potrzebujesz zdjęcia."
         }
         if isCapturing { return "Dokładny odczyt zdjęcia…" }
         if intent == .receipt {
@@ -512,6 +520,14 @@ struct LiveDataScanner: UIViewControllerRepresentable {
             hud.requestCapture = false
             context.coordinator.captureNow()
         }
+        if hud.requestFinishSingle {
+            hud.requestFinishSingle = false
+            context.coordinator.captureNow(finishAfterThisSide: true)
+        }
+        if hud.requestSkipSecond {
+            hud.requestSkipSecond = false
+            context.coordinator.skipSecondSide()
+        }
         if cardWindow {
             uiViewController.view.clipsToBounds = true
             uiViewController.view.layer.cornerRadius = 16
@@ -543,6 +559,8 @@ struct LiveDataScanner: UIViewControllerRepresentable {
         private var appliedTorch = false
         var torchBusy = false
         private var firstSide: (image: UIImage?, lines: [String], barcodes: [DetectedBarcode])?
+        private var finishAfterThisSide = false
+        private var itemBoxes: [CGRect] = []
 
         init(
             hud: LiveScanHUD,
@@ -608,7 +626,12 @@ struct LiveDataScanner: UIViewControllerRepresentable {
 
         private func ingest(_ items: [RecognizedItem]) {
             guard consumed == false else { return }
+            var boxes: [CGRect] = []
             for item in items {
+                let box = boundsRect(item)
+                if box.isNull == false, box.width > 1, box.height > 1 {
+                    boxes.append(box)
+                }
                 switch item {
                 case .barcode(let barcode):
                     if let payload = barcode.payloadStringValue, payload.isEmpty == false {
@@ -630,8 +653,27 @@ struct LiveDataScanner: UIViewControllerRepresentable {
                     break
                 }
             }
+            itemBoxes = boxes
             publish()
             considerReady()
+        }
+
+        private func boundsRect(_ item: RecognizedItem) -> CGRect {
+            let bounds: RecognizedItem.Bounds
+            switch item {
+            case .barcode(let barcode):
+                bounds = barcode.bounds
+            case .text(let text):
+                bounds = text.bounds
+            default:
+                return .null
+            }
+            let xs = [bounds.topLeft.x, bounds.topRight.x, bounds.bottomLeft.x, bounds.bottomRight.x]
+            let ys = [bounds.topLeft.y, bounds.topRight.y, bounds.bottomLeft.y, bounds.bottomRight.y]
+            guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else {
+                return .null
+            }
+            return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
         }
 
         private func parseLive() -> VoucherDraft {
@@ -670,6 +712,9 @@ struct LiveDataScanner: UIViewControllerRepresentable {
         }
 
         private func considerReady() {
+            if intent == .loyalty {
+                updateLoyaltyFill()
+            }
             let complete: Bool
             switch intent {
             case .receipt:
@@ -681,8 +726,9 @@ struct LiveDataScanner: UIViewControllerRepresentable {
             }
             if complete {
                 if readySince == nil { readySince = Date() }
-                let minHold = intent == .loyalty && firstSide != nil ? 2.4 : 1.4
-                if let readySince, Date().timeIntervalSince(readySince) >= 0.85, Date().timeIntervalSince(startedAt) >= minHold {
+                let minHold = intent == .loyalty && firstSide != nil ? 2.2 : 1.4
+                let stable = intent == .loyalty ? 0.7 : 0.85
+                if let readySince, Date().timeIntervalSince(readySince) >= stable, Date().timeIntervalSince(startedAt) >= minHold {
                     captureNow()
                 }
             } else {
@@ -693,35 +739,69 @@ struct LiveDataScanner: UIViewControllerRepresentable {
         private func evaluateTimeout() {
             guard consumed == false else { return }
             considerReady()
-            let timeout = intent == .loyalty && firstSide != nil ? 14.0 : 10.0
+            if intent == .loyalty {
+                if firstSide != nil, Date().timeIntervalSince(startedAt) >= 14.0 {
+                    skipSecondSide()
+                }
+                return
+            }
+            let timeout = 10.0
             if Date().timeIntervalSince(startedAt) >= timeout, barcodes.isEmpty == false || lines.count >= 3 {
                 captureNow()
             }
         }
 
-        private func loyaltySideLooksReady() -> Bool {
-            let draft = LoyaltyParser.parse(lines: Array(lines), barcodes: barcodes)
-            let hasCode = draft.barcodePayload.isEmpty == false
-            let hasBrand = draft.needsProgramPick == false
-            if firstSide == nil {
-                return hasCode || hasBrand || lines.count >= 4
-            }
-            let previous = Set((firstSide?.barcodes ?? []).map(\.payload))
-            let newCode = barcodes.contains { previous.contains($0.payload) == false }
-            let newBrand = hasBrand && hud.lockedRetailer == false
-            return newCode || newBrand || lines.count >= 4
+        private func updateLoyaltyFill() {
+            let roi = scanner?.regionOfInterest ?? scanner?.view.bounds ?? .zero
+            let metrics = CardScanGate.metrics(boxes: itemBoxes, roi: roi)
+            hud.hasFullCard = CardScanGate.fillsFrame(
+                coverage: metrics.coverage,
+                spreadX: metrics.spreadX,
+                spreadY: metrics.spreadY,
+                boxCount: itemBoxes.count
+            )
         }
 
-        func captureNow() {
+        private func loyaltySideLooksReady() -> Bool {
+            if firstSide != nil, Date().timeIntervalSince(startedAt) < 1.2 {
+                return false
+            }
+            let draft = LoyaltyParser.parse(lines: Array(lines), barcodes: barcodes)
+            let hasCode = hud.lockedCode || draft.barcodePayload.isEmpty == false
+            let hasBrand = hud.lockedRetailer || draft.needsProgramPick == false
+            let previous = Set((firstSide?.barcodes ?? []).map(\.payload))
+            let newCode = barcodes.contains { previous.contains($0.payload) == false }
+            let newBrand = draft.needsProgramPick == false && hud.lockedRetailer == false
+            let roi = scanner?.regionOfInterest ?? scanner?.view.bounds ?? .zero
+            let metrics = CardScanGate.metrics(boxes: itemBoxes, roi: roi)
+            return CardScanGate.isReady(
+                CardScanGate.Observation(
+                    hasBrand: hasBrand,
+                    hasCode: hasCode,
+                    isSecondSide: firstSide != nil,
+                    hasNewCode: newCode,
+                    hasNewBrand: newBrand,
+                    coverage: metrics.coverage,
+                    spreadX: metrics.spreadX,
+                    spreadY: metrics.spreadY,
+                    boxCount: itemBoxes.count
+                )
+            )
+        }
+
+        func captureNow(finishAfterThisSide: Bool = false) {
             guard consumed == false else { return }
             consumed = true
             watchTask?.cancel()
+            self.finishAfterThisSide = finishAfterThisSide
             hud.isCapturing = true
             Task { @MainActor in
                 var photo: UIImage?
                 if let scanner {
                     if let image = try? await scanner.capturePhoto() {
-                        photo = image
+                        photo = intent == .loyalty
+                            ? CardScanPhotos.cropCapturedCard(image)
+                            : image
                     }
                     scanner.stopScanning()
                 }
@@ -740,6 +820,26 @@ struct LiveDataScanner: UIViewControllerRepresentable {
             }
         }
 
+        func skipSecondSide() {
+            guard consumed == false else { return }
+            if firstSide == nil {
+                captureNow(finishAfterThisSide: true)
+                return
+            }
+            consumed = true
+            watchTask?.cancel()
+            hud.isCapturing = true
+            Task { @MainActor in
+                scanner?.stopScanning()
+                completeLoyalty(
+                    lines: firstSide?.lines ?? [],
+                    barcodes: firstSide?.barcodes ?? [],
+                    photo: firstSide?.image,
+                    includeBack: false
+                )
+            }
+        }
+
         private func finishLoyaltySide(photo: UIImage?) async {
             var sideLines = Array(lines)
             var sideBarcodes = barcodes
@@ -748,6 +848,10 @@ struct LiveDataScanner: UIViewControllerRepresentable {
                 sideBarcodes = mergeBarcodes(sideBarcodes, recognized.barcodes)
             }
             if firstSide == nil {
+                if finishAfterThisSide {
+                    completeLoyalty(lines: sideLines, barcodes: sideBarcodes, photo: photo, includeBack: false)
+                    return
+                }
                 firstSide = (photo, sideLines, sideBarcodes)
                 let first = LoyaltyParser.parse(lines: sideLines, barcodes: sideBarcodes)
                 hud.lockedRetailer = first.needsProgramPick == false
@@ -759,23 +863,31 @@ struct LiveDataScanner: UIViewControllerRepresentable {
             }
             let combinedLines = (firstSide?.lines ?? []) + sideLines
             let combinedBarcodes = (firstSide?.barcodes ?? []) + sideBarcodes
-            let draft = LoyaltyParser.parse(lines: combinedLines, barcodes: combinedBarcodes)
             let pages = [firstSide?.image, photo].compactMap { $0 }
-            let combinedPhoto: UIImage?
-            if pages.count >= 2 {
-                combinedPhoto = DocumentScanComposer.combine(pages)
-            } else {
-                combinedPhoto = pages.first
-            }
+            completeLoyalty(
+                lines: combinedLines,
+                barcodes: combinedBarcodes,
+                photo: pages.count >= 2 ? DocumentScanComposer.combine(pages) : pages.first,
+                includeBack: pages.count >= 2
+            )
+        }
+
+        private func completeLoyalty(
+            lines: [String],
+            barcodes: [DetectedBarcode],
+            photo: UIImage?,
+            includeBack: Bool
+        ) {
+            let draft = LoyaltyParser.parse(lines: lines, barcodes: barcodes)
+            hud.capturedBack = includeBack
+            hud.hasRetailer = draft.needsProgramPick == false
+            hud.hasCode = draft.barcodePayload.isEmpty == false
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             ScanTorch.applyNow(false)
             if let onLoyaltyComplete {
-                onLoyaltyComplete(draft, combinedPhoto)
+                onLoyaltyComplete(draft, photo)
             } else {
-                onComplete(
-                    VoucherParser.parse(lines: combinedLines, barcodes: combinedBarcodes),
-                    combinedPhoto
-                )
+                onComplete(VoucherParser.parse(lines: lines, barcodes: barcodes), photo)
             }
         }
 
@@ -783,10 +895,12 @@ struct LiveDataScanner: UIViewControllerRepresentable {
             consumed = false
             lines = []
             barcodes = []
+            itemBoxes = []
             readySince = nil
             startedAt = Date()
             hud.cardSide = 2
             hud.isCapturing = false
+            hud.hasFullCard = false
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             startWatching()
             if let scanner, scanner.isScanning == false {
@@ -955,6 +1069,7 @@ struct DocumentCameraView: UIViewControllerRepresentable {
 
 extension BarcodeSymbology {
     static func fromLive(_ barcode: RecognizedItem.Barcode) -> BarcodeSymbology {
+        let payload = barcode.payloadStringValue ?? ""
         let mirror = Mirror(reflecting: barcode)
         for child in mirror.children {
             if let observation = child.value as? VNBarcodeObservation {
@@ -966,15 +1081,18 @@ extension BarcodeSymbology {
                 }
             }
         }
+        if isLinearCardNumber(payload) {
+            return inferred(from: payload)
+        }
         let bounds = barcode.bounds
         let width = hypot(bounds.topRight.x - bounds.topLeft.x, bounds.topRight.y - bounds.topLeft.y)
         let height = hypot(bounds.bottomLeft.x - bounds.topLeft.x, bounds.bottomLeft.y - bounds.topLeft.y)
         let shortest = max(min(width, height), 0.0001)
         let aspect = max(width, height) / shortest
-        if aspect < 1.45 {
+        if aspect < 1.35, looksLikeQRPayload(payload) {
             return .qr
         }
-        return inferred(from: barcode.payloadStringValue ?? "")
+        return inferred(from: payload)
     }
 }
 

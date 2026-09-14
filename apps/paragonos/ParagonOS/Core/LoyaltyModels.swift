@@ -154,6 +154,18 @@ enum LoyaltyRoute: Hashable {
     case card(UUID)
 }
 
+enum LoyaltyIdentity {
+    static func normalizedPayload(_ payload: String) -> String {
+        payload.filter { $0.isNumber || $0.isLetter }.uppercased()
+    }
+
+    static func isSamePayload(_ left: String, _ right: String) -> Bool {
+        let a = normalizedPayload(left)
+        let b = normalizedPayload(right)
+        return a.isEmpty == false && a == b
+    }
+}
+
 enum LoyaltyParser {
     static func parse(lines: [String], barcodes: [DetectedBarcode]) -> LoyaltyDraft {
         let chosen = preferredBarcode(barcodes) ?? printedBarcode(in: lines)
@@ -202,8 +214,9 @@ enum LoyaltyParser {
             value += 8
         }
         switch barcode.symbology {
-        case .ean13, .code128: value += 4
-        case .qr where isURL == false: value += 5
+        case .ean13, .code128: value += 10
+        case .qr where isURL: value += 3
+        case .qr: value += 1
         default: break
         }
         return value
@@ -229,6 +242,10 @@ enum LoyaltyParser {
 
 extension BarcodeSymbology {
     static func resolved(scanned: BarcodeSymbology, payload: String, catalogHint: BarcodeSymbology? = nil) -> BarcodeSymbology {
+        if scanned == .qr, catalogHint == .qr { return .qr }
+        if scanned == .qr, isLinearCardNumber(payload) {
+            return inferred(from: payload)
+        }
         if scanned != .unknown { return scanned }
         if let catalogHint, catalogHint != .unknown { return catalogHint }
         return inferred(from: payload)
@@ -238,7 +255,7 @@ extension BarcodeSymbology {
         if preferred != .unknown { return preferred }
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return .code128 }
-        if trimmed.lowercased().contains("http") || trimmed.contains("\n") || trimmed.count > 48 {
+        if looksLikeQRPayload(trimmed) {
             return .qr
         }
         let digits = trimmed.filter(\.isNumber)
@@ -246,6 +263,21 @@ extension BarcodeSymbology {
             return .ean13
         }
         return .code128
+    }
+
+    static func looksLikeQRPayload(_ payload: String) -> Bool {
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        let folded = trimmed.lowercased()
+        return folded.contains("http") || folded.contains("www.") || trimmed.contains("\n") || trimmed.count > 48
+    }
+
+    static func isLinearCardNumber(_ payload: String) -> Bool {
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard looksLikeQRPayload(trimmed) == false else { return false }
+        let compact = trimmed.filter { $0.isNumber || $0.isLetter }
+        guard (6...28).contains(compact.count) else { return false }
+        let digits = compact.filter(\.isNumber).count
+        return Double(digits) / Double(compact.count) >= 0.8
     }
 
     static func canEncodeCode128(_ payload: String) -> Bool {

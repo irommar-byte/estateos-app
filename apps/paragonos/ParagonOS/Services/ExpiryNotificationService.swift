@@ -167,6 +167,7 @@ extension Notification.Name {
     static let paragonOpenReceipt = Notification.Name("paragonos.openReceipt")
     static let paragonOpenScanner = Notification.Name("paragonos.openScanner")
     static let paragonFamilyRemoteChange = Notification.Name("paragonos.familyRemoteChange")
+    static let paragonShortcut = Notification.Name("paragonos.shortcut")
 }
 
 struct NotificationSettings: Equatable {

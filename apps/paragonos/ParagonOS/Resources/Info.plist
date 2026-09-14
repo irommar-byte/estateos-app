@@ -32,7 +32,44 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>scan.deposit</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Skanuj kwitek</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Po butelkomacie</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>waterbottle.fill</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>scan.receipt</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Skanuj paragon</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>doc.text.viewfinder</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>scan.loyalty</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Skanuj kartę</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>creditcard.viewfinder</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>map</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Butelkomaty</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>map.fill</string>
+		</dict>
+	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.finance</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -40,7 +77,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
-	<string>ParagonOS™ używa Face ID, żeby chronić kaucje i paragony na tym iPhonie.</string>
+	<string>ParagonOS™ używa Face ID, żeby chronić kaucje, paragony i karty na tym iPhonie.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>ParagonOS™ używa kamery, żeby zeskanować kwitek z butelkomatu, paragon albo kartę lojalnościową.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

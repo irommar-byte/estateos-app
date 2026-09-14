@@ -123,13 +123,167 @@ final class LoyaltyCatalogTests: XCTestCase {
         XCTAssertTrue(draft.canSave)
     }
 
-    func testResolvedDoesNotOverrideScannedQRWithCatalogCode128() {
-        let resolved = BarcodeSymbology.resolved(
+    func testLinearPayloadScannedAsQRBecomesBarcodeUnlessCatalogIsQR() {
+        let asBarcode = BarcodeSymbology.resolved(
             scanned: .qr,
             payload: "447461001121060",
             catalogHint: .code128
         )
-        XCTAssertEqual(resolved, .qr)
+        XCTAssertEqual(asBarcode, .code128)
+
+        let costaQR = BarcodeSymbology.resolved(
+            scanned: .qr,
+            payload: "447461001121060",
+            catalogHint: .qr
+        )
+        XCTAssertEqual(costaQR, .qr)
+    }
+
+    func testLinearBarcodeIsNotSavedAsQR() {
+        let draft = LoyaltyParser.parse(
+            lines: ["FISHKA", "OKKO"],
+            barcodes: [DetectedBarcode(payload: "000032224877933", symbology: .qr)]
+        )
+        XCTAssertEqual(draft.programID, "fishka")
+        XCTAssertEqual(draft.barcodePayload, "000032224877933")
+        XCTAssertEqual(draft.barcodeSymbology, .code128)
+        XCTAssertNotEqual(draft.barcodeSymbology, .qr)
+    }
+
+    func testFishkaBeatsOKKOWhenBothAppearOnCard() {
+        XCTAssertEqual(LoyaltyCatalog.match(ocrText: "FISHKA OKKO", barcode: "000032224877933")?.id, "fishka")
+        XCTAssertEqual(LoyaltyCatalog.program(id: "fishka")?.preferredBarcode, .code128)
+    }
+
+    func testThirteenDigitCardNumberUsesEAN() {
+        let draft = LoyaltyParser.parse(
+            lines: ["Nieznana sieć"],
+            barcodes: [DetectedBarcode(payload: "1000322487793", symbology: .unknown)]
+        )
+        XCTAssertEqual(draft.barcodeSymbology, .ean13)
+    }
+
+    func testCardFrameCropUsesID1Aspect() {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 1600))
+        let photo = renderer.image { ctx in
+            UIColor.darkGray.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 1200, height: 1600))
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 60, y: 430, width: 1080, height: 740))
+        }
+        let cropped = CardScanPhotos.cropToCardFrame(photo)
+        XCTAssertEqual(cropped.size.width / cropped.size.height, CardScanMetrics.aspect, accuracy: 0.04)
+        XCTAssertLessThan(cropped.size.width * cropped.size.height, photo.size.width * photo.size.height)
+    }
+
+    func testStackedCardPhotosSplitIntoSides() {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 1010))
+        let stacked = renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 800, height: 505))
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 505, width: 800, height: 505))
+        }
+        let sides = CardScanPhotos.splitSides(stacked)
+        XCTAssertEqual(sides.count, 2)
+        XCTAssertEqual(sides[0].size.height, 505, accuracy: 2)
+        XCTAssertEqual(sides[1].size.height, 505, accuracy: 2)
+    }
+
+    func testReplacingBackAppendsSecondCardSide() {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let front = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 505), format: format).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 800, height: 505))
+        }
+        let back = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 505), format: format).image { ctx in
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 800, height: 505))
+        }
+        let combined = CardScanPhotos.replacingSide(1, in: front, with: back)
+        let sides = CardScanPhotos.splitSides(combined)
+        XCTAssertEqual(sides.count, 2)
+    }
+
+    func testCardScanGateIgnoresTextOnlyWithoutFill() {
+        let observation = CardScanGate.Observation(
+            hasBrand: false,
+            hasCode: false,
+            isSecondSide: false,
+            hasNewCode: false,
+            hasNewBrand: false,
+            coverage: 0.1,
+            spreadX: 0.2,
+            spreadY: 0.15,
+            boxCount: 4
+        )
+        XCTAssertFalse(CardScanGate.isReady(observation))
+        XCTAssertFalse(CardScanGate.fillsFrame(coverage: 0.1, spreadX: 0.2, spreadY: 0.15, boxCount: 4))
+    }
+
+    func testCardScanGateReadyWhenCardFillsAndHasCode() {
+        let observation = CardScanGate.Observation(
+            hasBrand: false,
+            hasCode: true,
+            isSecondSide: false,
+            hasNewCode: false,
+            hasNewBrand: false,
+            coverage: 0.5,
+            spreadX: 0.7,
+            spreadY: 0.55,
+            boxCount: 3
+        )
+        XCTAssertTrue(CardScanGate.isReady(observation))
+    }
+
+    func testCardScanGateSecondSideNeedsFillNotJustLines() {
+        let observation = CardScanGate.Observation(
+            hasBrand: true,
+            hasCode: true,
+            isSecondSide: true,
+            hasNewCode: false,
+            hasNewBrand: false,
+            coverage: 0.08,
+            spreadX: 0.2,
+            spreadY: 0.12,
+            boxCount: 5
+        )
+        XCTAssertFalse(CardScanGate.isReady(observation))
+    }
+
+    func testLoyaltyJPEGKeepsMoreDetailThanReceiptCap() {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 2400, height: 1512), format: format).image { ctx in
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 2400, height: 1512))
+        }
+        let receipt = ScanService.compressPhoto(image)
+        let loyalty = ScanService.compressLoyaltyPhoto(image)
+        XCTAssertNotNil(loyalty)
+        XCTAssertGreaterThan(loyalty?.count ?? 0, receipt?.count ?? 0)
+        let decoded = loyalty.flatMap(UIImage.init(data:))
+        XCTAssertGreaterThan(decoded?.size.width ?? 0, 1000)
+    }
+
+    func testCapturedCardCropKeepsID1Aspect() {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 1600))
+        let photo = renderer.image { ctx in
+            UIColor.darkGray.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 1200, height: 1600))
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 80, y: 420, width: 1040, height: 656))
+        }
+        let cropped = CardScanPhotos.cropCapturedCard(photo)
+        XCTAssertEqual(cropped.size.width / cropped.size.height, CardScanMetrics.aspect, accuracy: 0.08)
+    }
+
+    func testLoyaltyIdentityTreatsSpacedDigitsAsTheSameCard() {
+        XCTAssertTrue(LoyaltyIdentity.isSamePayload("0000 322 248 779 33", "000032224877933"))
+        XCTAssertFalse(LoyaltyIdentity.isSamePayload("123", "456"))
+        XCTAssertFalse(LoyaltyIdentity.isSamePayload("", "000032224877933"))
     }
 
     func testPassJSONGroupsUnderParagonOS() throws {
@@ -388,11 +542,12 @@ final class LoyaltyCatalogTests: XCTestCase {
     }
 
     func testNewProgramsAreInCatalogAndMatchOCR() {
-        for id in ["selgros", "okko", "wog", "ukrnafta", "socar", "silpo", "atb", "novus", "varus", "fora", "metro", "epicentr", "rozetka", "comfy", "foxtrot", "eva", "novaposhta"] {
+        for id in ["selgros", "okko", "fishka", "wog", "ukrnafta", "socar", "silpo", "atb", "novus", "varus", "fora", "metro", "epicentr", "rozetka", "comfy", "foxtrot", "eva", "novaposhta"] {
             XCTAssertNotNil(LoyaltyCatalog.program(id: id), id)
         }
         XCTAssertEqual(LoyaltyCatalog.match(ocrText: "Selgros Cash & Carry", barcode: "")?.id, "selgros")
         XCTAssertEqual(LoyaltyCatalog.match(ocrText: "OKKO", barcode: "")?.id, "okko")
+        XCTAssertEqual(LoyaltyCatalog.match(ocrText: "FISHKA", barcode: "")?.id, "fishka")
         XCTAssertEqual(LoyaltyCatalog.match(ocrText: "WOG club", barcode: "")?.id, "wog")
         XCTAssertEqual(LoyaltyCatalog.match(ocrText: "Сільпо", barcode: "")?.id, "silpo")
         XCTAssertEqual(LoyaltyCatalog.match(ocrText: "АТБ", barcode: "")?.id, "atb")

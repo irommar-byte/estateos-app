@@ -98,7 +98,7 @@ struct LockCoverView: View {
                     .foregroundStyle(ParagonTheme.osGreen)
                 Text("ParagonOS™ jest zablokowany")
                     .font(.headline)
-                Text("Użyj \(lock.biometryTitle), żeby otworzyć kaucje i paragony.")
+                Text("Użyj \(lock.biometryTitle), żeby otworzyć kaucje, paragony i karty.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

@@ -1097,6 +1097,20 @@
       "barcode": "code128"
     },
     {
+      "id": "fishka",
+      "name": "FISHKA",
+      "programName": "FISHKA",
+      "domain": "myfishka.com",
+      "color": "#E30613",
+      "keywords": [
+        "fishka",
+        "фішка",
+        "fshka",
+        "myfishka"
+      ],
+      "barcode": "code128"
+    },
+    {
       "id": "fora",
       "name": "Fora",
       "programName": "Fora",

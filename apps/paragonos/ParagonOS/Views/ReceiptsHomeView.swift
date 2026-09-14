@@ -1,6 +1,7 @@
 import Charts
 import SwiftData
 import SwiftUI
+import TipKit
 
 private enum ReceiptHomeFocus: Equatable {
     case all
@@ -17,7 +18,6 @@ struct ReceiptsHomeView: View {
     @State private var isSearching = false
     @State private var focus: ReceiptHomeFocus = .all
     @State private var expandedReceiptGroupID: String?
-    @FocusState private var searchFocused: Bool
 
     private var calendar: Calendar { Calendar.current }
     private var now: Date { .now }
@@ -95,13 +95,11 @@ struct ReceiptsHomeView: View {
                 } actions: {
                     Button("Skanuj paragon") { wallet.openScanner(for: .receipt) }
                         .buttonStyle(.borderedProminent)
+                        .popoverTip(FirstScanTip.receipt)
                 }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        if isSearching {
-                            searchField
-                        }
                         summaryCard
                         if soonWarranties.isEmpty == false || soonReturns.isEmpty == false {
                             remindersStrip
@@ -109,12 +107,14 @@ struct ReceiptsHomeView: View {
                         if showsSpendChart {
                             spendChart
                         }
-                        filterChips
+                        categoryChips
                         if filtered.isEmpty {
-                            Text(emptyFilterText)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
+                            ContentUnavailableView(
+                                "Nic nie pasuje",
+                                systemImage: "magnifyingglass",
+                                description: Text(emptyFilterText)
+                            )
+                            .frame(maxWidth: .infinity)
                         } else {
                             ForEach(monthGroups, id: \.month) { month, groups in
                                 VStack(alignment: .leading, spacing: 10) {
@@ -146,6 +146,7 @@ struct ReceiptsHomeView: View {
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Paragony")
+        .searchable(text: $query, isPresented: $isSearching, prompt: "Sklep, NIP albo kwota")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -156,20 +157,6 @@ struct ReceiptsHomeView: View {
                 .accessibilityLabel("Ustawienia")
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSearching.toggle()
-                        if isSearching {
-                            searchFocused = true
-                        } else {
-                            query = ""
-                            searchFocused = false
-                        }
-                    }
-                } label: {
-                    Image(systemName: isSearching ? "xmark.circle.fill" : "magnifyingglass")
-                }
-                .accessibilityLabel(isSearching ? "Zamknij wyszukiwanie" : "Szukaj")
                 Button {
                     wallet.openScanner(for: .receipt)
                 } label: {
@@ -198,32 +185,6 @@ struct ReceiptsHomeView: View {
         case .category: return "Brak paragonów w tej kategorii."
         case .all: return "Brak paragonów."
         }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Sklep, towar lub NIP", text: $query)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($searchFocused)
-            if query.isEmpty == false {
-                Button {
-                    query = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityLabel("Wyczyść")
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.tertiarySystemFill))
-        )
     }
 
     private var summaryCard: some View {
@@ -492,7 +453,7 @@ struct ReceiptsHomeView: View {
         }
     }
 
-    private var filterChips: some View {
+    private var categoryChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 categoryChip(
@@ -501,24 +462,6 @@ struct ReceiptsHomeView: View {
                     color: ParagonTheme.osGreen
                 ) {
                     focus = .all
-                }
-                if warranties.isEmpty == false {
-                    categoryChip(
-                        title: "Gwarancje · \(warranties.count)",
-                        selected: focus == .warranties,
-                        color: ParagonTheme.warranty
-                    ) {
-                        toggleFocus(.warranties)
-                    }
-                }
-                if returns.isEmpty == false {
-                    categoryChip(
-                        title: "Zwroty · \(returns.count)",
-                        selected: focus == .returns,
-                        color: ParagonTheme.returning
-                    ) {
-                        toggleFocus(.returns)
-                    }
                 }
                 ForEach(usedCategories) { category in
                     let count = receipts.filter { $0.category == category }.count
@@ -532,6 +475,7 @@ struct ReceiptsHomeView: View {
                 }
             }
         }
+        .sensoryFeedback(.selection, trigger: focus)
     }
 
     private func toggleFocus(_ next: ReceiptHomeFocus) {

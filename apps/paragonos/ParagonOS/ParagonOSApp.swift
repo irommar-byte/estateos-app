@@ -8,6 +8,7 @@ struct ParagonOSApp: App {
     @StateObject private var wallet = WalletModel()
     @StateObject private var lock = BiometricLock()
     @State private var showSplash = true
+    @State private var splashStyle = LaunchSplashPolicy.style
     private let container: ModelContainer = Persistence.makeContainer()
 
     var body: some Scene {
@@ -28,7 +29,8 @@ struct ParagonOSApp: App {
                     .transition(.opacity)
                 }
                 if showSplash {
-                    LaunchSplashView {
+                    LaunchSplashView(style: splashStyle) {
+                        LaunchSplashPolicy.markSeen()
                         showSplash = false
                         if wallet.settings.lockWithBiometrics {
                             lock.lockIfNeeded(enabled: true)
@@ -55,20 +57,47 @@ struct ParagonOSApp: App {
     }
 
     private func handle(url: URL) {
+        showSplash = false
         guard url.scheme == Brand.urlScheme else { return }
-        if url.host == "scan" {
-            wallet.askScanIntent = true
+        let host = url.host ?? ""
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if host == "scan" {
+            switch path {
+            case "deposit":
+                wallet.openScanner(for: .deposit)
+            case "receipt":
+                wallet.openScanner(for: .receipt)
+            case "loyalty":
+                wallet.openScanner(for: .loyalty)
+            default:
+                wallet.askScanIntent = true
+            }
             return
         }
-        if url.host == "receipt", let id = UUID(uuidString: url.lastPathComponent) {
+        if host == "map" {
+            wallet.requestedTab = .wallet
+            wallet.walletPath.append(WalletRoute.bottleMap)
+            return
+        }
+        if host == "checkout" {
+            if path.hasPrefix("ticket/"), let id = UUID(uuidString: String(path.dropFirst(7))) {
+                wallet.requestedTab = .wallet
+                wallet.showCheckoutFor = id
+            } else if path.hasPrefix("card/"), let id = UUID(uuidString: String(path.dropFirst(5))) {
+                wallet.requestedTab = .cards
+                wallet.showLoyaltyCheckoutFor = id
+            }
+            return
+        }
+        if host == "receipt", let id = UUID(uuidString: url.lastPathComponent) {
             wallet.pendingReceiptID = id
             return
         }
-        if url.host == "card", let id = UUID(uuidString: url.lastPathComponent) {
+        if host == "card", let id = UUID(uuidString: url.lastPathComponent) {
             wallet.pendingLoyaltyID = id
             return
         }
-        if url.host == "ticket", let id = UUID(uuidString: url.lastPathComponent) {
+        if host == "ticket", let id = UUID(uuidString: url.lastPathComponent) {
             wallet.pendingTicketID = id
         }
     }

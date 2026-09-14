@@ -140,6 +140,15 @@ struct HistoryView: View {
                                 Button("Przywróć") { restoreTicket = ticket }
                                     .tint(ParagonTheme.osGreen)
                             }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Pokaż przy kasie") {
+                                    wallet.showCheckoutFor = ticket.id
+                                }
+                                .tint(ParagonTheme.osGreen)
+                                Button("Usuń", role: .destructive) {
+                                    try? wallet.delete(ticket, context: context)
+                                }
+                            }
                         }
                     }
                 }
@@ -151,6 +160,11 @@ struct HistoryView: View {
                                 TicketDetailView(ticket: ticket)
                             } label: {
                                 historyRow(ticket)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Usuń", role: .destructive) {
+                                    try? wallet.delete(ticket, context: context)
+                                }
                             }
                         }
                     }
@@ -174,20 +188,10 @@ struct HistoryView: View {
 
                 if receipts.isEmpty {
                     ContentUnavailableView(
-                        "Brak historii paragonów",
+                        "Brak historii wydatków",
                         systemImage: "doc.text",
-                        description: Text("Tu zobaczysz zapisane paragony i faktury.")
+                        description: Text("Paragony zostają w zakładce Paragony. Tu widać sumy w czasie.")
                     )
-                } else {
-                    Section("Wszystkie") {
-                        ForEach(receipts, id: \.id) { receipt in
-                            NavigationLink {
-                                ReceiptDetailView(receipt: receipt)
-                            } label: {
-                                receiptHistoryRow(receipt)
-                            }
-                        }
-                    }
                 }
             }
         }

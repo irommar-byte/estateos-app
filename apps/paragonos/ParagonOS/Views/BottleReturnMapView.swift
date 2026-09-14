@@ -15,6 +15,7 @@ struct BottleReturnMapView: View {
     @State private var brandID: String?
     @State private var query = ""
     @State private var visibleRegion: MKRegionBox?
+    @State private var isLoading = false
 
     var body: some View {
         Map(position: $position, selection: $selected) {
@@ -29,6 +30,19 @@ struct BottleReturnMapView: View {
         .mapControls {
             MapCompass()
             MapPitchToggle()
+        }
+        .overlay(alignment: .center) {
+            if let box = visibleRegion, box.showsIndividualPins == false {
+                Text("Przybliż, żeby zobaczyć punkty")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+            } else if isLoading && points.isEmpty {
+                ProgressView("Ładuję punkty…")
+                    .padding(14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
         }
         .overlay(alignment: .topTrailing) {
             locateButton
@@ -71,6 +85,8 @@ struct BottleReturnMapView: View {
             }
         }
         .task(id: reloadToken) {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard Task.isCancelled == false else { return }
             await reload()
         }
     }
@@ -169,12 +185,31 @@ struct BottleReturnMapView: View {
     private func reload() async {
         let box = visibleRegion ?? MKRegionBox(
             center: location.location?.coordinate ?? CLLocationCoordinate2D(latitude: 52.2297, longitude: 21.0122),
-            latitudeDelta: 0.12,
-            longitudeDelta: 0.12
+            latitudeDelta: 0.08,
+            longitudeDelta: 0.08
         )
-        let loaded = await BottleReturnStore.shared.points(in: box, brandID: brandID)
-        points = loaded
-        if let selected, loaded.contains(where: { $0.id == selected.id }) == false {
+        if box.showsIndividualPins == false {
+            if Task.isCancelled { return }
+            points = []
+            selected = nil
+            isLoading = false
+            return
+        }
+        if points.isEmpty { isLoading = true }
+        let local = await BottleReturnStore.shared.localPoints(in: box, brandID: brandID)
+        if Task.isCancelled { return }
+        if local.isEmpty == false {
+            points = local
+            isLoading = false
+        }
+        let extra = await BottleReturnStore.shared.osmSupplement(in: box, brandID: brandID)
+        if Task.isCancelled { return }
+        let merged = BottleReturnStore.dedupe(local + extra)
+        if merged.isEmpty == false || local.isEmpty {
+            points = merged
+        }
+        isLoading = false
+        if let selected, points.contains(where: { $0.id == selected.id }) == false {
             self.selected = nil
         }
     }

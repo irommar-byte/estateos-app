@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import TipKit
 
 struct LoyaltyHomeView: View {
     @EnvironmentObject private var wallet: WalletModel
@@ -7,10 +8,9 @@ struct LoyaltyHomeView: View {
     @State private var query = ""
     @State private var isSearching = false
     @State private var showPicker = false
-    @State private var stackExpanded = false
+    @State private var expandedProgramID: String?
     @State private var openingID: UUID?
     @State private var viewportHeight: CGFloat = 0
-    @FocusState private var searchFocused: Bool
     @Namespace private var passSpace
 
     private var filtered: [LoyaltyCard] {
@@ -27,42 +27,45 @@ struct LoyaltyHomeView: View {
                 ContentUnavailableView {
                     Label("Brak kart", systemImage: "creditcard")
                 } description: {
-                    Text("Zeskanuj kartę lojalnościową. Jeśli sieć się nie rozpozna, wybierzesz sklep z bazy z oryginalnym logotypem.")
+                    Text("Zeskanuj kartę lojalnościową. Jeśli sieć się nie rozpozna, wybierzesz sklep z bazy.")
                 } actions: {
                     Button("Skanuj kartę") { wallet.openScanner(for: .loyalty) }
                         .buttonStyle(.borderedProminent)
+                        .popoverTip(FirstScanTip.loyalty)
                     Button("Wybierz sklep") { showPicker = true }
                 }
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
-                            if isSearching {
-                                searchField
-                            }
-                            if stackExpanded == false {
+                            if isSearching == false, expandedProgramID == nil {
                                 summary
                             }
                             if filtered.isEmpty {
-                                Text("Nic nie pasuje do wyszukiwania.")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 4)
-                            } else {
-                                LoyaltyPassStack(
-                                    cards: filtered,
-                                    zoomNamespace: passSpace,
-                                    viewportHeight: viewportHeight,
-                                    isExpanded: $stackExpanded,
-                                    openingID: $openingID,
-                                    onOpen: { card in
-                                        wallet.loyaltyPath.append(LoyaltyRoute.card(card.id))
-                                    },
-                                    onCheckout: { card in
-                                        wallet.showLoyaltyCheckoutFor = card.id
-                                    }
+                                ContentUnavailableView(
+                                    "Nic nie pasuje",
+                                    systemImage: "magnifyingglass",
+                                    description: Text("Spróbuj innej nazwy sklepu albo numeru karty.")
                                 )
-                                .id("loyaltyStack")
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 24)
+                            } else {
+                                ForEach(LoyaltyProgramGroup.groups(from: filtered)) { group in
+                                    LoyaltyPassStack(
+                                        cards: group.cards,
+                                        zoomNamespace: passSpace,
+                                        viewportHeight: viewportHeight,
+                                        isExpanded: expandedBinding(group.id),
+                                        openingID: $openingID,
+                                        onOpen: { card in
+                                            wallet.loyaltyPath.append(LoyaltyRoute.card(card.id))
+                                        },
+                                        onCheckout: { card in
+                                            wallet.showLoyaltyCheckoutFor = card.id
+                                        }
+                                    )
+                                    .id("loyalty-\(group.id)")
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
@@ -79,11 +82,11 @@ struct LoyaltyHomeView: View {
                         }
                     }
                     .onPreferenceChange(LoyaltyStackViewportKey.self) { viewportHeight = $0 }
-                    .onChange(of: stackExpanded) { _, expanded in
-                        guard expanded else { return }
+                    .onChange(of: expandedProgramID) { _, expanded in
+                        guard expanded != nil else { return }
                         DispatchQueue.main.async {
                             withAnimation(PassStackMotion.snappy) {
-                                proxy.scrollTo("loyaltyStack", anchor: .top)
+                                proxy.scrollTo("loyalty-\(expanded ?? "")", anchor: .top)
                             }
                         }
                     }
@@ -100,39 +103,27 @@ struct LoyaltyHomeView: View {
         .navigationDestination(for: LoyaltyRoute.self) { route in
             loyaltyDestination(route)
         }
+        .searchable(text: $query, isPresented: $isSearching, prompt: "Sklep lub numer karty")
+        .sensoryFeedback(.selection, trigger: expandedProgramID)
+        .sensoryFeedback(.success, trigger: cards.count)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    stackExpanded = false
+                    expandedProgramID = nil
                     wallet.loyaltyPath.append(LoyaltyRoute.settings)
                 } label: {
                     Image(systemName: "gearshape")
                 }
                 .accessibilityLabel("Ustawienia")
             }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        stackExpanded = false
-                        isSearching.toggle()
-                        if isSearching {
-                            searchFocused = true
-                        } else {
-                            query = ""
-                            searchFocused = false
-                        }
-                    }
-                } label: {
-                    Image(systemName: isSearching ? "xmark.circle.fill" : "magnifyingglass")
-                }
-                .accessibilityLabel(isSearching ? "Zamknij wyszukiwanie" : "Szukaj")
-                Menu {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Menu {
                     Button("Skanuj kartę", systemImage: "viewfinder") {
-                        stackExpanded = false
+                        expandedProgramID = nil
                         wallet.openScanner(for: .loyalty)
                     }
                     Button("Wybierz sklep", systemImage: "storefront") {
-                        stackExpanded = false
+                        expandedProgramID = nil
                         showPicker = true
                     }
                 } label: {
@@ -150,6 +141,13 @@ struct LoyaltyHomeView: View {
             LoyaltyCheckoutView(card: card)
                 .environmentObject(wallet)
         }
+    }
+
+    private func expandedBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedProgramID == id },
+            set: { expandedProgramID = $0 ? id : nil }
+        )
     }
 
     @ViewBuilder
@@ -180,30 +178,6 @@ struct LoyaltyHomeView: View {
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
-        )
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Sklep lub numer karty", text: $query)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($searchFocused)
-            if query.isEmpty == false {
-                Button {
-                    query = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.tertiarySystemFill))
         )
     }
 
