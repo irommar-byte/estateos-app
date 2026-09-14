@@ -11,13 +11,38 @@ import {
   WARSAW_CITY,
 } from '@/lib/market/constants';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
+import { formatPlDate, resolveRcnAsOfDate } from '@/lib/market/asOf';
+import {
+  MAX_ABS_DAY_PCT,
+  MAX_ABS_MONTH_PCT,
+  MAX_ABS_WEEK_PCT,
+  MAX_ABS_YEAR_PCT,
+  MIN_DAY_DEEDS,
+  MIN_MONTH_DEEDS,
+  MIN_WEEK_DEEDS,
+  MIN_WINDOW_DEEDS,
+  MIN_WINDOW_LISTINGS,
+  MIN_YEAR_DEEDS,
+  adjacentWindowChange,
+  calendarMonthChange,
+  collect,
+  daysInMonth,
+  isResidentialFlatDeed,
+  isResidentialFlatListing,
+  lastNMonths,
+  median,
+  pctChange,
+  pulseAsOfDay,
+  roundOrNull,
+  sanitizeChangePct,
+  trailingMonthsChange,
+} from '@/lib/market/pricePulseMath';
 import type {
   PricePulseDirection,
   PricePulseDistrict,
   PricePulsePayload,
   PricePulsePoint,
   PricePulseTone,
-  PricePulseTrend,
   PricePulseWindow,
 } from '@/lib/market/types';
 import { resolveWarsawDistrict } from '@/lib/market/warsawDistricts';
@@ -27,8 +52,6 @@ const LOOKBACK_DAYS = 180;
 const TREND_LOOKBACK_DAYS = 800;
 const SERIES_DAYS = 90;
 const ROLLING_DAYS = 7;
-const MIN_WINDOW_LISTINGS = 4;
-const MIN_WINDOW_DEEDS = 8;
 const MIN_DISTRICT_LISTINGS = 4;
 const SHARE_TITLE = /udzia[łl]/i;
 
@@ -38,29 +61,15 @@ function dayKey(value: Date): string {
   return value.toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' });
 }
 
-function addDays(isoDay: string, days: number): string {
-  const [y, m, d] = isoDay.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
-}
-
 function enumerateDays(endDay: string, count: number): string[] {
   const out: string[] = [];
-  for (let i = count - 1; i >= 0; i -= 1) out.push(addDays(endDay, -i));
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const [y, m, d] = endDay.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() - i);
+    out.push(dt.toISOString().slice(0, 10));
+  }
   return out;
-}
-
-function median(values: number[]): number | null {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function pctChange(now: number | null, prev: number | null): number | null {
-  if (now == null || prev == null || prev <= 0) return null;
-  return ((now - prev) / prev) * 100;
 }
 
 function vsPct(listing: number | null, deed: number | null): number | null {
@@ -68,13 +77,7 @@ function vsPct(listing: number | null, deed: number | null): number | null {
   return ((listing - deed) / deed) * 100;
 }
 
-function roundOrNull(value: number | null, digits = 1): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  const f = 10 ** digits;
-  return Math.round(value * f) / f;
-}
-
-function toneOf(changePct: number | null): PricePulseTone {
+function directionOf(listingChangePct: number | null): PricePulseDirection {
   if (changePct == null) return 'flat';
   if (changePct >= 0.4) return 'up';
   if (changePct <= -0.4) return 'down';
@@ -88,19 +91,14 @@ function directionOf(listingChangePct: number | null): PricePulseDirection {
   return 'stable';
 }
 
+function pulseLagNote(asOf: Date) {
+  return `Akty RCN dla Warszawy są kompletne do ${formatPlDate(asOf)}. Procent to zmiana mediany zł/m² mieszkań (lokale mieszkalne, bez domów) w ostatnim pełnym miesiącu względem poprzedniego.`;
+}
+
 function pushPpsm(map: Map<string, number[]>, key: string, ppsm: number) {
   const list = map.get(key);
   if (list) list.push(ppsm);
   else map.set(key, [ppsm]);
-}
-
-function collect(map: Map<string, number[]>, days: string[]): number[] {
-  const out: number[] = [];
-  for (const day of days) {
-    const values = map.get(day);
-    if (values) out.push(...values);
-  }
-  return out;
 }
 
 function rollingMedian(map: Map<string, number[]>, days: string[], index: number, window: number) {
@@ -147,75 +145,43 @@ function bucketSeries(
   });
 }
 
-function windowDeedChange(byDay: Map<string, number[]>, days: string[], size: number, minSamples: number) {
-  const currentDays = days.slice(-size);
-  const previousDays = days.slice(Math.max(0, days.length - size * 2), days.length - size);
-  const current = collect(byDay, currentDays);
-  const previous = collect(byDay, previousDays);
-  const nowMed = current.length >= minSamples ? median(current) : null;
-  const prevMed = previous.length >= minSamples ? median(previous) : null;
-  return {
-    changePct: roundOrNull(pctChange(nowMed, prevMed)),
-    currentPpsm: nowMed != null ? Math.round(nowMed) : null,
-    previousPpsm: prevMed != null ? Math.round(prevMed) : null,
-    count: current.length,
-  };
-}
-
-function buildTrend(
-  key: PricePulseTrend['key'],
-  byDay: Map<string, number[]>,
-  days: string[],
-  bucketOf: (day: string) => string,
-  take: number,
-  minSamples: number,
-  windowDays: number,
-): PricePulseTrend {
-  const points = bucketSeries(byDay, days, bucketOf, take, minSamples).map((row) => ({
-    key: row.key,
-    ppsm: row.ppsm,
-  }));
-  const windowed = windowDeedChange(byDay, days, windowDays, minSamples);
-  let changePct = windowed.changePct;
-  if (changePct == null) {
-    const numbered = points.filter((p) => p.ppsm != null);
-    if (numbered.length >= 2) {
-      changePct = roundOrNull(pctChange(numbered[numbered.length - 1].ppsm, numbered[0].ppsm));
-    }
-  }
-  return {
-    key,
-    changePct,
-    currentPpsm: windowed.currentPpsm ?? points[points.length - 1]?.ppsm ?? null,
-    previousPpsm: windowed.previousPpsm,
-    count: windowed.count,
-    points,
-  };
+function monthPoints(byDay: Map<string, number[]>, asOfDay: string, take: number, minSamples: number) {
+  return lastNMonths(asOfDay, take).map((ym) => {
+    const values = collect(byDay, daysInMonth(ym));
+    const ppsm = values.length >= minSamples ? median(values) : null;
+    return { key: ym, ppsm: ppsm != null ? Math.round(ppsm) : null };
+  });
 }
 
 function windowStats(
   listings: Map<string, number[]>,
   deeds: Map<string, number[]>,
-  days: string[],
+  listingDays: string[],
+  deedDays: string[],
   size: number,
 ): PricePulseWindow {
-  const currentDays = days.slice(-size);
-  const previousDays = days.slice(Math.max(0, days.length - size * 2), days.length - size);
-  const listingValues = collect(listings, currentDays);
-  const prevListingValues = collect(listings, previousDays);
-  const deedValues = collect(deeds, currentDays);
-  const prevDeedValues = collect(deeds, previousDays);
+  const listingCurrent = listingDays.slice(-size);
+  const listingPrevious = listingDays.slice(Math.max(0, listingDays.length - size * 2), listingDays.length - size);
+  const deedCurrent = deedDays.slice(-size);
+  const deedPrevious = deedDays.slice(Math.max(0, deedDays.length - size * 2), deedDays.length - size);
+  const listingValues = collect(listings, listingCurrent);
+  const prevListingValues = collect(listings, listingPrevious);
+  const deedValues = collect(deeds, deedCurrent);
+  const prevDeedValues = collect(deeds, deedPrevious);
   const listingPpsm = listingValues.length >= MIN_WINDOW_LISTINGS ? median(listingValues) : null;
   const prevListing = prevListingValues.length >= MIN_WINDOW_LISTINGS ? median(prevListingValues) : null;
-  const deedPpsm = deedValues.length >= MIN_WINDOW_DEEDS ? median(deedValues) : null;
-  const prevDeed = prevDeedValues.length >= MIN_WINDOW_DEEDS ? median(prevDeedValues) : null;
+  const deedMin = size <= 7 ? MIN_WEEK_DEEDS : MIN_WINDOW_DEEDS;
+  const deedPpsm = deedValues.length >= deedMin ? median(deedValues) : null;
+  const prevDeed = prevDeedValues.length >= deedMin ? median(prevDeedValues) : null;
+  const listingMaxAbs = size <= 7 ? 12 : size <= 30 ? 10 : 15;
+  const deedMaxAbs = size <= 7 ? MAX_ABS_WEEK_PCT : size <= 30 ? MAX_ABS_MONTH_PCT : 15;
   return {
     days: size,
     listingPpsm: listingPpsm != null ? Math.round(listingPpsm) : null,
     deedPpsm: deedPpsm != null ? Math.round(deedPpsm) : null,
     vsDeedsPct: roundOrNull(vsPct(listingPpsm, deedPpsm)),
-    listingChangePct: roundOrNull(pctChange(listingPpsm, prevListing)),
-    deedChangePct: roundOrNull(pctChange(deedPpsm, prevDeed)),
+    listingChangePct: sanitizeChangePct(pctChange(listingPpsm, prevListing), listingMaxAbs),
+    deedChangePct: sanitizeChangePct(pctChange(deedPpsm, prevDeed), deedMaxAbs),
     listingCount: listingValues.length,
     deedCount: deedValues.length,
   };
@@ -228,28 +194,38 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
   await ensureMarketTables();
 
   const today = dayKey(new Date());
+  const asOf = await resolveRcnAsOfDate(WARSAW_CITY);
+  const asOfDay = pulseAsOfDay(dayKey(asOf));
   const seriesDays = enumerateDays(today, SERIES_DAYS);
-  const lookbackDays = enumerateDays(today, LOOKBACK_DAYS);
-  const trendDays = enumerateDays(today, TREND_LOOKBACK_DAYS);
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000);
+  const listingLookback = enumerateDays(today, LOOKBACK_DAYS);
+  const deedLookback = enumerateDays(asOfDay, LOOKBACK_DAYS);
+  const trendDays = enumerateDays(asOfDay, TREND_LOOKBACK_DAYS);
+  const listingSince = new Date(Date.now() - LOOKBACK_DAYS * 86400000);
+  const deedSince = new Date(asOf.getTime() - TREND_LOOKBACK_DAYS * 86400000);
 
-  const [txns, offers, areaStats, trendTxns] = await Promise.all([
+  const [txns, offers, areaStats] = await Promise.all([
     prisma.marketTransaction.findMany({
       where: {
         city: WARSAW_CITY,
         kind: MARKET_KIND_LOCAL,
         qualityOk: true,
-        deedAt: { gte: since },
+        deedAt: { gte: deedSince, lte: asOf },
         pricePerM2: { not: null },
       },
-      select: { deedAt: true, pricePerM2: true, district: true },
+      select: {
+        deedAt: true,
+        pricePerM2: true,
+        district: true,
+        functionCode: true,
+        transactionKind: true,
+      },
     }),
     prisma.offer.findMany({
       where: {
         transactionType: 'SELL',
         propertyType: 'FLAT',
         status: { in: ['ACTIVE', 'SOLD', 'ARCHIVED', 'IN_DEAL'] },
-        createdAt: { gte: since },
+        createdAt: { gte: listingSince },
         area: { gte: QUALITY_MIN_AREA },
       },
       select: {
@@ -263,6 +239,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
         lat: true,
         lng: true,
         createdAt: true,
+        propertyType: true,
       },
     }),
     prisma.marketAreaStat.findMany({
@@ -275,16 +252,6 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
       },
       select: { district: true, medianPpsm: true },
     }),
-    prisma.marketTransaction.findMany({
-      where: {
-        city: WARSAW_CITY,
-        kind: MARKET_KIND_LOCAL,
-        qualityOk: true,
-        deedAt: { gte: new Date(Date.now() - TREND_LOOKBACK_DAYS * 86400000) },
-        pricePerM2: { not: null },
-      },
-      select: { deedAt: true, pricePerM2: true },
-    }),
   ]);
 
   const listingsByDay = new Map<string, number[]>();
@@ -293,12 +260,14 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
 
   for (const row of txns) {
     if (!row.deedAt || row.pricePerM2 == null) continue;
+    if (!isResidentialFlatDeed(row)) continue;
     const ppsm = Number(row.pricePerM2);
     if (!Number.isFinite(ppsm) || ppsm < QUALITY_MIN_PPSM || ppsm > QUALITY_MAX_PPSM) continue;
     pushPpsm(deedsByDay, dayKey(row.deedAt), ppsm);
   }
 
   for (const offer of offers) {
+    if (!isResidentialFlatListing(offer.propertyType)) continue;
     if (SHARE_TITLE.test(String(offer.title || ''))) continue;
     if (canonicalizeCity(offer.city) !== WARSAW_CITY) continue;
     const area = Number(offer.area);
@@ -315,24 +284,57 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     if (district) pushPpsm(listingsByDistrict, district, ppsm);
   }
 
-  const trendByDay = new Map<string, number[]>();
-  for (const row of trendTxns) {
-    if (!row.deedAt || row.pricePerM2 == null) continue;
-    const ppsm = Number(row.pricePerM2);
-    if (!Number.isFinite(ppsm) || ppsm < QUALITY_MIN_PPSM || ppsm > QUALITY_MAX_PPSM) continue;
-    pushPpsm(trendByDay, dayKey(row.deedAt), ppsm);
-  }
+  const dayTrend = adjacentWindowChange(deedsByDay, asOfDay, 1, MIN_DAY_DEEDS, MAX_ABS_DAY_PCT);
+  const weekTrend = adjacentWindowChange(deedsByDay, asOfDay, 7, MIN_WEEK_DEEDS, MAX_ABS_WEEK_PCT);
+  const monthTrend = calendarMonthChange(deedsByDay, asOfDay, MIN_MONTH_DEEDS, MAX_ABS_MONTH_PCT);
+  const yearTrend = trailingMonthsChange(deedsByDay, asOfDay, 12, MIN_YEAR_DEEDS, MAX_ABS_YEAR_PCT);
 
-  const trends = {
-    day: buildTrend('day', trendByDay, trendDays, (day) => day, 21, 2, 1),
-    week: buildTrend('week', trendByDay, trendDays, isoWeekKey, 12, 4, 7),
-    month: buildTrend('month', trendByDay, trendDays, (day) => day.slice(0, 7), 12, 8, 30),
-    year: buildTrend('year', trendByDay, trendDays, (day) => day.slice(0, 7), 24, 8, 365),
+  const trends: PricePulsePayload['trends'] = {
+    day: {
+      key: 'day',
+      changePct: dayTrend.changePct,
+      currentPpsm: dayTrend.currentPpsm,
+      previousPpsm: dayTrend.previousPpsm,
+      count: dayTrend.count,
+      points: bucketSeries(deedsByDay, trendDays, (day) => day, 21, MIN_DAY_DEEDS).map((row) => ({
+        key: row.key,
+        ppsm: row.ppsm,
+      })),
+    },
+    week: {
+      key: 'week',
+      changePct: weekTrend.changePct,
+      currentPpsm: weekTrend.currentPpsm,
+      previousPpsm: weekTrend.previousPpsm,
+      count: weekTrend.count,
+      points: bucketSeries(deedsByDay, trendDays, isoWeekKey, 12, MIN_WEEK_DEEDS).map((row) => ({
+        key: row.key,
+        ppsm: row.ppsm,
+      })),
+    },
+    month: {
+      key: 'month',
+      changePct: monthTrend.changePct,
+      currentPpsm: monthTrend.currentPpsm,
+      previousPpsm: monthTrend.previousPpsm,
+      count: monthTrend.count,
+      points: monthPoints(deedsByDay, asOfDay, 12, MIN_MONTH_DEEDS),
+    },
+    year: {
+      key: 'year',
+      changePct: yearTrend.changePct,
+      currentPpsm: yearTrend.currentPpsm,
+      previousPpsm: yearTrend.previousPpsm,
+      count: yearTrend.count,
+      points: monthPoints(deedsByDay, asOfDay, 24, MIN_MONTH_DEEDS),
+    },
   };
 
   const series: PricePulsePoint[] = seriesDays.map((date, index) => {
     const listingPpsm = rollingMedian(listingsByDay, seriesDays, index, ROLLING_DAYS);
-    const deedPpsm = rollingMedian(deedsByDay, seriesDays, index, ROLLING_DAYS);
+    const deedDays = enumerateDays(date, ROLLING_DAYS);
+    const deedValues = date <= asOfDay ? collect(deedsByDay, deedDays) : [];
+    const deedPpsm = deedValues.length >= MIN_WEEK_DEEDS ? median(deedValues) : null;
     return {
       date,
       listingPpsm: listingPpsm != null ? Math.round(listingPpsm) : null,
@@ -341,27 +343,16 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     };
   });
 
-  const d7 = windowStats(listingsByDay, deedsByDay, lookbackDays, 7);
-  const d30 = windowStats(listingsByDay, deedsByDay, lookbackDays, 30);
-  const d90 = windowStats(listingsByDay, deedsByDay, lookbackDays, 90);
-
-  const seriesChange = (days: number): number | null => {
-    const slice = series.filter((point) => point.listingPpsm != null).slice(-Math.max(days, 2));
-    if (slice.length < 2) return null;
-    const first = slice[0].listingPpsm;
-    const last = slice[slice.length - 1].listingPpsm;
-    return roundOrNull(pctChange(last, first));
-  };
-  if (d7.listingChangePct == null) d7.listingChangePct = seriesChange(7);
-  if (d30.listingChangePct == null) d30.listingChangePct = seriesChange(30);
-  if (d90.listingChangePct == null) d90.listingChangePct = seriesChange(90);
+  const d7 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 7);
+  const d30 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 30);
+  const d90 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 90);
 
   const vsDeedsPct = d30.vsDeedsPct ?? d7.vsDeedsPct;
   const listingPpsm = d30.listingPpsm ?? d7.listingPpsm;
   const deedPpsm = d30.deedPpsm ?? d7.deedPpsm;
-  const deedTrendPct = trends.month.changePct ?? trends.week.changePct ?? d30.deedChangePct;
-  const tone = toneOf(deedTrendPct ?? d30.listingChangePct ?? d7.listingChangePct);
-  const direction = directionOf(deedTrendPct ?? d30.listingChangePct ?? d7.listingChangePct);
+  const deedTrendPct = trends.month.changePct ?? trends.week.changePct ?? trends.year.changePct;
+  const tone = toneOf(deedTrendPct);
+  const direction = directionOf(d30.listingChangePct ?? d7.listingChangePct);
 
   const deedByDistrict = new Map<string, number>();
   let cityDeed: number | null = null;
@@ -389,8 +380,8 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
   }
   districts.sort((a, b) => a.vsDeedsPct - b.vsDeedsPct);
 
-  const sparkRaw = series.slice(-30).map((point) => point.listingPpsm);
-  let lastSpark: number | null = sparkRaw.find((v) => v != null) ?? listingPpsm;
+  const sparkRaw = trends.month.points.map((point) => point.ppsm);
+  let lastSpark: number | null = sparkRaw.find((v) => v != null) ?? monthTrend.currentPpsm ?? listingPpsm;
   const sparkline = sparkRaw.map((value) => {
     if (value != null) lastSpark = value;
     return lastSpark;
@@ -400,8 +391,10 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     ok: true,
     city: WARSAW_CITY,
     source: RCN_SOURCE_LABEL,
-    disclaimer: RCN_ATTRIBUTION,
+    disclaimer: `${RCN_ATTRIBUTION} Puls liczy lokale mieszkalne (mieszkania), bez domów, działek i udziałów. Miesiąc to ostatni pełny miesiąc kompletnych aktów względem poprzedniego, nie ostatnie 30 dni od dziś.`,
     updatedAt: new Date().toISOString(),
+    asOf: asOf.toISOString(),
+    lagNote: pulseLagNote(asOf),
     vsDeedsPct,
     listingPpsm,
     deedPpsm,
