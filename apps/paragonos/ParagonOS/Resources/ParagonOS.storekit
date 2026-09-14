@@ -1,0 +1,98 @@
+{
+  "identifier" : "ParagonOS",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "5.00",
+      "familyShareable" : false,
+      "internalID" : "7C2A1B90-4E6D-4C1A-9F3B-2A8E5D14C011",
+      "localizations" : [
+        {
+          "description" : "Mała kawa dla twórcy ParagonOS.",
+          "displayName" : "Mała kawa",
+          "locale" : "pl"
+        },
+        {
+          "description" : "A small coffee for the ParagonOS maker.",
+          "displayName" : "Small coffee",
+          "locale" : "en"
+        },
+        {
+          "description" : "Мала кава для творця ParagonOS.",
+          "displayName" : "Мала кава",
+          "locale" : "uk"
+        }
+      ],
+      "productID" : "pl.paragonos.app.coffee.small",
+      "referenceName" : "Coffee Small",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "10.00",
+      "familyShareable" : false,
+      "internalID" : "8D3B2C01-5F7E-4D2B-A04C-3B9F6E25D122",
+      "localizations" : [
+        {
+          "description" : "Średnia kawa dla twórcy ParagonOS.",
+          "displayName" : "Średnia kawa",
+          "locale" : "pl"
+        },
+        {
+          "description" : "A medium coffee for the ParagonOS maker.",
+          "displayName" : "Medium coffee",
+          "locale" : "en"
+        },
+        {
+          "description" : "Середня кава для творця ParagonOS.",
+          "displayName" : "Середня кава",
+          "locale" : "uk"
+        }
+      ],
+      "productID" : "pl.paragonos.app.coffee.medium",
+      "referenceName" : "Coffee Medium",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "20.00",
+      "familyShareable" : false,
+      "internalID" : "9E4C3D12-608F-4E3C-B15D-4CA07F36E233",
+      "localizations" : [
+        {
+          "description" : "Duża kawa dla twórcy ParagonOS.",
+          "displayName" : "Duża kawa",
+          "locale" : "pl"
+        },
+        {
+          "description" : "A large coffee for the ParagonOS maker.",
+          "displayName" : "Large coffee",
+          "locale" : "en"
+        },
+        {
+          "description" : "Велика кава для творця ParagonOS.",
+          "displayName" : "Велика кава",
+          "locale" : "uk"
+        }
+      ],
+      "productID" : "pl.paragonos.app.coffee.large",
+      "referenceName" : "Coffee Large",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "pl_PL",
+    "_storefront" : "POL",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

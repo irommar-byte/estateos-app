@@ -108,6 +108,9 @@ struct ReceiptsHomeView: View {
                             spendChart
                         }
                         categoryChips
+                        if storeChips.isEmpty == false, query.isEmpty, focus == .all {
+                            storeStrip
+                        }
                         if filtered.isEmpty {
                             ContentUnavailableView(
                                 "Nic nie pasuje",
@@ -173,6 +176,32 @@ struct ReceiptsHomeView: View {
         .onChange(of: receipts.count) { _, _ in
             if ReceiptAnalytics.healMissingDates(receipts) {
                 try? context.save()
+            }
+        }
+    }
+
+    private var storeChips: [ReceiptMerchantGroup] {
+        Array(ReceiptMerchantGroup.allTime(from: receipts).prefix(12))
+    }
+
+    private var storeStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Sklepy")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(storeChips) { group in
+                        Button {
+                            wallet.receiptPath.append(ReceiptRoute.merchant(group.merchantKey))
+                        } label: {
+                            ReceiptMerchantChip(group: group)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 2)
             }
         }
     }
@@ -564,7 +593,7 @@ struct ReceiptGroupRow: View {
                     .allowsHitTesting(false)
             }
             HStack(spacing: 12) {
-                ReceiptCategoryMark(category: group.category, size: 42)
+                LoyaltyLogo(program: group.program, size: 42)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(group.merchantName)
                         .font(.body.weight(.semibold))

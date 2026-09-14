@@ -4,17 +4,39 @@ import TipKit
 
 struct RootTabView: View {
     @EnvironmentObject private var wallet: WalletModel
+    @EnvironmentObject private var lock: BiometricLock
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \Ticket.createdAt, order: .reverse) private var tickets: [Ticket]
     @Query(sort: \Receipt.issuedAt, order: .reverse) private var receipts: [Receipt]
     @Query(sort: \LoyaltyCard.createdAt, order: .reverse) private var cards: [LoyaltyCard]
     @State private var tab: AppTab = .wallet
+    @ObservedObject private var coffeeTips = CoffeeTipStore.shared
 
     var body: some View {
         tabs
             .sheet(isPresented: $wallet.showScanner) {
                 scannerFlow
+            }
+            .sheet(isPresented: $wallet.coffeeSheetPresented) {
+                CoffeeTipSheet {
+                    wallet.coffeeSheetPresented = false
+                }
+            }
+            .fullScreenCover(isPresented: $coffeeTips.showThankYou) {
+                CoffeeThankYouOverlay {
+                    coffeeTips.showThankYou = false
+                }
+            }
+            .onChange(of: coffeeTips.showThankYou) { _, showing in
+                if showing {
+                    wallet.coffeeSheetPresented = false
+                }
+            }
+            .sheet(isPresented: $wallet.reviewSheetPresented) {
+                AppLovePrompt {
+                    wallet.reviewSheetPresented = false
+                }
             }
             .fullScreenCover(isPresented: $wallet.showOnboarding) {
                 OnboardingView()
@@ -32,9 +54,24 @@ struct RootTabView: View {
             .onChange(of: wallet.pendingTicketID, handlePendingTicket)
             .onChange(of: wallet.pendingReceiptID) { _, _ in openPendingReceipt() }
             .onChange(of: wallet.pendingLoyaltyID) { _, _ in openPendingCard() }
-            .onChange(of: wallet.showScanner) { _, _ in
+            .onChange(of: wallet.showScanner) { _, showing in
                 openPendingReceipt()
                 openPendingCard()
+                if showing == false {
+                    considerQuietPrompts()
+                }
+            }
+            .onChange(of: wallet.quietPromptTick) { _, _ in
+                considerQuietPrompts()
+            }
+            .onChange(of: wallet.chromeReady) { _, ready in
+                if ready { considerQuietPrompts() }
+            }
+            .onChange(of: wallet.showCheckoutFor) { _, id in
+                if id == nil { considerQuietPrompts() }
+            }
+            .onChange(of: wallet.showLoyaltyCheckoutFor) { _, id in
+                if id == nil { considerQuietPrompts() }
             }
             .onChange(of: wallet.requestedTab) { _, tab in
                 if let tab {
@@ -44,6 +81,7 @@ struct RootTabView: View {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
+                    wallet.consumePendingLaunch()
                     Task { await wallet.refreshFamilyFromCloud() }
                 }
             }
@@ -108,7 +146,24 @@ struct RootTabView: View {
             } else {
                 ContentUnavailableView("Nie ma już tego paragonu", systemImage: "doc.text")
             }
+        case .merchant(let key):
+            if let group = ReceiptMerchantGroup.allTime(from: receipts).first(where: { $0.merchantKey == key }) {
+                ReceiptMerchantDetailView(group: group)
+            } else {
+                ContentUnavailableView("Nie ma już tego sklepu", systemImage: "storefront")
+            }
         }
+    }
+
+    private func considerQuietPrompts() {
+        let blocked = wallet.showScanner
+            || wallet.askScanIntent
+            || wallet.showOnboarding
+            || wallet.showCheckoutFor != nil
+            || wallet.showLoyaltyCheckoutFor != nil
+            || lock.isLocked
+            || coffeeTips.showThankYou
+        wallet.considerQuietPrompts(blocked: blocked)
     }
 
     private var notificationFingerprint: String {

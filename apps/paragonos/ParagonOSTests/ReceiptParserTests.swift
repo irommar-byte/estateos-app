@@ -272,6 +272,22 @@ final class ReceiptParserTests: XCTestCase {
         XCTAssertEqual(groups[1].merchantName, "Media Expert")
     }
 
+    func testAllTimeMerchantGroupsMergeAcrossMonths() {
+        let calendar = VoucherParserTests.warsawCalendar()
+        let first = receipt(merchant: "Biedronka", amount: 20, item: "Mleko")
+        first.issuedAt = VoucherParserTests.date(2026, 1, 12, calendar: calendar)
+        let second = receipt(merchant: "biedronka", amount: 35, item: "Chleb")
+        second.issuedAt = VoucherParserTests.date(2026, 8, 3, calendar: calendar)
+        let other = receipt(merchant: "Lidl", amount: 10, item: "")
+        other.issuedAt = VoucherParserTests.date(2026, 8, 4, calendar: calendar)
+        let groups = ReceiptMerchantGroup.allTime(from: [first, second, other])
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups[0].merchantName.lowercased(), "biedronka")
+        XCTAssertEqual(groups[0].receipts.count, 2)
+        XCTAssertEqual(groups[0].total, 55)
+        XCTAssertEqual(groups[1].merchantName, "Lidl")
+    }
+
     func testCountsActiveElectronicsWarrantyEvenWhenStoredDateIsMissing() {
         let calendar = VoucherParserTests.warsawCalendar()
         let item = receipt(merchant: "x-kom", amount: 339, item: "Kamera")

@@ -93,6 +93,30 @@ struct SettingsView: View {
                 Toggle("Po plusie od razu włącz aparat", isOn: $wallet.settings.scanOpensImmediately)
             }
 
+            Section("Język") {
+                Picker("Język", selection: $wallet.settings.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.title).tag(language)
+                    }
+                }
+            }
+
+            Section {
+                CoffeeTipSettingsRow()
+            } header: {
+                Text("Kawa")
+            } footer: {
+                Text("Napiwek idzie przez zakupy w aplikacji. Nic nie musisz.")
+            }
+
+            Section {
+                Button("Oceń w App Store") {
+                    ReviewGate.openWriteReview()
+                }
+            } header: {
+                Text("Ocena")
+            }
+
             Section("Prywatność") {
                 Text("Zdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont.")
                     .font(.footnote)

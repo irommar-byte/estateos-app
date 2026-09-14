@@ -490,7 +490,7 @@ struct LiveDataScanner: UIViewControllerRepresentable {
         let controller = DataScannerViewController(
             recognizedDataTypes: [
                 .barcode(),
-                .text(languages: ["pl-PL", "en-US"])
+                .text(languages: ["pl-PL", "en-US", "uk-UA"])
             ],
             qualityLevel: .accurate,
             recognizesMultipleItems: true,

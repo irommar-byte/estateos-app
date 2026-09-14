@@ -145,8 +145,6 @@ enum LaunchSplashPolicy {
             return .none
         }
         if UIAccessibility.isReduceMotionEnabled { return .brief }
-        if OpenScanBridge.pending { return .brief }
-        if UserDefaults.standard.bool(forKey: seenKey) { return .brief }
         return .full
     }
 

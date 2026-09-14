@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "015B0F965BFE4F6889A35C60"
+               BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
                BuildableName = "ParagonOS.app"
                BlueprintName = "ParagonOS"
                ReferencedContainer = "container:ParagonOS.xcodeproj">
@@ -33,7 +33,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2E691F58C8B84F55BE7B67B9"
+               BlueprintIdentifier = "11CA43F64CCF44A1A6C14C23"
                BuildableName = "ParagonOSTests.xctest"
                BlueprintName = "ParagonOSTests"
                ReferencedContainer = "container:ParagonOS.xcodeproj">
@@ -55,12 +55,15 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "015B0F965BFE4F6889A35C60"
+            BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
             BuildableName = "ParagonOS.app"
             BlueprintName = "ParagonOS"
             ReferencedContainer = "container:ParagonOS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfigurationFileReference
+         identifier = "../../../ParagonOS/Resources/ParagonOS.storekit">
+      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -72,7 +75,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "015B0F965BFE4F6889A35C60"
+            BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
             BuildableName = "ParagonOS.app"
             BlueprintName = "ParagonOS"
             ReferencedContainer = "container:ParagonOS.xcodeproj">
@@ -94,7 +97,7 @@
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"
-                     BlueprintIdentifier = "015B0F965BFE4F6889A35C60"
+                     BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
                      BuildableName = "ParagonOS.app"
                      BlueprintName = "ParagonOS"
                      ReferencedContainer = "container:ParagonOS.xcodeproj">

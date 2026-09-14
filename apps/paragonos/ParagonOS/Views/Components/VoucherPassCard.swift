@@ -241,6 +241,17 @@ struct WalletPassStack: View {
             }
         }
         .animation(PassStackMotion.snappy, value: expanded)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 18)
+                .onEnded { value in
+                    guard group.tickets.count > 1 else { return }
+                    if value.translation.height < -36, expanded == false {
+                        toggle(group)
+                    } else if value.translation.height > 36, expanded {
+                        toggle(group)
+                    }
+                }
+        )
     }
 
     private func stackedFace(_ group: WalletRetailerGroup, expanded: Bool) -> some View {

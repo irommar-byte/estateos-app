@@ -1,0 +1,2982 @@
+{
+  "sourceLanguage" : "pl",
+  "strings" : {
+    "·" : {
+
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ nie jest powiązany z tymi sieciami." : {
+
+    },
+    "%@ przy kasie" : {
+
+    },
+    "%@ vs poprzedni miesiąc" : {
+
+    },
+    "%@, %lld" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$lld"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld kwitków" : {
+
+    },
+    "%lld paragonów" : {
+
+    },
+    "+%@ vs poprzedni miesiąc" : {
+
+    },
+    "0,00 zł" : {
+
+    },
+    "1 dzień przed terminem" : {
+
+    },
+    "3 dni przed końcem zwrotu" : {
+
+    },
+    "5, 10 albo 20 zł. Arkusz Apple, bez presji." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5, 10 or 20 PLN. Apple’s sheet, no pressure."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5, 10 albo 20 zł. Arkusz Apple, bez presji."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5, 10 або 20 злотих. Аркуш Apple, без тиску."
+          }
+        }
+      }
+    },
+    "7 dni przed końcem gwarancji" : {
+
+    },
+    "7 dni przed terminem" : {
+
+    },
+    "30 dni przed końcem gwarancji" : {
+
+    },
+    "Adres albo sieć" : {
+
+    },
+    "Aktywne" : {
+
+    },
+    "Aktywny" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Active"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktywny"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Активний"
+          }
+        }
+      }
+    },
+    "Anuluj" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anuluj"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скасувати"
+          }
+        }
+      }
+    },
+    "Aparat odczyta sieć, kwotę i kod. Zanim zapiszesz, sprawdzisz dane." : {
+
+    },
+    "Apple Wallet" : {
+
+    },
+    "Automat" : {
+
+    },
+    "Bez terminu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No expiry"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bez terminu"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без терміну"
+          }
+        }
+      }
+    },
+    "Bliscy stracą dostęp do wspólnego portfela. Twoje kaucje, paragony i karty zostaną na tym iPhonie." : {
+
+    },
+    "Brak aktywnych kwitków" : {
+
+    },
+    "Brak historii kaucji" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No deposit history"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak historii kaucji"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає історії застав"
+          }
+        }
+      }
+    },
+    "Brak historii wydatków" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No spending history"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak historii wydatków"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає історії витрат"
+          }
+        }
+      }
+    },
+    "Brak kart" : {
+
+    },
+    "Brak kaucji" : {
+
+    },
+    "Brak kodu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No code"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak kodu"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає коду"
+          }
+        }
+      }
+    },
+    "Brak paragonów" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No receipts"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak paragonów"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає чеків"
+          }
+        }
+      }
+    },
+    "Brak sklepów" : {
+
+    },
+    "Brak terminu — uzupełnij, jeśli jest na kwitku." : {
+
+    },
+    "Brak zdjęcia" : {
+
+    },
+    "Brak zdjęcia — możesz zapisać same dane." : {
+
+    },
+    "Brak zdjęcia — przy kasie dostępny będzie tylko kod." : {
+
+    },
+    "Butelkomaty" : {
+
+    },
+    "Butelkomaty w pobliżu" : {
+
+    },
+    "C" : {
+
+    },
+    "Co poprawić?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What should we improve?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Co poprawić?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Що покращити?"
+          }
+        }
+      }
+    },
+    "Co skanujesz?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What are you scanning?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Co skanujesz?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Що скануєш?"
+          }
+        }
+      }
+    },
+    "Członkowie" : {
+
+    },
+    "Czy kasa przyjęła kupon?" : {
+
+    },
+    "Dalej" : {
+
+    },
+    "Dane" : {
+
+    },
+    "Dane punktów: MapaKaucji.pl i OpenStreetMap. Godziny mogą się różnić na miejscu." : {
+
+    },
+    "Daty" : {
+
+    },
+    "Do odebrania" : {
+
+    },
+    "Dodaj" : {
+
+    },
+    "Dodaj 14 dni na zwrot" : {
+
+    },
+    "Dodaj datę ważności" : {
+
+    },
+    "Dodaj do Apple Wallet" : {
+
+    },
+    "Dodaj gwarancję 24 mies." : {
+
+    },
+    "Dodaj kartę" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add card"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj kartę"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Додати картку"
+          }
+        }
+      }
+    },
+    "Dodaj kartę, żeby pokazać kod przy kasie." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a card to show the code at checkout."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj kartę, żeby pokazać kod przy kasie."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Додай картку, щоб показати код на касі."
+          }
+        }
+      }
+    },
+    "Dodaj kaucję" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add deposit"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj kaucję"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Додати заставу"
+          }
+        }
+      }
+    },
+    "Dodaj tył" : {
+
+    },
+    "Dodał" : {
+
+    },
+    "Dokument" : {
+
+    },
+    "Dokumenty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documents"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokumenty"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Документи"
+          }
+        }
+      }
+    },
+    "Dotknij karty, żeby powiększyć." : {
+
+    },
+    "Dotknij karty, żeby zobaczyć przód albo tył." : {
+
+    },
+    "Duża" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Large"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duża"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Велика"
+          }
+        }
+      }
+    },
+    "Dziękuję że jesteś." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thank you for being here."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dziękuję że jesteś."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дякую, що ти є."
+          }
+        }
+      }
+    },
+    "Dziękuję." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thank you."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dziękuję."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дякую."
+          }
+        }
+      }
+    },
+    "Elektronika, RTV i AGD dostają 24 miesiące gwarancji. Ubrania, buty i rozrywka — 14 dni na zwrot." : {
+
+    },
+    "Gotowe" : {
+
+    },
+    "Gwarancja" : {
+
+    },
+    "Gwarancja %@" : {
+
+    },
+    "Gwarancja do" : {
+
+    },
+    "Gwarancja i zwroty. Nowe paragony idą do rodziny osobno od kaucji i kart." : {
+
+    },
+    "Historia" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "History"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Historia"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Історія"
+          }
+        }
+      }
+    },
+    "iCloud" : {
+
+    },
+    "IKEA" : {
+
+    },
+    "Imię na karcie (opcjonalnie)" : {
+
+    },
+    "Imię widać przy kaucjach, paragonach i kartach, które udostępnisz bliskim." : {
+
+    },
+    "Inne" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inne"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Інші"
+          }
+        }
+      }
+    },
+    "Inny sklep" : {
+
+    },
+    "Innym razem." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Another time."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Innym razem."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Іншим разом."
+          }
+        }
+      }
+    },
+    "iPhone i iPad z Twoim Apple ID dostają kaucje, paragony i karty same — jak Notatki. Zaproszenie jest tylko dla innych osób. Przy zaproszeniu zostaw „Może wprowadzać zmiany”, żeby mogli też dodawać." : {
+
+    },
+    "Język" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Język"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мова"
+          }
+        }
+      }
+    },
+    "Język iPhone’a" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone language"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Język iPhone’a"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мова iPhone"
+          }
+        }
+      }
+    },
+    "Karta lojalnościowa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loyalty card"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karta lojalnościowa"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Картка лояльності"
+          }
+        }
+      }
+    },
+    "Karta w Wallet ma ten sam kod co w aplikacji. Przy kasie możesz też użyć „Pokaż przy kasie”." : {
+
+    },
+    "Karta zniknie z tego iPhone’a. Jeśli była udostępniona, zniknie też u rodziny." : {
+
+    },
+    "Karty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cards"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karty"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Картки"
+          }
+        }
+      }
+    },
+    "Karty z Twoim Apple ID idą na iPhone’y i iPady przez iCloud. Ten przełącznik jest tylko dla innych osób w Rodzinie." : {
+
+    },
+    "Kasa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checkout"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kasa"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каса"
+          }
+        }
+      }
+    },
+    "Kasa przyjęła kupon" : {
+
+    },
+    "Kasa takiego kuponu nie przyjmie." : {
+
+    },
+    "Kategoria" : {
+
+    },
+    "Kaucja" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deposit"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaucja"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застава"
+          }
+        }
+      }
+    },
+    "Kaucja i kasa" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deposit and checkout"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaucja i kasa"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застава і каса"
+          }
+        }
+      }
+    },
+    "Kaucja z butelkomatu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reverse-vending voucher"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaucja z butelkomatu"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Квиток з автомата"
+          }
+        }
+      }
+    },
+    "Kaucje" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deposits"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaucje"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застави"
+          }
+        }
+      }
+    },
+    "Kaucje w czasie" : {
+
+    },
+    "Kaucje, paragony i karty są osobno — rodzina dostaje tylko to, co włączysz." : {
+
+    },
+    "Kawa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coffee"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kawa"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кава"
+          }
+        }
+      }
+    },
+    "Kod" : {
+
+    },
+    "Kod kreskowy lub QR" : {
+
+    },
+    "Konto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konto"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обліковий запис"
+          }
+        }
+      }
+    },
+    "Kopiuj NIP" : {
+
+    },
+    "Kwitek przeterminowany" : {
+
+    },
+    "Kwitek wróci do Kaucji jako aktywny. Na pewno?" : {
+
+    },
+    "Kwitek zniknie z tego iPhone’a. Jeśli był udostępniony, zniknie też u rodziny." : {
+
+    },
+    "Kwitki wracają. Kaucja też." : {
+
+    },
+    "Kwota" : {
+
+    },
+    "Kwota kaucji" : {
+
+    },
+    "L" : {
+
+    },
+    "Łączenie z iCloud…" : {
+
+    },
+    "Ładuję punkty…" : {
+
+    },
+    "Maksymalna jasność przy kodzie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maximum brightness for the code"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maksymalna jasność przy kodzie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Максимальна яскравість для коду"
+          }
+        }
+      }
+    },
+    "Mała" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Small"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mała"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мала"
+          }
+        }
+      }
+    },
+    "Mapa butelkomatów" : {
+
+    },
+    "Mapa punktów zwrotu" : {
+
+    },
+    "Miesiąc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Month"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Miesiąc"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Місяць"
+          }
+        }
+      }
+    },
+    "Model, numer seryjny, miejsce zakupu…" : {
+
+    },
+    "Może kawa? Nic nie musisz." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A coffee? Only if you want."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Może kawa? Nic nie musisz."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кава? Тільки якщо хочеш."
+          }
+        }
+      }
+    },
+    "Napiwek idzie przez zakupy w aplikacji. Nic nie musisz." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The tip goes through in-app purchase. You don’t have to."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Napiwek idzie przez zakupy w aplikacji. Nic nie musisz."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чайові йдуть через покупку в програмі. Нічого не мусиш."
+          }
+        }
+      }
+    },
+    "Nazwa" : {
+
+    },
+    "Nazwa sklepu" : {
+
+    },
+    "Nazwa towaru lub usługi" : {
+
+    },
+    "Nic nie pasuje" : {
+
+    },
+    "Nie ma już tego kwitka" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This voucher is gone"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie ma już tego kwitka"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цього квитка вже немає"
+          }
+        }
+      }
+    },
+    "Nie ma już tego paragonu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This receipt is gone"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie ma już tego paragonu"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цього чека вже немає"
+          }
+        }
+      }
+    },
+    "Nie ma już tego sklepu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This store is gone"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie ma już tego sklepu"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цього магазину вже немає"
+          }
+        }
+      }
+    },
+    "Nie ma już tej karty" : {
+
+    },
+    "Nie rozpoznano sieci — wybierz z listy." : {
+
+    },
+    "Nie teraz" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not now"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie teraz"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не зараз"
+          }
+        }
+      }
+    },
+    "Nie udało się otworzyć płatności Apple." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t open Apple’s payment sheet."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się otworzyć płatności Apple."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося відкрити оплату Apple."
+          }
+        }
+      }
+    },
+    "Nie, zostaw aktywny" : {
+
+    },
+    "NIP" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tax ID"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NIP"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ІПН"
+          }
+        }
+      }
+    },
+    "Notatka" : {
+
+    },
+    "Nowa karta" : {
+
+    },
+    "Nowe karty idą do rodziny osobno od kaucji i paragonów." : {
+
+    },
+    "Np. który automat, która kasa…" : {
+
+    },
+    "Numer" : {
+
+    },
+    "Numer dokumentu" : {
+
+    },
+    "Numer karty" : {
+
+    },
+    "Numer karty lub treść kodu" : {
+
+    },
+    "Numer kwitka" : {
+
+    },
+    "Oceń w App Store" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rate on the App Store"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oceń w App Store"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оцінити в App Store"
+          }
+        }
+      }
+    },
+    "Ocena" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rating"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocena"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оцінка"
+          }
+        }
+      }
+    },
+    "Ochrona" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protection"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ochrona"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Захист"
+          }
+        }
+      }
+    },
+    "Odblokuj" : {
+
+    },
+    "Odczyt jest niepewny — sprawdź sklep, kwotę i datę." : {
+
+    },
+    "Odczytaj drugą stronę" : {
+
+    },
+    "Odczytaj tę stronę" : {
+
+    },
+    "Odczytaj ten kadr" : {
+
+    },
+    "Odczytywanie…" : {
+
+    },
+    "Odzyskane" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recovered"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odzyskane"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повернено"
+          }
+        }
+      }
+    },
+    "OK" : {
+
+    },
+    "OKKO" : {
+
+    },
+    "Okres" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Okres"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Період"
+          }
+        }
+      }
+    },
+    "Opcjonalnie, zostaje na tym iPhonie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional, stays on this iPhone"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opcjonalnie, zostaje na tym iPhonie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Необов’язково, лишається на цьому iPhone"
+          }
+        }
+      }
+    },
+    "Opuść" : {
+
+    },
+    "Opuść rodzinę" : {
+
+    },
+    "Opuścić rodzinę?" : {
+
+    },
+    "OS" : {
+
+    },
+    "Ostatnio" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last time"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ostatnio"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Востаннє"
+          }
+        }
+      }
+    },
+    "Otwiera kartę" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens the card"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwiera kartę"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкриває картку"
+          }
+        }
+      }
+    },
+    "Otwiera skaner kart lojalnościowych w ParagonOS™." : {
+
+    },
+    "Otwiera skaner kwitków kaucyjnych w ParagonOS™." : {
+
+    },
+    "Otwiera skaner paragonów i faktur w ParagonOS™." : {
+
+    },
+    "Otwórz mapę" : {
+
+    },
+    "Otwórz mapę, żeby znaleźć automat i godziny otwarcia." : {
+
+    },
+    "Oznacz jako wykorzystany" : {
+
+    },
+    "Paragon" : {
+
+    },
+    "Paragon lub faktura" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receipt or invoice"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paragon lub faktura"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чек або рахунок"
+          }
+        }
+      }
+    },
+    "ParagonOS™ jest zablokowany" : {
+
+    },
+    "Paragony" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receipts"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paragony"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чеки"
+          }
+        }
+      }
+    },
+    "Paragony zostają w zakładce Paragony. Tu widać sumy w czasie." : {
+
+    },
+    "Płatność" : {
+
+    },
+    "Płatność czeka na potwierdzenie." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The payment is waiting for approval."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Płatność czeka na potwierdzenie."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оплата чекає підтвердження."
+          }
+        }
+      }
+    },
+    "Po butelkomacie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "After the reverse vending machine"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po butelkomacie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Після автомата"
+          }
+        }
+      }
+    },
+    "Po plusie od razu włącz aparat" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The plus button opens the camera immediately"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po plusie od razu włącz aparat"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плюс одразу вмикає камеру"
+          }
+        }
+      }
+    },
+    "Po skanie przy kasie oznacz kwitek jako wykorzystany, żeby nie leżał w portfelu." : {
+
+    },
+    "Po zablokowaniu ekranu %@ pyta o %@, zanim pokaże kaucje, paragony i karty." : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Po zablokowaniu ekranu %1$@ pyta o %2$@, zanim pokaże kaucje, paragony i karty."
+          }
+        }
+      }
+    },
+    "Podoba Ci się ParagonOS?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do you like ParagonOS?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podoba Ci się ParagonOS?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подобається ParagonOS?"
+          }
+        }
+      }
+    },
+    "Pokaż kaucję przy kasie" : {
+
+    },
+    "Pokaż kod czytnikowi przy kasie. %@ nie gwarantuje, że każda kasa przyjmie kod z ekranu." : {
+
+    },
+    "Pokaż kod karty" : {
+
+    },
+    "Pokaż przy kasie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show at checkout"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokaż przy kasie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показати на касі"
+          }
+        }
+      }
+    },
+    "Pokaż zdjęcie kwitka albo papier przy kasie." : {
+
+    },
+    "Policz z zasad sieci" : {
+
+    },
+    "Pomiń" : {
+
+    },
+    "Pomiń tył" : {
+
+    },
+    "Pozostało" : {
+
+    },
+    "Program" : {
+
+    },
+    "Prywatność" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prywatność"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватність"
+          }
+        }
+      }
+    },
+    "Przelicz terminy z kategorii" : {
+
+    },
+    "Przestań udostępniać" : {
+
+    },
+    "Przesuń, żeby zobaczyć %@." : {
+
+    },
+    "Przeterminowane" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expired"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeterminowane"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прострочено"
+          }
+        }
+      }
+    },
+    "przeterminowany" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "expired"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "przeterminowany"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "прострочений"
+          }
+        }
+      }
+    },
+    "Przeterminowany" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expired"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeterminowany"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прострочений"
+          }
+        }
+      }
+    },
+    "Przy kasie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At checkout"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przy kasie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На касі"
+          }
+        }
+      }
+    },
+    "Przy kasie pokażesz kod z karty albo dodasz ją do Apple Wallet." : {
+
+    },
+    "Przy kasie pokazujesz kod z karty albo dodajesz ją do Apple Wallet." : {
+
+    },
+    "Przybliż, żeby zobaczyć punkty" : {
+
+    },
+    "Przypomnienia o końcu ważności kwitków z butelkomatu. Udostępnianie włączysz po zaproszeniu bliskich w dziale Rodzina." : {
+
+    },
+    "Przypomnienia o końcu ważności. Nowe kaucje idą do rodziny osobno od paragonów." : {
+
+    },
+    "Przywróć" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przywróć"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відновити"
+          }
+        }
+      }
+    },
+    "Przywróć do kaucji" : {
+
+    },
+    "Przywrócić kwitek do kaucji?" : {
+
+    },
+    "Rodzina" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Family"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rodzina"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Родина"
+          }
+        }
+      }
+    },
+    "Rok" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Year"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rok"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рік"
+          }
+        }
+      }
+    },
+    "Rozpoznamy sklep, kwotę i NIP. Gwarancja i zwrot zostaną w portfelu." : {
+
+    },
+    "Rozpoznano z karty. Możesz zmienić sklep." : {
+
+    },
+    "Rozpoznano z kwitka" : {
+
+    },
+    "Rozsuń karty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fan the cards"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozsuń karty"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Розгорнути картки"
+          }
+        }
+      }
+    },
+    "Seria" : {
+
+    },
+    "Sieć" : {
+
+    },
+    "Sieć nie została rozpoznana — wybierz z bazy." : {
+
+    },
+    "Skanowanie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanning"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanowanie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сканування"
+          }
+        }
+      }
+    },
+    "Skanuj" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanuj"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сканувати"
+          }
+        }
+      }
+    },
+    "Skanuj kartę" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan card"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanuj kartę"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сканувати картку"
+          }
+        }
+      }
+    },
+    "Skanuj kartę lojalnościową" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan loyalty card"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanuj kartę lojalnościową"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сканувати картку лояльності"
+          }
+        }
+      }
+    },
+    "Skanuj kaucję" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan deposit"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanuj kaucję"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сканувати заставу"
+          }
+        }
+      }
+    },
+    "Skanuj kwitek" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan voucher"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanuj kwitek"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сканувати квиток"
+          }
+        }
+      }
+    },
+    "Skanuj kwitek z butelkomatu" : {
+
+    },
+    "Skanuj kwitek z butelkomatu, wpisz go ręcznie albo znajdź automat na mapie." : {
+
+    },
+    "Skanuj paragon" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan receipt"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanuj paragon"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сканувати чек"
+          }
+        }
+      }
+    },
+    "Skanuj paragon albo fakturę" : {
+
+    },
+    "Skanuj pierwszy kwitek" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan the first voucher"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skanuj pierwszy kwitek"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скануй перший квиток"
+          }
+        }
+      }
+    },
+    "Sklep" : {
+
+    },
+    "Sklep lub kwota" : {
+
+    },
+    "Sklep lub numer karty" : {
+
+    },
+    "Sklep lub sprzedawca" : {
+
+    },
+    "Sklep, NIP albo kwota" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Store, tax ID or amount"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sklep, NIP albo kwota"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Магазин, ІПН або сума"
+          }
+        }
+      }
+    },
+    "Sklepy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stores"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sklepy"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Магазини"
+          }
+        }
+      }
+    },
+    "Sprawdź kwitek" : {
+
+    },
+    "Sprawdź paragon" : {
+
+    },
+    "Spróbuj innej nazwy albo dodaj sklep ręcznie na dole listy." : {
+
+    },
+    "Spróbuj innej nazwy sklepu albo numeru karty." : {
+
+    },
+    "Spróbuj innej sieci albo kwoty." : {
+
+    },
+    "Sprzedawca" : {
+
+    },
+    "Średnia" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medium"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Średnia"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Середня"
+          }
+        }
+      }
+    },
+    "Strona 1 z 2 — włóż kartę" : {
+
+    },
+    "Strona 2 z 2 — odwróć kartę, albo pomiń tył" : {
+
+    },
+    "Suma" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suma"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сума"
+          }
+        }
+      }
+    },
+    "Synchronizacja" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronizacja"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Синхронізація"
+          }
+        }
+      }
+    },
+    "Synchronizuj teraz" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync now"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronizuj teraz"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Синхронізувати зараз"
+          }
+        }
+      }
+    },
+    "Szczegóły" : {
+
+    },
+    "Szukaj sklepu" : {
+
+    },
+    "Tak, wykorzystany" : {
+
+    },
+    "Ten iPhone nie może teraz dodać kart do Apple Wallet." : {
+
+    },
+    "Ten kod jest już w kaucjach. Jeśli kasa właśnie go przyjęła, oznacz kwitek jako wykorzystany." : {
+
+    },
+    "Ten kwitek jest przeterminowany" : {
+
+    },
+    "Ten kwitek ma tylko kod. Spróbuj zakładki Kod." : {
+
+    },
+    "Ten miesiąc" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This month"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten miesiąc"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цей місяць"
+          }
+        }
+      }
+    },
+    "Ten sam Apple ID na iPhonie i iPadzie synchronizuje kaucje, paragony i karty automatycznie. Zaproszenie rodziny jest osobno." : {
+
+    },
+    "Termin minął %@. Kasa takiego kuponu nie przyjmie." : {
+
+    },
+    "Termin tego kwitka już minął. Po przywróceniu trafi do przeterminowanych, nie do Kaucji. Na pewno?" : {
+
+    },
+    "Terminy" : {
+
+    },
+    "™" : {
+
+    },
+    "Towar" : {
+
+    },
+    "Tu zobaczysz wykorzystane i przeterminowane kwitki." : {
+
+    },
+    "Twoje imię" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your name"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoje imię"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Твоє ім’я"
+          }
+        }
+      }
+    },
+    "Twoje urządzenia" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your devices"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoje urządzenia"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Твої пристрої"
+          }
+        }
+      }
+    },
+    "Tylko jeśli masz ochotę. Trzy łyki dla twórcy." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only if you feel like it. Three sips for the maker."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tylko jeśli masz ochotę. Trzy łyki dla twórcy."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Лише якщо хочеш. Три ковтки для творця."
+          }
+        }
+      }
+    },
+    "Tylko kadr z ramki — przód i tył, jeśli obie strony były skanowane." : {
+
+    },
+    "Typ" : {
+
+    },
+    "Typ kodu" : {
+
+    },
+    "Udostępniaj nowe karty" : {
+
+    },
+    "Udostępniaj nowe karty lojalnościowe rodzinie" : {
+
+    },
+    "Udostępniaj nowe kaucje" : {
+
+    },
+    "Udostępniaj nowe kaucje rodzinie" : {
+
+    },
+    "Udostępniaj nowe paragony" : {
+
+    },
+    "Udostępniaj nowe paragony rodzinie" : {
+
+    },
+    "Udostępnij rodzinie" : {
+
+    },
+    "Udostępnij zdjęcie" : {
+
+    },
+    "Udostępniona rodzinie" : {
+
+    },
+    "Udostępniony rodzinie" : {
+
+    },
+    "Ustawienia" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ustawienia"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Налаштування"
+          }
+        }
+      }
+    },
+    "Usuń" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usuń"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видалити"
+          }
+        }
+      }
+    },
+    "Usuń kartę" : {
+
+    },
+    "Usuń kwitek" : {
+
+    },
+    "Usuń paragon" : {
+
+    },
+    "Usunąć kartę?" : {
+
+    },
+    "Usunąć kwitek z kaucji?" : {
+
+    },
+    "Usunąć paragon?" : {
+
+    },
+    "Utracone" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lost"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utracone"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Втрачено"
+          }
+        }
+      }
+    },
+    "Użyj %@, żeby otworzyć kaucje, paragony i karty." : {
+
+    },
+    "VAT" : {
+
+    },
+    "W dniu wygaśnięcia" : {
+
+    },
+    "Ważny był do %@. Możesz go zapisać — trafi do historii, kasa go nie przyjmie." : {
+
+    },
+    "Ważny do" : {
+
+    },
+    "Według sklepów" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By store"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Według sklepów"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "За магазинами"
+          }
+        }
+      }
+    },
+    "Wersja" : {
+
+    },
+    "Widok" : {
+
+    },
+    "Włącz" : {
+
+    },
+    "Włącz iCloud, aby zapraszać bliskich." : {
+
+    },
+    "Włącz latarkę" : {
+
+    },
+    "Włącz lokalizację" : {
+
+    },
+    "Włącz lokalizację w Ustawieniach" : {
+
+    },
+    "Włączony" : {
+
+    },
+    "Właściciel" : {
+
+    },
+    "Wpisz numer karty w szczegółach." : {
+
+    },
+    "Wpisz ręcznie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter manually"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wpisz ręcznie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ввести вручну"
+          }
+        }
+      }
+    },
+    "Wskazówki" : {
+
+    },
+    "Wstecz" : {
+
+    },
+    "Wszystkie" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wszystkie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Усі"
+          }
+        }
+      }
+    },
+    "Wszystkie paragony" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All receipts"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wszystkie paragony"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Усі чеки"
+          }
+        }
+      }
+    },
+    "Wtedy pokażemy butelkomaty w pobliżu — bez zgody nie zgadujemy Warszawy." : {
+
+    },
+    "Wybierz sklep" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a store"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz sklep"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обрати магазин"
+          }
+        }
+      }
+    },
+    "Wybierz z biblioteki" : {
+
+    },
+    "Wyczyść" : {
+
+    },
+    "Wydatki" : {
+
+    },
+    "Wydatki w czasie" : {
+
+    },
+    "wygasa dzisiaj" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "expires today"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "wygasa dzisiaj"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "закінчується сьогодні"
+          }
+        }
+      }
+    },
+    "wygasa jutro" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "expires tomorrow"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "wygasa jutro"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "закінчується завтра"
+          }
+        }
+      }
+    },
+    "Wykorzystane" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redeemed"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wykorzystane"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Використано"
+          }
+        }
+      }
+    },
+    "Wykorzystane i przeterminowane są w Historii." : {
+
+    },
+    "Wykorzystany" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redeemed"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wykorzystany"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Використаний"
+          }
+        }
+      }
+    },
+    "Wyłącz latarkę" : {
+
+    },
+    "Wyłączony" : {
+
+    },
+    "Wypiszesz się ze wspólnego portfela. Kopie na tym iPhonie zostaną." : {
+
+    },
+    "Wyślij" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyślij"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надіслати"
+          }
+        }
+      }
+    },
+    "Wystarczy ta strona" : {
+
+    },
+    "Wystawiono" : {
+
+    },
+    "za %lld dni" : {
+
+    },
+    "Zaczynamy" : {
+
+    },
+    "Zakres" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scope"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakres"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Охоплення"
+          }
+        }
+      }
+    },
+    "Zakup" : {
+
+    },
+    "Zakupy nie mogą być niższe niż kwota kuponu." : {
+
+    },
+    "Zamknij" : {
+
+    },
+    "Zapisuje tylko to, co było w ramce karty — bez stołu i palców wokół." : {
+
+    },
+    "Zapisz" : {
+
+    },
+    "Zaproś bliskich" : {
+
+    },
+    "Zatrzymać udostępnianie?" : {
+
+    },
+    "Zatrzymaj" : {
+
+    },
+    "Zatrzymaj udostępnianie" : {
+
+    },
+    "Zbliżające się terminy" : {
+
+    },
+    "Zdjęcia karty" : {
+
+    },
+    "Zdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont." : {
+
+    },
+    "Zdjęcie" : {
+
+    },
+    "Zdjęcie i dane znikną z tego iPhone’a. Jeśli paragon był udostępniony, zniknie też u rodziny." : {
+
+    },
+    "Zdjęcie karty" : {
+
+    },
+    "Zeskanował" : {
+
+    },
+    "Zeskanuj kartę lojalnościową. Jeśli sieć się nie rozpozna, wybierzesz sklep z bazy." : {
+
+    },
+    "Zeskanuj paragon lub fakturę — %@ rozpozna sklep, kwotę, NIP i kategorię." : {
+
+    },
+    "Zlokalizuj mnie" : {
+
+    },
+    "Zostaw aktywny" : {
+
+    },
+    "Zrealizował" : {
+
+    },
+    "Zrób przód ponownie" : {
+
+    },
+    "Zrób tył ponownie" : {
+
+    },
+    "Zrób zdjęcie" : {
+
+    },
+    "Zwiń stos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse stack"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwiń stos"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Згорнути стос"
+          }
+        }
+      }
+    },
+    "Zwrot" : {
+
+    },
+    "Zwrot %@" : {
+
+    },
+    "Zwrot do" : {
+
+    }
+  },
+  "version" : "1.0"
+}

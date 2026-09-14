@@ -7,8 +7,8 @@ struct ScanVoucherIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         await MainActor.run {
-            WalletScanBridge.pendingIntent = .deposit
-            OpenScanBridge.pending = true
+            LaunchSplashPolicy.skipNext = true
+            PendingLaunch.saveScan(.deposit)
             NotificationCenter.default.post(name: .paragonOpenScanner, object: nil)
         }
         return .result()
@@ -22,8 +22,8 @@ struct ScanReceiptIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         await MainActor.run {
-            WalletScanBridge.pendingIntent = .receipt
-            OpenScanBridge.pending = true
+            LaunchSplashPolicy.skipNext = true
+            PendingLaunch.saveScan(.receipt)
             NotificationCenter.default.post(name: .paragonOpenScanner, object: nil)
         }
         return .result()
@@ -37,8 +37,8 @@ struct ScanLoyaltyIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         await MainActor.run {
-            WalletScanBridge.pendingIntent = .loyalty
-            OpenScanBridge.pending = true
+            LaunchSplashPolicy.skipNext = true
+            PendingLaunch.saveScan(.loyalty)
             NotificationCenter.default.post(name: .paragonOpenScanner, object: nil)
         }
         return .result()

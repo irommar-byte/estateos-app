@@ -40,6 +40,11 @@ struct HistoryView: View {
     private var recovered: Double { redeemed.reduce(0) { $0 + $1.amount } }
     private var lost: Double { expired.reduce(0) { $0 + $1.amount } }
     private var receiptsTotal: Double { ReceiptAnalytics.total(receipts) }
+    private var allTimeStores: [ReceiptMerchantGroup] { ReceiptMerchantGroup.allTime(from: receipts) }
+    private var topStores: [ReceiptMerchantGroup] { Array(allTimeStores.prefix(8)) }
+    private var otherStoresTotal: Double {
+        allTimeStores.dropFirst(8).reduce(0) { $0 + $1.total }
+    }
 
     private var availableYears: [Int] {
         let dates = scope == .kaucje
@@ -186,6 +191,39 @@ struct HistoryView: View {
                     .padding(.vertical, 4)
                 }
 
+                if receipts.isEmpty == false {
+                    Section("Według sklepów") {
+                        ForEach(topStores) { group in
+                            NavigationLink {
+                                ReceiptMerchantDetailView(group: group)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    LoyaltyLogo(program: group.program, size: 32)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(group.merchantName)
+                                            .font(.body.weight(.semibold))
+                                            .lineLimit(1)
+                                        Text(PolishDates.receiptCount(group.receipts.count))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Text(MoneyFormat.string(group.total))
+                                        .font(.body.weight(.semibold).monospacedDigit())
+                                }
+                            }
+                        }
+                        if otherStoresTotal > 0 {
+                            HStack {
+                                Text("Inne")
+                                Spacer()
+                                Text(MoneyFormat.string(otherStoresTotal))
+                                    .font(.body.weight(.semibold).monospacedDigit())
+                            }
+                        }
+                    }
+                }
+
                 if receipts.isEmpty {
                     ContentUnavailableView(
                         "Brak historii wydatków",
@@ -196,6 +234,16 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("Historia")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    wallet.askScanIntent = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Skanuj")
+            }
+        }
         .onAppear { clampPeriod() }
         .onChange(of: availableYears) { _, _ in clampPeriod() }
         .confirmationDialog(

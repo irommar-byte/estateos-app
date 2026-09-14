@@ -54,52 +54,48 @@ enum ParagonTheme {
 }
 
 enum MoneyFormat {
-    static let pln: NumberFormatter = {
+    static func string(_ amount: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "PLN"
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = AppLocale.current
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 2
-        return formatter
-    }()
-
-    static func string(_ amount: Double) -> String {
-        pln.string(from: NSNumber(value: amount)) ?? String(format: "%.2f zł", amount)
+        return formatter.string(from: NSNumber(value: amount)) ?? String(format: "%.2f zł", amount)
     }
 }
 
 enum PolishDates {
-    static let display: DateFormatter = {
+    static var display: DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = AppLocale.current
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         return formatter
-    }()
+    }
 
-    static let displayDateTime: DateFormatter = {
+    static var displayDateTime: DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = AppLocale.current
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter
-    }()
+    }
 
     static func relativeExpiry(_ date: Date, now: Date = .now) -> String {
         let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: now), to: Calendar.current.startOfDay(for: date)).day ?? 0
-        if days < 0 { return "przeterminowany" }
-        if days == 0 { return "wygasa dzisiaj" }
-        if days == 1 { return "wygasa jutro" }
-        return "za \(days) dni"
+        if days < 0 { return String(localized: "przeterminowany") }
+        if days == 0 { return String(localized: "wygasa dzisiaj") }
+        if days == 1 { return String(localized: "wygasa jutro") }
+        return String(localized: "za \(days) dni")
     }
 
     static func kwitekCount(_ count: Int) -> String {
-        polishCount(count, one: "kwitek", few: "kwitki", many: "kwitków")
+        String(localized: "\(count) kwitków")
     }
 
     static func receiptCount(_ count: Int) -> String {
-        polishCount(count, one: "paragon", few: "paragony", many: "paragonów")
+        String(localized: "\(count) paragonów")
     }
 
     static func daysUntil(_ date: Date, now: Date = .now) -> Int {
@@ -120,21 +116,21 @@ enum PolishDates {
 
     static func monthTitle(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = AppLocale.current
         formatter.setLocalizedDateFormatFromTemplate("LLLL yyyy")
         return formatter.string(from: date)
     }
 
     static func monthName(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = AppLocale.current
         formatter.setLocalizedDateFormatFromTemplate("LLLL")
         return formatter.string(from: date)
     }
 
     static func shortMonth(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = AppLocale.current
         formatter.setLocalizedDateFormatFromTemplate("LLL")
         return formatter.string(from: date)
     }

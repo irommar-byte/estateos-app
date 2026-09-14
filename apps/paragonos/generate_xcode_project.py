@@ -17,13 +17,18 @@ WIDGET_SWIFT = (
     if WIDGET_SRC.exists()
     else []
 )
+WIDGET_RES = (
+    sorted(p.name for p in WIDGET_SRC.iterdir() if p.suffix in {".xcstrings"})
+    if WIDGET_SRC.exists()
+    else []
+)
 WIDGET_SHARED = ["Core/HomeSnapshot.swift"]
 
 RES = []
 res_dir = SRC / "Resources"
 if res_dir.exists():
     for p in sorted(res_dir.iterdir()):
-        if p.suffix in {".xcassets", ".json", ".xcprivacy", ".cer", ".key"}:
+        if p.suffix in {".xcassets", ".json", ".xcprivacy", ".cer", ".key", ".xcstrings", ".storekit"}:
             RES.append(f"Resources/{p.name}")
         elif p.is_dir():
             for child in sorted(p.iterdir()):
@@ -98,6 +103,8 @@ res_ref = {f: gid() for f in RES}
 res_bf = {f: gid() for f in RES}
 widget_ref = {f: gid() for f in WIDGET_SWIFT}
 widget_bf = {f: gid() for f in WIDGET_SWIFT}
+widget_res_ref = {f: gid() for f in WIDGET_RES}
+widget_res_bf = {f: gid() for f in WIDGET_RES}
 widget_shared_bf = {f: gid() for f in WIDGET_SHARED}
 
 folders = {"": APP_GRP}
@@ -126,6 +133,8 @@ for f in RES:
     o(f"\t\t{res_bf[f]} /* {f} in Resources */ = {{isa = PBXBuildFile; fileRef = {res_ref[f]} /* {f} */; }};")
 for f in WIDGET_SWIFT:
     o(f"\t\t{widget_bf[f]} /* {f} in Sources */ = {{isa = PBXBuildFile; fileRef = {widget_ref[f]} /* {f} */; }};")
+for f in WIDGET_RES:
+    o(f"\t\t{widget_res_bf[f]} /* {f} in Resources */ = {{isa = PBXBuildFile; fileRef = {widget_res_ref[f]} /* {f} */; }};")
 for f in WIDGET_SHARED:
     o(f"\t\t{widget_shared_bf[f]} /* {f} in Sources */ = {{isa = PBXBuildFile; fileRef = {swift_ref[f]} /* {f} */; }};")
 o(f"\t\t{WIDGET_EMBED_BF} /* ParagonOSWidgets.appex in Embed Foundation Extensions */ = {{isa = PBXBuildFile; fileRef = {WIDGET_REF} /* ParagonOSWidgets.appex */; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, CodeSignOnCopy, ); }}; }};")
@@ -161,6 +170,8 @@ for f in TEST_SWIFT:
     o(f"\t\t{test_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {Path(f).name}; sourceTree = \"<group>\"; }};")
 for f in WIDGET_SWIFT:
     o(f"\t\t{widget_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {Path(f).name}; sourceTree = \"<group>\"; }};")
+for f in WIDGET_RES:
+    o(f"\t\t{widget_res_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = {f}; sourceTree = \"<group>\"; }};")
 for f in RES:
     if f.endswith(".xcassets"):
         t = "folder.assetcatalog"
@@ -182,6 +193,10 @@ for f in RES:
         t = "image.png"
     elif f.endswith(".pdf"):
         t = "image.pdf"
+    elif f.endswith(".xcstrings"):
+        t = "text.json.xcstrings"
+    elif f.endswith(".storekit"):
+        t = "text"
     else:
         t = "text"
     o(f"\t\t{res_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = {t}; path = {Path(f).name}; sourceTree = \"<group>\"; }};")
@@ -199,6 +214,7 @@ test_children = ", ".join(f"{test_ref[f]} /* {Path(f).name} */" for f in TEST_SW
 o(f"\t\t{TEST_GRP} = {{isa = PBXGroup; children = ({test_children}); path = ParagonOSTests; sourceTree = \"<group>\"; }};")
 widget_children = ", ".join(
     [f"{widget_ref[f]} /* {Path(f).name} */" for f in WIDGET_SWIFT]
+    + [f"{widget_res_ref[f]} /* {f} */" for f in WIDGET_RES]
     + [f"{WIDGET_INFO_REF} /* Info.plist */", f"{WIDGET_ENT_REF} /* ParagonOSWidgets.entitlements */"]
 )
 o(f"\t\t{WIDGET_GRP} = {{isa = PBXGroup; children = ({widget_children}); path = ParagonOSWidgets; sourceTree = \"<group>\"; }};")
@@ -269,6 +285,7 @@ o("\n/* Begin PBXProject section */")
 o(f"\t\t{PROJ} = {{")
 o(f"\t\t\tisa = PBXProject; buildConfigurationList = {CL_PROJ}; compatibilityVersion = \"Xcode 14.0\";")
 o("\t\t\tdevelopmentRegion = pl; hasScannedForEncodings = 0;")
+o("\t\t\tknownRegions = (en, Base, pl, uk);")
 o(f"\t\t\tmainGroup = {MAIN_GRP}; productRefGroup = {PROD_GRP};")
 o(f"\t\t\tpackageReferences = ({X509_PKG} /* XCRemoteSwiftPackageReference \"swift-certificates\" */);")
 o("\t\t\tprojectDirPath = \"\"; projectRoot = \"\";")
@@ -279,7 +296,8 @@ o("/* End PBXProject section */")
 o("\n/* Begin PBXResourcesBuildPhase section */")
 res_files = ", ".join(f"{res_bf[f]} /* {f} in Resources */" for f in RES)
 o(f"\t\t{RES_PHASE} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({res_files}); runOnlyForDeploymentPostprocessing = 0; }};")
-o(f"\t\t{WIDGET_RES_PHASE} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
+widget_res_files = ", ".join(f"{widget_res_bf[f]} /* {f} in Resources */" for f in WIDGET_RES)
+o(f"\t\t{WIDGET_RES_PHASE} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({widget_res_files}); runOnlyForDeploymentPostprocessing = 0; }};")
 o("/* End PBXResourcesBuildPhase section */")
 
 o("\n/* Begin PBXSourcesBuildPhase section */")
@@ -518,6 +536,9 @@ scheme_dir.mkdir(parents=True, exist_ok=True)
             ReferencedContainer = "container:ParagonOS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfigurationFileReference
+         identifier = "../../../ParagonOS/Resources/ParagonOS.storekit">
+      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

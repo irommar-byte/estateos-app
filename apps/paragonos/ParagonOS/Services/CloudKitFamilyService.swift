@@ -679,10 +679,22 @@ final class ParagonAppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         application.registerForRemoteNotifications()
         if let shortcut = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
-            ShortcutLaunch.pending = shortcut
-            LaunchSplashPolicy.skipNext = true
+            captureLaunchShortcut(shortcut)
         }
         return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        if let shortcut = options.shortcutItem {
+            captureLaunchShortcut(shortcut)
+        }
+        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = ParagonSceneDelegate.self
+        return configuration
     }
 
     func application(
@@ -690,8 +702,7 @@ final class ParagonAppDelegate: NSObject, UIApplicationDelegate {
         performActionFor shortcutItem: UIApplicationShortcutItem,
         completionHandler: @escaping (Bool) -> Void
     ) {
-        LaunchSplashPolicy.skipNext = true
-        ShortcutLaunch.pending = shortcutItem
+        captureLaunchShortcut(shortcutItem)
         NotificationCenter.default.post(name: .paragonShortcut, object: shortcutItem)
         completionHandler(true)
     }
@@ -705,6 +716,10 @@ final class ParagonAppDelegate: NSObject, UIApplicationDelegate {
             await CloudKitFamilyService.shared.handlePush(userInfo)
             completionHandler(.newData)
         }
+    }
+
+    private func captureLaunchShortcut(_ shortcut: UIApplicationShortcutItem) {
+        HomeQuickActions.captureIncoming(shortcut)
     }
 
     func application(

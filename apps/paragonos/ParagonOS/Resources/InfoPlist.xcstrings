@@ -1,0 +1,160 @@
+{
+  "sourceLanguage" : "pl",
+  "strings" : {
+    "Butelkomaty" : {
+
+    },
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ParagonOS™"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ParagonOS"
+          }
+        }
+      }
+    },
+    "NSCameraUsageDescription" : {
+      "comment" : "Privacy - Camera Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ uses the camera to scan a reverse-vending voucher, a receipt or a loyalty card."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ używa kamery, żeby zeskanować kwitek z butelkomatu, paragon albo kartę lojalnościową."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ використовує камеру, щоб сканувати квиток з автомата, чек або картку лояльності."
+          }
+        }
+      }
+    },
+    "NSFaceIDUsageDescription" : {
+      "comment" : "Privacy - Face ID Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ uses Face ID to protect deposits, receipts and cards on this iPhone."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ używa Face ID, żeby chronić kaucje, paragony i karty na tym iPhonie."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ використовує Face ID, щоб захистити застави, чеки та картки на цьому iPhone."
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "comment" : "Privacy - Location When In Use Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ uses location to show nearby reverse-vending machines. Location stays on this iPhone."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ używa lokalizacji, żeby pokazać butelkomaty i sklepy z kaucją w pobliżu. Położenie zostaje na tym iPhonie."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ використовує розташування, щоб показати автомати поруч. Місце лишається на цьому iPhone."
+          }
+        }
+      }
+    },
+    "NSPhotoLibraryUsageDescription" : {
+      "comment" : "Privacy - Photo Library Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ reads a voucher, receipt or card photo from the library when the live scanner is unavailable."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ wczytuje zdjęcie kwitka, paragonu albo karty z galerii, gdy skaner na żywo jest niedostępny."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ зчитує фото квитка, чека або картки з бібліотеки, коли сканер недоступний."
+          }
+        }
+      }
+    },
+    "NSUserNotificationsUsageDescription" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ reminds you about deposit expiry, warranties and return deadlines."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ przypomina o końcu ważności kaucji, gwarancji i terminie zwrotu."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ParagonOS™ нагадує про кінець застави, гарантії та термін повернення."
+          }
+        }
+      }
+    },
+    "Po butelkomacie" : {
+
+    },
+    "Skanuj kartę" : {
+
+    },
+    "Skanuj kwitek" : {
+
+    },
+    "Skanuj paragon" : {
+
+    }
+  },
+  "version" : "1.0"
+}

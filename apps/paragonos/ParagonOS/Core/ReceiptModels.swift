@@ -283,6 +283,7 @@ final class Receipt {
 enum ReceiptRoute: Hashable {
     case settings
     case receipt(UUID)
+    case merchant(String)
 }
 
 enum ReceiptSearch {
@@ -350,6 +351,24 @@ struct ReceiptMerchantGroup: Identifiable {
 
     var total: Double { receipts.reduce(0) { $0 + $1.amount } }
     var category: ReceiptCategory { receipts.first?.category ?? .inne }
+    var merchantNIP: String {
+        receipts
+            .map(\.merchantNIP)
+            .first { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false } ?? ""
+    }
+
+    var program: LoyaltyProgram {
+        LoyaltyCatalog.match(ocrText: merchantName, barcode: "") ?? LoyaltyProgram.custom(name: merchantName)
+    }
+
+    static func allTime(from receipts: [Receipt]) -> [ReceiptMerchantGroup] {
+        groups(from: receipts).sorted { lhs, rhs in
+            if lhs.total == rhs.total {
+                return lhs.merchantName.localizedStandardCompare(rhs.merchantName) == .orderedAscending
+            }
+            return lhs.total > rhs.total
+        }
+    }
 
     static func groups(from receipts: [Receipt]) -> [ReceiptMerchantGroup] {
         var order: [String] = []

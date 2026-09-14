@@ -18,6 +18,13 @@ struct ParagonOSApp: App {
                     .environmentObject(wallet)
                     .environmentObject(lock)
                     .tint(ParagonTheme.osGreen)
+                    .environment(\.locale, wallet.settings.language.locale)
+                    .onAppear {
+                        AppLocale.apply(wallet.settings.language)
+                    }
+                    .onChange(of: wallet.settings.language) { _, language in
+                        AppLocale.apply(language)
+                    }
                     .onOpenURL { url in
                         handle(url: url)
                     }
@@ -32,6 +39,8 @@ struct ParagonOSApp: App {
                     LaunchSplashView(style: splashStyle) {
                         LaunchSplashPolicy.markSeen()
                         showSplash = false
+                        wallet.chromeReady = true
+                        wallet.consumePendingLaunch()
                         if wallet.settings.lockWithBiometrics {
                             lock.lockIfNeeded(enabled: true)
                             Task { _ = await lock.authenticate(enabled: true) }
@@ -48,6 +57,9 @@ struct ParagonOSApp: App {
     }
 
     private func handleScenePhase(_ old: ScenePhase, _ phase: ScenePhase) {
+        if phase == .active, showSplash == false {
+            wallet.consumePendingLaunch()
+        }
         guard wallet.settings.lockWithBiometrics else { return }
         if phase != .active {
             lock.lockIfNeeded(enabled: true)
@@ -57,17 +69,24 @@ struct ParagonOSApp: App {
     }
 
     private func handle(url: URL) {
-        showSplash = false
         guard url.scheme == Brand.urlScheme else { return }
         let host = url.host ?? ""
         let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if host == "scan" || host == "checkout" {
+            showSplash = false
+            wallet.chromeReady = true
+        }
         if host == "scan" {
+            LaunchSplashPolicy.skipNext = true
             switch path {
             case "deposit":
+                PendingLaunch.saveScan(.deposit)
                 wallet.openScanner(for: .deposit)
             case "receipt":
+                PendingLaunch.saveScan(.receipt)
                 wallet.openScanner(for: .receipt)
             case "loyalty":
+                PendingLaunch.saveScan(.loyalty)
                 wallet.openScanner(for: .loyalty)
             default:
                 wallet.askScanIntent = true

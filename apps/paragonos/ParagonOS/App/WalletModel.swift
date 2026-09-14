@@ -29,6 +29,13 @@ final class WalletModel: ObservableObject {
     @Published var showLoyaltyCheckoutFor: UUID?
     @Published var skipLiveScanner = false
     @Published var requestedTab: AppTab?
+    @Published var chromeReady = false
+    @Published var coffeeSheetPresented = false
+    @Published var reviewSheetPresented = false
+    @Published var quietPromptTick = 0
+    let promptSession = UUID().uuidString
+    private var coffeeShownThisSession = false
+    private var reviewShownThisSession = false
 
     let family = CloudKitFamilyService.shared
     let cloudSync = CloudSyncMonitor.shared
@@ -41,6 +48,7 @@ final class WalletModel: ObservableObject {
 
     init() {
         showOnboarding = AppSettings.load().hasCompletedOnboarding == false
+        AppLocale.apply(AppSettings.load().language)
         ExpiryNotificationService.shared.configure()
         cloudSync.start()
         cloudSync.objectWillChange
@@ -78,24 +86,26 @@ final class WalletModel: ObservableObject {
         cloudSync.requestExport(from: context)
         didBootstrap = true
         publishHomeChrome(from: context)
-        if let pending = ShortcutLaunch.pending {
-            ShortcutLaunch.pending = nil
-            HomeQuickActions.handle(pending, wallet: self)
-        }
+        consumePendingLaunch()
         if settings.hasCompletedOnboarding {
             await ExpiryNotificationService.shared.requestAuthorization()
         }
-        if let intent = WalletScanBridge.pendingIntent {
-            WalletScanBridge.pendingIntent = nil
-            OpenScanBridge.pending = false
+    }
+
+    func consumePendingLaunch() {
+        guard chromeReady else { return }
+        if let pending = ShortcutLaunch.pending {
+            HomeQuickActions.handle(pending, wallet: self)
+            return
+        }
+        guard showScanner == false else { return }
+        if let intent = PendingLaunch.takeScan() {
             openScanner(for: intent)
-        } else if OpenScanBridge.pending {
-            OpenScanBridge.pending = false
-            askScanIntent = true
         }
     }
 
     func openScanner(for intent: ScanIntent) {
+        PendingLaunch.clearScan()
         switch intent {
         case .deposit: requestedTab = .wallet
         case .receipt: requestedTab = .receipts
@@ -188,6 +198,31 @@ final class WalletModel: ObservableObject {
         (try? context.fetch(FetchDescriptor<LoyaltyCard>())) ?? []
     }
 
+    func noteSuccessfulSave() {
+        QuietPromptStore.recordSave()
+        quietPromptTick += 1
+    }
+
+    func considerQuietPrompts(blocked: Bool) {
+        guard chromeReady, blocked == false else { return }
+        guard coffeeSheetPresented == false, reviewSheetPresented == false else { return }
+        var state = QuietPromptStore.load()
+        if coffeeShownThisSession { state.coffeeSession = promptSession }
+        if reviewShownThisSession { state.reviewSession = promptSession }
+        switch QuietPromptPolicy.next(state, now: .now, session: promptSession) {
+        case .review:
+            QuietPromptStore.markReviewPrompt()
+            reviewShownThisSession = true
+            reviewSheetPresented = true
+        case .coffee:
+            QuietPromptStore.markCoffeePrompt()
+            coffeeShownThisSession = true
+            coffeeSheetPresented = true
+        case nil:
+            break
+        }
+    }
+
     func rememberCheckoutCard(_ id: UUID) {
         let raw = id.uuidString
         UserDefaults(suiteName: AppGroup.id)?.set(raw, forKey: AppGroup.lastCardKey)
@@ -198,24 +233,53 @@ final class WalletModel: ObservableObject {
         let tickets = storedTickets(in: context)
         let cards = storedCards(in: context)
         let now = Date()
-        let next = tickets
+        let active = tickets
             .filter { $0.resolvedStatus(now: now) == .active }
             .sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
-            .first
+        let next = active.first
         let lastID = (UserDefaults(suiteName: AppGroup.id)?.string(forKey: AppGroup.lastCardKey)
             ?? UserDefaults.standard.string(forKey: AppGroup.lastCardKey))
             .flatMap(UUID.init)
+        let snapshotCards = cards.prefix(6).map { card -> SnapshotCard in
+            let program = card.program
+            if let png = WidgetStampRenderer.png(program: program) {
+                WidgetStampStore.save(id: card.id, png: png)
+            }
+            return SnapshotCard(
+                id: card.id,
+                name: card.displayName,
+                colorHex: program.cardColorHex,
+                programID: program.id
+            )
+        }
+        let snapshotTickets = active.prefix(6).map { ticket -> SnapshotTicket in
+            let program = LoyaltyCatalog.programForRetailer(ticket.retailerID)
+            if let png = WidgetStampRenderer.png(program: program) {
+                WidgetStampStore.save(id: ticket.id, png: png)
+            }
+            return SnapshotTicket(
+                id: ticket.id,
+                brand: RetailerCatalog.policy(id: ticket.retailerID).name,
+                amount: ticket.amount,
+                expiresAt: ticket.expiresAt,
+                brandID: ticket.retailerID,
+                colorHex: program.cardColorHex
+            )
+        }
         let snapshot = HomeSnapshot(
             nextTicket: next.map {
                 SnapshotTicket(
                     id: $0.id,
                     brand: RetailerCatalog.policy(id: $0.retailerID).name,
                     amount: $0.amount,
-                    expiresAt: $0.expiresAt
+                    expiresAt: $0.expiresAt,
+                    brandID: $0.retailerID,
+                    colorHex: LoyaltyCatalog.programForRetailer($0.retailerID).cardColorHex
                 )
             },
-            cards: cards.prefix(4).map { SnapshotCard(id: $0.id, name: $0.displayName) },
-            lastCardID: lastID
+            cards: snapshotCards,
+            lastCardID: lastID,
+            tickets: snapshotTickets
         )
         HomeSnapshotStore.save(snapshot)
         HomeQuickActions.refresh(snapshot: snapshot)
@@ -364,6 +428,7 @@ final class WalletModel: ObservableObject {
             Task { await family.upsertShared(ticket: ticket) }
         }
         publishHomeChrome(from: context)
+        noteSuccessfulSave()
         return ticket
     }
 
@@ -409,6 +474,7 @@ final class WalletModel: ObservableObject {
             Task { await family.upsertShared(receipt: receipt) }
         }
         pendingReceiptID = receipt.id
+        noteSuccessfulSave()
         return receipt
     }
 
@@ -458,6 +524,7 @@ final class WalletModel: ObservableObject {
         pendingLoyaltyID = card.id
         rememberCheckoutCard(card.id)
         publishHomeChrome(from: context)
+        noteSuccessfulSave()
         return card
     }
 
@@ -932,13 +999,7 @@ final class WalletModel: ObservableObject {
         })
         observers.append(NotificationCenter.default.addObserver(forName: .paragonOpenScanner, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
-                if let intent = WalletScanBridge.pendingIntent {
-                    WalletScanBridge.pendingIntent = nil
-                    self.openScanner(for: intent)
-                } else {
-                    self.askScanIntent = true
-                }
+                self?.consumePendingLaunch()
             }
         })
         observers.append(NotificationCenter.default.addObserver(forName: .paragonShortcut, object: nil, queue: .main) { [weak self] note in
@@ -1103,6 +1164,7 @@ struct AppSettings: Equatable {
     var shareNewReceiptsWithFamily: Bool
     var shareNewLoyaltyCardsWithFamily: Bool
     var scanOpensImmediately: Bool
+    var language: AppLanguage
     var warrantyReminder30: Bool
     var warrantyReminder7: Bool
     var returnReminder3: Bool
@@ -1132,6 +1194,7 @@ struct AppSettings: Equatable {
             shareNewReceiptsWithFamily: defaults.object(forKey: Keys.shareReceipts) as? Bool ?? true,
             shareNewLoyaltyCardsWithFamily: defaults.object(forKey: Keys.shareCards) as? Bool ?? true,
             scanOpensImmediately: defaults.object(forKey: Keys.scanImmediate) as? Bool ?? true,
+            language: AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .system,
             warrantyReminder30: defaults.object(forKey: Keys.warranty30) as? Bool ?? true,
             warrantyReminder7: defaults.object(forKey: Keys.warranty7) as? Bool ?? true,
             returnReminder3: defaults.object(forKey: Keys.return3) as? Bool ?? true,
@@ -1151,6 +1214,7 @@ struct AppSettings: Equatable {
         defaults.set(shareNewReceiptsWithFamily, forKey: Keys.shareReceipts)
         defaults.set(shareNewLoyaltyCardsWithFamily, forKey: Keys.shareCards)
         defaults.set(scanOpensImmediately, forKey: Keys.scanImmediate)
+        defaults.set(language.rawValue, forKey: Keys.language)
         defaults.set(warrantyReminder30, forKey: Keys.warranty30)
         defaults.set(warrantyReminder7, forKey: Keys.warranty7)
         defaults.set(returnReminder3, forKey: Keys.return3)
@@ -1168,6 +1232,7 @@ struct AppSettings: Equatable {
         static let shareReceipts = "shareNewReceiptsWithFamily"
         static let shareCards = "shareNewLoyaltyCardsWithFamily"
         static let scanImmediate = "scanOpensImmediately"
+        static let language = "appLanguage"
         static let warranty30 = "warrantyReminder30"
         static let warranty7 = "warrantyReminder7"
         static let return3 = "returnReminder3"

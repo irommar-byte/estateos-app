@@ -360,17 +360,35 @@ struct LoyaltyPassStack: View {
                     )
                     .contentShape(Rectangle())
                     .zIndex(openingID == card.id ? 1000 : Double(index))
-                    .offset(y: openingID == card.id ? -28 : 0)
+                    .shadow(
+                        color: Color.black.opacity(!isExpanded && index == cards.count - 1 ? 0.16 : 0),
+                        radius: !isExpanded && index == cards.count - 1 ? 12 : 0,
+                        y: !isExpanded && index == cards.count - 1 ? 5 : 0
+                    )
+                    .offset(y: !isExpanded && index == cards.count - 1 ? -2 : 0)
                     .id(card.id)
             }
         }
         .animation(PassStackMotion.snappy, value: isExpanded)
         .animation(PassStackMotion.snappy, value: openingID)
+        .simultaneousGesture(fanDrag)
         .onChange(of: cards.map(\.id)) { _, _ in
             if cards.count <= 1 {
                 isExpanded = false
             }
         }
+    }
+
+    private var fanDrag: some Gesture {
+        DragGesture(minimumDistance: 18, coordinateSpace: .local)
+            .onEnded { value in
+                guard cards.count > 1 else { return }
+                if value.translation.height < -36, isExpanded == false {
+                    toggleStack()
+                } else if value.translation.height > 36, isExpanded {
+                    toggleStack()
+                }
+            }
     }
 
     private func cardRow(_ card: LoyaltyCard, index: Int) -> some View {
@@ -472,10 +490,13 @@ struct StackChevron: View {
 }
 
 enum PassStackMotion {
+    static let response: Double = 0.48
+    static let damping: Double = 0.92
+
     static var snappy: Animation {
         UIAccessibility.isReduceMotionEnabled
             ? .easeOut(duration: 0.12)
-            : .spring(response: 0.36, dampingFraction: 0.86)
+            : .spring(response: response, dampingFraction: damping)
     }
 }
 

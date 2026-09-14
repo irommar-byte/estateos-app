@@ -522,6 +522,8 @@ final class LoyaltyCatalogTests: XCTestCase {
         let roomy = LoyaltyPassStackMetrics.fanSpacing(count: 3, viewport: 2000)
         XCTAssertEqual(roomy, 20)
         XCTAssertEqual(LoyaltyPassStackMetrics.fanSpacing(count: 1, viewport: 800), 0)
+        XCTAssertEqual(PassStackMotion.response, 0.48, accuracy: 0.001)
+        XCTAssertEqual(PassStackMotion.damping, 0.92, accuracy: 0.001)
     }
 
     func testRetailerIDsResolveToLoyaltyProgramsWithDomains() {

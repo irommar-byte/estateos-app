@@ -52,6 +52,87 @@ final class HomeChromeTests: XCTestCase {
         XCTAssertEqual(HomeQuickActions.map, "map")
         XCTAssertEqual(ScanDepositControlLink.url, WidgetDeepLink.scanDeposit.url)
         XCTAssertEqual(ScanDepositControlLink.url.absoluteString, "paragonos://scan/deposit")
+        XCTAssertEqual(ScanReceiptControlLink.url, WidgetDeepLink.scanReceipt.url)
+        XCTAssertEqual(ScanReceiptControlLink.url.absoluteString, "paragonos://scan/receipt")
+    }
+
+    func testPendingLaunchPersistsScanIntent() {
+        PendingLaunch.clearScan()
+        PendingLaunch.saveScan(.receipt)
+        XCTAssertEqual(PendingLaunch.takeScan(), .receipt)
+        XCTAssertNil(PendingLaunch.takeScan())
+        PendingLaunch.saveScan(.deposit)
+        PendingLaunch.clearScan()
+        XCTAssertNil(PendingLaunch.takeScan())
+    }
+
+    @MainActor
+    func testOpenScannerSelectsWalletOrReceiptsNotHistory() {
+        let wallet = WalletModel()
+        wallet.openScanner(for: .deposit)
+        XCTAssertEqual(wallet.requestedTab, .wallet)
+        XCTAssertEqual(wallet.scanIntent, .deposit)
+        XCTAssertTrue(wallet.showScanner)
+        wallet.openScanner(for: .receipt)
+        XCTAssertEqual(wallet.requestedTab, .receipts)
+        XCTAssertNotEqual(wallet.requestedTab, .history)
+        wallet.openScanner(for: .loyalty)
+        XCTAssertEqual(wallet.requestedTab, .cards)
+    }
+
+    func testStampSlotsFillCardsThenTicketsThenEmpty() {
+        let cardID = UUID()
+        let ticketID = UUID()
+        let snapshot = HomeSnapshot(
+            cards: [SnapshotCard(id: cardID, name: "Moja Biedronka", colorHex: "#E30613", programID: "biedronka")],
+            tickets: [
+                SnapshotTicket(id: ticketID, brand: "Lidl", amount: 4.5, expiresAt: nil, brandID: "lidl", colorHex: "#0050AA")
+            ]
+        )
+        let slots = snapshot.stampSlots
+        XCTAssertEqual(slots.count, 6)
+        if case .card(let card) = slots[0] {
+            XCTAssertEqual(card.id, cardID)
+            XCTAssertEqual(card.colorHex, "#E30613")
+        } else {
+            XCTFail("first slot should be a card")
+        }
+        if case .ticket(let ticket) = slots[1] {
+            XCTAssertEqual(ticket.id, ticketID)
+            XCTAssertEqual(ticket.amount, 4.5)
+        } else {
+            XCTFail("second slot should fill with a deposit")
+        }
+        if case .empty = slots[5] {
+            XCTAssertEqual(slots[5].deepLink, WidgetDeepLink.scanLoyalty.url)
+        } else {
+            XCTFail("empty slots should invite a card scan")
+        }
+        XCTAssertEqual(slots[0].deepLink, WidgetDeepLink.checkoutCard(cardID).url)
+        XCTAssertEqual(slots[1].deepLink, WidgetDeepLink.checkoutTicket(ticketID).url)
+    }
+
+    func testLegacySnapshotDecodesWithoutNewFields() throws {
+        let json = """
+        {"nextTicket":null,"cards":[],"lastCardID":null}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(HomeSnapshot.self, from: json)
+        XCTAssertTrue(decoded.tickets.isEmpty)
+        XCTAssertTrue(decoded.stampSlots.allSatisfy {
+            if case .empty = $0 { return true }
+            return false
+        })
+    }
+
+    func testWidgetSourceIncludesReceiptControl() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("ParagonOSWidgets/ScanReceiptControl.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains("ControlWidget"))
+        XCTAssertTrue(source.contains("ScanReceiptControlLink.url"))
+        XCTAssertTrue(source.contains("Skanuj paragon"))
+        XCTAssertTrue(source.contains("paragonos.app.scanReceipt") || source.contains("pl.paragonos.app.scanReceipt"))
     }
 
     func testWidgetSourceIncludesControlCenter() throws {
@@ -74,5 +155,8 @@ final class HomeChromeTests: XCTestCase {
         XCTAssertTrue(source.contains("ParagonOSWidgets"))
         XCTAssertTrue(source.contains("Embed Foundation Extensions"))
         XCTAssertTrue(source.contains("Core/HomeSnapshot.swift"))
+        XCTAssertTrue(source.contains(".xcstrings"))
+        XCTAssertTrue(source.contains(".storekit"))
+        XCTAssertTrue(source.contains("knownRegions"))
     }
 }

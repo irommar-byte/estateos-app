@@ -117,19 +117,29 @@ struct LoyaltyHomeView: View {
                 .accessibilityLabel("Ustawienia")
             }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Menu {
-                    Button("Skanuj kartę", systemImage: "viewfinder") {
-                        expandedProgramID = nil
-                        wallet.openScanner(for: .loyalty)
+                    if wallet.settings.scanOpensImmediately {
+                        Button {
+                            expandedProgramID = nil
+                            wallet.openScanner(for: .loyalty)
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Skanuj kartę")
+                    } else {
+                        Menu {
+                            Button("Skanuj kartę", systemImage: "viewfinder") {
+                                expandedProgramID = nil
+                                wallet.openScanner(for: .loyalty)
+                            }
+                            Button("Wybierz sklep", systemImage: "storefront") {
+                                expandedProgramID = nil
+                                showPicker = true
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Dodaj kartę")
                     }
-                    Button("Wybierz sklep", systemImage: "storefront") {
-                        expandedProgramID = nil
-                        showPicker = true
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("Dodaj kartę")
             }
         }
         .sheet(isPresented: $showPicker) {

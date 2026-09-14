@@ -16,21 +16,21 @@ enum HomeQuickActions {
         var items: [UIApplicationShortcutItem] = [
             UIApplicationShortcutItem(
                 type: scanDeposit,
-                localizedTitle: "Skanuj kwitek",
-                localizedSubtitle: "Po butelkomacie",
+        localizedTitle: String(localized: "Skanuj kwitek"),
+                localizedSubtitle: String(localized: "Po butelkomacie"),
                 icon: UIApplicationShortcutIcon(systemImageName: "waterbottle.fill"),
                 userInfo: nil
             ),
             UIApplicationShortcutItem(
                 type: scanReceipt,
-                localizedTitle: "Skanuj paragon",
+                localizedTitle: String(localized: "Skanuj paragon"),
                 localizedSubtitle: nil,
                 icon: UIApplicationShortcutIcon(systemImageName: "doc.text.viewfinder"),
                 userInfo: nil
             ),
             UIApplicationShortcutItem(
                 type: scanLoyalty,
-                localizedTitle: "Skanuj kartę",
+                localizedTitle: String(localized: "Skanuj kartę"),
                 localizedSubtitle: nil,
                 icon: UIApplicationShortcutIcon(systemImageName: "creditcard.viewfinder"),
                 userInfo: nil
@@ -40,8 +40,8 @@ enum HomeQuickActions {
             items.append(
                 UIApplicationShortcutItem(
                     type: checkout,
-                    localizedTitle: "\(card.name) przy kasie",
-                    localizedSubtitle: "Pokaż kod karty",
+                    localizedTitle: String(localized: "\(card.name) przy kasie"),
+                    localizedSubtitle: String(localized: "Pokaż kod karty"),
                     icon: UIApplicationShortcutIcon(systemImageName: "barcode.viewfinder"),
                     userInfo: ["kind": "card" as NSString, "id": card.id.uuidString as NSString]
                 )
@@ -50,7 +50,7 @@ enum HomeQuickActions {
             items.append(
                 UIApplicationShortcutItem(
                     type: checkout,
-                    localizedTitle: "Pokaż kaucję przy kasie",
+                    localizedTitle: String(localized: "Pokaż kaucję przy kasie"),
                     localizedSubtitle: ticket.brand,
                     icon: UIApplicationShortcutIcon(systemImageName: "barcode"),
                     userInfo: ["kind": "ticket" as NSString, "id": ticket.id.uuidString as NSString]
@@ -60,8 +60,8 @@ enum HomeQuickActions {
             items.append(
                 UIApplicationShortcutItem(
                     type: map,
-                    localizedTitle: "Butelkomaty",
-                    localizedSubtitle: "Mapa punktów zwrotu",
+                    localizedTitle: String(localized: "Butelkomaty"),
+                    localizedSubtitle: String(localized: "Mapa punktów zwrotu"),
                     icon: UIApplicationShortcutIcon(systemImageName: "map.fill"),
                     userInfo: nil
                 )
@@ -70,10 +70,27 @@ enum HomeQuickActions {
         UIApplication.shared.shortcutItems = items
     }
 
+    static func captureIncoming(_ item: UIApplicationShortcutItem) {
+        ShortcutLaunch.pending = item
+        switch item.type {
+        case scanDeposit:
+            LaunchSplashPolicy.skipNext = true
+            PendingLaunch.saveScan(.deposit)
+        case scanReceipt:
+            LaunchSplashPolicy.skipNext = true
+            PendingLaunch.saveScan(.receipt)
+        case scanLoyalty:
+            LaunchSplashPolicy.skipNext = true
+            PendingLaunch.saveScan(.loyalty)
+        default:
+            break
+        }
+    }
+
     @MainActor
     static func handle(_ item: UIApplicationShortcutItem, wallet: WalletModel) {
         ShortcutLaunch.pending = nil
-        LaunchSplashPolicy.skipNext = true
+        PendingLaunch.clearScan()
         switch item.type {
         case scanDeposit:
             wallet.openScanner(for: .deposit)

@@ -120,17 +120,26 @@ struct WalletView: View {
                 .accessibilityLabel("Mapa butelkomatów")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("Skanuj kaucję", systemImage: "viewfinder") {
+                if wallet.settings.scanOpensImmediately {
+                    Button {
                         wallet.openScanner(for: .deposit)
+                    } label: {
+                        Image(systemName: "plus")
                     }
-                    Button("Wpisz ręcznie", systemImage: "keyboard") {
-                        wallet.openManualDeposit()
+                    .accessibilityLabel("Skanuj kaucję")
+                } else {
+                    Menu {
+                        Button("Skanuj kaucję", systemImage: "viewfinder") {
+                            wallet.openScanner(for: .deposit)
+                        }
+                        Button("Wpisz ręcznie", systemImage: "keyboard") {
+                            wallet.openManualDeposit()
+                        }
+                    } label: {
+                        Image(systemName: "plus")
                     }
-                } label: {
-                    Image(systemName: "plus")
+                    .accessibilityLabel("Dodaj kaucję")
                 }
-                .accessibilityLabel("Dodaj kaucję")
             }
         }
         .fullScreenCover(item: checkoutTicket) { ticket in
