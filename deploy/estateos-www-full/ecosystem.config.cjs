@@ -64,6 +64,7 @@ module.exports = {
       env_production: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "4", NODE_OPTIONS: "--max-old-space-size=768" },
       instances: 2,
       exec_mode: "cluster",
+      // 1G matches src/lib/webWorkerBudget.ts. Do not raise on the 4.3 GiB VPS.
       max_memory_restart: "1G",
       autorestart: true,
       max_restarts: 10,

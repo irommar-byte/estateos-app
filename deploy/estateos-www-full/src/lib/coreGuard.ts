@@ -24,9 +24,10 @@ const APP_ROOT = process.env.ADMIN_CORE_CWD || process.cwd();
 const SAMPLE_RETENTION_DAYS = 30;
 const INCIDENT_RESOLVE_MINUTES = 7;
 const ALERT_COOLDOWN_MINUTES = 30;
-const WEB_RSS_RECYCLE_BYTES = 800 * 1024 * 1024;
-const WEB_RSS_TOTAL_INCIDENT_BYTES = 1800 * 1024 * 1024;
-const WEB_RECYCLE_MIN_UPTIME_MS = 10 * 60_000;
+import {
+  WEB_RSS_TOTAL_INCIDENT_BYTES,
+  shouldRecycleWebWorker,
+} from '@/lib/webWorkerBudget';
 
 export type CoreGuardSeverity = 'info' | 'warning' | 'critical';
 
@@ -334,10 +335,7 @@ export function evaluateCoreGuardSample(sample: CoreGuardSample): CoreGuardCandi
   const worker = sample.processes.find((process) => process.name === 'kei-import-worker');
   const guard = sample.processes.find((process) => process.name === 'estateos-core-guard');
   const webRss = web.reduce((sum, process) => sum + process.memoryBytes, 0);
-  const needsRecycle = web.some(
-    (process) =>
-      process.memoryBytes >= WEB_RSS_RECYCLE_BYTES && process.uptimeMs >= WEB_RECYCLE_MIN_UPTIME_MS,
-  );
+  const needsRecycle = web.some((process) => shouldRecycleWebWorker(process.memoryBytes, process.uptimeMs));
 
   add(
     {

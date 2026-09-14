@@ -16,6 +16,15 @@ test('parse ps etime', () => {
   assert.equal(parsePsEtimeToSec('2-01:11:27'), 2 * 86400 + 3600 + 11 * 60 + 27);
 });
 
+test('info-only findings keep CORE healthy', () => {
+  const rollup = summarizeFindings([
+    { id: 'junk', severity: 'info', title: 'x', detail: 'y', fixable: true },
+  ]);
+  assert.equal(rollup.level, 'ok');
+  assert.equal(rollup.healthy, true);
+  assert.equal(rollup.score, 100);
+});
+
 test('healthy when no findings', () => {
   const rollup = summarizeFindings([]);
   assert.equal(rollup.healthy, true);
@@ -46,3 +55,4 @@ test('real WWW outage maps to automatic recycle', () => {
   assert.equal(FINDING_RUNBOOK_ID['health-down'], 'recycle-web');
   assert.equal(FINDING_RUNBOOK_ID['commit-stale'], 'recycle-web');
 });
+

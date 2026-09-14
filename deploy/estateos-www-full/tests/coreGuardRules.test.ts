@@ -155,19 +155,31 @@ test('CORE Guard ignores journalctl chrome as a kernel lockup', () => {
   assert.equal(candidates.some((item) => item.type === 'junk'), false);
 });
 
-test('CORE Guard schedules rolling recycle before PM2 kills a worker', () => {
-  const candidates = evaluateCoreGuardSample(
+test('CORE Guard recycles only when a warmed worker is about to hit the 1 GiB PM2 kill', () => {
+  const hot = evaluateCoreGuardSample(
     sample({
       processes: sample().processes.map((process) =>
         process.name === 'nieruchomosci'
-          ? { ...process, memoryBytes: 880 * 1024 * 1024, uptimeMs: 20 * 60_000 }
+          ? { ...process, memoryBytes: 970 * 1024 * 1024, uptimeMs: 20 * 60_000 }
           : process,
       ),
     }),
   );
-  assert.equal(candidates.some((item) => item.fingerprint === 'quick:web-recycle'), true);
-  assert.equal(candidates.find((item) => item.fingerprint === 'quick:web-recycle')?.autoFixable, true);
-  assert.equal(candidates.some((item) => item.fingerprint === 'quick:web-memory'), false);
+  assert.equal(hot.some((item) => item.fingerprint === 'quick:web-recycle'), true);
+  assert.equal(hot.find((item) => item.fingerprint === 'quick:web-recycle')?.autoFixable, true);
+  assert.equal(hot.some((item) => item.fingerprint === 'quick:web-memory'), false);
+
+  const normal = evaluateCoreGuardSample(
+    sample({
+      processes: sample().processes.map((process) =>
+        process.name === 'nieruchomosci'
+          ? { ...process, memoryBytes: 900 * 1024 * 1024, uptimeMs: 20 * 60_000 }
+          : process,
+      ),
+    }),
+  );
+  assert.equal(normal.some((item) => item.fingerprint === 'quick:web-recycle'), false);
+  assert.equal(normal.some((item) => item.fingerprint === 'quick:web-memory'), false);
 });
 
 test('CORE Guard does not treat a warmed 1.5 GiB pair as an outage', () => {
