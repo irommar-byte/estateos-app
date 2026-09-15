@@ -70,6 +70,12 @@ const nextConfig: NextConfig = {
       { source: "/sprzedaj-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
       { source: "/wystaw-nieruchomosc-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
       { source: "/start", destination: "/wystaw-za-darmo", permanent: false },
+      {
+        source: "/o/:id(\\d+)",
+        has: [{ type: "query", key: "og", value: "(?<og>[a-zA-Z0-9-]+)" }],
+        destination: "/o/:id/og/:og",
+        permanent: true,
+      },
     ];
   },
   async rewrites() {

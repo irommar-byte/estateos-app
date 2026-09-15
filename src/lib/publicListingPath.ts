@@ -5,6 +5,7 @@ export function isPublicListingPath(pathname: string | null | undefined): boolea
   const path = String(pathname || '').split('?')[0];
   return (
     /^\/o\/\d+(\/karta)?\/?$/.test(path) ||
+    /^\/o\/\d+\/og\/[a-zA-Z0-9-]+\/?$/.test(path) ||
     /^\/oferta\/\d+\/?$/.test(path) ||
     /^\/cars\/\d+\/?$/.test(path)
   );
@@ -13,31 +14,30 @@ export function isPublicListingPath(pathname: string | null | undefined): boolea
 type OfferShareLinkOpts = {
   presentingAgentId?: number | null;
   portalToken?: string | null;
-  /** Price + updatedAt stamp — Facebook caches the pasted URL, so it must change after a price edit. */
+  /** Price + title + updatedAt — must live in the PATH; Facebook ignores ?og= on the page URL. */
   ogStamp?: string | null;
 };
 
-function listingShareQuery(opts?: OfferShareLinkOpts, includeOgStamp = false): string {
+function listingShareQuery(opts?: OfferShareLinkOpts): string {
   const qs = new URLSearchParams();
   const portal = String(opts?.portalToken || '').trim();
   const agentId = Number(opts?.presentingAgentId);
   if (portal) qs.set('portal', portal);
   else if (Number.isFinite(agentId) && agentId > 0) qs.set('agent', String(agentId));
-  if (includeOgStamp) {
-    const stamp = sanitizeOgStamp(opts?.ogStamp);
-    if (stamp) qs.set('og', stamp);
-  }
   const encoded = qs.toString();
   return encoded ? `?${encoded}` : '';
 }
 
 export function offerShareQuery(opts?: OfferShareLinkOpts): string {
-  return listingShareQuery(opts, false);
+  return listingShareQuery(opts);
 }
 
 /** Link do social / Messengera / Facebooka — pełna oferta pod tym samym URL co karta OG. */
 export function offerSharePath(offerId: number, opts?: OfferShareLinkOpts): string {
-  return `/o/${offerId}${listingShareQuery(opts, true)}`;
+  const stamp = sanitizeOgStamp(opts?.ogStamp);
+  const qs = listingShareQuery(opts);
+  if (stamp) return `/o/${offerId}/og/${stamp}${qs}`;
+  return `/o/${offerId}${qs}`;
 }
 
 /** Wizytówka z QR, zdjęciem i danymi agenta — podgląd / druk, osobno od Facebooka. */
