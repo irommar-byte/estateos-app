@@ -1,1 +1,4 @@
-export { default, generateMetadata, viewport, dynamic, revalidate } from '../../page';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export { default, generateMetadata, viewport } from '../../page';
