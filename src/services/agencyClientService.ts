@@ -93,6 +93,33 @@ export type AgencyClientActivity = {
   visibleToClient?: boolean;
 };
 
+export type ShowingKind = 'own' | 'own_import' | 'external_import' | 'other_agent';
+
+export type AgencyShowingCard = {
+  kind: ShowingKind;
+  kindLabel: string;
+  offerId: number;
+  title: string;
+  city: string | null;
+  street: string | null;
+  imageUrl: string | null;
+  badge: 'OTO' | 'OLX' | 'N-O' | null;
+  sourceUrl: string | null;
+  sourcePhone: string | null;
+  sourceAgencyName: string | null;
+  listingAgent: {
+    userId: number;
+    name: string | null;
+    companyName: string | null;
+    phone: string | null;
+    email: string | null;
+  } | null;
+  sellerClientId: number | null;
+  canEmailSeller: boolean;
+  canCallSource: boolean;
+  canRequestListingShowing: boolean;
+};
+
 export type BuyerAgentTask = {
   id: string;
   activityId: number;
@@ -103,6 +130,8 @@ export type BuyerAgentTask = {
   createdAt: string;
   matchId: number | null;
   offerId: number | null;
+  showing?: AgencyShowingCard | null;
+  statusLabel?: string | null;
 };
 
 export type SellerMarketingBundle = {
@@ -269,6 +298,10 @@ export type AgencyClientDetail = AgencyClientListItem & {
     status: 'confirmed' | 'pending';
     proposedBy: 'agent' | 'client';
     reason: string | null;
+    offerId?: number | null;
+    proposedSlots?: string[];
+    heldAt?: string | null;
+    showingKind?: string | null;
   } | null;
   messages?: {
     id: number;
@@ -288,6 +321,7 @@ export type AgencyClientDetail = AgencyClientListItem & {
     buying: ClientPersonProject[];
   };
   managedOffers?: ManagedOfferOption[];
+  showingCards?: AgencyShowingCard[];
 };
 
 export type ClientPersonProject = {

@@ -35,6 +35,7 @@ export const JOURNEY_ACTIVITY = {
   PRESENTATION: 'PRESENTATION_PROPOSED',
   PRESENTATION_CHANGE: 'PRESENTATION_CHANGE_PROPOSED',
   PRESENTATION_CONFIRMED: 'PRESENTATION_CONFIRMED',
+  PRESENTATION_HELD: 'PRESENTATION_HELD',
   PORTAL_MESSAGE: 'PORTAL_MESSAGE',
 } as const;
 
@@ -269,6 +270,7 @@ export function buildJourneyStages(params: {
   hasOffer: boolean;
   hasPresentation: boolean;
   presentationConfirmed: boolean;
+  presentationHeld?: boolean;
 }): JourneyStage[] {
   const stages: Array<{ id: JourneyStageId; label: string; done: boolean }> = [
     { id: 'added', label: 'Klient w CRM', done: true },
@@ -276,7 +278,7 @@ export function buildJourneyStages(params: {
     { id: 'visit', label: 'Karta pozyskania', done: params.acquisitionStarted || params.signed },
     { id: 'signed', label: 'Umowa podpisana', done: params.signed },
     { id: 'offer', label: 'Oferta na rynku', done: params.hasOffer },
-    { id: 'presentation', label: 'Prezentacja', done: params.hasPresentation && params.presentationConfirmed },
+    { id: 'presentation', label: 'Prezentacja', done: Boolean(params.presentationHeld) },
   ];
   const firstOpen = stages.findIndex((stage) => !stage.done);
   return stages.map((stage, index) => ({

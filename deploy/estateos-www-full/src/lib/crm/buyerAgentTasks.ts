@@ -3,6 +3,8 @@ import {
   parseClientOfferFeedback,
 } from '@/lib/crm/clientPortalFeedback';
 
+import type { ShowingCard } from '@/lib/crm/showingKind';
+
 export type BuyerAgentTask = {
   id: string;
   activityId: number;
@@ -13,6 +15,8 @@ export type BuyerAgentTask = {
   createdAt: string;
   matchId: number | null;
   offerId: number | null;
+  showing?: ShowingCard | null;
+  statusLabel?: string | null;
 };
 
 type TaskMatch = {
@@ -86,6 +90,7 @@ export function buildBuyerAgentTasks(
     feedbackActivityByMatch.set(matchId, activity);
   }
 
+  const matchById = new Map(matches.map((match) => [match.id, match]));
   const tasks: BuyerAgentTask[] = [];
   for (const match of matches) {
     const feedback = parseClientOfferFeedback(match.clientFeedback);
@@ -115,24 +120,46 @@ export function buildBuyerAgentTasks(
   for (const activity of openHandoffs) {
     const metadata = record(activity.metadata);
     const matchId = Number(metadata.matchId);
+    const match = Number.isFinite(matchId) ? matchById.get(matchId) : undefined;
+    const viewing =
+      activity.kind !== 'INTELLIGENCE_STALLED' &&
+      Boolean(match && parseClientOfferFeedback(match.clientFeedback).sentiment === 'like');
     tasks.push({
       id: `activity-${activity.id}`,
       activityId: activity.id,
-      kind: activity.kind === 'INTELLIGENCE_STALLED' ? 'stalled' : 'handoff',
+      kind:
+        activity.kind === 'INTELLIGENCE_STALLED'
+          ? 'stalled'
+          : viewing
+            ? 'viewing'
+            : 'handoff',
       priority: 'high',
       title:
-        activity.title ||
-        (activity.kind === 'INTELLIGENCE_STALLED'
-          ? 'Asystent potrzebuje decyzji agenta'
-          : 'Klient czeka na agenta'),
-      body: activity.body || 'Otwórz kartę klienta i wybierz kolejny krok.',
+        viewing
+          ? `Klient chce obejrzeć: ${match?.offer.title || 'ofertę'}`
+          : activity.title ||
+            (activity.kind === 'INTELLIGENCE_STALLED'
+              ? 'Asystent potrzebuje decyzji agenta'
+              : 'Klient czeka na agenta'),
+      body:
+        viewing
+          ? formatClientFeedbackForAgent(match?.clientFeedback || null) ||
+            activity.body ||
+            'Klient kliknął „Chcę oglądać”.'
+          : activity.body || 'Otwórz kartę klienta i wybierz kolejny krok.',
       createdAt: iso(activity.createdAt),
       matchId: Number.isFinite(matchId) && matchId > 0 ? matchId : null,
-      offerId: activity.offerId || null,
+      offerId: activity.offerId || match?.offer.id || null,
     });
   }
 
-  return tasks
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.activityId - a.activityId)
-    .slice(0, 8);
+  const ranked = tasks.sort((a, b) => {
+    const rank = (kind: BuyerAgentTask['kind']) =>
+      kind === 'viewing' ? 0 : kind === 'handoff' ? 1 : kind === 'question' ? 2 : 3;
+    const byKind = rank(a.kind) - rank(b.kind);
+    if (byKind) return byKind;
+    return b.createdAt.localeCompare(a.createdAt) || b.activityId - a.activityId;
+  });
+  const hasViewing = ranked.some((task) => task.kind === 'viewing');
+  return (hasViewing ? ranked.filter((task) => task.kind !== 'stalled') : ranked).slice(0, 8);
 }

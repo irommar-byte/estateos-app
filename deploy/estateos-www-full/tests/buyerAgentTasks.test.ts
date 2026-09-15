@@ -115,3 +115,62 @@ test('keeps only the newest duplicate handoff', () => {
   assert.equal(tasks.length, 1);
   assert.equal(tasks[0].activityId, 52);
 });
+
+test('hides intelligence stall when a viewing task is open', () => {
+  const match = {
+    id: 13,
+    clientFeedback: serializeClientOfferFeedback({ sentiment: 'like' as const }),
+    clientFeedbackAt: '2026-09-02T10:00:00.000Z',
+    offer: { id: 1400, title: 'Mieszkanie na Woli' },
+  };
+  const tasks = buildBuyerAgentTasks([match], [
+    {
+      id: 45,
+      kind: 'CLIENT_FEEDBACK',
+      title: 'Reakcja klienta',
+      body: null,
+      offerId: 1400,
+      createdAt: '2026-09-02T10:00:00.000Z',
+      metadata: { matchId: 13 },
+    },
+    {
+      id: 90,
+      kind: 'INTELLIGENCE_STALLED',
+      title: 'Asystent nie ma bezpiecznej oferty',
+      body: 'Pula jest pusta.',
+      offerId: null,
+      createdAt: '2026-09-02T10:05:00.000Z',
+      metadata: {},
+    },
+  ]);
+  assert.equal(tasks.some((task) => task.kind === 'stalled'), false);
+  assert.equal(tasks[0].kind, 'viewing');
+  assert.equal(tasks[0].offerId, 1400);
+});
+
+test('like handoff is a viewing task pinned to the offer', () => {
+  const tasks = buildBuyerAgentTasks(
+    [
+      {
+        id: 14,
+        clientFeedback: serializeClientOfferFeedback({ sentiment: 'like' as const }),
+        clientFeedbackAt: '2026-09-02T11:00:00.000Z',
+        offer: { id: 1500, title: 'Mieszkanie' },
+      },
+    ],
+    [
+      {
+        id: 47,
+        kind: 'INTELLIGENCE_HANDOFF',
+        title: 'Klient prosi o pokaz',
+        body: 'Umów prezentację.',
+        offerId: 1500,
+        createdAt: '2026-09-02T11:00:01.000Z',
+        metadata: { matchId: 14 },
+      },
+    ],
+  );
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].kind, 'viewing');
+  assert.equal(tasks[0].offerId, 1500);
+});

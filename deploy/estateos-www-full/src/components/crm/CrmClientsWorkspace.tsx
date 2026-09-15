@@ -35,6 +35,7 @@ import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import CrmClientLiveChat from "@/components/crm/CrmClientLiveChat";
 import CrmPresentationOfferPick from "@/components/crm/CrmPresentationOfferPick";
+import CrmShowingComposer from "@/components/crm/CrmShowingComposer";
 import CrmPersonFacts from "@/components/crm/CrmPersonFacts";
 import CrmClientPersonHub from "@/components/crm/CrmClientPersonHub";
 import { formatCrmRoleLabel, groupCrmClientsByPerson } from "@/lib/crm/personGroups";
@@ -52,6 +53,7 @@ import { defaultWebRadarFilters, type WebRadarFilters } from "@/lib/radarCalibra
 import { formatClientFeedbackForAgent, parseClientOfferFeedback, sentimentLabel } from "@/lib/crm/clientPortalFeedback";
 import { type ClientNextStep } from "@/lib/crm/clientNextStep";
 import type { BuyerAgentTask } from "@/lib/crm/buyerAgentTasks";
+import type { ShowingCard } from "@/lib/crm/showingKind";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 import MatchImportAgentMeta, { type MatchImportBrief } from "@/components/crm/MatchImportAgentMeta";
@@ -121,6 +123,7 @@ type ClientDetail = AgencyClientListItem & {
   nextStep?: ClientNextStep | null;
   portalUnreadCount?: number;
   buyerAgentTasks?: BuyerAgentTask[];
+  showingCards?: ShowingCard[];
   activities?: Array<{
     id: number;
     kind: string;
@@ -206,6 +209,8 @@ type ClientDetail = AgencyClientListItem & {
     status: "confirmed" | "pending";
     reason: string | null;
     offerId?: number | null;
+    proposedSlots?: string[];
+    heldAt?: string | null;
   } | null;
 };
 
@@ -388,6 +393,8 @@ export default function CrmClientsWorkspace() {
       setSellerFilters({ ...defaultWebRadarFilters(), ...detail.buyerFilters, pushNotifications: false });
     }
     setIntelLocks(detail.intelligence?.lockedFields || DEFAULT_INTELLIGENCE_LOCKS);
+    const viewing = (detail.buyerAgentTasks || []).find((task) => task.kind === "viewing" && task.offerId);
+    if (viewing?.offerId) setPresentationOfferId(String(viewing.offerId));
   }, [detail?.id, detail?.buyerFilters]);
 
   const offerHref = (offerId: number, portalToken?: string | null) => {
@@ -932,7 +939,13 @@ export default function CrmClientsWorkspace() {
       return;
     }
     if (action === "propose_presentation") {
-      document.getElementById("crm-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const viewing = (detail.buyerAgentTasks || []).find((task) => task.kind === "viewing" && task.offerId);
+      if (viewing?.offerId) setPresentationOfferId(String(viewing.offerId));
+      document.getElementById("crm-showing")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (action === "mark_presentation_held") {
+      void clientAction("mark_presentation_held");
       return;
     }
     if (action === "respond_to_client") {
@@ -1549,6 +1562,16 @@ export default function CrmClientsWorkspace() {
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
+                            {task.kind === "viewing" && task.showing?.imageUrl ? (
+                              <div className="mb-2 flex gap-2">
+                                <img src={task.showing.imageUrl} alt="" className="h-14 w-16 rounded-lg object-cover" />
+                                {task.statusLabel ? (
+                                  <span className="self-start rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                                    {task.statusLabel}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
                             <p className="font-bold text-[var(--eos-text)]">{task.title}</p>
                             <p className="mt-1 text-sm leading-relaxed text-[var(--eos-text)]">{task.body}</p>
                             <p className="mt-1 text-[10px] font-semibold text-[var(--eos-muted)]">
@@ -1568,11 +1591,12 @@ export default function CrmClientsWorkspace() {
                             {task.kind === "viewing" ? (
                               <button
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  if (task.offerId) setPresentationOfferId(String(task.offerId));
                                   document
-                                    .getElementById("crm-matches")
-                                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                                }
+                                    .getElementById("crm-showing")
+                                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                }}
                                 className={eosBtn("home", { size: "sm" })}
                               >
                                 Umów prezentację
@@ -1826,9 +1850,11 @@ export default function CrmClientsWorkspace() {
                     <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
                       {new Date(detail.presentation.startsAt).toLocaleString("pl-PL")}
                     </p>
-                    <p className={`mt-1 text-xs font-black uppercase tracking-wider ${detail.presentation.status === "pending" ? "text-amber-700" : "text-emerald-700"}`}>
-                      {detail.presentation.status === "pending"
-                        ? detail.presentation.reason || "Propozycja wysłana obu stronom"
+                    <p className={`mt-1 text-xs font-black uppercase tracking-wider ${detail.presentation.heldAt ? "text-emerald-700" : detail.presentation.status === "pending" ? "text-amber-700" : "text-emerald-700"}`}>
+                      {detail.presentation.heldAt
+                        ? "Odbyta"
+                        : detail.presentation.status === "pending"
+                        ? detail.presentation.reason || "Propozycja wysłana"
                         : "Potwierdzona"}
                     </p>
                     {detail.presentation.status === "pending" && detail.presentation.reason ? (
@@ -1845,6 +1871,54 @@ export default function CrmClientsWorkspace() {
                 ) : null}
 
                 <div className="mt-3 space-y-2">
+                    {detail.type === "BUYER" && !guestAgencyMode ? (
+                      <CrmShowingComposer
+                        showing={
+                          (detail.buyerAgentTasks || []).find((task) => task.kind === "viewing")?.showing ||
+                          (detail.showingCards || []).find((card) => String(card.offerId) === presentationOfferId) ||
+                          (detail.showingCards || [])[0] ||
+                          null
+                        }
+                        quote={(detail.buyerAgentTasks || []).find((task) => task.kind === "viewing")?.body || null}
+                        statusLabel={(detail.buyerAgentTasks || []).find((task) => task.kind === "viewing")?.statusLabel || null}
+                        matches={(detail.matches || []).map((row) => ({
+                          id: row.id,
+                          score: row.score,
+                          notifiedAt: row.notifiedAt,
+                          offer: row.offer,
+                        }))}
+                        managedOffers={detail.managedOffers || []}
+                        selectedId={presentationOfferId}
+                        onSelectOffer={setPresentationOfferId}
+                        presentation={detail.presentation || null}
+                        busy={busy}
+                        onPropose={(slots) => {
+                          void clientAction("propose_presentation", {
+                            startsAt: slots[0],
+                            startsAtList: slots,
+                            offerId: Number(presentationOfferId),
+                          }).then((json) => {
+                            if (json?.success) setToast("Wysłano terminy do kupującego.");
+                          });
+                        }}
+                        onRequestListing={(slots, notes) => {
+                          void clientAction("request_listing_showing", {
+                            startsAt: slots[0],
+                            startsAtList: slots,
+                            offerId: Number(presentationOfferId),
+                            notes,
+                          }).then((json) => {
+                            if (json?.success) setToast("Wysłano prośbę o pokaz do agenta wystawiającego.");
+                          });
+                        }}
+                        onMarkHeld={() => {
+                          void clientAction("mark_presentation_held").then((json) => {
+                            if (json?.success) setToast("Prezentacja oznaczona jako odbyta. Asystent może wrócić do ofert.");
+                          });
+                        }}
+                      />
+                    ) : (
+                    <>
                     <p className="text-xs text-[var(--eos-muted)]">
                       {guestAgencyMode
                         ? "Wybierz nieruchomość z portfela i wyślij termin właścicielowi oraz agentowi gościowi."
@@ -1955,6 +2029,8 @@ export default function CrmClientsWorkspace() {
                     >
                       {guestAgencyMode ? "Wyślij termin właścicielowi i agencji gościa" : "Zaproponuj termin obu stronom"}
                     </button>
+                    </>
+                    )}
                   </div>
               </div>
 

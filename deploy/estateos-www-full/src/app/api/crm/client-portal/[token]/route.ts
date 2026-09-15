@@ -169,6 +169,7 @@ async function loadJourneyActivities(clientId: number) {
           JOURNEY_ACTIVITY.PRESENTATION,
           JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
           JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+          JOURNEY_ACTIVITY.PRESENTATION_HELD,
         ],
       },
     },
@@ -389,6 +390,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     hasOffer: listingVisible,
     hasPresentation: Boolean(presentation),
     presentationConfirmed: presentation?.status === 'confirmed',
+    presentationHeld: Boolean(presentation?.heldAt),
     hasCriteria: Boolean(client.buyerPreference),
     sentOfferCount: notifiedMatches.length,
     reactedCount: reactedMatches.length,
@@ -965,15 +967,29 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if (!slot) {
       return NextResponse.json({ error: 'Brak terminu do potwierdzenia.' }, { status: 400 });
     }
+    if (slot.heldAt) {
+      return NextResponse.json({ error: 'Ta prezentacja już się odbyła.' }, { status: 400 });
+    }
     const startsAt = parseStartsAtInput(body.startsAt) || new Date(slot.startsAt);
+    if (!isMeeting && (slot.proposedSlots || []).length > 1) {
+      const ok = [slot.startsAt, ...slot.proposedSlots].some(
+        (value) => new Date(value).getTime() === startsAt.getTime(),
+      );
+      if (!ok) {
+        return NextResponse.json({ error: 'Wybierz jeden z zaproponowanych terminów.' }, { status: 400 });
+      }
+    }
     const metadata = {
       startsAt: startsAt.toISOString(),
+      proposedSlots: slot.proposedSlots?.length ? slot.proposedSlots : [startsAt.toISOString()],
       location: slot.location,
       notes: slot.notes,
       prepItems: slot.prepItems,
       proposedBy: 'client',
       status: 'confirmed',
       offerId: slot.offerId,
+      showingKind: slot.showingKind || null,
+      listingRequestSent: Boolean(slot.listingRequestSent),
       buyerClientId: slot.buyerClientId,
       sellerClientId: slot.sellerClientId,
     };

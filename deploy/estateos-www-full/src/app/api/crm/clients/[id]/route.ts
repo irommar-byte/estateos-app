@@ -45,7 +45,7 @@ import {
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
-import { emailClientSchedule, emailGuestAgencyPresentation } from '@/lib/crm/clientScheduleNotify';
+import { emailClientSchedule, emailGuestAgencyPresentation, emailListingAgentShowingRequest } from '@/lib/crm/clientScheduleNotify';
 import { findPresentationCounterpartId, mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { facebookShareRecordGate } from '@/lib/crm/marketingChannel';
@@ -78,6 +78,12 @@ import { getPendingCheckback, getOpenIntelligenceHandoff, resumeIntelligenceForA
 import { buildBuyerAgentTasks } from '@/lib/crm/buyerAgentTasks';
 import { huntNieruchomosciOnlineForClient } from '@/lib/nieruchomosciOnlineClientHunt';
 import { attachMatchImportBrief, listMatchImportBriefs } from '@/lib/crm/matchImportProvenance';
+import {
+  listShowingCards,
+  parseStartsAtList,
+  resolveShowingKind,
+  showingStatusLabel,
+} from '@/lib/crm/showingKind';
 import { createPersonProject, loadClientPersonProjects } from '@/lib/crm/clientPersonProjects';
 import {
   proposeAuctionToSeller,
@@ -157,7 +163,11 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   const meeting = resolveMeeting(client.activities);
   const presentation = resolvePresentation(client.activities);
-  const [acquisition, pendingCheckback, sentCount, closedDeal, openHandoff] = await Promise.all([
+  const viewingOfferIds = client.matches
+    .filter((m) => parseClientOfferFeedback(m.clientFeedback).sentiment === 'like')
+    .map((m) => m.offer.id);
+  if (presentation?.offerId) viewingOfferIds.push(presentation.offerId);
+  const [acquisition, pendingCheckback, sentCount, closedDeal, openHandoff, showingMap] = await Promise.all([
     prisma.agencyClientAcquisition.findUnique({
       where: { clientId: client.id },
       select: { status: true, currentStep: true, signedAt: true, formData: true },
@@ -173,6 +183,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         })
       : Promise.resolve(null),
     getOpenIntelligenceHandoff(client.id),
+    listShowingCards(viewingOfferIds, agencyUserId),
   ]);
   const dealClosed = Boolean(closedDeal);
   const journey = buildJourneyStages({
@@ -184,6 +195,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     hasOffer: Boolean(client.linkedOfferId),
     hasPresentation: Boolean(presentation),
     presentationConfirmed: presentation?.status === 'confirmed',
+    presentationHeld: Boolean(presentation?.heldAt),
     hasCriteria: Boolean(client.buyerPreference),
     sentOfferCount: sentCount,
     reactedCount: client.matches.filter((m) =>
@@ -203,7 +215,22 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   const buyerAgentTasks =
     client.type === 'BUYER'
-      ? buildBuyerAgentTasks(client.matches, client.activities)
+      ? buildBuyerAgentTasks(client.matches, client.activities).map((task) => {
+          const showing = task.offerId ? showingMap.get(task.offerId) || null : null;
+          return {
+            ...task,
+            showing,
+            statusLabel: showing
+              ? showingStatusLabel({
+                  kind: showing.kind,
+                  listingRequestSent: Boolean(presentation?.listingRequestSent && presentation.offerId === task.offerId),
+                  presentationStatus:
+                    presentation?.offerId === task.offerId ? presentation.status : null,
+                  held: Boolean(presentation?.heldAt && presentation.offerId === task.offerId),
+                })
+              : null,
+          };
+        })
       : [];
 
   const [sellerMarketing, facebookNetwork, facebookShareOffers, managedOffers, relatedProjects, matchBriefs] =
@@ -258,9 +285,14 @@ export async function GET(req: Request, ctx: RouteCtx) {
       (m) => parseClientOfferFeedback(m.clientFeedback).sentiment === 'like',
     ).length,
     pendingAgentTaskCount: buyerAgentTasks.length,
-    pendingAgentTaskHint: buyerAgentTasks[0]?.body || null,
+    pendingAgentTaskKind: buyerAgentTasks[0]?.kind || null,
+    pendingAgentTaskHint:
+      buyerAgentTasks[0]?.kind === 'viewing' && buyerAgentTasks[0].offerId
+        ? `Klient kliknął „Chcę oglądać” przy #${buyerAgentTasks[0].offerId}. Umów pokaz tej oferty.`
+        : buyerAgentTasks[0]?.body || null,
     meetingStatus: meeting?.status ?? null,
     presentationStatus: presentation?.status ?? null,
+    presentationHeld: Boolean(presentation?.heldAt),
     acquisitionStatus: acquisition?.status ?? null,
     linkedOfferId: client.linkedOfferId,
     pendingIntelligenceCheckback: Boolean(pendingCheckback),
@@ -310,6 +342,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
       pendingCheckback,
       openHandoff,
       buyerAgentTasks,
+      showingCards: [...showingMap.values()],
       meeting,
       presentation,
       journey,
@@ -1230,11 +1263,17 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'propose_presentation' || action === 'propose_meeting') {
-    const startsAt = parseStartsAtInput(body.startsAt);
+    const isMeeting = action === 'propose_meeting';
+    const slotDates = isMeeting
+      ? (() => {
+          const one = parseStartsAtInput(body.startsAt);
+          return one ? [one] : [];
+        })()
+      : parseStartsAtList(body.startsAtList || body.proposedSlots, body.startsAt);
+    const startsAt = slotDates[0] || null;
     if (!startsAt) {
       return NextResponse.json({ error: 'Wybierz termin i godzinę.' }, { status: 400 });
     }
-    const isMeeting = action === 'propose_meeting';
     const client = await prisma.agencyClient.findFirst({
       where: { id: clientId, agencyUserId, status: 'ACTIVE' },
       select: { id: true, type: true, firstName: true, lastName: true, linkedOfferId: true },
@@ -1296,13 +1335,18 @@ export async function POST(req: Request, ctx: RouteCtx) {
         })
       : null;
 
+    const showing = !isMeeting && offerId ? await resolveShowingKind(offerId, agencyUserId) : null;
+
     const metadata = {
       startsAt: startsAt.toISOString(),
+      proposedSlots: slotDates.map((slot) => slot.toISOString()),
       location: location || null,
       notes: notes || null,
       proposedBy: 'agent',
       status: isMeeting ? 'confirmed' : 'pending',
       offerId,
+      showingKind: showing?.kind || null,
+      listingRequestSent: false,
       buyerClientId: client.type === 'BUYER' ? client.id : counterpartId,
       sellerClientId: client.type === 'SELLER' ? client.id : counterpartId,
       guestAgency: guestAgency
@@ -1335,7 +1379,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
             : guestAgency
               ? `Prezentacja z agencją ${guestAgency.name}${offerId ? ` · #${offerId}` : ''}`
               : `Prezentacja oferty${offerId ? ` #${offerId}` : ''} · ${target.firstName} ${target.lastName}`,
-          body: [startsAt.toLocaleString('pl-PL'), location, notes, guestAgency ? `Gość: ${guestAgency.name}` : null]
+          body: [
+            slotDates.map((slot) => slot.toLocaleString('pl-PL')).join(' · '),
+            location,
+            notes,
+            guestAgency ? `Gość: ${guestAgency.name}` : null,
+          ]
             .filter(Boolean)
             .join(' · '),
           metadata,
@@ -1346,8 +1395,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
         kind: isMeeting ? 'meeting' : 'presentation',
         mode: isMeeting ? 'confirmed' : 'proposed',
         startsAt,
+        proposedSlots: slotDates,
         location: location || null,
         notes: notes || null,
+        listingAgentCopy: Boolean(showing && (showing.kind === 'other_agent' || showing.kind === 'external_import')),
       });
     }
 
@@ -1378,6 +1429,204 @@ export async function POST(req: Request, ctx: RouteCtx) {
       body: `${client.firstName} ${client.lastName} · ${startsAt.toLocaleString('pl-PL')}${offerId ? ` · oferta #${offerId}` : ''}`,
       data: crmAgentPushData(clientId, { notificationType: 'crm_client_schedule' }),
     }).catch(() => {});
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'request_listing_showing') {
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      select: { id: true, type: true, firstName: true, lastName: true, phone: true },
+    });
+    if (!client || client.type !== 'BUYER') {
+      return NextResponse.json({ error: 'Prośba o pokaz jest tylko z karty kupującego.' }, { status: 400 });
+    }
+    const offerIdRaw = Number(body.offerId || 0);
+    const offerId = Number.isFinite(offerIdRaw) && offerIdRaw > 0 ? offerIdRaw : 0;
+    if (!offerId) {
+      return NextResponse.json({ error: 'Wybierz ofertę, o której pokaz prosisz.' }, { status: 400 });
+    }
+    const slotDates = parseStartsAtList(body.startsAtList || body.proposedSlots, body.startsAt);
+    const startsAt = slotDates[0] || null;
+    if (!startsAt) {
+      return NextResponse.json({ error: 'Podaj 2–3 terminy dla kupującego i agenta wystawiającego.' }, { status: 400 });
+    }
+    const notes = String(body.notes || body.message || '').trim();
+    const showing = await resolveShowingKind(offerId, agencyUserId);
+    if (!showing?.canRequestListingShowing) {
+      return NextResponse.json(
+        { error: 'Ta oferta jest Twoja albo importowana — zadzwoń do źródła albo zaproponuj terminy kupującemu.' },
+        { status: 400 },
+      );
+    }
+    const listingEmail = String(showing.listingAgent?.email || '').trim();
+    const agent = await prisma.user.findUnique({
+      where: { id: agencyUserId },
+      select: { name: true, companyName: true, phone: true, officePhone: true },
+    });
+    const metadata = {
+      startsAt: startsAt.toISOString(),
+      proposedSlots: slotDates.map((slot) => slot.toISOString()),
+      notes: notes || null,
+      proposedBy: 'agent',
+      status: 'pending',
+      offerId,
+      showingKind: showing.kind,
+      listingRequestSent: true,
+      buyerClientId: client.id,
+      sellerClientId: showing.sellerClientId,
+    };
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId,
+        agencyUserId,
+        offerId,
+        kind: JOURNEY_ACTIVITY.PRESENTATION,
+        title: `Prośba o pokaz · #${offerId}`,
+        body: [slotDates.map((slot) => slot.toLocaleString('pl-PL')).join(' · '), notes].filter(Boolean).join(' · '),
+        metadata,
+      },
+    });
+    if (showing.kind === 'other_agent') {
+      await prisma.agencyClientActivity.create({
+        data: {
+          clientId,
+          agencyUserId,
+          offerId,
+          kind: JOURNEY_ACTIVITY.LISTING_SHOWING_REQUESTED,
+          title: `Wysłano prośbę o pokaz · #${offerId}`,
+          body: notes || `Agent wystawiający: ${showing.listingAgent?.name || showing.listingAgent?.companyName || 'inny agent'}`,
+          metadata,
+        },
+      });
+    }
+    await emailClientSchedule({
+      clientId,
+      kind: 'presentation',
+      mode: 'proposed',
+      startsAt,
+      proposedSlots: slotDates,
+      notes: notes || null,
+      listingAgentCopy: true,
+    });
+    if (listingEmail.includes('@')) {
+      await emailListingAgentShowingRequest({
+        to: listingEmail,
+        listingAgentName: showing.listingAgent?.name || showing.listingAgent?.companyName,
+        requestingAgencyName: agent?.companyName || 'EstateOS',
+        requestingAgentName: agent?.name || 'Agent',
+        requestingPhone: agent?.officePhone || agent?.phone || null,
+        buyerFirstName: client.firstName,
+        offerTitle: showing.title,
+        offerId,
+        slots: slotDates,
+        notes: notes || null,
+        portalUrl: `https://estateos.pl/oferta/${offerId}`,
+      });
+    }
+    if (showing.listingAgent?.userId && showing.listingAgent.userId !== agencyUserId) {
+      await sendNotification({
+        userId: showing.listingAgent.userId,
+        type: 'CRM_EVENT',
+        title: 'Prośba o pokaz Twojej oferty',
+        body: `${agent?.name || 'Agent'} · #${offerId} · ${slotDates[0].toLocaleString('pl-PL')}`,
+        data: {
+          notificationType: 'listing_showing_request',
+          offerId,
+          href: `https://estateos.pl/oferta/${offerId}`,
+        },
+      }).catch(() => {});
+    }
+    await sendNotification({
+      userId: agencyUserId,
+      type: 'CRM_EVENT',
+      title: 'Wysłano prośbę o pokaz',
+      body: `${client.firstName} ${client.lastName} · oferta #${offerId}`,
+      data: crmAgentPushData(clientId, { notificationType: 'crm_listing_showing_request' }),
+    }).catch(() => {});
+    return NextResponse.json({ success: true, showingKind: showing.kind });
+  }
+
+  if (action === 'mark_presentation_held') {
+    const client = await prisma.agencyClient.findFirst({
+      where: { id: clientId, agencyUserId, status: 'ACTIVE' },
+      include: {
+        activities: {
+          where: {
+            kind: {
+              in: [
+                JOURNEY_ACTIVITY.PRESENTATION,
+                JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
+                JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
+                JOURNEY_ACTIVITY.PRESENTATION_HELD,
+              ],
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!client) {
+      return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    }
+    const slot = resolvePresentation(client.activities);
+    if (!slot) {
+      return NextResponse.json({ error: 'Najpierw wyślij termin prezentacji.' }, { status: 400 });
+    }
+    if (slot.heldAt) {
+      return NextResponse.json({ success: true, alreadyHeld: true });
+    }
+    const offerId = Number(body.offerId || slot.offerId || 0) || slot.offerId;
+    const heldAt = new Date();
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId,
+        agencyUserId,
+        offerId,
+        kind: JOURNEY_ACTIVITY.PRESENTATION_HELD,
+        title: `Prezentacja odbyta${offerId ? ` · #${offerId}` : ''}`,
+        body: new Date(slot.startsAt).toLocaleString('pl-PL'),
+        metadata: {
+          startsAt: slot.startsAt,
+          proposedSlots: slot.proposedSlots,
+          heldAt: heldAt.toISOString(),
+          offerId,
+          showingKind: slot.showingKind || null,
+          buyerClientId: slot.buyerClientId,
+          sellerClientId: slot.sellerClientId,
+          status: 'confirmed',
+        },
+      },
+    });
+    const openRows = await prisma.agencyClientActivity.findMany({
+      where: {
+        clientId,
+        kind: { in: ['CLIENT_FEEDBACK', 'INTELLIGENCE_HANDOFF'] },
+        ...(offerId ? { offerId } : {}),
+      },
+      select: { id: true, metadata: true },
+    });
+    for (const row of openRows) {
+      const meta =
+        row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+          ? { ...(row.metadata as Record<string, unknown>) }
+          : {};
+      if (meta.agentStatus === 'done') continue;
+      await prisma.agencyClientActivity.update({
+        where: { id: row.id },
+        data: {
+          metadata: {
+            ...meta,
+            agentStatus: 'done',
+            agentHandledAt: heldAt.toISOString(),
+          },
+        },
+      });
+    }
+    await resumeIntelligenceForAgent({ clientId, agencyUserId });
+    await prisma.agencyClient.update({
+      where: { id: clientId },
+      data: { intelligenceLastSentAt: null },
+    });
     return NextResponse.json({ success: true });
   }
 

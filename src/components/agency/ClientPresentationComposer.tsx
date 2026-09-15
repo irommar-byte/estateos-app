@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
-import type { AgencyClientMatch, ManagedOfferOption } from '../../services/agencyClientService';
+import type { AgencyClientMatch, AgencyShowingCard, ManagedOfferOption } from '../../services/agencyClientService';
 import { formatCurrencyPLN } from '../../utils/crmFormatters';
 
 type Colors = {
@@ -96,7 +96,7 @@ export default function ClientPresentationComposer({
   matches,
   managedOffers,
   presentationOfferId,
-  presentationAt,
+  presentationSlots,
   guestMode,
   guestName,
   guestEmail,
@@ -104,20 +104,29 @@ export default function ClientPresentationComposer({
   guestVisitor,
   busy,
   colors,
+  showing,
+  quote,
+  statusLabel,
+  listingNotes,
+  presentation,
   onChangeOfferId,
-  onPickDate,
+  onPickSlot,
   onChangeGuestMode,
   onChangeGuestName,
   onChangeGuestEmail,
   onChangeGuestPhone,
   onChangeGuestVisitor,
+  onChangeListingNotes,
   onSubmit,
+  onRequestListing,
+  onMarkHeld,
+  onCall,
 }: {
   clientType: 'BUYER' | 'SELLER';
   matches: AgencyClientMatch[];
   managedOffers: ManagedOfferOption[];
   presentationOfferId: string;
-  presentationAt: string;
+  presentationSlots: string[];
   guestMode: boolean;
   guestName: string;
   guestEmail: string;
@@ -125,14 +134,28 @@ export default function ClientPresentationComposer({
   guestVisitor: string;
   busy?: boolean;
   colors: Colors;
+  showing?: AgencyShowingCard | null;
+  quote?: string | null;
+  statusLabel?: string | null;
+  listingNotes?: string;
+  presentation?: {
+    startsAt: string;
+    status: 'confirmed' | 'pending';
+    heldAt?: string | null;
+    offerId?: number | null;
+  } | null;
   onChangeOfferId: (value: string) => void;
-  onPickDate: () => void;
+  onPickSlot: (index: number) => void;
   onChangeGuestMode: (value: boolean) => void;
   onChangeGuestName: (value: string) => void;
   onChangeGuestEmail: (value: string) => void;
   onChangeGuestPhone: (value: string) => void;
   onChangeGuestVisitor: (value: string) => void;
+  onChangeListingNotes?: (value: string) => void;
   onSubmit: () => void;
+  onRequestListing?: () => void;
+  onMarkHeld?: () => void;
+  onCall?: (phone: string) => void;
 }) {
   const selectedId = Number(presentationOfferId);
   const selectedOffer = useMemo(
@@ -145,6 +168,7 @@ export default function ClientPresentationComposer({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [otherOpen, setOtherOpen] = useState(!showing);
   const filteredOffers = useMemo(() => {
     const q = pickerQuery.trim().toLowerCase();
     if (!q) return managedOffers;
@@ -152,18 +176,90 @@ export default function ClientPresentationComposer({
       `#${offer.id} ${offer.title} ${offer.city || ''}`.toLowerCase().includes(q),
     );
   }, [managedOffers, pickerQuery]);
+  const filledSlots = presentationSlots.filter(Boolean);
+  const listingKind = showing?.kind === 'other_agent' || showing?.kind === 'external_import';
+  const importKind = showing?.kind === 'own_import' || showing?.kind === 'external_import';
   const canSubmit =
-    Boolean(presentationAt) &&
+    filledSlots.length > 0 &&
     Boolean(presentationOfferId.trim()) &&
     (!guestMode || (guestName.trim() && guestEmail.includes('@')));
 
   return (
     <View style={{ marginTop: 14 }}>
-      <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
-        {guestMode
-          ? 'Wybierz nieruchomość z Twojego portfela i wyślij termin właścicielowi oraz agentowi gościowi — obie strony dostaną e-mail do akceptacji.'
-          : 'Wybierz nieruchomość z listy agenta albo wpisz ID oferty i zaproponuj datę — kupujący i sprzedający dostaną ten sam termin na e-mail.'}
-      </Text>
+      {showing ? (
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.accent, overflow: 'hidden', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 10, padding: 10 }}>
+            {showing.imageUrl ? (
+              <Image source={{ uri: showing.imageUrl }} style={{ width: 86, height: 72, borderRadius: 12 }} contentFit="cover" />
+            ) : (
+              <View style={{ width: 86, height: 72, borderRadius: 12, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: colors.secondary, fontWeight: '800' }}>#{showing.offerId}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.accent, fontSize: 10, fontWeight: '900' }}>
+                {showing.kindLabel}
+                {statusLabel ? ` · ${statusLabel}` : ''}
+              </Text>
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13, marginTop: 3 }}>
+                #{showing.offerId} · {showing.title}
+              </Text>
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }}>
+                {[showing.street, showing.city].filter(Boolean).join(', ')}
+              </Text>
+            </View>
+          </View>
+          {quote ? (
+            <Text style={{ color: colors.text, fontSize: 13, fontStyle: 'italic', paddingHorizontal: 12, paddingBottom: 10 }}>
+              „{quote}”
+            </Text>
+          ) : null}
+          {importKind && showing.sourcePhone ? (
+            <Text style={{ color: colors.text, fontSize: 12, paddingHorizontal: 12, paddingBottom: 8 }}>
+              Telefon ze snapshotu: {showing.sourcePhone}
+              {showing.sourceAgencyName ? ` · ${showing.sourceAgencyName}` : ''}
+            </Text>
+          ) : null}
+          {showing.kind === 'other_agent' && showing.listingAgent ? (
+            <Text style={{ color: colors.text, fontSize: 12, paddingHorizontal: 12, paddingBottom: 8 }}>
+              Agent wystawiający: {[showing.listingAgent.name, showing.listingAgent.companyName].filter(Boolean).join(' · ') || 'konto EstateOS'}
+              {showing.listingAgent.phone ? ` · ${showing.listingAgent.phone}` : ''}
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
+            {showing.canCallSource && showing.sourcePhone ? (
+              <Pressable onPress={() => onCall?.(showing.sourcePhone!)} style={[styles.primary, { minHeight: 40, paddingHorizontal: 12 }]}>
+                <Text style={styles.primaryText}>Zadzwoń</Text>
+              </Pressable>
+            ) : null}
+            {showing.sourceUrl ? (
+              <Pressable
+                onPress={() => void Linking.openURL(showing.sourceUrl!)}
+                style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
+              >
+                <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>Oryginał na portalu</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ) : (
+        <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
+          {guestMode
+            ? 'Wybierz nieruchomość z Twojego portfela i wyślij termin właścicielowi oraz agentowi gościowi — obie strony dostaną e-mail do akceptacji.'
+            : 'Wybierz nieruchomość, której chce klient, i zaproponuj 2–3 terminy.'}
+        </Text>
+      )}
+
+      {presentation && !presentation.heldAt && (!showing || presentation.offerId === showing.offerId) ? (
+        <Pressable
+          onPress={onMarkHeld}
+          style={[styles.primary, { marginBottom: 10, opacity: onMarkHeld ? 1 : 0.5 }]}
+        >
+          <Text style={styles.primaryText}>
+            {presentation.status === 'pending' ? 'Oznacz pokaz jako odbytą' : 'Oznacz prezentację jako odbytą'}
+          </Text>
+        </Pressable>
+      ) : null}
 
       {clientType === 'SELLER' || guestMode ? (
         <Pressable
@@ -223,7 +319,15 @@ export default function ClientPresentationComposer({
         </View>
       ) : null}
 
-      {managedOffers.length ? (
+      {showing ? (
+        <Pressable onPress={() => setOtherOpen((open) => !open)} style={{ marginTop: 4, minHeight: 36, justifyContent: 'center' }}>
+          <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
+            {otherOpen ? 'Ukryj inną nieruchomość' : 'Inna nieruchomość'}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {managedOffers.length && (otherOpen || !showing) ? (
         <View style={{ marginTop: 12 }}>
           <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>
             NIERUCHOMOŚCI AGENTA
@@ -307,7 +411,7 @@ export default function ClientPresentationComposer({
         </View>
       ) : null}
 
-      {matches.length ? (
+      {matches.length && (otherOpen || !showing) ? (
         <View style={{ marginTop: 12 }}>
           <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>
             DOPASOWANIA KLIENTA
@@ -332,6 +436,7 @@ export default function ClientPresentationComposer({
         </View>
       ) : null}
 
+      {(otherOpen || !showing) ? (
       <TextInput
         value={presentationOfferId}
         onChangeText={(value) => onChangeOfferId(value.replace(/[^\d]/g, ''))}
@@ -340,17 +445,34 @@ export default function ClientPresentationComposer({
         placeholderTextColor={colors.secondary}
         style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 10 }]}
       />
-      <Pressable
-        onPress={onPickDate}
-        style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
-      >
-        <Text style={{ color: presentationAt ? colors.text : colors.secondary, fontWeight: '700' }}>
-          {presentationAt || 'Wybierz datę i godzinę prezentacji'}
-        </Text>
-      </Pressable>
+      ) : null}
+      <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', marginTop: 12 }}>
+        2–3 TERMINY
+      </Text>
+      {[0, 1, 2].map((index) => (
+        <Pressable
+          key={index}
+          onPress={() => onPickSlot(index)}
+          style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
+        >
+          <Text style={{ color: presentationSlots[index] ? colors.text : colors.secondary, fontWeight: '700' }}>
+            {presentationSlots[index] || `Termin ${index + 1}${index === 0 ? '' : ' (opcjonalnie)'}`}
+          </Text>
+        </Pressable>
+      ))}
+      {listingKind ? (
+        <TextInput
+          value={listingNotes || ''}
+          onChangeText={onChangeListingNotes}
+          placeholder="Krótka wiadomość do agenta wystawiającego"
+          placeholderTextColor={colors.secondary}
+          multiline
+          style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border, marginTop: 8, minHeight: 72 }]}
+        />
+      ) : null}
       <Pressable
         disabled={!canSubmit || busy}
-        onPress={onSubmit}
+        onPress={listingKind && onRequestListing ? onRequestListing : onSubmit}
         style={[styles.primary, { marginTop: 8, opacity: canSubmit ? 1 : 0.5 }]}
       >
         <Text style={styles.primaryText}>
@@ -358,7 +480,11 @@ export default function ClientPresentationComposer({
             ? 'Wysyłam…'
             : guestMode
               ? 'Wyślij termin właścicielowi i agencji gościa'
-              : 'Zaproponuj termin obu stronom'}
+              : listingKind
+                ? 'Poproś o pokaz'
+                : importKind
+                  ? 'Zaproponuj terminy kupującemu'
+                  : 'Zaproponuj terminy'}
         </Text>
       </Pressable>
     </View>

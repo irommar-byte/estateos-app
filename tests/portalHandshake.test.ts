@@ -42,7 +42,8 @@ test('buyer pipeline uses sentCount and dealClosed from the client record', () =
     hasCriteria: true,
     hasMatches: true,
     hasSent: true,
-    presentationConfirmed: false,
+    hasPresentation: false,
+    presentationHeld: false,
     dealClosed: true,
   });
   assert.equal(stages.find((s) => s.id === 'sending')?.done, true);

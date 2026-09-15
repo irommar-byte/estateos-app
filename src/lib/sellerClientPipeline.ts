@@ -168,23 +168,33 @@ export function computeBuyerPipeline(input: {
   hasCriteria: boolean;
   hasMatches: boolean;
   hasSent: boolean;
-  presentationConfirmed: boolean;
+  hasPresentation: boolean;
+  presentationHeld: boolean;
   dealClosed: boolean;
 }): BuyerPipelineStage[] {
   const doneFlags: Record<BuyerPipelineStageId, boolean> = {
     criteria: input.hasCriteria,
     radar: input.hasMatches,
     sending: input.hasSent,
-    presentation: input.presentationConfirmed,
+    presentation: input.presentationHeld || input.dealClosed,
     deal: input.dealClosed,
   };
   const order: BuyerPipelineStageId[] = ['criteria', 'radar', 'sending', 'presentation', 'deal'];
-  const firstOpen = order.findIndex((id) => !doneFlags[id]);
+  const firstOpen = order.findIndex((id) => {
+    if (id === 'presentation' && !input.hasPresentation && !input.presentationHeld) return false;
+    if (id === 'deal' && !input.presentationHeld) return false;
+    return !doneFlags[id];
+  });
   return order.map((id, index) => ({
     id,
     label: BUYER_PIPELINE_LABELS[id],
     done: doneFlags[id],
-    current: firstOpen === -1 ? index === order.length - 1 : index === firstOpen,
+    current:
+      id === 'presentation'
+        ? input.hasPresentation && !input.presentationHeld
+        : firstOpen === -1
+          ? index === order.length - 1 && (input.presentationHeld || input.dealClosed)
+          : index === firstOpen,
   }));
 }
 
@@ -193,9 +203,10 @@ export function buyerPipelineFromClientDetail(client: AgencyClientDetail): Buyer
   const matches = client.matches || [];
   const hasMatches = matches.length > 0;
   const hasSent = (client.sentCount || 0) > 0 || matches.some((m) => Boolean(m.notifiedAt || m.sharedAt));
-  const presentationConfirmed = client.presentation?.status === 'confirmed';
+  const hasPresentation = Boolean(client.presentation?.startsAt);
+  const presentationHeld = Boolean(client.presentation?.heldAt);
   const dealClosed = client.dealClosed === true;
-  return computeBuyerPipeline({ hasCriteria, hasMatches, hasSent, presentationConfirmed, dealClosed });
+  return computeBuyerPipeline({ hasCriteria, hasMatches, hasSent, hasPresentation, presentationHeld, dealClosed });
 }
 
 export function hasLiveMeetingCountdown(startsAt?: string | null, nowMs = Date.now()) {

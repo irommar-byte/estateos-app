@@ -201,7 +201,8 @@ export default function AgencyClientsScreen() {
               hasCriteria: (buyerMember.matchCount || 0) > 0 || Boolean(buyerMember.buyerMaxPrice),
               hasMatches: (buyerMember.matchCount || 0) > 0,
               hasSent: (buyerMember.sentCount || 0) > 0,
-              presentationConfirmed: buyerMember.presentationConfirmed === true,
+              hasPresentation: buyerMember.presentationConfirmed === true,
+              presentationHeld: buyerMember.dealClosed === true,
               dealClosed: buyerMember.dealClosed === true,
             })
           : undefined;

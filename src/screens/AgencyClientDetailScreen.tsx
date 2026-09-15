@@ -404,6 +404,8 @@ export default function AgencyClientDetailScreen() {
   const chatScrollRef = useRef<ScrollView | null>(null);
   const chatPinnedToEndRef = useRef(true);
   const [presentationAt, setPresentationAt] = useState('');
+  const [presentationSlots, setPresentationSlots] = useState(['', '', '']);
+  const [listingShowingNotes, setListingShowingNotes] = useState('');
   const [presentationOfferId, setPresentationOfferId] = useState('');
   const [guestAgencyMode, setGuestAgencyMode] = useState(false);
   const [guestAgencyName, setGuestAgencyName] = useState('');
@@ -621,6 +623,11 @@ export default function AgencyClientDetailScreen() {
       void load({ silent: true });
     }, [load]),
   );
+
+  useEffect(() => {
+    const viewing = (client?.buyerAgentTasks || []).find((task) => task.kind === 'viewing' && task.offerId);
+    if (viewing?.offerId) setPresentationOfferId(String(viewing.offerId));
+  }, [client?.id]);
 
   useEffect(() => {
     setForm((current) => {
@@ -1348,8 +1355,20 @@ export default function AgencyClientDetailScreen() {
       return;
     }
     if (action === 'propose_presentation') {
-      Alert.alert('Prezentacja', 'Wybierz ofertę z listy poniżej i zaproponuj termin.');
+      const viewing = buyerAgentTasks.find((task) => task.kind === 'viewing' && task.offerId);
+      if (viewing?.offerId) setPresentationOfferId(String(viewing.offerId));
       setPresentationExpanded(true);
+      scrollToPresentation();
+      return;
+    }
+    if (action === 'mark_presentation_held') {
+      if (!token) return;
+      setBusy('held');
+      void postAgencyClientAction(token, clientId, { action: 'mark_presentation_held' }).then((res) => {
+        setBusy('');
+        if (!res.ok) Alert.alert('Prezentacja', res.message);
+        else void load();
+      });
       return;
     }
     if (action === 'respond_to_client') {
@@ -1390,21 +1409,29 @@ export default function AgencyClientDetailScreen() {
         title={
           dateModalField === 'targetTimeline'
             ? 'Horyzont sprzedaży'
-            : dateModalField === 'presentation'
+            : String(dateModalField || '').startsWith('presentation')
               ? 'Termin prezentacji'
               : 'Termin'
         }
         initialValue={
-          dateModalField === 'presentation'
-            ? presentationAt
-            : dateModalField && form
-              ? String((form.meeting as Record<string, string>)[dateModalField] || '')
-              : ''
+          String(dateModalField || '').startsWith('presentation:')
+            ? presentationSlots[Number(String(dateModalField).split(':')[1]) || 0] || ''
+            : dateModalField === 'presentation'
+              ? presentationSlots[0] || presentationAt
+              : dateModalField && form
+                ? String((form.meeting as Record<string, string>)[dateModalField] || '')
+                : ''
         }
         onClose={() => setDateModalField(null)}
         onSelect={(formattedDate) => {
-          if (dateModalField === 'presentation') {
-            setPresentationAt(formattedDate);
+          if (String(dateModalField || '').startsWith('presentation')) {
+            const index = dateModalField === 'presentation' ? 0 : Number(String(dateModalField).split(':')[1] || 0);
+            setPresentationSlots((current) => {
+              const next = [...current];
+              next[index] = formattedDate;
+              return next;
+            });
+            if (index === 0) setPresentationAt(formattedDate);
             return;
           }
           if (dateModalField && form) {
@@ -1764,6 +1791,7 @@ export default function AgencyClientDetailScreen() {
                             onPress={() => {
                               setPresentationOfferId(String(task.offerId));
                               setPresentationExpanded(true);
+                              scrollToPresentation();
                             }}
                             style={[styles.taskButton, { backgroundColor: '#34C759', borderColor: '#34C759' }]}
                           >
@@ -2667,12 +2695,14 @@ export default function AgencyClientDetailScreen() {
                   <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
                     {new Date(client.presentation.startsAt).toLocaleString('pl-PL')}
                   </Text>
-                  <Text style={{ color: client.presentation.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
-                    {client.presentation.status === 'pending'
-                      ? client.presentation.reason
-                        ? `Propozycja zmiany: ${client.presentation.reason}`
-                        : 'Propozycja wysłana obu stronom'
-                      : 'Potwierdzona'}
+                  <Text style={{ color: client.presentation.heldAt ? colors.accent : client.presentation.status === 'pending' ? '#FF9500' : colors.accent, fontWeight: '800', fontSize: 12, marginTop: 4 }}>
+                    {client.presentation.heldAt
+                      ? 'Odbyta'
+                      : client.presentation.status === 'pending'
+                        ? client.presentation.reason
+                          ? `Propozycja zmiany: ${client.presentation.reason}`
+                          : 'Propozycja wysłana'
+                        : 'Potwierdzona'}
                   </Text>
                   {client.presentation.status === 'pending' && client.presentation.reason ? (
                     <Pressable
@@ -2702,25 +2732,81 @@ export default function AgencyClientDetailScreen() {
                   matches={client.matches || []}
                   managedOffers={client.managedOffers || []}
                   presentationOfferId={presentationOfferId}
-                  presentationAt={presentationAt}
+                  presentationSlots={presentationSlots}
                   guestMode={guestAgencyMode}
                   guestName={guestAgencyName}
                   guestEmail={guestAgencyEmail}
                   guestPhone={guestAgencyPhone}
                   guestVisitor={guestVisitorName}
-                  busy={busy === 'propose_pres'}
+                  busy={busy === 'propose_pres' || busy === 'held'}
                   colors={colors}
+                  showing={
+                    buyerAgentTasks.find((task) => task.kind === 'viewing')?.showing ||
+                    (client.showingCards || []).find((card) => card.offerId === Number(presentationOfferId)) ||
+                    (client.showingCards || [])[0] ||
+                    null
+                  }
+                  quote={buyerAgentTasks.find((task) => task.kind === 'viewing')?.body || null}
+                  statusLabel={buyerAgentTasks.find((task) => task.kind === 'viewing')?.statusLabel || null}
+                  listingNotes={listingShowingNotes}
+                  presentation={client.presentation || null}
                   onChangeOfferId={setPresentationOfferId}
-                  onPickDate={() => setDateModalField('presentation')}
+                  onPickSlot={(index) => setDateModalField(`presentation:${index}`)}
                   onChangeGuestMode={setGuestAgencyMode}
                   onChangeGuestName={setGuestAgencyName}
                   onChangeGuestEmail={setGuestAgencyEmail}
                   onChangeGuestPhone={setGuestAgencyPhone}
                   onChangeGuestVisitor={setGuestVisitorName}
+                  onChangeListingNotes={setListingShowingNotes}
+                  onCall={(phone) => void Linking.openURL(`tel:${phone}`)}
+                  onMarkHeld={async () => {
+                    if (!token) return;
+                    setBusy('held');
+                    const res = await postAgencyClientAction(token, clientId, { action: 'mark_presentation_held' });
+                    setBusy('');
+                    if (!res.ok) Alert.alert('Prezentacja', res.message);
+                    else void load();
+                  }}
+                  onRequestListing={async () => {
+                    if (!token) return;
+                    const slots = presentationSlots
+                      .map((value) => {
+                        const m = value.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+                        if (!m) return null;
+                        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
+                      })
+                      .filter(Boolean) as string[];
+                    if (!slots.length) {
+                      Alert.alert('Prezentacja', 'Wybierz przynajmniej jeden termin.');
+                      return;
+                    }
+                    setBusy('propose_pres');
+                    const res = await postAgencyClientAction(token, clientId, {
+                      action: 'request_listing_showing',
+                      startsAt: slots[0],
+                      startsAtList: slots,
+                      offerId: Number(presentationOfferId),
+                      notes: listingShowingNotes.trim() || undefined,
+                    });
+                    setBusy('');
+                    if (!res.ok) Alert.alert('Prezentacja', res.message);
+                    else {
+                      setPresentationSlots(['', '', '']);
+                      setPresentationAt('');
+                      Alert.alert('Prezentacja', 'Wysłano prośbę o pokaz do agenta wystawiającego.');
+                      void load();
+                    }
+                  }}
                   onSubmit={async () => {
-                    if (!token || !presentationAt) return;
-                    const m = presentationAt.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-                    if (!m) {
+                    if (!token) return;
+                    const slots = presentationSlots
+                      .map((value) => {
+                        const m = value.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+                        if (!m) return null;
+                        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
+                      })
+                      .filter(Boolean) as string[];
+                    if (!slots.length) {
                       Alert.alert('Prezentacja', 'Wybierz kompletny termin.');
                       return;
                     }
@@ -2729,10 +2815,10 @@ export default function AgencyClientDetailScreen() {
                       return;
                     }
                     setBusy('propose_pres');
-                    const startsAt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
                     const res = await postAgencyClientAction(token, clientId, {
                       action: 'propose_presentation',
-                      startsAt,
+                      startsAt: slots[0],
+                      startsAtList: slots,
                       offerId: Number(presentationOfferId),
                       guestAgency: guestAgencyMode
                         ? {
@@ -2746,12 +2832,13 @@ export default function AgencyClientDetailScreen() {
                     setBusy('');
                     if (!res.ok) Alert.alert('Prezentacja', res.message);
                     else {
+                      setPresentationSlots(['', '', '']);
                       setPresentationAt('');
                       Alert.alert(
                         'Prezentacja',
                         guestAgencyMode
                           ? 'Wysłano termin do właściciela i do agencji gościa.'
-                          : 'Wysłano propozycję prezentacji obu stronom na e-mail.',
+                          : 'Wysłano terminy na e-mail.',
                       );
                       void load();
                     }
