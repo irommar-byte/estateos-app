@@ -10,6 +10,7 @@ export type ClientNextStep = {
     | 'collect_feedback'
     | 'respond_to_client'
     | 'propose_presentation'
+    | 'mark_presentation_held'
     | 'accept_schedule'
     | 'open_portal'
     | 'finish_acquisition'
@@ -30,9 +31,11 @@ export function resolveClientNextStep(input: {
   feedbackCount: number;
   viewingIntentCount?: number;
   pendingAgentTaskCount?: number;
+  pendingAgentTaskKind?: 'viewing' | 'question' | 'handoff' | 'stalled' | string | null;
   pendingAgentTaskHint?: string | null;
   meetingStatus?: 'confirmed' | 'pending' | null;
   presentationStatus?: 'confirmed' | 'pending' | null;
+  presentationHeld?: boolean;
   acquisitionStatus?: string | null;
   linkedOfferId?: number | null;
   pendingIntelligenceCheckback?: boolean;
@@ -96,6 +99,27 @@ export function resolveClientNextStep(input: {
       action: 'set_criteria',
     };
   }
+  if (!input.presentationHeld && input.presentationStatus === 'confirmed') {
+    return {
+      id: 'mark_presentation_held',
+      label: 'Oznacz prezentację jako odbytą',
+      hint: 'Klient był na pokazie — zamknij etap, żeby asystent mógł wysłać kolejną ofertę.',
+      action: 'mark_presentation_held',
+    };
+  }
+  if (
+    !input.presentationStatus &&
+    (input.pendingAgentTaskKind === 'viewing' || (input.viewingIntentCount || 0) > 0)
+  ) {
+    return {
+      id: 'propose_presentation',
+      label: 'Umów prezentację',
+      hint:
+        input.pendingAgentTaskHint ||
+        'Klient kliknął „Chcę oglądać”. Otwórz kartę tej oferty i zaproponuj 2–3 terminy.',
+      action: 'propose_presentation',
+    };
+  }
   if (input.pendingIntelligenceCheckback) {
     return {
       id: 'await_checkback',
@@ -104,7 +128,7 @@ export function resolveClientNextStep(input: {
       action: 'open_portal',
     };
   }
-  if ((input.pendingAgentTaskCount || 0) > 0) {
+  if ((input.pendingAgentTaskCount || 0) > 0 && input.pendingAgentTaskKind !== 'viewing') {
     return {
       id: 'respond_to_client',
       label: 'Odpowiedz klientowi',
@@ -136,14 +160,6 @@ export function resolveClientNextStep(input: {
       label: 'Zebrać reakcję klienta',
       hint: 'Oferty poszły — przypomnij o panelu albo zadzwoń.',
       action: 'open_portal',
-    };
-  }
-  if (!input.presentationStatus && (input.viewingIntentCount || 0) > 0) {
-    return {
-      id: 'propose_presentation',
-      label: 'Umów prezentację',
-      hint: 'Klient kliknął „Chcę oglądać”. Wybierz tę ofertę i zaproponuj termin obu stronom.',
-      action: 'propose_presentation',
     };
   }
   return {

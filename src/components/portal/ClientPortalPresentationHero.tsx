@@ -28,6 +28,9 @@ export type PortalPresentationSlot = {
   proposedBy: "agent" | "client";
   reason: string | null;
   previousStartsAt: string | null;
+  proposedSlots?: string[];
+  heldAt?: string | null;
+  showingKind?: string | null;
   offer?: PortalPresentationOffer | null;
 };
 
@@ -110,10 +113,16 @@ export default function ClientPortalPresentationHero({
           }`}
         >
           {confirmed ? <CheckCircle2 className="size-3.5" /> : <Clock3 className="size-3.5" />}
-          {confirmed ? "Prezentacja potwierdzona" : "Prezentacja przyszła"}
+          {slot.heldAt ? "Prezentacja odbyta" : confirmed ? "Prezentacja potwierdzona" : "Prezentacja przyszła"}
         </span>
         <span className="text-[11px] font-semibold text-[var(--eos-muted)]">
-          {confirmed ? "Termin jest przypieczętowany" : "Potwierdź albo zaproponuj inną godzinę"}
+          {slot.heldAt
+            ? "Ten pokaz już się odbył"
+            : confirmed
+              ? "Termin jest przypieczętowany"
+              : slot.showingKind === "other_agent" || slot.showingKind === "external_import"
+                ? "Prosimy o termin u agenta wystawiającego — wybierz godzinę poniżej"
+                : "Potwierdź albo zaproponuj inną godzinę"}
         </span>
       </div>
 

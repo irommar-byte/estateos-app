@@ -5,6 +5,8 @@ import { useState } from "react";
 type Slot = {
   startsAt: string;
   status: "confirmed" | "pending";
+  proposedSlots?: string[];
+  heldAt?: string | null;
 };
 
 export default function ClientPortalScheduleActions({
@@ -18,7 +20,7 @@ export default function ClientPortalScheduleActions({
   slot: Slot;
   onDone: () => Promise<void> | void;
 }) {
-  const [busy, setBusy] = useState<"confirm" | "change" | null>(null);
+  const [busy, setBusy] = useState<"confirm" | "change" | string | null>(null);
   const [openChange, setOpenChange] = useState(false);
   const [startsAt, setStartsAt] = useState("");
   const [reason, setReason] = useState("");
@@ -26,6 +28,8 @@ export default function ClientPortalScheduleActions({
 
   const confirmAction = kind === "meeting" ? "confirm_meeting" : "confirm_presentation";
   const changeAction = kind === "meeting" ? "propose_meeting_change" : "propose_presentation_change";
+  const options = [...new Set([slot.startsAt, ...(slot.proposedSlots || [])])].filter(Boolean);
+  const held = Boolean(slot.heldAt);
 
   const post = async (action: string, extra?: Record<string, string>) => {
     setError("");
@@ -38,34 +42,63 @@ export default function ClientPortalScheduleActions({
     if (!res.ok) throw new Error(String(json.error || "Nie udało się zapisać."));
   };
 
+  if (held) {
+    return <p className="mt-4 text-sm font-semibold text-emerald-700">Prezentacja odbyła się.</p>;
+  }
+
   return (
     <div className="mt-4 space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {slot.status !== "confirmed" ? (
-          <button
-            type="button"
-            disabled={Boolean(busy)}
-            onClick={() => {
-              setBusy("confirm");
-              void post(confirmAction)
-                .then(() => onDone())
-                .catch((e) => setError(e instanceof Error ? e.message : "Błąd"))
-                .finally(() => setBusy(null));
-            }}
-            className="eos-engraved-cta eos-engraved-cta--home"
-          >
-            {busy === "confirm" ? "Zapisuję…" : "Potwierdź termin"}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          disabled={Boolean(busy)}
-          onClick={() => setOpenChange((v) => !v)}
-          className="eos-engraved-cta"
-        >
-          {openChange ? "Anuluj zmianę" : "Zaproponuj inny termin"}
-        </button>
-      </div>
+      {slot.status !== "confirmed" && options.length > 1 ? (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-[var(--eos-text)]">Wybierz jeden z zaproponowanych terminów</p>
+          <div className="flex flex-col gap-2">
+            {options.map((value) => (
+              <button
+                key={value}
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => {
+                  setBusy(value);
+                  void post(confirmAction, { startsAt: value })
+                    .then(() => onDone())
+                    .catch((e) => setError(e instanceof Error ? e.message : "Błąd"))
+                    .finally(() => setBusy(null));
+                }}
+                className="eos-engraved-cta eos-engraved-cta--home text-left"
+              >
+                {busy === value ? "Zapisuję…" : new Date(value).toLocaleString("pl-PL")}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {slot.status !== "confirmed" ? (
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() => {
+                setBusy("confirm");
+                void post(confirmAction, { startsAt: slot.startsAt })
+                  .then(() => onDone())
+                  .catch((e) => setError(e instanceof Error ? e.message : "Błąd"))
+                  .finally(() => setBusy(null));
+              }}
+              className="eos-engraved-cta eos-engraved-cta--home"
+            >
+              {busy === "confirm" ? "Zapisuję…" : "Potwierdź termin"}
+            </button>
+          ) : null}
+        </div>
+      )}
+      <button
+        type="button"
+        disabled={Boolean(busy)}
+        onClick={() => setOpenChange((v) => !v)}
+        className="eos-engraved-cta"
+      >
+        {openChange ? "Anuluj zmianę" : "Zaproponuj inny termin"}
+      </button>
 
       {openChange ? (
         <div className="eos-inset-well space-y-3 rounded-2xl p-4">

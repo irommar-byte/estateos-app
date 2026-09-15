@@ -30,3 +30,22 @@ test('feedback alone does not claim the client wants a viewing', () => {
     'propose_presentation',
   );
 });
+
+test('open viewing task beats a stall reply and points at presentation', () => {
+  const next = resolveClientNextStep({
+    ...buyer,
+    pendingAgentTaskCount: 2,
+    pendingAgentTaskKind: 'viewing',
+    pendingAgentTaskHint: 'Klient kliknął „Chcę oglądać” przy #1400.',
+    viewingIntentCount: 1,
+  });
+  assert.equal(next.action, 'propose_presentation');
+  assert.match(next.hint, /#1400/);
+});
+
+test('confirmed presentation asks the agent to mark it held', () => {
+  assert.equal(
+    resolveClientNextStep({ ...buyer, presentationStatus: 'confirmed' }).action,
+    'mark_presentation_held',
+  );
+});

@@ -37,6 +37,8 @@ export const JOURNEY_ACTIVITY = {
   PRESENTATION: 'PRESENTATION_PROPOSED',
   PRESENTATION_CHANGE: 'PRESENTATION_CHANGE_PROPOSED',
   PRESENTATION_CONFIRMED: 'PRESENTATION_CONFIRMED',
+  PRESENTATION_HELD: 'PRESENTATION_HELD',
+  LISTING_SHOWING_REQUESTED: 'LISTING_SHOWING_REQUESTED',
   PORTAL_MESSAGE: 'PORTAL_MESSAGE',
 } as const;
 
@@ -56,6 +58,10 @@ export type ScheduleSlot = {
   offerId: number | null;
   buyerClientId: number | null;
   sellerClientId: number | null;
+  proposedSlots: string[];
+  showingKind?: string | null;
+  listingRequestSent?: boolean;
+  heldAt?: string | null;
 };
 
 export type JourneyStageId =
@@ -211,6 +217,13 @@ function positiveId(raw: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function parseProposedSlots(raw: unknown, fallbackStartsAt: string | null): string[] {
+  const items = Array.isArray(raw) ? raw : [];
+  const slots = items.map(parseIso).filter((value): value is string => Boolean(value));
+  if (fallbackStartsAt && !slots.includes(fallbackStartsAt)) slots.unshift(fallbackStartsAt);
+  return slots.slice(0, 3);
+}
+
 function slotFromMeta(
   meta: Record<string, unknown>,
   fallback: Partial<ScheduleSlot>,
@@ -218,6 +231,13 @@ function slotFromMeta(
 ): ScheduleSlot | null {
   const startsAt = parseIso(meta.startsAt);
   if (!startsAt) return null;
+  const proposedSlots = Array.isArray(meta.proposedSlots)
+    ? parseProposedSlots(meta.proposedSlots, startsAt)
+    : fallback.proposedSlots?.length
+      ? fallback.proposedSlots.includes(startsAt)
+        ? fallback.proposedSlots
+        : [startsAt, ...fallback.proposedSlots.filter((slot) => slot !== startsAt)].slice(0, 3)
+      : [startsAt];
   return {
     startsAt,
     location: meta.location ? String(meta.location) : fallback.location || null,
@@ -234,6 +254,10 @@ function slotFromMeta(
       null,
     buyerClientId: positiveId(meta.buyerClientId) || fallback.buyerClientId || null,
     sellerClientId: positiveId(meta.sellerClientId) || fallback.sellerClientId || null,
+    proposedSlots: proposedSlots.length ? proposedSlots : fallback.proposedSlots || [startsAt],
+    showingKind: meta.showingKind ? String(meta.showingKind) : fallback.showingKind || null,
+    listingRequestSent: Boolean(meta.listingRequestSent) || Boolean(fallback.listingRequestSent),
+    heldAt: parseIso(meta.heldAt) || fallback.heldAt || null,
   };
 }
 
@@ -297,11 +321,26 @@ export function resolveMeeting(activities: ActivityLike[]): ScheduleSlot | null 
 }
 
 export function resolvePresentation(activities: ActivityLike[]): ScheduleSlot | null {
-  return resolveSchedule(activities, {
+  const slot = resolveSchedule(activities, {
     seed: JOURNEY_ACTIVITY.PRESENTATION,
     change: JOURNEY_ACTIVITY.PRESENTATION_CHANGE,
     confirmed: JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED,
   });
+  if (!slot) return null;
+  const held = activities
+    .filter((row) => row.kind === JOURNEY_ACTIVITY.PRESENTATION_HELD)
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const lastHeld = held[held.length - 1];
+  if (!lastHeld) return slot;
+  const heldAt =
+    parseIso(asMeta(lastHeld.metadata).heldAt) ||
+    (typeof lastHeld.createdAt === 'string' ? lastHeld.createdAt : lastHeld.createdAt.toISOString());
+  return { ...slot, heldAt };
+}
+
+export function presentationWasHeld(activities: ActivityLike[]): boolean {
+  return activities.some((row) => row.kind === JOURNEY_ACTIVITY.PRESENTATION_HELD);
 }
 
 export function buildJourneyStages(params: {
@@ -312,6 +351,7 @@ export function buildJourneyStages(params: {
   hasOffer: boolean;
   hasPresentation: boolean;
   presentationConfirmed: boolean;
+  presentationHeld?: boolean;
   clientType?: 'BUYER' | 'SELLER';
   hasCriteria?: boolean;
   sentOfferCount?: number;
@@ -354,15 +394,17 @@ export function buildJourneyStages(params: {
           {
             id: 'presentation',
             label: 'Prezentacja na żywo',
-            done: params.hasPresentation && params.presentationConfirmed,
-            hint: params.hasPresentation
-              ? 'Termin prezentacji jest ustalony. Szczegóły znajdziesz poniżej.'
-              : 'Gdy któraś oferta naprawdę pasuje, agent umówi prezentację.',
+            done: Boolean(params.presentationHeld),
+            hint: params.presentationHeld
+              ? 'Pokaz się odbył. Agent wraca do kolejnych ofert, jeśli nadal szukacie.'
+              : params.hasPresentation
+                ? 'Termin prezentacji jest ustalony. Szczegóły znajdziesz poniżej.'
+                : 'Gdy któraś oferta naprawdę pasuje, agent umówi prezentację.',
           },
           {
             id: 'done',
             label: 'Blisko mety',
-            done: params.hasPresentation && params.presentationConfirmed,
+            done: Boolean(params.presentationHeld),
             hint: 'Jesteśmy w procesie sprzedaży: kryteria → oferty → Twoja opinia → prezentacja.',
           },
         ]
@@ -388,10 +430,12 @@ export function buildJourneyStages(params: {
           {
             id: 'presentation',
             label: 'Prezentacje',
-            done: params.hasPresentation && params.presentationConfirmed,
-            hint: params.hasPresentation
-              ? 'Pokaz mieszkania kupującemu — termin jest na osobnej karcie poniżej. To nie jest spotkanie z agentem.'
-              : 'Gdy kupujący chce obejrzeć, agent zaproponuje termin. Właściciel i kupujący widzą ten sam pokaz.',
+            done: Boolean(params.presentationHeld),
+            hint: params.presentationHeld
+              ? 'Pokaz się odbył.'
+              : params.hasPresentation
+                ? 'Pokaz mieszkania kupującemu — termin jest na osobnej karcie poniżej. To nie jest spotkanie z agentem.'
+                : 'Gdy kupujący chce obejrzeć, agent zaproponuje termin. Właściciel i kupujący widzą ten sam pokaz.',
           },
           {
             id: 'done',
@@ -400,11 +444,30 @@ export function buildJourneyStages(params: {
             hint: 'Akt notarialny i przekazanie kluczy — dopiero przy finalizacji sprzedaży.',
           },
         ];
-  const firstOpen = stages.findIndex((stage) => !stage.done);
-  return stages.map((stage, index) => ({
-    ...stage,
-    current: firstOpen === -1 ? index === stages.length - 1 : index === firstOpen,
-  }));
+  const firstOpen = stages.findIndex((stage) => {
+    if (stage.id === 'presentation' && !params.hasPresentation && !params.presentationHeld) return false;
+    if (stage.id === 'done' && params.clientType === 'BUYER' && !params.presentationHeld) return false;
+    return !stage.done;
+  });
+  return stages.map((stage, index) => {
+    if (stage.id === 'presentation') {
+      return { ...stage, current: Boolean(params.hasPresentation) && !params.presentationHeld };
+    }
+    if (firstOpen < 0) {
+      if (params.clientType === 'BUYER' && !params.hasPresentation && !params.presentationHeld) {
+        const reactionIdx = stages.findIndex((row) => row.id === 'reaction');
+        return { ...stage, current: index === (reactionIdx >= 0 ? reactionIdx : 0) };
+      }
+      return {
+        ...stage,
+        current: index === stages.length - 1 && Boolean(params.presentationHeld || params.listingSold),
+      };
+    }
+    return {
+      ...stage,
+      current: index === firstOpen,
+    };
+  });
 }
 
 function resolvePortalMessageFrom(
