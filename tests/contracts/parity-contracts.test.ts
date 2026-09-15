@@ -132,8 +132,8 @@ test('facebook share url changes after a listing price or title edit', () => {
     updatedAt: '2026-09-09T06:00:00.000Z',
     title: 'Komfortowe 3 pokoje',
   });
-  assert.match(before, /\/o\/1228\?og=p975000-/);
-  assert.match(after, /\/o\/1228\?og=p949000-/);
+  assert.match(before, /\/o\/1228\/og\/p975000-/);
+  assert.match(after, /\/o\/1228\/og\/p949000-/);
   assert.notEqual(before, after);
 });
 

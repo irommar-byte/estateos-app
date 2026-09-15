@@ -100,7 +100,7 @@ export type OfferShareCard = {
   ogTitle: string;
   ogDescription: string;
   canonicalUrl: string;
-  /** og:url with content stamp — Facebook follows this and will not reuse the previous price card. */
+  /** og:url with content stamp in the PATH — Facebook ignores ?og= and reuses the old title. */
   facebookObjectUrl: string;
   imageUrl: string;
   /** JPEG 1200×630 pod Facebook / Messenger. */

@@ -16,7 +16,7 @@ function titleHash(title?: string | null): string {
   return `h${(hash >>> 0).toString(36)}`;
 }
 
-/** Price + title + last save — Facebook caches the pasted URL, so it must change after an edit. */
+/** Price + title + last save — Facebook caches the pasted URL by path, so it must change after an edit. */
 export function offerShareContentStamp(input: {
   pricePln?: number | null;
   price?: number | null;
@@ -32,7 +32,7 @@ export function offerShareContentStamp(input: {
 
 /**
  * Wizytówka nieruchomości — `/o/:id` (SSR Open Graph pod Facebook / iMessage).
- * After a price/title save pass listing fields so the URL (and Facebook card) changes.
+ * After a price/title save pass listing fields so the path (and Facebook title) changes.
  */
 export function buildOfferLandingPageUrl(
   offerId: number | string,
@@ -45,8 +45,10 @@ export function buildOfferLandingPageUrl(
 ): string {
   const id = encodeURIComponent(String(offerId).trim());
   const stamp = content ? offerShareContentStamp(content) : '';
-  const qs = stamp ? `?og=${encodeURIComponent(stamp)}` : '';
-  return `${SITE_ORIGIN}/o/${id}${qs}`;
+  const safe = stamp.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 48);
+  // Facebook ignores ?og= on the page URL and keeps the old og:title. Stamp must be in the path.
+  if (!safe) return `${SITE_ORIGIN}/o/${id}`;
+  return `${SITE_ORIGIN}/o/${id}/og/${safe}`;
 }
 
 /** Zgodny z wizytówką Next: `estateos://o/{id}`. */

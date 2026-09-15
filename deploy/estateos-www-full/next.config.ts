@@ -57,6 +57,12 @@ const nextConfig: NextConfig = {
       },
       { source: "/privacy-policy", destination: "/polityka-prywatnosci", permanent: false },
       { source: "/privacy-policy/", destination: "/polityka-prywatnosci", permanent: false },
+      { source: "/paragonos/polityka-prywatnosci/en", destination: "/paragonos/privacy", permanent: false },
+      { source: "/paragonos/regulamin/en", destination: "/paragonos/terms", permanent: false },
+      { source: "/paragonos/wsparcie/en", destination: "/paragonos/support", permanent: false },
+      { source: "/paragonos/privacy-policy", destination: "/paragonos/privacy", permanent: false },
+      { source: "/paragonos/terms-of-use", destination: "/paragonos/terms", permanent: false },
+      { source: "/paragonos/terms-of-service", destination: "/paragonos/terms", permanent: false },
       { source: "/press", destination: "/dla-prasy", permanent: true },
       { source: "/press/", destination: "/dla-prasy", permanent: true },
       { source: "/plan", destination: "/kampania", permanent: false },
@@ -64,6 +70,12 @@ const nextConfig: NextConfig = {
       { source: "/sprzedaj-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
       { source: "/wystaw-nieruchomosc-za-darmo", destination: "/wystaw-za-darmo", permanent: true },
       { source: "/start", destination: "/wystaw-za-darmo", permanent: false },
+      {
+        source: "/o/:id(\\d+)",
+        has: [{ type: "query", key: "og", value: "(?<og>[a-zA-Z0-9-]+)" }],
+        destination: "/o/:id/og/:og",
+        permanent: true,
+      },
     ];
   },
   async rewrites() {
