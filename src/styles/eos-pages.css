@@ -3387,7 +3387,7 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
 }
 
 .offer-share-print-description {
-  margin-top: auto;
+  margin-top: 2.4mm;
   padding-top: 2.2mm;
   border-top: 0.25mm solid rgba(184, 146, 46, 0.35);
 }
