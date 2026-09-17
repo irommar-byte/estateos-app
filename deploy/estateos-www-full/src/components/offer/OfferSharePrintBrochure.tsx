@@ -42,12 +42,10 @@ function AgentPrintCard({ card }: { card: OfferShareCard }) {
           <p className="offer-share-agent-print-kicker">{kicker}</p>
           <h3 className="offer-share-agent-print-name">{primary}</h3>
           {company ? <p className="offer-share-agent-print-company">{company}</p> : null}
-          {publisher.phone ? (
-            <p className="offer-share-agent-print-contact">Tel. {publisher.phone}</p>
-          ) : null}
-          {publisher.email ? (
-            <p className="offer-share-agent-print-contact">{publisher.email}</p>
-          ) : null}
+          <div className="offer-share-agent-print-contacts">
+            {publisher.phone ? <span>Tel. {publisher.phone}</span> : null}
+            {publisher.email ? <span>{publisher.email}</span> : null}
+          </div>
           <p className="offer-share-agent-print-ref">
             Ref. #{card.id} · estateos.pl/o/{card.id}
           </p>
@@ -93,7 +91,7 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
   const hero = card.imageUrl || card.images[0] || '';
   const description = truncateOfferShareDescription(
     card.description,
-    card.roomAreas?.length ? 280 : 420,
+    card.roomAreas?.length ? 240 : 360,
   );
   const qrSrc = buildOfferShareQrSrc(card.canonicalUrl, 240);
 
@@ -116,8 +114,6 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
     <div id="offer-share-print-portal" className="offer-share-print-portal" aria-hidden="true">
       <article id="offer-share-print-brochure" className="offer-share-print-brochure">
         <div className="offer-share-print-plate">
-          <span className="offer-share-print-corner offer-share-print-corner--bl" aria-hidden />
-          <span className="offer-share-print-corner offer-share-print-corner--br" aria-hidden />
           <header className="offer-share-print-header">
             <div className="offer-share-print-brand-left">
               <strong>EstateOS™</strong>
@@ -152,9 +148,13 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
               <p className="offer-share-print-summary">{card.detailLine}</p>
 
               {specs.length ? (
-                <div className="offer-share-print-spec-grid">
+                <div
+                  className="offer-share-print-spec-grid"
+                  role="list"
+                  style={{ gridTemplateColumns: `repeat(${specs.length}, minmax(0, 1fr))` }}
+                >
                   {specs.map((spec) => (
-                    <div key={spec.label} className="offer-share-print-spec">
+                    <div key={spec.label} className="offer-share-print-spec" role="listitem">
                       <span className="offer-share-print-spec-label">{spec.label}</span>
                       <strong className="offer-share-print-spec-value">{spec.value}</strong>
                     </div>
@@ -162,31 +162,32 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
                 </div>
               ) : null}
 
-            {card.amenities.length ? (
-              <div className="offer-share-print-amenities">
-                {card.amenities.map((item) => (
-                  <span key={item} className="offer-share-print-amenity">
-                    {item}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            {card.roomAreas?.length ? (
-              <section className="offer-share-print-rooms">
-                <p className="offer-share-print-section-title">Układ</p>
-                <ul className="offer-share-print-rooms-list">
-                  {card.roomAreas.map((room) => (
-                    <li key={`${room.name}-${room.areaLabel}`}>
-                      <span>{room.name}</span>
-                      <strong>{room.areaLabel}</strong>
-                    </li>
+              {card.amenities.length ? (
+                <p className="offer-share-print-amenities">
+                  {card.amenities.map((item, index) => (
+                    <span key={item}>
+                      {index > 0 ? <span className="offer-share-print-amenity-sep" aria-hidden> · </span> : null}
+                      <span className="offer-share-print-amenity">{item}</span>
+                    </span>
                   ))}
-                </ul>
-              </section>
-            ) : null}
+                </p>
+              ) : null}
 
-            {description ? (
+              {card.roomAreas?.length ? (
+                <section className="offer-share-print-rooms">
+                  <p className="offer-share-print-section-title">Układ</p>
+                  <ul className="offer-share-print-rooms-list">
+                    {card.roomAreas.map((room) => (
+                      <li key={`${room.name}-${room.areaLabel}`}>
+                        <span>{room.name}</span>
+                        <strong>{room.areaLabel}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              {description ? (
                 <section className="offer-share-print-description">
                   <p className="offer-share-print-section-title">Opis</p>
                   <p className="offer-share-print-description-body">{description}</p>
@@ -212,7 +213,7 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
                 <div>
                   <p className="offer-share-print-qr-title">Kod QR oferty</p>
                   <p className="offer-share-print-qr-caption">
-                    Zeskanuj telefonem — otworzy wizytówkę lub aplikację EstateOS™.
+                    Zeskanuj — otworzy wizytówkę lub aplikację EstateOS™.
                   </p>
                   <p className="offer-share-print-qr-url">{card.canonicalUrl}</p>
                 </div>

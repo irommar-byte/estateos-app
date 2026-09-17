@@ -57,6 +57,12 @@ export function buildOfferAppDeepLink(offerId: number | string): string {
   return `estateos://o/${id}`;
 }
 
+/** Ofertówka do druku / PDF / JPEG — strona `/o/:id/karta`. */
+export function buildOfferCardPageUrl(offerId: number | string): string {
+  const id = encodeURIComponent(String(offerId).trim());
+  return `${SITE_ORIGIN}/o/${id}/karta`;
+}
+
 /**
  * Publiczna karta auta — `/cars/:id` (OG meta na stronie szczegółu).
  */

@@ -61,17 +61,9 @@ export function offerSharePrintFilename(
 const PRINT_BODY_CLASS = 'offer-share-printing';
 const PDF_CAPTURE_CLASS = 'offer-share-pdf-capturing';
 
-export async function printOfferShareBrochure(): Promise<void> {
-  const root = document.getElementById('offer-share-print-brochure');
-  document.body.classList.add(PRINT_BODY_CLASS);
-  const cleanup = () => {
-    document.body.classList.remove(PRINT_BODY_CLASS);
-    window.removeEventListener('afterprint', cleanup);
-  };
-  window.addEventListener('afterprint', cleanup);
-  if (root) await waitForImages(root);
-  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-  window.print();
+function isLikelyMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
 }
 
 function waitForImages(root: HTMLElement, timeoutMs = 10000): Promise<void> {
@@ -179,45 +171,142 @@ async function captureOfferShareCanvas(root: HTMLElement): Promise<HTMLCanvasEle
   });
 }
 
-function triggerBrowserDownload(href: string, filename: string): void {
-  const a = document.createElement('a');
-  a.href = href;
-  a.download = filename;
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+async function deliverBlobFile(blob: Blob, filename: string, mime: string): Promise<void> {
+  const file = new File([blob], filename, { type: mime });
+  const nav = navigator as Navigator & {
+    canShare?: (data?: ShareData) => boolean;
+    share?: (data?: ShareData) => Promise<void>;
+  };
+
+  // iOS Safari often ignores <a download> — share sheet is the reliable path.
+  if (typeof nav.canShare === 'function' && typeof nav.share === 'function') {
+    try {
+      if (nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title: filename });
+        return;
+      }
+    } catch (err) {
+      // User cancel should not fall through as failure noise for share-only flows.
+      if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') {
+        return;
+      }
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    if (isLikelyMobileBrowser()) {
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+    }
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4_000);
+  } catch {
+    window.location.assign(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+}
+
+async function buildOfferSharePdfBlob(root: HTMLElement): Promise<Blob> {
+  const canvas = await captureOfferShareCanvas(root);
+  const { jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+  const img = canvas.toDataURL('image/jpeg', 0.95);
+  pdf.addImage(img, 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
+  return pdf.output('blob');
+}
+
+/** Prefer A4 PDF print — Safari Letter defaults no longer spill a hairline onto page 2. */
+export async function printOfferShareBrochure(): Promise<void> {
+  const root = document.getElementById('offer-share-print-brochure');
+  if (!root) {
+    window.print();
+    return;
+  }
+
+  try {
+    await withVisiblePrintPortal(async () => {
+      const blob = await buildOfferSharePdfBlob(root);
+      const url = URL.createObjectURL(blob);
+      const frame = document.createElement('iframe');
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.position = 'fixed';
+      frame.style.right = '0';
+      frame.style.bottom = '0';
+      frame.style.width = '0';
+      frame.style.height = '0';
+      frame.style.border = '0';
+      frame.src = url;
+      document.body.appendChild(frame);
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error('print-timeout')), 12_000);
+        frame.onload = () => {
+          window.clearTimeout(timeout);
+          try {
+            frame.contentWindow?.focus();
+            frame.contentWindow?.print();
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        };
+      });
+
+      window.setTimeout(() => {
+        frame.remove();
+        URL.revokeObjectURL(url);
+      }, 60_000);
+    });
+    return;
+  } catch {
+    // Fall back to classic DOM print with tightened @media print CSS.
+  }
+
+  document.body.classList.add(PRINT_BODY_CLASS);
+  const cleanup = () => {
+    document.body.classList.remove(PRINT_BODY_CLASS);
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  await waitForImages(root);
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+  window.print();
 }
 
 export async function downloadOfferSharePdf(root: HTMLElement, filename: string): Promise<void> {
   await withVisiblePrintPortal(async () => {
-    const canvas = await captureOfferShareCanvas(root);
-    const { jsPDF } = await import('jspdf');
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
-    const img = canvas.toDataURL('image/jpeg', 0.95);
-    pdf.addImage(img, 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
-    pdf.save(filename);
+    const blob = await buildOfferSharePdfBlob(root);
+    await deliverBlobFile(blob, filename, 'application/pdf');
   });
 }
 
 export async function downloadOfferShareJpeg(root: HTMLElement, filename: string): Promise<void> {
   await withVisiblePrintPortal(async () => {
     const canvas = await captureOfferShareCanvas(root);
-    await new Promise<void>((resolve, reject) => {
+    const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
-        (blob) => {
-          if (!blob) {
+        (result) => {
+          if (!result) {
             reject(new Error('Nie udało się zbudować JPEG.'));
             return;
           }
-          const url = URL.createObjectURL(blob);
-          triggerBrowserDownload(url, filename);
-          window.setTimeout(() => URL.revokeObjectURL(url), 2500);
-          resolve();
+          resolve(result);
         },
         'image/jpeg',
         0.92,
       );
     });
+    await deliverBlobFile(blob, filename, 'image/jpeg');
   });
 }

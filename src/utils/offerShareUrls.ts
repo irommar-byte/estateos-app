@@ -5,6 +5,7 @@ export {
   offerShareContentStamp,
   buildOfferLandingPageUrl,
   buildOfferAppDeepLink,
+  buildOfferCardPageUrl,
   buildCarLandingPageUrl,
   buildCarAppDeepLink,
   buildOfferShareMessage,

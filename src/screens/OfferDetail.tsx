@@ -722,16 +722,44 @@ export default function OfferDetail({ route, navigation }: any) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!offer?.id) return;
     try {
-      const { shareListingLink, buildOfferLandingPageUrl } = await import('../utils/offerShareUrls');
-      await shareListingLink({
-        url: buildOfferLandingPageUrl(offer.id, {
-          pricePln: listingPrice.plnAmount ?? offer.pricePln ?? offer.price,
-          price: offer.price,
-          updatedAt: offer.updatedAt,
-          title: offer.title,
-        }),
-        sheetTitle: t('offer.detail.shareTitleIos'),
+      const {
+        shareListingLink,
+        buildOfferLandingPageUrl,
+        buildOfferCardPageUrl,
+      } = await import('../utils/offerShareUrls');
+      const landingUrl = buildOfferLandingPageUrl(offer.id, {
+        pricePln: listingPrice.plnAmount ?? offer.pricePln ?? offer.price,
+        price: offer.price,
+        updatedAt: offer.updatedAt,
+        title: offer.title,
       });
+      const sheetTitle = t('offer.detail.shareTitleIos');
+      const canGenerateBrochure = Boolean(isOwner || isPartnerListing);
+
+      const shareLink = async () => {
+        await shareListingLink({ url: landingUrl, sheetTitle });
+      };
+
+      const openBrochure = async () => {
+        const cardUrl = buildOfferCardPageUrl(offer.id);
+        const canOpen = await Linking.canOpenURL(cardUrl);
+        if (!canOpen) {
+          Alert.alert('EstateOS', 'Nie udało się otworzyć ofertówki.');
+          return;
+        }
+        await Linking.openURL(cardUrl);
+      };
+
+      if (!canGenerateBrochure) {
+        await shareLink();
+        return;
+      }
+
+      Alert.alert(sheetTitle, 'Udostępnij link albo wygeneruj ofertówkę do druku / PDF.', [
+        { text: 'Udostępnij link', onPress: () => void shareLink() },
+        { text: 'Ofertówka (PDF / druk)', onPress: () => void openBrochure() },
+        { text: 'Anuluj', style: 'cancel' },
+      ]);
     } catch {
       /* anulowano lub błąd share */
     }
