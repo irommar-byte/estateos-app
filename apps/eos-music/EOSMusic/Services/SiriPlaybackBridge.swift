@@ -49,8 +49,24 @@ final class SiriPlaybackBridge {
 
         let folder = app.musicFolders.first(where: { $0.id == first.folderId })
         await app.playTracks(queue, startIndex: 0, folder: folder)
-        app.isFullPlayerPresented = true
         return .played(title: first.title, artist: first.artist)
+    }
+
+    func setPlaying(_ playing: Bool, engine: MusicPlaybackEngine) async throws {
+        guard engine.currentTrack != nil else { throw EOSIntentRoutingError.noCurrentTrack }
+        if playing {
+            if !engine.isPlaying { engine.togglePlayPause() }
+        } else if engine.isPlaying {
+            engine.togglePlayPause()
+        }
+    }
+
+    func skipNext(engine: MusicPlaybackEngine) async throws -> String {
+        await engine.skipNext()
+        guard let title = engine.currentTrack?.title, !title.isEmpty else {
+            throw EOSIntentRoutingError.noCurrentTrack
+        }
+        return title
     }
 
     private static func matchTracks(

@@ -12,6 +12,8 @@ FRAMEWORK_NAME = "MobileVLCKit.xcframework"
 
 SWIFT = sorted(p.relative_to(SRC).as_posix() for p in SRC.rglob("*.swift"))
 TEST_SWIFT = sorted(p.relative_to(TEST_SRC).as_posix() for p in TEST_SRC.rglob("*.swift")) if TEST_SRC.exists() else []
+WIDGET_SRC = ROOT / "EOSMusicWidget"
+WIDGET_SWIFT = sorted(p.relative_to(WIDGET_SRC).as_posix() for p in WIDGET_SRC.rglob("*.swift")) if WIDGET_SRC.exists() else []
 RES = [
     "Resources/Assets.xcassets",
     "Resources/GoogleOAuth.plist",
@@ -54,6 +56,22 @@ VLC_EMBED_BF = gid()
 DEP_ID = gid()
 CONTAINER_PROXY = gid()
 XC_TARGET_DEP = gid()
+WIDGET_TARGET = gid()
+WIDGET_REF = gid()
+WIDGET_SRC_PHASE = gid()
+WIDGET_FWK_PHASE = gid()
+WIDGET_RES_PHASE = gid()
+EMBED_EXT_PHASE = gid()
+WIDGET_GRP = gid()
+CL_WIDGET = gid()
+DBG_WIDGET = gid()
+REL_WIDGET = gid()
+WIDGET_BF = gid()
+WIDGET_APPEX_BF = gid()
+WIDGET_CONTAINER_PROXY = gid()
+WIDGET_TARGET_DEP = gid()
+widget_ref = {f: gid() for f in WIDGET_SWIFT}
+widget_bf = {f: gid() for f in WIDGET_SWIFT}
 
 swift_ref = {f: gid() for f in SWIFT}
 swift_bf = {f: gid() for f in SWIFT}
@@ -89,6 +107,9 @@ for f in RES:
     o(f"\t\t{res_bf[f]} /* {f} in Resources */ = {{isa = PBXBuildFile; fileRef = {res_ref[f]} /* {f} */; }};")
 o(f"\t\t{VLC_BF} /* {FRAMEWORK_NAME} in Frameworks */ = {{isa = PBXBuildFile; fileRef = {VLC_REF} /* {FRAMEWORK_NAME} */; }};")
 o(f"\t\t{VLC_EMBED_BF} /* {FRAMEWORK_NAME} in Embed Frameworks */ = {{isa = PBXBuildFile; fileRef = {VLC_REF} /* {FRAMEWORK_NAME} */; settings = {{ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }}; }};")
+for f in WIDGET_SWIFT:
+    o(f"\t\t{widget_bf[f]} /* {f} in Sources */ = {{isa = PBXBuildFile; fileRef = {widget_ref[f]} /* {f} */; }};")
+o(f"\t\t{WIDGET_APPEX_BF} /* EOSMusicWidget.appex in Embed App Extensions */ = {{isa = PBXBuildFile; fileRef = {WIDGET_REF} /* EOSMusicWidget.appex */; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};")
 o("/* End PBXBuildFile section */")
 
 o("\n/* Begin PBXContainerItemProxy section */")
@@ -98,6 +119,13 @@ o(f"\t\t\tcontainerPortal = {PROJ} /* Project object */;")
 o("\t\t\tproxyType = 1;")
 o(f"\t\t\tremoteGlobalIDString = {TARGET};")
 o("\t\t\tremoteInfo = EOSMusic;")
+o("\t\t};")
+o(f"\t\t{WIDGET_CONTAINER_PROXY} = {{")
+o("\t\t\tisa = PBXContainerItemProxy;")
+o(f"\t\t\tcontainerPortal = {PROJ} /* Project object */;")
+o("\t\t\tproxyType = 1;")
+o(f"\t\t\tremoteGlobalIDString = {WIDGET_TARGET};")
+o("\t\t\tremoteInfo = EOSMusicWidget;")
 o("\t\t};")
 o("/* End PBXContainerItemProxy section */")
 
@@ -109,6 +137,15 @@ o(f"\t\t\tdstPath = \"\";")
 o("\t\t\tdstSubfolderSpec = 10;")
 o(f"\t\t\tfiles = ({VLC_EMBED_BF} /* {FRAMEWORK_NAME} in Embed Frameworks */);")
 o("\t\t\tname = \"Embed Frameworks\";")
+o("\t\t\trunOnlyForDeploymentPostprocessing = 0;")
+o("\t\t};")
+o(f"\t\t{EMBED_EXT_PHASE} /* Embed App Extensions */ = {{")
+o("\t\t\tisa = PBXCopyFilesBuildPhase;")
+o("\t\t\tbuildActionMask = 2147483647;")
+o("\t\t\tdstPath = \"\";")
+o("\t\t\tdstSubfolderSpec = 13;")
+o(f"\t\t\tfiles = ({WIDGET_APPEX_BF} /* EOSMusicWidget.appex in Embed App Extensions */);")
+o("\t\t\tname = \"Embed App Extensions\";")
 o("\t\t\trunOnlyForDeploymentPostprocessing = 0;")
 o("\t\t};")
 o("/* End PBXCopyFilesBuildPhase section */")
@@ -124,19 +161,25 @@ for f in RES:
     t = "folder.assetcatalog" if f.endswith(".xcassets") else ("text.plist.entitlements" if f.endswith(".entitlements") else "text.plist.xml")
     o(f"\t\t{res_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = {t}; path = {Path(f).name}; sourceTree = \"<group>\"; }};")
 o(f"\t\t{VLC_REF} /* {FRAMEWORK_NAME} */ = {{isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = {FRAMEWORK_NAME}; path = {VENDOR_XCFRAMEWORK}; sourceTree = \"<group>\"; }};")
+o(f"\t\t{WIDGET_REF} /* EOSMusicWidget.appex */ = {{isa = PBXFileReference; explicitFileType = \"wrapper.app-extension\"; includeInIndex = 0; path = EOSMusicWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; }};")
+for f in WIDGET_SWIFT:
+    o(f"\t\t{widget_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {Path(f).name}; sourceTree = \"<group>\"; }};")
 o("/* End PBXFileReference section */")
 
 o("\n/* Begin PBXFrameworksBuildPhase section */")
 o(f"\t\t{FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({VLC_BF} /* {FRAMEWORK_NAME} in Frameworks */); runOnlyForDeploymentPostprocessing = 0; }};")
 o(f"\t\t{TEST_FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
+o(f"\t\t{WIDGET_FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
 o("/* End PBXFrameworksBuildPhase section */")
 
 o("\n/* Begin PBXGroup section */")
-o(f"\t\t{PROD_GRP} = {{isa = PBXGroup; children = ({APP_REF} /* EOSMusic.app */, {TEST_REF} /* EOSMusicTests.xctest */); name = Products; sourceTree = \"<group>\"; }};")
+o(f"\t\t{PROD_GRP} = {{isa = PBXGroup; children = ({APP_REF} /* EOSMusic.app */, {WIDGET_REF} /* EOSMusicWidget.appex */, {TEST_REF} /* EOSMusicTests.xctest */); name = Products; sourceTree = \"<group>\"; }};")
 o(f"\t\t{VENDOR_GRP} = {{isa = PBXGroup; children = ({VLC_REF} /* {FRAMEWORK_NAME} */); name = Vendor; sourceTree = \"<group>\"; }};")
 test_children = ", ".join(f"{test_ref[f]} /* {Path(f).name} */" for f in TEST_SWIFT)
 o(f"\t\t{TEST_GRP} = {{isa = PBXGroup; children = ({test_children}); path = EOSMusicTests; sourceTree = \"<group>\"; }};")
-o(f"\t\t{MAIN_GRP} = {{isa = PBXGroup; children = ({EOS_GRP} /* EOSMusic */, {TEST_GRP} /* EOSMusicTests */, {VENDOR_GRP} /* Vendor */, {PROD_GRP} /* Products */); sourceTree = \"<group>\"; }};")
+widget_children = ", ".join(f"{widget_ref[f]} /* {Path(f).name} */" for f in WIDGET_SWIFT)
+o(f"\t\t{WIDGET_GRP} = {{isa = PBXGroup; children = ({widget_children}); path = EOSMusicWidget; sourceTree = \"<group>\"; }};")
+o(f"\t\t{MAIN_GRP} = {{isa = PBXGroup; children = ({EOS_GRP} /* EOSMusic */, {WIDGET_GRP} /* EOSMusicWidget */, {TEST_GRP} /* EOSMusicTests */, {VENDOR_GRP} /* Vendor */, {PROD_GRP} /* Products */); sourceTree = \"<group>\"; }};")
 
 for key in sorted(folders.keys(), key=lambda k: (k.count("/"), k)):
     if key == "":
@@ -166,8 +209,8 @@ o("/* End PBXGroup section */")
 o("\n/* Begin PBXNativeTarget section */")
 o(f"\t\t{TARGET} = {{")
 o(f"\t\t\tisa = PBXNativeTarget; buildConfigurationList = {CL_TGT};")
-o(f"\t\t\tbuildPhases = ({SRC_PHASE} /* Sources */, {FWK_PHASE} /* Frameworks */, {RES_PHASE} /* Resources */, {EMBED_PHASE} /* Embed Frameworks */);")
-o("\t\t\tbuildRules = (); dependencies = (); name = EOSMusic;")
+o(f"\t\t\tbuildPhases = ({SRC_PHASE} /* Sources */, {FWK_PHASE} /* Frameworks */, {RES_PHASE} /* Resources */, {EMBED_PHASE} /* Embed Frameworks */, {EMBED_EXT_PHASE} /* Embed App Extensions */);")
+o(f"\t\t\tbuildRules = (); dependencies = ({WIDGET_TARGET_DEP} /* PBXTargetDependency */); name = EOSMusic;")
 o("\t\t\tpackageProductDependencies = ();")
 o(f"\t\t\tproductReference = {APP_REF}; productType = \"com.apple.product-type.application\";")
 o("\t\t};")
@@ -178,6 +221,13 @@ o(f"\t\t\tbuildRules = (); dependencies = ({XC_TARGET_DEP} /* PBXTargetDependenc
 o("\t\t\tpackageProductDependencies = ();")
 o(f"\t\t\tproductReference = {TEST_REF}; productType = \"com.apple.product-type.bundle.unit-test\";")
 o("\t\t};")
+o(f"\t\t{WIDGET_TARGET} = {{")
+o(f"\t\t\tisa = PBXNativeTarget; buildConfigurationList = {CL_WIDGET};")
+o(f"\t\t\tbuildPhases = ({WIDGET_SRC_PHASE} /* Sources */, {WIDGET_FWK_PHASE} /* Frameworks */, {WIDGET_RES_PHASE} /* Resources */);")
+o("\t\t\tbuildRules = (); dependencies = (); name = EOSMusicWidget;")
+o("\t\t\tpackageProductDependencies = ();")
+o(f"\t\t\tproductReference = {WIDGET_REF}; productType = \"com.apple.product-type.app-extension\";")
+o("\t\t};")
 o("/* End PBXNativeTarget section */")
 
 o("\n/* Begin PBXProject section */")
@@ -187,13 +237,14 @@ o("\t\t\tdevelopmentRegion = pl; hasScannedForEncodings = 0;")
 o(f"\t\t\tmainGroup = {MAIN_GRP}; productRefGroup = {PROD_GRP};")
 o("\t\t\tpackageReferences = ();")
 o("\t\t\tprojectDirPath = \"\"; projectRoot = \"\";")
-o(f"\t\t\ttargets = ({TARGET} /* EOSMusic */, {TEST_TARGET} /* EOSMusicTests */);")
+o(f"\t\t\ttargets = ({TARGET} /* EOSMusic */, {WIDGET_TARGET} /* EOSMusicWidget */, {TEST_TARGET} /* EOSMusicTests */);")
 o("\t\t};")
 o("/* End PBXProject section */")
 
 o("\n/* Begin PBXResourcesBuildPhase section */")
 res_files = ", ".join(f"{res_bf[f]} /* {f} in Resources */" for f in RES)
 o(f"\t\t{RES_PHASE} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({res_files}); runOnlyForDeploymentPostprocessing = 0; }};")
+o(f"\t\t{WIDGET_RES_PHASE} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
 o("/* End PBXResourcesBuildPhase section */")
 
 o("\n/* Begin PBXSourcesBuildPhase section */")
@@ -201,6 +252,8 @@ src_files = ", ".join(f"{swift_bf[f]} /* {f} in Sources */" for f in SWIFT)
 o(f"\t\t{SRC_PHASE} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({src_files}); runOnlyForDeploymentPostprocessing = 0; }};")
 test_src_files = ", ".join(f"{test_bf[f]} /* {f} in Sources */" for f in TEST_SWIFT)
 o(f"\t\t{TEST_SRC_PHASE} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({test_src_files}); runOnlyForDeploymentPostprocessing = 0; }};")
+widget_src_files = ", ".join(f"{widget_bf[f]} /* {f} in Sources */" for f in WIDGET_SWIFT)
+o(f"\t\t{WIDGET_SRC_PHASE} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({widget_src_files}); runOnlyForDeploymentPostprocessing = 0; }};")
 o("/* End PBXSourcesBuildPhase section */")
 
 o("\n/* Begin PBXTargetDependency section */")
@@ -208,6 +261,11 @@ o(f"\t\t{XC_TARGET_DEP} = {{")
 o("\t\t\tisa = PBXTargetDependency;")
 o(f"\t\t\ttarget = {TARGET} /* EOSMusic */;")
 o(f"\t\t\ttargetProxy = {CONTAINER_PROXY} /* PBXContainerItemProxy */;")
+o("\t\t};")
+o(f"\t\t{WIDGET_TARGET_DEP} = {{")
+o("\t\t\tisa = PBXTargetDependency;")
+o(f"\t\t\ttarget = {WIDGET_TARGET} /* EOSMusicWidget */;")
+o(f"\t\t\ttargetProxy = {WIDGET_CONTAINER_PROXY} /* PBXContainerItemProxy */;")
 o("\t\t};")
 o("/* End PBXTargetDependency section */")
 
@@ -219,7 +277,7 @@ tgt_settings = (
     "ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; "
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; "
     "CODE_SIGN_ENTITLEMENTS = EOSMusic/Resources/EOSMusic.entitlements; "
-    "CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; "
+    "CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 16; "
     "DEVELOPMENT_TEAM = NW3YW69KL9; "
     "GENERATE_INFOPLIST_FILE = NO; "
     "INFOPLIST_FILE = EOSMusic/Resources/Info.plist; "
@@ -237,7 +295,7 @@ tgt_settings = (
 test_settings = (
     "BUNDLE_LOADER = \"$(TEST_HOST)\"; "
     "CODE_SIGN_STYLE = Automatic; "
-    "CURRENT_PROJECT_VERSION = 5; "
+    "CURRENT_PROJECT_VERSION = 16; "
     "DEVELOPMENT_TEAM = NW3YW69KL9; "
     "GENERATE_INFOPLIST_FILE = YES; "
     "IPHONEOS_DEPLOYMENT_TARGET = 17.0; "
@@ -252,12 +310,33 @@ o(f"\t\t{DBG_TGT} = {{isa = XCBuildConfiguration; name = Debug; buildSettings = 
 o(f"\t\t{REL_TGT} = {{isa = XCBuildConfiguration; name = Release; buildSettings = {{{tgt_settings} }}; }};")
 o(f"\t\t{DBG_TEST} = {{isa = XCBuildConfiguration; name = Debug; buildSettings = {{{test_settings} }}; }};")
 o(f"\t\t{REL_TEST} = {{isa = XCBuildConfiguration; name = Release; buildSettings = {{{test_settings} }}; }};")
+widget_settings = (
+    "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; "
+    "ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground; "
+    "CODE_SIGN_STYLE = Automatic; "
+    "CURRENT_PROJECT_VERSION = 16; "
+    "DEVELOPMENT_TEAM = NW3YW69KL9; "
+    "GENERATE_INFOPLIST_FILE = NO; "
+    "INFOPLIST_FILE = EOSMusicWidget/Info.plist; "
+    "IPHONEOS_DEPLOYMENT_TARGET = 17.0; "
+    "LD_RUNPATH_SEARCH_PATHS = (\"$(inherited)\", \"@executable_path/Frameworks\", \"@executable_path/../../Frameworks\"); "
+    "MARKETING_VERSION = 1.0.0; "
+    "PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.eosmusic.EOSMusicWidget; "
+    "PRODUCT_NAME = \"$(TARGET_NAME)\"; "
+    "SKIP_INSTALL = YES; "
+    "SWIFT_EMIT_LOC_STRINGS = YES; "
+    "SWIFT_VERSION = 5.0; "
+    "TARGETED_DEVICE_FAMILY = \"1,2\";"
+)
+o(f"\t\t{DBG_WIDGET} = {{isa = XCBuildConfiguration; name = Debug; buildSettings = {{{widget_settings} }}; }};")
+o(f"\t\t{REL_WIDGET} = {{isa = XCBuildConfiguration; name = Release; buildSettings = {{{widget_settings} }}; }};")
 o("/* End XCBuildConfiguration section */")
 
 o("\n/* Begin XCConfigurationList section */")
 o(f"\t\t{CL_PROJ} = {{isa = XCConfigurationList; buildConfigurations = ({DBG_PROJ} /* Debug */, {REL_PROJ} /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
 o(f"\t\t{CL_TGT} = {{isa = XCConfigurationList; buildConfigurations = ({DBG_TGT} /* Debug */, {REL_TGT} /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
 o(f"\t\t{CL_TEST} = {{isa = XCConfigurationList; buildConfigurations = ({DBG_TEST} /* Debug */, {REL_TEST} /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
+o(f"\t\t{CL_WIDGET} = {{isa = XCConfigurationList; buildConfigurations = ({DBG_WIDGET} /* Debug */, {REL_WIDGET} /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
 o("/* End XCConfigurationList section */")
 
 o("\t};")

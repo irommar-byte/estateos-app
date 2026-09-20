@@ -6,6 +6,8 @@ struct RootView: View {
     @EnvironmentObject private var ui: UIPreferences
     @EnvironmentObject private var video: VideoAppModel
     @State private var showLaunchIntro = true
+    @ObservedObject private var shazam = ShazamIdentifyController.shared
+    @Namespace private var playerGeometry
 
     /// iPad (and regular width): edge-to-edge like iPhone large sheet — not a floating card.
     private var prefersFullScreenPlayer: Bool {
@@ -25,6 +27,8 @@ struct RootView: View {
                     .transition(.opacity)
             } else {
                 MainTabView()
+                    .environment(\.playerGeometryNamespace, playerGeometry)
+                    .modifier(MusicOrientationSync())
                     .transition(.opacity)
             }
 
@@ -68,6 +72,14 @@ struct RootView: View {
                 .opacity(0.01)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
+        }
+        .onAppear { shazam.bind(app) }
+        .sheet(isPresented: $shazam.isPresented) {
+            ShazamIdentifySheet()
+                .environmentObject(app)
+                .presentationDetents([.height(340), .medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(24)
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: app.toast?.id)
         .modifier(MusicPlayerPresentation(

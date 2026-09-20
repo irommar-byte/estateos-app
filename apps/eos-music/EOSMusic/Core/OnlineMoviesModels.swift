@@ -77,9 +77,12 @@ enum MovieURLMatching {
         if let exact = downloads.first(where: { urlsMatch($0.url, url) && $0.hasLandedFile }) {
             return exact
         }
+        if let linked = downloads.first(where: { urlsMatch($0.url, url) && $0.hasPlayableJob }) {
+            return linked
+        }
         guard let distinctive = distinctiveEpisodeName(title), distinctive.count >= 8 else { return nil }
         let hits = downloads.filter { download in
-            guard download.hasLandedFile else { return false }
+            guard download.hasLandedFile || download.hasPlayableJob else { return false }
             let hay = foldedToken("\(download.title) \(download.filename ?? "")")
             return hay.contains(distinctive)
         }
@@ -237,13 +240,22 @@ struct MovieDownload: Codable, Identifiable, Hashable {
 
     /// Real file on EOS — not a job stub without bytes.
     var hasLandedFile: Bool {
-        if let bytes {
-            return bytes > 400_000
+        if let bytes, bytes > 400_000 { return true }
+        if let filename, !filename.isEmpty {
+            let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
+            let videoExts: Set<String> = ["mp4", "mkv", "m4v", "mov", "webm"]
+            if videoExts.contains(ext) { return true }
         }
-        guard let filename, !filename.isEmpty else { return false }
-        let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
-        let videoExts: Set<String> = ["mp4", "mkv", "m4v", "mov", "webm"]
-        return videoExts.contains(ext)
+        if let downloadJobId, !downloadJobId.isEmpty, downloadedAt != nil {
+            return true
+        }
+        return false
+    }
+
+    /// Job already registered — play/token can use this even before byte count arrives.
+    var hasPlayableJob: Bool {
+        guard let downloadJobId, !downloadJobId.isEmpty else { return false }
+        return hasLandedFile || downloadedAt != nil || (filename?.isEmpty == false)
     }
 
     var isOnServer: Bool { isDownloaded }
@@ -315,8 +327,17 @@ struct MoviePlayTokenResponse: Codable {
 struct PreviewResponse: Codable {
     let jobId: String
     let instant: Bool?
+    let ready: Bool?
+    let status: String?
     let mode: String?
     let purpose: String?
+
+    var canPlayImmediately: Bool {
+        if instant == true || ready == true { return true }
+        if status?.lowercased() == "done" { return true }
+        if mode == "instant" || mode == "stream-proxy" { return true }
+        return false
+    }
 }
 
 struct PlayTokenResponse: Codable {

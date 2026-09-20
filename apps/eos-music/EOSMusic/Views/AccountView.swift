@@ -22,6 +22,24 @@ struct AccountView: View {
 
     private var localFileCount: Int { OfflineMusicStore.shared.downloadedFileCount }
 
+    private var iphoneStorageCaption: String {
+        let used = ByteCountFormatter.string(fromByteCount: OfflineMusicStore.shared.totalDownloadedBytes, countStyle: .file)
+        let count = localFileCount == 1 ? "1 utwór" : "\(localFileCount) utworów"
+        if let free = StorageCapacityReader.deviceVolume()?.freeBytes {
+            return "\(count) · \(used) · \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) wolne"
+        }
+        return "\(count) · \(used)"
+    }
+
+    private var serverStorageCaption: String {
+        let count = app.serverAssets.filter { $0.ready != false }.count
+        let used = ByteCountFormatter.string(fromByteCount: Int64(app.serverLibraryBytes), countStyle: .file)
+        if let free = app.serverDiskFreeBytes {
+            return "\(count) utworów · \(used) · \(ByteCountFormatter.string(fromByteCount: Int64(free), countStyle: .file)) wolne"
+        }
+        return "\(count) utworów · \(used)"
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -173,7 +191,7 @@ struct AccountView: View {
                 storageRow(
                     icon: "iphone",
                     title: "Na tym iPhonie",
-                    value: localFileCount == 1 ? "1 plik" : "\(localFileCount) plików"
+                    value: iphoneStorageCaption
                 )
             }
 
@@ -182,11 +200,8 @@ struct AccountView: View {
             } label: {
                 storageRow(
                     icon: "externaldrive.fill.badge.checkmark",
-                    title: "Biblioteka EOS",
-                    value: ByteCountFormatter.string(
-                        fromByteCount: Int64(app.serverLibraryBytes),
-                        countStyle: .file
-                    )
+                    title: "Na serwerze",
+                    value: serverStorageCaption
                 )
             }
         } header: {

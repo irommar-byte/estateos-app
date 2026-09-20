@@ -11,24 +11,73 @@ struct LibraryPlaylistsView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject private var stats = ListeningStatsStore.shared
     @AppStorage("ui.playlistsLayout") private var playlistsLayout = PlaylistLayoutMode.list.rawValue
+    @AppStorage("ui.playlistsSort") private var playlistsSort = PlaylistSortMode.name.rawValue
     @State private var editMode: EditMode = .inactive
     @State private var folderToDelete: MusicFolder?
+    @State private var foldersToDelete: [MusicFolder] = []
+    @State private var selectedFolderIDs: Set<String> = []
     @State private var errorMessage: String?
     @State private var playlistQuery = ""
+    @State private var showCleanupConfirm = false
+    @State private var renameFolder: MusicFolder?
+    @State private var renameText = ""
     private let gridColumns = [
         GridItem(.flexible(), spacing: 14),
         GridItem(.flexible(), spacing: 14),
     ]
 
-    private var isGrid: Bool { playlistsLayout == PlaylistLayoutMode.grid.rawValue && editMode != .active }
+    private var sortMode: PlaylistSortMode { PlaylistSortMode(rawValue: playlistsSort) ?? .name }
+    private var isEditing: Bool { editMode == .active }
+    private var isGrid: Bool { playlistsLayout == PlaylistLayoutMode.grid.rawValue && !isEditing }
 
     private var smartKinds: [SmartPlaylistKind] { SmartPlaylistKind.allCases }
 
     private var filteredFolders: [MusicFolder] {
         let q = playlistQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = app.libraryFoldersForBrowsing
-        guard q.count >= 1 else { return base }
-        return base.filter { $0.name.localizedCaseInsensitiveContains(q) }
+        let base = app.playlistFoldersForBrowsing
+        guard q.count >= 1 else { return sorted(base) }
+        return sorted(base.filter { $0.name.localizedCaseInsensitiveContains(q) })
+    }
+
+    private var importFolders: [MusicFolder] {
+        filteredFolders.filter {
+            let kind = PlaylistHygiene.kind(for: $0, tracks: app.musicTracks)
+            return kind == .appleImport || kind == .spotifyImport
+        }
+    }
+
+    private var userFolders: [MusicFolder] {
+        filteredFolders.filter {
+            let kind = PlaylistHygiene.kind(for: $0, tracks: app.musicTracks)
+            return kind == .playlist || kind == .primary || kind == .shazam
+        }
+    }
+
+    private func sorted(_ folders: [MusicFolder]) -> [MusicFolder] {
+        let primary = folders.filter { PlaylistHygiene.isPrimary($0) }
+        let shazam = folders.filter { PlaylistHygiene.isShazam($0) }
+        let rest = folders.filter { !PlaylistHygiene.isPrimary($0) && !PlaylistHygiene.isShazam($0) }
+        let ordered: [MusicFolder]
+        switch sortMode {
+        case .name:
+            ordered = rest.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .recentlyAdded:
+            ordered = rest.sorted { lhs, rhs in
+                let la = app.tracks(in: lhs.id).compactMap(\.addedAt).max() ?? 0
+                let ra = app.tracks(in: rhs.id).compactMap(\.addedAt).max() ?? 0
+                if la != ra { return la > ra }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        case .custom:
+            let order = PlaylistCustomOrderStore.order()
+            ordered = rest.sorted { lhs, rhs in
+                let li = order.firstIndex(of: lhs.id) ?? Int.max
+                let ri = order.firstIndex(of: rhs.id) ?? Int.max
+                if li != ri { return li < ri }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        }
+        return primary + shazam + ordered
     }
 
     private var matchingSmartKinds: [SmartPlaylistKind] {
@@ -60,10 +109,22 @@ struct LibraryPlaylistsView: View {
                             }
                         }
 
-                        if !filteredFolders.isEmpty {
+                        if !importFolders.isEmpty {
+                            importsHeader
+                            LazyVGrid(columns: gridColumns, spacing: 16) {
+                                ForEach(importFolders) { folder in
+                                    NavigationLink(value: folder) {
+                                        playlistCard(folder)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        if !userFolders.isEmpty {
                             userPlaylistsHeader
                             LazyVGrid(columns: gridColumns, spacing: 16) {
-                                ForEach(filteredFolders) { folder in
+                                ForEach(userFolders) { folder in
                                     NavigationLink(value: folder) {
                                         playlistCard(folder)
                                     }
@@ -101,23 +162,30 @@ struct LibraryPlaylistsView: View {
                         }
                     }
 
-                    if filteredFolders.isEmpty {
+                    if !importFolders.isEmpty {
+                        Section {
+                            ForEach(importFolders) { folder in
+                                playlistSelectableRow(folder)
+                            }
+                            .onDelete(perform: { deleteFolders($0, from: importFolders) })
+                        } header: {
+                            importsHeader
+                                .textCase(nil)
+                        }
+                    }
+
+                    if userFolders.isEmpty && importFolders.isEmpty {
                         Section {
                             emptyUserPlaylists
                                 .listRowBackground(Color.clear)
                         }
-                    } else {
+                    } else if !userFolders.isEmpty {
                         Section {
-                            ForEach(filteredFolders) { folder in
-                                if editMode == .active {
-                                    playlistRow(folder)
-                                } else {
-                                    NavigationLink(value: folder) {
-                                        playlistRow(folder)
-                                    }
-                                }
+                            ForEach(userFolders) { folder in
+                                playlistSelectableRow(folder)
                             }
-                            .onDelete(perform: deleteFolders)
+                            .onDelete(perform: { deleteFolders($0, from: userFolders) })
+                            .onMove(perform: sortMode == .custom ? moveUserFolders : nil)
                         } header: {
                             userPlaylistsHeader
                                 .textCase(nil)
@@ -140,13 +208,51 @@ struct LibraryPlaylistsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 EditButton()
-                    .disabled(app.musicFolders.isEmpty || isGrid)
+                    .disabled(app.playlistFoldersForBrowsing.isEmpty)
+            }
+            if isEditing, !selectedFolderIDs.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button(role: .destructive) {
+                            foldersToDelete = filteredFolders.filter { selectedFolderIDs.contains($0.id) }
+                        } label: {
+                            Label("Usuń (\(selectedFolderIDs.count))", systemImage: "trash")
+                        }
+                        Button {
+                            setPolicyForSelection(.server)
+                        } label: {
+                            Label("Auto-pobieranie: serwer", systemImage: "externaldrive.badge.icloud")
+                        }
+                        Button {
+                            setPolicyForSelection(.serverAndPhone)
+                        } label: {
+                            Label("Auto-pobieranie: serwer i iPhone", systemImage: "iphone.and.arrow.forward")
+                        }
+                        Button {
+                            downloadSelection()
+                        } label: {
+                            Label("Pobierz", systemImage: "arrow.down.circle")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker("Widok", selection: $playlistsLayout) {
                         Label("Lista", systemImage: "list.bullet").tag(PlaylistLayoutMode.list.rawValue)
                         Label("Duże kafelki", systemImage: "square.grid.2x2").tag(PlaylistLayoutMode.grid.rawValue)
+                    }
+                    Picker("Sortuj", selection: $playlistsSort) {
+                        ForEach(PlaylistSortMode.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    if !app.albumDumpFolders.isEmpty {
+                        Button("Posprzątaj playlisty (\(app.albumDumpFolders.count))") {
+                            showCleanupConfirm = true
+                        }
                     }
                 } label: {
                     Image(systemName: isGrid ? "square.grid.2x2.fill" : "list.bullet")
@@ -174,6 +280,41 @@ struct LibraryPlaylistsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .alert("Usunąć playlisty?", isPresented: Binding(
+            get: { !foldersToDelete.isEmpty },
+            set: { if !$0 { foldersToDelete = [] } }
+        )) {
+            Button("Usuń", role: .destructive) {
+                Task { await confirmDeleteMany(foldersToDelete) }
+            }
+            Button("Anuluj", role: .cancel) { foldersToDelete = [] }
+        } message: {
+            Text("\(foldersToDelete.count) playlist trafi do kosza biblioteki.")
+        }
+        .alert("Posprzątać playlisty?", isPresented: $showCleanupConfirm) {
+            Button("Posprzątaj", role: .destructive) {
+                Task {
+                    do { try await app.cleanupAlbumDumpPlaylists() }
+                    catch { errorMessage = error.localizedDescription }
+                }
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Foldery-albumy znikną z Playlist. Utwory zostają w Albumach i bibliotece.")
+        }
+        .alert("Zmień nazwę", isPresented: Binding(get: { renameFolder != nil }, set: { if !$0 { renameFolder = nil } })) {
+            TextField("Nazwa", text: $renameText)
+            Button("Zapisz") {
+                if let folder = renameFolder {
+                    Task {
+                        do { try await app.renameFolder(id: folder.id, name: renameText) }
+                        catch { errorMessage = error.localizedDescription }
+                    }
+                }
+                renameFolder = nil
+            }
+            Button("Anuluj", role: .cancel) { renameFolder = nil }
+        }
     }
 
     private var smartSectionHeader: some View {
@@ -182,6 +323,18 @@ struct LibraryPlaylistsView: View {
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.primary)
             Text("Automatyczne playlisty ze statystyk słuchania")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var importsHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Importy")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+            Text("Listy z Apple Music i Spotify")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -256,15 +409,57 @@ struct LibraryPlaylistsView: View {
         .padding(.vertical, 4)
     }
 
+    @ViewBuilder
+    private func playlistSelectableRow(_ folder: MusicFolder) -> some View {
+        if isEditing {
+            Button {
+                if selectedFolderIDs.contains(folder.id) {
+                    selectedFolderIDs.remove(folder.id)
+                } else {
+                    selectedFolderIDs.insert(folder.id)
+                }
+            } label: {
+                HStack {
+                    Image(systemName: selectedFolderIDs.contains(folder.id) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(EOSTheme.accent)
+                    playlistRow(folder)
+                }
+            }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: folder) {
+                playlistRow(folder)
+            }
+            .contextMenu {
+                Button {
+                    renameText = folder.name
+                    renameFolder = folder
+                } label: {
+                    Label("Zmień nazwę", systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    folderToDelete = folder
+                } label: {
+                    Label("Usuń", systemImage: "trash")
+                }
+            }
+        }
+    }
+
     private func playlistRow(_ folder: MusicFolder) -> some View {
         HStack(spacing: 14) {
-            ArtworkImage(url: playlistArtwork(for: folder), size: 56, cornerRadius: 6)
+            PlaylistArtworkView(folder: folder, tracks: app.tracks(in: folder.id), size: 56, cornerRadius: 6)
             VStack(alignment: .leading, spacing: 3) {
-                Text(folder.name)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(folder.countLabel)
+                HStack(spacing: 6) {
+                    Text(folder.name)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let badge = PlaylistHygiene.importBadge(for: folder) {
+                        PlaylistImportBadgeView(badge: badge)
+                    }
+                }
+                Text(app.playlistCountLabel(for: folder))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -274,36 +469,72 @@ struct LibraryPlaylistsView: View {
 
     private func playlistCard(_ folder: MusicFolder) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            ArtworkImage(url: playlistArtwork(for: folder), size: 160, cornerRadius: 10, allowAnimated: true)
+            PlaylistArtworkView(folder: folder, tracks: app.tracks(in: folder.id), size: 160, cornerRadius: 10)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
 
-            Text(folder.name)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
+            HStack(spacing: 6) {
+                Text(folder.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                if let badge = PlaylistHygiene.importBadge(for: folder) {
+                    PlaylistImportBadgeView(badge: badge)
+                }
+            }
 
-            Text(folder.countLabel)
+            Text(app.playlistCountLabel(for: folder))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
     }
 
-    private func playlistArtwork(for folder: MusicFolder) -> URL? {
-        if let art = folder.artworkURL { return art }
-        return app.libraryTracksForBrowsing.first(where: { $0.folderId == folder.id })?.artworkURL
+    private func deleteFolders(_ offsets: IndexSet, from folders: [MusicFolder]) {
+        let selected = offsets.compactMap { folders.indices.contains($0) ? folders[$0] : nil }
+        if selected.count == 1 {
+            folderToDelete = selected[0]
+        } else {
+            foldersToDelete = selected
+        }
     }
 
-    private func deleteFolders(at offsets: IndexSet) {
-        guard let index = offsets.first, filteredFolders.indices.contains(index) else { return }
-        folderToDelete = filteredFolders[index]
+    private func moveUserFolders(from source: IndexSet, to destination: Int) {
+        var ids = userFolders.map(\.id)
+        ids.move(fromOffsets: source, toOffset: destination)
+        PlaylistCustomOrderStore.set(ids)
+        playlistsSort = PlaylistSortMode.custom.rawValue
+    }
+
+    private func setPolicyForSelection(_ policy: PlaylistAutoAcquirePolicy) {
+        for id in selectedFolderIDs {
+            PlaylistAutoAcquireStore.set(policy, for: id)
+        }
+    }
+
+    private func downloadSelection() {
+        for folder in filteredFolders where selectedFolderIDs.contains(folder.id) {
+            let tracks = app.tracks(in: folder.id)
+            app.downloadAll(in: tracks, folderId: folder.id, destination: .serverAndPhone, label: folder.name)
+        }
     }
 
     private func confirmDelete(_ folder: MusicFolder) async {
         folderToDelete = nil
         do {
             try await app.deleteMusicFolder(folder)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func confirmDeleteMany(_ folders: [MusicFolder]) async {
+        foldersToDelete = []
+        do {
+            for folder in folders {
+                try await app.deleteMusicFolder(folder)
+            }
+            selectedFolderIDs.removeAll()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -502,6 +733,10 @@ struct LibraryArtistSongsView: View {
                                     folderId: track.folderId
                                 )
                             }
+                            .trackQuickActions(
+                                TrackQuickActionItem(track: track),
+                                play: { Task { await play(at: index) } }
+                            )
                             .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                         }
                     } header: {
@@ -707,6 +942,15 @@ struct LibraryAlbumSongsView: View {
                                     folderId: track.folderId
                                 )
                             }
+                            .trackQuickActions(
+                                TrackQuickActionItem(track: track),
+                                play: {
+                                    Task {
+                                        let folder = app.musicFolders.first(where: { $0.id == track.folderId })
+                                        await app.playTracks(tracks, startIndex: index, folder: folder)
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -841,40 +1085,10 @@ struct LibrarySongsListView: View {
                 folderId: track.folderId
             )
         }
-        .contextMenu {
-            Button {
-                Task { await play(track: track) }
-            } label: {
-                Label("Odtwórz", systemImage: "play.fill")
-            }
-            Button {
-                Task { await app.toggleFavorite(track.favoriteItem) }
-            } label: {
-                Label(
-                    app.isFavorite(track.url) ? "Usuń z ulubionych" : "Dodaj do ulubionych",
-                    systemImage: app.isFavorite(track.url) ? "heart.slash" : "heart"
-                )
-            }
-            Button {
-                sharePayload = .text(trackShareText(track))
-            } label: {
-                Label("Udostępnij", systemImage: "square.and.arrow.up")
-            }
-            if let local = OfflineMusicStore.shared.localURL(for: track.url) {
-                Button {
-                    sharePayload = .file(local)
-                } label: {
-                    Label("Wyślij plik", systemImage: "paperplane")
-                }
-            }
-            if app.downloads.uiState(for: track.url, isOnServer: track.isOnServer) != .done {
-                Button {
-                    app.downloadTrack(track, folderId: track.folderId)
-                } label: {
-                    Label("Pobierz na iPhone", systemImage: "arrow.down.circle")
-                }
-            }
-        }
+        .trackQuickActions(
+            TrackQuickActionItem(track: track),
+            play: { Task { await play(track: track) } }
+        )
     }
 
     private func trackShareText(_ track: MusicTrack) -> String {
@@ -1400,47 +1614,11 @@ struct LibraryDownloadedView: View {
                 .buttonStyle(.plain)
             }
         }
-        .contextMenu {
-            if !isSelecting {
-                Button {
-                    Task { await playDownloaded(track: track, sectionTracks: sectionTracks) }
-                } label: {
-                    Label("Odtwórz", systemImage: "play.fill")
-                }
-                if let sizeLabel {
-                    Text("Rozmiar: \(sizeLabel)")
-                }
-                Button {
-                    let text: String = {
-                        if let artist = track.artist, !artist.isEmpty {
-                            return "\(track.title) — \(artist)"
-                        }
-                        return track.title
-                    }()
-                    sharePayload = .text(text)
-                } label: {
-                    Label("Udostępnij", systemImage: "square.and.arrow.up")
-                }
-                if let local = OfflineMusicStore.shared.localURL(for: track.url) {
-                    Button {
-                        sharePayload = .file(local)
-                    } label: {
-                        Label("Wyślij plik", systemImage: "paperplane")
-                    }
-                }
-                Button {
-                    selectedURLs = [track.url]
-                    editMode = .active
-                } label: {
-                    Label("Zaznacz…", systemImage: "checkmark.circle")
-                }
-                Button(role: .destructive) {
-                    trackPendingDelete = track
-                } label: {
-                    Label("Usuń z iPhone’a", systemImage: "trash")
-                }
-            }
-        }
+        .trackQuickActions(
+            TrackQuickActionItem(track: track),
+            play: { Task { await playDownloaded(track: track, sectionTracks: sectionTracks) } },
+            showsSwipe: false
+        )
         .swipeActions(edge: .trailing, allowsFullSwipe: !isSelecting) {
             if !isSelecting {
                 Button(role: .destructive) {

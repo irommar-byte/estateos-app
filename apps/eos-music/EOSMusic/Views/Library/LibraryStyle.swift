@@ -72,35 +72,90 @@ struct LibraryCategoryRow: View {
     }
 }
 
-struct LibraryDownloadedCategoryRow: View {
-    let count: Int
-    var storage: StorageSnapshot?
-    var breakdown: StorageBreakdown? = nil
+struct LibraryStorageCategoryRow: View {
+    enum Kind {
+        case server
+        case device
+    }
+
+    let kind: Kind
+    let trackCount: Int
+    let usedBytes: Int64
+    let freeBytes: Int64?
+
+    private var title: String {
+        switch kind {
+        case .server: return "Na serwerze"
+        case .device: return "Na tym iPhonie"
+        }
+    }
+
+    private var icon: String {
+        switch kind {
+        case .server: return "externaldrive.fill"
+        case .device: return "iphone"
+        }
+    }
+
+    private var badge: String {
+        switch kind {
+        case .server: return "Serwer"
+        case .device: return "Ten iPhone"
+        }
+    }
+
+    private var countLabel: String {
+        trackCount == 1 ? "1 utwór" : "\(trackCount) utworów"
+    }
+
+    private var subtitle: String {
+        let used = ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)
+        if let freeBytes {
+            let free = ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)
+            return "\(countLabel) · \(used) · \(free) wolne"
+        }
+        return "\(countLabel) · \(used)"
+    }
+
+    private var usedFraction: Double {
+        guard let freeBytes, usedBytes + freeBytes > 0 else { return 0 }
+        return min(1, max(0, Double(usedBytes) / Double(usedBytes + freeBytes)))
+    }
 
     var body: some View {
         HStack(spacing: 16) {
-            Image(systemName: "arrow.down.circle.fill")
+            Image(systemName: icon)
                 .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(LibraryAccent.icon)
                 .frame(width: 30, alignment: .center)
 
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Pobrane")
+                HStack(spacing: 8) {
+                    Text(title)
                         .font(.body)
                         .foregroundStyle(.primary)
-                    Spacer(minLength: 8)
-                    Text(count == 1 ? "1 utwór" : "\(count) utworów")
-                        .font(.subheadline)
+                    Text(badge)
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.14), in: Capsule())
+                    Spacer(minLength: 8)
                 }
-                if breakdown != nil || storage != nil {
-                    StorageCapacityBar(
-                        snapshot: storage,
-                        breakdown: breakdown,
-                        showsLegend: false,
-                        libraryOnly: breakdown.map { $0.freeBytes == 0 && $0.otherUsedBytes == 0 } ?? false
-                    )
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if freeBytes != nil {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.secondary.opacity(0.16))
+                            Capsule()
+                                .fill(LibraryAccent.icon)
+                                .frame(width: max(4, geo.size.width * usedFraction))
+                        }
+                    }
+                    .frame(height: 3)
                 }
             }
 
@@ -111,6 +166,21 @@ struct LibraryDownloadedCategoryRow: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .contentShape(Rectangle())
+    }
+}
+
+struct LibraryDownloadedCategoryRow: View {
+    let count: Int
+    var storage: StorageSnapshot?
+    var breakdown: StorageBreakdown? = nil
+
+    var body: some View {
+        LibraryStorageCategoryRow(
+            kind: .device,
+            trackCount: count,
+            usedBytes: breakdown?.musicBytes ?? storage?.usedBytes ?? 0,
+            freeBytes: storage?.freeBytes
+        )
     }
 }
 
@@ -317,10 +387,20 @@ enum LibraryData {
         }
 
         for folder in folders where prefixMatch(needle, folder.name) {
+            let owned = tracks.filter { $0.folderId == folder.id }
+            let subtitle: String
+            if owned.isEmpty {
+                subtitle = folder.countLabel
+            } else {
+                subtitle = MusicFolder.availabilityLabel(
+                    onServer: owned.filter(\.isOnServer).count,
+                    total: owned.count
+                )
+            }
             append(SearchSuggestion(
                 id: "pl-\(folder.id)",
                 title: folder.name,
-                subtitle: folder.countLabel,
+                subtitle: subtitle,
                 icon: "music.note.list",
                 kind: .playlist
             ))

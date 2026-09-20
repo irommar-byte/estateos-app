@@ -79,6 +79,25 @@ final class StreamRecoveryPolicyTests: XCTestCase {
     }
 }
 
+final class MusicFolderAvailabilityLabelTests: XCTestCase {
+    func testPartialMatchesCloudCount() {
+        XCTAssertEqual(MusicFolder.availabilityLabel(onServer: 3, total: 5), "3 z 5 na serwerze")
+    }
+
+    func testAllOnServerIsExplicit() {
+        XCTAssertEqual(MusicFolder.availabilityLabel(onServer: 5, total: 5), "5 utworów na serwerze")
+        XCTAssertEqual(MusicFolder.availabilityLabel(onServer: 1, total: 1), "1 utwór na serwerze")
+    }
+
+    func testNoneOnServerDoesNotClaimServerCopies() {
+        XCTAssertEqual(MusicFolder.availabilityLabel(onServer: 0, total: 5), "5 utworów")
+    }
+
+    func testZeroTracks() {
+        XCTAssertEqual(MusicFolder.availabilityLabel(onServer: 0, total: 0), "0 utworów")
+    }
+}
+
 final class MusicPlayWaitPolicyTests: XCTestCase {
     func testLiveProxySatisfiesWithoutDurableRequirement() {
         let job = Self.decodeJob("""
@@ -115,6 +134,15 @@ final class MusicPlayWaitPolicyTests: XCTestCase {
         {"jobId":"j3","status":"starting","ready":true,"mode":"stream-proxy","onServer":false}
         """)
         XCTAssertTrue(MusicPlayWaitPolicy.isSatisfied(job, requireDurable: false))
+        XCTAssertFalse(job.isDurableServerCopy)
+    }
+
+    func testDoneLiveProxyIsNotDurable() {
+        let job = Self.decodeJob("""
+        {"jobId":"j5","status":"done","ready":true,"mode":"stream-proxy","onServer":false}
+        """)
+        XCTAssertTrue(MusicPlayWaitPolicy.isSatisfied(job, requireDurable: false))
+        XCTAssertFalse(MusicPlayWaitPolicy.isSatisfied(job, requireDurable: true))
         XCTAssertFalse(job.isDurableServerCopy)
     }
 

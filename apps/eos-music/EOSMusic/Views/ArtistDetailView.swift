@@ -200,6 +200,10 @@ struct ArtistDetailView: View {
                             folderId: track.folderId
                         )
                     }
+                    .trackQuickActions(
+                        TrackQuickActionItem(track: track),
+                        play: { Task { await playLibrary(at: index) } }
+                    )
                 }
             }
             .padding(12)

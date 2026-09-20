@@ -1,5 +1,6 @@
 import QuartzCore
 import SwiftUI
+import UIKit
 
 /// Pioneer-style cue lamps: short pulse on onset, otherwise dark. Not an envelope follower.
 @MainActor
@@ -62,20 +63,20 @@ final class DJConsoleLampEngine {
         prevHigh = high
 
         if rising {
-            beatFlashUntil = now + 0.09
+            beatFlashUntil = now + 0.11
             beatCount += 1
             if beatCount % 2 == 1 {
-                rytmFlashUntil = now + 0.11
+                rytmFlashUntil = now + 0.13
             }
         } else if midPulse {
-            rytmFlashUntil = now + 0.10
+            rytmFlashUntil = now + 0.12
         }
 
         if bassThump {
             bassFlashUntil = now + 0.14
         }
         if highSpark {
-            trebleFlashUntil = now + 0.07
+            trebleFlashUntil = now + 0.08
         }
 
         if frame.level > 0.93, frame.bass > 0.88 {
@@ -99,6 +100,83 @@ final class DJConsoleLampEngine {
     }
 }
 
+/// Polls the audio tap and turns onsets into visible BEAT/RYTM flashes.
+/// `PlayerAudioVisualizer` does not publish — SwiftUI must poll via CADisplayLink.
+@MainActor
+final class CoverBeatPulseDriver: NSObject, ObservableObject {
+    struct Pulse: Equatable {
+        var beat = 0.0
+        var rytm = 0.0
+        var bass = 0.0
+        var treble = 0.0
+        var drive = 0.0
+    }
+
+    @Published private(set) var pulse = Pulse()
+
+    private let lamps = DJConsoleLampEngine()
+    private weak var visualizer: PlayerAudioVisualizer?
+    private var displayLink: CADisplayLink?
+    private var isPlaying = false
+    private var lastDraw: CFTimeInterval = 0
+    private var minInterval: CFTimeInterval = 1.0 / 14
+    private var beatDecay = 0.0
+    private var rytmDecay = 0.0
+
+    override init() {
+        super.init()
+    }
+
+    func start(visualizer: PlayerAudioVisualizer, isPlaying: Bool, fps: Double) {
+        self.visualizer = visualizer
+        self.isPlaying = isPlaying
+        let rate = fps > 0.5 ? max(12, min(16, fps)) : 12
+        minInterval = 1.0 / rate
+        if isPlaying {
+            guard displayLink == nil else { return }
+            let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
+            link.preferredFrameRateRange = CAFrameRateRange(
+                minimum: 10,
+                maximum: 16,
+                preferred: Float(rate)
+            )
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+        } else {
+            stop()
+            beatDecay = 0
+            rytmDecay = 0
+            pulse = Pulse()
+        }
+    }
+
+    func stop() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    deinit { displayLink?.invalidate() }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        if link.timestamp - lastDraw < minInterval { return }
+        lastDraw = link.timestamp
+        let frame = visualizer?.snapshot(isPlaying: isPlaying) ?? MusicPlaybackEngine.AudioReactiveFrame()
+        let out = lamps.process(frame: frame, isPlaying: isPlaying)
+        beatDecay = max(out.beat, beatDecay * 0.52, frame.beat * 0.28)
+        rytmDecay = max(out.rytm, rytmDecay * 0.52, frame.mid * 0.24)
+        let next = Pulse(
+            beat: min(1, beatDecay),
+            rytm: min(1, rytmDecay),
+            bass: max(out.bass, frame.bass * 0.72),
+            treble: max(out.treble, frame.treble * 0.45),
+            drive: frame.visualDrive(isStrong: true, intensity: 1)
+        )
+        if next != pulse {
+            pulse = next
+        }
+    }
+}
+
 enum CoverPulseStyle {
     /// Full split BEAT | RYTM behind cover (cover preset).
     case split
@@ -106,31 +184,39 @@ enum CoverPulseStyle {
     case halo
 }
 
-/// Okładka z rytmicznymi połówkami / pierścieniami — GPU gradients, niski FPS z policy.
+/// Okładka z rytmicznymi połówkami — CADisplayLink + lampy BEAT/RYTM.
 struct CoverSplitBeatPulseView: View {
     let artworkURL: URL?
     var fallbackImage: UIImage?
     let isPlaying: Bool
-    let visualizer: PlayerAudioVisualizer
+    var visualizer: PlayerAudioVisualizer
     let policy: PlayerVisualPolicy
     var canvasSize: CGFloat = 286
     var cornerRadius: CGFloat = 16
     var style: CoverPulseStyle = .split
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var lamps = DJConsoleLampEngine()
+    @StateObject private var driver = CoverBeatPulseDriver()
 
     private var isLight: Bool { colorScheme == .light }
+    private var live: Bool { policy.enabled && isPlaying && policy.analyzerFPS > 0.5 }
 
     var body: some View {
-        if !policy.enabled || !isPlaying {
-            staticCover
-        } else {
-            let fps = max(8, min(16, policy.analyzerFPS > 0 ? policy.analyzerFPS : 12))
-            TimelineView(.animation(minimumInterval: 1.0 / fps, paused: !isPlaying)) { _ in
+        Group {
+            if live {
                 animatedCover
+                    .drawingGroup(opaque: false)
+            } else {
+                staticCover
             }
         }
+        .onAppear { syncDriver() }
+        .onChange(of: live) { _, _ in syncDriver() }
+        .onDisappear { driver.stop() }
+    }
+
+    private func syncDriver() {
+        driver.start(visualizer: visualizer, isPlaying: live, fps: policy.analyzerFPS)
     }
 
     private var staticCover: some View {
@@ -148,88 +234,90 @@ struct CoverSplitBeatPulseView: View {
     }
 
     private var animatedCover: some View {
-        let audio = visualizer.snapshot(isPlaying: isPlaying)
-        let lampOut = lamps.process(frame: audio, isPlaying: isPlaying)
-        let beatFlash = lampOut.beat
-        let rytmFlash = lampOut.rytm
-        let bassFlash = lampOut.bass
-        let trebleFlash = lampOut.treble
-        let drive = audio.visualDrive(isStrong: true, intensity: max(0.55, policy.intensityScale))
-        let scale = policy.intensityScale
+        let pulse = driver.pulse
+        let scale = max(0.62, policy.intensityScale)
 
         return ZStack {
-            // Deep bass bloom — soft, cheap radial.
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            ProMixerDeckView.labelGreen.opacity((isLight ? 0.10 : 0.16) * bassFlash * scale),
-                            ProMixerDeckView.labelAmber.opacity((isLight ? 0.06 : 0.10) * rytmFlash * scale),
+                            ProMixerDeckView.labelGreen.opacity((isLight ? 0.14 : 0.22) * pulse.bass * scale),
+                            ProMixerDeckView.labelAmber.opacity((isLight ? 0.10 : 0.16) * pulse.rytm * scale),
                             .clear
                         ],
                         center: .center,
-                        startRadius: canvasSize * 0.12,
-                        endRadius: canvasSize * 0.72
+                        startRadius: canvasSize * 0.10,
+                        endRadius: canvasSize * 0.78
                     )
                 )
-                .frame(width: canvasSize * 1.35, height: canvasSize * 1.35)
-                .scaleEffect(1 + CGFloat(bassFlash) * 0.05)
-                .blur(radius: isLight ? 22 : 16)
+                .frame(width: canvasSize * 1.42, height: canvasSize * 1.42)
+                .scaleEffect(1 + CGFloat(pulse.bass) * 0.07)
+                .blur(radius: isLight ? 20 : 14)
 
             if style == .split {
                 HStack(spacing: 0) {
-                    backgroundHalf(
-                        flash: beatFlash,
+                    CoverBeatWash(
+                        flash: pulse.beat,
                         accent: ProMixerDeckView.labelGreen,
                         isLeft: true,
-                        drive: drive
+                        drive: pulse.drive,
+                        cornerRadius: cornerRadius,
+                        isLight: isLight
                     )
-                    backgroundHalf(
-                        flash: rytmFlash,
+                    CoverBeatWash(
+                        flash: pulse.rytm,
                         accent: ProMixerDeckView.labelAmber,
                         isLeft: false,
-                        drive: drive
+                        drive: pulse.drive,
+                        cornerRadius: cornerRadius,
+                        isLight: isLight
                     )
                 }
-                .frame(width: canvasSize * 1.18, height: canvasSize * 1.18)
-                .blur(radius: isLight ? 16 : 13)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius + 8, style: .continuous))
+                .frame(width: canvasSize * 1.22, height: canvasSize * 1.22)
+                .blur(radius: isLight ? 12 : 10)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius + 10, style: .continuous))
+
+                HStack(spacing: 0) {
+                    CoverBeatRail(flash: pulse.beat, accent: ProMixerDeckView.labelGreen)
+                    Spacer(minLength: 0)
+                    CoverBeatRail(flash: pulse.rytm, accent: ProMixerDeckView.labelAmber)
+                }
+                .frame(width: canvasSize * 1.08, height: canvasSize * 0.92)
             } else {
-                // Halo mode — concentric rings instead of split smear.
                 Circle()
                     .strokeBorder(
-                        ProMixerDeckView.labelGreen.opacity((isLight ? 0.22 : 0.35) * beatFlash * scale),
-                        lineWidth: 3 + beatFlash * 4
+                        ProMixerDeckView.labelGreen.opacity((isLight ? 0.28 : 0.42) * pulse.beat * scale),
+                        lineWidth: 3 + pulse.beat * 7
                     )
                     .frame(width: canvasSize * 1.08, height: canvasSize * 1.08)
-                    .blur(radius: 1.5)
+                    .blur(radius: 1.2)
                 Circle()
                     .strokeBorder(
-                        ProMixerDeckView.labelAmber.opacity((isLight ? 0.18 : 0.30) * rytmFlash * scale),
-                        lineWidth: 2 + rytmFlash * 3
+                        ProMixerDeckView.labelAmber.opacity((isLight ? 0.22 : 0.36) * pulse.rytm * scale),
+                        lineWidth: 2 + pulse.rytm * 6
                     )
-                    .frame(width: canvasSize * 1.18, height: canvasSize * 1.18)
-                    .blur(radius: 2)
+                    .frame(width: canvasSize * 1.20, height: canvasSize * 1.20)
+                    .blur(radius: 1.8)
             }
 
-            // Treble sparkles — thin edge highlights (no particles).
             RoundedRectangle(cornerRadius: cornerRadius + 4, style: .continuous)
                 .strokeBorder(
                     AngularGradient(
                         colors: [
-                            Color.white.opacity(trebleFlash * (isLight ? 0.55 : 0.7)),
-                            ProMixerDeckView.labelGreen.opacity(trebleFlash * 0.35),
+                            Color.white.opacity(pulse.treble * (isLight ? 0.62 : 0.78)),
+                            ProMixerDeckView.labelGreen.opacity(pulse.treble * 0.42),
                             Color.clear,
-                            ProMixerDeckView.labelAmber.opacity(trebleFlash * 0.3),
-                            Color.white.opacity(trebleFlash * (isLight ? 0.45 : 0.55))
+                            ProMixerDeckView.labelAmber.opacity(pulse.treble * 0.38),
+                            Color.white.opacity(pulse.treble * (isLight ? 0.50 : 0.62))
                         ],
                         center: .center
                     ),
-                    lineWidth: 1.4
+                    lineWidth: 1.6
                 )
                 .frame(width: canvasSize * 0.98, height: canvasSize * 0.98)
-                .opacity(0.35 + trebleFlash * 0.65)
-                .blur(radius: trebleFlash > 0.5 ? 0.5 : 1.2)
+                .opacity(0.28 + pulse.treble * 0.72)
+                .blur(radius: pulse.treble > 0.5 ? 0.4 : 1.1)
 
             ArtworkImage(
                 url: artworkURL,
@@ -239,17 +327,27 @@ struct CoverSplitBeatPulseView: View {
                 fallbackImage: fallbackImage
             )
             .overlay { coverBezel }
-            .scaleEffect(1 + CGFloat(bassFlash) * 0.012 * scale)
+            .overlay {
+                HStack(spacing: 0) {
+                    ProMixerDeckView.labelGreen.opacity(pulse.beat * (isLight ? 0.16 : 0.22))
+                    ProMixerDeckView.labelAmber.opacity(pulse.rytm * (isLight ? 0.14 : 0.20))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .blendMode(.plusLighter)
+                .allowsHitTesting(false)
+            }
+            .scaleEffect(1 + CGFloat(pulse.bass) * 0.018 * scale)
+            .brightness(pulse.beat * 0.045 * scale)
             .shadow(
-                color: ProMixerDeckView.labelGreen.opacity(isLight ? 0.14 + beatFlash * 0.42 : 0.20 + beatFlash * 0.50),
-                radius: 10 + beatFlash * 20,
-                x: isLight ? -2 : 0,
+                color: ProMixerDeckView.labelGreen.opacity(isLight ? 0.16 + pulse.beat * 0.62 : 0.24 + pulse.beat * 0.72),
+                radius: 8 + pulse.beat * 26,
+                x: isLight ? -3 : -2,
                 y: 6
             )
             .shadow(
-                color: ProMixerDeckView.labelAmber.opacity(isLight ? 0.12 + rytmFlash * 0.36 : 0.16 + rytmFlash * 0.42),
-                radius: 10 + rytmFlash * 18,
-                x: isLight ? 2 : 0,
+                color: ProMixerDeckView.labelAmber.opacity(isLight ? 0.14 + pulse.rytm * 0.52 : 0.18 + pulse.rytm * 0.62),
+                radius: 8 + pulse.rytm * 22,
+                x: isLight ? 3 : 2,
                 y: 6
             )
             .shadow(
@@ -259,8 +357,8 @@ struct CoverSplitBeatPulseView: View {
             )
         }
         .frame(width: canvasSize, height: canvasSize)
-        .animation(.easeOut(duration: 0.07), value: beatFlash)
-        .animation(.easeOut(duration: 0.08), value: rytmFlash)
+        .animation(.easeOut(duration: 0.055), value: pulse.beat)
+        .animation(.easeOut(duration: 0.065), value: pulse.rytm)
     }
 
     private var coverBezel: some View {
@@ -276,30 +374,107 @@ struct CoverSplitBeatPulseView: View {
                 lineWidth: isLight ? 1.4 : 1.2
             )
     }
+}
 
-    @ViewBuilder
-    private func backgroundHalf(
-        flash: Double,
-        accent: Color,
-        isLeft: Bool,
-        drive: Double
-    ) -> some View {
-        let base = isLight ? 0.12 : 0.14
-        let lit = base + flash * (isLight ? 0.78 : 0.88) + drive * 0.08
+struct CoverBeatWash: View {
+    var flash: Double
+    var accent: Color
+    var isLeft: Bool
+    var drive: Double
+    var cornerRadius: CGFloat
+    var isLight: Bool
+
+    var body: some View {
+        let base = isLight ? 0.16 : 0.18
+        let lit = base + flash * (isLight ? 0.86 : 0.96) + drive * 0.10
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(
                 LinearGradient(
                     colors: [
-                        accent.opacity(lit),
-                        accent.opacity(lit * 0.38),
-                        accent.opacity(lit * 0.08)
+                        accent.opacity(min(1, lit)),
+                        accent.opacity(lit * 0.42),
+                        accent.opacity(lit * 0.06)
                     ],
                     startPoint: isLeft ? .leading : .trailing,
                     endPoint: .center
                 )
             )
-            .scaleEffect(1 + CGFloat(flash) * 0.06 + CGFloat(drive) * 0.015)
-            .brightness(flash * (isLight ? 0.22 : 0.32))
-            .saturation(1 + flash * 0.28)
+            .scaleEffect(1 + CGFloat(flash) * 0.08 + CGFloat(drive) * 0.02)
+            .brightness(flash * (isLight ? 0.28 : 0.40))
+            .saturation(1 + flash * 0.38)
+    }
+}
+
+struct CoverBeatRail: View {
+    var flash: Double
+    var accent: Color
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(accent)
+            .frame(width: 7 + flash * 5)
+            .frame(maxHeight: .infinity)
+            .opacity(0.12 + flash * 0.88)
+            .shadow(color: accent.opacity(flash * 0.85), radius: 8 + flash * 10)
+            .scaleEffect(x: 1, y: 0.72 + flash * 0.28)
+    }
+}
+
+/// Podłużne diody jak na mikserze — większe na pełny ekran w poziomie.
+struct CoverBeatLEDBank: View {
+    let label: String
+    let color: Color
+    let intensity: Double
+    var segments: Int = 5
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .default))
+                .tracking(1.2)
+                .foregroundStyle(color.opacity(intensity > 0.08 ? 0.95 : 0.42))
+
+            VStack(spacing: 5) {
+                ForEach(0..<segments, id: \.self) { index in
+                    let threshold = Double(index) / Double(max(segments, 1))
+                    let on = intensity > threshold * 0.72
+                    let lit = on ? min(1, 0.35 + intensity * 0.75) : 0.08
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.black.opacity(0.92),
+                                    Color.black.opacity(0.72)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                                .fill(color.opacity(lit))
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 2)
+                                .shadow(color: on ? color.opacity(0.7 * intensity) : .clear, radius: on ? 6 : 0)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .stroke(Color.white.opacity(0.14), lineWidth: 0.6)
+                        }
+                        .frame(width: 36, height: 13)
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.38))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 0.6)
+                }
+        }
+        .accessibilityLabel("\(label) \(Int((intensity * 100).rounded()))%")
     }
 }

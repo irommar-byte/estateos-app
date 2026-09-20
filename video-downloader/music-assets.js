@@ -387,6 +387,7 @@ function persistLiveJobToDisk(job, {
   job.persisting = true;
   job.status = "downloading";
   job.progress = Math.max(22, job.progress || 22);
+  job.lastProgressAt = Date.now();
   if (!job.queuedAt) job.queuedAt = Date.now();
   activeAcquire.set(inflightKey, job.id);
   sendEvent?.(job, {
@@ -422,9 +423,16 @@ function persistLiveJobToDisk(job, {
         appleUrl: url,
         destPath: partPath,
         trackMeta: track,
+        onSpawn: (child) => {
+          job.proc = child;
+        },
         onProgress: (pct) => {
           if (job.cancelled) return;
-          job.progress = Math.min(97, Math.max(22, Math.round(pct)));
+          const next = Math.min(97, Math.max(22, Math.round(pct)));
+          if (next > (Number(job.progress) || 0) + 0.4) {
+            job.lastProgressAt = Date.now();
+          }
+          job.progress = next;
           sendEvent?.(job, {
             status: "downloading",
             progress: job.progress,
@@ -517,24 +525,15 @@ function persistLiveJobToDisk(job, {
         if (partPath && fs.existsSync(partPath)) fs.unlinkSync(partPath);
       } catch {}
       job.persisting = false;
-      if (!job.streamUrl) {
-        job.status = "error";
-        job.ready = false;
-        job.error = friendlyError ? friendlyError(err) : err?.message || String(err);
-        sendEvent?.(job, { status: "error", error: job.error, purpose: job.purpose, assetId });
-      } else {
-        console.warn("music persist after stream:", err?.message || err);
-        sendEvent?.(job, {
-          status: "done",
-          ready: true,
-          progress: job.progress || 18,
-          purpose: job.purpose,
-          assetId,
-          streaming: true,
-        });
-      }
+      job.proc = null;
+      job.status = "error";
+      job.ready = false;
+      job.error = friendlyError ? friendlyError(err) : err?.message || String(err);
+      sendEvent?.(job, { status: "error", error: job.error, purpose: job.purpose, assetId });
     } finally {
-      activeAcquire.delete(inflightKey);
+      if (activeAcquire.get(inflightKey) === job.id) {
+        activeAcquire.delete(inflightKey);
+      }
     }
   })();
 }
@@ -579,8 +578,12 @@ export async function ensureMusicAsset({
     if (!job?.file || !fs.existsSync(job.file)) return false;
     return fs.statSync(job.file).size > 32 * 1024;
   };
-  const streamReady = (job) =>
-    job?.mode === "stream-proxy" && !!job.streamUrl && (job.ready === true || job.status === "done");
+  const streamReady = (job) => {
+    if (!job || job.status === "error" || job.cancelled) return false;
+    if (!job.streamUrl) return false;
+    if (job.pipeStream || job.streamUrl === "eos:yt-dlp") return true;
+    return job.mode === "stream-proxy";
+  };
   const playable = (job) => fileReady(job) || streamReady(job);
 
   const pack = (jobId, { reused, ready, job }) => ({
@@ -653,18 +656,25 @@ export async function ensureMusicAsset({
   if (activeAcquire.has(inflightKey)) {
     const jobId = activeAcquire.get(inflightKey);
     const existing = jobs.get(jobId);
-    if (existing && intent === "download") {
-      promoteStreamToDownload(existing);
+    if (existing && isStalledMusicAcquire(existing)) {
+      failStalledMusicAcquire(existing, { sendEvent });
+    } else {
+      if (existing && intent === "download") {
+        promoteStreamToDownload(existing);
+      }
+      if (waitUntilPlayable) {
+        const job = await waitPlayable(jobId);
+        return pack(jobId, { reused: true, ready: true, job });
+      }
+      const job = jobs.get(jobId);
+      return pack(jobId, { reused: true, ready: playable(job), job });
     }
-    if (waitUntilPlayable) {
-      const job = await waitPlayable(jobId);
-      return pack(jobId, { reused: true, ready: true, job });
-    }
-    const job = jobs.get(jobId);
-    return pack(jobId, { reused: true, ready: playable(job), job });
   }
 
   const existingJob = jobs.get(assetId);
+  if (existingJob && isStalledMusicAcquire(existingJob)) {
+    failStalledMusicAcquire(existingJob, { sendEvent });
+  }
   if (
     existingJob?.kind === "music" &&
     !existingJob.cancelled &&
@@ -722,8 +732,10 @@ export async function ensureMusicAsset({
   const acquirePromise = (async () => {
     let partPath = null;
     try {
-      job.status = "preparing";
-      sendEvent?.(job, { status: "preparing", progress: 3, purpose: job.purpose, assetId });
+      if (job.intent === "download") {
+        job.status = "preparing";
+        sendEvent?.(job, { status: "preparing", progress: 3, purpose: job.purpose, assetId });
+      }
 
       const track = await buildAppleMusicInfo(url);
       if (track.thumbnail) {
@@ -751,6 +763,10 @@ export async function ensureMusicAsset({
         job.trackMeta = track;
         job.name = track.title || job.name;
         job.partPath = null;
+        job.status = "done";
+        job.ready = true;
+        job.mode = job.mode || "stream-proxy";
+        job.streamUrl = job.streamUrl || "eos:yt-dlp";
         sendEvent?.(job, {
           status: "done",
           ready: true,
@@ -780,9 +796,16 @@ export async function ensureMusicAsset({
         appleUrl: url,
         destPath: partPath,
         trackMeta: track,
+        onSpawn: (child) => {
+          job.proc = child;
+        },
         onProgress: (pct) => {
           if (job.cancelled) return;
-          job.progress = Math.min(97, Math.max(22, Math.round(pct)));
+          const next = Math.min(97, Math.max(22, Math.round(pct)));
+          if (next > (Number(job.progress) || 0) + 0.4) {
+            job.lastProgressAt = Date.now();
+          }
+          job.progress = next;
           sendEvent?.(job, {
             status: "downloading",
             progress: job.progress,
@@ -874,6 +897,21 @@ export async function ensureMusicAsset({
       try {
         if (partPath && fs.existsSync(partPath)) fs.unlinkSync(partPath);
       } catch {}
+      if (job.intent !== "download" && job.streamUrl) {
+        job.persisting = false;
+        job.status = "done";
+        job.ready = true;
+        console.warn("music metadata after stream:", err?.message || err);
+        sendEvent?.(job, {
+          status: "done",
+          ready: true,
+          progress: job.progress || 18,
+          purpose: job.purpose,
+          assetId,
+          streaming: true,
+        });
+        return;
+      }
       job.mode = null;
       job.streamUrl = null;
       job.persisting = false;
@@ -882,7 +920,9 @@ export async function ensureMusicAsset({
       job.error = friendlyError ? friendlyError(err) : err?.message || String(err);
       sendEvent?.(job, { status: "error", error: job.error, purpose: job.purpose, assetId });
     } finally {
-      activeAcquire.delete(inflightKey);
+      if (activeAcquire.get(inflightKey) === job.id) {
+        activeAcquire.delete(inflightKey);
+      }
     }
   })();
 
@@ -909,8 +949,9 @@ export function resolveAssetJob(userKey, jobId, downloadsRoot, { ensurePlayToken
 }
 
 
-const MUSIC_ACQUIRE_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_IDLE_MS || 180_000);
-const MUSIC_ACQUIRE_MAX_MS = Number(process.env.MUSIC_ACQUIRE_MAX_MS || 300_000);
+const MUSIC_ACQUIRE_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_IDLE_MS || 90_000);
+const MUSIC_ACQUIRE_BOOT_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_BOOT_IDLE_MS || 35_000);
+const MUSIC_ACQUIRE_MAX_MS = Number(process.env.MUSIC_ACQUIRE_MAX_MS || 180_000);
 
 export function clearActiveAcquire(job) {
   if (!job?.userKey || !job?.url) return;
@@ -920,23 +961,28 @@ export function clearActiveAcquire(job) {
 export function isStalledMusicAcquire(job, now = Date.now()) {
   if (!job || job.kind !== "music") return false;
   if (job.ready || job.status === "done" || job.status === "error" || job.status === "cancelled") return false;
-  if (job.persisting) return false;
   const status = String(job.status || "");
-  if (!["preparing", "starting", "downloading", "processing"].includes(status)) return false;
+  const active = job.persisting || ["preparing", "starting", "downloading", "processing"].includes(status);
+  if (!active) return false;
   const started = Number(job.queuedAt || job.createdAt || 0);
   if (started > 0 && now - started > MUSIC_ACQUIRE_MAX_MS) return true;
+  const progress = Number(job.progress || 0);
+  const idle = progress > 0 && progress <= 28 ? MUSIC_ACQUIRE_BOOT_IDLE_MS : MUSIC_ACQUIRE_IDLE_MS;
   const anchor = Number(job.lastProgressAt || started || 0);
-  return anchor > 0 && now - anchor > MUSIC_ACQUIRE_IDLE_MS;
+  return anchor > 0 && now - anchor > idle;
 }
 
 export function failStalledMusicAcquire(job, { sendEvent } = {}) {
   if (!isStalledMusicAcquire(job)) return false;
   const message =
-    "Przygotowanie utworu trwa zbyt długo — serwer APLMate/Cloudflare jest zajęty. Spróbuj ponownie za chwilę.";
+    "Zapis utworu zatrzymał się — ponawiam pobieranie na serwer.";
+  try { job.proc?.kill("SIGKILL"); } catch {}
+  job.proc = null;
+  job.persisting = false;
   job.status = "error";
   job.error = message;
   job.ready = false;
-  job.cancelled = false;
+  job.cancelled = true;
   clearActiveAcquire(job);
   sendEvent?.(job, { status: "error", phase: "error", error: message });
   return true;

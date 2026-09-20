@@ -227,12 +227,11 @@ final class MusicPlaybackEngine: ObservableObject {
             case .none:
                 fps = 0
             case .mini:
-                // Island bars only — keep cheap.
-                fps = min(18, max(12, policy.analyzerFPS))
+                fps = min(10, max(8, policy.analyzerFPS))
             case .full:
                 fps = needsSpectrum
-                    ? min(18, max(14, policy.analyzerFPS))
-                    : min(14, max(10, policy.analyzerFPS))
+                    ? min(12, max(8, policy.analyzerFPS))
+                    : min(8, max(6, policy.analyzerFPS))
             }
         } else {
             fps = 0
@@ -297,7 +296,7 @@ final class MusicPlaybackEngine: ObservableObject {
     }
     /// Published mirror of `orderCursor` — drives queue UI without polling AVPlayer.
     @Published private(set) var currentQueueIndex = 0
-    private var player: AVPlayer?
+    private var player: AVQueuePlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var failObserver: NSObjectProtocol?
@@ -316,6 +315,7 @@ final class MusicPlaybackEngine: ObservableObject {
     private let nowPlaying = NowPlayingCenter.shared
     private var audioAnalyzer = PlayerAudioAnalyzer()
     private var supplementalNowPlayingMetadata: NowPlayingCenter.SupplementalMetadata?
+    private var playbackIdentity = PlaybackItemIdentity.none
 
     /// Anuluje zaległe `play()` po `stop()` lub zmianie utworu.
     private var sessionGeneration = 0
@@ -350,9 +350,11 @@ final class MusicPlaybackEngine: ObservableObject {
         let trackID: String
         let url: URL
         let readyRemote: Bool
+        var item: AVPlayerItem?
     }
 
     private var prefetchedStream: PrefetchedStream?
+    private var playGate = false
 
     init(session: MusicPlaybackSession) {
         queue = session.queue
@@ -462,7 +464,10 @@ final class MusicPlaybackEngine: ObservableObject {
     /// Jump to a specific position in the current play order (0-based).
     func jumpToOrderIndex(_ index: Int) async {
         guard index >= 0, index < playOrder.count else { return }
-        await playOrderIndex(index, generation: sessionGeneration)
+        await runSerializedPlay { [weak self] generation in
+            guard let self else { return }
+            await self.playOrderIndex(index, generation: generation)
+        }
         BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
 
@@ -471,6 +476,9 @@ final class MusicPlaybackEngine: ObservableObject {
         guard !queue.isEmpty else { return }
         let queueIndex = playOrder[safe: orderCursor] ?? playOrder.first ?? 0
         let track = queue[queueIndex]
+        if playbackIdentity == .none {
+            beginPlaybackTransition(queueIndex: queueIndex)
+        }
         nowPlaying.update(
             track: track,
             duration: max(0, track.duration ?? 0),
@@ -481,6 +489,7 @@ final class MusicPlaybackEngine: ObservableObject {
             collectionTitle: queueSourceTitle,
             collectionPersistentSeed: folderId ?? sessionCollectionId,
             externalContentIdentifier: BluetoothMediaBrowser.queueContentIdentifier(orderIndex: orderCursor),
+            identity: playbackIdentity,
             force: true
         )
         BluetoothMediaBrowser.shared.preparePlaybackSession(engine: self)
@@ -491,12 +500,10 @@ final class MusicPlaybackEngine: ObservableObject {
             errorMessage = "Pusta playlista."
             return
         }
-        activePlayTask?.cancel()
-        let generation = sessionGeneration
-        activePlayTask = Task {
-            await playOrderIndex(orderCursor, generation: generation)
+        await runSerializedPlay { [weak self] generation in
+            guard let self else { return }
+            await self.playOrderIndex(self.orderCursor, generation: generation)
         }
-        await activePlayTask?.value
     }
 
     func stop() {
@@ -612,14 +619,17 @@ final class MusicPlaybackEngine: ObservableObject {
 
     func skipNext() async {
         guard !queue.isEmpty else { return }
-        if orderCursor < playOrder.count - 1 {
-            orderCursor += 1
-        } else if repeatMode == .all {
-            orderCursor = 0
-        } else {
-            return
+        await runSerializedPlay { [weak self] generation in
+            guard let self else { return }
+            if self.orderCursor < self.playOrder.count - 1 {
+                self.orderCursor += 1
+            } else if self.repeatMode == .all {
+                self.orderCursor = 0
+            } else {
+                return
+            }
+            await self.playOrderIndex(self.orderCursor, generation: generation)
         }
-        await playOrderIndex(orderCursor, generation: sessionGeneration)
     }
 
     func skipPrevious() async {
@@ -628,15 +638,101 @@ final class MusicPlaybackEngine: ObservableObject {
             seek(to: 0)
             return
         }
-        if orderCursor > 0 {
-            orderCursor -= 1
-        } else if repeatMode == .all {
-            orderCursor = max(playOrder.count - 1, 0)
-        } else {
-            seek(to: 0)
-            return
+        await runSerializedPlay { [weak self] generation in
+            guard let self else { return }
+            if self.orderCursor > 0 {
+                self.orderCursor -= 1
+            } else if self.repeatMode == .all {
+                self.orderCursor = max(self.playOrder.count - 1, 0)
+            } else {
+                self.seek(to: 0)
+                return
+            }
+            await self.playOrderIndex(self.orderCursor, generation: generation)
         }
-        await playOrderIndex(orderCursor, generation: sessionGeneration)
+    }
+
+    /// Insert tracks to play immediately after the current item (Apple Music “Play Next”).
+    func insertNext(_ tracks: [MusicPlaybackTrack]) {
+        guard !tracks.isEmpty else { return }
+        let insertAt = min(orderCursor + 1, playOrder.count)
+        var offset = 0
+        for track in tracks {
+            let qi = enqueueUnique(track)
+            playOrder.removeAll { $0 == qi && playOrder.firstIndex(of: qi) != orderCursor }
+            let at = min(insertAt + offset, playOrder.count)
+            playOrder.insert(qi, at: at)
+            offset += 1
+        }
+        invalidatePreparedNext()
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
+        let generation = sessionGeneration
+        Task { await self.prefetchUpcoming(from: playOrder[safe: orderCursor] ?? 0, generation: generation) }
+    }
+
+    /// Append tracks to the end of the current play order (Apple Music “Play Later”).
+    func appendLater(_ tracks: [MusicPlaybackTrack]) {
+        guard !tracks.isEmpty else { return }
+        for track in tracks {
+            let qi = enqueueUnique(track)
+            if !playOrder.contains(qi) {
+                playOrder.append(qi)
+            }
+        }
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
+    }
+
+    func removeFromQueue(orderIndex: Int) {
+        guard playOrder.indices.contains(orderIndex), orderIndex != orderCursor else { return }
+        playOrder.remove(at: orderIndex)
+        if orderIndex < orderCursor {
+            orderCursor -= 1
+        }
+        invalidatePreparedNext()
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
+    }
+
+    func moveQueueItem(from source: Int, to destination: Int) {
+        guard playOrder.indices.contains(source), playOrder.indices.contains(destination) else { return }
+        let value = playOrder.remove(at: source)
+        playOrder.insert(value, at: destination)
+        if source == orderCursor {
+            orderCursor = destination
+        } else if source < orderCursor, destination >= orderCursor {
+            orderCursor -= 1
+        } else if source > orderCursor, destination <= orderCursor {
+            orderCursor += 1
+        }
+        invalidatePreparedNext()
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
+    }
+
+    @discardableResult
+    private func enqueueUnique(_ track: MusicPlaybackTrack) -> Int {
+        if let existing = queue.firstIndex(where: { $0.id == track.id || $0.url == track.url }) {
+            return existing
+        }
+        queue.append(track)
+        return queue.count - 1
+    }
+
+    private func invalidatePreparedNext() {
+        if let item = prefetchedStream?.item, let player, player.items().contains(where: { $0 === item }) {
+            if item !== player.currentItem {
+                player.remove(item)
+            }
+        }
+        prefetchedStream = nil
+    }
+
+    private func runSerializedPlay(_ work: @escaping (Int) async -> Void) async {
+        activePlayTask?.cancel()
+        let generation = sessionGeneration
+        let task = Task { @MainActor in
+            await work(generation)
+        }
+        activePlayTask = task
+        await task.value
     }
 
     func toggleShuffle() {
@@ -681,16 +777,19 @@ final class MusicPlaybackEngine: ObservableObject {
         let track = queue[index]
         if !track.isExternal, api == nil { return }
 
-        // Drop old item observers so end-of-track cannot double-skip while we resolve the next URL.
-        // Keep the current player audible until the next stream is ready (no silent token RTT).
+        beginPlaybackTransition(queueIndex: index)
         cleanupObservers()
         finalizeListenSession()
 
+        let artworkWas = displayArtwork
         currentTrack = track
         beginListenSession(for: track)
-        displayArtwork = nil
+        if artworkWas == nil {
+            displayArtwork = nil
+        }
         playbackOrigin = .unknown
-        isLoading = true
+        let canReusePrepared = prefetchedStream?.trackID == track.id && prefetchedStream?.item != nil
+        isLoading = !canReusePrepared
         isBuffering = false
         if !track.isExternal,
            isDownloaded(track),
@@ -742,7 +841,6 @@ final class MusicPlaybackEngine: ObservableObject {
                 streamOpenSignpost = nil
                 return
             }
-            teardownPlayer()
             loadStream(
                 url: streamURL,
                 track: track,
@@ -857,7 +955,7 @@ final class MusicPlaybackEngine: ObservableObject {
             throw APIError.server("Tryb Offline — utwór nie jest pobrany na to urządzenie.")
         }
 
-        let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+        let knownIds = [track.downloadJobId, jobLookup?(track.url), track.serverAssetId]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
         var seenIds = Set<String>()
@@ -995,7 +1093,7 @@ final class MusicPlaybackEngine: ObservableObject {
                     )
                 }
             }
-            durable = waited.isDurableServerCopy || durable || waited.status.lowercased() == "done"
+            durable = waited.isDurableServerCopy || durable
             if durable {
                 bindDurableJobId(jobId, toTrackURL: track.url)
             }
@@ -1015,7 +1113,7 @@ final class MusicPlaybackEngine: ObservableObject {
     ) async throws -> URL? {
         guard let api else { return nil }
 
-        let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+        let knownIds = [track.downloadJobId, jobLookup?(track.url), track.serverAssetId]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
         var seen = Set<String>()
@@ -1096,7 +1194,7 @@ final class MusicPlaybackEngine: ObservableObject {
                     )
                 }
             }
-            let durable = waited.isDurableServerCopy || waited.status.lowercased() == "done"
+            let durable = waited.isDurableServerCopy
             if durable {
                 bindDurableJobId(jobId, toTrackURL: track.url)
             }
@@ -1118,7 +1216,7 @@ final class MusicPlaybackEngine: ObservableObject {
                     )
                 }
             }
-            let durable = waited.isDurableServerCopy || waited.status.lowercased() == "done"
+            let durable = waited.isDurableServerCopy
             if durable {
                 bindDurableJobId(jobId, toTrackURL: track.url)
             }
@@ -1132,7 +1230,7 @@ final class MusicPlaybackEngine: ObservableObject {
         return try await authenticatedStreamURL(
             jobId: jobId,
             track: track,
-            durable: true,
+            durable: preferDurable,
             forceRefresh: forceRefresh
         )
     }
@@ -1165,10 +1263,10 @@ final class MusicPlaybackEngine: ObservableObject {
             rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
             return api.musicStreamURL(jobId: jobId, token: token.token)
         } catch {
-            EOSPerfLog.stream.debug("play-token fetch failed — session Bearer job=\(jobId, privacy: .public)")
-            activateStreamToken(jobId: jobId, token: "", expiresAt: nil)
-            warmPlayTokenInBackground(jobId: jobId)
-            return api.musicStreamURL(jobId: jobId)
+            EOSPerfLog.stream.error(
+                "play-token fetch failed job=\(jobId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            throw error
         }
     }
 
@@ -1181,7 +1279,7 @@ final class MusicPlaybackEngine: ObservableObject {
         guard !jobId.isEmpty, let idx = queue.firstIndex(where: { $0.url == url }) else { return }
         let current = queue[idx]
         if current.serverAssetId == jobId || current.downloadJobId == jobId { return }
-        queue[idx] = current.applying(downloadJobId: jobId, serverAssetId: jobId)
+        queue[idx] = current.applying(downloadJobId: jobId)
     }
 
     private func clearServerJobBinding(for track: MusicPlaybackTrack) {
@@ -1319,32 +1417,33 @@ final class MusicPlaybackEngine: ObservableObject {
         let qi = playOrder[nextCursor]
         guard queue.indices.contains(qi) else { return }
         let track = queue[qi]
+        guard !MusicDownloadService.isServerAcquireActive(track.url) else { return }
         if track.isExternal { return }
         if let local = OfflineMusicStore.shared.localURL(for: track.url) {
-            prefetchedStream = PrefetchedStream(trackID: track.id, url: local, readyRemote: false)
+            await preparePrefetchItem(trackID: track.id, url: local, readyRemote: false, generation: generation)
             return
         }
 
-        let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+        let knownIds = [track.downloadJobId, jobLookup?(track.url), track.serverAssetId]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
 
         if let jobId = knownIds.first {
             if let status = try? await api.fetchJobStatus(jobId: jobId),
-               status.looksLikeFileIngest {
+               status.looksLikeFileIngest, !status.isPlayableServerStream {
                 return
             }
             if let cached = cachedPlayToken(for: jobId) {
                 let url = api.musicStreamURL(jobId: jobId, token: cached.token)
-                prefetchedStream = PrefetchedStream(trackID: track.id, url: url, readyRemote: true)
-                warmRemoteAsset(url)
+                await preparePrefetchItem(trackID: track.id, url: url, readyRemote: true, generation: generation)
                 return
             }
-            let url = api.musicStreamURL(jobId: jobId)
-            prefetchedStream = PrefetchedStream(trackID: track.id, url: url, readyRemote: true)
-            warmRemoteAsset(url)
-            warmPlayTokenInBackground(jobId: jobId)
-            return
+            if let token = try? await api.musicPlayToken(jobId: jobId) {
+                rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
+                let url = api.musicStreamURL(jobId: jobId, token: token.token)
+                await preparePrefetchItem(trackID: track.id, url: url, readyRemote: true, generation: generation)
+                return
+            }
         }
 
         if let ensure = try? await api.startMusicPlay(
@@ -1360,29 +1459,117 @@ final class MusicPlaybackEngine: ObservableObject {
             if let token = ensure.token, !token.isEmpty, ensure.ready == true {
                 rememberStreamToken(jobId: ensure.jobId, token: token, expiresIn: nil)
                 let url = api.musicStreamURL(jobId: ensure.jobId, token: token)
-                prefetchedStream = PrefetchedStream(
+                await preparePrefetchItem(
                     trackID: track.id,
                     url: url,
-                    readyRemote: ensure.isDurableServerCopy
+                    readyRemote: ensure.isDurableServerCopy,
+                    generation: generation
                 )
-                warmRemoteAsset(url)
             }
         }
     }
 
-    private func warmRemoteAsset(_ url: URL) {
-        Task {
-            var options: [String: Any] = [AVURLAssetHTTPUserAgentKey: AppConfig.userAgent]
-            if Self.isEOSMusicStream(url) {
-                var headers: [String: String] = ["User-Agent": AppConfig.userAgent]
-                if let token = api?.sessionToken, !token.isEmpty {
-                    headers["Authorization"] = "Bearer \(token)"
-                }
-                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+    private func preparePrefetchItem(trackID: String, url: URL, readyRemote: Bool, generation: Int) async {
+        let item = makePlayerItem(url: url)
+        applyBufferPolicy(to: item, readyRemote: readyRemote, isRemote: !url.isFileURL)
+        _ = try? await item.asset.load(.isPlayable)
+        guard generation == sessionGeneration else { return }
+        prefetchedStream = PrefetchedStream(trackID: trackID, url: url, readyRemote: readyRemote, item: item)
+        if let player, item !== player.currentItem {
+            for leftover in player.items() where leftover !== player.currentItem {
+                player.remove(leftover)
             }
-            let asset = AVURLAsset(url: url, options: options)
-            _ = try? await asset.load(.isPlayable)
+            player.insert(item, after: player.currentItem)
+            if visualAnalysisEnabled {
+                audioAnalyzer.ensureAttached(to: item)
+            }
         }
+    }
+
+    private func adoptOrMakeItem(url: URL, trackID: String) -> AVPlayerItem {
+        if let prepared = prefetchedStream, prepared.trackID == trackID, let item = prepared.item {
+            prefetchedStream = nil
+            return item
+        }
+        return makePlayerItem(url: url)
+    }
+
+    private func applyBufferPolicy(to item: AVPlayerItem, readyRemote: Bool, isRemote: Bool) {
+        if readyRemote {
+            item.preferredForwardBufferDuration = 0.4
+        } else if isRemote {
+            item.preferredForwardBufferDuration = 2.5
+        }
+    }
+
+    private func ensureQueuePlayer() -> AVQueuePlayer {
+        if let player { return player }
+        let created = AVQueuePlayer()
+        created.actionAtItemEnd = .advance
+        player = created
+        return created
+    }
+
+    private func installItemOnQueue(_ item: AVPlayerItem, resumeAt: Double, queuePlayer: AVQueuePlayer) {
+        if queuePlayer.currentItem === item { return }
+        if queuePlayer.items().contains(where: { $0 === item }) {
+            if queuePlayer.currentItem !== item {
+                queuePlayer.advanceToNextItem()
+            }
+            return
+        }
+        if resumeAt > 0.5 {
+            queuePlayer.removeAllItems()
+            queuePlayer.insert(item, after: nil)
+            return
+        }
+        if let current = queuePlayer.currentItem {
+            for leftover in queuePlayer.items() where leftover !== current {
+                queuePlayer.remove(leftover)
+            }
+            queuePlayer.insert(item, after: current)
+            queuePlayer.advanceToNextItem()
+        } else {
+            queuePlayer.insert(item, after: nil)
+        }
+    }
+
+    private func handleNaturalAdvance(generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        if orderCursor < playOrder.count - 1 {
+            orderCursor += 1
+        } else if repeatMode == .all {
+            orderCursor = 0
+        }
+        let qi = playOrder[safe: orderCursor] ?? 0
+        guard queue.indices.contains(qi) else { return }
+        beginPlaybackTransition(queueIndex: qi)
+        let track = queue[qi]
+        currentTrack = track
+        beginListenSession(for: track)
+        currentTime = 0
+        duration = track.duration ?? 0
+        isLoading = false
+        refreshNowPlaying(force: true)
+        if let item = player?.currentItem, let url = (item.asset as? AVURLAsset)?.url {
+            prefetchedStream = PrefetchedStream(
+                trackID: track.id,
+                url: url,
+                readyRemote: true,
+                item: item
+            )
+            loadStream(
+                url: url,
+                track: track,
+                queueIndex: qi,
+                generation: generation,
+                resumeAt: 0,
+                readyRemote: true
+            )
+        } else {
+            refreshNowPlaying(force: true)
+        }
+        Task { await prefetchUpcoming(from: qi, generation: generation) }
     }
 
     private func retryOpenIfNeeded(
@@ -1480,7 +1667,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 let streamURL = try await authenticatedStreamURL(
                     jobId: active.jobId,
                     track: track,
-                    durable: waited.isDurableServerCopy || waited.status.lowercased() == "done",
+                    durable: waited.isDurableServerCopy,
                     forceRefresh: false
                 )
                 guard generation == sessionGeneration else { return true }
@@ -1510,16 +1697,16 @@ final class MusicPlaybackEngine: ObservableObject {
         }
 
         if Self.shouldReacquireAfterStreamFailure(reason), let api {
-            let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+            let knownIds = [track.downloadJobId, jobLookup?(track.url), track.serverAssetId]
                 .compactMap { $0 }
                 .filter { !$0.isEmpty }
             for jobId in knownIds {
-                if let status = try? await api.fetchJobStatus(jobId: jobId),
-                   status.status.lowercased() == "error"
-                    || status.status.lowercased() == "cancelled"
-                    || (status.looksLikeFileIngest && !status.isPlayableServerStream) {
-                    EOSPerfLog.stream.warning("clear broken server job=\(jobId, privacy: .public)")
-                    try? await api.cancelJob(jobId: jobId)
+                if let status = try? await api.fetchJobStatus(jobId: jobId) {
+                    let s = status.status.lowercased()
+                    if s == "error" || s == "cancelled" {
+                        EOSPerfLog.stream.warning("clear broken server job=\(jobId, privacy: .public)")
+                        try? await api.cancelJob(jobId: jobId)
+                    }
                 }
             }
             clearServerJobBinding(for: track)
@@ -1614,29 +1801,25 @@ final class MusicPlaybackEngine: ObservableObject {
         }
 
         cleanupObservers()
-        audioAnalyzer.detach(from: player?.currentItem)
 
         AudioSession.activateForPlayback()
 
-        let item = makePlayerItem(url: url)
         currentStreamIsRemote = !url.isFileURL
         currentStreamIsReadyRemote = readyRemote && currentStreamIsRemote
-        if currentStreamIsReadyRemote {
-            // File already on NAS/server — start ASAP; recovery path handles mid-track blips.
-            item.preferredForwardBufferDuration = 0.4
-        } else if currentStreamIsRemote {
-            // Cold / still-preparing streams: enough buffer to survive first seconds, small enough to start fast.
-            item.preferredForwardBufferDuration = 2.5
-        }
-        // Push live frames off the audio thread into a lock — UIKit hosts poll (no SwiftUI storm).
+
+        let item = adoptOrMakeItem(url: url, trackID: track.id)
+        applyBufferPolicy(to: item, readyRemote: currentStreamIsReadyRemote, isRemote: currentStreamIsRemote)
         audioAnalyzer.setPublishHandler { [weak self] frame in
             self?.visualizer.apply(frame)
         }
-        let newPlayer = AVPlayer(playerItem: item)
-        // Local + ready-remote: snappy. Unready remote: wait for buffer.
-        newPlayer.automaticallyWaitsToMinimizeStalling = currentStreamIsRemote && !currentStreamIsReadyRemote
-        player = newPlayer
-        reattachVisualAnalysis(for: item)
+
+        let queuePlayer = ensureQueuePlayer()
+        queuePlayer.automaticallyWaitsToMinimizeStalling = currentStreamIsRemote && !currentStreamIsReadyRemote
+        installItemOnQueue(item, resumeAt: resumeAt, queuePlayer: queuePlayer)
+
+        if visualAnalysisEnabled {
+            audioAnalyzer.ensureAttached(to: item)
+        }
         Task { [weak self] in
             await self?.hydratePlaybackMetadata(from: item, queueIndex: queueIndex, generation: generation)
         }
@@ -1645,11 +1828,11 @@ final class MusicPlaybackEngine: ObservableObject {
         // produced a metronomic hitch (EQ + controls freezing every half-second).
         // Scrubber polls `livePlaybackTime()`; lock screen advances via playbackRate.
         if let existing = timeObserver {
-            newPlayer.removeTimeObserver(existing)
+            queuePlayer.removeTimeObserver(existing)
             timeObserver = nil
         }
 
-        rateObserver = newPlayer.observe(\.rate, options: [.new]) { [weak self] player, _ in
+        rateObserver = queuePlayer.observe(\.rate, options: [.new]) { [weak self] player, _ in
             Task { @MainActor in
                 guard let self, self.sessionGeneration == generation else { return }
                 let t = player.currentTime().seconds
@@ -1661,7 +1844,7 @@ final class MusicPlaybackEngine: ObservableObject {
             }
         }
 
-        timeControlObserver = newPlayer.observe(\.timeControlStatus, options: [.new, .initial]) { [weak self] _, _ in
+        timeControlObserver = queuePlayer.observe(\.timeControlStatus, options: [.new, .initial]) { [weak self] _, _ in
             Task { @MainActor in
                 guard let self, self.sessionGeneration == generation else { return }
                 self.updateBufferingState()
@@ -1726,9 +1909,16 @@ final class MusicPlaybackEngine: ObservableObject {
                     self.seek(to: 0)
                     self.player?.play()
                     self.syncPlayingState()
-                } else {
-                    await self.skipNext()
+                    return
                 }
+                if self.player?.currentItem != nil,
+                   self.player?.currentItem !== item,
+                   self.orderCursor < self.playOrder.count - 1
+                    || self.repeatMode == .all {
+                    await self.handleNaturalAdvance(generation: generation)
+                    return
+                }
+                await self.skipNext()
             }
         }
 
@@ -1790,7 +1980,7 @@ final class MusicPlaybackEngine: ObservableObject {
         updateBufferingState()
         if resumeAt > 0.5 {
             let seekTime = CMTime(seconds: resumeAt, preferredTimescale: 600)
-            newPlayer.seek(to: seekTime) { [weak self] finished in
+            queuePlayer.seek(to: seekTime) { [weak self] finished in
                 Task { @MainActor in
                     guard let self, finished, self.sessionGeneration == generation else { return }
                     self.currentTime = resumeAt
@@ -1800,7 +1990,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 }
             }
         } else {
-            newPlayer.play()
+            queuePlayer.play()
             syncPlayingState()
             refreshNowPlaying(force: true)
         }
@@ -1966,6 +2156,7 @@ final class MusicPlaybackEngine: ObservableObject {
             repeatMode: repeatMode,
             shuffleEnabled: shuffleEnabled,
             supplemental: supplementalNowPlayingMetadata,
+            identity: playbackIdentity,
             force: force
         )
         // Nie przeładowuj drzewa BT przy każdym ticku czasu — NBT wtedy zostawia tylko bieżący utwór.
@@ -1975,9 +2166,21 @@ final class MusicPlaybackEngine: ObservableObject {
             BluetoothMediaBrowser.shared.touchCurrentProgress(from: self)
         }
         tickListenSession()
+        EOSIntentRuntime.shared.publishSnapshot()
+    }
+
+    private func beginPlaybackTransition(queueIndex: Int) {
+        playbackIdentity = PlaybackItemIdentity(
+            sessionGeneration: sessionGeneration,
+            queueIndex: queueIndex,
+            transitionID: UUID()
+        )
+        supplementalNowPlayingMetadata = nil
+        displayArtwork = nil
     }
 
     private func hydratePlaybackMetadata(from item: AVPlayerItem, queueIndex: Int, generation: Int) async {
+        let identity = playbackIdentity
         guard generation == sessionGeneration, queue.indices.contains(queueIndex) else { return }
 
         let embedded = await parseEmbeddedMetadata(from: item.asset)
@@ -1994,7 +2197,8 @@ final class MusicPlaybackEngine: ObservableObject {
 
         guard generation == sessionGeneration, !Task.isCancelled else { return }
         queue[queueIndex] = enriched
-        if currentTrack?.id == enriched.id {
+        let identityStillCurrent = playbackIdentity == identity
+        if identityStillCurrent, currentTrack?.id == enriched.id, playbackIdentity.queueIndex == queueIndex {
             currentTrack = enriched
             if let art = embedded?.artwork {
                 displayArtwork = art
@@ -2003,6 +2207,7 @@ final class MusicPlaybackEngine: ObservableObject {
             }
             if displayArtwork == nil, let artURL = enriched.artworkURL {
                 let trackID = enriched.id
+                let keepIdentity = identity
                 Task { [weak self] in
                     let loaded = await ArtworkDecodeActor.shared.load(
                         url: artURL,
@@ -2011,14 +2216,14 @@ final class MusicPlaybackEngine: ObservableObject {
                         timeout: 12
                     )
                     guard let self, let image = loaded?.still else { return }
-                    guard self.sessionGeneration == generation, self.currentTrack?.id == trackID else { return }
+                    guard self.playbackIdentity == keepIdentity, self.currentTrack?.id == trackID else { return }
                     self.displayArtwork = image
                 }
             }
         }
+        guard identityStillCurrent else { return }
         if let embedded,
            TrackMetadataEnricher.embeddedTitleConflicts(expectedTitle: baseTrack.title, embeddedTitle: embedded.title) {
-            // Keep lock-screen / Now Playing aligned with the tapped track, not rogue ID3.
             supplementalNowPlayingMetadata = NowPlayingCenter.SupplementalMetadata(
                 title: nil,
                 artist: nil,

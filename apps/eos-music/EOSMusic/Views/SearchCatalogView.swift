@@ -195,17 +195,19 @@ struct SearchCatalogView: View {
     @ViewBuilder
     private var resultsBody: some View {
         if hasResults {
-            if effectiveScope == .catalog, let catalogResults, !app.isOfflinePlaybackActive {
+            if effectiveScope == .catalog, !app.isOfflinePlaybackActive {
                 if !instantLibraryResults.isEmpty {
                     sectionHeader("W twojej bibliotece")
                     libraryContent(instantLibraryResults, compact: true)
                         .padding(.bottom, 8)
                 }
-                catalogContent(catalogResults)
+                if let catalog = catalogResults {
+                    catalogContent(catalog)
+                }
             } else if effectiveScope == .library || app.isOfflinePlaybackActive {
                 libraryContent(libraryResults, compact: false)
             }
-        } else if submittedQuery != nil {
+        } else if submittedQuery != nil && !isSearchingCatalog {
             ContentUnavailableView(
                 "Brak wyników",
                 systemImage: "magnifyingglass",
@@ -307,7 +309,7 @@ struct SearchCatalogView: View {
                                     .font(EOSTypography.bodySemibold)
                                     .foregroundStyle(EOSTheme.textPrimary)
                                     .lineLimit(1)
-                                Text(folder.countLabel)
+                                Text(app.playlistCountLabel(for: folder))
                                     .font(EOSTypography.caption)
                                     .foregroundStyle(EOSTheme.textSecondary)
                             }
@@ -393,6 +395,10 @@ struct SearchCatalogView: View {
                             folderId: track.folderId
                         )
                     }
+                    .trackQuickActions(
+                        TrackQuickActionItem(track: track),
+                        play: { Task { await playLibraryTrack(track, in: data.songs) } }
+                    )
                     if index < min(compact ? 5 : 19, data.songs.count - 1) {
                         Divider().opacity(0.2)
                     }

@@ -137,7 +137,7 @@ final class OnlineMoviesController: ObservableObject {
         defer { isLoadingDownloads = false }
         do {
             let response = try await api.fetchMovieDownloads()
-            downloads = response.downloads.filter(\.isDownloaded)
+            downloads = response.downloads.filter { $0.isDownloaded || $0.hasPlayableJob }
             serverMovieCount = response.resolvedCount
             serverMovieBytes = response.resolvedTotalBytes
             if serverMovieCount == 0 {
@@ -404,7 +404,7 @@ final class OnlineMoviesController: ObservableObject {
             }
 
             let preview = try await api.startPreview(url: selection.url, height: height)
-            if preview.instant != true {
+            if !preview.canPlayImmediately {
                 try await api.waitForPreviewReady(jobId: preview.jobId) { [weak self] progress in
                     Task { @MainActor in
                         self?.setPlaybackPhase(.preparing(
@@ -559,7 +559,7 @@ final class OnlineMoviesController: ObservableObject {
                 throw APIError.unauthorized
             }
             let preview = try await api.startPreview(url: item.id, height: self.episodeStreamContext?.streamHeight ?? 720)
-            if preview.instant != true {
+            if !preview.canPlayImmediately {
                 try await api.waitForPreviewReady(jobId: preview.jobId) { _ in }
             }
             let token = try await api.previewPlayToken(jobId: preview.jobId)

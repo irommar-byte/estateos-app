@@ -80,16 +80,134 @@ final class AppModel: ObservableObject {
         LibraryData.allLocalDownloads(from: musicTracks) { isOfflineAvailable($0) }
     }
 
+    /// Durable files must remain visible even if their original playlist link is missing.
+    private var serverOnlyLibraryTracks: [MusicTrack] {
+        let knownURLs = Set(musicTracks.map(\.url))
+        return serverAssets.compactMap { asset in
+            guard asset.ready != false,
+                  let url = asset.url,
+                  !url.isEmpty,
+                  !knownURLs.contains(url) else {
+                return nil
+            }
+            return MusicTrack(
+                folderId: "eos-server-library",
+                url: url,
+                title: asset.title ?? "Utwór",
+                artist: asset.artist,
+                album: asset.album,
+                thumbnail: asset.thumbnail,
+                duration: asset.duration,
+                downloadJobId: asset.assetId,
+                serverAssetId: asset.assetId,
+                addedAt: asset.acquiredAt
+            )
+        }
+    }
+
     /// Tracks visible in library browsing (full library online, downloads only offline).
     var libraryTracksForBrowsing: [MusicTrack] {
-        isOfflinePlaybackActive ? downloadedLibraryTracks : musicTracks
+        isOfflinePlaybackActive ? downloadedLibraryTracks : musicTracks + serverOnlyLibraryTracks
     }
 
     /// Playlists that still have playable content in the current mode.
     var libraryFoldersForBrowsing: [MusicFolder] {
-        guard isOfflinePlaybackActive else { return musicFolders }
+        playlistFoldersForBrowsing
+    }
+
+    /// User-facing playlists (no album-dump folders).
+    var playlistFoldersForBrowsing: [MusicFolder] {
+        let visible = musicFolders.filter { folder in
+            PlaylistHygiene.kind(for: folder, tracks: musicTracks) != .albumDump
+        }
+        guard isOfflinePlaybackActive else { return visible }
         let offlineFolderIds = Set(downloadedLibraryTracks.map(\.folderId))
-        return musicFolders.filter { offlineFolderIds.contains($0.id) }
+        return visible.filter { offlineFolderIds.contains($0.id) }
+    }
+
+    var albumDumpFolders: [MusicFolder] {
+        musicFolders.filter { PlaylistHygiene.kind(for: $0, tracks: musicTracks) == .albumDump }
+    }
+
+    func tracks(in folderId: String) -> [MusicTrack] {
+        musicTracks.filter { $0.folderId == folderId }
+    }
+
+    /// Header / list subtitle — counted from the same state as the per-track clouds.
+    func playlistCountLabel(for folder: MusicFolder, tracks override: [MusicTrack]? = nil) -> String {
+        let tracks = override ?? self.tracks(in: folder.id)
+        if tracks.isEmpty {
+            return folder.countLabel
+        }
+        let onServer = tracks.filter { hasDurableServerCopyVisibleAsCloud(url: $0.url, trackHint: $0) }.count
+        return MusicFolder.availabilityLabel(onServer: onServer, total: tracks.count)
+    }
+
+    /// Filled pink cloud (`.onServer` / on this iPhone / downloading to iPhone).
+    func hasDurableServerCopyVisibleAsCloud(url: String, trackHint: MusicTrack? = nil) -> Bool {
+        let onServer = isOnServer(url) || (trackHint?.isOnServer == true)
+        switch downloads.uiState(for: url, isOnServer: onServer) {
+        case .onServer, .done, .downloading:
+            return true
+        case .idle, .acquiringServer, .failed:
+            return false
+        }
+    }
+
+    func folderContains(folderId: String, url: String) -> Bool {
+        musicTracks.contains { $0.folderId == folderId && $0.url == url }
+    }
+
+    func folderContainsSameRecording(folderId: String, title: String, artist: String?) -> Bool {
+        musicTracks.contains { track in
+            guard track.folderId == folderId else { return false }
+            return ShazamCatalogMatcher.isSameRecording(
+                lhsTitle: track.title,
+                lhsArtist: track.artist,
+                rhsTitle: title,
+                rhsArtist: artist
+            )
+        }
+    }
+
+    func playNext(_ tracks: [MusicPlaybackTrack]) {
+        guard !tracks.isEmpty else { return }
+        if let engine = playback.engine {
+            engine.insertNext(tracks)
+            presentToast(MusicToast(
+                systemImage: "text.line.first.and.arrowtriangle.forward",
+                title: "Następny",
+                subtitle: tracks.count == 1 ? tracks[0].title : "\(tracks.count) utworów"
+            ))
+            return
+        }
+        Task { await playPlaybackTracks(tracks, startIndex: 0, folderName: "Kolejka") }
+    }
+
+    func playLater(_ tracks: [MusicPlaybackTrack]) {
+        guard !tracks.isEmpty else { return }
+        if let engine = playback.engine {
+            engine.appendLater(tracks)
+            presentToast(MusicToast(
+                systemImage: "text.badge.plus",
+                title: "Na później",
+                subtitle: tracks.count == 1 ? tracks[0].title : "\(tracks.count) utworów"
+            ))
+            return
+        }
+        Task { await playPlaybackTracks(tracks, startIndex: 0, folderName: "Kolejka") }
+    }
+
+    private func playPlaybackTracks(_ tracks: [MusicPlaybackTrack], startIndex: Int, folderName: String) async {
+        let session = MusicPlaybackSession(queue: tracks, startIndex: startIndex, folderId: nil, folderName: folderName)
+        await playback.play(
+            session: session,
+            api: api,
+            jobLookup: { [weak self] url in self?.downloadJobId(for: url) },
+            libraryTrackLookup: { [weak self] url in self?.musicTracks.first { $0.url == url } }
+        )
+        playback.engine?.offlineOnly = isOfflinePlaybackActive
+        isFullPlayerPresented = false
     }
 
     func tracksMatchingOfflineAvailability(_ tracks: [MusicTrack]) -> [MusicTrack] {
@@ -103,12 +221,26 @@ final class AppModel: ObservableObject {
     private var plusPayloads: [String: MusicTrackPayload] = [:]
     /// Single-flight / stale-guard for overlapping library refreshes.
     private var workspaceRefreshGeneration = 0
+    private var shazamFolderTask: Task<String, Error>?
 
     init() {
+        NotificationCenter.default.publisher(for: .eosSessionUnauthorized)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard self?.user != nil else { return }
+                self?.logout()
+            }
+            .store(in: &cancellables)
         ListeningStatsStore.shared.apiProvider = { [weak self] in self?.api }
         onlineMovies.attach(api: api, movieDownloads: movieDownloads)
         movieDownloads.attach(api: api, onlineMovies: onlineMovies)
         serverDownloads.attach(api: api, musicDownloads: downloads, movieDownloads: movieDownloads)
+        DownloadBackgroundKeeper.shared.attach(
+            monitor: serverDownloads,
+            api: api,
+            music: downloads,
+            movies: movieDownloads
+        )
         BluetoothMediaBrowser.shared.playFromLibrary = { [weak self] tracks, index, folder in
             await self?.playTracks(tracks, startIndex: index, folder: folder)
         }
@@ -118,7 +250,10 @@ final class AppModel: ObservableObject {
         // Download progress used to republish AppModel ~2×/s and invalidate every list row.
         downloads.objectWillChange
             .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+                DownloadBackgroundKeeper.shared.noteWorkChanged()
+            }
             .store(in: &cancellables)
         onlineMovies.objectWillChange
             .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
@@ -148,6 +283,46 @@ final class AppModel: ObservableObject {
             guard let self else { throw APIError.server("Brak dostępu do pliku.") }
             return try await self.resolveExternalUploadFile(for: url)
         }
+        EOSIntentRuntime.shared.attach(self)
+        NotificationCenter.default.publisher(for: .eosLiveActivityPushToken)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] note in
+                guard let self,
+                      let token = note.userInfo?["token"] as? String,
+                      let activityId = note.userInfo?["activityId"] as? String
+                else { return }
+                let batchId = note.userInfo?["batchId"] as? String
+                let frequent = note.userInfo?["frequentPushesEnabled"] as? Bool ?? false
+                Task {
+                    try? await self.api.registerLiveActivityPush(
+                        token: token,
+                        batchId: batchId,
+                        activityId: activityId,
+                        frequentPushesEnabled: frequent
+                    )
+                }
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .eosLiveActivityEnded)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] note in
+                guard let activityId = note.userInfo?["activityId"] as? String else { return }
+                let batchId = note.userInfo?["batchId"] as? String
+                Task { try? await self?.api.unregisterLiveActivityPush(activityId: activityId, batchId: batchId) }
+            }
+            .store(in: &cancellables)
+        playback.objectWillChange
+            .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
+            .sink { _ in EOSIntentRuntime.shared.publishSnapshot() }
+            .store(in: &cancellables)
+    }
+
+    func hydrateForIntent(session: SessionStore.Session) {
+        user = session.user
+        api.setToken(session.token)
+        hydrateWorkspaceFromCacheIfNeeded()
+        downloads.restorePersistedServerBatchIfNeeded(api: api)
+        serverDownloads.start()
     }
 
     func configureOfflineMode(from preferences: UIPreferences) {
@@ -180,16 +355,18 @@ final class AppModel: ObservableObject {
         api.setToken(session.token)
         // Hydrate from cache immediately so offline tracks are available right away.
         user = session.user
-        hydrateLibraryFromCacheIfNeeded()
+        hydrateWorkspaceFromCacheIfNeeded()
         do {
             // Hard network cap: cached/offline library never waits longer than five seconds.
             user = try await api.me(timeoutInterval: 5)
             await syncLocalAppleLink(from: user)
-            hydrateLibraryFromCacheIfNeeded()
+            hydrateWorkspaceFromCacheIfNeeded()
             serverDownloads.start()
-            Task { await refreshWorkspace(soft: true) }
-            Task { await onlineMovies.refreshDownloads() }
-            Task { await serverDownloads.refreshOnce() }
+            downloads.restorePersistedServerBatchIfNeeded(api: api)
+            async let workspace: Void = refreshWorkspace(soft: true)
+            async let movies: Void = onlineMovies.refreshDownloads()
+            async let activeDownloads: Void = serverDownloads.refreshOnce()
+            _ = await (workspace, movies, activeDownloads)
             syncListeningStatsIfNeeded()
             movieDownloads.resumePersistedBatchIfNeeded()
         } catch {
@@ -204,11 +381,13 @@ final class AppModel: ObservableObject {
                 libraryError = error.localizedDescription
                 // Keep cached session user so Login isn't forced on a blip.
                 user = session.user
-                hydrateLibraryFromCacheIfNeeded()
+                hydrateWorkspaceFromCacheIfNeeded()
                 serverDownloads.start()
-                Task { await refreshWorkspace(soft: true) }
-                Task { await onlineMovies.refreshDownloads() }
-                Task { await serverDownloads.refreshOnce() }
+                downloads.restorePersistedServerBatchIfNeeded(api: api)
+                async let workspace: Void = refreshWorkspace(soft: true)
+                async let movies: Void = onlineMovies.refreshDownloads()
+                async let activeDownloads: Void = serverDownloads.refreshOnce()
+                _ = await (workspace, movies, activeDownloads)
                 syncListeningStatsIfNeeded()
                 movieDownloads.resumePersistedBatchIfNeeded()
             }
@@ -223,11 +402,11 @@ final class AppModel: ObservableObject {
         } else {
             CredentialsStore.clear()
         }
-        // Mark loading before entering the app so LibraryView shows a spinner immediately.
-        isLibraryLoading = true
+        hydrateWorkspaceFromCacheIfNeeded()
         serverDownloads.start()
-        Task { await refreshWorkspace(soft: true) }
-        await serverDownloads.refreshOnce()
+        async let workspace: Void = refreshWorkspace(soft: true)
+        async let activeDownloads: Void = serverDownloads.refreshOnce()
+        _ = await (workspace, activeDownloads)
         syncListeningStatsIfNeeded()
         movieDownloads.resumePersistedBatchIfNeeded()
     }
@@ -240,9 +419,11 @@ final class AppModel: ObservableObject {
             linkOnly: linkOnly
         )
         user = session.user
-        Task { await refreshWorkspace(soft: true) }
+        hydrateWorkspaceFromCacheIfNeeded()
         serverDownloads.start()
-        await serverDownloads.refreshOnce()
+        async let workspace: Void = refreshWorkspace(soft: true)
+        async let activeDownloads: Void = serverDownloads.refreshOnce()
+        _ = await (workspace, activeDownloads)
         syncListeningStatsIfNeeded()
         movieDownloads.resumePersistedBatchIfNeeded()
     }
@@ -300,6 +481,11 @@ final class AppModel: ObservableObject {
     }
 
     func logout() {
+        // Invalidate every in-flight workspace request before clearing observable state.
+        workspaceRefreshGeneration &+= 1
+        libraryRefreshDebounceTask?.cancel()
+        libraryRefreshDebounceTask = nil
+        isLibraryLoading = false
         playback.stop()
         sources.endAllAccess()
         isFullPlayerPresented = false
@@ -321,14 +507,24 @@ final class AppModel: ObservableObject {
         Task { await ListeningStatsStore.shared.syncWithServer() }
     }
 
-    private func hydrateLibraryFromCacheIfNeeded() {
+    private func hydrateWorkspaceFromCacheIfNeeded() {
         guard let login = user?.login else { return }
-        guard musicTracks.isEmpty, musicFolders.isEmpty,
-              let cached = LibraryCacheStore.load(for: login) else { return }
-        musicFolders = cached.folders
-        musicTracks = deduplicatedTracks(cached.tracks)
-        downloads.syncFromTracks(musicTracks)
-        syncBluetoothLibraryBrowse()
+        if musicTracks.isEmpty,
+           musicFolders.isEmpty,
+           let cached = LibraryCacheStore.load(for: login) {
+            musicFolders = cached.folders
+            musicTracks = deduplicatedTracks(cached.tracks)
+            downloads.syncFromTracks(musicTracks)
+            syncBluetoothLibraryBrowse()
+        }
+        if favoriteItems.isEmpty,
+           let cached = LibraryCacheStore.loadFavorites(for: login) {
+            favoriteItems = cached
+        }
+        if serverAssets.isEmpty,
+           let cached = LibraryCacheStore.loadAssets(for: login) {
+            applyServerAssetsSnapshot(cached, persist: false)
+        }
     }
 
     private func applyLibrarySnapshot(_ library: MusicLibraryResponse, hadCache: Bool) {
@@ -379,7 +575,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Library + favorites + assets. Never blocks login/splash.
+    /// Library + favorites + assets are fetched concurrently and applied as one workspace refresh.
     /// Concurrent callers share one generation token — only the latest result is applied.
     func refreshWorkspace(soft _: Bool = false) async {
         workspaceRefreshGeneration &+= 1
@@ -394,25 +590,102 @@ final class AppModel: ObservableObject {
                 isLibraryLoading = false
             }
         }
-        do {
-            try await refreshMusicLibrary(hadCache: hadCache)
-        } catch {
-            guard generation == workspaceRefreshGeneration else { return }
+        async let libraryResult = fetchLibraryResult()
+        async let favoritesResult = fetchFavoritesResult()
+        async let assetsResult = fetchAssetsResult()
+
+        let library = await libraryResult
+        guard generation == workspaceRefreshGeneration else { return }
+        switch library {
+        case .success(let snapshot):
+            applyLibrarySnapshot(snapshot, hadCache: hadCache)
+        case .failure(let error):
             libraryError = error.localizedDescription
             if hadCache {
                 librarySyncMessage = "Sync offline — pokazuję zapisaną bibliotekę"
             }
         }
+        let favorites = await favoritesResult
         guard generation == workspaceRefreshGeneration else { return }
-        try? await refreshFavorites()
+        if case .success(let items) = favorites {
+            applyFavoritesSnapshot(items)
+        }
+        let assets = await assetsResult
         guard generation == workspaceRefreshGeneration else { return }
-        await refreshServerAssets()
+        if case .success(let snapshot) = assets {
+            applyServerAssetsSnapshot(snapshot)
+        }
+    }
+
+    private func fetchLibraryResult() async -> Result<MusicLibraryResponse, Error> {
+        do { return .success(try await api.fetchMusicLibrary()) }
+        catch { return .failure(error) }
+    }
+
+    private func fetchFavoritesResult() async -> Result<[FavoriteItem], Error> {
+        do { return .success(try await api.fetchFavorites()) }
+        catch { return .failure(error) }
+    }
+
+    private func fetchAssetsResult() async -> Result<MusicAssetsResponse, Error> {
+        do { return .success(try await api.listMusicAssets()) }
+        catch { return .failure(error) }
     }
 
     func refreshMusicLibrary(hadCache: Bool? = nil) async throws {
+        guard let login = user?.login, api.isAuthenticated else { return }
         let hadLocal = hadCache ?? (!musicTracks.isEmpty || !musicFolders.isEmpty)
         let library = try await api.fetchMusicLibrary()
+        guard user?.login == login, api.isAuthenticated else { return }
         applyLibrarySnapshot(library, hadCache: hadLocal)
+        if !isOfflinePlaybackActive {
+            Task { await ensureShazamPlaylistExists() }
+        }
+    }
+
+    func ensureShazamFolderId() async throws -> String {
+        if let existing = musicFolders.first(where: { PlaylistHygiene.isShazam($0) }) {
+            return existing.id
+        }
+        if let inflight = shazamFolderTask {
+            return try await inflight.value
+        }
+        let task = Task { @MainActor in
+            defer { self.shazamFolderTask = nil }
+            if let library = try? await self.api.fetchMusicLibrary() {
+                for folder in library.folders {
+                    if let index = self.musicFolders.firstIndex(where: { $0.id == folder.id }) {
+                        self.musicFolders[index] = folder
+                    } else {
+                        self.musicFolders.append(folder)
+                    }
+                }
+            }
+            if let existing = self.musicFolders.first(where: { PlaylistHygiene.isShazam($0) }) {
+                return existing.id
+            }
+            let folder = try await self.api.createMusicFolder(name: PlaylistHygiene.shazamName)
+            if !self.musicFolders.contains(where: { $0.id == folder.id || PlaylistHygiene.isShazam($0) }) {
+                self.musicFolders.append(folder)
+            }
+            return self.musicFolders.first(where: { PlaylistHygiene.isShazam($0) })?.id ?? folder.id
+        }
+        shazamFolderTask = task
+        return try await task.value
+    }
+
+    func refreshFolderTracks(folderId: String) async {
+        guard let response = try? await api.fetchFolderTracks(folderId: folderId) else { return }
+        musicTracks.removeAll { $0.folderId == folderId }
+        musicTracks.append(contentsOf: response.tracks)
+    }
+
+    private func ensureShazamPlaylistExists() async {
+        guard user != nil, api.isAuthenticated, !isOfflinePlaybackActive else { return }
+        if musicFolders.contains(where: { PlaylistHygiene.isShazam($0) }) { return }
+        do {
+            _ = try await ensureShazamFolderId()
+        } catch {}
     }
 
     func scheduleDebouncedLibraryRefresh() {
@@ -426,7 +699,17 @@ final class AppModel: ObservableObject {
     }
 
     func refreshFavorites() async throws {
-        favoriteItems = try await api.fetchFavorites()
+        guard let login = user?.login, api.isAuthenticated else { return }
+        let items = try await api.fetchFavorites()
+        guard user?.login == login, api.isAuthenticated else { return }
+        applyFavoritesSnapshot(items)
+    }
+
+    private func applyFavoritesSnapshot(_ items: [FavoriteItem]) {
+        favoriteItems = items
+        if let login = user?.login {
+            LibraryCacheStore.saveFavorites(items, for: login)
+        }
     }
 
     func isFavorite(_ url: String) -> Bool {
@@ -437,11 +720,10 @@ final class AppModel: ObservableObject {
         downloads.isOfflineAvailable(url)
     }
 
-    /// Durable EOS server copy for this URL (library track or assets list).
+    /// Durable EOS server copy for this URL (library track, assets list, or confirmed ingest).
     func isOnServer(_ url: String) -> Bool {
         if musicTracks.first(where: { $0.url == url })?.isOnServer == true { return true }
-        if serverAssets.contains(where: { $0.url == url }) { return true }
-        // Keep cloud filled after a successful upload even before library jobId sync.
+        if serverAssets.contains(where: { $0.url == url && $0.ready != false }) { return true }
         if downloads.wasConfirmedOnServer(url) { return true }
         return false
     }
@@ -516,12 +798,16 @@ final class AppModel: ObservableObject {
             try await refreshMusicLibrary()
         }
 
+        let jobId = musicTracks.first(where: { $0.url == track.url })?.durableJobId
+            ?? serverAssets.first(where: { $0.url == track.url })?.assetId
+
         try await downloads.downloadAssetToDevice(
             url: track.url,
             title: track.title,
             artist: track.artist,
             api: api,
             folderId: folderId,
+            downloadJobId: jobId,
             onLibraryChanged: { [weak self] in
                 try? await self?.refreshMusicLibrary()
                 await self?.refreshServerAssets()
@@ -552,30 +838,36 @@ final class AppModel: ObservableObject {
     }
 
     func ensurePrimaryLibraryFolderId() async throws -> String {
-        if let existing = musicFolders.first(where: {
-            $0.name.localizedCaseInsensitiveCompare("Moja muzyka") == .orderedSame
-        }) {
+        if let existing = musicFolders.first(where: { PlaylistHygiene.isPrimary($0) }) {
             return existing.id
         }
-        if let first = musicFolders.first {
-            return first.id
-        }
-        let folder = try await api.createMusicFolder(name: "Moja muzyka")
+        let folder = try await api.createMusicFolder(name: PlaylistHygiene.primaryName)
         try await refreshMusicLibrary()
         return musicFolders.first(where: { $0.id == folder.id })?.id ?? folder.id
     }
 
+    func setFavorite(_ item: FavoriteItem, enabled: Bool) async throws {
+        if enabled {
+            if isFavorite(item.url) { return }
+            try await api.addFavorite(item)
+            favoriteItems.append(item)
+        } else {
+            guard isFavorite(item.url) else { return }
+            try await api.removeFavorite(url: item.url)
+            favoriteItems.removeAll { $0.url == item.url }
+        }
+        if let login = user?.login {
+            LibraryCacheStore.saveFavorites(favoriteItems, for: login)
+        }
+        EOSIntentRuntime.shared.publishSnapshot()
+    }
+
     func toggleFavorite(_ item: FavoriteItem) async {
         do {
-            if isFavorite(item.url) {
-                try await api.removeFavorite(url: item.url)
-                favoriteItems.removeAll { $0.url == item.url }
-            } else {
-                try await api.addFavorite(item)
-                favoriteItems.append(item)
-            }
+            try await setFavorite(item, enabled: !isFavorite(item.url))
         } catch {
             libraryError = error.localizedDescription
+            EOSIntentRuntime.shared.publishSnapshot()
         }
     }
 
@@ -587,6 +879,18 @@ final class AppModel: ObservableObject {
         refreshLibrary: Bool = true,
         queueServerCopy: Bool = true
     ) async throws {
+        if track.source == "opened-file" || track.source == "external-file"
+            || OpenedAudioRegistry.isOpenedLibraryURL(track.url)
+            || ExternalTrackReference.isLibraryURL(track.url) {
+            try await addLocalBackedTrackToFolder(
+                folderId: folderId,
+                track: track,
+                announcePlaylistName: announcePlaylistName,
+                refreshLibrary: refreshLibrary
+            )
+            return
+        }
+
         let prepared = enrich ? (try await prepareLibraryPayload(track)) : track
         _ = try await api.addTrackToFolder(folderId: folderId, track: prepared)
         if refreshLibrary {
@@ -595,6 +899,7 @@ final class AppModel: ObservableObject {
         if let announcePlaylistName {
             presentToast(.addedToPlaylist(trackTitle: track.title, playlist: announcePlaylistName))
         }
+        applyAutoAcquireIfNeeded(folderId: folderId, track: track, alreadyQueuingServer: queueServerCopy)
         guard queueServerCopy else { return }
         downloads.ensureOnServer(
             url: track.url,
@@ -610,6 +915,124 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Plik fizyczny nie jest prawidłowym URL-em katalogowym. Najpierw zapisujemy
+    /// jego trwałą kopię na EOS, a dopiero potem dodajemy serwerowy rekord do playlisty.
+    private func addLocalBackedTrackToFolder(
+        folderId: String,
+        track: MusicTrackPayload,
+        announcePlaylistName: String?,
+        refreshLibrary: Bool
+    ) async throws {
+        let local: URL
+        let title: String
+        let artist: String?
+        let album: String?
+        let fileName: String
+
+        if let opened = OpenedAudioRegistry.localURL(for: track.url) {
+            let entry = OpenedAudioRegistry.entry(for: track.url)
+            local = opened
+            title = entry?.title ?? track.title
+            artist = entry?.artist ?? track.artist
+            album = entry?.album ?? track.album
+            fileName = opened.lastPathComponent
+        } else if let provider = downloads.externalFileUploadProvider {
+            let resolved = try await provider(track.url)
+            local = resolved.local
+            title = resolved.title.isEmpty ? track.title : resolved.title
+            artist = resolved.artist ?? track.artist
+            album = resolved.album ?? track.album
+            fileName = resolved.fileName
+        } else {
+            throw APIError.server("Brak dostępu do lokalnego pliku MP3.")
+        }
+
+        let fileData = try await Task.detached(priority: .userInitiated) {
+            try Data(contentsOf: local, options: [.mappedIfSafe])
+        }.value
+        let upload = try await api.uploadLocalMusicFile(
+            url: track.url,
+            folderId: folderId,
+            title: title,
+            artist: artist,
+            album: album,
+            fileName: fileName,
+            fileData: fileData
+        )
+        let ready: JobStatusResponse
+        if upload.isDurableServerCopy {
+            ready = JobStatusResponse(
+                jobId: upload.jobId,
+                status: upload.status ?? "done",
+                progress: upload.progress ?? 100,
+                error: nil,
+                ready: true,
+                kind: "music",
+                intent: "download",
+                url: track.url,
+                name: title,
+                phase: "persisting",
+                persistent: true,
+                onServer: true,
+                mode: upload.mode ?? "file"
+            )
+        } else {
+            ready = try await api.waitForMusicPlayReady(
+                jobId: upload.jobId,
+                timeoutSeconds: 300,
+                requireDurable: true
+            )
+        }
+
+        await refreshServerAssets()
+        if refreshLibrary {
+            try? await refreshMusicLibrary()
+        }
+        if folderContains(folderId: folderId, url: track.url) {
+            if let announcePlaylistName {
+                presentToast(.addedToPlaylist(trackTitle: track.title, playlist: announcePlaylistName))
+            }
+            return
+        }
+
+        let assetURL = serverAssets.first(where: {
+            $0.assetId == upload.assetId || $0.assetId == upload.jobId || $0.url == track.url
+        })?.url
+        let validAssetURL = assetURL.flatMap { value -> String? in
+            guard let scheme = URL(string: value)?.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else { return nil }
+            return value
+        }
+        let serverURL = validAssetURL
+            ?? MusicAPIClient.musicStreamURL(base: AppConfig.apiBaseURL, jobId: ready.jobId).absoluteString
+        let serverTrack = MusicTrackPayload(
+            url: serverURL,
+            title: title,
+            artist: artist,
+            album: album,
+            thumbnail: track.thumbnail,
+            duration: track.duration,
+            quality: track.quality,
+            source: "local-upload",
+            artistId: track.artistId,
+            albumId: track.albumId
+        )
+
+        _ = try await api.addTrackToFolder(folderId: folderId, track: serverTrack)
+        _ = try? await api.linkTrackDownload(
+            folderId: folderId,
+            url: serverURL,
+            downloadJobId: ready.jobId
+        )
+        if refreshLibrary {
+            try await refreshMusicLibrary()
+        }
+        await refreshServerAssets()
+        if let announcePlaylistName {
+            presentToast(.addedToPlaylist(trackTitle: track.title, playlist: announcePlaylistName))
+        }
+    }
+
     func addTracksToFolder(folderId: String, tracks: [MusicTrackPayload]) async throws {
         guard !tracks.isEmpty else { return }
         for track in tracks {
@@ -619,13 +1042,59 @@ final class AppModel: ObservableObject {
         try await refreshMusicLibrary()
     }
 
-    /// Tworzy playlistę albumu, dodaje metadane utworów i kolejkuje zapis na serwer EOS (po kolei, z ponawianiem).
+    /// Dodaje album do biblioteki (Moja muzyka) — nie tworzy playlisty o nazwie albumu.
     func addAlbumToLibrary(albumTitle: String, tracks: [MusicTrackPayload]) async throws -> String {
         guard !tracks.isEmpty else { throw APIError.server("Album nie ma utworów.") }
-        let folder = try await api.createMusicFolder(name: albumTitle)
-        try await addTracksToFolder(folderId: folder.id, tracks: tracks)
-        queueAlbumOnServer(folderId: folder.id, albumTitle: albumTitle, tracks: tracks)
-        return folder.id
+        let folderId = try await ensurePrimaryLibraryFolderId()
+        try await addTracksToFolder(folderId: folderId, tracks: tracks)
+        queueAlbumOnServer(folderId: folderId, albumTitle: albumTitle, tracks: tracks)
+        return folderId
+    }
+
+    func applyAutoAcquireIfNeeded(folderId: String, track: MusicTrackPayload, alreadyQueuingServer: Bool = false) {
+        switch PlaylistAutoAcquireStore.policy(for: folderId) {
+        case .off:
+            return
+        case .server:
+            guard !alreadyQueuingServer else { return }
+            downloads.enqueueServerAcquire(
+                url: track.url,
+                title: track.title,
+                folderId: folderId,
+                api: api,
+                onLibraryChanged: { [weak self] in
+                    try? await self?.refreshMusicLibrary()
+                    await self?.refreshServerAssets()
+                }
+            )
+        case .serverAndPhone:
+            if let library = musicTracks.first(where: { $0.url == track.url }) {
+                downloadTrack(library, folderId: folderId)
+            } else {
+                downloads.enqueueServerAcquire(
+                    url: track.url,
+                    title: track.title,
+                    folderId: folderId,
+                    api: api,
+                    onLibraryChanged: { [weak self] in
+                        try? await self?.refreshMusicLibrary()
+                        await self?.refreshServerAssets()
+                    }
+                )
+            }
+        }
+    }
+
+    func cleanupAlbumDumpPlaylists() async throws {
+        for folder in albumDumpFolders {
+            try await api.deleteMusicFolder(id: folder.id)
+        }
+        try await refreshMusicLibrary()
+    }
+
+    func renameFolder(id: String, name: String) async throws {
+        _ = try await api.updateMusicFolder(id: id, name: name)
+        try await refreshMusicLibrary()
     }
 
     /// Lokalny / iCloud folder → nowa playlista (nazwa folderu) + zapis wszystkich utworów na serwerze EOS.
@@ -802,15 +1271,24 @@ final class AppModel: ObservableObject {
 
 
     func refreshServerAssets() async {
+        guard let login = user?.login, api.isAuthenticated else { return }
         do {
             let response = try await api.listMusicAssets()
-            serverAssetCount = response.count
-            serverLibraryBytes = response.totalBytes
-            serverDiskTotalBytes = response.diskTotalBytes
-            serverDiskFreeBytes = response.diskFreeBytes
-            serverAssets = response.items
+            guard user?.login == login, api.isAuthenticated else { return }
+            applyServerAssetsSnapshot(response)
         } catch {
             // Zachowaj ostatnie wartości — Settings i tak pokazuje ścieżki lokalne.
+        }
+    }
+
+    private func applyServerAssetsSnapshot(_ response: MusicAssetsResponse, persist: Bool = true) {
+        serverAssetCount = response.count
+        serverLibraryBytes = response.totalBytes
+        serverDiskTotalBytes = response.diskTotalBytes
+        serverDiskFreeBytes = response.diskFreeBytes
+        serverAssets = response.items
+        if persist, let login = user?.login {
+            LibraryCacheStore.saveAssets(response, for: login)
         }
     }
 
@@ -840,7 +1318,9 @@ final class AppModel: ObservableObject {
 
     func expandPlayer() {
         guard playback.engine != nil else { return }
-        isFullPlayerPresented = true
+        withAnimation(EOSMotion.playerExpand) {
+            isFullPlayerPresented = true
+        }
     }
 
     func playTracks(_ tracks: [MusicTrack], startIndex: Int, folder: MusicFolder?) async {
@@ -892,7 +1372,6 @@ final class AppModel: ObservableObject {
             folderName: folder?.name ?? (isOfflinePlaybackActive ? "Pobrane" : "EOS Music")
         )
         let needsExternalResolver = !externalSourceIds.isEmpty
-        prepareServerCopyForPlayback(enriched, folder: folder)
         await playback.play(
             session: session,
             api: api,
@@ -959,7 +1438,6 @@ final class AppModel: ObservableObject {
         }
         let queue = queueItems.map { MusicPlaybackTrack(from: $0) }
         let session = MusicPlaybackSession(queue: queue, startIndex: start, folderId: nil, folderName: "EOS Music")
-        prepareServerCopyForPlayback(queue, folder: nil)
         await playback.play(
             session: session,
             api: api,
@@ -1256,11 +1734,52 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func downloadServerAssetsToDevice(
+        _ assets: [MusicAssetItem],
+        label: String = "Pobieranie z serwera"
+    ) {
+        Task { @MainActor in
+            do {
+                let folderId = try await ensurePrimaryLibraryFolderId()
+                let pending = assets.compactMap { asset -> MusicTrack? in
+                    guard let url = asset.url, !url.isEmpty else { return nil }
+                    guard !isOfflineAvailable(url) else { return nil }
+                    return MusicTrack(from: MusicPlaybackTrack(from: asset), folderId: folderId)
+                }
+                guard !pending.isEmpty else {
+                    presentToast(MusicToast(
+                        systemImage: "checkmark.circle.fill",
+                        title: "Już na iPhonie",
+                        subtitle: label
+                    ))
+                    return
+                }
+                presentToast(MusicToast(
+                    systemImage: "arrow.down.circle.fill",
+                    title: "Pobieranie na iPhone",
+                    subtitle: "\(pending.count) utworów · \(label)"
+                ))
+                downloadAll(
+                    in: pending,
+                    folderId: folderId,
+                    destination: .serverAndPhone,
+                    label: label
+                )
+            } catch {
+                presentToast(MusicToast(
+                    systemImage: "exclamationmark.icloud",
+                    title: "Nie udało się pobrać folderu",
+                    subtitle: error.localizedDescription
+                ))
+            }
+        }
+    }
+
     func downloadAll(
         in tracks: [MusicTrack],
         folderId: String,
-        destination: MusicDownloadDestination = .server,
-        label: String = "Pobieranie playlisty"
+        destination: MusicDownloadDestination,
+        label: String
     ) {
         downloads.downloadAllPending(
             tracks: tracks,

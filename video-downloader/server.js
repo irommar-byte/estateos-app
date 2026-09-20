@@ -131,12 +131,15 @@ import {
   assetFileReady,
   restoreJobFromAsset,
   reapStalledMusicAcquires,
+  assetAbsolutePath,
 } from "./music-assets.js";
+import { streamZipStore, sanitizeZipEntryName } from "./zip-store.js";
 import {
   listActiveDownloads,
   markJobListed,
   noteJobProgress,
 } from "./download-queue.js";
+import { createPlaylistBatchQueue } from "./playlist-batch-queue.js";
 import { DurableMovieJobQueue } from "./movie-job-queue.js";
 
 const require = createRequire(import.meta.url);
@@ -3174,6 +3177,53 @@ function sendEvent(job, payload) {
   for (const res of job.clients || []) res.write(data);
 }
 
+const playlistBatchQueue = createPlaylistBatchQueue({
+  filePath: path.join(DOWNLOAD_DIR, "_music-batch-queue.json"),
+  ensureMusicAsset: async ({ userKey, url, folderId, trackUrl, intent }) => {
+    const result = await ensureMusicAsset({
+      userKey,
+      url,
+      folderId,
+      trackUrl,
+      jobs,
+      sendEvent,
+      ensurePlayToken,
+      downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
+      friendlyError: friendlyAppleMusicError,
+      waitUntilPlayable: false,
+      intent: intent || "download",
+    });
+    return {
+      ...result,
+      poll: async () => {
+        const job = jobs.get(result.jobId);
+        if (!job) return { status: "missing" };
+        let fileOnDisk = false;
+        try {
+          fileOnDisk = !!(job.file && fs.existsSync(job.file) && fs.statSync(job.file).size > 32 * 1024);
+        } catch {}
+        return {
+          status: job.status,
+          progress: job.progress,
+          ready: fileOnDisk,
+          onServer: fileOnDisk,
+          error: job.error,
+        };
+      },
+    };
+  },
+  cancelJob: async (jobId) => {
+    const job = jobs.get(jobId);
+    if (!job) return;
+    stopJobTransfer(job);
+    job.cancelled = true;
+    job.status = "cancelled";
+    job.finishedAt = Date.now();
+  },
+  onLog: (...args) => console.log("[music-batch]", ...args),
+});
+playlistBatchQueue.resume();
+
 // --- App ---------------------------------------------------------------------
 const app = express();
 app.use(express.json({ limit: "6mb" }));
@@ -5573,6 +5623,58 @@ app.get("/api/music/assets", (req, res) => {
   }
 });
 
+function rfc5987Disposition(filename, type = "inline") {
+  const base = path.basename(String(filename || "file")).replace(/[\r\n"]/g, "_") || "file";
+  const ascii = base.replace(/[^\x20-\x7E]/g, "_");
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(base)}`;
+}
+
+function sameMusicFolderMeta(asset, artist, album) {
+  return String(asset?.artist || "").trim() === String(artist || "").trim()
+    && String(asset?.album || "").trim() === String(album || "").trim();
+}
+
+// GET /api/music/assets/archive?artist=&album= — ZIP albumu na komputer (sesja)
+app.get("/api/music/assets/archive", async (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  const artist = String(req.query.artist || "");
+  const album = String(req.query.album || "");
+  try {
+    try {
+      req.setTimeout?.(0);
+      res.setTimeout?.(0);
+    } catch {}
+    const listed = listMusicAssets(userKey, MUSIC_PLAYLIST_DOWNLOADS_DIR);
+    const files = [];
+    for (const item of listed.items || []) {
+      if (!item.ready || !sameMusicFolderMeta(item, artist, album)) continue;
+      const abs = assetAbsolutePath(MUSIC_PLAYLIST_DOWNLOADS_DIR, item.relativePath);
+      if (!abs || !fs.existsSync(abs)) continue;
+      files.push({
+        name: sanitizeZipEntryName(path.basename(abs)),
+        filePath: abs,
+      });
+    }
+    if (!files.length) {
+      return res.status(404).json({ error: "Brak plików w tym folderze." });
+    }
+    const zipName = `${sanitizeZipEntryName(artist || "Wykonawca")} - ${sanitizeZipEntryName(album || "Album")}.zip`;
+    res.set({
+      "Content-Type": "application/zip",
+      "Content-Disposition": rfc5987Disposition(zipName, "attachment"),
+      "Cache-Control": "private, no-store",
+    });
+    await streamZipStore(res, files);
+  } catch (err) {
+    console.error("music archive:", err?.message || err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: err?.message || "Nie udało się spakować folderu." });
+    }
+    try { res.end(); } catch {}
+  }
+});
+
 // DELETE /api/music/assets/:assetId — usuń kopię z serwera EOS
 app.delete("/api/music/assets/:assetId", (req, res) => {
   const userKey = favoritesUserKeyFromReq(req);
@@ -5605,6 +5707,8 @@ function serveAudioFile(req, res, filePath) {
   const stat = fs.statSync(filePath);
   const mime = "audio/mpeg";
   const range = req.headers.range;
+  const asDownload = req.query.download === "1" || req.query.download === "true";
+  const disposition = rfc5987Disposition(path.basename(filePath), asDownload ? "attachment" : "inline");
 
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
@@ -5623,7 +5727,7 @@ function serveAudioFile(req, res, filePath) {
       "Accept-Ranges": "bytes",
       "Content-Length": String(end - start + 1),
       "Content-Type": mime,
-      "Content-Disposition": "inline",
+      "Content-Disposition": disposition,
       "Cache-Control": "private, max-age=3600",
     });
     createReadStream(filePath, { start, end }).pipe(res);
@@ -5634,7 +5738,7 @@ function serveAudioFile(req, res, filePath) {
     "Content-Length": String(stat.size),
     "Content-Type": mime,
     "Accept-Ranges": "bytes",
-    "Content-Disposition": "inline",
+    "Content-Disposition": disposition,
     "Cache-Control": "private, max-age=3600",
   });
   createReadStream(filePath).pipe(res);
@@ -5651,6 +5755,9 @@ app.get("/api/music/stream/:jobId", async (req, res) => {
   }
   if (job.file && fs.existsSync(job.file)) {
     return serveAudioFile(req, res, job.file);
+  }
+  if (req.query.download === "1" || req.query.download === "true") {
+    return res.status(404).send("Utwór nie jest zapisany na serwerze — nie można go pobrać.");
   }
   if (isPipedMusicStream(job) && job.streamUrl) {
     try {
@@ -5694,10 +5801,12 @@ app.head("/api/music/stream/:jobId", async (req, res) => {
   }
   if (job.file && fs.existsSync(job.file)) {
     const stat = fs.statSync(job.file);
+    const asDownload = req.query.download === "1" || req.query.download === "true";
     res.set({
       "Content-Length": String(stat.size),
       "Content-Type": "audio/mpeg",
       "Accept-Ranges": "bytes",
+      "Content-Disposition": rfc5987Disposition(path.basename(job.file), asDownload ? "attachment" : "inline"),
     });
     return res.end();
   }
@@ -6378,10 +6487,65 @@ app.get("/api/downloads/active", (req, res) => {
   if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
   try {
     const summary = listActiveDownloads(jobs, userKey);
-    res.json(summary);
+    res.json({ ...summary, batch: playlistBatchQueue.snapshot(userKey) });
   } catch (err) {
     res.status(500).json({ error: err?.message || "Nie udało się wczytać kolejki." });
   }
+});
+
+app.post("/api/downloads/queue", (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  try {
+    const result = playlistBatchQueue.enqueue({
+      userKey,
+      folderId: req.body?.folderId || "",
+      label: req.body?.label || "",
+      tracks: req.body?.tracks || [],
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(Number(err?.status) || 500).json({ error: err?.message || "Nie udało się utworzyć kolejki." });
+  }
+});
+
+app.post("/api/downloads/queue/cancel", async (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  try {
+    const result = await playlistBatchQueue.cancel({
+      userKey,
+      batchId: req.body?.batchId || null,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Nie udało się anulować kolejki." });
+  }
+});
+
+app.post("/api/downloads/live-activity", (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  try {
+    res.json(playlistBatchQueue.registerToken({
+      userKey,
+      token: String(req.body?.token || ""),
+      activityId: String(req.body?.activityId || ""),
+      batchId: req.body?.batchId || "",
+      frequentPushesEnabled: !!req.body?.frequentPushesEnabled,
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Nie udało się zarejestrować Live Activity." });
+  }
+});
+
+app.delete("/api/downloads/live-activity", (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  res.json(playlistBatchQueue.unregisterToken({
+    userKey,
+    activityId: req.body?.activityId || req.query?.activityId || "",
+  }));
 });
 
 app.get("/api/job/:jobId", (req, res) => {
@@ -6760,7 +6924,7 @@ ensureBinary()
       cleanupStaleJobDirs();
       reapStalledMovieDownloads();
       setInterval(cleanupStaleJobDirs, 30 * 60 * 1000);
-      setInterval(reapStalledMovieDownloads, 60 * 1000);
+      setInterval(reapStalledMovieDownloads, 15 * 1000);
       startCdaHdBackgroundJobs();
       const lan = getLanIPv4();
       console.log(`\n▶  Pobieralnia filmów działa: http://localhost:${PORT}`);

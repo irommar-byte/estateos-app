@@ -255,7 +255,8 @@ private struct MiniPlayerContent: View {
     @ObservedObject private var statusFlags: PlaybackStatusFlags
     @EnvironmentObject private var app: AppModel
     @Environment(\.colorScheme) private var colorScheme
-    @State private var showQueueSheet = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(engine: MusicPlaybackEngine) {
         self.engine = engine
@@ -264,96 +265,99 @@ private struct MiniPlayerContent: View {
 
     var body: some View {
         if let track = engine.currentTrack {
-            HStack(alignment: .center, spacing: 10) {
-                Button {
-                    app.expandPlayer()
-                } label: {
-                    HStack(alignment: .center, spacing: 12) {
-                        ArtworkImage(
-                            url: track.artworkURL,
-                            size: EOSLayout.miniPlayerArt,
-                            cornerRadius: 8,
-                            fallbackImage: engine.displayArtwork
-                        )
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(track.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(EOSTheme.textPrimary)
-                                .lineLimit(1)
-
-                            HStack(spacing: 6) {
-                                if showsActivity {
-                                    if statusFlags.activity.phase.showsSpinner || engine.isLoading {
-                                        ProgressView()
-                                            .controlSize(.mini)
-                                    }
-                                    Text(activitySubtitle)
-                                        .font(.caption)
-                                        .foregroundStyle(EOSTheme.textSecondary)
-                                        .lineLimit(1)
-                                } else {
-                                    Text(track.artist ?? "")
-                                        .font(.caption)
-                                        .foregroundStyle(EOSTheme.textSecondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                TrackStorageActionButton(
-                    track: track.payload,
-                    folderId: track.folderId,
-                    frameSize: 32
-                )
-
-                if engine.playbackQueueRows.count > 1 {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showQueueSheet = true
-                    } label: {
-                        Text(engine.queuePositionLabel)
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(EOSTheme.textSecondary)
-                            .frame(minWidth: 32, minHeight: 32)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Kolejka, \(engine.queuePositionLabel)")
-                }
-
-                miniPlayerIconButton(
-                    systemName: engine.isPlaying ? "pause.fill" : "play.fill",
-                    disabled: engine.isLoading
-                ) {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    engine.togglePlayPause()
-                }
-
-                miniPlayerIconButton(systemName: "forward.fill", secondary: true) {
-                    Task { await engine.skipNext() }
-                }
+            ViewThatFits(in: .horizontal) {
+                bar(track: track, showsPrevious: showsPrevious)
+                bar(track: track, showsPrevious: false)
             }
-            .miniPlayerChrome(colorScheme: colorScheme)
-            .sheet(isPresented: $showQueueSheet) {
-                PlaybackQueueSheet(engine: engine)
-            }
+            .miniPlayerChrome(colorScheme: colorScheme, minHeight: miniHeight)
+            .trackQuickActions(
+                TrackQuickActionItem(track: track),
+                play: { engine.togglePlayPause() },
+                showsSwipe: false
+            )
         }
+    }
+
+    private var showsPrevious: Bool {
+        !dynamicTypeSize.isAccessibilitySize
+            && (horizontalSizeClass == .regular || UIDevice.current.userInterfaceIdiom == .pad)
+    }
+
+    private var miniHeight: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? EOSLayout.miniPlayerHeight + 10 : EOSLayout.miniPlayerHeight
     }
 
     private var showsActivity: Bool {
         engine.isLoading || statusFlags.isBuffering || statusFlags.activity.phase.showsSpinner
     }
 
-    private var activitySubtitle: String {
-        let detail = statusFlags.activity.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !detail.isEmpty { return detail }
-        let title = statusFlags.activity.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return title.isEmpty ? "Buforowanie…" : title
+    private func bar(track: MusicPlaybackTrack, showsPrevious: Bool) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Button {
+                app.expandPlayer()
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    ZStack(alignment: .bottomTrailing) {
+                        ArtworkImage(
+                            url: track.artworkURL,
+                            size: EOSLayout.miniPlayerArt,
+                            cornerRadius: 8,
+                            fallbackImage: engine.displayArtwork
+                        )
+                        .modifier(PlayerArtworkGeometry())
+                        if showsActivity {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .padding(3)
+                                .background(.ultraThinMaterial, in: Circle())
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        MarqueeText(
+                            text: track.title,
+                            font: .subheadline.weight(.semibold),
+                            foreground: EOSTheme.textPrimary
+                        )
+                        MarqueeText(
+                            text: artistLine(track: track),
+                            font: .caption,
+                            foreground: EOSTheme.textSecondary
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(track.title), \(artistLine(track: track))")
+
+            if showsPrevious {
+                miniPlayerIconButton(systemName: "backward.fill", secondary: true) {
+                    Task { await engine.skipPrevious() }
+                }
+            }
+
+            miniPlayerIconButton(
+                systemName: engine.isPlaying ? "pause.fill" : "play.fill",
+                disabled: engine.isLoading
+            ) {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                engine.togglePlayPause()
+            }
+
+            miniPlayerIconButton(systemName: "forward.fill", secondary: true) {
+                Task { await engine.skipNext() }
+            }
+        }
+    }
+
+    private func artistLine(track: MusicPlaybackTrack) -> String {
+        let artist = track.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let position = engine.playbackQueueRows.count > 1 ? engine.queuePositionLabel : ""
+        if artist.isEmpty { return position }
+        if position.isEmpty { return artist }
+        return "\(artist) · \(position)"
     }
 }
 
@@ -379,12 +383,12 @@ private func miniPlayerIconButton(
 
 private extension View {
     @ViewBuilder
-    func miniPlayerChrome(colorScheme: ColorScheme) -> some View {
+    func miniPlayerChrome(colorScheme: ColorScheme, minHeight: CGFloat = EOSLayout.miniPlayerHeight) -> some View {
         self
             .padding(.leading, 10)
             .padding(.trailing, 8)
             .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: EOSLayout.miniPlayerHeight, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .center)
             .modifier(EOSLiquidGlassChrome(
                 cornerRadius: EOSLayout.miniPlayerCorner,
                 colorScheme: colorScheme

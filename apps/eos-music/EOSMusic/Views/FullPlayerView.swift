@@ -293,6 +293,12 @@ private struct PlayerContent: View {
             visualizer: engine.visualizer,
             canvasSize: layout.discSize
         )
+        .modifier(PlayerArtworkGeometry())
+        .trackQuickActions(
+            TrackQuickActionItem(track: track),
+            play: { engine.togglePlayPause() },
+            showsSwipe: false
+        )
 
         if effectsActive {
             // Live PCM island — never the old fake phase animation.
@@ -425,6 +431,7 @@ private struct PlayerContent: View {
                 frameSize: 40
             )
             .eosGlassCircle()
+            ShazamIdentifyButton(size: 40)
             }
         }
         .padding(.top, layout.chromeTop)

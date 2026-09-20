@@ -3,6 +3,7 @@ import UIKit
 
 extension Notification.Name {
     static let musicPlayerSeekRequested = Notification.Name("eosmusic.player.seek")
+    static let eosSessionUnauthorized = Notification.Name("eosmusic.session.unauthorized")
 }
 
 @MainActor
@@ -17,8 +18,8 @@ final class NowPlayingCenter {
     static let shared = NowPlayingCenter()
 
     private var isActive = false
-    private var lastTrackID: String?
-    private var artworkCache: [String: MPMediaItemArtwork] = [:]
+    private var lastIdentity = PlaybackItemIdentity.none
+    private var artworkCache: [UUID: MPMediaItemArtwork] = [:]
     private var artworkLoadTask: Task<Void, Never>?
     private var lastElapsedPublish: TimeInterval = -1
     private var lastPlayingPublish: Bool?
@@ -92,104 +93,61 @@ final class NowPlayingCenter {
         repeatMode: RepeatMode = .off,
         shuffleEnabled: Bool = false,
         supplemental: SupplementalMetadata? = nil,
+        identity: PlaybackItemIdentity,
         force: Bool = false
     ) {
         guard isActive else { return }
+        _ = repeatMode
+        _ = shuffleEnabled
 
-        let trackChanged = lastTrackID != track.id
+        let identityChanged = lastIdentity != identity
         let playingChanged = lastPlayingPublish != isPlaying
         let durationChanged = abs(lastDurationPublish - duration) > 0.5
         let elapsedDue = force
-            || trackChanged
+            || identityChanged
             || playingChanged
             || lastElapsedPublish < 0
             || abs(elapsed - lastElapsedPublish) >= 1.0
 
-        // Avoid rewriting lock-screen metadata 4×/sec — that wakes SpringBoard and drains battery.
-        guard trackChanged || playingChanged || durationChanged || elapsedDue || force else { return }
+        guard identityChanged || playingChanged || durationChanged || elapsedDue || force else { return }
 
-        if trackChanged {
-            lastTrackID = track.id
+        if identityChanged {
+            lastIdentity = identity
             artworkLoadTask?.cancel()
             artworkLoadTask = nil
         }
 
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-
-        info[MPMediaItemPropertyTitle] = resolvedText(supplemental?.title, fallback: track.title)
-        info[MPMediaItemPropertyMediaType] = NSNumber(value: MPMediaType.music.rawValue)
-        info[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? 1.0 : 0.0)
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: elapsed)
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = NSNumber(value: 1.0)
-        info[MPNowPlayingInfoPropertyMediaType] = NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue)
-
-        let playlistTitle = collectionTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let playlistTitle, !playlistTitle.isEmpty {
-            info[MPMediaItemPropertyAlbumTitle] = playlistTitle
-            // NBT/iDrive pokazuje albumTitle jako nazwę playlisty w widoku BT.
-            info[MPMediaItemPropertyAlbumArtist] = "EOS Music"
-        } else if let album = resolvedText(supplemental?.album, fallback: track.album) {
-            info[MPMediaItemPropertyAlbumTitle] = album
-        } else {
-            info.removeValue(forKey: MPMediaItemPropertyAlbumTitle)
-        }
-
-        if let artist = resolvedText(supplemental?.artist, fallback: track.artist) {
-            var artistLine = artist
-            if shuffleEnabled { artistLine += " · losowo" }
-            if repeatMode == .one {
-                artistLine += " · powtórz utwór"
-            } else if repeatMode == .all {
-                artistLine += " · powtórz listę"
-            }
-            info[MPMediaItemPropertyArtist] = artistLine
-        } else {
-            info.removeValue(forKey: MPMediaItemPropertyArtist)
-        }
-        if duration > 0 {
-            info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: duration)
-        }
         let persistentSeed: String
         if let externalContentIdentifier, !externalContentIdentifier.isEmpty {
             persistentSeed = externalContentIdentifier
         } else {
             persistentSeed = track.id
         }
-        info[MPMediaItemPropertyPersistentID] = BluetoothMediaBrowser.stablePersistentID(persistentSeed)
-        if let collectionPersistentSeed, !collectionPersistentSeed.isEmpty {
-            info[MPMediaItemPropertyAlbumPersistentID] = BluetoothMediaBrowser.stablePersistentID(collectionPersistentSeed)
-        }
-        if queueCount > 1 {
-            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = NSNumber(value: queueIndex)
-            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = NSNumber(value: queueCount)
-            // NBT HUD / iDrive: numer utworu musi zgadzać się z indeksem w nowPlayingIdentifiers.
-            info[MPMediaItemPropertyAlbumTrackNumber] = NSNumber(value: queueIndex + 1)
-            info[MPMediaItemPropertyAlbumTrackCount] = NSNumber(value: queueCount)
-            info[MPNowPlayingInfoPropertyChapterNumber] = NSNumber(value: queueIndex + 1)
-            info[MPNowPlayingInfoPropertyChapterCount] = NSNumber(value: queueCount)
+
+        let artwork: MPMediaItemArtwork?
+        if let embeddedArtwork = supplemental?.artwork {
+            let item = MPMediaItemArtwork(boundsSize: embeddedArtwork.size) { _ in embeddedArtwork }
+            artworkCache[identity.transitionID] = item
+            artwork = item
         } else {
-            info.removeValue(forKey: MPNowPlayingInfoPropertyPlaybackQueueIndex)
-            info.removeValue(forKey: MPNowPlayingInfoPropertyPlaybackQueueCount)
-            info.removeValue(forKey: MPMediaItemPropertyAlbumTrackNumber)
-            info.removeValue(forKey: MPMediaItemPropertyAlbumTrackCount)
-            info.removeValue(forKey: MPNowPlayingInfoPropertyChapterNumber)
-            info.removeValue(forKey: MPNowPlayingInfoPropertyChapterCount)
-        }
-        if let externalContentIdentifier, !externalContentIdentifier.isEmpty {
-            info[MPNowPlayingInfoPropertyExternalContentIdentifier] = externalContentIdentifier
-        } else {
-            info.removeValue(forKey: MPNowPlayingInfoPropertyExternalContentIdentifier)
+            artwork = artworkCache[identity.transitionID]
         }
 
-        if let embeddedArtwork = supplemental?.artwork {
-            let artwork = MPMediaItemArtwork(boundsSize: embeddedArtwork.size) { _ in embeddedArtwork }
-            artworkCache[track.id] = artwork
-            info[MPMediaItemPropertyArtwork] = artwork
-        } else if let cached = artworkCache[track.id] {
-            info[MPMediaItemPropertyArtwork] = cached
-        } else if trackChanged {
-            info.removeValue(forKey: MPMediaItemPropertyArtwork)
-        }
+        let info = NowPlayingInfoBuilder.make(
+            title: NowPlayingInfoBuilder.resolvedText(supplemental?.title, fallback: track.title) ?? track.title,
+            artist: NowPlayingInfoBuilder.resolvedText(supplemental?.artist, fallback: track.artist),
+            album: NowPlayingInfoBuilder.resolvedText(collectionTitle, fallback: supplemental?.album)
+                ?? NowPlayingInfoBuilder.resolvedText(supplemental?.album, fallback: track.album),
+            duration: duration,
+            elapsed: elapsed,
+            isPlaying: isPlaying,
+            queueIndex: queueIndex,
+            queueCount: queueCount,
+            persistentSeed: persistentSeed,
+            collectionPersistentSeed: collectionPersistentSeed,
+            externalContentIdentifier: externalContentIdentifier,
+            artwork: artwork
+        )
 
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = info
@@ -198,23 +156,22 @@ final class NowPlayingCenter {
         lastPlayingPublish = isPlaying
         lastDurationPublish = duration
 
-        if trackChanged || artworkCache[track.id] == nil {
-            loadArtwork(for: track)
+        if artwork == nil {
+            loadArtwork(for: track, identity: identity)
         }
     }
 
-    private func loadArtwork(for track: MusicPlaybackTrack) {
-        guard artworkCache[track.id] == nil, let url = track.artworkURL else { return }
-
-        let trackID = track.id
+    private func loadArtwork(for track: MusicPlaybackTrack, identity: PlaybackItemIdentity) {
+        guard artworkCache[identity.transitionID] == nil, let url = track.artworkURL else { return }
+        let keep = identity
         artworkLoadTask?.cancel()
         artworkLoadTask = Task {
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 guard !Task.isCancelled, let image = UIImage(data: data) else { return }
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                artworkCache[trackID] = artwork
-                guard lastTrackID == trackID else { return }
+                artworkCache[keep.transitionID] = artwork
+                guard lastIdentity == keep else { return }
                 var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
                 info[MPMediaItemPropertyArtwork] = artwork
                 let center = MPNowPlayingInfoCenter.default()
@@ -222,25 +179,15 @@ final class NowPlayingCenter {
                 if let playing = lastPlayingPublish {
                     center.playbackState = playing ? .playing : .paused
                 }
-            } catch {
-                // brak okładki — zostaw metadane bez artwork
-            }
+            } catch {}
         }
-    }
-
-    private func resolvedText(_ primary: String?, fallback: String?) -> String? {
-        let trimmedPrimary = primary?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let trimmedPrimary, !trimmedPrimary.isEmpty { return trimmedPrimary }
-        let trimmedFallback = fallback?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let trimmedFallback, !trimmedFallback.isEmpty { return trimmedFallback }
-        return nil
     }
 
     func deactivate() {
         guard isActive else { return }
         artworkLoadTask?.cancel()
         artworkLoadTask = nil
-        lastTrackID = nil
+        lastIdentity = .none
         lastElapsedPublish = -1
         lastPlayingPublish = nil
         lastDurationPublish = -1

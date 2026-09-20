@@ -20,6 +20,8 @@ struct FolderDetailView: View {
     @State private var showDownloadDestinationSheet = false
     @State private var downloadSheetTracks: [MusicTrack] = []
     @State private var selectedTrackIDs: Set<String> = []
+    @StateObject private var usbExport = PlaylistUSBExportService()
+    @State private var autoPolicy = PlaylistAutoAcquirePolicy.off
 
     private var isEditing: Bool { editMode == .active }
 
@@ -35,11 +37,12 @@ struct FolderDetailView: View {
     private var pendingCount: Int {
         tracks.filter { track in
             guard !app.isOfflineAvailable(track.url) else { return false }
+            if app.isOnServer(track.url) || track.isOnServer { return false }
             let state = app.downloads.uiState(
                 for: track.url,
-                isOnServer: app.isOnServer(track.url) || track.isOnServer
+                isOnServer: false
             )
-            return state == .idle || state.isFailed
+            return state != .done
         }.count
     }
 
@@ -184,13 +187,23 @@ struct FolderDetailView: View {
                             systemImage: "photo.on.rectangle"
                         )
                     }
-                    if folder.applePlaylistUrl != nil, !isEditing {
+                    if PlaylistHygiene.importBadge(for: folder) == .appleMusic, !isEditing {
                         Button {
                             Task { await syncPlaylist() }
                         } label: {
                             Label("Synchronizuj Apple Music", systemImage: "arrow.triangle.2.circlepath")
                         }
                         .disabled(isSyncing)
+                    }
+                    Button {
+                        exportToUSB()
+                    } label: {
+                        Label(usbRepeatTitle, systemImage: "externaldrive")
+                    }
+                    Picker("Auto-pobieranie", selection: $autoPolicy) {
+                        ForEach(PlaylistAutoAcquirePolicy.allCases) { policy in
+                            Text(policy.title).tag(policy)
+                        }
                     }
                 } label: {
                     if isUploadingCover || isSyncing {
@@ -235,19 +248,51 @@ struct FolderDetailView: View {
     }
 
     private var playlistHeader: some View {
-        LibraryEntityHeader(
-            title: liveFolder.name,
-            subtitle: liveFolder.countLabel,
-            artworkURL: headerArtworkURL,
-            showsPhotoPicker: true,
-            onPickPhoto: { showCoverPicker = true }
-        )
+        VStack(alignment: .leading, spacing: 10) {
+            LibraryEntityHeader(
+                title: liveFolder.name,
+                subtitle: app.playlistCountLabel(for: liveFolder, tracks: tracks),
+                artworkURL: headerArtworkURL,
+                showsPhotoPicker: true,
+                onPickPhoto: { showCoverPicker = true }
+            )
+            HStack(spacing: 8) {
+                if let badge = PlaylistHygiene.importBadge(for: liveFolder) {
+                    PlaylistImportBadgeView(badge: badge)
+                }
+                if PlaylistHygiene.isPrimary(liveFolder) {
+                    Text("Biblioteka")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.14), in: Capsule())
+                }
+            }
+            Picker("Auto-pobieranie", selection: $autoPolicy) {
+                ForEach(PlaylistAutoAcquirePolicy.allCases) { policy in
+                    Text(policy.title).tag(policy)
+                }
+            }
+            .pickerStyle(.segmented)
+            if usbExport.isExporting {
+                ProgressView(value: usbExport.progress) {
+                    Text(usbExport.statusTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
         .overlay(alignment: .center) {
             if isUploadingCover {
                 ProgressView()
                     .padding(12)
                     .background(.ultraThinMaterial, in: Capsule())
             }
+        }
+        .onAppear { autoPolicy = PlaylistAutoAcquireStore.policy(for: folder.id) }
+        .onChange(of: autoPolicy) { _, policy in
+            PlaylistAutoAcquireStore.set(policy, for: folder.id)
         }
     }
 
@@ -256,7 +301,7 @@ struct FolderDetailView: View {
         let index = displayTracks.firstIndex(where: { $0.url == track.url }) ?? 0
         let downloadState = app.downloads.uiState(
             for: track.url,
-            isOnServer: app.isOnServer(track.url)
+            isOnServer: app.isOnServer(track.url) || track.isOnServer
         )
 
         let rowContent = HStack(spacing: 8) {
@@ -273,7 +318,7 @@ struct FolderDetailView: View {
                     )
                 } else {
                     Button {
-                        Task { await app.playTracks(tracks, startIndex: index, folder: folder) }
+                        Task { await playAll(from: index) }
                     } label: {
                         TrackRowView(
                             index: index + 1,
@@ -305,9 +350,12 @@ struct FolderDetailView: View {
             rowContent
         } else {
             rowContent
-                .contextMenu {
-                    contextMenuItems(for: track)
-                }
+                .trackQuickActions(
+                    TrackQuickActionItem(track: track),
+                    play: { Task { await playAll(from: index) } },
+                    removeFromPlaylist: { Task { await removeTrack(track) } },
+                    showsSwipe: false
+                )
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
                         Task { await removeTrack(track) }
@@ -419,9 +467,6 @@ struct FolderDetailView: View {
         app.cancelDownload(for: track.url)
         do {
             try await app.removeTrackFromFolder(folderId: folder.id, url: track.url)
-            if app.isOfflineAvailable(track.url) {
-                app.removeOfflineDownload(for: track.url)
-            }
             tracks.removeAll { $0.url == track.url }
         } catch {
             errorMessage = error.localizedDescription
@@ -464,6 +509,39 @@ struct FolderDetailView: View {
 
     private func playAll(from index: Int) async {
         await app.playTracks(displayTracks, startIndex: index, folder: folder)
+    }
+
+    private var usbRepeatTitle: String {
+        if let name = PlaylistUSBBookmarkStore.displayName(for: folder.id) {
+            return "Zapisz znowu na \(name)"
+        }
+        return "Zapisz na USB / folderze"
+    }
+
+    private func exportToUSB() {
+        if let url = PlaylistUSBBookmarkStore.resolvedURL(for: folder.id) {
+            Task {
+                await usbExport.export(
+                    playlistName: liveFolder.name,
+                    folderId: folder.id,
+                    tracks: displayTracks,
+                    destinationRoot: url,
+                    app: app
+                )
+            }
+            return
+        }
+        FolderPickerPresenter.present { url in
+            Task {
+                await usbExport.export(
+                    playlistName: liveFolder.name,
+                    folderId: folder.id,
+                    tracks: displayTracks,
+                    destinationRoot: url,
+                    app: app
+                )
+            }
+        }
     }
 
     private func syncPlaylist() async {

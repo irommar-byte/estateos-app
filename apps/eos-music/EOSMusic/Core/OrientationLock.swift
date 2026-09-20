@@ -18,6 +18,21 @@ final class OrientationLock {
         followDeviceForVideo()
     }
 
+    func unlockForMusic() {
+        mask = .allButUpsideDown
+        startGenerating()
+    }
+
+    func syncMask(musicSessionActive: Bool, videoSessionActive: Bool) {
+        if videoSessionActive {
+            followDeviceForVideo()
+        } else if musicSessionActive {
+            unlockForMusic()
+        } else {
+            lockPortrait()
+        }
+    }
+
     /// While a film is on screen, follow the physical device so landscape becomes true fullscreen.
     func followDeviceForVideo() {
         mask = .allButUpsideDown
@@ -72,6 +87,14 @@ final class AppOrientationDelegate: NSObject, UIApplicationDelegate {
 
     func application(
         _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        DownloadBackgroundKeeper.registerBackgroundTasks()
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
         OrientationLock.shared.mask
@@ -91,6 +114,20 @@ final class AppOrientationDelegate: NSObject, UIApplicationDelegate {
             return true
         }
         return IncomingMediaRouter.handle(url, app: appModel, video: videoModel)
+    }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor in
+            if identifier == BackgroundTransferService.sessionIdentifier {
+                BackgroundTransferService.shared.handleEventsForBackgroundURLSession(completionHandler: completionHandler)
+            } else {
+                DownloadBackgroundKeeper.shared.handleEventsForBackgroundURLSession(completionHandler: completionHandler)
+            }
+        }
     }
 
     @MainActor

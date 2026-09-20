@@ -313,6 +313,10 @@ struct ExternalSourceDetailView: View {
             )
         }
         .buttonStyle(.plain)
+        .trackQuickActions(
+            TrackQuickActionItem(track: track.playbackTrack(sourceId: source.id)),
+            play: { Task { await play(tracks: queue, from: index) } }
+        )
     }
 
     private func load() async {

@@ -21,56 +21,33 @@ struct MainTabView: View {
                 .environmentObject(app)
                 .environmentObject(ui)
 
-            if let sync = app.librarySyncMessage, !app.isOfflinePlaybackActive {
-                LibrarySyncStatusBar(
-                    message: sync,
-                    showsSpinner: app.isLibraryLoading
-                )
-            }
+            ZStack(alignment: .top) {
+                TabView {
+                    LibraryView()
+                        .miniPlayerTabInset()
+                        .tabItem { Label("Biblioteka", systemImage: "music.note.list") }
 
-            if let queue = app.downloads.bulkServerQueue {
-                ServerDownloadQueuePanel(
-                    queue: queue,
-                    isMinimized: Binding(
-                        get: { app.downloads.isBulkQueueMinimized },
-                        set: { app.downloads.isBulkQueueMinimized = $0 }
-                    )
-                ) {
-                    app.cancelBulkMusicQueue()
+                    SearchCatalogView()
+                        .miniPlayerTabInset()
+                        .tabItem { Label("Szukaj", systemImage: "magnifyingglass") }
+
+                    SourcesView()
+                        .miniPlayerTabInset()
+                        .tabItem { Label("Przeglądaj", systemImage: "folder.fill") }
+
+                    VideoLibraryView()
+                        .miniPlayerTabInset()
+                        .tabItem { Label("Wideo", systemImage: "film") }
+
+                    AccountView()
+                        .miniPlayerTabInset()
+                        .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .tint(EOSTheme.accent)
+                .eosMiniPlayerAboveTabBar()
+
+                FloatingDownloadActivityOverlay()
             }
-
-            if let batch = app.movieDownloads.activeBatch {
-                MovieDownloadQueuePanel(batch: batch, service: app.movieDownloads)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-            }
-
-            TabView {
-                LibraryView()
-                    .miniPlayerTabInset()
-                    .tabItem { Label("Biblioteka", systemImage: "music.note.list") }
-
-                SearchCatalogView()
-                    .miniPlayerTabInset()
-                    .tabItem { Label("Szukaj", systemImage: "magnifyingglass") }
-
-                SourcesView()
-                    .miniPlayerTabInset()
-                    .tabItem { Label("Przeglądaj", systemImage: "folder.fill") }
-
-                VideoLibraryView()
-                    .miniPlayerTabInset()
-                    .tabItem { Label("Wideo", systemImage: "film") }
-
-                AccountView()
-                    .miniPlayerTabInset()
-                    .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
-            }
-            .tint(EOSTheme.accent)
-            .eosMiniPlayerAboveTabBar()
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         // Offline sync lives in EOSMusicApp (configureOfflineMode + onChange); picker writes both.
@@ -120,6 +97,8 @@ private struct GlobalOfflineModeBar: View {
                         .background(EOSTheme.accent, in: Capsule())
                         .accessibilityLabel("Pobrane utwory")
                 }
+
+                ShazamIdentifyButton(size: 34)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -188,10 +167,10 @@ struct ServerMusicAssetsView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel
     @State private var mediaKind: ServerMediaKind = .music
-    @State private var mode: ServerBrowseMode = .songs
+    @State private var mode: ServerBrowseMode = .albums
     @State private var query = ""
     @State private var selectedArtist: String?
-    @State private var selectedAlbum: String?
+    @State private var selectedAlbumKey: String?
     @State private var assetToDelete: MusicAssetItem?
     @State private var movieToDelete: MovieDownload?
     @State private var movieSelection: OnlineMovieSelection?
@@ -271,6 +250,27 @@ struct ServerMusicAssetsView: View {
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
+    private func albumKey(for asset: MusicAssetItem) -> String? {
+        let title = asset.album?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !title.isEmpty else { return nil }
+        return "\(title.lowercased())|\((asset.artist ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+    }
+
+    private var openFolderTitle: String? {
+        if let selectedArtist { return selectedArtist }
+        if let selectedAlbumKey {
+            return albums.first(where: { $0.id == selectedAlbumKey })?.title
+        }
+        return nil
+    }
+
+    private var pendingFolderDownloads: [MusicAssetItem] {
+        filteredAssets.filter { asset in
+            guard let url = asset.url, !url.isEmpty else { return false }
+            return !app.isOfflineAvailable(url)
+        }
+    }
+
     private var filteredAssets: [MusicAssetItem] {
         if let selectedArtist {
             return assets.filter {
@@ -279,8 +279,8 @@ struct ServerMusicAssetsView: View {
                 return key == selectedArtist
             }
         }
-        if let selectedAlbum {
-            return assets.filter { $0.album == selectedAlbum }
+        if let selectedAlbumKey {
+            return assets.filter { albumKey(for: $0) == selectedAlbumKey }
         }
         return assets
     }
@@ -324,7 +324,7 @@ struct ServerMusicAssetsView: View {
                 ContentUnavailableView(
                     "Brak mediów na serwerze",
                     systemImage: "externaldrive",
-                    description: Text("Gdy odtworzysz lub dodasz utwór albo film, trwała kopia EOS pojawi się tutaj.")
+                    description: Text("Gdy odtworzysz lub dodasz utwór albo film, trwała kopia EOS pojawi się tutaj. Album otwierasz jak folder i możesz pobrać go na iPhone.")
                 )
             } else {
                 ScrollViewReader { proxy in
@@ -368,7 +368,7 @@ struct ServerMusicAssetsView: View {
                             .listRowBackground(Color.clear)
                             .onChange(of: mediaKind) { _, _ in
                                 selectedArtist = nil
-                                selectedAlbum = nil
+                                selectedAlbumKey = nil
                                 movieEditMode = .inactive
                             }
                         }
@@ -383,7 +383,7 @@ struct ServerMusicAssetsView: View {
                     .eosScrollClearance()
                     .environment(\.editMode, mediaKind == .movies ? $movieEditMode : .constant(.inactive))
                     .overlay(alignment: .trailing) {
-                        if mediaKind == .music, mode == .songs, selectedArtist == nil, selectedAlbum == nil {
+                        if mediaKind == .music, mode == .songs, selectedArtist == nil, selectedAlbumKey == nil {
                             AlphabetIndexBar(
                                 available: Set(LibraryAlphabet.group(filteredAssets) { $0.title ?? "Utwór" }.map(\.key))
                             ) { letter in
@@ -472,19 +472,34 @@ struct ServerMusicAssetsView: View {
             .listRowBackground(Color.clear)
             .onChange(of: mode) { _, _ in
                 selectedArtist = nil
-                selectedAlbum = nil
+                selectedAlbumKey = nil
             }
 
-            if !filteredAssets.isEmpty {
+            if !filteredAssets.isEmpty, openFolderTitle != nil || mode == .songs {
                 Button {
                     Task { await app.playServerAssets(filteredAssets, startIndex: 0) }
                 } label: {
                     Label(
-                        "Odtwórz \(filteredAssets.count == app.serverAssets.count ? "wszystko" : "wybór") (\(filteredAssets.count))",
+                        "Odtwórz \(openFolderTitle == nil && filteredAssets.count == app.serverAssets.count ? "wszystko" : "folder") (\(filteredAssets.count))",
                         systemImage: "play.fill"
                     )
                     .font(.headline)
                     .foregroundStyle(EOSTheme.accent)
+                }
+                if !pendingFolderDownloads.isEmpty, !app.isOfflinePlaybackActive {
+                    Button {
+                        app.downloadServerAssetsToDevice(
+                            pendingFolderDownloads,
+                            label: openFolderTitle ?? "Serwer EOS"
+                        )
+                    } label: {
+                        Label(
+                            "Pobierz folder na iPhone (\(pendingFolderDownloads.count))",
+                            systemImage: "icloud.and.arrow.down"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(EOSTheme.accentSecondary)
+                    }
                 }
             }
         }
@@ -628,13 +643,27 @@ struct ServerMusicAssetsView: View {
             Section("\(artists.count) wykonawców") {
                 ForEach(artists, id: \.name) { artist in
                     Button { selectedArtist = artist.name } label: {
-                        HStack {
+                        HStack(spacing: 12) {
+                            Image(systemName: "folder.fill")
+                                .foregroundStyle(EOSTheme.accent)
                             Text(artist.name).foregroundStyle(.primary)
                             Spacer()
                             Text("\(artist.count)").foregroundStyle(.secondary)
                             Image(systemName: "chevron.right")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .contextMenu {
+                        Button {
+                            let items = assets.filter {
+                                let name = $0.artist?.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let key = (name?.isEmpty == false) ? name! : "Nieznany wykonawca"
+                                return key == artist.name
+                            }
+                            app.downloadServerAssetsToDevice(items, label: artist.name)
+                        } label: {
+                            Label("Pobierz folder na iPhone", systemImage: "icloud.and.arrow.down")
                         }
                     }
                 }
@@ -644,10 +673,10 @@ struct ServerMusicAssetsView: View {
 
     @ViewBuilder
     private var albumSections: some View {
-        if let selectedAlbum {
+        if let selectedAlbumKey, let album = albums.first(where: { $0.id == selectedAlbumKey }) {
             Section {
-                Button { self.selectedAlbum = nil } label: {
-                    Label(selectedAlbum, systemImage: "chevron.backward")
+                Button { self.selectedAlbumKey = nil } label: {
+                    Label(album.title, systemImage: "chevron.backward")
                 }
             }
             assetList(filteredAssets)
@@ -659,12 +688,28 @@ struct ServerMusicAssetsView: View {
         } else {
             Section("\(albums.count) albumów") {
                 ForEach(albums, id: \.id) { album in
-                    Button { selectedAlbum = album.title } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(album.title).foregroundStyle(.primary)
-                            Text([album.artist, "\(album.count) utw."].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    Button { selectedAlbumKey = album.id } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "folder.fill")
+                                .foregroundStyle(EOSTheme.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(album.title).foregroundStyle(.primary)
+                                Text([album.artist, "\(album.count) utw."].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .contextMenu {
+                        Button {
+                            let items = assets.filter { albumKey(for: $0) == album.id }
+                            app.downloadServerAssetsToDevice(items, label: album.title)
+                        } label: {
+                            Label("Pobierz folder na iPhone", systemImage: "icloud.and.arrow.down")
                         }
                     }
                 }
@@ -699,46 +744,54 @@ struct ServerMusicAssetsView: View {
 
     private func assetRow(_ asset: MusicAssetItem, in queue: [MusicAssetItem]) -> some View {
         let index = queue.firstIndex(where: { $0.assetId == asset.assetId }) ?? 0
-        return Button {
-            Task { await app.playServerAssets(queue, startIndex: index) }
-        } label: {
-            HStack(spacing: 12) {
-                ArtworkImage(
-                    url: asset.thumbnail.flatMap(URL.init(string:)),
-                    size: 44,
-                    cornerRadius: 8
-                )
-                VStack(alignment: .leading, spacing: 2) {
-                    MarqueeText(
-                        text: asset.title ?? "Utwór",
-                        font: .body.weight(.semibold),
-                        foreground: .primary,
-                        speedPointsPerSecond: 28
+        let playback = MusicPlaybackTrack(from: asset)
+        return HStack(spacing: 8) {
+            Button {
+                Task { await app.playServerAssets(queue, startIndex: index) }
+            } label: {
+                HStack(spacing: 12) {
+                    ArtworkImage(
+                        url: asset.thumbnail.flatMap(URL.init(string:)),
+                        size: 44,
+                        cornerRadius: 8
                     )
-                    MarqueeText(
-                        text: [asset.artist, asset.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
-                        font: .caption,
-                        foreground: .secondary,
-                        speedPointsPerSecond: 24
-                    )
-                    if let bytes = asset.bytes {
-                        Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        MarqueeText(
+                            text: asset.title ?? "Utwór",
+                            font: .body.weight(.semibold),
+                            foreground: .primary,
+                            speedPointsPerSecond: 28
+                        )
+                        MarqueeText(
+                            text: [asset.artist, asset.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                            font: .caption,
+                            foreground: .secondary,
+                            speedPointsPerSecond: 24
+                        )
+                        if let bytes = asset.bytes {
+                            Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "play.circle.fill")
-                    .foregroundStyle(EOSTheme.accent.opacity(0.85))
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            TrackStorageActionButton(track: playback.payload, size: 20, frameSize: 34)
         }
-        .buttonStyle(.plain)
         .contextMenu {
             Button {
                 Task { await app.playServerAssets(queue, startIndex: index) }
             } label: {
                 Label("Odtwórz", systemImage: "play.fill")
+            }
+            Button {
+                app.downloadServerAssetsToDevice([asset], label: asset.title ?? "Utwór")
+            } label: {
+                Label("Pobierz na iPhone", systemImage: "icloud.and.arrow.down")
             }
             Button {
                 Task { await downloadAndShare(asset) }

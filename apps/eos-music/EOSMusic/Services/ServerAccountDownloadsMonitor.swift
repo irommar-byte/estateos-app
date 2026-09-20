@@ -35,14 +35,20 @@ final class ServerAccountDownloadsMonitor: ObservableObject {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                if self.isForeground, self.api?.isAuthenticated == true {
+                let downloadsBusy = self.musicDownloads?.hasActiveQueue == true
+                    || self.movieDownloads?.hasActiveBatch == true
+                let shouldPoll = self.api?.isAuthenticated == true
+                    && (self.isForeground || self.hasActiveServerWork || downloadsBusy)
+                if shouldPoll {
                     await self.refreshOnce()
                 }
-                if !self.isForeground {
-                    try? await Task.sleep(nanoseconds: 30_000_000_000)
-                    continue
+                let busy = self.hasActiveServerWork || downloadsBusy
+                let ns: UInt64
+                if self.isForeground {
+                    ns = busy ? 1_200_000_000 : 3_500_000_000
+                } else {
+                    ns = busy ? 2_400_000_000 : 12_000_000_000
                 }
-                let ns: UInt64 = self.hasActiveServerWork ? 1_200_000_000 : 3_500_000_000
                 try? await Task.sleep(nanoseconds: ns)
             }
         }
@@ -71,14 +77,22 @@ final class ServerAccountDownloadsMonitor: ObservableObject {
             return
         }
         do {
-            let response = try await api.fetchActiveServerDownloads()
-            items = response.items
-            lastError = nil
-            musicDownloads?.applyRemoteServerDownloads(response.music)
-            movieDownloads?.applyRemoteServerDownloads(response.movies)
+            applyDecoded(try await api.fetchActiveServerDownloads())
         } catch {
             // Soft-fail: keep last snapshot; avoid spamming UI on blips.
             lastError = error.localizedDescription
         }
+    }
+
+    func applyDecoded(_ response: ActiveServerDownloadsResponse) {
+        let mergedItems = response.items.isEmpty
+            ? response.music + response.movies
+            : response.items
+        items = mergedItems
+        lastError = nil
+        let music = response.music.isEmpty ? mergedItems.filter(\.isMusic) : response.music
+        let movies = response.movies.isEmpty ? mergedItems.filter(\.isMovie) : response.movies
+        musicDownloads?.applyRemoteServerDownloads(music, batch: response.batch)
+        movieDownloads?.applyRemoteServerDownloads(movies)
     }
 }

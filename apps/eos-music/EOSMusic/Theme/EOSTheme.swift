@@ -169,52 +169,57 @@ struct PlayerVisualPolicy: Equatable {
             )
         }
 
-        if reduceMotion {
-            // Keep cheap live analyzer so EQ/island still follow the song; no spinning chrome.
-            // Explicit strobe (preset / toggle) still allowed — user asked for it.
-            let wantsStrobe = preset == .strobe || strobeEnabled
+        if thermal == .critical {
             return PlayerVisualPolicy(
                 enabled: true,
-                allowStrobe: wantsStrobe && thermal != .critical,
-                analyzerFPS: preset == .spectrum ? 14 : 12,
-                timelineFPS: wantsStrobe ? 24 : 0,
-                intensityScale: clampedIntensity * 0.75,
+                allowStrobe: false,
+                analyzerFPS: 0,
+                timelineFPS: 0,
+                intensityScale: 0,
+                restrictionReason: "Urządzenie jest gorące — statyczna okładka"
+            )
+        }
+
+        if reduceMotion {
+            return PlayerVisualPolicy(
+                enabled: true,
+                allowStrobe: false,
+                analyzerFPS: preset == .spectrum ? 10 : 8,
+                timelineFPS: 0,
+                intensityScale: clampedIntensity * 0.7,
                 restrictionReason: "Reduce Motion — bez obrotu"
             )
         }
 
-        // Analyzer FPS feeds PCM → visualizer lock. UI timelines stay at 0 (UIKit hosts poll).
-        var fps: Double = preset == .spectrum ? 18 : 14
+        var fps: Double = preset == .spectrum ? 12 : 8
         let timeline: Double = 0
         var reason: String?
         var scale = clampedIntensity
+        var allowStrobe = (preset == .strobe || strobeEnabled) && thermal == .nominal
 
         if autoPerformance {
-            if thermal == .critical {
-                fps = preset == .spectrum ? 10 : 8
-                scale *= 0.45
-                reason = "Urządzenie jest gorące — efekty w trybie oszczędnym"
-            } else if thermal == .serious {
-                fps = preset == .spectrum ? 12 : 10
-                scale *= 0.58
-                reason = "Ciepłe urządzenie — ograniczone efekty"
+            if thermal == .serious {
+                fps = 6
+                scale *= 0.4
+                allowStrobe = false
+                reason = "Ciepłe urządzenie — statyczna okładka"
             } else if thermal == .fair || lowPower {
-                fps = preset == .spectrum ? 14 : 12
-                scale *= 0.7
+                fps = preset == .spectrum ? 8 : 6
+                scale *= 0.62
+                allowStrobe = false
                 reason = lowPower
                     ? "Tryb Low Power ogranicza efekty"
                     : "Ciepłe urządzenie — tryb oszczędny"
             }
         } else if lowPower || thermal == .fair {
-            fps = preset == .spectrum ? 16 : 12
-            scale *= 0.8
+            fps = preset == .spectrum ? 8 : 6
+            scale *= 0.7
+            allowStrobe = false
         }
-
-        let canStrobe = (preset == .strobe || strobeEnabled) && thermal != .critical
 
         return PlayerVisualPolicy(
             enabled: true,
-            allowStrobe: canStrobe,
+            allowStrobe: allowStrobe,
             analyzerFPS: fps,
             timelineFPS: timeline,
             intensityScale: scale,

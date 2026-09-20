@@ -52,6 +52,15 @@ struct LibraryView: View {
         app.downloadedLibraryTracks.count
     }
 
+    private var serverTrackCount: Int {
+        app.serverAssets.filter { $0.ready != false }.count
+    }
+
+    private var serverUsedBytes: Int64 {
+        if app.serverLibraryBytes > 0 { return Int64(app.serverLibraryBytes) }
+        return Int64(app.serverAssets.compactMap(\.bytes).reduce(0, +))
+    }
+
     private var deviceBreakdown: StorageBreakdown? {
         let musicBytes = OfflineMusicStore.shared.totalDownloadedBytes
         let movieBytes = app.onlineMovies.phoneMovieBytes
@@ -216,9 +225,10 @@ struct LibraryView: View {
                     frameSize: 30
                 )
             }
-            .contextMenu {
-                recentContextMenu(for: item)
-            }
+            .trackQuickActions(
+                TrackQuickActionItem(track: item.track),
+                play: { Task { await playRecent(item.track) } }
+            )
         } else {
             ZStack(alignment: .topTrailing) {
                 Button {
@@ -227,9 +237,10 @@ struct LibraryView: View {
                     RecentLibraryCell(item: item, style: recentLayout)
                 }
                 .buttonStyle(.plain)
-                .contextMenu {
-                    recentContextMenu(for: item)
-                }
+                .trackQuickActions(
+                    TrackQuickActionItem(track: item.track),
+                    play: { Task { await playRecent(item.track) } }
+                )
 
                 TrackStorageActionButton(
                     track: item.track.payload,
@@ -294,29 +305,45 @@ struct LibraryView: View {
 
     private var categoryList: some View {
         VStack(spacing: 0) {
-            ForEach(Array(LibraryCategory.allCases.enumerated()), id: \.element.id) { index, category in
+            ForEach(Array(LibraryCategory.allCases.filter { $0 != .downloaded }.enumerated()), id: \.element.id) { _, category in
                 NavigationLink(value: category) {
-                    if category == .downloaded {
-                        LibraryDownloadedCategoryRow(
-                            count: downloadedCount,
-                            storage: deviceStorage,
-                            breakdown: deviceBreakdown
-                        )
-                    } else {
-                        LibraryCategoryRow(
-                            icon: category.icon,
-                            title: category.title,
-                            subtitle: categorySubtitle(category)
-                        )
-                    }
+                    LibraryCategoryRow(
+                        icon: category.icon,
+                        title: category.title,
+                        subtitle: categorySubtitle(category)
+                    )
                 }
                 .buttonStyle(.plain)
-
-                if index < LibraryCategory.allCases.count - 1 {
-                    Divider()
-                        .padding(.leading, 66)
-                }
+                Divider()
+                    .padding(.leading, 66)
             }
+
+            NavigationLink {
+                ServerMusicAssetsView()
+            } label: {
+                LibraryStorageCategoryRow(
+                    kind: .server,
+                    trackCount: serverTrackCount,
+                    usedBytes: serverUsedBytes,
+                    freeBytes: app.serverDiskFreeBytes.map(Int64.init)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Divider()
+                .padding(.leading, 66)
+
+            NavigationLink {
+                LibraryDownloadedView()
+            } label: {
+                LibraryStorageCategoryRow(
+                    kind: .device,
+                    trackCount: downloadedCount,
+                    usedBytes: OfflineMusicStore.shared.totalDownloadedBytes,
+                    freeBytes: deviceStorage?.freeBytes
+                )
+            }
+            .buttonStyle(.plain)
         }
         .padding(.top, 4)
     }

@@ -1,9 +1,123 @@
 import SwiftUI
 
+/// Unoszący się HUD postępu — nie wchodzi w layout zakładek, więc nie szarpie całego ekranu.
+struct FloatingDownloadActivityOverlay: View {
+    @EnvironmentObject private var app: AppModel
+    @State private var isMovieQueueMinimized = true
+
+    private var showsSync: Bool {
+        app.librarySyncMessage != nil && !app.isOfflinePlaybackActive
+    }
+
+    private var showsMusic: Bool { app.downloads.bulkServerQueue != nil }
+    private var showsMovie: Bool { app.movieDownloads.activeBatch != nil }
+
+    var body: some View {
+        Group {
+            if showsSync || showsMusic || showsMovie {
+                VStack(spacing: 8) {
+                    if showsSync, let sync = app.librarySyncMessage {
+                        LibrarySyncStatusBar(
+                            message: sync,
+                            showsSpinner: app.isLibraryLoading
+                        )
+                        .transition(Self.cardTransition)
+                    }
+
+                    if let queue = app.downloads.bulkServerQueue {
+                        ServerDownloadQueuePanel(
+                            queue: queue,
+                            isMinimized: Binding(
+                                get: { app.downloads.isBulkQueueMinimized },
+                                set: { app.downloads.isBulkQueueMinimized = $0 }
+                            )
+                        ) {
+                            app.cancelBulkMusicQueue()
+                        }
+                        .transition(Self.cardTransition)
+                    }
+
+                    if let batch = app.movieDownloads.activeBatch {
+                        MovieDownloadQueuePanel(
+                            batch: batch,
+                            service: app.movieDownloads,
+                            isMinimized: $isMovieQueueMinimized
+                        )
+                        .transition(Self.cardTransition)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+        .animation(EOSMotion.soft, value: showsSync)
+        .animation(EOSMotion.soft, value: showsMusic)
+        .animation(EOSMotion.soft, value: showsMovie)
+        .onChange(of: app.movieDownloads.activeBatch?.id) { _, newId in
+            if newId != nil {
+                isMovieQueueMinimized = true
+            }
+        }
+    }
+
+    private static var cardTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity
+                .combined(with: .offset(y: -8))
+                .combined(with: .scale(scale: 0.98, anchor: .top)),
+            removal: .opacity
+                .combined(with: .offset(y: -6))
+                .combined(with: .scale(scale: 0.98, anchor: .top))
+        )
+    }
+}
+
+private struct FloatingActivityChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
+            }
+            .shadow(color: Color.black.opacity(0.16), radius: 18, y: 8)
+    }
+}
+
+private struct FloatingProgressBar: View {
+    let progress: Double
+    var height: CGFloat = 3.5
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.08))
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [EOSTheme.accent, EOSTheme.accentSecondary],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(height, geo.size.width * CGFloat(min(1, max(0.02, progress)))))
+            }
+        }
+        .frame(height: height)
+        .animation(.easeOut(duration: 0.22), value: progress)
+    }
+}
+
 /// Kolejka pobierania filmów / seriali EOS™LIBRARY (jak muzyka).
 struct MovieDownloadQueuePanel: View {
     let batch: MovieDownloadBatch
     @ObservedObject var service: MovieDownloadService
+    @Binding var isMinimized: Bool
 
     private var destinationBadge: MovieStorageLocationBadge.Kind {
         switch batch.destination {
@@ -18,14 +132,28 @@ struct MovieDownloadQueuePanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: isMinimized ? 6 : 10) {
             HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    withAnimation(EOSMotion.snappy) { isMinimized.toggle() }
+                } label: {
+                    Image(systemName: isMinimized ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+                        .font(.body)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(EOSTheme.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isMinimized ? "Rozwiń kolejkę" : "Zwiń kolejkę")
+
+                VStack(alignment: .leading, spacing: 2) {
                     Text(batch.label)
-                        .font(.caption.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         MovieStorageLocationBadge(kind: destinationBadge)
+                        Text("\(service.completedCount)/\(service.totalCount)")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.secondary)
                         if batch.destination == .serverAndPhone {
                             Text("serwer → iPhone")
                                 .font(.system(size: 10, weight: .medium))
@@ -34,37 +162,39 @@ struct MovieDownloadQueuePanel: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Text("\(service.completedCount)/\(service.totalCount)")
-                    .font(.caption.monospacedDigit().weight(.bold))
+                Text("\(Int((service.overallProgress * 100).rounded()))%")
+                    .font(.subheadline.monospacedDigit().weight(.bold))
                     .foregroundStyle(EOSTheme.accent)
                 if service.isRunning {
                     Button("Stop", role: .cancel) { service.cancelBatch() }
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                 } else {
                     Button("OK") { service.clearFinishedBatch() }
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                 }
             }
 
-            ProgressView(value: service.overallProgress)
-                .tint(EOSTheme.accent)
+            FloatingProgressBar(progress: service.overallProgress)
 
             if let title = service.activeItemTitle {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    if !isMinimized {
                         ProgressView().controlSize(.mini)
-                        if let badge = service.activeItemPhaseBadge {
-                            MovieStorageLocationBadge(kind: badgeKind(from: badge, progress: service.activeItemProgress))
-                        }
-                        Text(title)
-                            .font(.caption2.weight(.semibold))
-                            .lineLimit(1)
                     }
+                    if let badge = service.activeItemPhaseBadge {
+                        MovieStorageLocationBadge(kind: badgeKind(from: badge, progress: service.activeItemProgress))
+                    }
+                    Text(title)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
                     let detail = service.activeDetailLine
                     if !detail.isEmpty {
                         Text(detail)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -75,20 +205,20 @@ struct MovieDownloadQueuePanel: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Lista pozycji z możliwością anulowania pojedynczych.
-            VStack(spacing: 6) {
-                ForEach(batch.items.prefix(8)) { item in
-                    itemRow(item)
-                }
-                if batch.items.count > 8 {
-                    Text("… i \(batch.items.count - 8) kolejnych")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+            if !isMinimized {
+                VStack(spacing: 6) {
+                    ForEach(batch.items.prefix(6)) { item in
+                        itemRow(item)
+                    }
+                    if batch.items.count > 6 {
+                        Text("… i \(batch.items.count - 6) kolejnych")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .modifier(FloatingActivityChrome())
     }
 
     private func itemRow(_ item: MovieDownloadQueueItem) -> some View {
@@ -237,9 +367,8 @@ struct LibrarySyncStatusBar: View {
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(.ultraThinMaterial)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(FloatingActivityChrome())
     }
 }
 
@@ -258,17 +387,9 @@ struct ServerDownloadQueuePanel: View {
 
     private var countLabel: String {
         if queue.destination == .serverAndPhone, queue.phase == .device {
-            return "\(queue.deviceCompleted)/\(max(queue.deviceTotal, 1))"
+            return "\(queue.deviceCompleted) z \(max(queue.deviceTotal, 1))"
         }
-        return "\(queue.completed)/\(max(queue.total, 1))"
-    }
-
-    private var activeItem: MusicDownloadService.ServerQueueItem? {
-        queue.phase == .device ? queue.deviceActive : queue.active
-    }
-
-    private var activePercent: Double? {
-        queue.phase == .device ? queue.deviceActiveProgress : queue.activeProgress
+        return "\(queue.completed) z \(max(queue.total, 1))"
     }
 
     private var pendingItems: [MusicDownloadService.ServerQueueItem] {
@@ -276,89 +397,85 @@ struct ServerDownloadQueuePanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isMinimized ? 4 : 8) {
+        VStack(alignment: .leading, spacing: isMinimized ? 8 : 10) {
             HStack(spacing: 8) {
                 Button {
                     withAnimation(EOSMotion.snappy) { isMinimized.toggle() }
                 } label: {
-                    Image(systemName: isMinimized ? "chevron.up.circle" : "chevron.down.circle")
-                        .font(.caption.weight(.semibold))
+                    Image(systemName: isMinimized ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+                        .font(.body)
+                        .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(EOSTheme.accent)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isMinimized ? "Rozwiń kolejkę" : "Zwiń kolejkę")
 
-                Text(phaseTitle)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 4)
+                phasePill
+                Spacer(minLength: 6)
                 Text("\(Int((queue.overallProgress * 100).rounded()))%")
-                    .font(.caption.monospacedDigit().weight(.bold))
+                    .font(.title3.weight(.semibold).monospacedDigit())
                     .foregroundStyle(EOSTheme.accent)
-                Text(countLabel)
-                    .font(.caption2.monospacedDigit())
+                    .contentTransition(.numericText())
+                Text(DownloadETAFormatter.expanded(queue.etaSeconds ?? Double(max(1, queue.remainingCount)) * 25))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 if onCancel != nil {
                     Button("Anuluj", role: .cancel) { onCancel?() }
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                 }
             }
 
-            ProgressView(value: queue.overallProgress)
-                .tint(EOSTheme.accent)
+            FloatingProgressBar(progress: queue.overallProgress, height: 7)
+            Text(countLabel)
+                .font(.caption2.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.secondary)
+            if !pendingItems.isEmpty {
+                Text("W kolejce \(pendingItems.count)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(Array(queue.liveCurrentItems.prefix(2).enumerated()), id: \.offset) { _, item in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(item.title)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text("\(Int((min(1, max(0, item.progress)) * 100).rounded()))%")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(EOSTheme.accent)
+                            .contentTransition(.numericText())
+                    }
+                    FloatingProgressBar(progress: min(1, max(0, item.progress)), height: 3.5)
+                }
+            }
 
             if !isMinimized {
-                if let active = activeItem {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .controlSize(.mini)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Teraz: \(active.title)")
-                                .font(.caption2.weight(.semibold))
-                                .lineLimit(1)
-                            if let pct = activePercent {
-                                Text(queue.phase == .device
-                                     ? "Pobieranie na urządzenie · \(Int(pct))%"
-                                     : "Przygotowanie na serwerze · \(Int(pct))%")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text(queue.phase == .device ? "Pobieranie na urządzenie…" : "Przygotowanie na serwerze…")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-
                 if queue.destination == .serverAndPhone, queue.phase == .server, queue.deviceTotal > 0 {
                     Text("Potem na iPhone: \(queue.deviceTotal) utworów")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
-
-                if !pendingItems.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("W kolejce (\(pendingItems.count)) · zostało \(queue.remainingCount)")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        ForEach(Array(pendingItems.prefix(4).enumerated()), id: \.offset) { idx, item in
-                            Text("\(idx + 2). \(item.title)")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                        }
-                        if pendingItems.count > 4 {
-                            Text("… i \(pendingItems.count - 4) kolejnych")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
             }
         }
-        .padding(isMinimized ? EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12) : EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .modifier(FloatingActivityChrome())
+    }
+
+    private var phasePill: some View {
+        let phone = queue.phase == .device
+        return HStack(spacing: 5) {
+            Image(systemName: phone ? "iphone" : "externaldrive.fill")
+                .font(.caption2.weight(.semibold))
+            Text(phone ? "iPhone" : "Serwer")
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(EOSTheme.accent)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(EOSTheme.accent.opacity(0.14), in: Capsule())
+        .accessibilityLabel(phaseTitle)
     }
 }
 

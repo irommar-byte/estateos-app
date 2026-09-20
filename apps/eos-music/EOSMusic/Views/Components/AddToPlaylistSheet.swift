@@ -17,21 +17,28 @@ struct AddToPlaylistSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(app.musicFolders) { folder in
+                    ForEach(app.playlistFoldersForBrowsing) { folder in
                         Button {
                             Task { await add(to: folder.id) }
                         } label: {
                             HStack {
-                                ArtworkImage(url: folder.artworkURL, size: 44, cornerRadius: 8)
+                                PlaylistArtworkView(folder: folder, tracks: app.tracks(in: folder.id), size: 44, cornerRadius: 8)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(folder.name)
-                                        .foregroundStyle(EOSTheme.textPrimary)
-                                    Text(folder.countLabel)
+                                    HStack(spacing: 6) {
+                                        Text(folder.name)
+                                            .foregroundStyle(EOSTheme.textPrimary)
+                                        if let badge = PlaylistHygiene.importBadge(for: folder) {
+                                            PlaylistImportBadgeView(badge: badge)
+                                        }
+                                    }
+                                    Text(app.folderContains(folderId: folder.id, url: track.url)
+                                         ? "Już jest na tej liście"
+                                         : app.playlistCountLabel(for: folder))
                                         .font(.caption)
                                         .foregroundStyle(EOSTheme.textSecondary)
                                 }
                                 Spacer()
-                                if addedFolderId == folder.id {
+                                if addedFolderId == folder.id || app.folderContains(folderId: folder.id, url: track.url) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundStyle(EOSTheme.accent)
                                 } else if isSaving {

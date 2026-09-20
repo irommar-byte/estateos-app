@@ -9,9 +9,12 @@ enum AudioSession {
     private static var shouldResumeAfterInterruption = false
     private static var cancellables = Set<AnyCancellable>()
     private static var configuredForPlayback = false
+    private static var leaseMode: AudioSessionLeaseMode = .inactive
+    private static var modeBeforeCapture: AudioSessionLeaseMode = .inactive
 
     static func activateForPlayback(force: Bool = false) {
         installObserversIfNeeded()
+        leaseMode = .musicPlayback
         let session = AVAudioSession.sharedInstance()
 
         if !force,
@@ -51,6 +54,7 @@ enum AudioSession {
 
     static func activateForVideoPlayback(force: Bool = false) {
         installObserversIfNeeded()
+        leaseMode = .videoPlayback
         let session = AVAudioSession.sharedInstance()
         do {
             if session.category != .playback || session.mode != .moviePlayback || force {
@@ -67,8 +71,43 @@ enum AudioSession {
         }
     }
 
+    static func activateForShazamCapture() {
+        installObserversIfNeeded()
+        if leaseMode != .shazamCapture {
+            modeBeforeCapture = leaseMode == .inactive ? .musicPlayback : leaseMode
+        }
+        leaseMode = .shazamCapture
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .measurement,
+                options: [.mixWithOthers, .defaultToSpeaker]
+            )
+            try session.setActive(true, options: [])
+            EOSLog.audioSession.info("lease=shazamCapture")
+        } catch {
+            EOSLog.audioSession.error("shazam capture failed \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    static func endShazamCapture() {
+        guard leaseMode == .shazamCapture else { return }
+        let restore = modeBeforeCapture
+        leaseMode = restore
+        switch restore {
+        case .videoPlayback:
+            activateForVideoPlayback(force: true)
+        case .musicPlayback, .inactive, .shazamCapture:
+            activateForPlayback(force: true)
+        }
+    }
+
     /// Re-assert category after returning from background / other apps.
     static func reinforceIfNeeded() {
+        if AudioSessionLeasePolicy.shouldIgnoreOwnCategoryChange(current: leaseMode) {
+            return
+        }
         let session = AVAudioSession.sharedInstance()
         if session.category != .playback {
             activateForPlayback(force: true)
@@ -108,6 +147,10 @@ enum AudioSession {
         NotificationCenter.default.publisher(for: AVAudioSession.mediaServicesWereResetNotification)
             .receive(on: DispatchQueue.main)
             .sink { _ in
+                if leaseMode == .shazamCapture {
+                    activateForShazamCapture()
+                    return
+                }
                 configuredForPlayback = false
                 activateForPlayback(force: true)
                 NotificationCenter.default.post(name: .eosAudioSessionNeedsResume, object: nil)
@@ -124,13 +167,19 @@ enum AudioSession {
 
         switch type {
         case .began:
-            shouldResumeAfterInterruption = true
+            shouldResumeAfterInterruption = leaseMode != .shazamCapture
             configuredForPlayback = false
-            NotificationCenter.default.post(name: .eosAudioSessionInterrupted, object: nil)
+            if leaseMode != .shazamCapture {
+                NotificationCenter.default.post(name: .eosAudioSessionInterrupted, object: nil)
+            }
 
         case .ended:
             let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            if leaseMode == .shazamCapture {
+                activateForShazamCapture()
+                return
+            }
             activateForPlayback(force: true)
             if options.contains(.shouldResume) || shouldResumeAfterInterruption {
                 shouldResumeAfterInterruption = false
@@ -159,8 +208,15 @@ enum AudioSession {
                 NotificationCenter.default.post(name: .eosAudioSessionRouteLost, object: nil)
             }
         case .newDeviceAvailable:
+            if leaseMode == .shazamCapture {
+                activateForShazamCapture()
+                return
+            }
             activateForPlayback(force: true)
         case .categoryChange, .override:
+            if AudioSessionLeasePolicy.shouldIgnoreOwnCategoryChange(current: leaseMode) {
+                return
+            }
             reinforceIfNeeded()
         default:
             break

@@ -145,6 +145,10 @@ struct SmartPlaylistDetailView: View {
                                     folderId: entry.track.folderId
                                 )
                             }
+                            .trackQuickActions(
+                                TrackQuickActionItem(track: entry.track),
+                                play: { Task { await play(at: index) } }
+                            )
                             .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                         }
                     } header: {

@@ -30,6 +30,30 @@ enum APIError: LocalizedError {
         if let urlError = error as? URLError { return urlError.code == .timedOut }
         return (error as NSError).code == NSURLErrorTimedOut
     }
+
+    static func isRetryable(_ error: Error) -> Bool {
+        if isTimeout(error) { return true }
+        if let api = error as? APIError {
+            switch api {
+            case .unauthorized, .decode:
+                return false
+            case .network:
+                return true
+            case .server(let msg):
+                return msg.contains("Błąd serwera (5")
+            }
+        }
+        if let url = error as? URLError {
+            switch url.code {
+            case .timedOut, .networkConnectionLost, .notConnectedToInternet,
+                 .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+                return true
+            default:
+                return false
+            }
+        }
+        return false
+    }
 }
 
 struct AuthUser: Codable, Equatable {
@@ -115,6 +139,7 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let isSerial: Bool?
     let premium: Bool?
     let previewUrl: String?
+    let isrc: String?
 
     var artworkURL: URL? {
         guard let thumbnail, !thumbnail.isEmpty else { return nil }
@@ -209,11 +234,9 @@ struct JobStatusResponse: Codable {
     let mode: String?
 
     var isDurableServerCopy: Bool {
-        let s = status.lowercased()
-        if s == "done" { return true }
+        if mode == "stream-proxy" { return false }
         if onServer == true || persistent == true { return true }
         if mode == "file" { return true }
-        if mode == "stream-proxy" { return false }
         return false
     }
 
@@ -243,7 +266,7 @@ enum MusicPlayWaitPolicy {
         let ready = job.ready == true || job.status.lowercased() == "done"
         guard ready else { return false }
         if !requireDurable { return true }
-        return job.isDurableServerCopy || job.status.lowercased() == "done"
+        return job.isDurableServerCopy
     }
 }
 
@@ -264,6 +287,8 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
     let finishedAt: Double?
     let phase: String?
     let updatedAt: Double?
+    let mode: String?
+    let intent: String?
 
     var isMusic: Bool { kind == "music" }
     var isMovie: Bool { kind == "movie" }
@@ -280,10 +305,23 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
 
     /// Server is writing a durable MP3 (bulk „Zapis na serwer”), not a live preview.
     var looksLikeFileIngest: Bool {
+        if mode == "stream-proxy" { return false }
+        if intent == "play" { return false }
+        if intent == "download" { return true }
+        if mode == "file" { return true }
         let s = status.lowercased()
         let p = (phase ?? "").lowercased()
-        if s == "downloading" || s == "preparing" || s == "starting" || s == "queued" { return true }
+        if s == "downloading" { return true }
         return p == "download" || p == "acquire" || p == "file" || p == "ingest"
+    }
+
+    /// Hung Apple Music ingest typically sits at ~22% with no file on disk.
+    var isLikelyStalledIngest: Bool {
+        guard looksLikeFileIngest, !isTerminal, !isFailed else { return false }
+        if progressPercent > 28 { return false }
+        guard let queuedAt else { return false }
+        let queuedMs = queuedAt > 10_000_000_000 ? queuedAt : queuedAt * 1000
+        return Date().timeIntervalSince1970 * 1000 - queuedMs > 40_000
     }
 
     var progressPercent: Double {
@@ -292,16 +330,41 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
     }
 }
 
+struct DownloadBatchSnapshot: Codable, Equatable {
+    var id: String?
+    var completed: Int?
+    var total: Int?
+    var currentTitle: String?
+    var itemProgress: Double?
+    var overallProgress: Double?
+    var etaSeconds: Double?
+    var phase: String?
+    var revision: Int?
+    var status: String?
+}
+
+struct DownloadQueueEnqueueResponse: Codable {
+    let ok: Bool?
+    let batchId: String?
+    let queued: Int?
+}
+
 struct ActiveServerDownloadsResponse: Codable {
     let items: [ActiveServerDownload]
     let music: [ActiveServerDownload]
     let movies: [ActiveServerDownload]
+    let batch: DownloadBatchSnapshot?
+
+    enum CodingKeys: String, CodingKey {
+        case items, music, movies, batch
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         items = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .items) ?? []
         music = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .music) ?? []
         movies = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .movies) ?? []
+        batch = try container.decodeIfPresent(DownloadBatchSnapshot.self, forKey: .batch)
     }
 }
 
@@ -319,11 +382,9 @@ struct DownloadStartResponse: Codable {
 
     /// Durable MP3 on the EOS server — not a live preview stream.
     var isDurableServerCopy: Bool {
-        let s = status?.lowercased() ?? ""
-        if s == "done" { return true }
+        if mode == "stream-proxy" { return false }
         if onServer == true || persistent == true { return true }
         if mode == "file" { return true }
-        if mode == "stream-proxy" { return false }
         return false
     }
 }
@@ -373,13 +434,24 @@ struct MusicFolder: Codable, Identifiable, Hashable {
     }
 
     var countLabel: String {
-        let total = trackCount ?? 0
-        let onServer = downloadedTrackCount ?? fileCount ?? 0
-        if total > 0, onServer > 0, onServer < total {
-            return "\(onServer) z \(total) na serwerze"
-        }
-        if onServer > 0 { return "\(onServer) utworów" }
-        return "\(total) utworów"
+        Self.availabilityLabel(
+            onServer: downloadedTrackCount ?? fileCount ?? 0,
+            total: trackCount ?? 0
+        )
+    }
+
+    /// Same wording the playlist header and cloud icons must share.
+    static func availabilityLabel(onServer: Int, total: Int) -> String {
+        let total = max(total, 0)
+        let onServer = min(max(onServer, 0), total)
+        if total == 0 { return "0 utworów" }
+        if onServer == 0 { return "\(total) \(tracksWord(total))" }
+        if onServer == total { return "\(total) \(tracksWord(total)) na serwerze" }
+        return "\(onServer) z \(total) na serwerze"
+    }
+
+    private static func tracksWord(_ count: Int) -> String {
+        count == 1 ? "utwór" : "utworów"
     }
 }
 
@@ -399,10 +471,9 @@ struct MusicTrack: Codable, Identifiable, Hashable {
     /// Unix ms when the track was added to the library (server).
     let addedAt: Double?
 
-    /// Trwała kopia w bibliotece EOS na serwerze (nie mylić z plikiem na iPhonie).
+    /// Trwała kopia MP3 w bibliotece EOS. Sam `downloadJobId` (play-proxy / zacięty ingest) nie liczy się.
     var isOnServer: Bool {
         if let serverAssetId, !serverAssetId.isEmpty { return true }
-        if let downloadJobId, !downloadJobId.isEmpty { return true }
         return false
     }
 
@@ -414,8 +485,8 @@ struct MusicTrack: Codable, Identifiable, Hashable {
     static let localOfflineFolderId = "local-offline"
 
     var durableJobId: String? {
-        if let serverAssetId, !serverAssetId.isEmpty { return serverAssetId }
         if let downloadJobId, !downloadJobId.isEmpty { return downloadJobId }
+        if let serverAssetId, !serverAssetId.isEmpty { return serverAssetId }
         return nil
     }
 
@@ -521,10 +592,9 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
 
     var artworkURL: URL? { thumbnail.flatMap(URL.init(string:)) }
 
-    /// Trwała kopia na serwerze EOS (nie mylić z plikiem lokalnym).
+    /// Trwała kopia na serwerze EOS (nie mylić z plikiem lokalnym ani z jobem odtwarzania).
     var isOnServer: Bool {
         if let serverAssetId, !serverAssetId.isEmpty { return true }
-        if let downloadJobId, !downloadJobId.isEmpty { return true }
         return false
     }
 
@@ -651,6 +721,26 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         serverAssetId = nil
         artistId = item.artistId
         albumId = item.albumId
+        playbackFileURL = nil
+        externalRelativePath = nil
+        webDAVPath = nil
+        googleDriveFileId = nil
+        externalSourceId = nil
+    }
+
+    init(from favorite: FavoriteItem) {
+        id = favorite.url
+        url = favorite.url
+        title = favorite.title
+        artist = favorite.detail
+        album = nil
+        thumbnail = favorite.thumbnail
+        duration = favorite.duration
+        folderId = nil
+        downloadJobId = nil
+        serverAssetId = nil
+        artistId = nil
+        albumId = nil
         playbackFileURL = nil
         externalRelativePath = nil
         webDAVPath = nil

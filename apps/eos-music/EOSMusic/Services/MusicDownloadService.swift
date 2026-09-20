@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import ActivityKit
 
 enum TrackDownloadUIState: Equatable {
     case idle
@@ -53,10 +54,35 @@ final class MusicDownloadService: ObservableObject {
 
     @Published private(set) var states: [String: TrackDownloadUIState] = [:]
     /// Postęp masowego zapisu albumu / playlisty na serwerze EOS.
-    @Published private(set) var bulkServerQueue: BulkServerQueueProgress?
-    @Published var isBulkQueueMinimized = false
+    @Published private(set) var bulkServerQueue: BulkServerQueueProgress? {
+        didSet { updateLiveActivity() }
+    }
+    @Published var isBulkQueueMinimized = true
+    
+    var hasActiveQueue: Bool {
+        bulkServerQueue != nil
+            || plusDrainTask != nil
+            || !plusFIFO.isEmpty
+            || !activeTasks.isEmpty
+            || bulkServerTask != nil
+    }
 
     private var activeTasks: [String: Task<Void, Never>] = [:]
+    private var stickyBatchTotal = 0
+    private var stickyBatchLabel = ""
+    private var stickyBatchURLs: Set<String> = []
+    private var stickyBatchId: String?
+    private var stickyBatchRevision = 0
+    private var isCancellingBatch = false
+    private var stickyBatchItems: [ServerQueueItem] = []
+    private var stickyDeviceItems: [ServerQueueItem] = []
+    private var bulkFolderId = ""
+    private var bulkOnLibraryChanged: (() async -> Void)?
+    private var lastServerETA: Double?
+    private var heldETAMinutes: Int?
+    private var lastBatchCompleted = 0
+    private var bulkGeneration = 0
+    private var bulkCancelled = false
     private var bulkDestination: MusicDownloadDestination = .server
     private var bulkTrackByURL: [String: MusicTrack] = [:]
     private var bulkActiveURLs: Set<String> = []
@@ -112,18 +138,54 @@ final class MusicDownloadService: ObservableObject {
         var deviceActive: ServerQueueItem? = nil
         var devicePending: [ServerQueueItem] = []
         var deviceActiveProgress: Double? = nil
+        var etaSeconds: Double? = nil
 
         var currentTitle: String? {
             phase == .device ? (deviceActive?.title ?? active?.title) : active?.title
         }
 
+        var extraActive: ServerQueueItem? = nil
+        var extraActiveProgress: Double? = nil
+
+        var liveCurrentItems: [DownloadAttributes.CurrentItem] {
+            var items: [DownloadAttributes.CurrentItem] = []
+            if phase == .device, let deviceActive {
+                items.append(
+                    DownloadAttributes.CurrentItem(
+                        title: deviceActive.title,
+                        progress: min(1, max(0, (deviceActiveProgress ?? 0) / 100))
+                    )
+                )
+            } else {
+                if let active {
+                    items.append(
+                        DownloadAttributes.CurrentItem(
+                            title: active.title,
+                            progress: min(1, max(0, (activeProgress ?? 0) / 100))
+                        )
+                    )
+                }
+                if let extraActive {
+                    items.append(
+                        DownloadAttributes.CurrentItem(
+                            title: extraActive.title,
+                            progress: min(1, max(0, (extraActiveProgress ?? 0) / 100))
+                        )
+                    )
+                }
+            }
+            return Array(items.prefix(2))
+        }
+
         var remainingCount: Int {
-            let serverLeft = max(0, total - completed - (active == nil ? 0 : 1)) + pending.count
-            let deviceLeft = destination == .serverAndPhone
-                ? max(0, deviceTotal - deviceCompleted - (deviceActive == nil ? 0 : 1)) + devicePending.count
-                : 0
-            if phase == .device { return deviceLeft }
-            return serverLeft + (destination == .serverAndPhone ? deviceTotal - deviceCompleted : 0)
+            if phase == .device {
+                return max(0, deviceTotal - deviceCompleted)
+            }
+            let serverLeft = max(0, total - completed)
+            if destination == .serverAndPhone {
+                return serverLeft + max(0, deviceTotal - deviceCompleted)
+            }
+            return serverLeft
         }
 
         var overallProgress: Double {
@@ -257,27 +319,105 @@ final class MusicDownloadService: ObservableObject {
         if let onLibraryChanged { plusLibraryChanged = onLibraryChanged }
         if let onReady { plusOnReady = onReady }
         suppressRemoteBulkQueuePanel = false
-        isBulkQueueMinimized = false
+        if bulkServerQueue == nil {
+            isBulkQueueMinimized = true
+        }
 
         plusQueuedURLs.insert(url)
         Self.setServerAcquireActive(url, true)
         states[url] = .acquiringServer(progress: 4)
         plusFIFO.append(ServerQueueItem(url: url, folderId: folderId ?? "", title: title))
         plusTotal += 1
-        publishPlusQueue()
+        if !ownsStickyBatch {
+            publishPlusQueue()
+        }
         startPlusDrain()
     }
 
+    private var ownsStickyBatch: Bool {
+        bulkServerTask != nil || !stickyBatchURLs.isEmpty
+    }
+
+    private func updateLiveActivity() {
+        if let queue = bulkServerQueue {
+            let item = (queue.phase == .device ? queue.deviceActiveProgress : queue.activeProgress) ?? 0
+            let phase = queue.phase == .device ? "Na iPhonie" : "Na serwerze"
+            DownloadLiveActivityController.shared.publishMusic(
+                itemProgress: item / 100,
+                overallProgress: queue.overallProgress,
+                completed: queue.phase == .device ? queue.deviceCompleted : queue.completed,
+                total: queue.phase == .device ? max(queue.deviceTotal, 1) : max(queue.total, 1),
+                phase: isCancellingBatch ? "Anulowanie" : phase,
+                title: queue.currentTitle ?? queue.label,
+                currentItems: queue.liveCurrentItems,
+                remainingCount: queue.remainingCount,
+                serverETA: queue.etaSeconds ?? lastServerETA,
+                batchId: stickyBatchId ?? "",
+                revision: max(stickyBatchRevision, 1)
+            )
+        } else {
+            DownloadLiveActivityController.shared.endMusic()
+        }
+    }
+
     private func publishPlusQueue(activeProgress: Double? = nil) {
+        guard !ownsStickyBatch else { return }
         let total = max(plusTotal, 1)
-        bulkServerQueue = BulkServerQueueProgress(
+        bulkServerQueue = attachETA(BulkServerQueueProgress(
             label: "Kolejka na serwer",
             completed: plusCompleted,
             total: total,
             active: plusActive,
             pending: plusFIFO,
             activeProgress: activeProgress ?? plusActive.map { states[$0.url]?.progressPercent } ?? nil
-        )
+        ))
+    }
+
+    private func makeDeviceProgress(
+        label: String,
+        destination: MusicDownloadDestination,
+        serverDone: Int,
+        deviceCompleted: Int,
+        allDevice: [ServerQueueItem],
+        activeIndex: Int,
+        progress: Double? = nil
+    ) -> BulkServerQueueProgress {
+        let active = allDevice.indices.contains(activeIndex) ? allDevice[activeIndex] : nil
+        let pending = activeIndex + 1 < allDevice.count ? Array(allDevice[(activeIndex + 1)...]) : []
+        return attachETA(BulkServerQueueProgress(
+            label: label,
+            completed: serverDone,
+            total: serverDone,
+            active: nil,
+            pending: [],
+            activeProgress: nil,
+            destination: destination,
+            phase: .device,
+            deviceCompleted: deviceCompleted,
+            deviceTotal: max(allDevice.count, 1),
+            deviceActive: active,
+            devicePending: pending,
+            deviceActiveProgress: progress
+        ))
+    }
+
+    private func attachETA(_ progress: BulkServerQueueProgress) -> BulkServerQueueProgress {
+        var next = progress
+        next.etaSeconds = resolveHeldETA(remaining: progress.remainingCount)
+        return next
+    }
+
+    private func resolveHeldETA(remaining: Int) -> Double {
+        let raw = lastServerETA ?? Double(max(1, remaining)) * 25
+        let minutes = max(1, Int((raw / 60.0).rounded()))
+        if let held = heldETAMinutes {
+            if abs(minutes - held) >= 1 {
+                heldETAMinutes = minutes
+            }
+        } else {
+            heldETAMinutes = minutes
+        }
+        return Double(heldETAMinutes ?? minutes) * 60
     }
 
     private func startPlusDrain() {
@@ -292,49 +432,79 @@ final class MusicDownloadService: ObservableObject {
                     self.startPlusDrain()
                 }
             }
-            while !Task.isCancelled {
-                if self.plusFIFO.isEmpty {
-                    self.plusActive = nil
-                    if self.plusCompleted >= self.plusTotal {
-                        self.plusQueuedURLs.removeAll()
-                        self.plusCompleted = 0
-                        self.plusTotal = 0
+            await self.drainPlusQueue(limit: BulkServerQueuePolicy.maxConcurrentServerJobs)
+            if self.plusFIFO.isEmpty {
+                self.plusActive = nil
+                if self.plusCompleted >= self.plusTotal {
+                    self.plusQueuedURLs.removeAll()
+                    self.plusCompleted = 0
+                    self.plusTotal = 0
+                    if !self.ownsStickyBatch {
                         self.bulkServerQueue = nil
                     }
-                    break
+                } else {
+                    self.publishPlusQueue()
                 }
-                let item = self.plusFIFO.removeFirst()
-                self.plusActive = item
-                self.publishPlusQueue(activeProgress: 4)
-                guard let api = self.plusAPI else { break }
-                var folderId = item.folderId
-                do {
-                    if folderId.isEmpty {
-                        folderId = try await self.plusResolveFolderId?(item.url) ?? ""
-                    }
-                    await self.ensureOnServerWithRetry(
-                        url: item.url,
-                        folderId: folderId,
-                        title: item.title,
-                        api: api,
-                        onLibraryChanged: self.plusLibraryChanged,
-                        onAcquireProgress: { [weak self] progress in
-                            Task { @MainActor in
-                                self?.publishPlusQueue(activeProgress: progress)
-                            }
-                        }
-                    )
-                    self.plusQueuedURLs.remove(item.url)
-                    self.plusCompleted += 1
-                    await self.plusOnReady?(item.title)
-                } catch {
-                    self.plusQueuedURLs.remove(item.url)
-                    self.plusCompleted += 1
-                }
-                self.plusActive = nil
-                self.publishPlusQueue()
             }
         }
+    }
+
+    private func takeNextPlusItem() -> ServerQueueItem? {
+        guard !Task.isCancelled, plusAPI != nil, !plusFIFO.isEmpty else { return nil }
+        let item = plusFIFO.removeFirst()
+        plusActive = item
+        publishPlusQueue(activeProgress: 4)
+        return item
+    }
+
+    private func drainPlusQueue(limit: Int) async {
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<max(1, limit) {
+                guard let item = takeNextPlusItem() else { break }
+                group.addTask { @MainActor in
+                    await self.runPlusItem(item)
+                }
+            }
+            for await _ in group {
+                guard let item = takeNextPlusItem() else { continue }
+                group.addTask { @MainActor in
+                    await self.runPlusItem(item)
+                }
+            }
+        }
+    }
+
+    private func runPlusItem(_ item: ServerQueueItem) async {
+        guard let api = plusAPI else { return }
+        var folderId = item.folderId
+        do {
+            if folderId.isEmpty {
+                folderId = try await plusResolveFolderId?(item.url) ?? ""
+            }
+            await ensureOnServerWithRetry(
+                url: item.url,
+                folderId: folderId,
+                title: item.title,
+                api: api,
+                onLibraryChanged: plusLibraryChanged,
+                onAcquireProgress: { [weak self] progress in
+                    Task { @MainActor in
+                        self?.plusActive = item
+                        self?.publishPlusQueue(activeProgress: progress)
+                    }
+                }
+            )
+            plusQueuedURLs.remove(item.url)
+            plusCompleted += 1
+            await plusOnReady?(item.title)
+        } catch {
+            plusQueuedURLs.remove(item.url)
+            plusCompleted += 1
+        }
+        if plusActive?.url == item.url {
+            plusActive = plusFIFO.first
+        }
+        publishPlusQueue()
     }
 
     /// Kolejka albumu: dopisuje utwory do tej samej kolejki co pojedyncze „+”.
@@ -346,45 +516,49 @@ final class MusicDownloadService: ObservableObject {
         onLibraryChanged: (() async -> Void)? = nil,
         onAllComplete: (() async -> Void)? = nil
     ) {
-        for item in items {
-            if isAlreadyOnServer(item.url) || offline.isAvailable(item.url) {
-                states[item.url] = .onServer
-                wasOnServer[item.url] = true
-                continue
-            }
-            enqueueServerAcquire(
-                url: item.url,
-                title: item.title,
-                folderId: item.folderId,
-                api: api,
-                onLibraryChanged: onLibraryChanged
-            )
+        let tracks = items.map {
+            MusicTrack(folderId: $0.folderId, url: $0.url, title: $0.title)
         }
+        queueBulkDownload(
+            label: label,
+            tracks: tracks,
+            folderId: items.first?.folderId ?? "",
+            destination: .server,
+            api: api,
+            isAlreadyOnServer: isAlreadyOnServer,
+            onLibraryChanged: onLibraryChanged
+        )
         if let onAllComplete {
             Task {
-                while self.plusDrainTask != nil {
+                while self.bulkServerTask != nil {
                     try? await Task.sleep(nanoseconds: 400_000_000)
                 }
                 await onAllComplete()
             }
         }
-        _ = label
     }
 
     func cancelBulkServerQueue(api: MusicAPIClient? = nil, remoteMusicJobs: [ActiveServerDownload] = []) {
+        isCancellingBatch = true
+        updateLiveActivity()
+        bulkCancelled = true
+        bulkGeneration += 1
         let snapshot = bulkServerQueue
-        var urlsToStop = bulkActiveURLs
+        var urlsToStop = bulkActiveURLs.union(stickyBatchURLs)
         if let active = snapshot?.active { urlsToStop.insert(active.url) }
         snapshot?.pending.forEach { urlsToStop.insert($0.url) }
         if let deviceActive = snapshot?.deviceActive { urlsToStop.insert(deviceActive.url) }
         snapshot?.devicePending.forEach { urlsToStop.insert($0.url) }
+        stickyBatchItems.forEach { urlsToStop.insert($0.url) }
 
         var jobIds = Set<String>()
         for url in urlsToStop {
             if let jobId = activeServerJobIds[url] { jobIds.insert(jobId) }
         }
         for item in remoteMusicJobs where item.isMusic && !item.isTerminal {
-            jobIds.insert(item.jobId)
+            if urlsToStop.contains(item.url) || stickyBatchURLs.contains(item.url) {
+                jobIds.insert(item.jobId)
+            }
         }
 
         suppressRemoteBulkQueuePanel = true
@@ -395,12 +569,57 @@ final class MusicDownloadService: ObservableObject {
         plusActive = nil
         plusCompleted = 0
         plusTotal = 0
-        bulkServerTask?.cancel()
+        let running = bulkServerTask
         bulkServerTask = nil
+        running?.cancel()
         bulkServerQueue = nil
         bulkTrackByURL = [:]
         bulkActiveURLs = []
+        let batchId = stickyBatchId
+        let itemsToCancel = stickyBatchItems
+        stickyBatchTotal = 0
+        stickyBatchLabel = ""
+        stickyBatchURLs = []
+        stickyBatchItems = []
+        stickyDeviceItems = []
+        stickyBatchId = nil
+        bulkFolderId = ""
+        bulkOnLibraryChanged = nil
+        lastServerETA = nil
+        heldETAMinutes = nil
+        lastBatchCompleted = 0
+        stickyBatchRevision = 0
+        isCancellingBatch = false
+        clearPersistedBatch()
         endBulkBackgroundTask()
+        DownloadLiveActivityController.shared.endMusic()
+
+        if let api {
+            Task {
+                if let batchId {
+                    try? await api.cancelDownloadQueue(batchId: batchId)
+                    let deadline = Date().addingTimeInterval(8)
+                    while Date() < deadline {
+                        if let live = try? await api.fetchActiveServerDownloads(),
+                           live.batch?.status == "cancelled" || live.batch?.id != batchId {
+                            break
+                        }
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                    }
+                }
+                var ids = jobIds
+                if let live = try? await api.fetchActiveServerDownloads() {
+                    let music = live.music.isEmpty ? live.items.filter(\.isMusic) : live.music
+                    let cancelURLs = Set(itemsToCancel.map(\.url)).union(urlsToStop)
+                    for item in music where !item.isTerminal && cancelURLs.contains(item.url) {
+                        ids.insert(item.jobId)
+                    }
+                }
+                for jobId in ids {
+                    try? await api.cancelJob(jobId: jobId)
+                }
+            }
+        }
 
         for url in urlsToStop {
             cancelDownload(for: url, isOnServer: wasOnServer[url] == true, api: api)
@@ -408,14 +627,6 @@ final class MusicDownloadService: ObservableObject {
                 states[url] = .idle
             }
             activeServerJobIds.removeValue(forKey: url)
-        }
-
-        if let api, !jobIds.isEmpty {
-            Task {
-                for jobId in jobIds {
-                    try? await api.cancelJob(jobId: jobId)
-                }
-            }
         }
     }
 
@@ -429,9 +640,17 @@ final class MusicDownloadService: ObservableObject {
         isAlreadyOnServer: @escaping (String) -> Bool,
         onLibraryChanged: (() async -> Void)? = nil
     ) {
-        let serverItems: [ServerQueueItem] = tracks.compactMap { track in
-            guard !offline.isAvailable(track.url) else { return nil }
-            guard !isAlreadyOnServer(track.url) else { return nil }
+        let serverItems: [ServerQueueItem] = tracks.compactMap { (track) -> ServerQueueItem? in
+            if offline.isAvailable(track.url) { return nil }
+            if states[track.url] == .done { return nil }
+            let durable = isAlreadyOnServer(track.url) || (track.serverAssetId?.isEmpty == false)
+            if BulkServerQueuePolicy.shouldSkipAsAlreadyOnServer(
+                isOffline: false,
+                hasDurableAsset: durable,
+                wasConfirmedOnServer: wasOnServer[track.url] == true && states[track.url]?.isFailed != true
+            ) {
+                return nil
+            }
             return ServerQueueItem(url: track.url, folderId: folderId, title: track.title)
         }
         let deviceCandidates = destination == .serverAndPhone
@@ -443,96 +662,314 @@ final class MusicDownloadService: ObservableObject {
 
         guard !serverItems.isEmpty || (destination == .serverAndPhone && !deviceItems.isEmpty) else { return }
 
+        preemptConflictingQueues(api: api)
+
         suppressRemoteBulkQueuePanel = false
+        if bulkServerQueue == nil {
+            isBulkQueueMinimized = true
+        }
         bulkDestination = destination
-        bulkTrackByURL = Dictionary(uniqueKeysWithValues: tracks.map { ($0.url, $0) })
+        bulkTrackByURL = Dictionary(tracks.map { ($0.url, $0) }, uniquingKeysWith: { _, last in last })
         bulkActiveURLs = Set(serverItems.map(\.url) + deviceItems.map(\.url))
-        bulkServerTask?.cancel()
-        bulkServerTask = Task {
+        stickyBatchLabel = label
+        stickyBatchTotal = max(serverItems.count, 1)
+        stickyBatchURLs = Set(serverItems.map(\.url))
+        stickyBatchItems = serverItems
+        stickyDeviceItems = deviceItems
+        stickyBatchId = nil
+        bulkFolderId = folderId
+        bulkOnLibraryChanged = onLibraryChanged
+        lastServerETA = Double(max(1, serverItems.count)) * 25
+        heldETAMinutes = nil
+        lastBatchCompleted = 0
+        bulkCancelled = false
+        for item in serverItems {
+            wasOnServer[item.url] = false
+            if states[item.url] == .onServer || states[item.url]?.isFailed == true {
+                states[item.url] = .idle
+            }
+        }
+        bulkGeneration += 1
+        let generation = bulkGeneration
+        plusAPI = api
+
+        func snapshotServer(completed: Int, active: ServerQueueItem?, pending: [ServerQueueItem], progress: Double?) -> BulkServerQueueProgress {
+            attachETA(BulkServerQueueProgress(
+                label: label,
+                completed: completed,
+                total: max(serverItems.count, 1),
+                active: active,
+                pending: pending,
+                activeProgress: progress,
+                destination: destination,
+                phase: .server,
+                deviceTotal: deviceItems.count
+            ))
+        }
+
+        bulkServerQueue = snapshotServer(
+            completed: 0,
+            active: serverItems.first,
+            pending: Array(serverItems.dropFirst()),
+            progress: 4
+        )
+
+        startServerOwnedBatch(
+            generation: generation,
+            folderId: folderId,
+            destination: destination,
+            deviceItems: deviceItems,
+            api: api,
+            onLibraryChanged: onLibraryChanged,
+            label: label
+        )
+    }
+
+    private func isCurrentBulk(_ generation: Int) -> Bool {
+        !bulkCancelled && generation == bulkGeneration && bulkServerTask != nil && !Task.isCancelled
+    }
+
+    private func runPhoneOwnedServerAcquire(
+        generation: Int,
+        items: [ServerQueueItem],
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)?
+    ) async {
+        var pending = items.filter { !isServerFinished($0.url) }
+        guard !pending.isEmpty else { return }
+        let limit = BulkServerQueuePolicy.maxConcurrentServerJobs
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<limit {
+                guard isCurrentBulk(generation), !pending.isEmpty else { break }
+                let item = pending.removeFirst()
+                group.addTask { @MainActor in
+                    await self.acquireServerItem(
+                        item,
+                        generation: generation,
+                        api: api,
+                        onLibraryChanged: onLibraryChanged
+                    )
+                }
+            }
+            for await _ in group {
+                guard isCurrentBulk(generation), !pending.isEmpty else { continue }
+                let item = pending.removeFirst()
+                group.addTask { @MainActor in
+                    await self.acquireServerItem(
+                        item,
+                        generation: generation,
+                        api: api,
+                        onLibraryChanged: onLibraryChanged
+                    )
+                }
+            }
+        }
+        publishStickyServerSnapshot()
+    }
+
+    private func acquireServerItem(
+        _ item: ServerQueueItem,
+        generation: Int,
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)?
+    ) async {
+        guard isCurrentBulk(generation), !isServerFinished(item.url) else { return }
+        let folder = item.folderId.isEmpty ? bulkFolderId : item.folderId
+        await ensureOnServerWithRetry(
+            url: item.url,
+            folderId: folder,
+            title: item.title,
+            api: api,
+            onLibraryChanged: onLibraryChanged,
+            onAcquireProgress: { [weak self] progress in
+                Task { @MainActor in
+                    guard let self, self.isCurrentBulk(generation) else { return }
+                    self.states[item.url] = .acquiringServer(progress: progress)
+                    self.publishStickyServerSnapshot()
+                }
+            }
+        )
+        publishStickyServerSnapshot()
+    }
+
+    private func needsServerAcquire(_ url: String) -> Bool {
+        if offline.isAvailable(url) { return false }
+        if states[url] == .done { return false }
+        if states[url] == .onServer { return false }
+        return true
+    }
+
+    private func kickSequentialBulkIfNeeded() {
+        guard !suppressRemoteBulkQueuePanel, !bulkCancelled else { return }
+        guard bulkServerTask == nil, let api = plusAPI else { return }
+        guard stickyBatchItems.contains(where: { needsServerAcquire($0.url) }) else { return }
+        startServerOwnedBatch(
+            generation: bulkGeneration,
+            folderId: bulkFolderId,
+            destination: bulkDestination,
+            deviceItems: stickyDeviceItems,
+            api: api,
+            onLibraryChanged: bulkOnLibraryChanged,
+            label: stickyBatchLabel
+        )
+    }
+
+    private func startServerOwnedBatch(
+        generation: Int,
+        folderId: String,
+        destination: MusicDownloadDestination,
+        deviceItems: [ServerQueueItem],
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)?,
+        label: String
+    ) {
+        startSequentialServerLoop(
+            generation: generation,
+            folderId: folderId,
+            destination: destination,
+            deviceItems: deviceItems,
+            api: api,
+            onLibraryChanged: onLibraryChanged,
+            label: label
+        )
+    }
+
+    private func startSequentialServerLoop(
+        generation: Int,
+        folderId: String,
+        destination: MusicDownloadDestination,
+        deviceItems: [ServerQueueItem],
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)?,
+        label: String
+    ) {
+        guard bulkServerTask == nil else { return }
+        bulkServerTask = Task { @MainActor in
             beginBulkBackgroundTask()
+            DownloadBackgroundKeeper.shared.noteWorkChanged()
             defer {
                 endBulkBackgroundTask()
-                bulkServerTask = nil
-                bulkTrackByURL = [:]
-                bulkActiveURLs = []
+                DownloadBackgroundKeeper.shared.noteWorkChanged()
+                if bulkGeneration == generation {
+                    bulkServerTask = nil
+                }
             }
 
-            var completed = 0
-            let allServer = serverItems
-            func serverProgress(activeIndex: Int, progress: Double? = nil) -> BulkServerQueueProgress {
-                let active = allServer.indices.contains(activeIndex) ? allServer[activeIndex] : nil
-                let pending = activeIndex + 1 < allServer.count ? Array(allServer[(activeIndex + 1)...]) : []
-                return BulkServerQueueProgress(
-                    label: label,
-                    completed: completed,
-                    total: max(allServer.count, 1),
-                    active: active,
-                    pending: pending,
-                    activeProgress: progress,
-                    destination: destination,
-                    phase: .server,
-                    deviceTotal: deviceItems.count
-                )
-            }
-
-            bulkServerQueue = serverProgress(activeIndex: 0)
-            for (index, item) in allServer.enumerated() {
-                if Task.isCancelled { break }
-                bulkServerQueue = serverProgress(activeIndex: index)
-                await ensureOnServerWithRetry(
-                    url: item.url,
-                    folderId: item.folderId,
-                    title: item.title,
-                    api: api,
-                    onLibraryChanged: onLibraryChanged,
-                    onAcquireProgress: { [weak self] progress in
-                        Task { @MainActor in
-                            guard self?.bulkServerTask != nil else { return }
-                            self?.bulkServerQueue = serverProgress(activeIndex: index, progress: progress)
-                        }
+            let allServer = stickyBatchItems
+            if !allServer.isEmpty {
+                var didEnqueue = false
+                var enqueuedBatchId: String?
+                do {
+                    let response = try await api.enqueueDownloadQueue(
+                        folderId: folderId,
+                        label: label,
+                        tracks: allServer.map { (url: $0.url, title: $0.title) }
+                    )
+                    didEnqueue = true
+                    enqueuedBatchId = response.batchId
+                    if let batchId = response.batchId, !batchId.isEmpty {
+                        stickyBatchId = batchId
+                        stickyBatchRevision = max(stickyBatchRevision, 1)
+                        persistBatchSession()
                     }
-                )
-                if Task.isCancelled { break }
-                completed += 1
-                bulkServerQueue = serverProgress(activeIndex: min(index + 1, max(allServer.count - 1, 0)))
+                    EOSLog.downloadQueue.info(
+                        "enqueued batch=\(response.batchId ?? "", privacy: .public) count=\(allServer.count)"
+                    )
+                } catch {
+                    EOSLog.downloadQueue.error("enqueue failed \(error.localizedDescription, privacy: .public)")
+                }
+
+                if ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(
+                    didEnqueue: didEnqueue,
+                    batchId: enqueuedBatchId ?? stickyBatchId
+                ) {
+                    EOSLog.downloadQueue.warning("server queue unavailable — phone-owned acquire \(allServer.count) tracks")
+                    await runPhoneOwnedServerAcquire(
+                        generation: generation,
+                        items: allServer,
+                        api: api,
+                        onLibraryChanged: onLibraryChanged
+                    )
+                } else {
+                    publishStickyServerSnapshot()
+                    let waitStarted = Date()
+                    var serverWentIdle = false
+                    while isCurrentBulk(generation) {
+                        if allServer.allSatisfy({ !needsServerAcquire($0.url) || isServerFinished($0.url) }) {
+                            break
+                        }
+                        var hasActiveRemoteJob = false
+                        if let live = try? await api.fetchActiveServerDownloads() {
+                            let music = live.music.isEmpty ? live.items.filter(\.isMusic) : live.music
+                            hasActiveRemoteJob = music.contains { !$0.isTerminal && !$0.isFailed }
+                            applyRemoteServerDownloads(music, batch: live.batch)
+                        }
+                        let finished = allServer.filter { isServerFinished($0.url) }.count
+                        if ServerOwnedQueuePolicy.shouldAbandonIdleServerBatch(
+                            secondsWaiting: Date().timeIntervalSince(waitStarted),
+                            completed: max(finished, lastBatchCompleted),
+                            hasActiveRemoteJob: hasActiveRemoteJob
+                        ) {
+                            EOSLog.downloadQueue.warning("server batch idle — falling back to phone-owned acquire")
+                            serverWentIdle = true
+                            break
+                        }
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    }
+                    if serverWentIdle, isCurrentBulk(generation) {
+                        await runPhoneOwnedServerAcquire(
+                            generation: generation,
+                            items: allServer,
+                            api: api,
+                            onLibraryChanged: onLibraryChanged
+                        )
+                    }
+                }
             }
 
-            guard destination == .serverAndPhone, !Task.isCancelled else {
-                bulkServerQueue = nil
+            guard destination == .serverAndPhone, isCurrentBulk(generation) else {
+                if destination != .serverAndPhone, isCurrentBulk(generation) {
+                    clearPersistedBatch()
+                    bulkServerQueue = nil
+                    stickyBatchURLs = []
+                    stickyBatchItems = []
+                    stickyDeviceItems = []
+                    stickyBatchId = nil
+                    lastBatchCompleted = 0
+                }
                 return
             }
 
+            stickyBatchURLs = []
+            stickyBatchId = nil
+
             var deviceCompleted = 0
             let allDevice = deviceItems
-            func deviceProgress(activeIndex: Int, progress: Double? = nil) -> BulkServerQueueProgress {
-                let active = allDevice.indices.contains(activeIndex) ? allDevice[activeIndex] : nil
-                let pending = activeIndex + 1 < allDevice.count ? Array(allDevice[(activeIndex + 1)...]) : []
-                return BulkServerQueueProgress(
-                    label: label,
-                    completed: completed,
-                    total: max(allServer.count, 1),
-                    active: nil,
-                    pending: [],
-                    activeProgress: nil,
-                    destination: destination,
-                    phase: .device,
-                    deviceCompleted: deviceCompleted,
-                    deviceTotal: max(allDevice.count, 1),
-                    deviceActive: active,
-                    devicePending: pending,
-                    deviceActiveProgress: progress
-                )
-            }
+            let serverDone = max(allServer.count, stickyBatchTotal, 1)
 
-            bulkServerQueue = deviceProgress(activeIndex: 0)
+            bulkServerQueue = makeDeviceProgress(
+                label: label,
+                destination: destination,
+                serverDone: serverDone,
+                deviceCompleted: deviceCompleted,
+                allDevice: allDevice,
+                activeIndex: 0
+            )
             for (index, item) in allDevice.enumerated() {
-                if Task.isCancelled { break }
+                if Task.isCancelled || !isCurrentBulk(generation) { break }
                 if offline.isAvailable(item.url) {
                     deviceCompleted += 1
                     continue
                 }
                 guard let track = bulkTrackByURL[item.url] else { continue }
-                bulkServerQueue = deviceProgress(activeIndex: index)
+                bulkServerQueue = makeDeviceProgress(
+                    label: label,
+                    destination: destination,
+                    serverDone: serverDone,
+                    deviceCompleted: deviceCompleted,
+                    allDevice: allDevice,
+                    activeIndex: index
+                )
                 await downloadAndWait(
                     track: track,
                     folderId: folderId,
@@ -540,25 +977,116 @@ final class MusicDownloadService: ObservableObject {
                     onLibraryChanged: { await onLibraryChanged?() },
                     onDeviceProgress: { [weak self] pct in
                         Task { @MainActor in
-                            guard self?.bulkServerTask != nil else { return }
-                            self?.bulkServerQueue = deviceProgress(activeIndex: index, progress: pct)
-                            self?.states[item.url] = .downloading(progress: pct)
+                            guard let self, self.isCurrentBulk(generation) else { return }
+                            self.bulkServerQueue = self.makeDeviceProgress(
+                                label: label,
+                                destination: destination,
+                                serverDone: serverDone,
+                                deviceCompleted: deviceCompleted,
+                                allDevice: allDevice,
+                                activeIndex: index,
+                                progress: pct
+                            )
+                            self.states[item.url] = .downloading(progress: pct)
                         }
                     }
                 )
-                if Task.isCancelled { break }
+                if Task.isCancelled || !isCurrentBulk(generation) { break }
                 deviceCompleted += 1
-                bulkServerQueue = deviceProgress(activeIndex: min(index + 1, max(allDevice.count - 1, 0)))
+                bulkServerQueue = makeDeviceProgress(
+                    label: label,
+                    destination: destination,
+                    serverDone: serverDone,
+                    deviceCompleted: deviceCompleted,
+                    allDevice: allDevice,
+                    activeIndex: min(index + 1, max(allDevice.count - 1, 0))
+                )
             }
-            bulkServerQueue = nil
+            if isCurrentBulk(generation) {
+                bulkServerQueue = nil
+            }
         }
+    }
+
+    /// Playlist download owns the NAS worker. Stop plus-drain and any previous
+    /// bulk so the next track can start instead of stalling behind a leftover job.
+    private func preemptConflictingQueues(api: MusicAPIClient) {
+        plusDrainTask?.cancel()
+        plusDrainTask = nil
+        plusFIFO.removeAll()
+        plusQueuedURLs.removeAll()
+        plusActive = nil
+        plusCompleted = 0
+        plusTotal = 0
+
+        let previousJobs = activeServerJobIds
+        let running = bulkServerTask
+        bulkServerTask = nil
+        running?.cancel()
+        activeServerJobIds = [:]
+        if !previousJobs.isEmpty {
+            Task {
+                for jobId in previousJobs.values where !jobId.isEmpty {
+                    try? await api.cancelJob(jobId: jobId)
+                }
+            }
+        }
+    }
+
+    private func publishStickyServerSnapshot() {
+        let items = stickyBatchItems
+        guard !items.isEmpty else { return }
+        if let existing = bulkServerQueue, existing.phase == .device { return }
+        let finished = items.filter { isServerFinished($0.url) }
+        let unfinished = items.filter { !isServerFinished($0.url) }
+        if unfinished.count >= 10, (heldETAMinutes ?? 1) <= 1 {
+            heldETAMinutes = nil
+            lastServerETA = Double(unfinished.count) * 25
+        }
+        let acquiring = unfinished.filter { states[$0.url]?.isAcquiringServer == true }
+        let active = acquiring.first ?? unfinished.first
+        let extra = acquiring.dropFirst().first
+        let pending = unfinished.filter { $0.url != active?.url && $0.url != extra?.url }
+        let progress = active.flatMap { states[$0.url]?.progressPercent }
+        var next = attachETA(BulkServerQueueProgress(
+            label: stickyBatchLabel.isEmpty ? (bulkServerQueue?.label ?? "Zapis na serwer EOS") : stickyBatchLabel,
+            completed: finished.filter { states[$0.url]?.isFailed != true }.count,
+            total: BulkServerQueuePolicy.displayTotal(
+                stickyTotal: stickyBatchTotal,
+                itemCount: items.count,
+                existingTotal: bulkServerQueue?.total ?? 0
+            ),
+            active: active,
+            pending: pending,
+            activeProgress: progress,
+            destination: bulkServerQueue?.destination ?? bulkDestination,
+            phase: .server,
+            deviceTotal: bulkServerQueue?.deviceTotal ?? stickyDeviceItems.count
+        ))
+        next.extraActive = extra
+        next.extraActiveProgress = extra.flatMap { states[$0.url]?.progressPercent }
+        if bulkServerQueue != next {
+            bulkServerQueue = next
+        }
+    }
+
+    private func isServerFinished(_ url: String) -> Bool {
+        wasOnServer[url] == true
+            || offline.isAvailable(url)
+            || states[url]?.isFailed == true
+            || states[url] == .onServer
+            || states[url] == .done
     }
 
     private func beginBulkBackgroundTask() {
         guard bulkBackgroundTaskId == .invalid else { return }
         bulkBackgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "EOSMusic.BulkServerQueue") { [weak self] in
-            Task { @MainActor in self?.endBulkBackgroundTask() }
+            Task { @MainActor in
+                self?.endBulkBackgroundTask()
+                DownloadBackgroundKeeper.shared.noteWorkChanged()
+            }
         }
+        DownloadBackgroundKeeper.shared.noteWorkChanged()
     }
 
     private func endBulkBackgroundTask() {
@@ -678,7 +1206,7 @@ final class MusicDownloadService: ObservableObject {
             )
             jobId = ensure.jobId
             activeServerJobIds[url] = jobId
-            if ensure.isDurableServerCopy || ensure.ready == true || ensure.status?.lowercased() == "done" {
+            if ensure.isDurableServerCopy {
                 states[url] = .acquiringServer(progress: 96)
                 onAcquireProgress?(96)
             } else {
@@ -1004,7 +1532,7 @@ final class MusicDownloadService: ObservableObject {
         }
         if let active = await api.findActiveMusicJob(url: track.url),
            !active.jobId.isEmpty,
-           (active.isTerminal || active.looksLikeFileIngest || wasOnServer[track.url] == true) {
+           active.looksLikeFileIngest || (active.isTerminal && active.ready == true) {
             try await transferServerJobToDevice(
                 jobId: active.jobId,
                 track: track,
@@ -1151,11 +1679,11 @@ final class MusicDownloadService: ObservableObject {
             destination: destination,
             api: api,
             isAlreadyOnServer: { [weak self] url in
-                if isOnServer?(url) == true { return true }
                 guard let self else { return false }
-                let track = tracks.first(where: { $0.url == url })
-                return self.uiState(for: url, isOnServer: track?.isOnServer ?? false) == .onServer
-                    || track?.isOnServer == true
+                if isOnServer?(url) == true { return true }
+                if self.offline.isAvailable(url) { return true }
+                if case .done = self.states[url] { return true }
+                return false
             },
             onLibraryChanged: onLibraryChanged
         )
@@ -1261,7 +1789,6 @@ final class MusicDownloadService: ObservableObject {
         let deadline = Date().addingTimeInterval(600)
         var lastMapped: Double?
         var lastProgressChange = Date()
-        let stallSeconds: TimeInterval = 28
         while Date() < deadline {
             if Task.isCancelled { throw CancellationError() }
             if await coordinator.isCancelled(trackUrl) { throw CancellationError() }
@@ -1269,8 +1796,14 @@ final class MusicDownloadService: ObservableObject {
             let serverPct = max(0, min(100, job.progress ?? 0))
             let mapped = serverPct > 0 ? max(4, serverPct) : 4
             onProgress?(mapped)
-            if let lastMapped, abs(lastMapped - mapped) < 0.75 {
-                if Date().timeIntervalSince(lastProgressChange) > stallSeconds, mapped < 96 {
+            if let previous = lastMapped {
+                if BulkServerQueuePolicy.isMeaningfulProgress(from: previous, to: mapped) {
+                    lastMapped = mapped
+                    lastProgressChange = Date()
+                } else if BulkServerQueuePolicy.isAcquireStalled(
+                    progress: mapped,
+                    unchangedFor: Date().timeIntervalSince(lastProgressChange)
+                ) {
                     EOSPerfLog.download.warning(
                         "server acquire stalled job=\(jobId, privacy: .public) at \(mapped, format: .fixed(precision: 0))%"
                     )
@@ -1297,18 +1830,39 @@ final class MusicDownloadService: ObservableObject {
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Zapis na serwerze nie powiódł się.")
             }
-            if job.isDurableServerCopy || job.status.lowercased() == "done" { return }
+            let finished = job.status.lowercased() == "done" || job.status.lowercased() == "cancelled"
+            if finished, !job.isDurableServerCopy {
+                throw APIError.server("Zapis na serwerze nie zapisał pliku — ponawiam pobieranie…")
+            }
+            if MusicPlayWaitPolicy.isSatisfied(job, requireDurable: true) { return }
             try await Task.sleep(nanoseconds: 700_000_000)
         }
         throw APIError.server("Przekroczono czas zapisu na serwerze.")
     }
 
     /// Sync from GET /api/downloads/active — shows server acquire progress started on any device.
-    func applyRemoteServerDownloads(_ remote: [ActiveServerDownload]) {
-        let remoteURLs = Set(remote.map(\.url).filter { !$0.isEmpty })
+    /// Also merges into a locally owned bulk queue so Live Activity can move while the phone is locked.
+    func applyRemoteServerDownloads(_ remote: [ActiveServerDownload], batch: DownloadBatchSnapshot? = nil) {
+        let music = remote.filter { $0.isMusic && !$0.url.isEmpty }
+        let remoteURLs = Set(music.map(\.url))
         var touched = false
+        if let eta = batch?.etaSeconds, eta > 0 {
+            lastServerETA = eta
+        }
+        if let done = batch?.completed {
+            lastBatchCompleted = max(lastBatchCompleted, done)
+        }
+        if let total = batch?.total, total > 0 {
+            stickyBatchTotal = max(stickyBatchTotal, total)
+        }
+        if let id = batch?.id, !id.isEmpty {
+            stickyBatchId = stickyBatchId ?? id
+        }
+        if let revision = batch?.revision {
+            stickyBatchRevision = max(stickyBatchRevision, revision)
+        }
 
-        for item in remote where item.isMusic && !item.url.isEmpty {
+        for item in music {
             if suppressRemoteBulkQueuePanel, !item.isTerminal { continue }
             if offline.isAvailable(item.url) {
                 if states[item.url] != .done {
@@ -1320,8 +1874,6 @@ final class MusicDownloadService: ObservableObject {
             }
             // Don't interrupt a local phone pull.
             if case .downloading = states[item.url] { continue }
-            // Local acquire task owns the row while it's actively polling.
-            if activeTasks[item.url] != nil { continue }
 
             if item.isFailed {
                 let message = item.error ?? "Pobieranie anulowane."
@@ -1333,10 +1885,12 @@ final class MusicDownloadService: ObservableObject {
             }
 
             if item.isTerminal {
-                wasOnServer[item.url] = true
-                if states[item.url] != .onServer && states[item.url] != .done {
-                    states[item.url] = .onServer
-                    touched = true
+                if !item.isFailed {
+                    wasOnServer[item.url] = true
+                    if states[item.url] != .onServer && states[item.url] != .done {
+                        states[item.url] = .onServer
+                        touched = true
+                    }
                 }
                 continue
             }
@@ -1345,7 +1899,6 @@ final class MusicDownloadService: ObservableObject {
             let next = TrackDownloadUIState.acquiringServer(progress: max(3, pct))
             if states[item.url] != next {
                 states[item.url] = next
-                wasOnServer[item.url] = true
                 touched = true
             }
         }
@@ -1362,41 +1915,116 @@ final class MusicDownloadService: ObservableObject {
             touched = true
         }
 
-        // Rebuild bulk panel from remote music items when local bulk task isn't driving it.
-        if bulkServerTask == nil, !suppressRemoteBulkQueuePanel {
-            let activeRemote = remote.filter { $0.isMusic && !$0.isTerminal && !$0.url.isEmpty }
-            if activeRemote.isEmpty {
-                suppressRemoteBulkQueuePanel = false
-                if bulkServerQueue != nil {
-                    bulkServerQueue = nil
+        if !stickyBatchURLs.isEmpty, let batch, let completed = batch.completed {
+            let total = max(batch.total ?? stickyBatchTotal, stickyBatchTotal)
+            if completed >= total, total > 0, stickyBatchId != nil {
+                for url in stickyBatchURLs {
+                    if case .failed = states[url] { continue }
+                    if case .downloading = states[url] { continue }
+                    wasOnServer[url] = true
+                    if states[url] != .done {
+                        states[url] = .onServer
+                        touched = true
+                    }
+                }
+                lastBatchCompleted = max(lastBatchCompleted, completed)
+            }
+        }
+
+        if !suppressRemoteBulkQueuePanel {
+            if !stickyBatchItems.isEmpty {
+                let before = bulkServerQueue
+                publishStickyServerSnapshot()
+                if bulkServerQueue != before {
                     touched = true
                 }
-            } else {
-                let completed = remote.filter { $0.isMusic && $0.isTerminal && !$0.isFailed }.count
-                let total = max(remote.filter(\.isMusic).count, activeRemote.count)
-                let current = activeRemote[0]
-                let pending = activeRemote.dropFirst().map {
-                    ServerQueueItem(url: $0.url, folderId: $0.folderId ?? "", title: $0.title)
-                }
-                let next = BulkServerQueueProgress(
-                    label: "Kolejka konta (serwery)",
-                    completed: completed,
-                    total: total,
-                    active: ServerQueueItem(
-                        url: current.url,
-                        folderId: current.folderId ?? "",
-                        title: current.title
-                    ),
-                    pending: Array(pending),
-                    activeProgress: current.progressPercent
-                )
-                if bulkServerQueue != next {
-                    bulkServerQueue = next
-                    touched = true
+                kickSequentialBulkIfNeeded()
+            } else if bulkServerTask == nil, plusDrainTask == nil {
+                let activeRemote = music.filter { !$0.isTerminal }
+                if let current = activeRemote.first {
+                    let remoteCompleted = music.filter { $0.isTerminal && !$0.isFailed }.count
+                    let pending = activeRemote.dropFirst().map {
+                        ServerQueueItem(url: $0.url, folderId: $0.folderId ?? "", title: $0.title)
+                    }
+                    let next = attachETA(BulkServerQueueProgress(
+                        label: stickyBatchLabel.isEmpty ? "Kolejka konta (serwery)" : stickyBatchLabel,
+                        completed: remoteCompleted,
+                        total: max(activeRemote.count + remoteCompleted, 1),
+                        active: ServerQueueItem(
+                            url: current.url,
+                            folderId: current.folderId ?? "",
+                            title: current.title
+                        ),
+                        pending: Array(pending),
+                        activeProgress: current.progressPercent
+                    ))
+                    if bulkServerQueue != next {
+                        bulkServerQueue = next
+                        touched = true
+                    }
                 }
             }
         }
 
         if touched { objectWillChange.send() }
     }
+
+    func restorePersistedServerBatchIfNeeded(api: MusicAPIClient) {
+        plusAPI = api
+        guard stickyBatchItems.isEmpty, let session = loadPersistedBatch() else { return }
+        stickyBatchId = session.batchId
+        stickyBatchLabel = session.label
+        bulkFolderId = session.folderId
+        bulkDestination = session.destination == "serverAndPhone" ? .serverAndPhone : .server
+        stickyBatchItems = session.items.map { ServerQueueItem(url: $0.url, folderId: $0.folderId, title: $0.title) }
+        stickyDeviceItems = session.deviceItems.map { ServerQueueItem(url: $0.url, folderId: $0.folderId, title: $0.title) }
+        stickyBatchURLs = Set(stickyBatchItems.map(\.url))
+        stickyBatchTotal = max(stickyBatchItems.count, 1)
+        suppressRemoteBulkQueuePanel = false
+        publishStickyServerSnapshot()
+        kickSequentialBulkIfNeeded()
+    }
+
+    private func persistBatchSession() {
+        let session = PersistedBulkSession(
+            batchId: stickyBatchId,
+            label: stickyBatchLabel,
+            folderId: bulkFolderId,
+            destination: bulkDestination == .serverAndPhone ? "serverAndPhone" : "server",
+            items: stickyBatchItems.map { .init(url: $0.url, folderId: $0.folderId, title: $0.title) },
+            deviceItems: stickyDeviceItems.map { .init(url: $0.url, folderId: $0.folderId, title: $0.title) }
+        )
+        guard let data = try? JSONEncoder().encode(session) else { return }
+        try? data.write(to: Self.batchSessionURL, options: .atomic)
+    }
+
+    private func clearPersistedBatch() {
+        try? FileManager.default.removeItem(at: Self.batchSessionURL)
+    }
+
+    private func loadPersistedBatch() -> PersistedBulkSession? {
+        guard let data = try? Data(contentsOf: Self.batchSessionURL) else { return nil }
+        return try? JSONDecoder().decode(PersistedBulkSession.self, from: data)
+    }
+
+    private static var batchSessionURL: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return dir.appendingPathComponent("eos-bulk-queue-session.json")
+    }
+}
+
+private struct PersistedBulkSession: Codable {
+    struct Item: Codable {
+        var url: String
+        var folderId: String
+        var title: String
+    }
+
+    var batchId: String?
+    var label: String
+    var folderId: String
+    var destination: String
+    var items: [Item]
+    var deviceItems: [Item]
 }

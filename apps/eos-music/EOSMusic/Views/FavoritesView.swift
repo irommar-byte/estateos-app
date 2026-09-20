@@ -298,30 +298,14 @@ struct FavoritesView: View {
             FavoriteButton(item: item, size: 17)
                 .frame(width: 36, height: 44)
         }
-        .contextMenu {
-            Button {
-                Task { await play(from: index) }
-            } label: {
-                Label("Odtwórz", systemImage: "play.fill")
-            }
-            Button {
-                Task { await app.toggleFavorite(item) }
-            } label: {
-                Label("Usuń z ulubionych", systemImage: "heart.slash")
-            }
-            Button {
-                sharePayload = .text(shareText(for: item))
-            } label: {
-                Label("Udostępnij", systemImage: "square.and.arrow.up")
-            }
-            if let local = OfflineMusicStore.shared.localURL(for: item.url) {
-                Button {
-                    sharePayload = .file(local)
-                } label: {
-                    Label("Wyślij plik", systemImage: "paperplane")
-                }
-            }
-        }
+        .trackQuickActions(
+            TrackQuickActionItem(
+                favorite: item,
+                libraryTrack: app.libraryTracksForBrowsing.first(where: { $0.url == item.url })
+            ),
+            play: { Task { await play(from: index) } },
+            showsSwipe: false
+        )
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 Task { await app.toggleFavorite(item) }
@@ -356,7 +340,7 @@ struct FavoritesView: View {
         guard source.indices.contains(index) else { return }
 
         let libraryQueue = source.compactMap { fav -> MusicTrack? in
-            app.musicTracks.first(where: { $0.url == fav.url })
+            app.libraryTracksForBrowsing.first(where: { $0.url == fav.url })
                 ?? app.downloadedLibraryTracks.first(where: { $0.url == fav.url })
         }
         if libraryQueue.count == source.count {
@@ -382,7 +366,8 @@ struct FavoritesView: View {
                 views: nil,
                 isSerial: nil,
                 premium: nil,
-                previewUrl: nil
+                previewUrl: nil,
+                isrc: nil
             )
         }
         await app.playCatalogItems(items, startIndex: index)

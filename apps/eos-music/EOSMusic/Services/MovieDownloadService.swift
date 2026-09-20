@@ -234,7 +234,9 @@ private extension PersistedMovieDownloadQueueItem {
 
 @MainActor
 final class MovieDownloadService: ObservableObject {
-    @Published private(set) var activeBatch: MovieDownloadBatch?
+    @Published private(set) var activeBatch: MovieDownloadBatch? {
+        didSet { publishLiveActivity() }
+    }
     @Published private(set) var statusMessage: String?
 
     private var batchTask: Task<Void, Never>?
@@ -372,6 +374,40 @@ final class MovieDownloadService: ObservableObject {
     }
 
     var totalCount: Int { activeBatch?.items.count ?? 0 }
+
+    private func publishLiveActivity() {
+        guard let batch = activeBatch, !batch.isFinished, !batch.isCancelled else {
+            DownloadLiveActivityController.shared.endMovie()
+            return
+        }
+        let active = batch.items.first(where: {
+            switch $0.state {
+            case .downloading, .pullingPhone, .queuedOnServer: return true
+            default: return false
+            }
+        })
+        let item: Double
+        let phase: String
+        switch active?.state {
+        case .pullingPhone(let p):
+            item = (p <= 1 ? p : p / 100)
+            phase = "Na iPhonie"
+        case .downloading(let p):
+            item = (p <= 1 ? p : p / 100)
+            phase = "Na serwerze"
+        default:
+            item = 0
+            phase = "Na serwerze"
+        }
+        DownloadLiveActivityController.shared.publishMovie(
+            itemProgress: item,
+            overallProgress: overallProgress,
+            completed: completedCount,
+            total: max(totalCount, 1),
+            phase: phase,
+            title: active?.title ?? batch.label
+        )
+    }
 
     var overallProgress: Double {
         guard let batch = activeBatch, !batch.items.isEmpty else { return 0 }
@@ -622,10 +658,10 @@ final class MovieDownloadService: ObservableObject {
 
     private func verifyMovieLanded(item: MovieDownloadQueueItem, in downloads: [MovieDownload]) -> Bool {
         if let match = downloads.first(where: { MovieURLMatching.urlsMatch($0.url, item.url) }) {
-            return match.hasLandedFile
+            return match.hasLandedFile || match.hasPlayableJob
         }
         if let matched = MovieURLMatching.download(matching: item.url, title: item.title, in: downloads) {
-            return matched.hasLandedFile
+            return matched.hasLandedFile || matched.hasPlayableJob
         }
         return false
     }

@@ -16,7 +16,7 @@ actor DownloadCoordinator {
         let continuation: CheckedContinuation<Void, Error>
     }
 
-    private let maxServerAcquire = 3
+    private let maxServerAcquire = BulkServerQueuePolicy.maxConcurrentServerJobs
     private let maxDeviceTransfers = 2
 
     private var fifo: [Waiter] = []
@@ -72,7 +72,7 @@ actor DownloadCoordinator {
         try result.get()
     }
 
-    /// Runs `operation` under a phase slot (max 2 acquire / max 2 transfer).
+    /// Runs `operation` under a phase slot (up to 2 NAS ingests / max 2 device transfers).
     func withPhaseSlot<T>(
         trackUrl: String,
         kind: Kind,

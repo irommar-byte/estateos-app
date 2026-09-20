@@ -85,18 +85,6 @@ struct AlbumDetailView: View {
                             }
                         }
                         .disabled(isAddingAlbum || detail.tracks.isEmpty)
-
-                        if let queue = app.downloads.bulkServerQueue, queue.label == detail.album.title {
-                            ServerDownloadQueuePanel(
-                                queue: queue,
-                                isMinimized: Binding(
-                                    get: { app.downloads.isBulkQueueMinimized },
-                                    set: { app.downloads.isBulkQueueMinimized = $0 }
-                                )
-                            ) {
-                                app.cancelBulkMusicQueue()
-                            }
-                        }
                     }
                     .listRowBackground(Color.clear)
 

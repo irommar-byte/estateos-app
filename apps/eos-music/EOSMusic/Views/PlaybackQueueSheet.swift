@@ -27,6 +27,9 @@ struct PlaybackQueueSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Gotowe") { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    EditButton()
+                }
             }
         }
         .presentationDetents([.medium, .large])
@@ -76,6 +79,25 @@ struct PlaybackQueueSheet: View {
                         }
                         .listRowBackground(rowBackground(for: row))
                         .id(row.id)
+                        .trackQuickActions(
+                            TrackQuickActionItem(track: row.track),
+                            play: {
+                                Task {
+                                    await engine.jumpToOrderIndex(row.orderIndex)
+                                    dismiss()
+                                }
+                            },
+                            removeFromQueue: { engine.removeFromQueue(orderIndex: row.orderIndex) }
+                        )
+                    }
+                    .onMove { source, dest in
+                        guard let from = source.first else { return }
+                        engine.moveQueueItem(from: from, to: dest)
+                    }
+                    .onDelete { offsets in
+                        for index in offsets.sorted(by: >) {
+                            engine.removeFromQueue(orderIndex: index)
+                        }
                     }
                 } header: {
                     if engine.queueSourceTitle == nil {

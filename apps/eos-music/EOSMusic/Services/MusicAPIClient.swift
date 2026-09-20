@@ -237,7 +237,7 @@ final class MusicAPIClient {
     func findActiveMusicJob(url: String) async -> ActiveServerDownload? {
         guard let active = try? await fetchActiveServerDownloads() else { return nil }
         let matches = (active.music + active.items).filter {
-            $0.isMusic && !$0.jobId.isEmpty && $0.url == url && !$0.isFailed
+            $0.isMusic && !$0.jobId.isEmpty && !$0.isFailed && !$0.isLikelyStalledIngest && MovieURLMatching.urlsMatch($0.url, url)
         }
         if let ingest = matches.first(where: { !$0.isTerminal && $0.looksLikeFileIngest }) {
             return ingest
@@ -251,6 +251,54 @@ final class MusicAPIClient {
     /// Shared account queue — server-side music + movie downloads in flight.
     func fetchActiveServerDownloads() async throws -> ActiveServerDownloadsResponse {
         try await request("GET", path: "/api/downloads/active")
+    }
+
+    func enqueueDownloadQueue(
+        folderId: String,
+        label: String,
+        tracks: [(url: String, title: String)]
+    ) async throws -> DownloadQueueEnqueueResponse {
+        let body: [String: Any] = [
+            "folderId": folderId,
+            "label": label,
+            "tracks": tracks.map { ["url": $0.url, "title": $0.title] }
+        ]
+        return try await request("POST", path: "/api/downloads/queue", body: body)
+    }
+
+    func cancelDownloadQueue(batchId: String?) async throws {
+        struct Ok: Codable { let ok: Bool? }
+        var body: [String: Any] = [:]
+        if let batchId { body["batchId"] = batchId }
+        let _: Ok = try await request("POST", path: "/api/downloads/queue/cancel", body: body)
+    }
+
+    func registerLiveActivityPush(
+        token: String,
+        batchId: String?,
+        activityId: String,
+        frequentPushesEnabled: Bool
+    ) async throws {
+        struct Ok: Codable { let ok: Bool? }
+        var body: [String: Any] = [
+            "token": token,
+            "activityId": activityId,
+            "frequentPushesEnabled": frequentPushesEnabled
+        ]
+        if let batchId, !batchId.isEmpty { body["batchId"] = batchId }
+        let _: Ok = try await request("POST", path: "/api/downloads/live-activity", body: body)
+    }
+
+    func unregisterLiveActivityPush(activityId: String, batchId: String?) async throws {
+        struct Ok: Codable { let ok: Bool? }
+        var body: [String: Any] = ["activityId": activityId]
+        if let batchId, !batchId.isEmpty { body["batchId"] = batchId }
+        let _: Ok = try await request("DELETE", path: "/api/downloads/live-activity", body: body)
+    }
+
+    func activeDownloadsURLRequest() -> URLRequest? {
+        guard isAuthenticated else { return nil }
+        return makeRequest(method: "GET", path: "/api/downloads/active", authorized: true)
     }
 
     /// Upload pliku otwartego z Plików / „Otwórz w EOS Music” na serwer EOS.
@@ -327,7 +375,7 @@ final class MusicAPIClient {
         try await request("GET", path: "/api/music/play-token/\(jobId)")
     }
 
-    /// Stream URL. Query `token` is optional — iOS AVPlayer sends the session Bearer instead.
+    /// Stream URL. Query `token` is required for AVPlayer — Bearer alone is not enough on the movies API.
     func musicStreamURL(jobId: String, token: String? = nil) -> URL {
         Self.musicStreamURL(base: AppConfig.apiBaseURL, jobId: jobId, token: token)
     }
@@ -342,15 +390,27 @@ final class MusicAPIClient {
         return components.url!
     }
 
-    func startMusicDownload(url: String, folderId: String?, trackUrl: String?) async throws -> DownloadStartResponse {
+    func startMusicDownload(
+        url: String,
+        folderId: String?,
+        trackUrl: String?,
+        timeoutInterval: TimeInterval? = nil
+    ) async throws -> DownloadStartResponse {
         var body: [String: Any] = ["url": url, "intent": "download"]
         if let folderId { body["folderId"] = folderId }
         if let trackUrl { body["trackUrl"] = trackUrl }
         do {
-            return try await request("POST", path: "/api/download", body: body)
+            return try await request(
+                "POST",
+                path: "/api/download",
+                body: body,
+                timeoutInterval: timeoutInterval,
+                retryLimit: timeoutInterval == nil ? 3 : 1
+            )
         } catch {
             guard APIError.isTimeout(error) else { throw error }
-            if let recovered = await recoverMusicDownloadJob(url: trackUrl ?? url) {
+            let recoverFor = timeoutInterval == nil ? 60.0 : 4.0
+            if let recovered = await recoverMusicDownloadJob(url: trackUrl ?? url, timeout: recoverFor) {
                 return recovered
             }
             throw error
@@ -358,8 +418,8 @@ final class MusicAPIClient {
     }
 
     /// POST /api/download may time out after the NAS already queued the job.
-    private func recoverMusicDownloadJob(url: String) async -> DownloadStartResponse? {
-        let deadline = Date().addingTimeInterval(60)
+    private func recoverMusicDownloadJob(url: String, timeout: TimeInterval = 60) async -> DownloadStartResponse? {
+        let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if Task.isCancelled { return nil }
             if let match = await findActiveMusicJob(url: url) {
@@ -628,13 +688,30 @@ final class MusicAPIClient {
         _ method: String,
         path: String,
         body: [String: Any]? = nil,
-        authorized: Bool = true
+        authorized: Bool = true,
+        timeoutInterval: TimeInterval? = nil,
+        retryLimit: Int? = nil
     ) async throws -> T {
         var req = makeRequest(method: method, path: path, authorized: authorized)
+        if let timeoutInterval {
+            req.timeoutInterval = timeoutInterval
+        }
         if let body {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
-        return try await perform(req)
+        let retryablePath = path.hasPrefix("/api/download") && !path.hasPrefix("/api/downloads/queue")
+        let attempts = retryLimit ?? (retryablePath ? 3 : 1)
+        var lastError: Error?
+        for attempt in 0..<max(1, attempts) {
+            do {
+                return try await perform(req)
+            } catch {
+                lastError = error
+                guard retryablePath, APIError.isRetryable(error), attempt + 1 < attempts else { throw error }
+                try? await Task.sleep(nanoseconds: UInt64(350_000_000 * (attempt + 1)))
+            }
+        }
+        throw lastError ?? APIError.decode
     }
 
     private func makeRequest(method: String, path: String, authorized: Bool) -> URLRequest {
@@ -660,9 +737,11 @@ final class MusicAPIClient {
         } else if path.hasPrefix("/api/music/play") {
             // Fast acknowledgement only; preparation continues under /api/job/:jobId.
             req.timeoutInterval = 20
+        } else if path.hasPrefix("/api/downloads/") {
+            req.timeoutInterval = 12
         } else if path.hasPrefix("/api/download") {
             req.timeoutInterval = 90
-        } else if path.hasPrefix("/api/job/") || path.hasPrefix("/api/downloads/") {
+        } else if path.hasPrefix("/api/job/") {
             req.timeoutInterval = 20
         } else if path.hasPrefix("/api/music/library") || path.hasPrefix("/api/music/assets") {
             req.timeoutInterval = 45
@@ -683,9 +762,7 @@ final class MusicAPIClient {
             guard let http = response as? HTTPURLResponse else { throw APIError.decode }
 
             if http.statusCode == 401 {
-                if let err = try? JSONDecoder().decode(ServerErrorBody.self, from: data), let msg = err.error {
-                    throw APIError.server(msg)
-                }
+                NotificationCenter.default.post(name: .eosSessionUnauthorized, object: nil)
                 throw APIError.unauthorized
             }
             if http.statusCode >= 400 {

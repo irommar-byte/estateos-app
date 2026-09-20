@@ -676,21 +676,19 @@ private struct ProMixerStatusRail: View {
     var drive: Double = 0.4
     var compact: Bool = false
     @Environment(\.colorScheme) private var colorScheme
-    @State private var lamps = DJConsoleLampEngine()
-
+    @StateObject private var lamps = MixerLampDriver()
     private var isLight: Bool { colorScheme == .light }
 
     var body: some View {
-        Group {
-            if isPlaying {
-                TimelineView(.animation(minimumInterval: 1.0 / 20, paused: false)) { _ in
-                    let frame = visualizer.snapshot(isPlaying: true)
-                    lampRow(lamps.process(frame: frame, isPlaying: true, onServer: onServer))
-                }
-            } else {
-                lampRow(DJConsoleLampEngine.Output(eos: onServer ? 0.42 : 0))
+        lampRow(lamps.output)
+            .onAppear { lamps.start(visualizer: visualizer, isPlaying: isPlaying, onServer: onServer) }
+            .onChange(of: isPlaying) { _, playing in
+                lamps.start(visualizer: visualizer, isPlaying: playing, onServer: onServer)
             }
-        }
+            .onChange(of: onServer) { _, value in
+                lamps.start(visualizer: visualizer, isPlaying: isPlaying, onServer: value)
+            }
+            .onDisappear { lamps.stop() }
     }
 
     private func lampRow(_ out: DJConsoleLampEngine.Output) -> some View {
@@ -896,71 +894,27 @@ private struct ProMixerVerticalVU: View {
     private var isLight: Bool { colorScheme == .light }
 
     var body: some View {
-        GeometryReader { geo in
-            let segments = min(32, max(12, segmentCount))
-            let segmentH = max(2, (geo.size.height - CGFloat(segments + 1)) / CGFloat(segments))
-            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !isPlaying)) { _ in
-                let frame = visualizer.snapshot(isPlaying: isPlaying)
-                let raw: Double = {
-                    switch channel {
-                    case .left:
-                        return max(
-                            frame.bass,
-                            frame.beat * 0.92,
-                            frame.level * 0.68,
-                            frame.mid * 0.38
-                        )
-                    case .right:
-                        return max(
-                            frame.treble,
-                            frame.mid * 0.88,
-                            frame.level * 0.62,
-                            frame.bass * 0.28
-                        )
-                    }
-                }()
-                let boosted = raw * (0.78 + drive * 0.52)
-                let normalized = min(1, max(0, isPlaying ? boosted : boosted * 0.1))
-                let lit = Int(round(normalized * Double(segments)))
-
-                VStack(spacing: 1) {
-                    ForEach((0..<segments).reversed(), id: \.self) { segment in
-                        let active = segment < lit
-                        let isPeak = segment == lit && lit > 0
-                        RoundedRectangle(cornerRadius: 1, style: .continuous)
-                            .fill(
-                                active
-                                    ? WinampSpectrumStyle.barColor(segmentFromBottom: segment, totalSegments: segments)
-                                    : Color(isLight ? Color(white: 0.90) : Color(white: 0.06))
-                            )
-                            .frame(height: segmentH)
-                            .overlay {
-                                if isPeak {
-                                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                                        .fill(WinampSpectrumStyle.peakColor(forLevel: normalized))
-                                }
-                            }
-                            .shadow(color: active ? WinampSpectrumStyle.barColor(segmentFromBottom: segment, totalSegments: segments).opacity(0.45) : .clear, radius: 2)
-                    }
-                }
-                .padding(.horizontal, 3)
-                .padding(.vertical, 3)
-                .frame(width: width, height: geo.size.height, alignment: .bottom)
-                .background(
-                    (isLight ? Color(white: 0.92) : Color.black.opacity(0.85)),
-                    in: RoundedRectangle(cornerRadius: 4)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(
-                            isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.1),
-                            lineWidth: 0.5
-                        )
-                }
-            }
-        }
+        MixerMeterHost(
+            visualizer: visualizer,
+            isPlaying: isPlaying,
+            channel: channel == .left ? .left : .right,
+            drive: drive
+        )
         .frame(width: width)
-        .frame(maxHeight: .infinity, alignment: .bottom)
+        .frame(maxHeight: .infinity)
+        .background(
+            (isLight ? Color(white: 0.92) : Color.black.opacity(0.85)),
+            in: RoundedRectangle(cornerRadius: 4)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(
+                    isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.1),
+                    lineWidth: 0.5
+                )
+        }
+        .accessibilityHidden(true)
+        .opacity(segmentCount > 0 && !compact || compact ? 1 : 1)
     }
 }
 

@@ -16,9 +16,10 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
     private let lock = NSLock()
     private var pendingByTaskId: [Int: Pending] = [:]
     private var taskIdByTrackKey: [String: Int] = [:]
+    private var eventsCompletion: (() -> Void)?
 
     private lazy var session: URLSession = {
-        let config = Self.makeForegroundConfiguration()
+        let config = Self.makeBackgroundConfiguration()
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
@@ -104,6 +105,16 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
             EOSPerfLog.download.info("transfer start id=\(task.taskIdentifier) session=\(Self.sessionIdentifier, privacy: .public)")
             task.resume()
         }
+    }
+
+    func handleEventsForBackgroundURLSession(completionHandler: @escaping () -> Void) {
+        eventsCompletion = completionHandler
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        let done = eventsCompletion
+        eventsCompletion = nil
+        DispatchQueue.main.async { done?() }
     }
 
     func cancel(trackKey: String) {

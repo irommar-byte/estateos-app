@@ -45,52 +45,10 @@ struct CatalogTrackRow: View {
                 folderId: libraryTrack?.folderId
             )
         }
-        .contextMenu {
-            Button {
-                Task { await app.playCatalogItems(queue, startIndex: index) }
-            } label: {
-                Label("Odtwórz", systemImage: "play.fill")
-            }
-
-            Button {
-                Task { await app.toggleFavorite(item.favoriteItem) }
-            } label: {
-                Label(
-                    app.isFavorite(item.url) ? "Usuń z ulubionych" : "Dodaj do ulubionych",
-                    systemImage: app.isFavorite(item.url) ? "heart.slash" : "heart"
-                )
-            }
-
-            if app.isOnServer(item.url) {
-                Label("Na serwerze EOS", systemImage: "checkmark.icloud.fill")
-            } else {
-            Button {
-                app.queuePlus(item.payload)
-            } label: {
-                Label("Dodaj na serwer EOS", systemImage: "plus")
-            }
-            }
-
-            Button {
-                showAddToPlaylist = true
-            } label: {
-                Label("Dodaj do playlisty", systemImage: "text.badge.plus")
-            }
-
-            Button {
-                sharePayload = .text(shareText)
-            } label: {
-                Label("Udostępnij", systemImage: "square.and.arrow.up")
-            }
-
-            if let localFileURL {
-                Button {
-                    sharePayload = .file(localFileURL)
-                } label: {
-                    Label("Wyślij plik", systemImage: "paperplane")
-                }
-            }
-        }
+        .trackQuickActions(
+            TrackQuickActionItem(item: item, folderId: libraryTrack?.folderId),
+            play: { Task { await app.playCatalogItems(queue, startIndex: index) } }
+        )
         .sheet(isPresented: $showAddToPlaylist) {
             AddToPlaylistSheet(track: item.payload, trackTitle: item.title)
                 .environmentObject(app)
