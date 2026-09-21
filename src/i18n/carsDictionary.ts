@@ -472,8 +472,8 @@ const pl: CarsDictionary = {
     descriptionPlaceholder: "Opisz stan auta, historię serwisową, wyposażenie...",
     detailsNotesLabel: "Szczegóły i walory (dla AI)",
     detailsNotesPlaceholder:
-      "Kilka zdań: plusy, ciekawostki, serwis, dodatki z cenami (np. felgi 2 000 zł)…",
-    detailsNotesHint: "AI połączy notatki z danymi formularza. Ceny auta nie wpisuj — ceny dodatków możesz.",
+      "Dłuższy opis, serwis ASO, nowy rozrząd, felgi 2 000 zł…",
+    detailsNotesHint: "Puste pole = opis z danych formularza. Wpisane tutaj jest nadrzędne. Ceny auta nie wpisuj — ceny dodatków możesz.",
     aiAssistantBtn: "Asystent AI",
     aiGenerating: "Generowanie opisu…",
     magicDescribeBtn: "Stwórz profesjonalny opis",
@@ -868,8 +868,8 @@ const en: CarsDictionary = {
     descriptionPlaceholder: "Describe condition, service history, equipment...",
     detailsNotesLabel: "Details & highlights (for AI)",
     detailsNotesPlaceholder:
-      "A few sentences: pluses, service notes, extras with prices (e.g. wheels 2,000 PLN)…",
-    detailsNotesHint: "AI merges notes with form data. Skip the car price — accessory prices are OK.",
+      "Longer description, dealer service, new timing belt, wheels 2,000 PLN…",
+    detailsNotesHint: "Empty = description from the form. Anything you write here is authoritative. Skip the car price — accessory prices are OK.",
     aiAssistantBtn: "AI assistant",
     aiGenerating: "Generating description…",
     magicDescribeBtn: "Create professional description",
@@ -1261,8 +1261,8 @@ const uk: CarsDictionary = {
     descriptionPlaceholder: "Опишіть стан, сервісну історію, комплектацію...",
     detailsNotesLabel: "Деталі та переваги (для AI)",
     detailsNotesPlaceholder:
-      "Кілька речень: плюси, сервіс, додаткові опції з цінами…",
-    detailsNotesHint: "AI з’єднає нотатки з даними форми. Ціну авто не вказуйте — ціни додатків можна.",
+      "Довший опис, сервіс ASO, новий ремінь, диски 2 000 zł…",
+    detailsNotesHint: "Порожнє поле = опис з даних форми. Написане тут є головним. Ціну авто не вказуйте — ціни додатків можна.",
     aiAssistantBtn: "AI-асистент",
     aiGenerating: "Генерація опису…",
     magicDescribeBtn: "Створити професійний опис",

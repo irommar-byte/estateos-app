@@ -50,12 +50,13 @@ const POI_SEARCH_TERMS = [
   'przystanek autobusowy',
   'sklep spożywczy',
   'szkoła',
-  'przedszkole',
   'park',
-  'apteka',
-  'stacja metra',
-  'dworzec kolejowy',
 ];
+
+const DESCRIPTION_MAX_CHARS = 4000;
+const NOTES_MAX_CHARS = 1500;
+const DEFAULT_MAX_OUTPUT_TOKENS = 1800;
+const SHORT_MAX_OUTPUT_TOKENS = 700;
 
 function getMapboxToken(): string {
   return String(process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '').trim();
@@ -77,6 +78,39 @@ function resolveLocale(raw: unknown): 'pl' | 'en' | 'ru' {
   return 'pl';
 }
 
+function compactValue(value: unknown): unknown {
+  if (value == null) return undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+  if (Array.isArray(value)) {
+    const items = value.map(compactValue).filter((item) => item !== undefined);
+    return items.length ? items : undefined;
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      const compacted = compactValue(item);
+      if (compacted !== undefined) out[key] = compacted;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return value;
+}
+
+function compactJson(value: Record<string, unknown>): Record<string, unknown> {
+  return (compactValue(value) as Record<string, unknown>) || {};
+}
+
+function sellerNotes(raw: unknown): string {
+  return String(raw || '').trim().slice(0, NOTES_MAX_CHARS);
+}
+
+function wantsShortDescription(notes: string): boolean {
+  return /kr[oó]tk|short\b/i.test(notes);
+}
+
 async function fetchNearbyPois(lat: number, lng: number, token: string): Promise<string[]> {
   const proximity = `${lng},${lat}`;
   const found: string[] = [];
@@ -87,7 +121,7 @@ async function fetchNearbyPois(lat: number, lng: number, token: string): Promise
         const params = new URLSearchParams({
           access_token: token,
           language: 'pl',
-          limit: '2',
+          limit: '1',
           types: 'poi',
           proximity,
         });
@@ -96,19 +130,17 @@ async function fetchNearbyPois(lat: number, lng: number, token: string): Promise
         if (!res.ok) return;
         const payload = await res.json();
         const features = Array.isArray(payload?.features) ? payload.features : [];
-        for (const feature of features) {
-          const name = String(feature?.text_pl || feature?.text || '').trim();
-          if (!name) continue;
-          const label = `${term}: ${name}`;
-          if (!found.includes(label)) found.push(label);
-        }
+        const name = String(features[0]?.text_pl || features[0]?.text || '').trim();
+        if (!name) return;
+        const label = `${term}: ${name}`;
+        if (!found.includes(label)) found.push(label);
       } catch {
         /* ignore single POI failure */
       }
     }),
   );
 
-  return found.slice(0, 12);
+  return found.slice(0, 4);
 }
 
 export async function buildNeighborhoodContext(
@@ -158,8 +190,9 @@ function buildDraftFacts(draft: ListingDescriptionDraftInput): Record<string, un
   const district = String(draft.district || '').trim();
   const street = String(draft.street || '').trim();
   const building = String(draft.buildingNumber || '').trim();
+  const exact = draft.isExactLocation !== false;
 
-  return {
+  return compactJson({
     title: String(draft.title || '').trim() || null,
     transactionType: draft.transactionType || null,
     propertyType: draft.propertyType || null,
@@ -168,10 +201,9 @@ function buildDraftFacts(draft: ListingDescriptionDraftInput): Record<string, un
       city: city || null,
       district: district || null,
       country: String(draft.localityCountry || '').trim() || null,
-      street: draft.isExactLocation === false ? null : street || null,
-      buildingNumber: draft.isExactLocation === false ? null : building || null,
-      coordinates: draft.lat && draft.lng ? { lat: draft.lat, lng: draft.lng } : null,
-      locationPrecision: draft.isExactLocation === false ? 'approximate_circle' : 'exact_pin',
+      street: exact ? street || null : null,
+      buildingNumber: exact ? building || null : null,
+      locationPrecision: exact ? 'exact_pin' : 'approximate_circle',
     },
     areaSqm: parseNum(draft.area),
     plotAreaSqm: parseNum(draft.plotArea),
@@ -185,9 +217,15 @@ function buildDraftFacts(draft: ListingDescriptionDraftInput): Record<string, un
       name: room.name,
       area: `${formatListingAreaSqm(room.areaSqm)} m²`,
     })),
-    existingDescription: String(draft.existingDescription || '').trim() || null,
-    userNotes: String(draft.userNotes || '').trim() || null,
-  };
+  });
+}
+
+function formatNeighborhood(neighborhood: NeighborhoodContext): string {
+  const lines: string[] = [];
+  if (neighborhood.reverseLabel) lines.push(neighborhood.reverseLabel);
+  for (const place of neighborhood.nearbyPlaces) lines.push(`• ${place}`);
+  if (neighborhood.note) lines.push(neighborhood.note);
+  return lines.join('\n') || 'Brak szczegółów okolicy.';
 }
 
 function localeInstructions(locale: 'pl' | 'en' | 'ru'): string {
@@ -206,7 +244,19 @@ Ton: profesjonalne biuro nieruchomości ("Prezentujemy Państwu…"), ciepły i 
 Bez HTML — użyj formatu redakcyjnego opisanego poniżej.`;
 }
 
-function buildSystemPrompt(locale: 'pl' | 'en' | 'ru'): string {
+function buildSystemPrompt(
+  locale: 'pl' | 'en' | 'ru',
+  options: { hasNotes: boolean; short: boolean },
+): string {
+  const lengthRule = options.short
+    ? '- Długość: ok. 600–900 znaków.'
+    : '- Długość: pełny, profesjonalny opis — zwykle 1800–3500 znaków, maksimum 4000. Nie ścinaj do 1700.';
+  const notesRule = options.hasNotes
+    ? `- Masz blok INSTRUKCJE I FAKTY OD SPRZEDAWCY. Jest nadrzędny: uwzględnij KAŻDY fakt i polecenie (długość, akcenty, parametry). Nie pomijaj.
+- Format sekcji zostaje, chyba że sprzedawca każe inaczej.
+- Ceny przyległości z notatek (garaż, komórka, parking, media) możesz podać.`
+    : '- Nie ma notatek sprzedawcy — zbuduj opis wyłącznie z parametrów oferty i okolicy.';
+
   return `Jesteś copywriterem premium w EstateOS™ — tworzysz opisy nieruchomości na portal.
 
 ${localeInstructions(locale)}
@@ -232,18 +282,18 @@ FORMAT REDAKCYJNY (zwykły tekst):
 - 1–2 subtelne emotikony w całym opisie (🌿 ✨ 🏡 📍), osadzone naturalnie w zdaniu — nie na początku każdego akapitu.
 
 ZASADY:
+- To jest NOWY opis z parametrów oferty. NIE przepisuj, NIE poprawiaj i NIE streszczaj tekstu z edytora ogłoszenia.
 - Opis ma być narracją marketingową: styl życia, atmosfera, układ, okolica — NIE sucha lista parametrów.
 - Parametry z JSON możesz wpleść naturalnie (1–2 zdania), a konkretne atuty zebrać w listę z "• " lub "✓ ".
 - Wykorzystaj kontekst okolicy (POI, reverse geocode) — komunikacja, sklepy, zieleń, infrastruktura rodzinna.
 - Nie wymyślaj konkretnych metrów/minut dojścia, chyba że wynikają wprost z POI (wtedy ostrożnie: "w pobliżu", "w zasięgu spaceru").
 - Nie podawaj dokładnego adresu ulicy, gdy locationPrecision = approximate_circle.
 - Nie powtarzaj tytułu oferty w pierwszym zdaniu dosłownie.
-- Długość: ok. 900–1700 znaków (gdy jest Układ pomieszczeń — do 1900).
+${lengthRule}
 - roomAreas: jeśli tablica ma elementy, MUSISZ wypisać każde pomieszczenie z dokładnie tą nazwą i metrażem (np. 18,5 m²). Nie zgaduj, nie zaokrąglaj inaczej, nie pomijaj. Nie wymyślaj pomieszczeń, których nie ma w JSON.
 - Jeśli roomAreas jest puste — nie podawaj metraży poszczególnych pokoi.
-- Jeśli podano existingDescription lub userNotes — wykorzystaj je jako bazę (przepisz / rozwiń / ujednolić styl). Nie ignoruj faktów z notatek.
+${notesRule}
 - NIGDY nie podawaj ceny oferty (ceny sprzedaży / czynszu głównego), kaucji ani prowizji w zł/€ — cena główna jest poza opisem.
-- WYJĄTEK: jeśli w userNotes sprzedawca podał ceny przyległości (garaż, komórka, parking, dodatkowe pomieszczenie, opłaty za media poza czynszem) — możesz je naturalnie zawrzeć.
 - Zakończ krótkim zaproszeniem do kontaktu/prezentacji.`;
 }
 
@@ -251,15 +301,20 @@ function buildUserPrompt(
   facts: Record<string, unknown>,
   neighborhood: NeighborhoodContext,
   locale: 'pl' | 'en' | 'ru',
+  notes: string,
 ): string {
-  return `Wygeneruj opis oferty na podstawie danych:
+  const notesBlock = notes
+    ? `\nINSTRUKCJE I FAKTY OD SPRZEDAWCY (nadrzędne — zastosuj w całości):\n${notes}\n`
+    : '';
+
+  return `Wygeneruj NOWY opis oferty na podstawie danych (nie przepisuj starego tekstu ogłoszenia).
 
 PARAMETRY OFERTY (JSON):
-${JSON.stringify(facts, null, 2)}
+${JSON.stringify(facts)}
 
-KONTEKST OKOLICY (pinezka / mapa):
-${JSON.stringify(neighborhood, null, 2)}
-
+OKOLICA:
+${formatNeighborhood(neighborhood)}
+${notesBlock}
 Język wyjściowy: ${locale}.`;
 }
 
@@ -267,7 +322,7 @@ function stripAiDescription(raw: string): string {
   let text = String(raw || '').trim();
   text = text.replace(/^```(?:markdown|text)?\s*/i, '').replace(/\s*```$/i, '').trim();
   text = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
-  return text.slice(0, 7800);
+  return text.slice(0, DESCRIPTION_MAX_CHARS);
 }
 
 export async function generateListingDescriptionWithGpt(
@@ -279,19 +334,21 @@ export async function generateListingDescriptionWithGpt(
   }
 
   const locale = resolveLocale(draft.locale);
+  const notes = sellerNotes(draft.userNotes);
+  const short = wantsShortDescription(notes);
   const facts = buildDraftFacts(draft);
   const neighborhood = await buildNeighborhoodContext(draft);
   const model = resolveOpenAiModel('OPENAI_LISTING_MODEL');
-  const system = buildSystemPrompt(locale);
-  const user = buildUserPrompt(facts, neighborhood, locale);
-  const hasRoomAreas = Array.isArray(facts.roomAreas) && (facts.roomAreas as unknown[]).length > 0;
+  const system = buildSystemPrompt(locale, { hasNotes: Boolean(notes), short });
+  const user = buildUserPrompt(facts, neighborhood, locale, notes);
 
   const { text, model: usedModel } = await callOpenAiText({
     apiKey,
     model,
     system,
     user,
-    maxOutputTokens: hasRoomAreas ? 1600 : 1200,
+    maxOutputTokens: short ? SHORT_MAX_OUTPUT_TOKENS : DEFAULT_MAX_OUTPUT_TOKENS,
+    skipReasoningFallback: true,
     logPrefix: 'listing-description-ai',
   });
   if (!text || text.length < 120) {

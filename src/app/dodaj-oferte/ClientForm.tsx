@@ -178,7 +178,7 @@ function buildDescriptionDraftFromForm(
     city: data.city,
     district: data.district,
     localityCountry: data.localityCountry,
-    street: data.street,
+    street: data.street || data.address,
     lat: data.lat,
     lng: data.lng,
     isExactLocation: data.locationType !== "approximate",
@@ -189,10 +189,6 @@ function buildDescriptionDraftFromForm(
     yearBuilt: data.buildYear,
     heating: data.heating,
     isFurnished: data.furnished === "yes" || data.furnished === true,
-    existingDescription: String(data.description || "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim(),
     userNotes: String(userNotes || "").trim(),
     hasBalcony: amenityPatch.hasBalcony,
     hasParking: amenityPatch.hasParking,

@@ -32,10 +32,6 @@ export function buildListingDescriptionDraftFromEdit(input: {
     yearBuilt: data.year || data.yearBuilt,
     heating: data.heating,
     isFurnished: data.isFurnished === true,
-    existingDescription: String(data.description || '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
     userNotes: String(input.userNotes || '').trim(),
     hasBalcony: amenityPatch.hasBalcony,
     hasParking: amenityPatch.hasParking,

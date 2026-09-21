@@ -30,10 +30,13 @@ export function resolveOpenAiModel(envKey?: 'OPENAI_LISTING_MODEL' | 'OPENAI_OTO
   return process.env.OPENAI_DEFAULT_MODEL?.trim() || OPENAI_MODEL_DEFAULT;
 }
 
-export function buildModelFallbackChain(primary: string, options?: { json?: boolean }): string[] {
+export function buildModelFallbackChain(
+  primary: string,
+  options?: { json?: boolean; skipReasoningFallback?: boolean },
+): string[] {
   const chain: string[] = [primary];
   const fallback = process.env.OPENAI_FALLBACK_MODEL?.trim() || OPENAI_MODEL_FALLBACK;
-  const skipReasoningFallback = options?.json === true;
+  const skipReasoningFallback = options?.json === true || options?.skipReasoningFallback === true;
   if (primary === OPENAI_MODEL_DEFAULT && fallback && !chain.includes(fallback) && !skipReasoningFallback) {
     chain.push(fallback);
   }
@@ -136,12 +139,16 @@ export async function callOpenAiText(params: {
   maxOutputTokens?: number;
   temperature?: number;
   json?: boolean;
+  skipReasoningFallback?: boolean;
   logPrefix?: string;
 }): Promise<{ text: string; model: string }> {
   const { default: OpenAI } = await import('openai');
   const client = new OpenAI({ apiKey: params.apiKey }) as unknown as OpenAiClient;
   const json = params.json === true;
-  const modelsToTry = buildModelFallbackChain(params.model, { json });
+  const modelsToTry = buildModelFallbackChain(params.model, {
+    json,
+    skipReasoningFallback: params.skipReasoningFallback,
+  });
   const baseMaxOutputTokens = params.maxOutputTokens ?? 900;
   const temperature = params.temperature ?? 0.72;
   const userInput = json && !/\bjson\b/i.test(params.user) ? `${params.user}\n\nZwróć poprawny JSON.` : params.user;
