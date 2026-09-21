@@ -6,8 +6,10 @@ import {
   createClientDecisionRequest,
   upsertSellerNextStep,
   shapeClientDecision,
+  notifyClientIfVisible,
   type ClientDecisionPayload,
 } from '@/lib/crm/sellerMarketing';
+import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import {
   computeSellerEventStage,
   parseSellerEventProposal,
@@ -256,6 +258,287 @@ export async function proposeAuctionToSeller(params: {
   return { ok: true as const, decision: decision.decision };
 }
 
+function mapPublishError(error: unknown): string {
+  const code = error instanceof Error ? error.message : 'UNKNOWN';
+  const map: Record<string, string> = {
+    OFFER_NOT_FOUND: 'Ogłoszenie niedostępne dla agenta.',
+    ALREADY_PUBLISHED: 'Dzień otwarty jest już opublikowany na tym ogłoszeniu.',
+    ALREADY_ACTIVE: 'Licytacja jest już aktywna na tym ogłoszeniu.',
+    SLOTS_REQUIRED: 'Brak slotów dnia otwartego.',
+    INVALID_START_PRICE: 'Nieprawidłowa cena startowa.',
+    RESERVE_BELOW_START: 'Cena rezerwowa poniżej startowej.',
+  };
+  return map[code] || `Nie udało się opublikować wydarzenia (${code}).`;
+}
+
+async function publishSellerListingEvent(params: {
+  hostUserId: number;
+  title: string;
+  proposal: SellerEventProposalPayload;
+}): Promise<{ ok: true; eventId: number } | { ok: false; error: string }> {
+  try {
+    if (params.proposal.kind === 'open_house') {
+      const slots = params.proposal.slots?.length
+        ? params.proposal.slots
+        : params.proposal.startsAt && params.proposal.endsAt
+          ? [{ startsAt: params.proposal.startsAt, endsAt: params.proposal.endsAt, capacity: 8 }]
+          : [];
+      if (!slots.length) return { ok: false as const, error: 'Brak terminu dnia otwartego.' };
+      const event = await createOpenHouseEvent(params.hostUserId, {
+        offerId: params.proposal.offerId,
+        title: params.title,
+        description: params.proposal.clientMessage || null,
+        visitMode: params.proposal.visitMode || 'FLEX',
+        slots,
+        publish: true,
+      });
+      return { ok: true as const, eventId: Number(event.id) };
+    }
+    if (!params.proposal.startsAt || !params.proposal.endsAt || !params.proposal.startPrice) {
+      return { ok: false as const, error: 'Brak warunków licytacji.' };
+    }
+    const event = await createAuctionEvent(params.hostUserId, {
+      offerId: params.proposal.offerId,
+      title: params.title,
+      description: params.proposal.clientMessage || null,
+      startPrice: params.proposal.startPrice,
+      reservePrice: params.proposal.reservePrice,
+      minIncrement: params.proposal.minIncrement,
+      startsAt: params.proposal.startsAt,
+      endsAt: params.proposal.endsAt,
+      publish: true,
+    });
+    return { ok: true as const, eventId: Number(event.id) };
+  } catch (error) {
+    return { ok: false as const, error: mapPublishError(error) };
+  }
+}
+
+async function notifyOwnerAboutStartedEvent(params: {
+  clientId: number;
+  notifyOwner: boolean;
+  title: string;
+  body: string;
+  tag: string;
+}) {
+  if (!params.notifyOwner) return;
+  const client = await prisma.agencyClient.findUnique({
+    where: { id: params.clientId },
+    select: { email: true, portalToken: true },
+  });
+  const portalUrl = client?.portalToken ? buildPortalUrl(client.portalToken) : 'https://estateos.pl';
+  await notifyClientIfVisible({
+    clientId: params.clientId,
+    visibleToClient: true,
+    title: params.title,
+    body: params.body,
+    tag: params.tag,
+    notificationType: 'seller_event_started',
+    email: client?.email
+      ? {
+          to: client.email,
+          subject: params.title.slice(0, 80),
+          html: `<div style="font-family:-apple-system,sans-serif;padding:24px;max-width:560px">
+            <h2>${params.title.replace(/</g, '')}</h2>
+            <p style="white-space:pre-line">${params.body.replace(/</g, '')}</p>
+            <p><a href="${portalUrl}">Zobacz w panelu klienta</a></p>
+          </div>`,
+        }
+      : undefined,
+  });
+}
+
+export async function startOpenHouseForSeller(params: {
+  clientId: number;
+  agencyUserId: number;
+  startsAt: string;
+  endsAt: string;
+  capacity?: number;
+  visitMode?: 'FLEX' | 'SLOT_30' | 'SLOT_60';
+  clientMessage?: string | null;
+  title?: string | null;
+  notifyOwner?: boolean;
+}) {
+  const owned = await resolveLinkedOfferForAgent(params.clientId, params.agencyUserId);
+  if (!owned.ok) return owned;
+
+  const startsAt = new Date(params.startsAt);
+  const endsAt = new Date(params.endsAt);
+  if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt) {
+    return { ok: false as const, error: 'Podaj poprawny termin dnia otwartego.' };
+  }
+  if (startsAt.getTime() < Date.now() - 60_000) {
+    return { ok: false as const, error: 'Termin musi być w przyszłości.' };
+  }
+
+  const notifyOwner = params.notifyOwner !== false;
+  const when = formatWhen(startsAt.toISOString());
+  const title = (params.title || `Dzień otwarty — ${when}`).slice(0, 255);
+  const clientMessage =
+    (params.clientMessage?.trim() ||
+      `Na Twoim ogłoszeniu uruchomiono dzień otwartych drzwi ${when}.`) +
+    `\n\nOferta: ${owned.offer.title}`;
+  const payload: SellerEventProposalPayload = {
+    source: 'crm_plan',
+    kind: 'open_house',
+    offerId: owned.offer.id,
+    startsAt: startsAt.toISOString(),
+    endsAt: endsAt.toISOString(),
+    slots: [
+      {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        capacity: params.capacity && params.capacity > 0 ? params.capacity : 8,
+      },
+    ],
+    visitMode: params.visitMode || 'FLEX',
+    clientMessage: params.clientMessage?.trim() || null,
+  };
+
+  const published = await publishSellerListingEvent({
+    hostUserId: owned.offer.userId,
+    title,
+    proposal: payload,
+  });
+  if (!published.ok) return published;
+
+  await upsertSellerNextStep({
+    clientId: params.clientId,
+    agencyUserId: params.agencyUserId,
+    currentStep: 'Dzień otwarty uruchomiony',
+    nextAction: `Dzień otwarty ${when}`,
+    clientMessage,
+    dueAt: startsAt,
+    visibleToClient: notifyOwner,
+  });
+
+  await prisma.agencyClientActivity.create({
+    data: {
+      clientId: params.clientId,
+      agencyUserId: params.agencyUserId,
+      offerId: owned.offer.id,
+      kind: 'OPEN_HOUSE_STARTED',
+      title,
+      body: clientMessage,
+      metadata: {
+        visibleToClient: notifyOwner,
+        eventId: published.eventId,
+        ...payload,
+      },
+    },
+  });
+
+  await notifyOwnerAboutStartedEvent({
+    clientId: params.clientId,
+    notifyOwner,
+    title: 'Dzień otwarty na Twoim ogłoszeniu',
+    body: clientMessage,
+    tag: `open-house-started-${published.eventId}`,
+  });
+
+  return { ok: true as const, eventId: published.eventId };
+}
+
+export async function startAuctionForSeller(params: {
+  clientId: number;
+  agencyUserId: number;
+  startsAt: string;
+  endsAt: string;
+  startPrice: number;
+  reservePrice?: number | null;
+  minIncrement?: number | null;
+  clientMessage?: string | null;
+  title?: string | null;
+  notifyOwner?: boolean;
+}) {
+  const owned = await resolveLinkedOfferForAgent(params.clientId, params.agencyUserId);
+  if (!owned.ok) return owned;
+
+  const startsAt = new Date(params.startsAt);
+  const endsAt = new Date(params.endsAt);
+  const startPrice = Number(params.startPrice);
+  if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt) {
+    return { ok: false as const, error: 'Podaj poprawny okres licytacji.' };
+  }
+  if (startsAt.getTime() < Date.now() - 60_000) {
+    return { ok: false as const, error: 'Start licytacji musi być w przyszłości.' };
+  }
+  if (!Number.isFinite(startPrice) || startPrice <= 0) {
+    return { ok: false as const, error: 'Podaj cenę startową.' };
+  }
+  const reservePrice =
+    params.reservePrice != null && Number(params.reservePrice) > 0 ? Number(params.reservePrice) : null;
+  if (reservePrice != null && reservePrice < startPrice) {
+    return { ok: false as const, error: 'Cena rezerwowa nie może być niższa od startowej.' };
+  }
+
+  const notifyOwner = params.notifyOwner !== false;
+  const when = `${formatWhen(startsAt.toISOString())} → ${formatWhen(endsAt.toISOString())}`;
+  const title = (params.title || `Licytacja — od ${formatMoney(startPrice)}`).slice(0, 255);
+  const clientMessage =
+    (params.clientMessage?.trim() ||
+      `Na Twoim ogłoszeniu uruchomiono licytację.\nStart: ${formatWhen(startsAt.toISOString())}\nKoniec: ${formatWhen(endsAt.toISOString())}\nCena startowa: ${formatMoney(startPrice)}${
+        reservePrice ? `\nCena rezerwowa: ${formatMoney(reservePrice)}` : ''
+      }.`) + `\n\nOferta: ${owned.offer.title}`;
+  const payload: SellerEventProposalPayload = {
+    source: 'crm_plan',
+    kind: 'auction',
+    offerId: owned.offer.id,
+    startsAt: startsAt.toISOString(),
+    endsAt: endsAt.toISOString(),
+    startPrice,
+    reservePrice,
+    minIncrement:
+      params.minIncrement != null && Number(params.minIncrement) > 0
+        ? Number(params.minIncrement)
+        : null,
+    clientMessage: params.clientMessage?.trim() || null,
+  };
+
+  const published = await publishSellerListingEvent({
+    hostUserId: owned.offer.userId,
+    title,
+    proposal: payload,
+  });
+  if (!published.ok) return published;
+
+  await upsertSellerNextStep({
+    clientId: params.clientId,
+    agencyUserId: params.agencyUserId,
+    currentStep: 'Licytacja uruchomiona',
+    nextAction: `Licytacja ${when}${startPrice ? ` · od ${formatMoney(startPrice)}` : ''}`,
+    clientMessage,
+    dueAt: startsAt,
+    visibleToClient: notifyOwner,
+  });
+
+  await prisma.agencyClientActivity.create({
+    data: {
+      clientId: params.clientId,
+      agencyUserId: params.agencyUserId,
+      offerId: owned.offer.id,
+      kind: 'AUCTION_STARTED',
+      title,
+      body: clientMessage,
+      metadata: {
+        visibleToClient: notifyOwner,
+        eventId: published.eventId,
+        ...payload,
+      },
+    },
+  });
+
+  await notifyOwnerAboutStartedEvent({
+    clientId: params.clientId,
+    notifyOwner,
+    title: 'Licytacja na Twoim ogłoszeniu',
+    body: clientMessage,
+    tag: `auction-started-${published.eventId}`,
+  });
+
+  return { ok: true as const, eventId: published.eventId };
+}
+
 export async function fulfillSellerEventProposal(params: {
   clientId: number;
   decision: {
@@ -283,55 +566,13 @@ export async function fulfillSellerEventProposal(params: {
   if (!canPublish) {
     return { ok: false as const, error: 'Nie znaleziono aktywnego ogłoszenia do publikacji wydarzenia.' };
   }
-  const hostUserId = offer.userId;
-
-  let eventId: number | null = null;
-  try {
-    if (proposal.kind === 'open_house') {
-      const slots = proposal.slots?.length
-        ? proposal.slots
-        : proposal.startsAt && proposal.endsAt
-          ? [{ startsAt: proposal.startsAt, endsAt: proposal.endsAt, capacity: 8 }]
-          : [];
-      if (!slots.length) return { ok: false as const, error: 'Brak terminu dnia otwartego.' };
-      const event = await createOpenHouseEvent(hostUserId, {
-        offerId: offer.id,
-        title: params.decision.title,
-        description: proposal.clientMessage || null,
-        visitMode: proposal.visitMode || 'FLEX',
-        slots,
-        publish: true,
-      });
-      eventId = Number(event.id);
-    } else {
-      if (!proposal.startsAt || !proposal.endsAt || !proposal.startPrice) {
-        return { ok: false as const, error: 'Brak warunków licytacji.' };
-      }
-      const event = await createAuctionEvent(hostUserId, {
-        offerId: offer.id,
-        title: params.decision.title,
-        description: proposal.clientMessage || null,
-        startPrice: proposal.startPrice,
-        reservePrice: proposal.reservePrice,
-        minIncrement: proposal.minIncrement,
-        startsAt: proposal.startsAt,
-        endsAt: proposal.endsAt,
-        publish: true,
-      });
-      eventId = Number(event.id);
-    }
-  } catch (error) {
-    const code = error instanceof Error ? error.message : 'UNKNOWN';
-    const map: Record<string, string> = {
-      OFFER_NOT_FOUND: 'Ogłoszenie niedostępne dla agenta.',
-      ALREADY_PUBLISHED: 'Dzień otwarty jest już opublikowany na tym ogłoszeniu.',
-      ALREADY_ACTIVE: 'Licytacja jest już aktywna na tym ogłoszeniu.',
-      SLOTS_REQUIRED: 'Brak slotów dnia otwartego.',
-      INVALID_START_PRICE: 'Nieprawidłowa cena startowa.',
-      RESERVE_BELOW_START: 'Cena rezerwowa poniżej startowej.',
-    };
-    return { ok: false as const, error: map[code] || `Nie udało się opublikować wydarzenia (${code}).` };
-  }
+  const published = await publishSellerListingEvent({
+    hostUserId: offer.userId,
+    title: params.decision.title,
+    proposal,
+  });
+  if (!published.ok) return published;
+  const eventId = published.eventId;
 
   const nextPayload = { ...proposal, eventId, source: 'crm_plan' as const };
   await prisma.clientDecisionRequest.update({

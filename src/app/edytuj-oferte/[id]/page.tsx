@@ -33,6 +33,7 @@ import {
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
 import { descriptionHtmlForEditor, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import ListingDescriptionEditor from '@/components/offer/ListingDescriptionEditor';
+import AiDescriptionOptions from '@/components/offer/AiDescriptionOptions';
 import SiriMagicButton from '@/components/ui/SiriMagicButton';
 import { buildListingDescriptionDraftFromEdit } from '@/lib/buildListingDescriptionDraft';
 import { editorialToHtml } from '@/lib/listingDescriptionFormat';
@@ -296,6 +297,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [viewerIsPro, setViewerIsPro] = useState(false);
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
+  const [aiTargetLength, setAiTargetLength] = useState(1500);
+  const [aiUseEmojis, setAiUseEmojis] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
 
@@ -1436,6 +1439,14 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">
                 {ao.detailsNotesLabel}
               </label>
+              <AiDescriptionOptions
+                targetLength={aiTargetLength}
+                useEmojis={aiUseEmojis}
+                onTargetLength={setAiTargetLength}
+                onUseEmojis={setAiUseEmojis}
+                lengthLabel={ao.aiLengthLabel}
+                emoticonsLabel={ao.aiEmoticonsLabel}
+              />
               <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
                 <textarea
                   value={aiDetailsNotes}
@@ -1463,6 +1474,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                                 data,
                                 selectedAmenities,
                                 userNotes: aiDetailsNotes,
+                                targetLength: aiTargetLength,
+                                useEmojis: aiUseEmojis,
                               }),
                             ),
                           });

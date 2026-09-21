@@ -99,7 +99,9 @@ test("presentation and sale events land on the presentations stack", () => {
   assert.equal(portalStackKind("PRESENTATION_PROPOSED"), "presentations");
   assert.equal(portalStackKind("PRESENTATION_CHANGE_PROPOSED"), "presentations");
   assert.equal(portalStackKind("OPEN_HOUSE_CONFIRMED"), "presentations");
+  assert.equal(portalStackKind("OPEN_HOUSE_STARTED"), "presentations");
   assert.equal(portalStackKind("AUCTION_PROPOSAL"), "presentations");
+  assert.equal(portalStackKind("AUCTION_STARTED"), "presentations");
   const stacks = groupPortalPath([
     {
       id: 1,

@@ -242,7 +242,7 @@ function buildMarketingMetadata(
   } as Prisma.InputJsonObject;
 }
 
-async function notifyClientIfVisible(params: {
+export async function notifyClientIfVisible(params: {
   clientId: number;
   visibleToClient: boolean;
   title: string;
@@ -1188,8 +1188,10 @@ export const SELLER_LISTING_PATH_JOURNEY_KINDS = [
   "LISTING_LINKED",
   "OPEN_HOUSE_PROPOSAL",
   "OPEN_HOUSE_CONFIRMED",
+  "OPEN_HOUSE_STARTED",
   "AUCTION_PROPOSAL",
   "AUCTION_CONFIRMED",
+  "AUCTION_STARTED",
 ] as const;
 
 export type SellerListingPathItem = {

@@ -26,6 +26,7 @@ import ContactVerificationPanel from '@/components/ContactVerificationPanel';
 import SiriMagicButton from '@/components/ui/SiriMagicButton';
 import LuxurySegmentSwitch from '@/components/ui/LuxurySegmentSwitch';
 import ListingDescriptionEditor from '@/components/offer/ListingDescriptionEditor';
+import AiDescriptionOptions from '@/components/offer/AiDescriptionOptions';
 import { editorialToHtml } from '@/lib/listingDescriptionFormat';
 import { descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { OfferHdrBadge } from '@/components/offer/OfferHdrBadge';
@@ -162,6 +163,8 @@ function buildDescriptionDraftFromForm(
   locale: string,
   amenities: { id: string; label: string }[],
   userNotes = "",
+  targetLength = 1500,
+  useEmojis = false,
 ): Record<string, unknown> {
   const selectedLabels = Array.isArray(data.amenities) ? (data.amenities as string[]) : [];
   const selectedIds = amenities
@@ -190,6 +193,8 @@ function buildDescriptionDraftFromForm(
     heating: data.heating,
     isFurnished: data.furnished === "yes" || data.furnished === true,
     userNotes: String(userNotes || "").trim(),
+    targetLength,
+    useEmojis,
     hasBalcony: amenityPatch.hasBalcony,
     hasParking: amenityPatch.hasParking,
     hasStorage: amenityPatch.hasStorage,
@@ -318,6 +323,8 @@ export default function ClientForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [aiDetailsNotes, setAiDetailsNotes] = useState("");
+  const [aiTargetLength, setAiTargetLength] = useState(1500);
+  const [aiUseEmojis, setAiUseEmojis] = useState(false);
   const typewriterCancelRef = useRef<null | (() => void)>(null);
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [successOfferId, setSuccessOfferId] = useState<number | null>(null);
@@ -842,7 +849,9 @@ export default function ClientForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(buildDescriptionDraftFromForm(data, locale, AMENITIES, aiDetailsNotes)),
+        body: JSON.stringify(
+          buildDescriptionDraftFromForm(data, locale, AMENITIES, aiDetailsNotes, aiTargetLength, aiUseEmojis),
+        ),
       });
       const payload = await res.json().catch(() => ({}));
       if (res.status === 401) {
@@ -2349,6 +2358,14 @@ export default function ClientForm({
                 <div className="lg:col-span-2 space-y-5">
                   <div>
                     <label className={labelPremium}>{ao.detailsNotesLabel}</label>
+                    <AiDescriptionOptions
+                      targetLength={aiTargetLength}
+                      useEmojis={aiUseEmojis}
+                      onTargetLength={setAiTargetLength}
+                      onUseEmojis={setAiUseEmojis}
+                      lengthLabel={ao.aiLengthLabel}
+                      emoticonsLabel={ao.aiEmoticonsLabel}
+                    />
                     <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-stretch">
                       <textarea
                         value={aiDetailsNotes}

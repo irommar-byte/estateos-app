@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import SiriMagicButton from "@/components/ui/SiriMagicButton";
+import AiDescriptionOptions from "@/components/offer/AiDescriptionOptions";
 import { typewriterReveal } from "@/lib/typewriterReveal";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useFxRate } from "@/contexts/FxRateContext";
@@ -300,6 +301,8 @@ export default function CarListingForm({
   const [fillingFromDocs, setFillingFromDocs] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [aiDetailsNotes, setAiDetailsNotes] = useState("");
+  const [aiTargetLength, setAiTargetLength] = useState(1500);
+  const [aiUseEmojis, setAiUseEmojis] = useState(false);
   const typewriterCancelRef = useRef<null | (() => void)>(null);
   const [aiMissingNotice, setAiMissingNotice] = useState<string | null>(null);
   const photoGalleryRef = useRef<CarPhotoGalleryFieldHandle>(null);
@@ -577,6 +580,8 @@ export default function CarListingForm({
           localityCountry: form.localityCountry,
           title: form.title,
           userNotes: aiDetailsNotes,
+          targetLength: aiTargetLength,
+          useEmojis: aiUseEmojis,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -825,6 +830,15 @@ export default function CarListingForm({
               <label className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
                 {f.detailsNotesLabel}
               </label>
+              <AiDescriptionOptions
+                targetLength={aiTargetLength}
+                useEmojis={aiUseEmojis}
+                onTargetLength={setAiTargetLength}
+                onUseEmojis={setAiUseEmojis}
+                lengthLabel={f.aiLengthLabel}
+                emoticonsLabel={f.aiEmoticonsLabel}
+                variant="light"
+              />
               <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-stretch">
                 <textarea
                   value={aiDetailsNotes}

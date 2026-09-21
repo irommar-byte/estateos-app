@@ -1,3 +1,12 @@
+import {
+  DESCRIPTION_MAX_CHARS,
+  fitDescriptionToTarget,
+  maxTokensForLength,
+  needsDescriptionExpand,
+  resolveTargetLength,
+  resolveUseEmojis,
+  stripEmojiCharacters,
+} from "@/lib/listingDescriptionLength";
 import { callOpenAiText, getOpenAiApiKey, openAiErrorMessage, resolveOpenAiModel } from "@/lib/openAiClient";
 
 export type CarDescriptionDraftInput = {
@@ -21,12 +30,11 @@ export type CarDescriptionDraftInput = {
   title?: string;
   existingDescription?: string;
   userNotes?: string;
+  targetLength?: number;
+  useEmojis?: boolean;
 };
 
-const DESCRIPTION_MAX_CHARS = 4000;
 const NOTES_MAX_CHARS = 1500;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1800;
-const SHORT_MAX_OUTPUT_TOKENS = 700;
 
 function resolveLocale(raw: unknown): "pl" | "en" | "uk" {
   const code = String(raw || "pl").trim().toLowerCase();
@@ -64,10 +72,6 @@ function sellerNotes(raw: unknown): string {
   return String(raw || "").trim().slice(0, NOTES_MAX_CHARS);
 }
 
-function wantsShortDescription(notes: string): boolean {
-  return /kr[oó]tk|short\b/i.test(notes);
-}
-
 function localeInstructions(locale: "pl" | "en" | "uk"): string {
   if (locale === "en") {
     return "Write the listing description in natural English for a Polish car marketplace audience.";
@@ -80,13 +84,17 @@ function localeInstructions(locale: "pl" | "en" | "uk"): string {
 
 function buildSystemPrompt(
   locale: "pl" | "en" | "uk",
-  options: { hasNotes: boolean; short: boolean },
+  options: { hasNotes: boolean; targetLength: number; useEmojis: boolean },
 ): string {
-  const lengthRule = options.short
-    ? "- Długość: ok. 600–900 znaków (3–4 akapity)."
-    : "- Długość: pełny, profesjonalny opis — zwykle 1200–3500 znaków, maksimum 4000.";
+  const min = options.targetLength - 50;
+  const max = options.targetLength + 50;
+  const lengthRule = `- CEL DŁUGOŚCI: ${options.targetLength} znaków (dopuszczalnie ${min}…${max}). Nie krócej, nie dłużej.
+- Bez wody. Dłuższy budżet = więcej faktów o stanie, użytkowaniu i wyposażeniu, nie ozdobniki.`;
+  const emojiRule = options.useEmojis
+    ? "- Emotikony: użyj 4–10 trafnych emoji przy atutach (🔑 ✨ 🚗 🛠️), żeby opis był nowocześniejszy. Nie na początku każdego zdania."
+    : "- ZAKAZ emoji i emotikon.";
   const notesRule = options.hasNotes
-    ? "- Masz blok INSTRUKCJE I FAKTY OD SPRZEDAWCY. Jest nadrzędny: uwzględnij każdy fakt i polecenie. Ceny dodatków z notatek możesz podać."
+    ? "- Masz blok INSTRUKCJE I FAKTY OD SPRZEDAWCY. Jest nadrzędny dla treści. Długość steruje wyłącznie CEL DŁUGOŚCI, nie notatki. Ceny dodatków z notatek możesz podać."
     : "- Nie ma notatek sprzedawcy — zbuduj opis wyłącznie z parametrów pojazdu.";
 
   return `Jesteś copywriterem premium w EstateOS™Car — tworzysz opisy ogłoszeń pojazdów.
@@ -102,7 +110,8 @@ ZASADY:
 - NIGDY nie podawaj ceny sprzedaży pojazdu ani „do negocjacji” z kwotą — cena główna jest poza opisem.
 ${notesRule}
 ${lengthRule}
-- Bez emoji, bez nagłówków CAPS, bez list punktowanych parametrów.
+${emojiRule}
+- Bez nagłówków CAPS, bez list punktowanych parametrów.
 - Zakończ krótkim zaproszeniem do kontaktu / oględzin.`;
 }
 
@@ -126,7 +135,36 @@ function stripAiDescription(raw: string): string {
   let text = String(raw || "").trim();
   text = text.replace(/^```(?:markdown|text)?\s*/i, "").replace(/\s*```$/i, "").trim();
   text = text.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n");
-  return text.slice(0, DESCRIPTION_MAX_CHARS);
+  return text;
+}
+
+async function expandCarDescriptionOnce(params: {
+  apiKey: string;
+  model: string;
+  current: string;
+  targetLength: number;
+  locale: "pl" | "en" | "uk";
+  useEmojis: boolean;
+}): Promise<string | null> {
+  const missing = params.targetLength - params.current.length;
+  if (missing <= 50) return null;
+  try {
+    const { text } = await callOpenAiText({
+      apiKey: params.apiKey,
+      model: params.model,
+      skipReasoningFallback: true,
+      logPrefix: "car-listing-description-ai-expand",
+      maxOutputTokens: maxTokensForLength(Math.min(1200, missing + 200)),
+      system: `Dopisz brakujące fakty do opisu pojazdu. Zwróć CAŁY opis. Cel: ${params.targetLength} znaków (±50). Bez wody i powtórzeń. ${
+        params.useEmojis ? "Zachowaj oszczędne emoji." : "Bez emoji."
+      } Język: ${params.locale}.`,
+      user: `DOTYCHCZASOWY OPIS:\n${params.current}\n\nZwróć pełny, dociągnięty opis.`,
+    });
+    const next = stripAiDescription(text);
+    return next.length > params.current.length ? next : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function generateCarListingDescriptionWithGpt(
@@ -139,7 +177,8 @@ export async function generateCarListingDescriptionWithGpt(
 
   const locale = resolveLocale(draft.locale);
   const notes = sellerNotes(draft.userNotes);
-  const short = wantsShortDescription(notes);
+  const targetLength = resolveTargetLength(draft.targetLength);
+  const useEmojis = resolveUseEmojis(draft.useEmojis);
   const model = resolveOpenAiModel("OPENAI_LISTING_MODEL");
   const facts = compactJson({
     vehicleType: draft.vehicleType || null,
@@ -164,18 +203,31 @@ export async function generateCarListingDescriptionWithGpt(
   const { text, model: usedModel } = await callOpenAiText({
     apiKey,
     model,
-    system: buildSystemPrompt(locale, { hasNotes: Boolean(notes), short }),
+    system: buildSystemPrompt(locale, { hasNotes: Boolean(notes), targetLength, useEmojis }),
     user: buildUserPrompt(facts, locale, notes),
-    maxOutputTokens: short ? SHORT_MAX_OUTPUT_TOKENS : DEFAULT_MAX_OUTPUT_TOKENS,
+    maxOutputTokens: maxTokensForLength(targetLength),
     skipReasoningFallback: true,
     logPrefix: "car-listing-description-ai",
   });
 
-  if (!text || text.length < 100) {
+  if (!text || text.length < 80) {
     throw new Error("OpenAI zwróciło zbyt krótki opis.");
   }
 
-  return { description: stripAiDescription(text), model: usedModel };
+  let description = fitDescriptionToTarget(stripAiDescription(text), targetLength);
+  if (needsDescriptionExpand(description, targetLength)) {
+    const expanded = await expandCarDescriptionOnce({
+      apiKey,
+      model: usedModel,
+      current: description,
+      targetLength,
+      locale,
+      useEmojis,
+    });
+    if (expanded) description = fitDescriptionToTarget(expanded, targetLength);
+  }
+  if (!useEmojis) description = stripEmojiCharacters(description);
+  return { description: description.slice(0, DESCRIPTION_MAX_CHARS), model: usedModel };
 }
 
 export { openAiErrorMessage };

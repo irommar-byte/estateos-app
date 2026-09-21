@@ -33,6 +33,8 @@ export type AddOfferFormExtended = {
   detailsNotesLabel: string;
   detailsNotesPlaceholder: string;
   detailsNotesHint: string;
+  aiLengthLabel: string;
+  aiEmoticonsLabel: string;
   generating: string;
   aiAssistantBtn: string;
   magicDescribeBtn: string;
@@ -260,7 +262,9 @@ const pl: AddOfferFormExtended = {
   detailsNotesLabel: "Szczegóły i walory (dla AI)",
   detailsNotesPlaceholder:
     "Dłuższy opis, garaż 250 zł/mc, blisko szkoły, cicha okolica…",
-  detailsNotesHint: "Puste pole = opis z danych formularza. Wpisane tutaj jest nadrzędne (długość, styl, fakty). Ceny głównej oferty nie wpisuj — przyległości możesz.",
+  detailsNotesHint: "Puste pole = opis z parametrów i okolicy. Wpisane = korekta treści, nie długości. Ceny głównej oferty nie wpisuj — przyległości możesz.",
+  aiLengthLabel: "Długość opisu: {n} znaków",
+  aiEmoticonsLabel: "Emotikony",
   generating: "Generowanie...",
   aiAssistantBtn: "Asystent AI",
   magicDescribeBtn: "Stwórz profesjonalny opis",
@@ -503,7 +507,9 @@ const en: AddOfferFormExtended = {
   detailsNotesLabel: "Details & highlights (for AI)",
   detailsNotesPlaceholder:
     "Longer description, garage €80/mo, near school, quiet street…",
-  detailsNotesHint: "Empty = description from the form. Anything you write here is authoritative (length, tone, facts). Skip the main price — ancillary fees are OK.",
+  detailsNotesHint: "Empty = description from listing params and neighborhood. Notes steer content, not length. Skip the main price — ancillary fees are OK.",
+  aiLengthLabel: "Description length: {n} characters",
+  aiEmoticonsLabel: "Emoticons",
   generating: "Generating…",
   aiAssistantBtn: "AI assistant",
   magicDescribeBtn: "Create professional description",
@@ -746,7 +752,9 @@ const uk: AddOfferFormExtended = {
   detailsNotesLabel: "Деталі та переваги (для AI)",
   detailsNotesPlaceholder:
     "Довший опис, гараж 250 zł/міс, біля школи, тиха вулиця…",
-  detailsNotesHint: "Порожнє поле = опис з даних форми. Написане тут є головним (довжина, стиль, факти). Основну ціну не вказуйте — додаткові можна.",
+  detailsNotesHint: "Порожнє поле = опис з параметрів і околиці. Написане коригує зміст, не довжину. Основну ціну не вказуйте — додаткові можна.",
+  aiLengthLabel: "Довжина опису: {n} символів",
+  aiEmoticonsLabel: "Емотікони",
   generating: "Генерація…",
   aiAssistantBtn: "AI-асистент",
   magicDescribeBtn: "Створити професійний опис",

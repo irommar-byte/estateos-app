@@ -8,6 +8,8 @@ export function buildListingDescriptionDraftFromEdit(input: {
   data: Record<string, unknown>;
   selectedAmenities: OfferAmenityId[];
   userNotes?: string;
+  targetLength?: number;
+  useEmojis?: boolean;
 }): Record<string, unknown> {
   const amenityPatch = amenityBooleanPatch(input.selectedAmenities);
   const data = input.data;
@@ -33,6 +35,8 @@ export function buildListingDescriptionDraftFromEdit(input: {
     heating: data.heating,
     isFurnished: data.isFurnished === true,
     userNotes: String(input.userNotes || '').trim(),
+    targetLength: input.targetLength,
+    useEmojis: input.useEmojis === true,
     hasBalcony: amenityPatch.hasBalcony,
     hasParking: amenityPatch.hasParking,
     hasStorage: amenityPatch.hasStorage,
