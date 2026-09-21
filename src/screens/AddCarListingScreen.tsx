@@ -494,7 +494,6 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
           city: form.city,
           localityCountry: form.localityCountry,
           title: form.title,
-          existingDescription: form.description,
           userNotes: aiDetailsNotes.trim(),
         },
         'pl',
@@ -712,7 +711,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
               multiline
               numberOfLines={4}
               textAlignVertical="top"
-              placeholder="Np. serwis ASO, nowy rozrząd, hak, opony zimowe w cenie…"
+              placeholder="Dłuższy opis, serwis ASO, nowy rozrząd, hak… Puste = z formularza."
               placeholderTextColor={colors.placeholder}
               editable={!isGeneratingDescription}
               style={[styles.input, styles.textarea]}

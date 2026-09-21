@@ -675,7 +675,7 @@ export const offer = {
       createProfessional: 'Stwórz profesjonalny opis',
       detailsNotesLabel: 'Szczegóły / atuty (notatki do AI)',
       detailsNotesPlaceholder:
-        'Np. garaż w cenie, świeży remont łazienki, blisko szkoły, cicha okolica…',
+        'Dłuższy opis, garaż 250 zł/mc, blisko szkoły, cicha okolica… Puste = opis z formularza.',
       generating: 'Tworzę profesjonalny opis…',
       errorTitle: 'Generowanie opisu',
       insufficientData: 'Uzupełnij podstawowe parametry (typ, miasto, powierzchnia lub cenę), aby wygenerować opis.',

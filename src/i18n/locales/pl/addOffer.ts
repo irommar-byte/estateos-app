@@ -579,7 +579,7 @@ export const addOffer = {
       manualHint: 'Możesz od razu wpisać własny tekst — AI nie jest wymagane.',
       detailsNotesLabel: 'Opcjonalnie: notatki do AI',
       detailsNotesPlaceholder:
-        'Np. garaż w cenie, świeży remont łazienki, blisko szkoły, cicha okolica…',
+        'Dłuższy opis, garaż 250 zł/mc, blisko szkoły, cicha okolica… Puste = opis z formularza.',
       generating: 'Analizuję...',
       generatingGpt: 'Tworzę profesjonalny opis…',
       gptRequiresLogin: 'Zaloguj się, aby wygenerować opis AI.',

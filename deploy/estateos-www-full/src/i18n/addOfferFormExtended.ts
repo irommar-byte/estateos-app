@@ -259,8 +259,8 @@ const pl: AddOfferFormExtended = {
   exclusiveDescLabel: "Ekskluzywny opis",
   detailsNotesLabel: "Szczegóły i walory (dla AI)",
   detailsNotesPlaceholder:
-    "Napisz kilka zdań: ciekawostki, plusy, klimat, okolica, wyposażenie, przyległości z cenami (np. garaż 250 zł/mc)…",
-  detailsNotesHint: "Te notatki + dane z formularza AI połączy w profesjonalny opis. Ceny głównej oferty nie wpisuj — przyległości możesz.",
+    "Dłuższy opis, garaż 250 zł/mc, blisko szkoły, cicha okolica…",
+  detailsNotesHint: "Puste pole = opis z danych formularza. Wpisane tutaj jest nadrzędne (długość, styl, fakty). Ceny głównej oferty nie wpisuj — przyległości możesz.",
   generating: "Generowanie...",
   aiAssistantBtn: "Asystent AI",
   magicDescribeBtn: "Stwórz profesjonalny opis",
@@ -502,8 +502,8 @@ const en: AddOfferFormExtended = {
   exclusiveDescLabel: "Exclusive description",
   detailsNotesLabel: "Details & highlights (for AI)",
   detailsNotesPlaceholder:
-    "A few sentences: highlights, vibe, neighborhood, extras with fees (e.g. garage €80/mo)…",
-  detailsNotesHint: "AI merges these notes with your form data into a polished listing. Skip the main price — ancillary fees are OK.",
+    "Longer description, garage €80/mo, near school, quiet street…",
+  detailsNotesHint: "Empty = description from the form. Anything you write here is authoritative (length, tone, facts). Skip the main price — ancillary fees are OK.",
   generating: "Generating…",
   aiAssistantBtn: "AI assistant",
   magicDescribeBtn: "Create professional description",
@@ -745,8 +745,8 @@ const uk: AddOfferFormExtended = {
   exclusiveDescLabel: "Ексклюзивний опис",
   detailsNotesLabel: "Деталі та переваги (для AI)",
   detailsNotesPlaceholder:
-    "Кілька речень: цікавинки, плюси, атмосфера, околиця, додаткові приміщення з цінами…",
-  detailsNotesHint: "AI з’єднає нотатки з даними форми в професійний опис. Основну ціну не вказуйте — додаткові можна.",
+    "Довший опис, гараж 250 zł/міс, біля школи, тиха вулиця…",
+  detailsNotesHint: "Порожнє поле = опис з даних форми. Написане тут є головним (довжина, стиль, факти). Основну ціну не вказуйте — додаткові можна.",
   generating: "Генерація…",
   aiAssistantBtn: "AI-асистент",
   magicDescribeBtn: "Створити професійний опис",

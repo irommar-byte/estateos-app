@@ -576,7 +576,6 @@ export default function CarListingForm({
           city: form.city,
           localityCountry: form.localityCountry,
           title: form.title,
-          existingDescription: form.description,
           userNotes: aiDetailsNotes,
         }),
       });
