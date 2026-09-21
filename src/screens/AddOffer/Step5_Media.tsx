@@ -33,6 +33,7 @@ import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
 import MagicalAiDescribeButton from '../../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../../components/HdrPreviewBadge';
 import ListingDescriptionEditor from '../../components/ListingDescriptionEditor';
+import AiDescriptionOptions from '../../components/offer/AiDescriptionOptions';
 import type { PropertyRoomScan, WholePropertyScan } from '../../types/roomScan';
 import { listingRoomCountFromRooms, livableAreaFromRooms } from '../../lib/roomScan/refineScanSections';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -355,6 +356,8 @@ export default function Step5_Media({ theme }: { theme: any }) {
 
   const [isGeneratingGpt, setIsGeneratingGpt] = useState(false);
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
+  const [aiTargetLength, setAiTargetLength] = useState(1500);
+  const [aiUseEmojis, setAiUseEmojis] = useState(false);
   const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
   const glowAnim = useRef(new Animated.Value(0)).current;
 
@@ -801,6 +804,8 @@ export default function Step5_Media({ theme }: { theme: any }) {
           propertyRoomScans: draft.propertyRoomScans,
           floorPlanScanMeta: draft.floorPlanScanMeta,
           userNotes: aiDetailsNotes.trim(),
+          targetLength: aiTargetLength,
+          useEmojis: aiUseEmojis,
         },
         locale,
       );
@@ -1078,6 +1083,18 @@ export default function Step5_Media({ theme }: { theme: any }) {
           <Text style={{ fontSize: 13, fontWeight: '700', color: theme.subtitle, marginTop: 22, marginBottom: 8 }}>
             {translate('addOffer.step5.ai.detailsNotesLabel')}
           </Text>
+          <AiDescriptionOptions
+            targetLength={aiTargetLength}
+            useEmojis={aiUseEmojis}
+            onTargetLength={setAiTargetLength}
+            onUseEmojis={setAiUseEmojis}
+            lengthLabel={translate('addOffer.step5.ai.lengthLabel', { n: aiTargetLength })}
+            emoticonsLabel={translate('addOffer.step5.ai.emoticonsLabel')}
+            textColor={theme.text}
+            mutedColor={theme.subtitle}
+            borderColor={isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.08)'}
+            inputColor={isDark ? Colors.premiumDark : '#FFFFFF'}
+          />
           <View
             style={{
               backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',

@@ -85,6 +85,8 @@ export type CarsDictionary = {
     detailsNotesLabel: string;
     detailsNotesPlaceholder: string;
     detailsNotesHint: string;
+    aiLengthLabel: string;
+    aiEmoticonsLabel: string;
     aiAssistantBtn: string;
     aiGenerating: string;
     magicDescribeBtn: string;
@@ -473,7 +475,9 @@ const pl: CarsDictionary = {
     detailsNotesLabel: "Szczegóły i walory (dla AI)",
     detailsNotesPlaceholder:
       "Dłuższy opis, serwis ASO, nowy rozrząd, felgi 2 000 zł…",
-    detailsNotesHint: "Puste pole = opis z danych formularza. Wpisane tutaj jest nadrzędne. Ceny auta nie wpisuj — ceny dodatków możesz.",
+    detailsNotesHint: "Puste pole = opis z parametrów pojazdu. Wpisane = korekta treści, nie długości. Ceny auta nie wpisuj — ceny dodatków możesz.",
+    aiLengthLabel: "Długość opisu: {n} znaków",
+    aiEmoticonsLabel: "Emotikony",
     aiAssistantBtn: "Asystent AI",
     aiGenerating: "Generowanie opisu…",
     magicDescribeBtn: "Stwórz profesjonalny opis",
@@ -869,7 +873,9 @@ const en: CarsDictionary = {
     detailsNotesLabel: "Details & highlights (for AI)",
     detailsNotesPlaceholder:
       "Longer description, dealer service, new timing belt, wheels 2,000 PLN…",
-    detailsNotesHint: "Empty = description from the form. Anything you write here is authoritative. Skip the car price — accessory prices are OK.",
+    detailsNotesHint: "Empty = description from vehicle params. Notes steer content, not length. Skip the car price — accessory prices are OK.",
+    aiLengthLabel: "Description length: {n} characters",
+    aiEmoticonsLabel: "Emoticons",
     aiAssistantBtn: "AI assistant",
     aiGenerating: "Generating description…",
     magicDescribeBtn: "Create professional description",
@@ -1262,7 +1268,9 @@ const uk: CarsDictionary = {
     detailsNotesLabel: "Деталі та переваги (для AI)",
     detailsNotesPlaceholder:
       "Довший опис, сервіс ASO, новий ремінь, диски 2 000 zł…",
-    detailsNotesHint: "Порожнє поле = опис з даних форми. Написане тут є головним. Ціну авто не вказуйте — ціни додатків можна.",
+    detailsNotesHint: "Порожнє поле = опис з параметрів авто. Написане коригує зміст, не довжину. Ціну авто не вказуйте — ціни додатків можна.",
+    aiLengthLabel: "Довжина опису: {n} символів",
+    aiEmoticonsLabel: "Емотікони",
     aiAssistantBtn: "AI-асистент",
     aiGenerating: "Генерація опису…",
     magicDescribeBtn: "Створити професійний опис",

@@ -88,6 +88,8 @@ import { createPersonProject, loadClientPersonProjects } from '@/lib/crm/clientP
 import {
   proposeAuctionToSeller,
   proposeOpenHouseToSeller,
+  startAuctionForSeller,
+  startOpenHouseForSeller,
 } from '@/lib/crm/sellerEventProposals';
 
 export const maxDuration = 300;
@@ -1121,6 +1123,40 @@ export async function POST(req: Request, ctx: RouteCtx) {
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
     return NextResponse.json({ success: true, decision: result.decision });
+  }
+
+  if (action === 'start_open_house') {
+    const result = await startOpenHouseForSeller({
+      clientId,
+      agencyUserId,
+      startsAt: String(body.startsAt || ''),
+      endsAt: String(body.endsAt || ''),
+      capacity: body.capacity != null ? Number(body.capacity) : 8,
+      visitMode:
+        body.visitMode === 'SLOT_30' || body.visitMode === 'SLOT_60' ? body.visitMode : 'FLEX',
+      clientMessage: body.clientMessage != null ? String(body.clientMessage) : null,
+      title: body.title != null ? String(body.title) : null,
+      notifyOwner: body.notifyOwner !== false,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, eventId: result.eventId });
+  }
+
+  if (action === 'start_auction') {
+    const result = await startAuctionForSeller({
+      clientId,
+      agencyUserId,
+      startsAt: String(body.startsAt || ''),
+      endsAt: String(body.endsAt || ''),
+      startPrice: Number(body.startPrice),
+      reservePrice: body.reservePrice != null ? Number(body.reservePrice) : null,
+      minIncrement: body.minIncrement != null ? Number(body.minIncrement) : null,
+      clientMessage: body.clientMessage != null ? String(body.clientMessage) : null,
+      title: body.title != null ? String(body.title) : null,
+      notifyOwner: body.notifyOwner !== false,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ success: true, eventId: result.eventId });
   }
 
   if (action === 'send_email_code') {

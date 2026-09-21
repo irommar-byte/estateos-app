@@ -166,6 +166,7 @@ export default function CrmSellerCollaborationPanel({
   const [reservePrice, setReservePrice] = useState("");
   const [eventMessage, setEventMessage] = useState("");
   const [eventBusy, setEventBusy] = useState(false);
+  const [notifyOwner, setNotifyOwner] = useState(true);
   const [otherAgenciesDraft, setOtherAgenciesDraft] = useState("");
 
   useEffect(() => {
@@ -270,7 +271,7 @@ export default function CrmSellerCollaborationPanel({
     }
   };
 
-  const proposeEvent = async () => {
+  const submitEvent = async (mode: "propose" | "start") => {
     if (!linkedOfferId) {
       onToast("Najpierw powiąż aktywne ogłoszenie z klientem.");
       return;
@@ -286,17 +287,25 @@ export default function CrmSellerCollaborationPanel({
     }
     setEventBusy(true);
     try {
+      const isAuction = eventMode === "auction";
       const json = await onAction(
-        eventMode === "auction" ? "propose_auction" : "propose_open_house",
+        mode === "start"
+          ? isAuction
+            ? "start_auction"
+            : "start_open_house"
+          : isAuction
+            ? "propose_auction"
+            : "propose_open_house",
         {
           startsAt: new Date(eventStartsAt).toISOString(),
           endsAt: new Date(eventEndsAt).toISOString(),
-          startPrice: eventMode === "auction" ? Number(startPrice) : undefined,
+          startPrice: isAuction ? Number(startPrice) : undefined,
           reservePrice:
-            eventMode === "auction" && reservePrice.trim()
+            isAuction && reservePrice.trim()
               ? Number(reservePrice)
               : undefined,
           clientMessage: eventMessage.trim() || null,
+          notifyOwner,
         },
       );
       if (json?.success) {
@@ -305,9 +314,17 @@ export default function CrmSellerCollaborationPanel({
         setStartPrice("");
         setReservePrice("");
         onToast(
-          eventMode === "auction"
-            ? "Propozycja licytacji czeka na akceptację klienta."
-            : "Propozycja dnia otwartego czeka na akceptację klienta.",
+          mode === "start"
+            ? isAuction
+              ? notifyOwner
+                ? "Licytacja uruchomiona. Właściciel dostał informację."
+                : "Licytacja uruchomiona na ogłoszeniu."
+              : notifyOwner
+                ? "Dzień otwarty uruchomiony. Właściciel dostał informację."
+                : "Dzień otwarty uruchomiony na ogłoszeniu."
+            : isAuction
+              ? "Propozycja licytacji czeka na akceptację klienta."
+              : "Propozycja dnia otwartego czeka na akceptację klienta.",
         );
       }
     } finally {
@@ -494,7 +511,7 @@ export default function CrmSellerCollaborationPanel({
             Wydarzenie sprzedaży
           </p>
           <p className="mt-1 text-xs text-[var(--eos-muted)]">
-            Zaproponuj termin i warunki — klient zatwierdzi w panelu, potem wydarzenie pojawi się na ogłoszeniu.
+            Uruchom dzień otwarty albo licytację na ogłoszeniu klienta. Możesz od razu poinformować właściciela albo najpierw poprosić o zgodę.
           </p>
           {(sellerEvents?.openHouse.proposal || sellerEvents?.auction.proposal) ? (
             <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-900">
@@ -512,7 +529,7 @@ export default function CrmSellerCollaborationPanel({
               onClick={() => setEventMode(eventMode === "open_house" ? null : "open_house")}
               className="rounded-full border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
             >
-              Zaproponuj dzień otwarty
+              Dzień otwarty
             </button>
             <button
               type="button"
@@ -520,7 +537,7 @@ export default function CrmSellerCollaborationPanel({
               onClick={() => setEventMode(eventMode === "auction" ? null : "auction")}
               className="rounded-full border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
             >
-              Zaproponuj licytację
+              Licytacja
             </button>
           </div>
 
@@ -573,14 +590,36 @@ export default function CrmSellerCollaborationPanel({
                 <span className="font-bold text-[var(--eos-text)]">Podgląd dla klienta: </span>
                 {previewMessage}
               </div>
-              <button
-                type="button"
-                disabled={busy || eventBusy}
-                onClick={() => void proposeEvent()}
-                className="rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
-              >
-                {eventBusy ? "Wysyłam…" : "Wyślij do akceptacji"}
-              </button>
+              <label className="flex items-center gap-2 text-xs text-[var(--eos-text)]">
+                <input
+                  type="checkbox"
+                  checked={notifyOwner}
+                  onChange={(e) => setNotifyOwner(e.target.checked)}
+                />
+                Poinformuj właściciela
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy || eventBusy}
+                  onClick={() => void submitEvent("start")}
+                  className="rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                >
+                  {eventBusy
+                    ? "Uruchamiam…"
+                    : eventMode === "auction"
+                      ? "Uruchom licytację"
+                      : "Uruchom dzień otwarty"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || eventBusy}
+                  onClick={() => void submitEvent("propose")}
+                  className="rounded-full border border-emerald-500/30 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
+                >
+                  {eventBusy ? "Wysyłam…" : "Wyślij do akceptacji"}
+                </button>
+              </div>
             </div>
           ) : null}
         </div>

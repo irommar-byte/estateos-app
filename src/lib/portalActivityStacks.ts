@@ -61,8 +61,10 @@ export function portalStackKind(kind: string): PortalStackKind {
     k === "MEETING_CONFIRMED" ||
     k === "OPEN_HOUSE_PROPOSAL" ||
     k === "OPEN_HOUSE_CONFIRMED" ||
+    k === "OPEN_HOUSE_STARTED" ||
     k === "AUCTION_PROPOSAL" ||
-    k === "AUCTION_CONFIRMED"
+    k === "AUCTION_CONFIRMED" ||
+    k === "AUCTION_STARTED"
   ) {
     return "presentations";
   }

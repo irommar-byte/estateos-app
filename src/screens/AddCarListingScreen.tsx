@@ -32,6 +32,7 @@ import CarVehicleDocsSection, { type CarVehicleDocsState } from '../components/c
 import CarAddEntryPanel, { type CarAddEntryMethod } from '../components/cars/CarAddEntryPanel';
 import CarAuthGateModal from '../components/cars/CarAuthGateModal';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
+import AiDescriptionOptions from '../components/offer/AiDescriptionOptions';
 import { generateCarListingDescriptionWithGpt } from '../services/carDescriptionAiService';
 import { formatDateForForm } from '../utils/polishDateInput';
 import {
@@ -244,6 +245,8 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [publishAuthOpen, setPublishAuthOpen] = useState(false);
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
+  const [aiTargetLength, setAiTargetLength] = useState(1500);
+  const [aiUseEmojis, setAiUseEmojis] = useState(false);
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [isDraggingPhotos, setIsDraggingPhotos] = useState(false);
   const [fxRate, setFxRate] = useState(4.32);
@@ -495,6 +498,8 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
           localityCountry: form.localityCountry,
           title: form.title,
           userNotes: aiDetailsNotes.trim(),
+          targetLength: aiTargetLength,
+          useEmojis: aiUseEmojis,
         },
         'pl',
       );
@@ -705,6 +710,18 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
 
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Szczegóły / atuty (notatki do AI)</Text>
+            <AiDescriptionOptions
+              targetLength={aiTargetLength}
+              useEmojis={aiUseEmojis}
+              onTargetLength={setAiTargetLength}
+              onUseEmojis={setAiUseEmojis}
+              lengthLabel={`Długość opisu: ${aiTargetLength} znaków`}
+              emoticonsLabel="Emotikony"
+              textColor={colors.text}
+              mutedColor={colors.muted}
+              borderColor={colors.inputBorder}
+              inputColor={colors.inputBg}
+            />
             <TextInput
               value={aiDetailsNotes}
               onChangeText={setAiDetailsNotes}

@@ -33,6 +33,7 @@ import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../components/HdrPreviewBadge';
 import ListingDescriptionEditor from '../components/ListingDescriptionEditor';
+import AiDescriptionOptions from '../components/offer/AiDescriptionOptions';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
@@ -551,6 +552,8 @@ export default function EditOfferScreen({ route }: any) {
   });
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
+  const [aiTargetLength, setAiTargetLength] = useState(1500);
+  const [aiUseEmojis, setAiUseEmojis] = useState(false);
   const [isDraggingGallery, setIsDraggingGallery] = useState(false);
   const [dragSnapshot, setDragSnapshot] = useState<EditableImage[] | null>(null);
   const dragSnapshotRef = useRef<EditableImage[] | null>(null);
@@ -1506,6 +1509,8 @@ export default function EditOfferScreen({ route }: any) {
       const draftPayload = {
         title: title.trim(),
         userNotes: aiDetailsNotes.trim(),
+        targetLength: aiTargetLength,
+        useEmojis: aiUseEmojis,
         propertyType: originalData?.propertyType,
         transactionType: originalData?.transactionType,
         city: locationState.city,
@@ -2640,6 +2645,19 @@ export default function EditOfferScreen({ route }: any) {
             <Text style={[styles.fieldHint, { color: subColor, marginBottom: 6 }]}>
               {t('offer.edit.ai.detailsNotesLabel')}
             </Text>
+            <AiDescriptionOptions
+              targetLength={aiTargetLength}
+              useEmojis={aiUseEmojis}
+              onTargetLength={setAiTargetLength}
+              onUseEmojis={setAiUseEmojis}
+              lengthLabel={t('offer.edit.ai.lengthLabel', { n: aiTargetLength })}
+              emoticonsLabel={t('offer.edit.ai.emoticonsLabel')}
+              textColor={txtColor}
+              mutedColor={subColor}
+              borderColor={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)'}
+              inputColor={isDark ? '#141416' : '#F7F8FA'}
+              accentColor="#AF52DE"
+            />
             <TextInput
               style={[
                 styles.textAreaPremium,

@@ -1,5 +1,14 @@
 import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { extractListingRoomAreas, formatListingAreaSqm } from '@/lib/listingRoomAreas';
+import {
+  DESCRIPTION_MAX_CHARS,
+  fitDescriptionToTarget,
+  maxTokensForLength,
+  needsDescriptionExpand,
+  resolveTargetLength,
+  resolveUseEmojis,
+  stripEmojiCharacters,
+} from '@/lib/listingDescriptionLength';
 import { callOpenAiText, getOpenAiApiKey, openAiErrorMessage, resolveOpenAiModel } from '@/lib/openAiClient';
 
 export type ListingDescriptionDraftInput = {
@@ -19,6 +28,8 @@ export type ListingDescriptionDraftInput = {
   area?: string;
   existingDescription?: string;
   userNotes?: string;
+  targetLength?: number;
+  useEmojis?: boolean;
   plotArea?: string;
   rooms?: string;
   floor?: string;
@@ -53,10 +64,7 @@ const POI_SEARCH_TERMS = [
   'park',
 ];
 
-const DESCRIPTION_MAX_CHARS = 4000;
 const NOTES_MAX_CHARS = 1500;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1800;
-const SHORT_MAX_OUTPUT_TOKENS = 700;
 
 function getMapboxToken(): string {
   return String(process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '').trim();
@@ -105,10 +113,6 @@ function compactJson(value: Record<string, unknown>): Record<string, unknown> {
 
 function sellerNotes(raw: unknown): string {
   return String(raw || '').trim().slice(0, NOTES_MAX_CHARS);
-}
-
-function wantsShortDescription(notes: string): boolean {
-  return /kr[oó]tk|short\b/i.test(notes);
 }
 
 async function fetchNearbyPois(lat: number, lng: number, token: string): Promise<string[]> {
@@ -246,13 +250,17 @@ Bez HTML — użyj formatu redakcyjnego opisanego poniżej.`;
 
 function buildSystemPrompt(
   locale: 'pl' | 'en' | 'ru',
-  options: { hasNotes: boolean; short: boolean },
+  options: { hasNotes: boolean; targetLength: number; useEmojis: boolean },
 ): string {
-  const lengthRule = options.short
-    ? '- Długość: ok. 600–900 znaków.'
-    : '- Długość: pełny, profesjonalny opis — zwykle 1800–3500 znaków, maksimum 4000. Nie ścinaj do 1700.';
+  const min = options.targetLength - 50;
+  const max = options.targetLength + 50;
+  const lengthRule = `- CEL DŁUGOŚCI: ${options.targetLength} znaków (dopuszczalnie ${min}…${max}). Nie krócej, nie dłużej.
+- Bez wody. Dłuższy budżet = więcej faktów o okolicy, układzie, komunikacji i „dla kogo”, nie ozdobniki ani powtórzenia.`;
+  const emojiRule = options.useEmojis
+    ? '- Emotikony: użyj 4–10 trafnych emoji (🌿 ✨ 🏡 📍 🚇 🏫) jako znaczników nagłówków i kluczowych atutów, żeby opis był nowocześniejszy i łatwiejszy do skanowania. Nie na początku każdego zdania.'
+    : '- ZAKAZ emoji i emotikon. Zero piktogramów.';
   const notesRule = options.hasNotes
-    ? `- Masz blok INSTRUKCJE I FAKTY OD SPRZEDAWCY. Jest nadrzędny: uwzględnij KAŻDY fakt i polecenie (długość, akcenty, parametry). Nie pomijaj.
+    ? `- Masz blok INSTRUKCJE I FAKTY OD SPRZEDAWCY. Jest nadrzędny dla treści (fakty, akcenty). Długość steruje wyłącznie CEL DŁUGOŚCI powyżej, nie notatki.
 - Format sekcji zostaje, chyba że sprzedawca każe inaczej.
 - Ceny przyległości z notatek (garaż, komórka, parking, media) możesz podać.`
     : '- Nie ma notatek sprzedawcy — zbuduj opis wyłącznie z parametrów oferty i okolicy.';
@@ -279,7 +287,7 @@ FORMAT REDAKCYJNY (zwykły tekst):
 - Elegancki podział sekcji: linia z samych "—" (sześć znaków).
 - Wyróżnienie frazy: **pogrubienie** (maks. 4–6 na cały opis).
 - Podkreślenie rzadko: __tekst__.
-- 1–2 subtelne emotikony w całym opisie (🌿 ✨ 🏡 📍), osadzone naturalnie w zdaniu — nie na początku każdego akapitu.
+${emojiRule}
 
 ZASADY:
 - To jest NOWY opis z parametrów oferty. NIE przepisuj, NIE poprawiaj i NIE streszczaj tekstu z edytora ogłoszenia.
@@ -322,7 +330,38 @@ function stripAiDescription(raw: string): string {
   let text = String(raw || '').trim();
   text = text.replace(/^```(?:markdown|text)?\s*/i, '').replace(/\s*```$/i, '').trim();
   text = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
-  return text.slice(0, DESCRIPTION_MAX_CHARS);
+  return text;
+}
+
+async function expandDescriptionOnce(params: {
+  apiKey: string;
+  model: string;
+  current: string;
+  targetLength: number;
+  neighborhood: NeighborhoodContext;
+  locale: 'pl' | 'en' | 'ru';
+  useEmojis: boolean;
+}): Promise<string | null> {
+  const missing = params.targetLength - params.current.length;
+  if (missing <= 50) return null;
+  try {
+    const { text } = await callOpenAiText({
+      apiKey: params.apiKey,
+      model: params.model,
+      skipReasoningFallback: true,
+      logPrefix: 'listing-description-ai-expand',
+      maxOutputTokens: maxTokensForLength(Math.min(1200, missing + 200)),
+      system: `Dopisz brakujące fakty do opisu nieruchomości. Zwróć CAŁY opis (stary tekst + uzupełnienie), nie sam dopisek.
+Cel: ${params.targetLength} znaków (±50). Dodaj tylko fakty okolicy, układu lub komunikacji, których brakuje. Bez wody, bez powtórzeń.
+${params.useEmojis ? 'Zachowaj oszczędne emoji przy nagłówkach.' : 'Bez emoji.'}
+Język: ${params.locale}.`,
+      user: `DOTYCHCZASOWY OPIS:\n${params.current}\n\nOKOLICA:\n${formatNeighborhood(params.neighborhood)}\n\nZwróć pełny, dociągnięty opis.`,
+    });
+    const next = stripAiDescription(text);
+    return next.length > params.current.length ? next : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function generateListingDescriptionWithGpt(
@@ -335,11 +374,12 @@ export async function generateListingDescriptionWithGpt(
 
   const locale = resolveLocale(draft.locale);
   const notes = sellerNotes(draft.userNotes);
-  const short = wantsShortDescription(notes);
+  const targetLength = resolveTargetLength(draft.targetLength);
+  const useEmojis = resolveUseEmojis(draft.useEmojis);
   const facts = buildDraftFacts(draft);
   const neighborhood = await buildNeighborhoodContext(draft);
   const model = resolveOpenAiModel('OPENAI_LISTING_MODEL');
-  const system = buildSystemPrompt(locale, { hasNotes: Boolean(notes), short });
+  const system = buildSystemPrompt(locale, { hasNotes: Boolean(notes), targetLength, useEmojis });
   const user = buildUserPrompt(facts, neighborhood, locale, notes);
 
   const { text, model: usedModel } = await callOpenAiText({
@@ -347,15 +387,29 @@ export async function generateListingDescriptionWithGpt(
     model,
     system,
     user,
-    maxOutputTokens: short ? SHORT_MAX_OUTPUT_TOKENS : DEFAULT_MAX_OUTPUT_TOKENS,
+    maxOutputTokens: maxTokensForLength(targetLength),
     skipReasoningFallback: true,
     logPrefix: 'listing-description-ai',
   });
-  if (!text || text.length < 120) {
+  if (!text || text.length < 80) {
     throw new Error('OpenAI zwróciło zbyt krótki opis.');
   }
 
-  return { description: stripAiDescription(text), model: usedModel };
+  let description = fitDescriptionToTarget(stripAiDescription(text), targetLength);
+  if (needsDescriptionExpand(description, targetLength)) {
+    const expanded = await expandDescriptionOnce({
+      apiKey,
+      model: usedModel,
+      current: description,
+      targetLength,
+      neighborhood,
+      locale,
+      useEmojis,
+    });
+    if (expanded) description = fitDescriptionToTarget(expanded, targetLength);
+  }
+  if (!useEmojis) description = stripEmojiCharacters(description);
+  return { description: description.slice(0, DESCRIPTION_MAX_CHARS), model: usedModel };
 }
 
 export { openAiErrorMessage };

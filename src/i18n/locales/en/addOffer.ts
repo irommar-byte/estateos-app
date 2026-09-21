@@ -571,7 +571,9 @@ export const addOffer = {
       manualHint: 'Type your own text anytime — AI is optional.',
       detailsNotesLabel: 'Optional: notes for AI',
       detailsNotesPlaceholder:
-        'Longer description, garage included, near school, quiet street… Empty = from the form.',
+        'Longer description, garage included, near school, quiet street… Empty = listing params and neighborhood.',
+      lengthLabel: 'Description length: {{n}} characters',
+      emoticonsLabel: 'Emoticons',
       generating: 'Analyzing...',
       generatingGpt: 'Creating a professional description…',
       gptRequiresLogin: 'Sign in to generate an AI description.',

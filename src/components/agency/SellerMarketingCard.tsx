@@ -255,6 +255,7 @@ export default function SellerMarketingCard({
   const [eventStartPrice, setEventStartPrice] = useState("");
   const [eventReservePrice, setEventReservePrice] = useState("");
   const [eventMessage, setEventMessage] = useState("");
+  const [notifyOwner, setNotifyOwner] = useState(true);
   const [openSection, setOpenSection] = useState<
     "external" | "plan" | "decision" | "facebook" | "channels" | "feed" | null
   >(null);
@@ -588,7 +589,7 @@ export default function SellerMarketingCard({
     }
   };
 
-  const handleProposeEvent = async () => {
+  const handleSubmitEvent = async (mode: "propose" | "start") => {
     if (!linkedOfferId) {
       Alert.alert("Wydarzenie", "Najpierw powiąż aktywne ogłoszenie.");
       return;
@@ -607,20 +608,27 @@ export default function SellerMarketingCard({
     }
     const startsAt = new Date(`${eventDate}T${eventStartTime}:00`).toISOString();
     const endsAt = new Date(`${eventDate}T${eventEndTime}:00`).toISOString();
+    const isAuction = eventMode === "auction";
     const ok = await runAction(
-      eventMode === "auction" ? "propose_auction" : "propose_open_house",
+      mode === "start"
+        ? isAuction
+          ? "start_auction"
+          : "start_open_house"
+        : isAuction
+          ? "propose_auction"
+          : "propose_open_house",
       {
         startsAt,
         endsAt,
-        startPrice:
-          eventMode === "auction" ? Number(eventStartPrice) : undefined,
+        startPrice: isAuction ? Number(eventStartPrice) : undefined,
         reservePrice:
-          eventMode === "auction" && eventReservePrice.trim()
+          isAuction && eventReservePrice.trim()
             ? Number(eventReservePrice)
             : undefined,
         clientMessage: eventMessage.trim() || null,
+        notifyOwner,
       },
-      "event-propose",
+      mode === "start" ? "event-start" : "event-propose",
     );
     if (ok) {
       setEventMode(null);
@@ -628,8 +636,12 @@ export default function SellerMarketingCard({
       setEventStartPrice("");
       setEventReservePrice("");
       Alert.alert(
-        "Wysłano",
-        "Propozycja czeka na akceptację klienta w panelu.",
+        mode === "start" ? "Uruchomiono" : "Wysłano",
+        mode === "start"
+          ? notifyOwner
+            ? "Wydarzenie jest na ogłoszeniu. Właściciel dostał informację."
+            : "Wydarzenie jest na ogłoszeniu — bez wiadomości do właściciela."
+          : "Propozycja czeka na akceptację klienta w panelu.",
       );
     }
   };
@@ -1562,7 +1574,7 @@ export default function SellerMarketingCard({
               Wydarzenie sprzedaży
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, lineHeight: 16 }}>
-              Zaproponuj dzień otwarty lub licytację — klient zatwierdzi termin i warunki.
+              Uruchom dzień otwarty albo licytację na ogłoszeniu. Możesz od razu poinformować właściciela albo poprosić o zgodę.
             </Text>
             {sellerMarketing?.sellerEvents?.stage ? (
               <View
@@ -1757,12 +1769,38 @@ export default function SellerMarketingCard({
                     },
                   ]}
                 />
+                <View style={styles.switchRow}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={{ color: colors.text, fontWeight: "700" }}>
+                      Poinformuj właściciela
+                    </Text>
+                    <Text
+                      style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}
+                    >
+                      Portal, e-mail i powiadomienie — bez prośby o zgodę.
+                    </Text>
+                  </View>
+                  <Switch value={notifyOwner} onValueChange={setNotifyOwner} />
+                </View>
                 <Pressable
                   disabled={Boolean(busy)}
-                  onPress={() => void handleProposeEvent()}
+                  onPress={() => void handleSubmitEvent("start")}
                   style={[styles.secondaryBtn, { borderColor: colors.accent }]}
                 >
                   <Text style={{ color: colors.accent, fontWeight: "800" }}>
+                    {busy === "event-start"
+                      ? "…"
+                      : eventMode === "auction"
+                        ? "Uruchom licytację"
+                        : "Uruchom dzień otwarty"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={Boolean(busy)}
+                  onPress={() => void handleSubmitEvent("propose")}
+                  style={[styles.secondaryBtn, { borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.text, fontWeight: "800" }}>
                     {busy === "event-propose" ? "…" : "Wyślij do akceptacji"}
                   </Text>
                 </Pressable>

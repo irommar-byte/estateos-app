@@ -673,7 +673,9 @@ export const offer = {
       createProfessional: 'Create professional description',
       detailsNotesLabel: 'Details / highlights (notes for AI)',
       detailsNotesPlaceholder:
-        'Longer description, garage included, near school, quiet street… Empty = from the form.',
+        'Longer description, garage included, near school, quiet street… Empty = listing params and neighborhood.',
+      lengthLabel: 'Description length: {{n}} characters',
+      emoticonsLabel: 'Emoticons',
       generating: 'Creating a professional description…',
       errorTitle: 'Description generation',
       insufficientData: 'Fill in basics (type, city, area or price) before generating a description.',
