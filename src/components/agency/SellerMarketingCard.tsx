@@ -2,15 +2,19 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  LayoutAnimation,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Switch,
   Text,
   TextInput,
+  UIManager,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import * as DocumentPicker from "expo-document-picker";
 import FeaturedPromoteSheet from "../offer/FeaturedPromoteSheet";
 import AcquisitionDatePickerModal from "./AcquisitionDatePickerModal";
@@ -26,6 +30,19 @@ import { groupPromotionsByChannel, isFacebookPostPermalink } from "../../lib/mar
 import { groupPortalPath } from "../../lib/portalActivityStacks";
 import MarketingChannelBrand from "../marketing/MarketingChannelBrand";
 import { parseSellerEventProposal } from "../../lib/sellerEventStage";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+type MarketingSection =
+  | "external"
+  | "plan"
+  | "decision"
+  | "facebook"
+  | "channels"
+  | "feed"
+  | "events";
 
 export type MarketingActivity = {
   id: number;
@@ -256,9 +273,15 @@ export default function SellerMarketingCard({
   const [eventReservePrice, setEventReservePrice] = useState("");
   const [eventMessage, setEventMessage] = useState("");
   const [notifyOwner, setNotifyOwner] = useState(true);
-  const [openSection, setOpenSection] = useState<
-    "external" | "plan" | "decision" | "facebook" | "channels" | "feed" | null
-  >(null);
+  const [openSections, setOpenSections] = useState<Record<MarketingSection, boolean>>({
+    external: false,
+    plan: false,
+    decision: false,
+    facebook: false,
+    channels: false,
+    feed: false,
+    events: false,
+  });
   const [feedLimit, setFeedLimit] = useState(5);
   const [fbListLimit, setFbListLimit] = useState(4);
   const [openFeedStack, setOpenFeedStack] = useState<string | null>(null);
@@ -283,6 +306,28 @@ export default function SellerMarketingCard({
     setNextDueAt(next.dueAt?.slice(0, 10) || "");
     setNextVisible(next.visibleToClient === true);
   }, [sellerMarketing?.sellerNextStep]);
+
+  useEffect(() => {
+    if (!facebookPending) return;
+    setOpenSections((current) =>
+      current.facebook ? current : { ...current, facebook: true },
+    );
+  }, [facebookPending]);
+
+  const toggleSection = (id: MarketingSection) => {
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+    );
+    void Haptics.selectionAsync();
+    setOpenSections((current) => ({ ...current, [id]: !current[id] }));
+  };
+
+  const revealSection = (id: MarketingSection) => {
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+    );
+    setOpenSections((current) => (current[id] ? current : { ...current, [id]: true }));
+  };
 
   const allMarketingFeed = useMemo(() => {
     const kinds = new Set([
@@ -730,23 +775,21 @@ export default function SellerMarketingCard({
       ]}
     >
       <Text style={[styles.kicker, { color: colors.accent }]}>
-        PROMOCJA I DYSTRYBUCJA
+        DYSTRYBUCJA I WSPÓŁPRACA
       </Text>
       <Text
         style={{
           color: colors.secondary,
-          fontSize: 12,
+          fontSize: 13,
           marginTop: 4,
           lineHeight: 18,
         }}
       >
-        Rejestruj publikacje, podbijaj EstateOS i otwieraj jedną sekcję na raz — bez ściany wpisów.
+        Gdzie wisi ogłoszenie, co ustalamy z klientem i co już zrobiliśmy.
       </Text>
       <View style={styles.metricsRow}>
         <Pressable
-          onPress={() =>
-            setOpenSection((current) => (current === "channels" ? null : "channels"))
-          }
+          onPress={() => revealSection("channels")}
           style={[styles.metric, { backgroundColor: colors.input }]}
         >
           <Text style={[styles.metricValue, { color: colors.text }]}>
@@ -757,11 +800,7 @@ export default function SellerMarketingCard({
           </Text>
         </Pressable>
         <Pressable
-          onPress={() =>
-            setOpenSection((current) =>
-              current === "facebook" ? null : "facebook",
-            )
-          }
+          onPress={() => revealSection("facebook")}
           style={[styles.metric, { backgroundColor: colors.input }]}
         >
           <Text style={[styles.metricValue, { color: colors.text }]}>
@@ -772,11 +811,7 @@ export default function SellerMarketingCard({
           </Text>
         </Pressable>
         <Pressable
-          onPress={() =>
-            setOpenSection((current) =>
-              current === "channels" ? null : "channels",
-            )
-          }
+          onPress={() => revealSection("channels")}
           style={[styles.metric, { backgroundColor: colors.input }]}
         >
           <Text style={[styles.metricValue, { color: renewalSoon ? "#F59E0B" : colors.text }]}>
@@ -787,9 +822,7 @@ export default function SellerMarketingCard({
           </Text>
         </Pressable>
         <Pressable
-          onPress={() =>
-            setOpenSection((current) => (current === "feed" ? null : "feed"))
-          }
+          onPress={() => revealSection("feed")}
           style={[styles.metric, { backgroundColor: colors.input }]}
         >
           <Text style={[styles.metricValue, { color: colors.text }]}>
@@ -801,6 +834,11 @@ export default function SellerMarketingCard({
         </Pressable>
       </View>
 
+      <View style={[styles.group, { backgroundColor: colors.input }]}>
+        <Text style={[styles.groupKicker, { color: colors.secondary }]}>DYSTRYBUCJA OFERTY</Text>
+        <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
+          Gdzie wisi ogłoszenie — EstateOS, portale i grupy.
+        </Text>
       <View style={styles.row}>
         <View style={[styles.estateosState, { backgroundColor: colors.input }]}>
           <View
@@ -842,11 +880,7 @@ export default function SellerMarketingCard({
       </View>
 
       <Pressable
-        onPress={() =>
-          setOpenSection((current) =>
-            current === "external" ? null : "external",
-          )
-        }
+        onPress={() => toggleSection("external")}
         style={[styles.sectionToggle, { borderColor: colors.border }]}
       >
         <Ionicons name="globe-outline" size={18} color={colors.accent} />
@@ -855,16 +889,16 @@ export default function SellerMarketingCard({
             Dodaj publikację zewnętrzną
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
-            Link, termin i potwierdzenie
+            Link z Otodom, OLX albo innego portalu
           </Text>
         </View>
         <Ionicons
-          name={openSection === "external" ? "chevron-up" : "chevron-down"}
+          name={openSections.external ? "chevron-up" : "chevron-down"}
           size={18}
           color={colors.secondary}
         />
       </Pressable>
-      {openSection === "external" ? (
+      {openSections.external ? (
         <>
           <View style={styles.chips}>
             {PORTAL_PRESETS.map((preset) => (
@@ -1133,14 +1167,9 @@ export default function SellerMarketingCard({
         </>
       ) : null}
 
-      {(sellerMarketing?.facebookGroups?.length || 0) > 0 || facebookPending ? (
         <View style={{ marginTop: 6 }}>
           <Pressable
-            onPress={() =>
-              setOpenSection((current) =>
-                current === "facebook" ? null : "facebook",
-              )
-            }
+            onPress={() => toggleSection("facebook")}
             style={[styles.sectionToggle, { borderColor: "rgba(24,119,242,0.35)" }]}
           >
             <Ionicons name="logo-facebook" size={18} color="#1877F2" />
@@ -1155,12 +1184,12 @@ export default function SellerMarketingCard({
               </Text>
             </View>
             <Ionicons
-              name={openSection === "facebook" || facebookPending ? "chevron-up" : "chevron-down"}
+              name={openSections.facebook || facebookPending ? "chevron-up" : "chevron-down"}
               size={18}
               color={colors.secondary}
             />
           </Pressable>
-          {openSection === "facebook" || facebookPending ? (
+          {openSections.facebook || facebookPending ? (
         <View>
           <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18, marginTop: 8 }}>
             Otworzy się Facebook z kartą ogłoszenia. Żeby klik w panelu otwierał
@@ -1334,16 +1363,10 @@ export default function SellerMarketingCard({
         </View>
           ) : null}
         </View>
-      ) : null}
 
-      {(sellerMarketing?.activeChannels?.length || 0) > 0 ? (
-        <View style={{ marginTop: 6 }}>
+      <View style={{ marginTop: 6 }}>
           <Pressable
-            onPress={() =>
-              setOpenSection((current) =>
-                current === "channels" ? null : "channels",
-              )
-            }
+            onPress={() => toggleSection("channels")}
             style={[styles.sectionToggle, { borderColor: colors.border }]}
           >
             <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
@@ -1358,13 +1381,18 @@ export default function SellerMarketingCard({
               </Text>
             </View>
             <Ionicons
-              name={openSection === "channels" ? "chevron-up" : "chevron-down"}
+              name={openSections.channels ? "chevron-up" : "chevron-down"}
               size={18}
               color={colors.secondary}
             />
           </Pressable>
-          {openSection === "channels" ? (
+          {openSections.channels ? (
           <>
+          {(sellerMarketing?.activeChannels || []).length === 0 ? (
+            <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
+              Brak aktywnych kanałów. Zapisz publikację powyżej, żeby pojawiła się tutaj.
+            </Text>
+          ) : null}
           {sellerMarketing?.activeChannels.map((channel) => {
             const tone = renewalTone(channel.renewalDueAt);
             return (
@@ -1442,12 +1470,15 @@ export default function SellerMarketingCard({
           </>
           ) : null}
         </View>
-      ) : null}
+      </View>
 
+      <View style={[styles.group, { backgroundColor: colors.input }]}>
+        <Text style={[styles.groupKicker, { color: colors.secondary }]}>KROK Z KLIENTEM</Text>
+        <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
+          Co ustalamy dziś i jakie decyzje czekają.
+        </Text>
       <Pressable
-        onPress={() =>
-          setOpenSection((current) => (current === "plan" ? null : "plan"))
-        }
+        onPress={() => toggleSection("plan")}
         style={[styles.sectionToggle, { borderColor: colors.border }]}
       >
         <Ionicons name="navigate-outline" size={18} color={colors.accent} />
@@ -1457,16 +1488,16 @@ export default function SellerMarketingCard({
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
             {sellerMarketing?.sellerNextStep?.nextAction ||
-              "Ustal następny krok dla klienta"}
+              "Co robimy dziś i co dalej"}
           </Text>
         </View>
         <Ionicons
-          name={openSection === "plan" ? "chevron-up" : "chevron-down"}
+          name={openSections.plan ? "chevron-up" : "chevron-down"}
           size={18}
           color={colors.secondary}
         />
       </Pressable>
-      {openSection === "plan" ? (
+      {openSections.plan ? (
         <>
           <TextInput
             value={nextCurrent}
@@ -1563,7 +1594,206 @@ export default function SellerMarketingCard({
               {busy === "next" ? "…" : "Zapisz plan"}
             </Text>
           </Pressable>
+        </>
+      ) : null}
+      <Pressable
+        onPress={() => toggleSection("decision")}
+        style={[styles.sectionToggle, { borderColor: colors.border }]}
+      >
+        <Ionicons name="help-circle-outline" size={19} color={colors.accent} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: "800" }}>
+            Poproś o decyzję
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+            Cena, materiały, termin lub inne
+          </Text>
+        </View>
+        <Ionicons
+          name={openSections.decision ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={colors.secondary}
+        />
+      </Pressable>
+      {openSections.decision ? (
+        <>
+          <View style={styles.chips}>
+            {[
+              { id: "price", label: "Cena" },
+              { id: "materials", label: "Materiały" },
+              { id: "schedule", label: "Termin" },
+              { id: "other", label: "Inne" },
+            ].map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => setDecisionKind(item.id)}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor:
+                      decisionKind === item.id ? colors.accent : colors.border,
+                    backgroundColor:
+                      decisionKind === item.id
+                        ? `${colors.accent}22`
+                        : colors.input,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 11,
+                    fontWeight: "700",
+                  }}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput
+            value={decisionTitle}
+            onChangeText={setDecisionTitle}
+            placeholder="Tytuł prośby"
+            placeholderTextColor={colors.secondary}
+            style={[
+              styles.input,
+              {
+                color: colors.text,
+                borderColor: colors.border,
+                backgroundColor: colors.input,
+              },
+            ]}
+          />
+          <TextInput
+            value={decisionMessage}
+            onChangeText={setDecisionMessage}
+            placeholder="Co klient ma zatwierdzić?"
+            placeholderTextColor={colors.secondary}
+            multiline
+            style={[
+              styles.input,
+              styles.multiline,
+              {
+                color: colors.text,
+                borderColor: colors.border,
+                backgroundColor: colors.input,
+              },
+            ]}
+          />
+          <Pressable
+            onPress={() => setDatePicker("decision")}
+            style={[
+              styles.input,
+              styles.dateButton,
+              { borderColor: colors.border, backgroundColor: colors.input },
+            ]}
+          >
+            <Ionicons name="calendar-outline" size={17} color={colors.accent} />
+            <Text
+              style={{
+                color: decisionDueAt ? colors.text : colors.secondary,
+                flex: 1,
+              }}
+            >
+              {decisionDueAt
+                ? `Odpowiedź do: ${formatDateLabel(decisionDueAt)}`
+                : "Ustaw termin odpowiedzi"}
+            </Text>
+            {decisionDueAt ? (
+              <Pressable onPress={() => setDecisionDueAt("")} hitSlop={8}>
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={colors.secondary}
+                />
+              </Pressable>
+            ) : null}
+          </Pressable>
+          <Pressable
+            disabled={Boolean(busy)}
+            onPress={() => void handleRequestDecision()}
+            style={[styles.secondaryBtn, { borderColor: colors.border }]}
+          >
+            <Text style={{ color: colors.text, fontWeight: "800" }}>
+              {busy === "decision" ? "…" : "Wyślij prośbę"}
+            </Text>
+          </Pressable>
+        </>
+      ) : null}
 
+      {(sellerMarketing?.pendingDecisions.length || 0) > 0 ? (
+        <View style={{ marginTop: 12 }}>
+          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
+            OCZEKUJĄCE ODPOWIEDZI
+          </Text>
+          {sellerMarketing?.pendingDecisions.map((decision) => (
+            <View
+              key={decision.id}
+              style={[styles.pendingRow, { borderColor: colors.border }]}
+            >
+              <Ionicons name="hourglass-outline" size={18} color="#FF9500" />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontWeight: "800",
+                    fontSize: 13,
+                  }}
+                >
+                  {decision.title}
+                </Text>
+                <Text
+                  style={{
+                    color: colors.secondary,
+                    fontSize: 11,
+                    marginTop: 2,
+                  }}
+                >
+                  {decision.dueAt
+                    ? `Odpowiedź do ${formatDateLabel(decision.dueAt)}`
+                    : "Bez terminu"}
+                </Text>
+                {decision.clientResponse ? (
+                  <Text
+                    style={{ color: colors.text, fontSize: 12, marginTop: 5 }}
+                    numberOfLines={2}
+                  >
+                    Komentarz: {decision.clientResponse}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      </View>
+
+      <View style={[styles.group, { backgroundColor: colors.input }]}>
+        <Text style={[styles.groupKicker, { color: colors.secondary }]}>WYDARZENIA SPRZEDAŻY</Text>
+        <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
+          Kalendarz dnia otwartego i licytacji — osobno od planu współpracy.
+        </Text>
+      <Pressable
+        onPress={() => toggleSection("events")}
+        style={[styles.sectionToggle, { borderColor: colors.border }]}
+      >
+        <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: "800" }}>
+            Wydarzenia sprzedaży
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+            Dzień otwarty albo licytacja na ogłoszeniu
+          </Text>
+        </View>
+        <Ionicons
+          name={openSections.events ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={colors.secondary}
+        />
+      </Pressable>
+      {openSections.events ? (
           <View
             style={[
               styles.eventBox,
@@ -1807,191 +2037,17 @@ export default function SellerMarketingCard({
               </View>
             ) : null}
           </View>
-        </>
       ) : null}
+      </View>
 
-      <Pressable
-        onPress={() =>
-          setOpenSection((current) =>
-            current === "decision" ? null : "decision",
-          )
-        }
-        style={[styles.sectionToggle, { borderColor: colors.border }]}
-      >
-        <Ionicons name="help-circle-outline" size={19} color={colors.accent} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontWeight: "800" }}>
-            Poproś o decyzję
-          </Text>
-          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
-            Cena, materiały, termin lub inne
-          </Text>
-        </View>
-        <Ionicons
-          name={openSection === "decision" ? "chevron-up" : "chevron-down"}
-          size={18}
-          color={colors.secondary}
-        />
-      </Pressable>
-      {openSection === "decision" ? (
-        <>
-          <View style={styles.chips}>
-            {[
-              { id: "price", label: "Cena" },
-              { id: "materials", label: "Materiały" },
-              { id: "schedule", label: "Termin" },
-              { id: "other", label: "Inne" },
-            ].map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => setDecisionKind(item.id)}
-                style={[
-                  styles.chip,
-                  {
-                    borderColor:
-                      decisionKind === item.id ? colors.accent : colors.border,
-                    backgroundColor:
-                      decisionKind === item.id
-                        ? `${colors.accent}22`
-                        : colors.input,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: colors.text,
-                    fontSize: 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <TextInput
-            value={decisionTitle}
-            onChangeText={setDecisionTitle}
-            placeholder="Tytuł prośby"
-            placeholderTextColor={colors.secondary}
-            style={[
-              styles.input,
-              {
-                color: colors.text,
-                borderColor: colors.border,
-                backgroundColor: colors.input,
-              },
-            ]}
-          />
-          <TextInput
-            value={decisionMessage}
-            onChangeText={setDecisionMessage}
-            placeholder="Co klient ma zatwierdzić?"
-            placeholderTextColor={colors.secondary}
-            multiline
-            style={[
-              styles.input,
-              styles.multiline,
-              {
-                color: colors.text,
-                borderColor: colors.border,
-                backgroundColor: colors.input,
-              },
-            ]}
-          />
+      <View style={[styles.group, { backgroundColor: colors.input }]}>
+        <Text style={[styles.groupKicker, { color: colors.secondary }]}>HISTORIA</Text>
+        <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
+          Co już zrobiliśmy przy promocji ogłoszenia.
+        </Text>
+      <View style={{ marginTop: 6 }}>
           <Pressable
-            onPress={() => setDatePicker("decision")}
-            style={[
-              styles.input,
-              styles.dateButton,
-              { borderColor: colors.border, backgroundColor: colors.input },
-            ]}
-          >
-            <Ionicons name="calendar-outline" size={17} color={colors.accent} />
-            <Text
-              style={{
-                color: decisionDueAt ? colors.text : colors.secondary,
-                flex: 1,
-              }}
-            >
-              {decisionDueAt
-                ? `Odpowiedź do: ${formatDateLabel(decisionDueAt)}`
-                : "Ustaw termin odpowiedzi"}
-            </Text>
-            {decisionDueAt ? (
-              <Pressable onPress={() => setDecisionDueAt("")} hitSlop={8}>
-                <Ionicons
-                  name="close-circle"
-                  size={18}
-                  color={colors.secondary}
-                />
-              </Pressable>
-            ) : null}
-          </Pressable>
-          <Pressable
-            disabled={Boolean(busy)}
-            onPress={() => void handleRequestDecision()}
-            style={[styles.secondaryBtn, { borderColor: colors.border }]}
-          >
-            <Text style={{ color: colors.text, fontWeight: "800" }}>
-              {busy === "decision" ? "…" : "Wyślij prośbę"}
-            </Text>
-          </Pressable>
-        </>
-      ) : null}
-
-      {(sellerMarketing?.pendingDecisions.length || 0) > 0 ? (
-        <View style={{ marginTop: 12 }}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-            OCZEKUJĄCE ODPOWIEDZI
-          </Text>
-          {sellerMarketing?.pendingDecisions.map((decision) => (
-            <View
-              key={decision.id}
-              style={[styles.pendingRow, { borderColor: colors.border }]}
-            >
-              <Ionicons name="hourglass-outline" size={18} color="#FF9500" />
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    color: colors.text,
-                    fontWeight: "800",
-                    fontSize: 13,
-                  }}
-                >
-                  {decision.title}
-                </Text>
-                <Text
-                  style={{
-                    color: colors.secondary,
-                    fontSize: 11,
-                    marginTop: 2,
-                  }}
-                >
-                  {decision.dueAt
-                    ? `Odpowiedź do ${formatDateLabel(decision.dueAt)}`
-                    : "Bez terminu"}
-                </Text>
-                {decision.clientResponse ? (
-                  <Text
-                    style={{ color: colors.text, fontSize: 12, marginTop: 5 }}
-                    numberOfLines={2}
-                  >
-                    Komentarz: {decision.clientResponse}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {allMarketingFeed.length > 0 ? (
-        <View style={{ marginTop: 6 }}>
-          <Pressable
-            onPress={() =>
-              setOpenSection((current) => (current === "feed" ? null : "feed"))
-            }
+            onPress={() => toggleSection("feed")}
             style={[styles.sectionToggle, { borderColor: colors.border }]}
           >
             <Ionicons name="time-outline" size={18} color={colors.accent} />
@@ -2004,12 +2060,12 @@ export default function SellerMarketingCard({
               </Text>
             </View>
             <Ionicons
-              name={openSection === "feed" ? "chevron-up" : "chevron-down"}
+              name={openSections.feed ? "chevron-up" : "chevron-down"}
               size={18}
               color={colors.secondary}
             />
           </Pressable>
-          {openSection === "feed"
+          {openSections.feed
             ? feedStacks.map((stack) => {
                 const open = openFeedStack === stack.kind;
                 const items = stack.items.slice(0, open ? feedLimit : 0);
@@ -2120,8 +2176,13 @@ export default function SellerMarketingCard({
                 );
               })
             : null}
+          {openSections.feed && feedStacks.length === 0 ? (
+            <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
+              Historia pojawi się po pierwszej publikacji lub podbiciu.
+            </Text>
+          ) : null}
         </View>
-      ) : null}
+      </View>
 
       <AcquisitionDatePickerModal
         visible={datePicker !== null}
@@ -2192,6 +2253,23 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.8,
   },
+  group: {
+    marginTop: 14,
+    borderRadius: 16,
+    padding: 10,
+    paddingBottom: 12,
+  },
+  groupKicker: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+  },
+  groupPurpose: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+    marginBottom: 4,
+  },
   sectionLabel: {
     fontSize: 10,
     fontWeight: "900",
@@ -2216,10 +2294,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     padding: 12,
-    marginTop: 12,
+    marginTop: 8,
+    backgroundColor: "transparent",
   },
   row: { flexDirection: "row", gap: 8, marginTop: 12 },
   estateosState: {

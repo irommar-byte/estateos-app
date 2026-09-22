@@ -278,6 +278,54 @@ export default function AgencyClientsScreen() {
             ) : null}
             {pipeline ? <SellerClientPipelineBar stages={pipeline} isDark={isDark} compact /> : null}
 
+            {(() => {
+              const uniqueOffers = Array.from(
+                new Map(
+                  item.members
+                    .filter((row) => row.linkedOfferId)
+                    .map((row) => [
+                      Number(row.linkedOfferId),
+                      {
+                        id: Number(row.linkedOfferId),
+                        label: row.sellerCity
+                          ? `Oferta #${row.linkedOfferId} · ${row.sellerCity}`
+                          : `Oferta #${row.linkedOfferId}`,
+                      },
+                    ]),
+                ).values(),
+              );
+              if (selectMode || uniqueOffers.length === 0) return null;
+              return (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    if (uniqueOffers.length === 1) {
+                      navigation.navigate('OfferDetail', { offerId: uniqueOffers[0].id });
+                      return;
+                    }
+                    Alert.alert(
+                      'Która oferta?',
+                      'Otwórz ogłoszenie bez karty klienta.',
+                      [
+                        ...uniqueOffers.map((offer) => ({
+                          text: offer.label,
+                          onPress: () => navigation.navigate('OfferDetail', { offerId: offer.id }),
+                        })),
+                        { text: 'Anuluj', style: 'cancel' },
+                      ],
+                    );
+                  }}
+                  style={[styles.offerBtn, { borderColor: colors.border, backgroundColor: isDark ? 'rgba(52,199,89,0.12)' : '#EAF8EE' }]}
+                >
+                  <Ionicons name="home-outline" size={15} color="#34C759" />
+                  <Text style={styles.offerBtnText}>
+                    {uniqueOffers.length === 1 ? 'Oferta' : `Oferty · ${uniqueOffers.length}`}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={13} color="#34C759" />
+                </Pressable>
+              );
+            })()}
+
             {portalUrl ? (
               <Pressable
                 onPress={(e) => {
@@ -486,6 +534,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   portalBtnText: { flex: 1, color: '#007AFF', fontSize: 12, fontWeight: '800' },
+  offerBtn: {
+    marginTop: 10,
+    minHeight: 36,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  offerBtnText: { flex: 1, color: '#1F7A3A', fontSize: 12, fontWeight: '800' },
   meetingBadge: {
     marginTop: 10,
     paddingVertical: 8,

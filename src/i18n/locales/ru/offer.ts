@@ -534,6 +534,9 @@ export const offer = {
       videoUrl: 'Видео (ссылка)',
       footer:
         'Новое фото сразу загружается на сервер (полоса прогресса). Удаление освобождает место в лимите 20 МБ.',
+      flip: 'Зеркало',
+      flipFailedTitle: 'Зеркало фото',
+      flipFailed: 'Не удалось отразить фото.',
     },
     floorPlan: {
       sectionTitle: 'ПЛАН ЭТАЖА',
@@ -544,6 +547,7 @@ export const offer = {
       scan: 'Сканировать квартиру (LiDAR)',
       scanHint: 'Нативный скан Apple RoomPlan — план 2D с размерами и 3D-тур.',
       scanned: 'План со скана LiDAR',
+      extraSaveFailed: 'Не удалось сохранить дополнительный план.',
     },
     mainInfo: {
       sectionTitle: 'ОСНОВНАЯ ИНФОРМАЦИЯ',

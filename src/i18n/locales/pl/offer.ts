@@ -537,6 +537,9 @@ export const offer = {
       videoUrl: 'Film (link)',
       footer:
         'Dodane zdjęcie od razu ląduje na serwerze (pasek postępu). Usunięcie zwalnia miejsce w limicie 30 MB — wtedy możesz dodać kolejne.',
+      flip: 'Lustro',
+      flipFailedTitle: 'Lustro zdjęcia',
+      flipFailed: 'Nie udało się odwrócić zdjęcia.',
     },
     floorPlan: {
       sectionTitle: 'PLAN NIERUCHOMOŚCI',
@@ -547,6 +550,7 @@ export const offer = {
       scan: 'Zeskanuj mieszkanie (LiDAR)',
       scanHint: 'Natywny skan Apple RoomPlan — plan 2D z wymiarami i spacer 3D.',
       scanned: 'Plan ze skanu LiDAR',
+      extraSaveFailed: 'Nie udało się zapisać dodatkowego planu.',
     },
     mainInfo: {
       sectionTitle: 'INFORMACJE GŁÓWNE',

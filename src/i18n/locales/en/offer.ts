@@ -537,6 +537,9 @@ export const offer = {
       videoUrl: 'Video (link)',
       footer:
         'New photos upload immediately (progress bar). Deleting frees space in the 30 MB folder limit so you can add another.',
+      flip: 'Mirror',
+      flipFailedTitle: 'Mirror photo',
+      flipFailed: 'Could not flip the photo.',
     },
     floorPlan: {
       sectionTitle: 'FLOOR PLAN',
@@ -547,6 +550,7 @@ export const offer = {
       scan: 'Scan apartment (LiDAR)',
       scanHint: 'Native Apple RoomPlan scan — 2D plan with dimensions and 3D walkthrough.',
       scanned: 'LiDAR scanned plan',
+      extraSaveFailed: 'Could not save the extra floor plan.',
     },
     mainInfo: {
       sectionTitle: 'MAIN INFORMATION',

@@ -430,6 +430,7 @@ export async function updateOffer(body: any) {
       images: true,
       videoUrl: true,
       floorPlanUrl: true,
+      floorPlanExtraUrls: true,
       hasBalcony: true,
       hasElevator: true,
       hasStorage: true,
@@ -631,6 +632,13 @@ export async function updateOffer(body: any) {
       }),
       ...(body.videoUrl !== undefined && { videoUrl: body.videoUrl || null }),
       ...(body.floorPlanUrl !== undefined && { floorPlanUrl: body.floorPlanUrl || null }),
+      ...(body.floorPlanExtraUrls !== undefined && {
+        floorPlanExtraUrls: body.floorPlanExtraUrls
+          ? typeof body.floorPlanExtraUrls === 'string'
+            ? body.floorPlanExtraUrls
+            : JSON.stringify(body.floorPlanExtraUrls)
+          : null,
+      }),
       ...(body.floorPlan3dUrl !== undefined && { floorPlan3dUrl: body.floorPlan3dUrl || null }),
       ...(body.floorPlanScanMeta !== undefined && {
         floorPlanScanMeta: body.floorPlanScanMeta ? String(body.floorPlanScanMeta) : null,
@@ -703,6 +711,15 @@ export async function updateOffer(body: any) {
       body.floorPlanUrl !== undefined ? body.floorPlanUrl || '' : existing.floorPlanUrl || '',
     ).trim();
     if (floorPlanKeep) keepAlive.add(floorPlanKeep);
+    const extraKeep = parseOfferImagesField(
+      body.floorPlanExtraUrls !== undefined
+        ? body.floorPlanExtraUrls
+        : (existing as { floorPlanExtraUrls?: string | null }).floorPlanExtraUrls,
+    );
+    for (const extra of extraKeep) {
+      const path = String(extra || '').trim();
+      if (path) keepAlive.add(path);
+    }
     await deleteRemovedOfferImages(Number(id), prevImages, [...keepAlive]);
   }
 
