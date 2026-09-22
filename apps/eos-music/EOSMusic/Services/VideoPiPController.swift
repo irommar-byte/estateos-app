@@ -35,6 +35,31 @@ enum VideoHandoffPolicy {
     ) -> Bool {
         avPlayerReady && hasVideoFrame && destinationAvailable
     }
+
+    /// AVPlayer sometimes parses only the first fragment (~2 minutes) of a long MP4.
+    static func isUnreliableAVDuration(avDuration: Double, vlcDuration: Double) -> Bool {
+        guard avDuration.isFinite, avDuration > 0 else { return false }
+        if vlcDuration > 240, avDuration < 180, avDuration < vlcDuration * 0.35 {
+            return true
+        }
+        return false
+    }
+
+    /// Local files can trust `AVURLAsset.isPlayable`. Progressive HTTP MP4
+    /// without faststart often reports false while H.264/AAC still plays.
+    static func requiresPlayableFlag(url: URL) -> Bool {
+        url.isFileURL
+    }
+
+    static let airPlayRemuxWaitSeconds: TimeInterval = 15
+
+    static func canHandOffToAirPlay(
+        avItemReady: Bool,
+        hasVideoFrame: Bool,
+        durationUnreliable: Bool
+    ) -> Bool {
+        avItemReady && hasVideoFrame && !durationUnreliable
+    }
 }
 
 /// Stable hybrid PiP: AVPlayer handles system PiP for Apple-compatible files,
@@ -49,11 +74,15 @@ final class VideoPiPController: NSObject, ObservableObject {
     @Published private(set) var externalDeviceName: String?
     @Published private(set) var airPlayNotice: String?
     @Published private(set) var handoffState: VideoHandoffState = .idle
+    @Published private(set) var wantsRoutePicker = false
+    private var routePickerWatchTask: Task<Void, Never>?
 
     var onStarted: (() -> Void)?
     var onRestore: (() -> Void)?
     /// Used when system PiP cannot open the container (MKV/AVI…) — float as mini-player instead.
     var onFallbackMinimize: (() -> Void)?
+    /// Optional remux wait after the user picks a TV — never block the picker itself.
+    var prepareAirPlayStream: (() async -> Void)?
 
     private let avPlayer = AVPlayer()
     private let playerLayer = AVPlayerLayer()
@@ -80,6 +109,8 @@ final class VideoPiPController: NSObject, ObservableObject {
     }
 
     private func failHandoff(_ message: String, airPlay: Bool) {
+        routePickerWatchTask?.cancel()
+        wantsRoutePicker = false
         avPlayer.pause()
         avPlayer.isMuted = false
         if let engine, engine.isSuspendedForAVKit {
@@ -134,32 +165,55 @@ final class VideoPiPController: NSObject, ObservableObject {
         return Self.isApplePiPContainer(url)
     }
 
-    /// Przed wyborem trasy AirPlay — wczytaj AVPlayer, żeby TV dostało wideo, nie sam dźwięk z VLC.
-    /// `userInitiated`: komunikat tylko gdy użytkownik sam kliknął AirPlay — nigdy przy starcie filmu.
-    func prepareAirPlayHandoff(for engine: VideoPlaybackEngine, userInitiated: Bool = false) {
-        guard supportsCurrentItem(engine) else {
-            if userInitiated {
-                airPlayNotice = airPlayAudioOnlyHint(for: engine.currentPlayableURL)
-            }
+    func consumeRoutePickerRequest() {
+        wantsRoutePicker = false
+        if handoffState == .preparingAirPlay {
+            setHandoffState(.idle)
+        }
+        watchRoutePickerCancellation()
+    }
+
+    /// Open the system picker immediately. Warm AVPlayer in the background.
+    /// VLC stays the picture until the user actually picks a TV.
+    func presentAirPlayPicker(for engine: VideoPlaybackEngine) async {
+        if isExternalPlaybackActive {
+            wantsRoutePicker = true
             return
         }
+
         airPlayNotice = nil
         self.engine = engine
+        sourceWasPlaying = engine.isPlaying
         if let host = hostView {
             attach(to: host)
         } else {
             ensureController()
         }
-        AudioSession.activateForVideoPlayback()
-        externalTask?.cancel()
-        externalTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            guard await self.loadAVPlayerItem(from: engine, autoplay: false) else { return }
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
+        setHandoffState(.preparingAirPlay)
+        wantsRoutePicker = true
+
+        guard supportsCurrentItem(engine) else { return }
+        AudioSession.activateForVideoPlayback(force: true)
+        avPlayer.isMuted = true
+        _ = await loadAVPlayerItem(from: engine, autoplay: false)
+    }
+
+    private func watchRoutePickerCancellation() {
+        routePickerWatchTask?.cancel()
+        routePickerWatchTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 45_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            guard !self.isExternalPlaybackActive else { return }
+            guard !Self.isAirPlayVideoRoute(AVAudioSession.sharedInstance()) else { return }
+            if self.engine?.isSuspendedForAVKit == true {
+                self.engine?.resumeFromAVKitHandoff(
+                    at: self.engine?.currentTime ?? 0,
+                    resume: self.sourceWasPlaying
+                )
             }
             self.avPlayer.pause()
-            _ = await self.waitUntilAVPlayerHasVideo(maxSeconds: 2.0)
+            self.avPlayer.replaceCurrentItem(with: nil)
+            self.setHandoffState(.idle)
         }
     }
 
@@ -360,12 +414,33 @@ final class VideoPiPController: NSObject, ObservableObject {
     }
 
     private func beginExternalPlayback(engine: VideoPlaybackEngine) async {
-        guard !isExternalPlaybackActive, !isActive, !isPreparing else { return }
+        guard !isExternalPlaybackActive, !isActive else { return }
         guard let url = engine.currentPlayableURL else { return }
 
+        if avPlayer.currentItem?.status == .readyToPlay, engine.isSuspendedForAVKit {
+            let hasVideo = await waitUntilAVPlayerHasVideo(maxSeconds: 2.0)
+            let avDuration = avPlayer.currentItem?.duration.seconds ?? .nan
+            if hasVideo,
+               !VideoHandoffPolicy.isUnreliableAVDuration(avDuration: avDuration, vlcDuration: engine.duration) {
+                routePickerWatchTask?.cancel()
+                avPlayer.isMuted = false
+                if sourceWasPlaying {
+                    avPlayer.play()
+                }
+                isExternalPlaybackActive = true
+                setHandoffState(.airPlay)
+                externalDeviceName = Self.airPlayOutputName(AVAudioSession.sharedInstance()) ?? "AirPlay"
+                startExternalTimeObserver()
+                objectWillChange.send()
+                return
+            }
+        }
+
         guard Self.isApplePiPContainer(url) else {
-            airPlayNotice = airPlayAudioOnlyHint(for: url)
-            setHandoffState(.failed(airPlayNotice ?? "Nieobsługiwany format AirPlay."))
+            await abandonFailedAirPlayRoute(
+                engine: engine,
+                message: airPlayAudioOnlyHint(for: url)
+            )
             return
         }
 
@@ -374,29 +449,42 @@ final class VideoPiPController: NSObject, ObservableObject {
         self.engine = engine
         sourceWasPlaying = engine.isPlaying
 
+        await prepareAirPlayStream?()
         AudioSession.activateForVideoPlayback(force: true)
-        // Warm AVPlayer silently while VLC remains the sole audible source.
         avPlayer.isMuted = true
-        let loaded = await loadAVPlayerItem(from: engine, autoplay: false)
-        guard loaded else {
-            failHandoff("Nie udało się uruchomić AirPlay wideo dla tego źródła.", airPlay: true)
-            return
+        var loaded = avPlayer.currentItem?.status == .readyToPlay
+        if !loaded {
+            loaded = await loadAVPlayerItem(from: engine, autoplay: false)
         }
 
         if let host = hostView {
             attach(to: host)
         }
-        if sourceWasPlaying {
-            avPlayer.play()
-        } else {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
+        if loaded {
+            if sourceWasPlaying {
+                avPlayer.play()
+            } else {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
+                }
             }
         }
-        let hasVideo = await waitUntilAVPlayerHasVideo(maxSeconds: 5.0)
+        let hasVideo = loaded ? await waitUntilAVPlayerHasVideo(maxSeconds: 10.0) : false
         avPlayer.pause()
-        guard hasVideo else {
-            failHandoff("AirPlay nie otrzymał klatki wideo. VLC pozostaje aktywny.", airPlay: true)
+        let avDuration = avPlayer.currentItem?.duration.seconds ?? .nan
+        let unreliable = VideoHandoffPolicy.isUnreliableAVDuration(
+            avDuration: avDuration,
+            vlcDuration: engine.duration
+        )
+        guard VideoHandoffPolicy.canHandOffToAirPlay(
+            avItemReady: loaded,
+            hasVideoFrame: hasVideo,
+            durationUnreliable: unreliable
+        ) else {
+            await abandonFailedAirPlayRoute(
+                engine: engine,
+                message: "Ten film na telewizor idzie przez Lustrzane odbicie — wybierz je na liście AirPlay."
+            )
             return
         }
 
@@ -414,7 +502,10 @@ final class VideoPiPController: NSObject, ObservableObject {
             hasVideoFrame: hasVideo,
             destinationAvailable: routeOK || avOK
         ) else {
-            failHandoff("AirPlay wideo nie przejął streamu. Spróbuj ponownie albo użyj Lustrzanego odbicia.", airPlay: true)
+            await abandonFailedAirPlayRoute(
+                engine: engine,
+                message: "Ten film na telewizor idzie przez Lustrzane odbicie — wybierz je na liście AirPlay."
+            )
             return
         }
 
@@ -430,6 +521,28 @@ final class VideoPiPController: NSObject, ObservableObject {
         externalDeviceName = Self.airPlayOutputName(AVAudioSession.sharedInstance())
             ?? "AirPlay"
         startExternalTimeObserver()
+        objectWillChange.send()
+    }
+
+    /// Drop a half-open AirPlay audio route so VLC stays on the phone (no silent video / audio-only TV).
+    private func abandonFailedAirPlayRoute(engine: VideoPlaybackEngine, message: String) async {
+        routePickerWatchTask?.cancel()
+        avPlayer.pause()
+        avPlayer.isMuted = false
+        avPlayer.allowsExternalPlayback = false
+        avPlayer.replaceCurrentItem(with: nil)
+        if engine.isSuspendedForAVKit {
+            engine.resumeFromAVKitHandoff(at: engine.currentTime, resume: sourceWasPlaying)
+        }
+        AudioSession.activateForVideoPlayback(force: true)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        try? session.setActive(true)
+        avPlayer.allowsExternalPlayback = true
+        isExternalPlaybackActive = false
+        externalDeviceName = nil
+        setHandoffState(.idle)
+        airPlayNotice = message
         objectWillChange.send()
     }
 
@@ -472,19 +585,25 @@ final class VideoPiPController: NSObject, ObservableObject {
         } else {
             asset = AVURLAsset(url: url)
         }
-        let playable = (try? await asset.load(.isPlayable)) == true
-        guard playable, !Task.isCancelled else { return false }
+        if VideoHandoffPolicy.requiresPlayableFlag(url: url) {
+            let playable = await Self.loadPlayableFlag(asset)
+            guard playable, !Task.isCancelled else { return false }
+        }
+        guard !Task.isCancelled else { return false }
 
         let item = AVPlayerItem(asset: asset)
         avPlayer.replaceCurrentItem(with: item)
 
-        for _ in 0..<40 {
+        for _ in 0..<80 {
             if Task.isCancelled { return false }
             if item.status == .readyToPlay { break }
             if item.status == .failed { return false }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
-        guard item.status == .readyToPlay else { return false }
+        let hasVideoHint = item.presentationSize.height > 20
+            || item.tracks.contains { $0.assetTrack?.mediaType == .video }
+        guard item.status != .failed else { return false }
+        guard item.status == .readyToPlay || hasVideoHint else { return false }
 
         let target = CMTime(seconds: max(0, engine.currentTime), preferredTimescale: 600)
         await avPlayer.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
@@ -496,6 +615,21 @@ final class VideoPiPController: NSObject, ObservableObject {
             avPlayer.pause()
         }
         return true
+    }
+
+    private static func loadPlayableFlag(_ asset: AVURLAsset) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                (try? await asset.load(.isPlayable)) == true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                return false
+            }
+            let value = await group.next() ?? false
+            group.cancelAll()
+            return value
+        }
     }
 
     private func startExternalTimeObserver() {
@@ -614,12 +748,15 @@ final class VideoPiPController: NSObject, ObservableObject {
             } else {
                 asset = AVURLAsset(url: url)
             }
-            let playable = (try? await asset.load(.isPlayable)) == true
-            guard !Task.isCancelled else { return }
-            guard playable else {
-                self.failHandoff("Ten stream nie obsługuje PiP w EOS — spróbuj MP4 lub pobierz na serwer.", airPlay: false)
-                return
+            if VideoHandoffPolicy.requiresPlayableFlag(url: url) {
+                let playable = await Self.loadPlayableFlag(asset)
+                guard !Task.isCancelled else { return }
+                guard playable else {
+                    self.failHandoff("Ten stream nie obsługuje PiP w EOS — spróbuj MP4 lub pobierz na serwer.", airPlay: false)
+                    return
+                }
             }
+            guard !Task.isCancelled else { return }
 
             self.avPlayer.isMuted = true
             guard await self.loadAVPlayerItem(from: engine, autoplay: false) else {
@@ -695,6 +832,8 @@ final class VideoPiPController: NSObject, ObservableObject {
         isDiscardingPlayback = true
         startTask?.cancel()
         externalTask?.cancel()
+        routePickerWatchTask?.cancel()
+        wantsRoutePicker = false
         stopPiPTimeObserver()
         stopExternalTimeObserver()
 

@@ -335,7 +335,12 @@ final class OnlineMoviesController: ObservableObject {
             let token = try await api.moviePlayToken(jobId: existing)
             let streamURL = api.movieStreamURL(jobId: existing, token: token.token)
             setPlaybackPhase(.presenting)
-            let started = await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+            let started = await playRemoteOrLocal(
+                url: streamURL,
+                title: selection.title,
+                video: video,
+                durationHint: token.duration
+            )
             setPlaybackPhase(started ? .playing : .failed(video.engine.errorMessage ?? "Nie udało się uruchomić pliku z serwera."))
             return started
         } catch is CancellationError {
@@ -397,7 +402,12 @@ final class OnlineMoviesController: ObservableObject {
                         video: video
                     )
                 } else {
-                    started = await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+                    started = await playRemoteOrLocal(
+                        url: streamURL,
+                        title: selection.title,
+                        video: video,
+                        durationHint: token.duration
+                    )
                 }
                 setPlaybackPhase(started ? .playing : .failed(video.engine.errorMessage ?? "Nie udało się uruchomić pliku z serwera."))
                 return started
@@ -626,7 +636,12 @@ final class OnlineMoviesController: ObservableObject {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
-    private func playRemoteOrLocal(url: URL, title: String, video: VideoAppModel) async -> Bool {
+    private func playRemoteOrLocal(
+        url: URL,
+        title: String,
+        video: VideoAppModel,
+        durationHint: Double? = nil
+    ) async -> Bool {
         // A registered phone copy already lives in our sandbox; play it directly instead
         // of copying it into another imported folder on every tap.
         episodeStreamContext = nil
@@ -642,7 +657,8 @@ final class OnlineMoviesController: ObservableObject {
             session: VideoPlaybackSession(
                 items: [item],
                 startIndex: 0,
-                folderName: url.isFileURL ? "Na urządzeniu" : EOSLibraryBrand.displayName
+                folderName: url.isFileURL ? "Na urządzeniu" : EOSLibraryBrand.displayName,
+                durationHint: durationHint
             )
         )
     }

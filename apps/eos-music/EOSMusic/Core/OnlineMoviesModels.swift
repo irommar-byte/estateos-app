@@ -322,6 +322,10 @@ struct MoviePlayTokenResponse: Codable {
     let jobId: String
     let token: String
     let expiresIn: Int?
+    let preparing: Bool?
+    let playable: Bool?
+    let error: String?
+    let duration: Double?
 }
 
 struct PreviewResponse: Codable {

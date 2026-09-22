@@ -859,6 +859,182 @@ function finalizeMovieDownload(job) {
   }
 }
 
+
+const avPlayableTasks = new Map();
+
+function avPlayableSidecarPath(filePath) {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath, path.extname(filePath));
+  return path.join(dir, `${base}.av.mp4`);
+}
+
+function videoMimeForPath(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".webm") return "video/webm";
+  if (ext === ".mkv") return "video/x-matroska";
+  if (ext === ".mov") return "video/quicktime";
+  if (ext === ".m4v") return "video/x-m4v";
+  if (ext === ".ts" || ext === ".m2ts") return "video/mp2t";
+  return "video/mp4";
+}
+
+function probeDurationSeconds(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    const r = spawnSync(ffmpegStatic, ["-hide_banner", "-i", filePath], {
+      encoding: "utf8",
+    });
+    const m = (r.stderr || "").match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    const seconds = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    return Number.isFinite(seconds) && seconds > 1 ? seconds : null;
+  } catch {
+    return null;
+  }
+}
+
+function movieDurationSeconds(job) {
+  if (Number.isFinite(job?.durationSeconds) && job.durationSeconds > 1) {
+    return job.durationSeconds;
+  }
+  const file = resolveAVPlayablePath(job) || job?.file;
+  const seconds = probeDurationSeconds(file);
+  if (seconds) job.durationSeconds = seconds;
+  return seconds || undefined;
+}
+
+function probeMediaCodecs(filePath) {
+  const r = spawnSync(ffmpegStatic, ["-hide_banner", "-i", filePath], {
+    encoding: "utf8",
+  });
+  const err = r.stderr || "";
+  const video = (err.match(/Video:\s*([A-Za-z0-9_]+)/)?.[1] || "").toLowerCase();
+  const audio = (err.match(/Audio:\s*([A-Za-z0-9_]+)/)?.[1] || "").toLowerCase();
+  return { video, audio };
+}
+
+function hasFastStartMoov(filePath) {
+  try {
+    const size = fs.statSync(filePath).size;
+    const fd = fs.openSync(filePath, "r");
+    const len = Math.min(size, 2 * 1024 * 1024);
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, 0);
+    fs.closeSync(fd);
+    const moov = buf.indexOf(Buffer.from("moov"));
+    const mdat = buf.indexOf(Buffer.from("mdat"));
+    return moov >= 4 && (mdat < 0 || moov < mdat);
+  } catch {
+    return false;
+  }
+}
+
+function isAVPlayableMp4(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return false;
+  const ext = path.extname(filePath).toLowerCase();
+  if (![".mp4", ".m4v", ".mov"].includes(ext)) return false;
+  const { video, audio } = probeMediaCodecs(filePath);
+  const videoOk = video.includes("h264") || video.includes("avc");
+  const audioOk = !audio || audio.includes("aac") || audio.includes("mp4a");
+  return videoOk && audioOk && hasFastStartMoov(filePath);
+}
+
+function resolveAVPlayablePath(job) {
+  if (job?.avPlayableFile && fs.existsSync(job.avPlayableFile)) {
+    job.avPlayablePreparing = false;
+    return job.avPlayableFile;
+  }
+  if (!job?.file) return null;
+  const sidecar = avPlayableSidecarPath(job.file);
+  if (fs.existsSync(sidecar) && fs.statSync(sidecar).size > 1024) {
+    job.avPlayableFile = sidecar;
+    job.avPlayablePreparing = false;
+    return sidecar;
+  }
+  return null;
+}
+
+function queueAVPlayableMovie(job) {
+  if (!job?.file || !fs.existsSync(job.file)) return;
+  if (resolveAVPlayablePath(job)) return;
+  if (isAVPlayableMp4(job.file)) {
+    job.avPlayableFile = job.file;
+    job.avPlayablePreparing = false;
+    job.avPlayableError = null;
+    return;
+  }
+  startAVPlayableConversion(job);
+}
+
+function startAVPlayableConversion(job) {
+  const jobId = job.id;
+  if (avPlayableTasks.has(jobId)) return avPlayableTasks.get(jobId);
+  job.avPlayablePreparing = true;
+  job.avPlayableError = null;
+  const promise = runAVPlayableConversion(job)
+    .catch((err) => {
+      console.warn("av-playable:", err?.message || err);
+      job.avPlayableError = String(err?.message || err).slice(0, 400);
+      job.avPlayablePreparing = false;
+    })
+    .finally(() => {
+      avPlayableTasks.delete(jobId);
+    });
+  avPlayableTasks.set(jobId, promise);
+  return promise;
+}
+
+function runAVPlayableConversion(job) {
+  const src = job.file;
+  const dest = avPlayableSidecarPath(src);
+  const { video, audio } = probeMediaCodecs(src);
+  const videoOk = video.includes("h264") || video.includes("avc");
+  const audioOk = !audio || audio.includes("aac") || audio.includes("mp4a");
+  const args = videoOk && audioOk
+    ? ["-y", "-i", src, "-c", "copy", "-movflags", "+faststart", dest]
+    : videoOk
+      ? ["-y", "-i", src, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", dest]
+      : [
+          "-y",
+          "-i",
+          src,
+          "-c:v",
+          "libx264",
+          "-preset",
+          "fast",
+          "-crf",
+          "23",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "192k",
+          "-movflags",
+          "+faststart",
+          dest,
+        ];
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegStatic, args);
+    job.avPlayableProc = proc;
+    let stderr = "";
+    proc.stderr?.on("data", (d) => {
+      stderr += d.toString();
+      if (stderr.length > 8000) stderr = stderr.slice(-4000);
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0 && fs.existsSync(dest) && fs.statSync(dest).size > 1024) {
+        job.avPlayableFile = dest;
+        job.avPlayablePreparing = false;
+        job.avPlayableError = null;
+        resolve(dest);
+        return;
+      }
+      reject(new Error(stderr.trim() || `ffmpeg av-playable exit ${code}`));
+    });
+  });
+}
+
 function persistMovieFile(job) {
   if (job.kind !== "movie" || !job.persistent || !job.file) return;
   const title = job.movieTitle || job.name;
@@ -888,6 +1064,11 @@ function persistMovieFile(job) {
   job.relativeMovieName = destInfo.relativeName;
   assertValidMovieFile(job.file);
   finalizeMovieDownload(job);
+  job.ready = true;
+  job.status = "done";
+  job.progress = 100;
+  if (!job.finishedAt) job.finishedAt = Date.now();
+  queueAVPlayableMovie(job);
 }
 
 function startTransferJob({ jobId, url, args, purpose = "download", movieDownload = null }) {
@@ -2506,12 +2687,14 @@ function getOrRestoreMovieJob(jobId, req) {
   };
   ensurePlayToken(restored);
   jobs.set(jobId, restored);
+  queueAVPlayableMovie(restored);
   return restored;
 }
 
-function serveVideoFile(req, res, filePath) {
+function serveVideoFile(req, res, filePath, options = {}) {
   const stat = fs.statSync(filePath);
-  const mime = "video/mp4";
+  const mime = videoMimeForPath(filePath);
+  const cacheControl = options.cacheable === false ? "private, no-store" : "private, max-age=3600";
   const range = req.headers.range;
 
   if (range) {
@@ -2532,7 +2715,7 @@ function serveVideoFile(req, res, filePath) {
       "Content-Length": String(end - start + 1),
       "Content-Type": mime,
       "Content-Disposition": "inline",
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": cacheControl,
     });
     createReadStream(filePath, { start, end }).pipe(res);
     return;
@@ -2543,7 +2726,7 @@ function serveVideoFile(req, res, filePath) {
     "Content-Type": mime,
     "Accept-Ranges": "bytes",
     "Content-Disposition": "inline",
-    "Cache-Control": "private, max-age=3600",
+    "Cache-Control": cacheControl,
   });
   createReadStream(filePath).pipe(res);
 }
@@ -5299,10 +5482,16 @@ app.get("/api/movies/play-token/:jobId", (req, res) => {
     return res.status(404).json({ error: "Film niedostępny." });
   }
   const token = ensurePlayToken(job);
+  queueAVPlayableMovie(job);
+  const playablePath = resolveAVPlayablePath(job);
   res.json({
     jobId: job.id,
     token,
     expiresIn: Math.max(0, Math.floor((job.playTokenExpires - Date.now()) / 1000)),
+    preparing: !!job.avPlayablePreparing,
+    playable: !!playablePath,
+    duration: movieDurationSeconds(job),
+    error: job.avPlayableError || undefined,
   });
 });
 
@@ -5315,7 +5504,10 @@ app.get("/api/movies/stream/:jobId", (req, res) => {
   if (!canAccessPlay(req, job)) {
     return res.status(403).send("Brak dostępu.");
   }
-  return serveVideoFile(req, res, job.file);
+  queueAVPlayableMovie(job);
+  const playablePath = resolveAVPlayablePath(job);
+  const file = playablePath || job.file;
+  return serveVideoFile(req, res, file, { cacheable: !!playablePath });
 });
 
 app.head("/api/movies/stream/:jobId", (req, res) => {
@@ -5326,12 +5518,16 @@ app.head("/api/movies/stream/:jobId", (req, res) => {
   if (!canAccessPlay(req, job)) {
     return res.status(403).end();
   }
-  const stat = fs.statSync(job.file);
+  queueAVPlayableMovie(job);
+  const playablePath = resolveAVPlayablePath(job);
+  const file = playablePath || job.file;
+  const stat = fs.statSync(file);
   res.set({
     "Content-Length": String(stat.size),
-    "Content-Type": "video/mp4",
+    "Content-Type": videoMimeForPath(file),
     "Accept-Ranges": "bytes",
     "Content-Disposition": "inline",
+    "Cache-Control": playablePath ? "private, max-age=3600" : "private, no-store",
   });
   return res.status(200).end();
 });
@@ -6502,6 +6698,7 @@ app.post("/api/downloads/queue", (req, res) => {
       folderId: req.body?.folderId || "",
       label: req.body?.label || "",
       tracks: req.body?.tracks || [],
+      isolated: !!req.body?.isolated,
     });
     res.json(result);
   } catch (err) {

@@ -9,9 +9,6 @@ struct FullPlayerView: View {
         if let engine = app.playback.engine {
             PlayerContent(engine: engine)
                 .environmentObject(app)
-                .background {
-                    EOSTheme.background.ignoresSafeArea()
-                }
         } else {
             Color.clear.onAppear { app.minimizePlayer() }
         }
@@ -82,6 +79,7 @@ private struct PlayerContent: View {
                     )
                     .environmentObject(app)
                 }
+                .toolbar(.hidden, for: .navigationBar)
         }
         .alert("Katalog", isPresented: Binding(get: { browseError != nil }, set: { if !$0 { browseError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -106,7 +104,11 @@ private struct PlayerContent: View {
                 preset: preset
             )
             ZStack {
-                PlayerStageBackdrop(colorScheme: colorScheme)
+                PlayerArtworkTintBackground(
+                    identity: engine.currentTrack?.id ?? "",
+                    image: engine.currentTrack.flatMap { engine.displayArtwork(for: $0) },
+                    colorScheme: colorScheme
+                )
 
                 PlayerGlassBackground(
                     visualizer: engine.visualizer,
@@ -114,18 +116,19 @@ private struct PlayerContent: View {
                     preset: preset,
                     policy: policy
                 )
+                .opacity(0.42)
 
-                // Stroboskop w tle — za UI playera, żeby nie zasłaniać tekstu i kontrolek.
                 if policy.allowStrobe {
                     PlayerStrobeLayer(
                         visualizer: engine.visualizer,
                         isPlaying: engine.isPlaying && !engine.isLoading,
-                        intensity: max(0.55, policy.intensityScale),
+                        intensity: max(0.72, policy.intensityScale),
                         speed: ui.playerStrobeSpeed,
-                        brightness: ui.playerStrobeBrightness,
+                        brightness: max(0.82, ui.playerStrobeBrightness),
                         sensitivity: ui.playerSensitivity,
                         trackID: engine.currentTrack?.id,
-                        colorScheme: colorScheme
+                        colorScheme: colorScheme,
+                        backgroundMode: preset != .strobe
                     )
                     .allowsHitTesting(false)
                     .zIndex(0)
@@ -133,7 +136,9 @@ private struct PlayerContent: View {
 
                 if let track = engine.currentTrack {
                     Group {
-                        if layout.wide {
+                        if preset.showsMixer {
+                            eqPlayerLayout(track: track, layout: layout)
+                        } else if layout.wide {
                             widePlayerLayout(track: track, layout: layout)
                         } else {
                             narrowPlayerLayout(track: track, layout: layout)
@@ -161,138 +166,234 @@ private struct PlayerContent: View {
         .onChange(of: ui.playerSpectrumBandCount) { _, _ in applySpectrumPreferences() }
     }
 
+    /// iPad i Mac otwierają player jako pełny ekran — nie ma systemowego grabbera.
+    private var showsCollapseChrome: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad || ProcessInfo.processInfo.isiOSAppOnMac
+    }
+
+    private var playerCollapseChrome: some View {
+        Group {
+            if showsCollapseChrome {
+                HStack {
+                    Button {
+                        app.minimizePlayer()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.body.weight(.bold))
+                            .foregroundStyle(EOSTheme.textPrimary)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("Zwiń odtwarzacz")
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 6)
+                .padding(.bottom, 4)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 18)
+                        .onEnded { value in
+                            if value.translation.height > 48 {
+                                app.minimizePlayer()
+                            }
+                        }
+                )
+            }
+        }
+    }
+
     private func narrowPlayerLayout(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
         VStack(spacing: 0) {
-            playerChrome(track: track, layout: layout)
+            playerCollapseChrome
+            Color.clear
+                .frame(height: PlayerVisualMetrics.grid)
+                .accessibilityHidden(true)
 
             GeometryReader { geo in
                 let fillH = max(220, geo.size.height)
                 let hero = layout.heroCanvasSize(availableHeight: fillH)
-                let eqH = layout.spectrumFillHeight(availableHeight: fillH)
-
-                narrowMixerStack(
+                appleMusicStack(
                     track: track,
                     layout: layout,
                     hero: hero,
-                    eqH: eqH
+                    eqH: layout.spectrumFillHeight(availableHeight: fillH),
+                    wide: false
                 )
                 .frame(width: geo.size.width, height: fillH)
             }
             .frame(maxHeight: .infinity)
+            .clipped()
 
             playerBottomConsole(layout: layout)
-            playerFooter(layout: layout)
+            playerAccessoryTray(track: track)
         }
         .padding(.horizontal, layout.horizontalPadding)
         .frame(maxWidth: max(0, layout.maxContentWidth))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Spectrum: mała okładka przy tytule, analizator wypełnia środek, suwak zostaje pod nim.
+    private func eqPlayerLayout(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
+        let thumb: CGFloat = layout.wide ? 88 : 64
+        return VStack(spacing: 0) {
+            playerCollapseChrome
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 14) {
+                    ArtworkImage(
+                        url: track.artworkURL,
+                        size: thumb,
+                        cornerRadius: 12,
+                        allowAnimated: true,
+                        fallbackImage: engine.displayArtwork(for: track)
+                    )
+                    .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
+                    trackMeta(track: track, layout: layout)
+                }
+                playerStatusSection(layout: layout)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ProMixerStatusRail(
+                    visualizer: engine.visualizer,
+                    isPlaying: engine.isPlaying && !engine.isLoading,
+                    queueLabel: engine.queuePositionLabel,
+                    onQueueTap: nil,
+                    onServer: app.isOnServer(track.url) || track.isOnServer,
+                    drive: ui.playerDrive,
+                    compact: !layout.wide
+                )
+                .frame(maxWidth: .infinity)
+                ProMixerControlStrip(compact: !layout.wide)
+                    .frame(maxWidth: .infinity)
+                nowPlayingSpectrum(layout: layout, eqH: 0, fills: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .layoutPriority(1)
+            }
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            playerBottomConsole(layout: layout)
+            playerAccessoryTray(track: track)
+        }
+        .padding(.horizontal, layout.horizontalPadding)
+        .frame(maxWidth: max(0, layout.maxContentWidth))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func widePlayerLayout(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
+        GeometryReader { geo in
+            let chrome: CGFloat = showsCollapseChrome ? 58 : 12
+            let console: CGFloat = 132
+            let tray: CGFloat = 72
+            let usableH = max(240, geo.size.height - chrome - console - tray)
+            let art = min(usableH * 0.96, geo.size.width * 0.46, 680)
+            let eqH = max(120, art * 0.34)
+            VStack(spacing: 0) {
+                playerCollapseChrome
+                HStack(alignment: .center, spacing: 40) {
+                    nowPlayingHero(track: track, hero: art)
+                        .frame(width: art, height: art)
+                    appleMusicStack(
+                        track: track,
+                        layout: layout,
+                        hero: art,
+                        eqH: eqH,
+                        wide: true
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: art, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+                playerBottomConsole(layout: layout)
+                playerAccessoryTray(track: track)
+            }
+            .padding(.horizontal, layout.horizontalPadding)
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
-    private func narrowMixerStack(
+    private func appleMusicStack(
         track: MusicPlaybackTrack,
         layout: PlayerLayout,
         hero: CGFloat,
-        eqH: CGFloat
+        eqH: CGFloat,
+        wide: Bool
     ) -> some View {
-        VStack(spacing: 0) {
-            ProMixerNarrowConsole(
-                visualizer: engine.visualizer,
-                isPlaying: engine.isPlaying,
-                isLoading: engine.isLoading,
-                intensity: mixerIntensity,
-                drive: ui.playerDrive,
-                bandCount: ui.playerSpectrumBandCount,
-                barScale: ui.playerSpectrumBarScale,
-                speed: ui.playerSpectrumSpeed,
-                sideVUSegments: ui.playerSideVUSegments,
-                compactMixer: layout.compactMixer,
-                queueLabel: engine.queuePositionLabel,
-                onQueueTap: { showQueueSheet = true },
-                onServer: app.isOnServer(track.url) || track.isOnServer,
-                effectsActive: effectsActive,
-                preset: preset,
-                policy: policy,
-                artworkURL: track.artworkURL,
-                fallbackArtwork: engine.displayArtwork,
-                canvasSize: hero,
-                spectrumHeight: eqH,
-                expandSpectrum: layout.isPad
-            ) {
-                trackMeta(track: track, layout: layout)
-            } status: {
-                playerStatusSection(layout: layout)
-            } storage: {
-                EmptyView()
+        VStack(alignment: wide ? .leading : .center, spacing: wide ? 16 : PlayerVisualMetrics.grid) {
+            if !wide {
+                Spacer(minLength: 8)
+                nowPlayingHero(track: track, hero: hero)
+                Spacer(minLength: 8)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            trackMeta(track: track, layout: layout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            playerStatusSection(layout: layout)
+                .frame(maxWidth: .infinity, alignment: wide ? .leading : .center)
+            ProMixerStatusRail(
+                visualizer: engine.visualizer,
+                isPlaying: engine.isPlaying && !engine.isLoading,
+                queueLabel: engine.queuePositionLabel,
+                onQueueTap: nil,
+                onServer: app.isOnServer(track.url) || track.isOnServer,
+                drive: ui.playerDrive,
+                compact: !wide
+            )
+            .frame(maxWidth: .infinity)
+            ProMixerControlStrip(compact: !wide)
+                .frame(maxWidth: .infinity)
+            if preset.showsMixer {
+                nowPlayingSpectrum(layout: layout, eqH: eqH, fills: wide)
+                    .frame(maxWidth: .infinity, maxHeight: wide ? .infinity : nil)
+            }
         }
     }
 
-    private func widePlayerLayout(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
-        VStack(spacing: 0) {
-            playerChrome(track: track, layout: layout)
+    private func nowPlayingHero(track: MusicPlaybackTrack, hero: CGFloat) -> some View {
+        PlayerHeroArtwork(
+            artworkURL: track.artworkURL,
+            fallbackImage: engine.displayArtwork(for: track),
+            isPlaying: engine.isPlaying && !engine.isLoading,
+            preset: preset,
+            policy: policy,
+            visualizer: engine.visualizer,
+            canvasSize: hero
+        )
+        .id(track.id)
+        .modifier(PlayerArtworkGeometry())
+        .frame(maxWidth: .infinity)
+    }
 
-            GeometryReader { geo in
-                let fillH = max(240, geo.size.height)
-                let hero = layout.heroCanvasSize(availableHeight: fillH)
-                let eqH = layout.spectrumFillHeight(availableHeight: fillH)
-
-                VStack(spacing: 0) {
-                    Spacer(minLength: layout.topGap)
-                    ProMixerWideConsole(
-                        visualizer: engine.visualizer,
-                        isPlaying: engine.isPlaying,
-                        isLoading: engine.isLoading,
-                        intensity: mixerIntensity,
-                        drive: ui.playerDrive,
-                        bandCount: ui.playerSpectrumBandCount,
-                        barScale: ui.playerSpectrumBarScale,
-                        speed: ui.playerSpectrumSpeed,
-                        sideVUSegments: ui.playerSideVUSegments,
-                        compactMixer: layout.compactMixer,
-                        queueLabel: engine.queuePositionLabel,
-                        onQueueTap: { showQueueSheet = true },
-                        onServer: app.isOnServer(track.url) || track.isOnServer,
-                        effectsActive: effectsActive,
-                        preset: preset,
-                        policy: policy,
-                        artworkURL: track.artworkURL,
-                        fallbackArtwork: engine.displayArtwork,
-                        canvasSize: hero,
-                        spectrumHeight: eqH
-                    ) {
-                        trackMeta(track: track, layout: layout)
-                    } status: {
-                        playerStatusSection(layout: layout)
-                    } storage: {
-                        EmptyView()
-                    }
-                    Spacer(minLength: layout.bottomGap)
-                }
-                .frame(height: fillH)
-            }
-            .frame(maxHeight: .infinity)
-
-            playerBottomConsole(layout: layout)
-            playerFooter(layout: layout)
-        }
-        .padding(.horizontal, layout.horizontalPadding)
-        .frame(maxWidth: max(0, layout.maxContentWidth))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private func nowPlayingSpectrum(layout: PlayerLayout, eqH: CGFloat, fills: Bool = false) -> some View {
+        WinampSpectrumHost(
+            visualizer: engine.visualizer,
+            isPlaying: engine.isPlaying && !engine.isLoading,
+            intensity: mixerIntensity,
+            bandCount: ui.playerSpectrumBandCount,
+            barScale: ui.playerSpectrumBarScale,
+            speed: ui.playerSpectrumSpeed,
+            compact: layout.compactMixer,
+            lightAppearance: colorScheme == .light
+        )
+        .frame(maxWidth: .infinity, maxHeight: fills ? .infinity : nil)
+        .frame(height: fills ? nil : max(88, eqH))
+        .frame(minHeight: fills ? 120 : 88)
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
     private func playerArtworkSection(layout: PlayerLayout, track: MusicPlaybackTrack) -> some View {
         PlayerHeroArtwork(
             artworkURL: track.artworkURL,
-            fallbackImage: engine.displayArtwork,
+            fallbackImage: engine.displayArtwork(for: track),
             isPlaying: engine.isPlaying && !engine.isLoading,
             preset: preset,
             policy: policy,
             visualizer: engine.visualizer,
             canvasSize: layout.discSize
         )
+        .id(track.id)
         .modifier(PlayerArtworkGeometry())
         .trackQuickActions(
             TrackQuickActionItem(track: track),
@@ -353,147 +454,136 @@ private struct PlayerContent: View {
         }
     }
 
-    @ViewBuilder
-    private func playerFooter(layout: PlayerLayout) -> some View {
-        if engine.repeatMode != .off {
-            Text("Powtórzenie: \(engine.repeatMode.label)")
-                .font(.caption2)
-                .foregroundStyle(EOSTheme.textMuted)
-                .padding(.top, 2)
-                .padding(.bottom, layout.safeBottom)
-        } else {
-            Color.clear.frame(height: layout.safeBottom)
-        }
-    }
-
-    private func playerChrome(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
-        VStack(spacing: 6) {
-            Capsule()
-                .fill(Color.clear)
-                .frame(width: 36, height: 5)
-                .padding(.top, 2)
-                .accessibilityHidden(true)
-
-            HStack(spacing: 4) {
+    private func playerOverflowMenu(track: MusicPlaybackTrack) -> some View {
+        Menu {
             Button {
-                app.minimizePlayer()
+                Task { await app.toggleFavorite(track.favoriteItem) }
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(EOSTheme.textSecondary)
-                    .frame(width: 40, height: 40)
-                    .eosGlassCircle()
+                Label(
+                    app.isFavorite(track.favoriteItem.url) ? "Usuń z ulubionych" : "Dodaj do ulubionych",
+                    systemImage: app.isFavorite(track.favoriteItem.url) ? "heart.fill" : "heart"
+                )
             }
-            Spacer()
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showQueueSheet = true
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "list.bullet")
-                        .font(.caption2.weight(.semibold))
-                    Text(engine.queuePositionLabel)
-                        .font(EOSTypography.monoDigit)
-                }
-                .foregroundStyle(EOSTheme.textMuted)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .eosGlassCapsule()
-            }
-            .buttonStyle(EOSPressableStyle())
-            .accessibilityLabel("Kolejka odtwarzania, \(engine.queuePositionLabel)")
-            Spacer()
-            Button {
-                showEffectsSheet = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(effectsActive ? EOSTheme.accent : EOSTheme.textSecondary)
-                    .frame(width: 40, height: 40)
-                    .eosGlassCircle()
-            }
-            .accessibilityLabel("Efekty playera")
-            FavoriteButton(item: track.favoriteItem, size: 18)
-                .frame(width: 40, height: 40)
-                .eosGlassCircle()
             Button {
                 showAddToPlaylist = true
             } label: {
-                Image(systemName: "text.badge.plus")
-                    .font(.body)
-                    .foregroundStyle(EOSTheme.textSecondary)
-                    .frame(width: 40, height: 40)
-                    .eosGlassCircle()
+                Label("Dodaj do playlisty", systemImage: "text.badge.plus")
             }
-            TrackStorageActionButton(
-                track: track.payload,
-                folderId: track.folderId,
-                frameSize: 40
-            )
-            .eosGlassCircle()
-            ShazamIdentifyButton(size: 40)
+            Button {
+                showEffectsSheet = true
+            } label: {
+                Label("Efekty i stroboskop", systemImage: "slider.horizontal.3")
+            }
+            Button {
+                engine.cycleRepeatMode()
+            } label: {
+                Label("Powtórzenie: \(engine.repeatMode.label)", systemImage: engine.repeatMode.icon)
+            }
+            if let local = OfflineMusicStore.shared.localURL(for: track.url) {
+                ShareLink(item: local) {
+                    Label("Udostępnij plik", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                ShareLink(item: shareLine(track)) {
+                    Label("Udostępnij", systemImage: "square.and.arrow.up")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(effectsActive ? EOSTheme.accent : EOSTheme.textPrimary)
+                .frame(width: PlayerVisualMetrics.heartHit, height: PlayerVisualMetrics.heartHit)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Więcej")
+    }
+
+    private func shareLine(_ track: MusicPlaybackTrack) -> String {
+        let artist = track.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if artist.isEmpty { return track.title }
+        return "\(track.title) — \(artist)"
+    }
+
+    private func playerAccessoryTray(track: MusicPlaybackTrack) -> some View {
+        VStack(spacing: 6) {
+            PlaybackRouteCaption()
+            HStack {
+                TrackStorageActionButton(
+                    track: track.payload,
+                    folderId: track.folderId,
+                    frameSize: PlayerVisualMetrics.accessoryHit
+                )
+                Spacer(minLength: 8)
+                MusicRouteButton(
+                    tint: UIColor(EOSTheme.textPrimary),
+                    activeTint: UIColor(EOSTheme.accent)
+                )
+                .frame(width: PlayerVisualMetrics.accessoryHit, height: PlayerVisualMetrics.accessoryHit)
+                .accessibilityLabel("AirPlay i wyjście audio")
+                Spacer(minLength: 8)
+                ShazamIdentifyButton(size: 36)
+                Spacer(minLength: 8)
+                Button {
+                    showQueueSheet = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(EOSTheme.textPrimary)
+                        .frame(width: PlayerVisualMetrics.accessoryHit, height: PlayerVisualMetrics.accessoryHit)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Kolejka \(engine.queuePositionLabel)")
             }
         }
-        .padding(.top, layout.chromeTop)
+        .padding(.horizontal, 4)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
     }
 
     private func trackMeta(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
-        VStack(spacing: layout.tight ? 3 : 5) {
-            Text(track.title)
-                .font(layout.wide ? .title2.weight(.bold) : (layout.tight ? .title3.weight(.bold) : .title2.weight(.bold)))
-                .foregroundStyle(EOSTheme.textPrimary)
-                .multilineTextAlignment(layout.wide ? .leading : .center)
-                .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
-                .lineLimit(layout.compactMixer ? 1 : 2)
-                .minimumScaleFactor(0.8)
-            if engine.playbackOrigin != .unknown {
-                BreathingSourceBadge(origin: engine.playbackOrigin)
-                    .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
-            }
-            if let artist = track.artist, !artist.isEmpty {
-                Button {
-                    Task { await openArtist(for: track) }
-                } label: {
-                    Text(artist)
-                        .font(layout.compactMixer ? .subheadline : (layout.tight ? .body : .title3))
-                        .foregroundStyle(EOSTheme.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                        .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(track.title)
+                    .font(layout.wide ? .title.weight(.semibold) : .title2.weight(.semibold))
+                    .foregroundStyle(EOSTheme.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let artist = track.artist, !artist.isEmpty {
+                    Button {
+                        Task { await openArtist(for: track) }
+                    } label: {
+                        Text(artist)
+                            .font(.body)
+                            .foregroundStyle(EOSTheme.textSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-            }
-            if let album = track.album, !album.isEmpty {
-                Button {
-                    openAlbum(for: track)
-                } label: {
-                    Text(album)
-                        .font(.footnote)
-                        .foregroundStyle(EOSTheme.textMuted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                        .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
+                if engine.playbackOrigin != .unknown {
+                    BreathingSourceBadge(origin: engine.playbackOrigin)
                 }
-                .buttonStyle(.plain)
-                .disabled(track.albumId?.isEmpty != false)
-                .opacity(track.albumId?.isEmpty == false ? 1 : 0.55)
-            }
-
-            if track.isExternal, !track.isOpenedLocalImport {
-                HStack(spacing: 6) {
-                    Image(systemName: "iphone")
-                        .font(.caption.weight(.semibold))
-                    Text(track.playbackFileURL != nil ? "Plik lokalny" : "Źródło zewnętrzne")
-                        .font(.caption.weight(.semibold))
+                if let album = track.album, !album.isEmpty {
+                    Button {
+                        openAlbum(for: track)
+                    } label: {
+                        Text(album)
+                            .font(.footnote)
+                            .foregroundStyle(EOSTheme.textMuted)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(track.albumId?.isEmpty != false)
+                    .opacity(track.albumId?.isEmpty == false ? 1 : 0.55)
                 }
-                .foregroundStyle(.green)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Color.green.opacity(0.12), in: Capsule())
-                .padding(.top, layout.tight ? 6 : 8)
             }
+            FavoriteButton(item: track.favoriteItem, size: 20, hitSize: PlayerVisualMetrics.heartHit)
+            playerOverflowMenu(track: track)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 2)
     }
 
     private func playbackSlider() -> some View {
@@ -512,14 +602,9 @@ private struct PlayerContent: View {
                 bare: true
             )
         }
-        .padding(.horizontal, 10)
-        .padding(.top, layout.tight ? 8 : 10)
+        .padding(.horizontal, 4)
+        .padding(.top, layout.tight ? 10 : 14)
         .padding(.bottom, layout.tight ? 2 : 4)
-        .background {
-            PlayerBottomConsoleSurface(colorScheme: colorScheme)
-        }
-        .padding(.top, 4)
-        .padding(.horizontal, layout.isPad || layout.wide ? 4 : 10)
     }
 
     private func openAlbum(for track: MusicPlaybackTrack) {
@@ -586,7 +671,8 @@ private struct PlayerLayout {
         self.preset = preset
     }
 
-    var wide: Bool { width >= 640 && width > height * 1.05 }
+    /// Dwie kolumny tylko gdy okno jest naprawdę szersze niż wyższe.
+    var wide: Bool { width >= 760 && width > height }
     var tight: Bool { isPad ? height < 580 : height < 680 }
     var compact: Bool { isPad ? height < 650 : height < 760 }
     var compactMixer: Bool { tight || height < 820 }
@@ -615,16 +701,12 @@ private struct PlayerLayout {
 
     /// Rozmiar hero względem realnej wolnej wysokości (między chrome a transportem).
     func heroCanvasSize(availableHeight: CGFloat) -> CGFloat {
-        if preset.showsMixer {
-            if isPad { return min(132, max(discSize, availableHeight * 0.11)) }
-            return min(discSize, max(56, availableHeight * 0.11))
-        }
-        // Cover / vinyl — zajmij większość wolnej przestrzeni, ale zostaw pasek efektów.
-        let reserved: CGFloat = isPad ? 210 : 248
-        let leftover = max(140, availableHeight - reserved)
-        let target = leftover * (isPad ? 0.84 : 0.82)
-        let capped = min(width * (isPad ? 0.86 : 0.78), target, leftover, isPad ? 640 : 280)
-        return max(min(discSize, leftover), min(capped, leftover))
+        PlayerVisualMetrics.heroSide(
+            width: width,
+            availableHeight: availableHeight,
+            showsMixer: preset.showsMixer,
+            isPad: isPad
+        )
     }
 
     func spectrumFillHeight(availableHeight: CGFloat) -> CGFloat {
@@ -685,7 +767,7 @@ private struct PlayerLayout {
         return 52
     }
 
-    var playButtonSize: CGFloat { tight ? 46 : (compact ? 52 : 58) }
+    var playButtonSize: CGFloat { tight ? 58 : (compact ? 64 : 70) }
     var topGap: CGFloat { tight ? 2 : (compact ? 4 : 6) }
     var afterDiscGap: CGFloat { tight ? 4 : 8 }
     var metaGap: CGFloat { tight ? 4 : 8 }
@@ -693,8 +775,8 @@ private struct PlayerLayout {
     var chromeTop: CGFloat { tight ? 2 : 6 }
     var safeBottom: CGFloat { isPad ? 10 : (tight ? 2 : 4) }
     var horizontalPadding: CGFloat {
-        if isPad { return wide ? 28 : (width > 900 ? 32 : 20) }
-        return wide ? 28 : (width > 700 ? 24 : (width < 340 ? 10 : 16))
+        if isPad { return wide ? 28 : (width > 900 ? 32 : PlayerVisualMetrics.contentInset) }
+        return wide ? 28 : PlayerVisualMetrics.contentInset
     }
     var maxContentWidth: CGFloat {
         // iPad full-screen player uses nearly the whole window (like iPhone).
@@ -717,13 +799,7 @@ private struct PlayerGlassBackground: View {
 
     var body: some View {
         let _ = visualizer
-        ZStack {
-            EOSTheme.background
-                .ignoresSafeArea()
-
-            // Soft ambient wash — GPU gradients, no TimelineView.
-            PlayerAmbientWash(isPlaying: isPlaying && policy.enabled, preset: preset)
-        }
+        PlayerAmbientWash(isPlaying: isPlaying && policy.enabled, preset: preset)
     }
 }
 
@@ -826,15 +902,15 @@ private struct PlayerHeroArtwork: View {
             if !enabled {
                 ArtworkImage(
                     url: artworkURL,
-                    size: canvasSize * 0.82,
-                    cornerRadius: 18,
+                    size: canvasSize * 0.92,
+                    cornerRadius: PlayerVisualMetrics.heroCornerRadius,
                     allowAnimated: true,
                     fallbackImage: fallbackImage
                 )
                     .shadow(color: EOSTheme.accent.opacity(0.14), radius: 16, y: 8)
             } else if preset == .vinyl {
                 VinylHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize)
-            } else if preset == .cover, let visualizer {
+            } else if (preset == .cover || preset == .strobe), let visualizer {
                 CoverSplitBeatPulseView(
                     artworkURL: artworkURL,
                     fallbackImage: fallbackImage,
@@ -842,7 +918,7 @@ private struct PlayerHeroArtwork: View {
                     visualizer: visualizer,
                     policy: policy,
                     canvasSize: canvasSize,
-                    cornerRadius: 18,
+                    cornerRadius: PlayerVisualMetrics.heroCornerRadius,
                     style: .split
                 )
             } else if preset == .cover {
@@ -855,7 +931,7 @@ private struct PlayerHeroArtwork: View {
                     visualizer: visualizer,
                     policy: policy,
                     canvasSize: canvasSize,
-                    cornerRadius: 16,
+                    cornerRadius: PlayerVisualMetrics.heroCornerRadius,
                     style: .halo
                 )
             } else {
@@ -875,15 +951,10 @@ private struct VinylHero: View {
 
     var body: some View {
         let scale = canvasSize / 320
-        ZStack {
-            SoftOrbGlow(isPlaying: isPlaying, strong: false)
-                .frame(width: 330, height: 330)
-
-            CheapSpin(isSpinning: isPlaying, secondsPerRevolution: 11) {
-                VinylDisc(artworkURL: artworkURL, fallbackImage: fallbackImage)
-            }
-            .shadow(color: EOSTheme.accent.opacity(isPlaying ? 0.28 : 0.1), radius: isPlaying ? 20 : 12, y: 8)
+        VinylCASpin(isSpinning: isPlaying) {
+            VinylDisc(artworkURL: artworkURL, fallbackImage: fallbackImage)
         }
+        .frame(width: 286, height: 286)
         .frame(width: 320, height: 320)
         .scaleEffect(scale)
         .frame(width: canvasSize, height: canvasSize)
@@ -1283,43 +1354,53 @@ private struct PlayerStrobeLayer: View {
     var sensitivity: Double = 0.78
     var trackID: String?
     var colorScheme: ColorScheme = .dark
+    var backgroundMode: Bool = true
 
-    @StateObject private var beatDriver = StrobeBeatDriver()
+    @StateObject private var driver = CoverBeatPulseDriver()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 45, paused: !isPlaying)) { context in
-            let frame = visualizer.snapshot(isPlaying: isPlaying)
-            let t = context.date.timeIntervalSinceReferenceDate
-            let flash = beatDriver.flashAmount(
-                at: t,
-                rhythm: min(1, frame.bass * 0.48 + frame.mid * 0.34 + frame.level * 0.18 + frame.energy * 0.12),
-                bass: frame.bass,
-                level: frame.level,
+        let pulse = driver.pulse
+        let flash = max(pulse.beat, pulse.rytm * 0.85, pulse.bass * 0.40)
+        StrobeFlashView(
+            flash: flash,
+            beat: pulse.beat,
+            rytm: pulse.rytm,
+            isPlaying: isPlaying,
+            intensity: intensity,
+            brightness: brightness,
+            colorScheme: colorScheme,
+            backgroundMode: backgroundMode
+        )
+        .onAppear {
+            driver.start(
+                visualizer: visualizer,
                 isPlaying: isPlaying,
-                speed: speed,
-                sensitivity: sensitivity
+                fps: PlayerVisualMetrics.analyzerFPS(preferred: 14)
             )
-            StrobeFlashView(
-                flash: flash,
-                isPlaying: isPlaying,
-                intensity: intensity,
-                brightness: brightness,
-                colorScheme: colorScheme,
-                backgroundMode: true
+        }
+        .onChange(of: isPlaying) { _, playing in
+            driver.start(
+                visualizer: visualizer,
+                isPlaying: playing,
+                fps: PlayerVisualMetrics.analyzerFPS(preferred: 14)
             )
         }
         .onChange(of: trackID) { _, _ in
-            beatDriver.reset()
+            driver.start(
+                visualizer: visualizer,
+                isPlaying: isPlaying,
+                fps: PlayerVisualMetrics.analyzerFPS(preferred: 14)
+            )
         }
-        .onChange(of: isPlaying) { _, playing in
-            if !playing { beatDriver.reset() }
-        }
+        .onDisappear { driver.stop() }
     }
 }
 
 /// Klubowy stroboskop: błyski zsynchronizowane z rytmem (bas + mid), nie z ostrym beatem.
 private struct StrobeFlashView: View {
     let flash: Double
+    var beat: Double = 0
+    var rytm: Double = 0
     let isPlaying: Bool
     let intensity: Double
     var brightness: Double = 0.72
@@ -1327,65 +1408,42 @@ private struct StrobeFlashView: View {
     var backgroundMode: Bool = false
 
     var body: some View {
-        let bgScale: Double = backgroundMode ? 0.78 : 1
-        let power = isPlaying ? min(1, flash * brightness * (0.72 + intensity * 0.85) * bgScale) : 0
+        let power = isPlaying ? min(1, flash * brightness * (0.9 + intensity * 0.7)) : 0
         let isLight = colorScheme == .light
-        let flashCore = isLight ? Color.black : Color.white
-        let flashAccent = isLight ? EOSTheme.accent : Color.white
+        let left = isPlaying ? min(1, beat * brightness) : 0
+        let right = isPlaying ? min(1, rytm * brightness) : 0
 
         ZStack {
-            flashCore.opacity(power * (isLight ? 0.55 : 0.48))
-                .blendMode(isLight ? .multiply : .plusLighter)
-
-            flashCore.opacity(power * (isLight ? 0.22 : 0.35))
-                .blendMode(.screen)
-
-            RadialGradient(
-                colors: [
-                    flashAccent.opacity(power * (isLight ? 0.62 : 0.78)),
-                    EOSTheme.accent.opacity(power * 0.55),
-                    EOSTheme.accentSecondary.opacity(power * 0.32),
-                    .clear
-                ],
-                center: .center,
-                startRadius: 4,
-                endRadius: 620
-            )
-            .blendMode(isLight ? .normal : .plusLighter)
-
-            if backgroundMode {
+            HStack(spacing: 0) {
                 LinearGradient(
                     colors: [
-                        flashAccent.opacity(power * 0.42),
-                        .clear,
-                        EOSTheme.accent.opacity(power * 0.38)
+                        ProMixerDeckView.labelGreen.opacity(isLight ? left * 0.55 : left * 0.92),
+                        ProMixerDeckView.labelGreen.opacity(left * 0.28),
+                        .clear
                     ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                    startPoint: .leading,
+                    endPoint: .trailing
                 )
-                .blendMode(.plusLighter)
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        ProMixerDeckView.labelAmber.opacity(right * 0.28),
+                        ProMixerDeckView.labelAmber.opacity(isLight ? right * 0.55 : right * 0.92)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
             }
+            .blendMode(isLight ? .multiply : .plusLighter)
+
+            Color.white.opacity(isLight ? 0 : power * 0.22)
+                .blendMode(.plusLighter)
 
             if !backgroundMode {
-                HStack {
-                    Circle()
-                        .fill(flashCore.opacity(power * 0.92))
-                        .frame(width: 120, height: 120)
-                        .blur(radius: 28)
-                        .offset(x: -40, y: -20)
-                    Spacer()
-                    Circle()
-                        .fill(EOSTheme.accent.opacity(power * 0.95))
-                        .frame(width: 120, height: 120)
-                        .blur(radius: 28)
-                        .offset(x: 40, y: -20)
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(flashAccent.opacity(power * 0.92), lineWidth: 2.5)
+                    .stroke(Color.white.opacity(power * 0.7), lineWidth: 2)
                     .padding(6)
-                    .blendMode(isLight ? .normal : .plusLighter)
+                    .blendMode(.plusLighter)
             }
         }
         .ignoresSafeArea()

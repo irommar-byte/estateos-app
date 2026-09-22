@@ -32,7 +32,9 @@ struct MusicOrientationSync: ViewModifier {
             musicSessionActive: musicActive && !videoActive,
             videoSessionActive: videoActive
         )
-        showLandscape = musicActive && !videoActive && UIDevice.current.orientation.isLandscape
+        let phoneLandscape = UIDevice.current.userInterfaceIdiom != .pad
+            && UIDevice.current.orientation.isLandscape
+        showLandscape = musicActive && !videoActive && phoneLandscape
     }
 }
 
@@ -58,21 +60,30 @@ struct LandscapeNowPlayingView: View {
         let policy = PlayerVisualPolicy.resolve(
             preset: preset == .off ? .cover : preset,
             intensity: ui.playerEffectsIntensity * ui.playerSensitivity,
-            strobeEnabled: false,
+            strobeEnabled: ui.playerStrobeEnabled || preset == .strobe,
             autoPerformance: ui.playerAutoPerformance,
             reduceMotion: reduceMotion,
             lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
             thermal: ProcessInfo.processInfo.thermalState
         )
         GeometryReader { geo in
-            let vinyl = preset == .vinyl
+            let stageKind: LandscapeStageKind = {
+                if preset == .vinyl { return .vinyl }
+                if preset == .spectrum { return .spectrum }
+                return .cover
+            }()
             ZStack {
                 LandscapeFullscreenStage(
                     engine: engine,
                     track: track,
                     policy: policy,
                     canvas: geo.size,
-                    vinyl: vinyl
+                    kind: stageKind,
+                    strobe: policy.allowStrobe,
+                    bandCount: ui.playerSpectrumBandCount >= 32 ? 32 : 24,
+                    intensity: policy.intensityScale,
+                    safeLeading: geo.safeAreaInsets.leading,
+                    safeTrailing: geo.safeAreaInsets.trailing
                 )
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -89,6 +100,22 @@ struct LandscapeNowPlayingView: View {
             )
 
             VStack {
+                HStack {
+                    Button {
+                        app.minimizePlayer()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.body.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Zwiń odtwarzacz")
+                    Spacer()
+                }
+                .padding(.top, 16)
+                .padding(.leading, 20)
                 Spacer()
                 HStack(spacing: 22) {
                     Button { Task { await engine.skipPrevious() } } label: {
@@ -117,12 +144,21 @@ struct LandscapeNowPlayingView: View {
     }
 }
 
+private enum LandscapeStageKind {
+    case cover, vinyl, spectrum
+}
+
 private struct LandscapeFullscreenStage: View {
     @ObservedObject var engine: MusicPlaybackEngine
     let track: MusicPlaybackTrack
     let policy: PlayerVisualPolicy
     let canvas: CGSize
-    let vinyl: Bool
+    let kind: LandscapeStageKind
+    let strobe: Bool
+    let bandCount: Int
+    let intensity: Double
+    let safeLeading: CGFloat
+    let safeTrailing: CGFloat
     @StateObject private var driver = CoverBeatPulseDriver()
 
     var body: some View {
@@ -130,9 +166,13 @@ private struct LandscapeFullscreenStage: View {
         let live = engine.isPlaying && policy.enabled && policy.analyzerFPS > 0.5
         ZStack {
             Color.black
-            if vinyl {
+            LandscapeClubWings(beat: pulse.beat, rytm: pulse.rytm, strobe: strobe && live)
+            switch kind {
+            case .vinyl:
                 vinylStage(pulse: pulse, live: live)
-            } else {
+            case .spectrum:
+                spectrumStage(pulse: pulse, live: live)
+            case .cover:
                 coverStage(pulse: pulse, live: live)
             }
         }
@@ -150,146 +190,259 @@ private struct LandscapeFullscreenStage: View {
         .onDisappear { driver.stop() }
     }
 
+    private var islandInset: CGFloat {
+        PlayerVisualMetrics.landscapeSideInset(safeLeading: safeLeading, safeTrailing: safeTrailing)
+    }
+
     private func coverStage(pulse: CoverBeatPulseDriver.Pulse, live: Bool) -> some View {
-        let fill = max(canvas.width, canvas.height)
-        return ZStack {
+        let art = PlayerVisualMetrics.landscapeDiscSize(canvas: canvas)
+        return HStack(spacing: PlayerVisualMetrics.landscapeLampGap) {
+            CoverBeatLEDBank(
+                label: "BEAT",
+                color: ProMixerDeckView.labelGreen,
+                intensity: pulse.beat
+            )
+            coverDisc(art: art, pulse: pulse, live: live)
+            CoverBeatLEDBank(
+                label: "RYTM",
+                color: ProMixerDeckView.labelAmber,
+                intensity: pulse.rytm
+            )
+        }
+        .padding(.horizontal, islandInset)
+        .frame(width: canvas.width, height: canvas.height)
+    }
+
+    private func spectrumStage(pulse: CoverBeatPulseDriver.Pulse, live: Bool) -> some View {
+        let art = min(148, canvas.height * 0.42)
+        return HStack(spacing: PlayerVisualMetrics.landscapeLampGap) {
+            CoverBeatLEDBank(
+                label: "BEAT",
+                color: ProMixerDeckView.labelGreen,
+                intensity: pulse.beat
+            )
+            VStack(spacing: 12) {
+                ArtworkImage(
+                    url: track.artworkURL,
+                    size: art,
+                    cornerRadius: 12,
+                    allowAnimated: false,
+                    fallbackImage: engine.displayArtwork(for: track),
+                    identity: track.id,
+                    placeholderTitle: track.title,
+                    placeholderSubtitle: track.artist
+                )
+                .frame(width: art, height: art)
+                WinampSpectrumHost(
+                    visualizer: engine.visualizer,
+                    isPlaying: live,
+                    intensity: max(0.85, intensity),
+                    bandCount: bandCount,
+                    compact: false,
+                    lightAppearance: false
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, 78)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            CoverBeatLEDBank(
+                label: "RYTM",
+                color: ProMixerDeckView.labelAmber,
+                intensity: pulse.rytm
+            )
+        }
+        .padding(.horizontal, islandInset)
+        .padding(.vertical, 12)
+        .frame(width: canvas.width, height: canvas.height)
+    }
+
+    private func coverDisc(art: CGFloat, pulse: CoverBeatPulseDriver.Pulse, live: Bool) -> some View {
+        ZStack {
             ArtworkImage(
                 url: track.artworkURL,
-                size: fill,
-                cornerRadius: 0,
+                size: art,
+                cornerRadius: 10,
                 allowAnimated: true,
-                fallbackImage: engine.displayArtwork
+                fallbackImage: engine.displayArtwork(for: track),
+                identity: track.id,
+                placeholderTitle: track.title,
+                placeholderSubtitle: track.artist
             )
-            .frame(width: canvas.width, height: canvas.height)
-            .clipped()
-            .scaleEffect(1 + CGFloat(pulse.bass) * 0.014)
-            .brightness(pulse.beat * 0.04)
-
-            HStack(spacing: 0) {
-                CoverBeatWash(
-                    flash: pulse.beat,
-                    accent: ProMixerDeckView.labelGreen,
-                    isLeft: true,
-                    drive: pulse.drive,
-                    cornerRadius: 0,
-                    isLight: false
-                )
-                CoverBeatWash(
-                    flash: pulse.rytm,
-                    accent: ProMixerDeckView.labelAmber,
-                    isLeft: false,
-                    drive: pulse.drive,
-                    cornerRadius: 0,
-                    isLight: false
-                )
-            }
-            .frame(width: canvas.width, height: canvas.height)
-            .blendMode(.plusLighter)
-            .allowsHitTesting(false)
-
-            HStack(spacing: 0) {
-                ProMixerDeckView.labelGreen.opacity(pulse.beat * 0.28)
-                ProMixerDeckView.labelAmber.opacity(pulse.rytm * 0.24)
-            }
-            .frame(width: canvas.width, height: canvas.height)
-            .blendMode(.plusLighter)
-            .allowsHitTesting(false)
-
-            HStack {
-                CoverBeatLEDBank(
-                    label: "BEAT",
-                    color: ProMixerDeckView.labelGreen,
-                    intensity: pulse.beat
-                )
-                .padding(.leading, 14)
-                Spacer(minLength: 0)
-                CoverBeatLEDBank(
-                    label: "RYTM",
-                    color: ProMixerDeckView.labelAmber,
-                    intensity: pulse.rytm
-                )
-                .padding(.trailing, 14)
-            }
-            .frame(width: canvas.width, height: canvas.height)
+            LandscapeBlackFieldFlash(pulse: pulse, strobe: strobe && live)
+                .frame(width: art, height: art)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .allowsHitTesting(false)
         }
-        .frame(width: canvas.width, height: canvas.height)
-        .clipped()
-        .animation(.easeOut(duration: 0.055), value: pulse.beat)
-        .animation(.easeOut(duration: 0.065), value: pulse.rytm)
+        .frame(width: art, height: art)
     }
 
     private func vinylStage(pulse: CoverBeatPulseDriver.Pulse, live: Bool) -> some View {
-        let disc = min(canvas.width, canvas.height) * 0.96
-        return ZStack {
-            RadialGradient(
-                colors: [
-                    ProMixerDeckView.labelGreen.opacity(0.16 + pulse.beat * 0.42),
-                    ProMixerDeckView.labelAmber.opacity(0.10 + pulse.rytm * 0.34),
-                    Color.black
-                ],
-                center: .center,
-                startRadius: disc * 0.12,
-                endRadius: max(canvas.width, canvas.height) * 0.72
+        let disc = PlayerVisualMetrics.landscapeDiscSize(canvas: canvas)
+        return HStack(spacing: PlayerVisualMetrics.landscapeLampGap) {
+            CoverBeatLEDBank(
+                label: "BEAT",
+                color: ProMixerDeckView.labelGreen,
+                intensity: pulse.beat
             )
-            .scaleEffect(1 + CGFloat(pulse.bass) * 0.04)
+            vinylDisc(disc: disc, pulse: pulse, live: live)
+            CoverBeatLEDBank(
+                label: "RYTM",
+                color: ProMixerDeckView.labelAmber,
+                intensity: pulse.rytm
+            )
+        }
+        .padding(.horizontal, islandInset)
+        .frame(width: canvas.width, height: canvas.height)
+    }
 
-            Circle()
-                .strokeBorder(ProMixerDeckView.labelGreen.opacity(0.18 + pulse.beat * 0.72), lineWidth: 5 + pulse.beat * 10)
-                .frame(width: disc * 1.08, height: disc * 1.08)
-                .blur(radius: 1.4)
-            Circle()
-                .strokeBorder(ProMixerDeckView.labelAmber.opacity(0.14 + pulse.rytm * 0.62), lineWidth: 3 + pulse.rytm * 8)
-                .frame(width: disc * 1.18, height: disc * 1.18)
-                .blur(radius: 2)
-
-            LandscapeSpin(isSpinning: live && policy.analyzerFPS > 0.5) {
+    private func vinylDisc(disc: CGFloat, pulse: CoverBeatPulseDriver.Pulse, live: Bool) -> some View {
+        ZStack {
+            VinylPulseRings(size: disc, pulse: pulse)
+            VinylCASpin(isSpinning: live && policy.analyzerFPS > 0.5) {
                 ArtworkImage(
                     url: track.artworkURL,
                     size: disc,
                     cornerRadius: disc,
                     circleClip: true,
-                    fallbackImage: engine.displayArtwork
+                    fallbackImage: engine.displayArtwork(for: track),
+                    identity: track.id,
+                    placeholderTitle: track.title,
+                    placeholderSubtitle: track.artist
                 )
                 .overlay {
                     Circle()
-                        .stroke(Color.white.opacity(0.18), lineWidth: 2)
-                        .frame(width: disc * 0.28, height: disc * 0.28)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.55),
+                                    Color.white.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 2.2
+                        )
                 }
                 .overlay {
                     Circle()
-                        .fill(Color.black.opacity(0.88))
-                        .frame(width: 22, height: 22)
+                        .stroke(Color.white.opacity(0.28), lineWidth: 1.6)
+                        .frame(width: disc * 0.30, height: disc * 0.30)
                 }
-                .scaleEffect(1 + CGFloat(pulse.bass) * 0.02)
-                .shadow(color: EOSTheme.accent.opacity(0.18 + pulse.beat * 0.35), radius: 28)
+                .overlay {
+                    Circle()
+                        .fill(Color.black.opacity(0.90))
+                        .frame(width: 22, height: 22)
+                        .overlay {
+                            Circle().fill(Color.white.opacity(0.22)).frame(width: 7, height: 7)
+                        }
+                }
             }
+            .frame(width: disc, height: disc)
+            LandscapeBlackFieldFlash(pulse: pulse, strobe: strobe && live)
+                .frame(width: disc, height: disc)
+                .clipShape(Circle())
+                .allowsHitTesting(false)
         }
-        .animation(.easeOut(duration: 0.07), value: pulse.beat)
-        .animation(.easeOut(duration: 0.08), value: pulse.rytm)
+        .frame(width: disc, height: disc)
     }
 }
 
-private struct LandscapeSpin<Content: View>: View {
-    let isSpinning: Bool
-    @ViewBuilder let content: Content
-    @State private var angle: Double = 0
+/// Full-height club wings: green on the beat, amber on the rhythm.
+/// One plusLighter pass, no blur — the black gutters become the strobe.
+private struct LandscapeClubWings: View {
+    var beat: Double
+    var rytm: Double
+    var strobe: Bool
 
     var body: some View {
-        content
-            .rotationEffect(.degrees(angle))
-            .onAppear { apply(isSpinning) }
-            .onChange(of: isSpinning) { _, spinning in apply(spinning) }
-    }
-
-    private func apply(_ spinning: Bool) {
-        if spinning {
-            withAnimation(.linear(duration: 11).repeatForever(autoreverses: false)) {
-                angle += 360
+        let punch = strobe ? 1.0 : 0.62
+        ZStack {
+            HStack(spacing: 0) {
+                LinearGradient(
+                    colors: [
+                        ProMixerDeckView.labelGreen.opacity(min(0.96, beat * punch)),
+                        ProMixerDeckView.labelGreen.opacity(beat * 0.42 * punch),
+                        .clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        ProMixerDeckView.labelAmber.opacity(rytm * 0.42 * punch),
+                        ProMixerDeckView.labelAmber.opacity(min(0.96, rytm * punch))
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
             }
-        } else {
-            var t = Transaction()
-            t.disablesAnimations = true
-            withTransaction(t) { angle = angle.truncatingRemainder(dividingBy: 360) }
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.white.opacity(strobe ? beat * 0.72 : 0))
+                    .frame(maxWidth: strobe ? 36 : 0)
+                Spacer(minLength: 0)
+                Rectangle()
+                    .fill(Color.white.opacity(strobe ? rytm * 0.68 : 0))
+                    .frame(maxWidth: strobe ? 36 : 0)
+            }
         }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct LandscapeBlackFieldFlash: View {
+    let pulse: CoverBeatPulseDriver.Pulse
+    let strobe: Bool
+
+    var body: some View {
+        let hit = max(pulse.beat, pulse.rytm * 0.85, pulse.bass * 0.45)
+        let punch = strobe ? 0.78 : 0.14
+        ZStack {
+            Color.white.opacity(hit * punch)
+            RadialGradient(
+                colors: [
+                    Color.white.opacity((strobe ? 0.88 : 0.20) * hit),
+                    ProMixerDeckView.labelGreen.opacity(pulse.beat * (strobe ? 0.62 : 0.22)),
+                    ProMixerDeckView.labelAmber.opacity(pulse.rytm * (strobe ? 0.52 : 0.18)),
+                    .clear
+                ],
+                center: .center,
+                startRadius: 8,
+                endRadius: 420
+            )
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+    }
+}
+
+struct VinylPulseRings: View {
+    let size: CGFloat
+    let pulse: CoverBeatPulseDriver.Pulse
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(
+                    Color.white.opacity(0.10 + pulse.treble * 0.42),
+                    lineWidth: 1.1 + pulse.treble * 2.4
+                )
+                .frame(width: size * 1.28, height: size * 1.28)
+            Circle()
+                .strokeBorder(
+                    ProMixerDeckView.labelGreen.opacity(0.20 + pulse.beat * 0.70),
+                    lineWidth: 3 + pulse.beat * 7
+                )
+                .frame(width: size * 1.10, height: size * 1.10)
+            Circle()
+                .strokeBorder(
+                    ProMixerDeckView.labelAmber.opacity(0.16 + pulse.rytm * 0.64),
+                    lineWidth: 2.4 + pulse.rytm * 6
+                )
+                .frame(width: size * 1.20, height: size * 1.20)
+        }
+        .allowsHitTesting(false)
     }
 }

@@ -1,7 +1,46 @@
+import AVFoundation
 import Combine
 import Foundation
 import MobileVLCKit
 import UIKit
+
+enum VideoDurationPolicy {
+    /// VLC often reports a few milliseconds (or a short stub) before the real length.
+    static func acceptedDuration(reportedSeconds: Double, currentTime: Double, existing: Double = 0) -> Double? {
+        guard reportedSeconds.isFinite, reportedSeconds > 1 else { return nil }
+        guard reportedSeconds + 0.25 >= currentTime else { return nil }
+        if existing > 240, reportedSeconds < 180, reportedSeconds < existing * 0.35 {
+            return nil
+        }
+        return reportedSeconds
+    }
+
+    /// Fresh play without `:start-time` — snap back if VLC opened away from 0.
+    static func shouldResetFreshStart(currentTime: Double) -> Bool {
+        currentTime.isFinite && currentTime > 1.5
+    }
+
+    /// Approximate length from file size + stream bitrate when the container hides `moov`.
+    static func estimatedDuration(fileBytes: Int64, bitrateBps: Int) -> Double? {
+        guard fileBytes > 1_000_000, bitrateBps > 80_000 else { return nil }
+        let seconds = Double(fileBytes) * 8.0 / Double(bitrateBps)
+        guard seconds.isFinite, seconds > 30, seconds < 20 * 3600 else { return nil }
+        return seconds
+    }
+}
+
+enum VideoStreamURLPolicy {
+    static func movieJobId(from url: URL?) -> String? {
+        guard let url else { return nil }
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard let movies = parts.firstIndex(of: "movies"),
+              parts.indices.contains(movies + 2),
+              parts[movies + 1] == "stream"
+        else { return nil }
+        let job = parts[movies + 2]
+        return job.isEmpty ? nil : job
+    }
+}
 
 @MainActor
 final class VideoPlaybackEngine: NSObject, ObservableObject {
@@ -69,6 +108,11 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     private var accessedFolderId: UUID?
     private var lastStripCaptureAt: Double = -30
     private var pendingSnapshotFraction: Double?
+    /// Fresh play (no `:start-time`) — seek to 0 once duration is known if VLC opened mid-file.
+    private var freshStartNeedsZeroSeek = false
+    private var sessionDurationHint: Double?
+    private var pendingRemoteBytes: Int64 = 0
+    private var durationProbeTask: Task<Void, Never>?
 
     var currentItem: VideoItem? {
         guard queue.indices.contains(currentIndex) else { return nil }
@@ -337,6 +381,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         sourcesRef = sources
         queue = session.items
         folderName = session.folderName
+        sessionDurationHint = session.durationHint
         currentIndex = min(max(0, session.startIndex), max(0, session.items.count - 1))
         errorMessage = nil
         hasEnded = false
@@ -567,11 +612,17 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     private func applySeek(to seconds: Double) {
-        let total = max(duration > 1 ? duration : (player.media?.length.value?.doubleValue ?? 0) / 1000.0, 0.001)
-        let clamped = min(max(0, seconds), total)
+        let mediaLen = (player.media?.length.value?.doubleValue ?? 0) / 1000.0
+        let known = duration > 1 ? duration : (mediaLen > 1 ? mediaLen : 0)
+        let clamped: Double
+        if known > 1 {
+            clamped = min(max(0, seconds), known)
+            player.position = Float(clamped / known)
+        } else {
+            clamped = max(0, seconds)
+        }
         let ms = Int32((clamped * 1000.0).rounded())
         player.time = VLCTime(int: ms)
-        player.position = Float(clamped / total)
         currentTime = clamped
         lastPublishedTime = clamped
         hasEnded = false
@@ -686,6 +737,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         bufferingRevealTask?.cancel()
         aspectApplyTask?.cancel()
         mediaLoadTask?.cancel()
+        durationProbeTask?.cancel()
+        durationProbeTask = nil
         videoKickTask = nil
         bufferingRevealTask = nil
         aspectApplyTask = nil
@@ -701,6 +754,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         hasEnded = false
         currentTime = 0
         duration = 0
+        freshStartNeedsZeroSeek = false
         queue = []
         currentIndex = 0
         audioTracks = []
@@ -785,9 +839,15 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             if let startAt, startAt > 0.5 {
                 currentTime = startAt
                 lastPublishedTime = startAt
+                freshStartNeedsZeroSeek = false
             } else {
                 currentTime = 0
                 lastPublishedTime = 0
+                duration = 0
+                freshStartNeedsZeroSeek = true
+            }
+            if let hint = sessionDurationHint {
+                applyDurationHint(hint)
             }
             hasEnded = false
             errorMessage = nil
@@ -818,6 +878,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     self.refreshSignalInfo()
                     self.applyAspect(force: true)
                     self.prepareFilmstrip(for: url)
+                    self.probeRemoteDuration(for: url)
                 }
             } else {
                 isPlaying = false
@@ -829,6 +890,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     self.applyAspect(force: true)
                     self.syncTime(force: true)
                     self.prepareFilmstrip(for: url)
+                    self.probeRemoteDuration(for: url)
                 }
             }
         } catch {
@@ -842,26 +904,145 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         guard currentPlayableURL == url else { return }
         lastStripCaptureAt = -30
         pendingSnapshotFraction = nil
-        // Remote HTTP: extra VLC seeks stall playback. Capture frames from the playing picture.
-        guard url.isFileURL else { return }
+        thumbnailGenerator.markPreparing()
+        scheduleFilmstripPrepareTimeout(for: url)
         let knownDuration = max(
             duration,
             (player.media?.length.value?.doubleValue ?? 0) / 1000.0
         )
+        var headers: [String: String]?
+        if !url.isFileURL {
+            var next: [String: String] = ["User-Agent": AppConfig.userAgent]
+            if let token = SessionStore.load()?.token, !token.isEmpty {
+                next["Authorization"] = "Bearer \(token)"
+            }
+            headers = next
+        }
+        let count = url.isFileURL ? 20 : 6
         guard knownDuration > 1 else {
             Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 900_000_000)
-                guard let self, self.currentPlayableURL == url else { return }
-                let retryDuration = max(
-                    self.duration,
-                    (self.player.media?.length.value?.doubleValue ?? 0) / 1000.0
-                )
-                guard retryDuration > 1 else { return }
-                self.thumbnailGenerator.generate(url: url, duration: retryDuration, count: 20)
+                for _ in 0..<8 {
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    guard let self, self.currentPlayableURL == url else { return }
+                    let retryDuration = max(
+                        self.duration,
+                        (self.player.media?.length.value?.doubleValue ?? 0) / 1000.0
+                    )
+                    guard retryDuration > 1 else { continue }
+                    self.thumbnailGenerator.generate(
+                        url: url,
+                        duration: retryDuration,
+                        count: count,
+                        httpHeaders: headers
+                    )
+                    return
+                }
+                self?.thumbnailGenerator.finishPreparingIfNeeded()
             }
             return
         }
-        thumbnailGenerator.generate(url: url, duration: knownDuration, count: 20)
+        thumbnailGenerator.generate(url: url, duration: knownDuration, count: count, httpHeaders: headers)
+    }
+
+    private func scheduleFilmstripPrepareTimeout(for url: URL) {
+        let nanos = UInt64(VideoFilmstripPolicy.prepareTimeoutSeconds * 1_000_000_000)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: nanos)
+            guard let self, self.currentPlayableURL == url else { return }
+            self.thumbnailGenerator.finishPreparingIfNeeded()
+        }
+    }
+
+    func applyDurationHint(_ seconds: Double) {
+        guard let accepted = VideoDurationPolicy.acceptedDuration(
+            reportedSeconds: seconds,
+            currentTime: currentTime,
+            existing: duration
+        ) else { return }
+        let wasUnknown = duration <= 1
+        if abs(accepted - duration) < 0.05 { return }
+        duration = accepted
+        if wasUnknown, let url = currentPlayableURL {
+            prepareFilmstrip(for: url)
+        }
+    }
+
+    private func httpHeaders(for url: URL) -> [String: String]? {
+        guard !url.isFileURL else { return nil }
+        var next: [String: String] = ["User-Agent": AppConfig.userAgent]
+        if let token = SessionStore.load()?.token, !token.isEmpty {
+            next["Authorization"] = "Bearer \(token)"
+        }
+        return next
+    }
+
+    private func probeRemoteDuration(for url: URL) {
+        guard !url.isFileURL else { return }
+        durationProbeTask?.cancel()
+        let generation = mediaLoadGeneration
+        _ = player.media?.parse(options: VLCMediaParsingOptions(rawValue: 1), timeout: 8_000)
+        durationProbeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            if let avSeconds = await Self.loadAVDuration(url: url, headers: self.httpHeaders(for: url)) {
+                guard self.mediaLoadGeneration == generation else { return }
+                self.applyDurationHint(avSeconds)
+                return
+            }
+            let bytes = await Self.headContentLength(url: url, headers: self.httpHeaders(for: url))
+            guard self.mediaLoadGeneration == generation else { return }
+            if let bytes {
+                self.pendingRemoteBytes = bytes
+                self.applyBitrateEstimateIfPossible()
+            }
+        }
+    }
+
+    private func applyBitrateEstimateIfPossible() {
+        guard duration <= 1, pendingRemoteBytes > 0, signalInfo.bitrateBps > 0 else { return }
+        if let estimate = VideoDurationPolicy.estimatedDuration(
+            fileBytes: pendingRemoteBytes,
+            bitrateBps: signalInfo.bitrateBps
+        ) {
+            applyDurationHint(estimate)
+        }
+    }
+
+    private static func loadAVDuration(url: URL, headers: [String: String]?) async -> Double? {
+        await withTaskGroup(of: Double?.self) { group in
+            group.addTask {
+                let asset: AVURLAsset
+                if let headers, !headers.isEmpty {
+                    asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+                } else {
+                    asset = AVURLAsset(url: url)
+                }
+                let seconds = (try? await asset.load(.duration).seconds) ?? .nan
+                guard seconds.isFinite, seconds > 1 else { return nil }
+                return seconds
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                return nil
+            }
+            let value = await group.next() ?? nil
+            group.cancelAll()
+            return value
+        }
+    }
+
+    private static func headContentLength(url: URL, headers: [String: String]?) async -> Int64? {
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 6
+        headers?.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse
+        else { return nil }
+        if let raw = http.value(forHTTPHeaderField: "Content-Length"), let bytes = Int64(raw), bytes > 0 {
+            return bytes
+        }
+        let length = http.expectedContentLength
+        return length > 0 ? length : nil
     }
 
     func captureScrubPreview() {
@@ -869,16 +1050,19 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     private func maybeCaptureStripFrame() {
-        guard duration > 1, currentTime > 0.4, !isUserSeeking else { return }
-        guard currentTime - lastStripCaptureAt >= 1.6 else { return }
+        guard VideoFilmstripPolicy.shouldCaptureLiveFrame(
+            currentTime: currentTime,
+            lastCaptureAt: lastStripCaptureAt,
+            isSeeking: isUserSeeking
+        ) else { return }
         lastStripCaptureAt = currentTime
         captureStripFrame(force: false)
     }
 
     private func captureStripFrame(force: Bool) {
-        guard duration > 1 else { return }
         if isUserSeeking, !force { return }
-        let fraction = min(0.999, max(0, currentTime / duration))
+        let denom = VideoFilmstripPolicy.placementDuration(known: duration, currentTime: currentTime)
+        let fraction = min(0.999, max(0, currentTime / denom))
         pendingSnapshotFraction = fraction
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("eos-filmstrip", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -889,7 +1073,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
     private func ingestLastSnapshotIfAvailable() {
         guard let image = player.lastSnapshot, image.size.width > 8, image.size.height > 8 else { return }
-        let fraction = pendingSnapshotFraction ?? min(0.999, max(0, duration > 0 ? currentTime / duration : 0))
+        let denom = VideoFilmstripPolicy.placementDuration(known: duration, currentTime: currentTime)
+        let fraction = pendingSnapshotFraction ?? min(0.999, max(0, currentTime / denom))
         thumbnailGenerator.ingestLiveFrame(image, fraction: fraction)
     }
 
@@ -1076,7 +1261,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     info.videoCodec = name.isEmpty ? fourCCString(fourcc.uint32Value) : name
                 }
                 if let br = track[VLCMediaTracksInformationBitrate] as? NSNumber, br.intValue > 0 {
-                    info.bitrate = formatBitrate(br.intValue)
+                    info.bitrateBps += br.intValue
+                    info.bitrate = formatBitrate(info.bitrateBps)
                 }
                 let desc = ((track[VLCMediaTracksInformationDescription] as? String) ?? "").lowercased()
                 let codecLower = info.videoCodec.lowercased()
@@ -1111,8 +1297,11 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                 if let ch = track[VLCMediaTracksInformationAudioChannelsNumber] as? NSNumber, ch.intValue > 0 {
                     info.audioChannels = ch.intValue == 1 ? "Mono" : (ch.intValue == 2 ? "Stereo" : "\(ch.intValue) ch")
                 }
-                if info.bitrate.isEmpty, let br = track[VLCMediaTracksInformationBitrate] as? NSNumber, br.intValue > 0 {
-                    info.bitrate = formatBitrate(br.intValue)
+                if let br = track[VLCMediaTracksInformationBitrate] as? NSNumber, br.intValue > 0 {
+                    if info.bitrateBps == 0 || type == VLCMediaTracksInformationTypeAudio {
+                        info.bitrateBps += br.intValue
+                        info.bitrate = formatBitrate(info.bitrateBps)
+                    }
                 }
             }
         }
@@ -1121,6 +1310,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             info.resolution = "\(info.width)×\(info.height)"
         }
         signalInfo = info
+        applyBitrateEstimateIfPossible()
     }
 
     private func formatBitrate(_ bps: Int) -> String {
@@ -1168,8 +1358,22 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         }
         if let media = player.media, let d = media.length.value?.doubleValue, d > 0 {
             let seconds = d / 1000.0
-            if force || abs(seconds - duration) >= 0.05 {
-                duration = seconds
+            if let accepted = VideoDurationPolicy.acceptedDuration(
+                reportedSeconds: seconds,
+                currentTime: currentTime,
+                existing: duration
+            ) {
+                if force || abs(accepted - duration) >= 0.05 {
+                    duration = accepted
+                }
+                if freshStartNeedsZeroSeek {
+                    if VideoDurationPolicy.shouldResetFreshStart(currentTime: currentTime) {
+                        freshStartNeedsZeroSeek = false
+                        applySeek(to: 0)
+                    } else if duration > 1 {
+                        freshStartNeedsZeroSeek = false
+                    }
+                }
             }
         }
         let playing = player.isPlaying

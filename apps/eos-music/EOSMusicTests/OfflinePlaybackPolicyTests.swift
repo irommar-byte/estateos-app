@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import EOSMusic
 
@@ -178,6 +179,89 @@ final class TrackMetadataConflictTests: XCTestCase {
             )
         )
     }
+
+    func testCyrillicTitleSurvivesNormalization() {
+        XCTAssertEqual(
+            TrackMetadataEnricher.normalizedSearchToken("Новогодняя"),
+            "новогодняя"
+        )
+    }
+
+    func testEmbeddedArtRejectedWhenTitleConflicts() {
+        XCTAssertFalse(
+            TrackMetadataEnricher.shouldUseEmbeddedArtwork(
+                expectedTitle: "Новогодняя",
+                embeddedTitle: "Get Back (ASA)"
+            )
+        )
+        XCTAssertTrue(
+            TrackMetadataEnricher.shouldUseEmbeddedArtwork(
+                expectedTitle: "Новогодняя",
+                embeddedTitle: "Новогодняя"
+            )
+        )
+    }
+
+    func testCyrillicCatalogMatchPicksTheRightCover() {
+        let songs = [
+            SearchResultItem.catalogStub(
+                title: "Random English Hit",
+                url: "https://music.apple.com/song/wrong",
+                artist: "Someone",
+                thumbnail: "https://example.com/woman.jpg"
+            ),
+            SearchResultItem.catalogStub(
+                title: "Новогодняя",
+                url: "https://music.apple.com/song/right",
+                artist: "Diskoteka Avariya",
+                thumbnail: "https://example.com/ny.jpg"
+            ),
+        ]
+        let payload = MusicTrackPayload(
+            url: "https://x/novogodnyaya",
+            title: "Новогодняя",
+            artist: "Diskoteka Avariya",
+            album: nil,
+            thumbnail: nil,
+            duration: nil,
+            quality: nil,
+            source: nil,
+            artistId: nil,
+            albumId: nil
+        )
+        XCTAssertEqual(
+            TrackMetadataEnricher.bestCatalogMatch(for: payload, in: songs)?.url,
+            "https://music.apple.com/song/right"
+        )
+    }
+
+    func testUnrelatedCatalogRowDoesNotBecomeCover() {
+        let payload = MusicTrackPayload(
+            url: "https://x/novogodnyaya",
+            title: "Новогодняя",
+            artist: "Diskoteka Avariya",
+            album: nil,
+            thumbnail: nil,
+            duration: nil,
+            quality: nil,
+            source: nil,
+            artistId: nil,
+            albumId: nil
+        )
+        XCTAssertNil(
+            TrackMetadataEnricher.bestCatalogMatch(
+                for: payload,
+                in: [
+                    SearchResultItem.catalogStub(
+                        title: "Unrelated Hit",
+                        url: "https://music.apple.com/song/wrong",
+                        artist: "Someone",
+                        thumbnail: "https://example.com/woman.jpg"
+                    )
+                ]
+            )
+        )
+    }
 }
 
 final class VideoHandoffContractTests: XCTestCase {
@@ -223,6 +307,54 @@ final class VideoHandoffContractTests: XCTestCase {
         XCTAssertFalse(VideoHandoffState.failed("test").avPlayerOwnsTransport)
     }
 
+    func testRejectsShortAVDurationWhenVLCKnowsFeatureLength() {
+        XCTAssertTrue(
+            VideoHandoffPolicy.isUnreliableAVDuration(avDuration: 120, vlcDuration: 7200)
+        )
+        XCTAssertFalse(
+            VideoHandoffPolicy.isUnreliableAVDuration(avDuration: 7200, vlcDuration: 7200)
+        )
+        XCTAssertFalse(
+            VideoHandoffPolicy.isUnreliableAVDuration(avDuration: 90, vlcDuration: 0)
+        )
+    }
+
+    func testHTTPAirPlayDoesNotRequirePlayableFlag() {
+        XCTAssertFalse(
+            VideoHandoffPolicy.requiresPlayableFlag(
+                url: URL(string: "https://example.com/api/movies/stream/job-1")!
+            )
+        )
+        XCTAssertTrue(
+            VideoHandoffPolicy.requiresPlayableFlag(url: URL(fileURLWithPath: "/tmp/movie.mp4"))
+        )
+    }
+
+    func testAirPlayHandoffNeedsReadyVideoAndReliableDuration() {
+        XCTAssertFalse(
+            VideoHandoffPolicy.canHandOffToAirPlay(
+                avItemReady: true,
+                hasVideoFrame: false,
+                durationUnreliable: false
+            )
+        )
+        XCTAssertFalse(
+            VideoHandoffPolicy.canHandOffToAirPlay(
+                avItemReady: true,
+                hasVideoFrame: true,
+                durationUnreliable: true
+            )
+        )
+        XCTAssertTrue(
+            VideoHandoffPolicy.canHandOffToAirPlay(
+                avItemReady: true,
+                hasVideoFrame: true,
+                durationUnreliable: false
+            )
+        )
+        XCTAssertEqual(VideoHandoffPolicy.airPlayRemuxWaitSeconds, 15)
+    }
+
     func testHandoffTransitionStatesAreExplicit() {
         XCTAssertTrue(VideoHandoffState.preparingPiP.isTransitioning)
         XCTAssertTrue(VideoHandoffState.preparingAirPlay.isTransitioning)
@@ -236,5 +368,112 @@ final class VideoHandoffContractTests: XCTestCase {
         XCTAssertTrue(VideoPiPController.isApplePiPContainer(URL(string: "https://example.com/movie.mp4")!))
         XCTAssertTrue(VideoPiPController.isApplePiPContainer(URL(string: "https://example.com/api/play/job")!))
         XCTAssertFalse(VideoPiPController.isApplePiPContainer(URL(fileURLWithPath: "/tmp/movie.mkv")))
+    }
+
+    @MainActor
+    func testLiveFilmstripFramesClearPreparingSpinner() {
+        let generator = VideoThumbnailGenerator()
+        generator.markPreparing()
+        XCTAssertTrue(generator.isGenerating)
+        let image = UIImage(systemName: "film") ?? UIImage()
+        generator.ingestLiveFrame(image, fraction: 0.2)
+        generator.ingestLiveFrame(image, fraction: 0.45)
+        generator.ingestLiveFrame(image, fraction: 0.7)
+        XCTAssertEqual(generator.frames.count, 3)
+        XCTAssertFalse(generator.isGenerating)
+    }
+
+    @MainActor
+    func testFinishPreparingClearsEmptySpinner() {
+        let generator = VideoThumbnailGenerator()
+        generator.markPreparing()
+        generator.finishPreparingIfNeeded()
+        XCTAssertFalse(generator.isGenerating)
+        XCTAssertTrue(generator.frames.isEmpty)
+    }
+}
+
+final class VideoDurationPolicyTests: XCTestCase {
+    func testRejectsMillisecondStub() {
+        XCTAssertNil(VideoDurationPolicy.acceptedDuration(reportedSeconds: 0.001, currentTime: 0.16))
+        XCTAssertNil(VideoDurationPolicy.acceptedDuration(reportedSeconds: 0.4, currentTime: 0))
+    }
+
+    func testAcceptsLengthGreaterThanCurrentTime() {
+        XCTAssertEqual(
+            VideoDurationPolicy.acceptedDuration(reportedSeconds: 7200, currentTime: 16),
+            7200
+        )
+    }
+
+    func testDoesNotShrinkKnownFeatureToTwoMinutes() {
+        XCTAssertNil(
+            VideoDurationPolicy.acceptedDuration(reportedSeconds: 120, currentTime: 16, existing: 7200)
+        )
+    }
+
+    func testFreshStartResetsWhenOpenedAwayFromZero() {
+        XCTAssertTrue(VideoDurationPolicy.shouldResetFreshStart(currentTime: 16))
+        XCTAssertFalse(VideoDurationPolicy.shouldResetFreshStart(currentTime: 0.2))
+    }
+
+    func testUnknownDurationClockIsEmDash() {
+        XCTAssertEqual(VideoScrubberFormatting.endClock(duration: 0), "—")
+        XCTAssertEqual(VideoScrubberFormatting.endClock(duration: 16), "0:16")
+    }
+
+    func testMovieJobIdFromStreamURL() {
+        let url = URL(string: "https://example.com/admin_pro/api/movies/proxy/api/movies/stream/job-1?token=abc")!
+        XCTAssertEqual(VideoStreamURLPolicy.movieJobId(from: url), "job-1")
+        XCTAssertNil(VideoStreamURLPolicy.movieJobId(from: URL(string: "https://example.com/api/play/job-1")))
+    }
+
+    func testEstimatesDurationFromSizeAndBitrate() {
+        XCTAssertEqual(
+            VideoDurationPolicy.estimatedDuration(fileBytes: 1_200_000_000, bitrateBps: 2_000_000) ?? -1,
+            4800,
+            accuracy: 1
+        )
+        XCTAssertNil(VideoDurationPolicy.estimatedDuration(fileBytes: 1000, bitrateBps: 2_000_000))
+        XCTAssertNil(VideoDurationPolicy.estimatedDuration(fileBytes: 1_200_000_000, bitrateBps: 10))
+    }
+
+    func testFilmstripPlacesFramesWithoutKnownDuration() {
+        XCTAssertEqual(VideoFilmstripPolicy.placementDuration(known: 0, currentTime: 80), 104)
+        XCTAssertEqual(VideoFilmstripPolicy.placementDuration(known: 7200, currentTime: 80), 7200)
+        XCTAssertTrue(
+            VideoFilmstripPolicy.shouldCaptureLiveFrame(
+                currentTime: 1.2,
+                lastCaptureAt: -30,
+                isSeeking: false
+            )
+        )
+        XCTAssertFalse(
+            VideoFilmstripPolicy.shouldCaptureLiveFrame(
+                currentTime: 2,
+                lastCaptureAt: 1.5,
+                isSeeking: false
+            )
+        )
+    }
+}
+
+final class VideoPlayerChromeMetricsTests: XCTestCase {
+    func testPortraitChromeClearsDynamicIsland() {
+        XCTAssertGreaterThanOrEqual(VideoPlayerChromeMetrics.portraitTopClearance, 54)
+        XCTAssertGreaterThanOrEqual(
+            VideoPlayerChromeMetrics.topInset(safeTop: 0, width: 390, height: 844),
+            54
+        )
+    }
+
+    func testLandscapeChromeClearsIslandAndSideSafeArea() {
+        XCTAssertGreaterThanOrEqual(
+            VideoPlayerChromeMetrics.topInset(safeTop: 0, width: 852, height: 393),
+            48
+        )
+        XCTAssertGreaterThanOrEqual(VideoPlayerChromeMetrics.islandGutter, 120)
+        XCTAssertEqual(VideoPlayerChromeMetrics.sideInset(safeSide: 59), 59)
+        XCTAssertEqual(VideoPlayerChromeMetrics.sideInset(safeSide: 0), 16)
     }
 }

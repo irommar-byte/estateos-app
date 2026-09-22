@@ -24,6 +24,15 @@ enum APIError: LocalizedError {
         case .network(let err): return err.localizedDescription
         }
     }
+
+    static func isTimeout(_ error: Error) -> Bool {
+        if let urlError = error as? URLError, urlError.code == .timedOut { return true }
+        if case .server(let msg) = error as? APIError {
+            return msg.localizedCaseInsensitiveContains("nie odpowiedział")
+                || msg.localizedCaseInsensitiveContains("czas oczekiwania")
+        }
+        return false
+    }
 }
 
 struct AuthUser: Codable, Equatable {
@@ -82,6 +91,7 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let duration: Double?
     let quality: String?
     let rating: Double?
+    let year: Int?
     let views: Double?
     let isSerial: Bool?
     let premium: Bool?
@@ -422,6 +432,32 @@ struct JobStatusResponse: Codable {
     let fullReady: Bool?
     let cdaFullPending: Bool?
     let downloadPath: String?
+    let mode: String?
+    let onServer: Bool?
+    let persistent: Bool?
+    let phase: String?
+
+    var isDurableServerCopy: Bool {
+        if mode == "stream-proxy" { return false }
+        if onServer == true || persistent == true { return true }
+        if mode == "file" { return true }
+        return false
+    }
+
+    var progressPercent: Double {
+        let value = progress ?? 0
+        return min(100, max(0, value <= 1 && value > 0 ? value * 100 : value))
+    }
+}
+
+enum MusicPlayWaitPolicy {
+    static func isSatisfied(_ job: JobStatusResponse, requireDurable: Bool = false) -> Bool {
+        if job.status.lowercased() == "error" { return false }
+        let ready = job.ready == true || job.status.lowercased() == "done"
+        guard ready else { return false }
+        if !requireDurable { return true }
+        return job.isDurableServerCopy
+    }
 }
 
 struct MediaQualityOption: Codable, Hashable, Identifiable {
@@ -626,10 +662,104 @@ struct PlaybackSession: Identifiable, Hashable {
 
 struct DownloadStartResponse: Codable {
     let jobId: String
+    let assetId: String?
     let reused: Bool?
     let ready: Bool?
     let status: String?
     let progress: Double?
+    let token: String?
+    let persistent: Bool?
+    let onServer: Bool?
+    let mode: String?
+
+    var isDurableServerCopy: Bool {
+        if mode == "stream-proxy" { return false }
+        if onServer == true || persistent == true { return true }
+        if mode == "file" { return true }
+        return false
+    }
+
+    var canStreamImmediately: Bool {
+        if let token, !token.isEmpty, ready == true { return true }
+        return false
+    }
+}
+
+struct ActiveServerDownload: Codable, Identifiable, Hashable {
+    var id: String { jobId }
+    let jobId: String
+    let kind: String
+    let status: String
+    let progress: Double?
+    let title: String
+    let url: String
+    let thumbnail: String?
+    let error: String?
+    let ready: Bool?
+    let folderId: String?
+    let assetId: String?
+    let phase: String?
+    let mode: String?
+    let intent: String?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        jobId = try container.decode(String.self, forKey: .jobId)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "music"
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
+        progress = try container.decodeIfPresent(Double.self, forKey: .progress)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
+        thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        ready = try container.decodeIfPresent(Bool.self, forKey: .ready)
+        folderId = try container.decodeIfPresent(String.self, forKey: .folderId)
+        assetId = try container.decodeIfPresent(String.self, forKey: .assetId)
+        phase = try container.decodeIfPresent(String.self, forKey: .phase)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode)
+        intent = try container.decodeIfPresent(String.self, forKey: .intent)
+    }
+
+    var isMusic: Bool { kind == "music" }
+    var isMovie: Bool { kind == "movie" }
+
+    var isTerminal: Bool {
+        let s = status.lowercased()
+        return s == "done" || s == "error" || s == "cancelled"
+    }
+
+    var isFailed: Bool {
+        let s = status.lowercased()
+        return s == "error" || s == "cancelled"
+    }
+
+    var looksLikeFileIngest: Bool {
+        if mode == "stream-proxy" { return false }
+        if intent == "play" { return false }
+        if intent == "download" { return true }
+        if mode == "file" { return true }
+        let s = status.lowercased()
+        let p = (phase ?? "").lowercased()
+        if s == "downloading" || s == "preparing" || s == "starting" || s == "queued" { return true }
+        return p == "download" || p == "acquire" || p == "file" || p == "ingest"
+    }
+}
+
+struct ActiveServerDownloadsResponse: Codable {
+    let items: [ActiveServerDownload]
+    let music: [ActiveServerDownload]
+    let movies: [ActiveServerDownload]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .items) ?? []
+        music = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .music) ?? []
+        movies = try container.decodeIfPresent([ActiveServerDownload].self, forKey: .movies) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items, music, movies
+    }
 }
 
 struct MovieDownload: Codable, Identifiable, Hashable {
@@ -745,6 +875,10 @@ struct MoviePlayTokenResponse: Codable {
     let jobId: String
     let token: String
     let expiresIn: Int?
+    let preparing: Bool?
+    let playable: Bool?
+    let error: String?
+    let duration: Double?
 }
 
 struct MusicFolder: Codable, Identifiable, Hashable {

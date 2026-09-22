@@ -109,8 +109,14 @@ struct VideoPlayerView: View {
                 }
 
                 if controlsVisible {
-                    controlsOverlay(landscape: landscape)
-                        .transition(.opacity)
+                    controlsOverlay(
+                        landscape: landscape,
+                        canvas: geo.size,
+                        safeTop: resolvedSafeTop(geo),
+                        safeLeading: resolvedSafeLeading(geo),
+                        safeTrailing: resolvedSafeTrailing(geo)
+                    )
+                    .transition(.opacity)
                 }
 
                 // Captures keyboard when Simulator / Magic Keyboard / Mac is connected.
@@ -154,6 +160,14 @@ struct VideoPlayerView: View {
             controlsVisible = true
             scheduleHide()
             keysFocused = true
+            video.pipController.prepareAirPlayStream = { [app, engine] in
+                if let jobId = VideoStreamURLPolicy.movieJobId(from: engine.currentPlayableURL) {
+                    _ = try? await app.api.waitForMovieAVPlayable(
+                        jobId: jobId,
+                        timeoutSeconds: VideoHandoffPolicy.airPlayRemuxWaitSeconds
+                    )
+                }
+            }
             // Tylko po schowaniu (PiP / mini) — NIE przy pierwszym Oglądaj.
             // scheduleExpandRestore zrywa drawable i robi czarny ekran z dźwiękiem w tle.
             if engine.needsExpandRestore {
@@ -224,21 +238,50 @@ struct VideoPlayerView: View {
             .padding(14)
             .background(.ultraThinMaterial.opacity(0.92), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(.horizontal, 16)
-            .padding(.top, 56)
+            .padding(.top, VideoPlayerChromeMetrics.portraitTopClearance)
             Spacer()
         }
         .allowsHitTesting(true)
         .zIndex(50)
     }
 
+    private var usesAVTransport: Bool {
+        video.pipController.handoffState.avPlayerOwnsTransport
+            || video.pipController.isExternalPlaybackActive
+    }
+
+    private func transportPlayPause() {
+        if usesAVTransport {
+            video.pipController.toggleExternalPlayPause()
+        } else {
+            engine.togglePlayPause()
+        }
+    }
+
+    private func transportSeek(to time: Double, resume: Bool) {
+        if usesAVTransport {
+            video.pipController.externalSeek(to: time, resume: resume)
+        } else {
+            engine.seek(to: time, resume: resume)
+        }
+    }
+
+    private func transportNudge(by seconds: Double) {
+        if usesAVTransport {
+            video.pipController.externalNudgeSeek(by: seconds)
+        } else {
+            engine.nudgeSeek(by: seconds)
+        }
+    }
+
     private func handleKeyPlayPause() {
-        engine.togglePlayPause()
+        transportPlayPause()
         bumpControls()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func handleKeySeek(_ delta: Double) {
-        engine.nudgeSeek(by: delta)
+        transportNudge(by: delta)
         bumpControls()
     }
 
@@ -261,11 +304,23 @@ struct VideoPlayerView: View {
     }
 
     @ViewBuilder
-    private func controlsOverlay(landscape: Bool) -> some View {
+    private func controlsOverlay(
+        landscape: Bool,
+        canvas: CGSize,
+        safeTop: CGFloat,
+        safeLeading: CGFloat,
+        safeTrailing: CGFloat
+    ) -> some View {
+        let topInset = VideoPlayerChromeMetrics.topInset(
+            safeTop: safeTop,
+            width: canvas.width,
+            height: canvas.height
+        )
         VStack(spacing: 0) {
-            topBar
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+            topBar(landscape: landscape)
+                .padding(.leading, VideoPlayerChromeMetrics.sideInset(safeSide: safeLeading))
+                .padding(.trailing, VideoPlayerChromeMetrics.sideInset(safeSide: safeTrailing))
+                .padding(.top, topInset)
 
             Spacer(minLength: 0)
 
@@ -300,109 +355,153 @@ struct VideoPlayerView: View {
         )
     }
 
-    private var topBar: some View {
+    @ViewBuilder
+    private func topBar(landscape: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Button {
+            HStack(spacing: 10) {
+                chromeCircleButton(systemName: "chevron.down", bold: true) {
                     video.minimizePlayer()
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
                 }
                 .accessibilityLabel("Schowaj player")
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(engine.currentItem?.title ?? "Wideo")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    HStack(spacing: 8) {
-                        BreathingSourceBadge(
-                            origin: video.pipController.isExternalPlaybackActive ? .airPlay : engine.playbackOrigin,
-                            compact: true
-                        )
-                        Text(engine.folderName)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
-                    }
-                }
+                titleBlock
+                    .frame(maxWidth: landscape ? 240 : 168, alignment: .leading)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: landscape ? VideoPlayerChromeMetrics.islandGutter : 8)
 
-                Button {
-                    Task {
-                        await video.pipController.start(engine: engine)
-                        bumpControls()
-                    }
-                } label: {
-                    Group {
-                        if video.pipController.isPreparing {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "pip.enter")
-                                .font(.body.weight(.semibold))
-                        }
-                    }
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial.opacity(0.55), in: Circle())
-                }
-                .disabled(video.pipController.isPreparing || !video.pipController.isSystemSupported)
-                .accessibilityLabel("Picture in Picture")
-                .accessibilityHint("Odtwarzaj w małym oknie nad innymi aplikacjami")
-
-                AirPlayRouteButton {
-                    video.pipController.prepareAirPlayHandoff(for: engine, userInitiated: true)
-                }
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial.opacity(0.55), in: Circle())
-                    .accessibilityLabel("AirPlay")
-
-                Button {
-                    showAspectSheet = true
-                    bumpControls()
-                } label: {
-                    Image(systemName: "aspectratio")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
-                }
-                .accessibilityLabel("Proporcje ekranu")
-
-                Button {
-                    showPlaylist = true
-                    bumpControls()
-                } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
-                }
-
-                Button {
-                    showMore = true
-                    bumpControls()
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+                if landscape {
+                    pipChromeButton
+                    airPlayChromeButton
+                    aspectChromeButton
+                    playlistChromeButton
+                    moreChromeButton
+                } else {
+                    airPlayChromeButton
+                    moreChromeButton
                 }
             }
 
-            VideoSignalBadgeBar(
-                info: engine.signalInfo,
-                aspectTitle: engine.aspectMode.hudLabel
-            )
+            if landscape {
+                VideoSignalBadgeBar(
+                    info: engine.signalInfo,
+                    aspectTitle: engine.aspectMode.hudLabel
+                )
+            } else {
+                HStack(spacing: 8) {
+                    VideoSignalBadgeBar(
+                        info: engine.signalInfo,
+                        aspectTitle: engine.aspectMode.hudLabel
+                    )
+                    Spacer(minLength: 8)
+                    pipChromeButton
+                    aspectChromeButton
+                    playlistChromeButton
+                }
+            }
         }
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(engine.currentItem?.title ?? "Wideo")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            HStack(spacing: 8) {
+                BreathingSourceBadge(
+                    origin: video.pipController.isExternalPlaybackActive ? .airPlay : engine.playbackOrigin,
+                    compact: true
+                )
+                Text(engine.folderName)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var pipChromeButton: some View {
+        chromeCircleButton(systemName: "pip.enter", preparing: video.pipController.isPreparing) {
+            Task {
+                await video.pipController.start(engine: engine)
+                bumpControls()
+            }
+        }
+        .disabled(video.pipController.isPreparing || !video.pipController.isSystemSupported)
+        .accessibilityLabel("Picture in Picture")
+        .accessibilityHint("Odtwarzaj w małym oknie nad innymi aplikacjami")
+    }
+
+    private var airPlayChromeButton: some View {
+        AirPlayLaunchButton(controller: video.pipController, engine: engine)
+        .frame(width: 40, height: 40)
+        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+        .accessibilityLabel("AirPlay")
+    }
+
+    private var aspectChromeButton: some View {
+        chromeCircleButton(systemName: "aspectratio") {
+            showAspectSheet = true
+            bumpControls()
+        }
+        .accessibilityLabel("Proporcje ekranu")
+    }
+
+    private var playlistChromeButton: some View {
+        chromeCircleButton(systemName: "list.bullet") {
+            showPlaylist = true
+            bumpControls()
+        }
+        .accessibilityLabel("Playlista")
+    }
+
+    private var moreChromeButton: some View {
+        chromeCircleButton(systemName: "ellipsis", bold: true) {
+            showMore = true
+            bumpControls()
+        }
+        .accessibilityLabel("Więcej")
+    }
+
+    private func chromeCircleButton(
+        systemName: String,
+        bold: Bool = false,
+        preparing: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if preparing {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: systemName)
+                        .font(bold ? .body.weight(.bold) : .body.weight(.semibold))
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(width: 40, height: 40)
+            .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+        }
+    }
+
+    private func resolvedSafeTop(_ geo: GeometryProxy) -> CGFloat {
+        geo.safeAreaInsets.top > 1 ? geo.safeAreaInsets.top : windowSafeInsets.top
+    }
+
+    private func resolvedSafeLeading(_ geo: GeometryProxy) -> CGFloat {
+        geo.safeAreaInsets.leading > 1 ? geo.safeAreaInsets.leading : windowSafeInsets.left
+    }
+
+    private func resolvedSafeTrailing(_ geo: GeometryProxy) -> CGFloat {
+        geo.safeAreaInsets.trailing > 1 ? geo.safeAreaInsets.trailing : windowSafeInsets.right
+    }
+
+    private var windowSafeInsets: UIEdgeInsets {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+            ?? scenes.first?.windows.first
+        return window?.safeAreaInsets ?? .zero
     }
 
     private var centerTransport: some View {
@@ -418,7 +517,11 @@ struct VideoPlayerView: View {
             }
 
             Button {
-                engine.jumpBackward15()
+                if usesAVTransport {
+                    video.pipController.externalNudgeSeek(by: -15)
+                } else {
+                    engine.jumpBackward15()
+                }
                 bumpControls()
             } label: {
                 Image(systemName: "gobackward.15")
@@ -429,7 +532,7 @@ struct VideoPlayerView: View {
             }
 
             Button {
-                engine.togglePlayPause()
+                transportPlayPause()
                 bumpControls()
             } label: {
                 VStack(spacing: 4) {
@@ -447,7 +550,11 @@ struct VideoPlayerView: View {
             }
 
             Button {
-                engine.jumpForward15()
+                if usesAVTransport {
+                    video.pipController.externalNudgeSeek(by: 15)
+                } else {
+                    engine.jumpForward15()
+                }
                 bumpControls()
             } label: {
                 Image(systemName: "goforward.15")
@@ -479,7 +586,7 @@ struct VideoPlayerView: View {
             VideoScrubber(
                 thumbnails: engine.thumbnailGenerator,
                 value: isScrubbing ? scrubTime : engine.currentTime,
-                duration: max(engine.duration, 0.001),
+                duration: engine.duration,
                 onEditingChanged: { editing, time in
                     if editing {
                         isScrubbing = true
@@ -488,7 +595,9 @@ struct VideoPlayerView: View {
                         scrubTime = time
                     } else {
                         scrubTime = time
-                        engine.seek(to: time, resume: true)
+                        if engine.duration > 0 {
+                            transportSeek(to: time, resume: true)
+                        }
                         engine.isUserSeeking = false
                         isScrubbing = false
                         engine.captureScrubPreview()
@@ -635,11 +744,11 @@ private struct VideoScrubber: View {
             }
 
             HStack {
-                Text(formatClock(displayTime))
+                Text(VideoScrubberFormatting.clock(displayTime))
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text(formatClock(duration))
+                Text(VideoScrubberFormatting.endClock(duration: duration))
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.white.opacity(0.85))
             }
@@ -700,9 +809,17 @@ private struct VideoScrubber: View {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color.white.opacity(0.16))
                 HStack(spacing: 5) {
-                    Image(systemName: "film")
-                    Text("Przesuń, aby wyszukać fragment")
-                        .font(.caption2.weight(.semibold))
+                    if thumbnails.isGenerating {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.7)
+                        Text("Przygotowuję podgląd")
+                            .font(.caption2.weight(.semibold))
+                    } else {
+                        Image(systemName: "film")
+                        Text("Przesuń, aby wyszukać fragment")
+                            .font(.caption2.weight(.semibold))
+                    }
                 }
                 .foregroundStyle(.white.opacity(0.8))
             }
@@ -738,7 +855,7 @@ private struct VideoScrubber: View {
             .frame(width: 152, height: 82)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            Text(formatClock(displayTime))
+            Text(VideoScrubberFormatting.clock(displayTime))
                 .font(.caption.monospacedDigit().weight(.bold))
                 .foregroundStyle(.white)
         }
@@ -751,7 +868,15 @@ private struct VideoScrubber: View {
         .shadow(color: .black.opacity(0.65), radius: 12, y: 5)
     }
 
-    private func formatClock(_ seconds: Double) -> String {
+}
+
+enum VideoScrubberFormatting {
+    static func endClock(duration: Double) -> String {
+        guard duration.isFinite, duration > 0 else { return "—" }
+        return clock(duration)
+    }
+
+    static func clock(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let total = Int(seconds.rounded())
         let h = total / 3600
@@ -903,11 +1028,46 @@ final class PlayerDrawableView: UIView {
 
 // MARK: - AirPlay + keyboard
 
-struct AirPlayRouteButton: UIViewRepresentable {
-    var onPrepare: () -> Void = {}
+struct AirPlayLaunchButton: View {
+    @ObservedObject var controller: VideoPiPController
+    let engine: VideoPlaybackEngine
+    var prepareStream: () async -> Void = {}
+
+    var body: some View {
+        ZStack {
+            HiddenAirPlayRoutePicker(controller: controller)
+                .frame(width: 36, height: 36)
+                .opacity(0.02)
+                .allowsHitTesting(false)
+
+            Button {
+                Task {
+                    await prepareStream()
+                    await controller.presentAirPlayPicker(for: engine)
+                }
+            } label: {
+                Group {
+                    if controller.handoffState == .preparingAirPlay {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "airplayvideo")
+                            .font(.body.weight(.semibold))
+                    }
+                }
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+            }
+            .disabled(controller.handoffState == .preparingAirPlay)
+        }
+    }
+}
+
+struct HiddenAirPlayRoutePicker: UIViewRepresentable {
+    @ObservedObject var controller: VideoPiPController
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onPrepare: onPrepare)
+        Coordinator()
     }
 
     func makeUIView(context: Context) -> AVRoutePickerView {
@@ -915,32 +1075,36 @@ struct AirPlayRouteButton: UIViewRepresentable {
         picker.tintColor = .white
         picker.activeTintColor = UIColor(EOSTheme.accent)
         picker.prioritizesVideoDevices = true
-        // Warm AVPlayer before the system sheet appears (touch down, not only after pick).
-        let down = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.warm))
-        down.minimumPressDuration = 0
-        down.cancelsTouchesInView = false
-        down.delegate = context.coordinator
-        picker.addGestureRecognizer(down)
+        context.coordinator.picker = picker
         return picker
     }
 
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
-        context.coordinator.onPrepare = onPrepare
         uiView.prioritizesVideoDevices = true
+        context.coordinator.picker = uiView
+        if controller.wantsRoutePicker {
+            context.coordinator.present()
+            controller.consumeRoutePickerRequest()
+        }
     }
 
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var onPrepare: () -> Void
-        init(onPrepare: @escaping () -> Void) { self.onPrepare = onPrepare }
-        @objc func warm(_ gesture: UIGestureRecognizer) {
-            if gesture.state == .began {
-                onPrepare()
+    final class Coordinator {
+        weak var picker: AVRoutePickerView?
+
+        func present() {
+            guard let picker else { return }
+            if let button = Self.findButton(in: picker) {
+                button.sendActions(for: .touchUpInside)
             }
         }
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool { true }
+
+        private static func findButton(in view: UIView) -> UIButton? {
+            if let button = view as? UIButton { return button }
+            for child in view.subviews {
+                if let button = findButton(in: child) { return button }
+            }
+            return nil
+        }
     }
 }
 

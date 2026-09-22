@@ -96,6 +96,7 @@ struct VideoPlaybackSession: Hashable {
     let items: [VideoItem]
     let startIndex: Int
     let folderName: String
+    var durationHint: Double? = nil
 }
 
 struct VideoTrackOption: Identifiable, Hashable {
@@ -215,6 +216,7 @@ struct VideoSignalInfo: Equatable {
     var hdrLabel: String = "HDR"
     var audioChannels: String = ""
     var isLocal: Bool = true
+    var bitrateBps: Int = 0
 
     var hasVideo: Bool { width > 0 || !resolution.isEmpty || !videoCodec.isEmpty }
 

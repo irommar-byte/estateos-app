@@ -7,28 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B111EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */; };
-		B211EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */; };
-		B112EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */; };
-		B212EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */; };
-		B113EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */; };
-		B213EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */; };
-		B114EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */; };
-		B214EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */; };
-		B115EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */; };
-		B215EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */; };
-		B116EOSINT01A1B2C3DA /* EOSControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */; };
-		B216EOSINT01A1B2C3DA /* EOSControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */; };
-		B117EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C017EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift */; };
-		B121SHZOUT01A1B2C3E1 /* ShazamOutbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = C021SHZOUT01A1B2C3E1 /* ShazamOutbox.swift */; };
-		B122SHZLA01A1B2C3E2 /* ShazamLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C022SHZLA01A1B2C3E2 /* ShazamLiveActivityController.swift */; };
-		B123EOSRT01A1B2C3E3 /* EOSIntentRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C023EOSRT01A1B2C3E3 /* EOSIntentRuntime.swift */; };
-		B124SHZAUD01A1B2C3E4 /* ShazamAudioMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C024SHZAUD01A1B2C3E4 /* ShazamAudioMatcher.swift */; };
-		B125SHZCO01A1B2C3E5 /* ShazamRecognitionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C025SHZCO01A1B2C3E5 /* ShazamRecognitionCoordinator.swift */; };
-		B231WCTL01A1B2C3F1 /* EOSMusicControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C031WCTL01A1B2C3F1 /* EOSMusicControls.swift */; };
-		B232WSHZ01A1B2C3F2 /* ShazamLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C032WSHZ01A1B2C3F2 /* ShazamLiveActivity.swift */; };
-		B233WCOL01A1B2C3F3 /* EOSLiveColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = C033WCOL01A1B2C3F3 /* EOSLiveColors.swift */; };
-		B341TEST01A1B2C401 /* EOSReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C041TEST01A1B2C401 /* EOSReliabilityTests.swift */; };
 		00133DE113AC46F59603EBDD /* MusicDownloadDestinationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7279605E52224CB8BB132322 /* MusicDownloadDestinationSheet.swift */; };
 		01545F4D75BF48CEAB736EE4 /* VideoLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8AB5C1F04FA42CCB835C978 /* VideoLibraryView.swift */; };
 		03B0FACA4DFE4CFDB7538716 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4D20026137419C8A4977B5 /* MainTabView.swift */; };
@@ -115,9 +93,37 @@
 		AC17528A816549D0B71DFA2A /* ShazamIdentifyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE47B3B7F15F400EA49161B6 /* ShazamIdentifyController.swift */; };
 		AFC592C94C8E4C57863A0C0C /* MusicPlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB3324B05AC242CA9E3B8596 /* MusicPlaybackService.swift */; };
 		B053EA45F87C4BA0B663D316 /* LibraryStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FFE171F93A640B3A1C97F88 /* LibraryStyle.swift */; };
+		B101VISMET01A1B2C3 /* PlayerVisualMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C101VISMET01A1B2C3 /* PlayerVisualMetrics.swift */; };
+		B106VIDCHROME01A1 /* VideoPlayerChromeMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C106VIDCHROME01A1 /* VideoPlayerChromeMetrics.swift */; };
+		B102VINYLCA01A1B2C3 /* VinylCASpinner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C102VINYLCA01A1B2C3 /* VinylCASpinner.swift */; };
+		B105AIRPLAY01A1B2C3 /* PlaybackOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = C105AIRPLAY01A1B2C3 /* PlaybackOutput.swift */; };
+		B103ARTTINT01A1B2C3 /* ArtworkTintCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C103ARTTINT01A1B2C3 /* ArtworkTintCache.swift */; };
+		B104LUXTEST01A1B2C3 /* PlayerLuxuryLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C104LUXTEST01A1B2C3 /* PlayerLuxuryLayoutTests.swift */; };
+		B111EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */; };
+		B112EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */; };
+		B113EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */; };
+		B114EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */; };
+		B115EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */; };
+		B116EOSINT01A1B2C3DA /* EOSControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */; };
+		B117EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C017EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift */; };
+		B121SHZOUT01A1B2C3E1 /* ShazamOutbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = C021SHZOUT01A1B2C3E1 /* ShazamOutbox.swift */; };
+		B122SHZLA01A1B2C3E2 /* ShazamLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C022SHZLA01A1B2C3E2 /* ShazamLiveActivityController.swift */; };
+		B123EOSRT01A1B2C3E3 /* EOSIntentRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C023EOSRT01A1B2C3E3 /* EOSIntentRuntime.swift */; };
+		B124SHZAUD01A1B2C3E4 /* ShazamAudioMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C024SHZAUD01A1B2C3E4 /* ShazamAudioMatcher.swift */; };
+		B125SHZCO01A1B2C3E5 /* ShazamRecognitionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C025SHZCO01A1B2C3E5 /* ShazamRecognitionCoordinator.swift */; };
 		B1FD03731DA34C92A60CFC84 /* DownloadCloudButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA9FA31BB1144ED39B7010BC /* DownloadCloudButton.swift */; };
 		B202D90D54444BCFA509EF3C /* AppDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CA5B859D624DF3AAE6BE24 /* AppDocuments.swift */; };
+		B211EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */; };
+		B212EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */; };
+		B213EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */; };
+		B214EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */; };
+		B215EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */; };
+		B216EOSINT01A1B2C3DA /* EOSControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */; };
+		B231WCTL01A1B2C3F1 /* EOSMusicControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C031WCTL01A1B2C3F1 /* EOSMusicControls.swift */; };
+		B232WSHZ01A1B2C3F2 /* ShazamLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C032WSHZ01A1B2C3F2 /* ShazamLiveActivity.swift */; };
+		B233WCOL01A1B2C3F3 /* EOSLiveColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = C033WCOL01A1B2C3F3 /* EOSLiveColors.swift */; };
 		B2EB47BFE90F4603A973DA40 /* WebDAVClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA44C61C3E1448198CD5685 /* WebDAVClient.swift */; };
+		B341TEST01A1B2C401 /* EOSReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C041TEST01A1B2C401 /* EOSReliabilityTests.swift */; };
 		B469508D29CB46D495213123 /* EOSPerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978A4397BE85487D97885CD4 /* EOSPerfLog.swift */; };
 		B69A007238E54FF786C8E9B1 /* DownloadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67DE66A9362A4F6284B59D9C /* DownloadCoordinator.swift */; };
 		BD9ACB6BF5A240AEABD9390B /* MovieDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B74E7E0F5F9044E78CB42751 /* MovieDownloadService.swift */; };
@@ -307,6 +313,29 @@
 		BC6F8723B7AE4E18B0182D2B /* VideoAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAppModel.swift; sourceTree = "<group>"; };
 		BE1DC9B0DF194932AAD18A4B /* FolderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderDetailView.swift; sourceTree = "<group>"; };
 		BFDBA3E5B39B41299E4A8561 /* VideoAspectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAspectSheet.swift; sourceTree = "<group>"; };
+		C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSControlKinds.swift; sourceTree = "<group>"; };
+		C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSSharedLogging.swift; sourceTree = "<group>"; };
+		C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSControlSnapshot.swift; sourceTree = "<group>"; };
+		C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSAppGroupStore.swift; sourceTree = "<group>"; };
+		C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityModels.swift; sourceTree = "<group>"; };
+		C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSControlIntents.swift; sourceTree = "<group>"; };
+		C017EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfoBuilder.swift; sourceTree = "<group>"; };
+		C021SHZOUT01A1B2C3E1 /* ShazamOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamOutbox.swift; sourceTree = "<group>"; };
+		C022SHZLA01A1B2C3E2 /* ShazamLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamLiveActivityController.swift; sourceTree = "<group>"; };
+		C023EOSRT01A1B2C3E3 /* EOSIntentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSIntentRuntime.swift; sourceTree = "<group>"; };
+		C024SHZAUD01A1B2C3E4 /* ShazamAudioMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamAudioMatcher.swift; sourceTree = "<group>"; };
+		C025SHZCO01A1B2C3E5 /* ShazamRecognitionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamRecognitionCoordinator.swift; sourceTree = "<group>"; };
+		C031WCTL01A1B2C3F1 /* EOSMusicControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSMusicControls.swift; sourceTree = "<group>"; };
+		C032WSHZ01A1B2C3F2 /* ShazamLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamLiveActivity.swift; sourceTree = "<group>"; };
+		C033WCOL01A1B2C3F3 /* EOSLiveColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSLiveColors.swift; sourceTree = "<group>"; };
+		C034WENT01A1B2C3F4 /* EOSMusicWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EOSMusicWidget.entitlements; sourceTree = "<group>"; };
+		C041TEST01A1B2C401 /* EOSReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSReliabilityTests.swift; sourceTree = "<group>"; };
+		C101VISMET01A1B2C3 /* PlayerVisualMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerVisualMetrics.swift; sourceTree = "<group>"; };
+		C106VIDCHROME01A1 /* VideoPlayerChromeMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerChromeMetrics.swift; sourceTree = "<group>"; };
+		C102VINYLCA01A1B2C3 /* VinylCASpinner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VinylCASpinner.swift; sourceTree = "<group>"; };
+		C105AIRPLAY01A1B2C3 /* PlaybackOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackOutput.swift; sourceTree = "<group>"; };
+		C103ARTTINT01A1B2C3 /* ArtworkTintCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkTintCache.swift; sourceTree = "<group>"; };
+		C104LUXTEST01A1B2C3 /* PlayerLuxuryLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerLuxuryLayoutTests.swift; sourceTree = "<group>"; };
 		C3E761A8F2F54B57B2EA8FF1 /* TrackQuickActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackQuickActions.swift; sourceTree = "<group>"; };
 		CB3324B05AC242CA9E3B8596 /* MusicPlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlaybackService.swift; sourceTree = "<group>"; };
 		CC06B111ADD34CACB8856914 /* VideoFolderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFolderDetailView.swift; sourceTree = "<group>"; };
@@ -335,23 +364,6 @@
 		FD98B41E0E554FA8895F5D2F /* ServerAccountDownloadsMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAccountDownloadsMonitor.swift; sourceTree = "<group>"; };
 		FE3D8DF7814A441FA16607DE /* BluetoothMediaBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothMediaBrowser.swift; sourceTree = "<group>"; };
 		FE6A0E0751264224A682FD8C /* PlaylistHygiene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistHygiene.swift; sourceTree = "<group>"; };
-		C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSControlKinds.swift; sourceTree = "<group>"; };
-		C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSSharedLogging.swift; sourceTree = "<group>"; };
-		C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSControlSnapshot.swift; sourceTree = "<group>"; };
-		C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSAppGroupStore.swift; sourceTree = "<group>"; };
-		C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityModels.swift; sourceTree = "<group>"; };
-		C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSControlIntents.swift; sourceTree = "<group>"; };
-		C017EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfoBuilder.swift; sourceTree = "<group>"; };
-		C021SHZOUT01A1B2C3E1 /* ShazamOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamOutbox.swift; sourceTree = "<group>"; };
-		C022SHZLA01A1B2C3E2 /* ShazamLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamLiveActivityController.swift; sourceTree = "<group>"; };
-		C023EOSRT01A1B2C3E3 /* EOSIntentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSIntentRuntime.swift; sourceTree = "<group>"; };
-		C024SHZAUD01A1B2C3E4 /* ShazamAudioMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamAudioMatcher.swift; sourceTree = "<group>"; };
-		C025SHZCO01A1B2C3E5 /* ShazamRecognitionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamRecognitionCoordinator.swift; sourceTree = "<group>"; };
-		C031WCTL01A1B2C3F1 /* EOSMusicControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSMusicControls.swift; sourceTree = "<group>"; };
-		C032WSHZ01A1B2C3F2 /* ShazamLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamLiveActivity.swift; sourceTree = "<group>"; };
-		C033WCOL01A1B2C3F3 /* EOSLiveColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSLiveColors.swift; sourceTree = "<group>"; };
-		C041TEST01A1B2C401 /* EOSReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSReliabilityTests.swift; sourceTree = "<group>"; };
-		C034WENT01A1B2C3F4 /* EOSMusicWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EOSMusicWidget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -409,20 +421,6 @@
 				AA9211B74A4C4C0898A4ED8B /* Vendor */,
 				E4AF2B548B95413ABE8081D9 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		C010SHARE01A1B2C3D0 /* EOSMusicShared */ = {
-			isa = PBXGroup;
-			children = (
-				C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */,
-				C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */,
-				C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */,
-				C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */,
-				C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */,
-				C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */,
-				C017EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift */,
-			);
-			path = EOSMusicShared;
 			sourceTree = "<group>";
 		};
 		20A8A2F80CE34ECFB399632B /* Services */ = {
@@ -558,6 +556,7 @@
 				880628E7E9B74B3E9B79EC65 /* OfflinePlaybackPolicyTests.swift */,
 				A13F607293B4C5D6E8F0A1C4 /* ShazamAndBulkQueueTests.swift */,
 				C041TEST01A1B2C401 /* EOSReliabilityTests.swift */,
+				C104LUXTEST01A1B2C3 /* PlayerLuxuryLayoutTests.swift */,
 			);
 			path = EOSMusicTests;
 			sourceTree = "<group>";
@@ -612,10 +611,27 @@
 			path = Library;
 			sourceTree = "<group>";
 		};
+		C010SHARE01A1B2C3D0 /* EOSMusicShared */ = {
+			isa = PBXGroup;
+			children = (
+				C011EOSKIND01A1B2C3D4E5 /* EOSControlKinds.swift */,
+				C012EOSLOG01A1B2C3D4E6 /* EOSSharedLogging.swift */,
+				C013EOSSNAP01A1B2C3D7 /* EOSControlSnapshot.swift */,
+				C014EOSSTORE01A1B2C3D8 /* EOSAppGroupStore.swift */,
+				C015EOSLIVE01A1B2C3D9 /* LiveActivityModels.swift */,
+				C016EOSINT01A1B2C3DA /* EOSControlIntents.swift */,
+				C017EOSNP01A1B2C3DB /* NowPlayingInfoBuilder.swift */,
+			);
+			path = EOSMusicShared;
+			sourceTree = "<group>";
+		};
 		C7ACFE4ACF064FF4ADEE5B73 /* Theme */ = {
 			isa = PBXGroup;
 			children = (
 				8ADEEF500D3842FDB88FE921 /* EOSTheme.swift */,
+				C101VISMET01A1B2C3 /* PlayerVisualMetrics.swift */,
+				C106VIDCHROME01A1 /* VideoPlayerChromeMetrics.swift */,
+				C103ARTTINT01A1B2C3 /* ArtworkTintCache.swift */,
 				48B7CEAE58F846919A4D004D /* IslandBarsHost.swift */,
 				625F721EF81B4519B4D1ECB3 /* MixerVisualHosts.swift */,
 				878B30065F0244E7ACF3B97F /* WinampSpectrumHost.swift */,
@@ -635,6 +651,8 @@
 				DA9FA31BB1144ED39B7010BC /* DownloadCloudButton.swift */,
 				8DC93EBCB4EF459D808536D0 /* EOSLaunchIntroView.swift */,
 				919E846CE8254C569DFEE0D8 /* FavoriteButton.swift */,
+				C102VINYLCA01A1B2C3 /* VinylCASpinner.swift */,
+				C105AIRPLAY01A1B2C3 /* PlaybackOutput.swift */,
 				A0DA1B716E2D4F12B71133E9 /* FilesStyleComponents.swift */,
 				04EB03BC4FBE4333958FC384 /* FolderDocumentPicker.swift */,
 				6D7DEBB4B8294614928F21C4 /* MarqueeText.swift */,
@@ -784,6 +802,7 @@
 				51607F44E4394E218F103AB7 /* OfflinePlaybackPolicyTests.swift in Sources */,
 				902E5F6182A3B4C5D7E9F0B3 /* ShazamAndBulkQueueTests.swift in Sources */,
 				B341TEST01A1B2C401 /* EOSReliabilityTests.swift in Sources */,
+				B104LUXTEST01A1B2C3 /* PlayerLuxuryLayoutTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -860,6 +879,9 @@
 				C8F7C3C9B3664334B3A92EC0 /* VideoThumbnailGenerator.swift in Sources */,
 				B2EB47BFE90F4603A973DA40 /* WebDAVClient.swift in Sources */,
 				9ED275FEF5CF49AAB2CDF8F1 /* EOSTheme.swift in Sources */,
+				B101VISMET01A1B2C3 /* PlayerVisualMetrics.swift in Sources */,
+				B106VIDCHROME01A1 /* VideoPlayerChromeMetrics.swift in Sources */,
+				B103ARTTINT01A1B2C3 /* ArtworkTintCache.swift in Sources */,
 				9287F3D03C5B4C95AFF20762 /* IslandBarsHost.swift in Sources */,
 				A2CBC135FBA4409EB37E34D9 /* MixerVisualHosts.swift in Sources */,
 				994D5D36A9EF49258B179493 /* WinampSpectrumHost.swift in Sources */,
@@ -875,6 +897,8 @@
 				B1FD03731DA34C92A60CFC84 /* DownloadCloudButton.swift in Sources */,
 				D8A6ECA1F43F40569DD01443 /* EOSLaunchIntroView.swift in Sources */,
 				63D3ABFAE92849389BF7E09A /* FavoriteButton.swift in Sources */,
+				B102VINYLCA01A1B2C3 /* VinylCASpinner.swift in Sources */,
+				B105AIRPLAY01A1B2C3 /* PlaybackOutput.swift in Sources */,
 				5020824740EB4E9E9D2DA75A /* FilesStyleComponents.swift in Sources */,
 				722E619B214B418FBADBC574 /* FolderDocumentPicker.swift in Sources */,
 				9C4A683B9C1E45C1A27CC2F3 /* MarqueeText.swift in Sources */,
@@ -965,7 +989,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -985,7 +1009,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1007,7 +1031,7 @@
 				CODE_SIGN_ENTITLEMENTS = EOSMusicWidget/EOSMusicWidget.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = EOSMusicWidget/Info.plist;
@@ -1017,7 +1041,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.eosmusic.EOSMusicWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1050,7 +1074,7 @@
 				CODE_SIGN_ENTITLEMENTS = EOSMusic/Resources/EOSMusic.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -1066,7 +1090,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 2.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -1074,8 +1098,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.eosmusic;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) EOS_MAIN_APP";
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1108,7 +1132,7 @@
 				CODE_SIGN_ENTITLEMENTS = EOSMusicWidget/EOSMusicWidget.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = EOSMusicWidget/Info.plist;
@@ -1118,7 +1142,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.eosmusic.EOSMusicWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1137,7 +1161,7 @@
 				CODE_SIGN_ENTITLEMENTS = EOSMusic/Resources/EOSMusic.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -1153,7 +1177,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 2.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -1161,8 +1185,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.eosmusic;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) EOS_MAIN_APP";
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
