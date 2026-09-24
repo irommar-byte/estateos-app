@@ -46,10 +46,22 @@ export async function POST(req: Request, context: RouteContext) {
     const body = await req.json().catch(() => ({} as any));
     const quote = await getPublicationQuote({ userId, offerId, action: 'ACTIVATE' });
     if (quote.reason === 'ALREADY_ACTIVE') {
+      // Short-circuit returns current window endsAt (after stale expiry sweep).
+      const peek = await submitOfferActivation({
+        userId,
+        offerId,
+        kind: 'PLUS_CREDIT',
+      });
       return NextResponse.json({
         success: true,
         offerId,
-        publication: { status: 'ACTIVE', kind: null, endReason: null },
+        publication: {
+          status: 'ACTIVE',
+          kind: null,
+          endReason: null,
+          endsAt: peek.endsAt?.toISOString?.() ?? null,
+        },
+        message: 'Oferta jest już aktywna na rynku.',
       });
     }
 
@@ -98,7 +110,13 @@ export async function POST(req: Request, context: RouteContext) {
       return NextResponse.json({
         success: true,
         offerId,
-        publication: { status: 'ACTIVE', kind: null, endReason: null },
+        publication: {
+          status: 'ACTIVE',
+          kind: null,
+          endReason: null,
+          endsAt: staged.endsAt?.toISOString?.() ?? null,
+        },
+        message: 'Oferta jest już aktywna na rynku.',
       });
     }
 
@@ -136,11 +154,22 @@ export async function POST(req: Request, context: RouteContext) {
       );
     }
     if (message === 'PUBLICATION_ALREADY_ACTIVE') {
+      const peek = await submitOfferActivation({
+        userId,
+        offerId,
+        kind: 'PLUS_CREDIT',
+      }).catch(() => null);
       return NextResponse.json(
         {
           success: true,
           offerId,
-          publication: { status: 'ACTIVE', kind: null, endReason: null },
+          publication: {
+            status: 'ACTIVE',
+            kind: null,
+            endReason: null,
+            endsAt: peek?.endsAt?.toISOString?.() ?? null,
+          },
+          message: 'Oferta jest już aktywna na rynku.',
         },
         { status: 200 }
       );

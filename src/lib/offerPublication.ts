@@ -129,12 +129,48 @@ async function readOfferOwnership(db: any, offerId: number) {
   return offer;
 }
 
+/**
+ * Domknięcie „zombie” publikacji: status ACTIVE w tabeli, ale endsAt już minął.
+ * Bez tego activate/quote zwraca ALREADY_ACTIVE, client pokazuje sukces,
+ * a oferta zostaje „nieaktualna” (Offer.expiresAt w przeszłości).
+ */
+async function expireStaleActivePublications(db: any, offerId?: number) {
+  if (offerId != null && Number.isFinite(offerId) && offerId > 0) {
+    await db.$executeRawUnsafe(
+      `
+        UPDATE OfferPublication
+        SET status = 'ENDED',
+            endedAt = COALESCE(endedAt, NOW(3)),
+            endReason = COALESCE(endReason, 'EXPIRED')
+        WHERE offerId = ?
+          AND status = 'ACTIVE'
+          AND endsAt <= NOW(3)
+      `,
+      offerId,
+    );
+    return;
+  }
+  await db.$executeRawUnsafe(
+    `
+      UPDATE OfferPublication
+      SET status = 'ENDED',
+          endedAt = COALESCE(endedAt, NOW(3)),
+          endReason = COALESCE(endReason, 'EXPIRED')
+      WHERE status = 'ACTIVE'
+        AND endsAt <= NOW(3)
+    `,
+  );
+}
+
 async function activePublicationForOffer(db: any, offerId: number) {
+  await expireStaleActivePublications(db, offerId);
   const rows = (await db.$queryRawUnsafe(
     `
       SELECT *
       FROM OfferPublication
-      WHERE offerId = ? AND status = 'ACTIVE'
+      WHERE offerId = ?
+        AND status = 'ACTIVE'
+        AND endsAt > NOW(3)
       ORDER BY id DESC
       LIMIT 1
     `,
@@ -370,11 +406,13 @@ export async function submitOfferActivation(params: {
     action: 'ACTIVATE',
   });
   if (quote.reason === 'ALREADY_ACTIVE') {
+    const active = await activePublicationForOffer(asDb(), params.offerId);
     return {
       status: 'ACTIVE',
       kind: params.kind,
       awaitingModeration: false,
       alreadyActive: true,
+      endsAt: active?.endsAt ? new Date(active.endsAt) : undefined,
     };
   }
 
@@ -671,11 +709,13 @@ export async function endOfferPublicationInTx(
 
 export async function allActivePublicationOfferIds() {
   await ensureOfferPublicationSchema();
+  await expireStaleActivePublications(prisma);
   const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
     `
       SELECT offerId
       FROM OfferPublication
       WHERE status = 'ACTIVE'
+        AND endsAt > NOW(3)
     `,
   );
   return new Set(rows.map((row) => Number(row.offerId)).filter((id) => Number.isFinite(id)));
@@ -686,11 +726,13 @@ export async function activePublicationOfferIds(offerIds: number[]) {
   if (!offerIds.length) return new Set<number>();
   const safeIds = offerIds.filter((id) => Number.isFinite(id));
   if (!safeIds.length) return new Set<number>();
+  await expireStaleActivePublications(prisma);
   const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
     `
       SELECT offerId
       FROM OfferPublication
       WHERE status = 'ACTIVE'
+        AND endsAt > NOW(3)
         AND offerId IN (${safeIds.map(() => '?').join(',')})
     `,
     ...safeIds
