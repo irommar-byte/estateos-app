@@ -207,6 +207,7 @@ export const offer = {
 
   closedOverlay: {
     eyebrow: 'СТАТУС ЛИСТИНГА',
+    republishCta: 'Опубликовать снова',
     backToPanel: 'Вернуться к панели управления',
     backToRadar: 'Вернуться к радару',
     similarOffers: 'Похожие объявления',

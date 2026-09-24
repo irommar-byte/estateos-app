@@ -55,6 +55,7 @@ import EliteStatusBadges from '../components/EliteStatusBadges';
 import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard';
 import ClosedOfferOverlay from '../components/ClosedOfferOverlay';
 import { isOfferNewListing, getOfferLifecycleState } from '../utils/offerLifecycle';
+import { requestOpenMyOffers } from '../utils/openMyOffersDeepLink';
 import { isOfferFeatured } from '../utils/listingPromotion';
 import {
   getAdditionalListingSlots,
@@ -3616,12 +3617,25 @@ export default function OfferDetail({ route, navigation }: any) {
           isDark={isDark}
           isOwner={isOwner}
           onGoBack={handleGoBack}
+          onRepublish={
+            isOwner
+              ? () => {
+                  try {
+                    requestOpenMyOffers({
+                      tab: 'ARCHIVED',
+                      offerId: Number(offer?.id) || undefined,
+                    });
+                    navigation?.navigate?.('MainTabs', { screen: 'Profile' });
+                  } catch {
+                    handleGoBack();
+                  }
+                }
+              : undefined
+          }
           onBrowseSimilar={
             isOwner
               ? undefined
               : () => {
-                  // Wracamy na ekran główny Radaru — to tam użytkownik
-                  // dostanie świeże propozycje pasujące do jego kryteriów.
                   try {
                     navigation?.navigate?.('MainTabs', { screen: 'Radar' });
                   } catch {

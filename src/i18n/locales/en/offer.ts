@@ -207,6 +207,7 @@ export const offer = {
 
   closedOverlay: {
     eyebrow: 'LISTING STATUS',
+    republishCta: 'Relist now',
     backToPanel: 'Back to dashboard',
     backToRadar: 'Back to Radar',
     similarOffers: 'Similar listings',

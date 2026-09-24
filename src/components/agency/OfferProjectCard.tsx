@@ -1,7 +1,12 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  resolveMarketingChannel,
+  type MarketingChannelId,
+} from '../../lib/marketingChannel';
+import PortalBrandMark from '../marketing/PortalBrandMark';
 
 type Colors = {
   card: string;
@@ -9,6 +14,11 @@ type Colors = {
   secondary: string;
   border: string;
   input: string;
+};
+
+type PortalLink = {
+  portal: string;
+  externalUrl: string;
 };
 
 function formatAcquired(iso?: string | null) {
@@ -36,9 +46,14 @@ export default function OfferProjectCard({
   emptyHint,
   kicker = 'Oferta',
   placeholderIcon = 'home-outline',
+  landRegistryNumber,
+  portalLinks,
+  onOpenKw,
+  onOpenClient,
   colors,
   isDark,
   onPress,
+  onEventPress,
 }: {
   title: string;
   offerId?: number | null;
@@ -51,17 +66,40 @@ export default function OfferProjectCard({
   emptyHint?: string | null;
   kicker?: string;
   placeholderIcon?: keyof typeof Ionicons.glyphMap;
+  landRegistryNumber?: string | null;
+  portalLinks?: PortalLink[] | null;
+  onOpenKw?: (kw: string) => void;
+  onOpenClient?: () => void;
   colors: Colors;
   isDark: boolean;
   onPress?: () => void;
+  /** Tap badge wydarzenia → jump do sekcji CRM. */
+  onEventPress?: () => void;
 }) {
   const acquired = formatAcquired(acquiredAt);
   const clickable = Boolean(onPress && offerId);
+  const kw = String(landRegistryNumber || '').trim().toUpperCase();
+
+  const portals = useMemo(() => {
+    const rows = (portalLinks || [])
+      .map((row) => {
+        const url = String(row.externalUrl || '').trim();
+        if (!url) return null;
+        const channel = resolveMarketingChannel({ portal: row.portal, url });
+        if (!['otodom', 'olx', 'facebook'].includes(channel.id)) return null;
+        return { id: channel.id, label: channel.label, url };
+      })
+      .filter(Boolean) as { id: MarketingChannelId; label: string; url: string }[];
+    const seen = new Set<string>();
+    return rows.filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
+  }, [portalLinks]);
 
   return (
-    <Pressable
-      disabled={!clickable}
-      onPress={onPress}
+    <View
       style={[
         styles.card,
         {
@@ -74,19 +112,36 @@ export default function OfferProjectCard({
         },
       ]}
     >
-      <Text style={[styles.kicker, { color: colors.secondary }]}>{kicker}</Text>
-      <View style={[styles.photoWrap, { backgroundColor: colors.input }]}>
-        {coverUrl ? (
-          <Image source={{ uri: coverUrl }} style={styles.photo} contentFit="cover" recyclingKey={`offer-card-${offerId || title}`} />
-        ) : (
-          <View style={styles.placeholder}>
-            <Ionicons name={placeholderIcon} size={36} color={colors.secondary} />
-          </View>
-        )}
+      <View style={styles.kickerRow}>
+        <Text style={[styles.kicker, { color: colors.secondary }]}>{kicker}</Text>
+        {onOpenClient ? (
+          <Pressable onPress={onOpenClient} hitSlop={10} style={styles.clientLink}>
+            <Ionicons name="person-outline" size={14} color="#007AFF" />
+            <Text style={styles.clientLinkText}>Klient</Text>
+          </Pressable>
+        ) : null}
       </View>
-      <Text style={[styles.title, { color: colors.text }]} numberOfLines={3}>
-        {title}
-      </Text>
+      <Pressable disabled={!clickable} onPress={onPress}>
+        <View style={[styles.photoWrap, { backgroundColor: colors.input }]}>
+          {coverUrl ? (
+            <Image source={{ uri: coverUrl }} style={styles.photo} contentFit="cover" recyclingKey={`offer-card-${offerId || title}`} />
+          ) : (
+            <View style={styles.placeholder}>
+              <Ionicons name={placeholderIcon} size={36} color={colors.secondary} />
+            </View>
+          )}
+        </View>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={3}>
+          {title}
+        </Text>
+      </Pressable>
+      {kw ? (
+        <Pressable onPress={() => onOpenKw?.(kw)} style={styles.kwRow}>
+          <Ionicons name="document-text-outline" size={14} color="#007AFF" />
+          <Text style={styles.kwText}>KW {kw}</Text>
+          <Ionicons name="open-outline" size={13} color="#007AFF" />
+        </Pressable>
+      ) : null}
       <View style={styles.meta}>
         {offerId ? (
           <Text style={[styles.metaText, { color: colors.secondary }]}>ID {offerId}</Text>
@@ -104,23 +159,40 @@ export default function OfferProjectCard({
           </View>
         ) : null}
         {eventStageLabel ? (
-          <View style={[styles.badge, { backgroundColor: `${eventStageColor || '#FF9500'}22` }]}>
+          <Pressable
+            onPress={onEventPress}
+            disabled={!onEventPress}
+            style={[styles.badge, { backgroundColor: `${eventStageColor || '#FF9500'}22` }]}
+          >
             <Text style={[styles.badgeText, { color: eventStageColor || '#FF9500' }]}>
               {eventStageLabel.toUpperCase()}
             </Text>
-          </View>
+          </Pressable>
         ) : null}
       </View>
+      {portals.length ? (
+        <View style={styles.portalRow}>
+          {portals.map((portal) => (
+            <Pressable
+              key={portal.id}
+              onPress={() => void Linking.openURL(portal.url)}
+              accessibilityLabel={portal.label}
+            >
+              <PortalBrandMark id={portal.id as MarketingChannelId} size="md" />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       {emptyHint && !offerId ? (
         <Text style={[styles.hint, { color: colors.secondary }]}>{emptyHint}</Text>
       ) : null}
       {clickable ? (
-        <View style={styles.previewRow}>
+        <Pressable onPress={onPress} style={styles.previewRow}>
           <Text style={styles.previewText}>Otwórz podgląd ogłoszenia</Text>
           <Ionicons name="chevron-forward" size={16} color="#007AFF" />
-        </View>
+        </Pressable>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -134,11 +206,32 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignItems: 'center',
   },
+  kickerRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
   kicker: {
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
+  },
+  clientLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,122,255,0.1)',
+  },
+  clientLinkText: {
+    color: '#007AFF',
+    fontSize: 11,
+    fontWeight: '800',
   },
   photoWrap: {
     marginTop: 12,
@@ -163,6 +256,22 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  kwRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,122,255,0.1)',
+  },
+  kwText: {
+    color: '#007AFF',
+    fontSize: 13,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   meta: {
     marginTop: 8,
@@ -190,6 +299,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.6,
   },
+  portalRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    gap: 10,
+  },
   hint: {
     marginTop: 8,
     fontSize: 12,
@@ -204,7 +318,7 @@ const styles = StyleSheet.create({
   },
   previewText: {
     color: '#007AFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
 });

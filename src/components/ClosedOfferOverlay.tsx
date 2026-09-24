@@ -51,6 +51,8 @@ type Props = {
   isOwner?: boolean;
   onGoBack?: () => void;
   onBrowseSimilar?: () => void;
+  /** Właściciel: bezpośrednie wznowienie publikacji (Moje ogłoszenia / activate). */
+  onRepublish?: () => void;
 };
 
 const ACCENT_BY_REASON: Record<OfferLifecycleReason, string> = {
@@ -70,6 +72,7 @@ export default function ClosedOfferOverlay({
   isOwner = false,
   onGoBack,
   onBrowseSimilar,
+  onRepublish,
 }: Props) {
   const { t } = useI18n();
   const fade = useRef(new Animated.Value(0)).current;
@@ -162,7 +165,19 @@ export default function ClosedOfferOverlay({
         <Text style={styles.subline}>{displaySubline}</Text>
 
         <View style={styles.actionsRow}>
-          {onGoBack ? (
+          {isOwner && onRepublish && (reason === 'EXPIRED' || reason === 'ARCHIVED' || reason === 'INACTIVE') ? (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                onRepublish();
+              }}
+              style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.88 }]}
+            >
+              <Text style={styles.primaryBtnText} numberOfLines={1}>
+                {t('offer.closedOverlay.republishCta')}
+              </Text>
+            </Pressable>
+          ) : onGoBack ? (
             <Pressable
               onPress={() => {
                 Haptics.selectionAsync();
@@ -173,6 +188,20 @@ export default function ClosedOfferOverlay({
               <ChevronLeft size={18} color="#0a0a0a" />
               <Text style={styles.primaryBtnText} numberOfLines={1}>
                 {isOwner ? t('offer.closedOverlay.backToPanel') : t('offer.closedOverlay.backToRadar')}
+              </Text>
+            </Pressable>
+          ) : null}
+          {onGoBack && isOwner && onRepublish && (reason === 'EXPIRED' || reason === 'ARCHIVED' || reason === 'INACTIVE') ? (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                onGoBack();
+              }}
+              style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.78 }]}
+            >
+              <ChevronLeft size={16} color="#ffffff" />
+              <Text style={styles.secondaryBtnText} numberOfLines={1}>
+                {t('offer.closedOverlay.backToPanel')}
               </Text>
             </Pressable>
           ) : null}

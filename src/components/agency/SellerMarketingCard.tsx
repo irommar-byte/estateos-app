@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import * as DocumentPicker from "expo-document-picker";
 import FeaturedPromoteSheet from "../offer/FeaturedPromoteSheet";
 import AcquisitionDatePickerModal from "./AcquisitionDatePickerModal";
+import PortalBrandMark from "../marketing/PortalBrandMark";
 import {
   postAgencyClientAction,
   recordFacebookGroupPost,
@@ -26,10 +27,17 @@ import {
 } from "../../services/agencyClientService";
 import { promoteMobileOfferListing } from "../../utils/mobileOfferPromote";
 import { shareListingLink } from "../../utils/offerShareUrls";
-import { groupPromotionsByChannel, isFacebookPostPermalink } from "../../lib/marketingChannel";
+import {
+  groupPromotionsByChannel,
+  isFacebookPostPermalink,
+  resolveMarketingChannel,
+} from "../../lib/marketingChannel";
 import { groupPortalPath } from "../../lib/portalActivityStacks";
 import MarketingChannelBrand from "../marketing/MarketingChannelBrand";
 import { parseSellerEventProposal } from "../../lib/sellerEventStage";
+import SellerActiveEventsPanel, {
+  sellerEventsMetricSummary,
+} from "./SellerActiveEventsPanel";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -164,6 +172,8 @@ type Props = {
     input: string;
   };
   onRefresh: () => void;
+  /** Gdy true — rozwiń sekcję Wydarzenia (np. jump z badge oferty). */
+  focusEvents?: boolean;
 };
 
 const PORTAL_PRESETS = [
@@ -219,6 +229,7 @@ export default function SellerMarketingCard({
   sellerMarketing,
   colors,
   onRefresh,
+  focusEvents = false,
 }: Props) {
   const [busy, setBusy] = useState("");
   const [portalUrl, setPortalUrl] = useState("");
@@ -329,6 +340,25 @@ export default function SellerMarketingCard({
     setOpenSections((current) => (current[id] ? current : { ...current, [id]: true }));
   };
 
+  useEffect(() => {
+    if (!focusEvents) return;
+    revealSection("events");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pulse when parent requests focus
+  }, [focusEvents]);
+
+  useEffect(() => {
+    const hasEvent =
+      Boolean(sellerMarketing?.sellerEvents?.openHouse?.event) ||
+      Boolean(sellerMarketing?.sellerEvents?.auction?.event);
+    if (!hasEvent) return;
+    setOpenSections((current) =>
+      current.events ? current : { ...current, events: true },
+    );
+  }, [
+    sellerMarketing?.sellerEvents?.openHouse?.event?.id,
+    sellerMarketing?.sellerEvents?.auction?.event?.id,
+  ]);
+
   const allMarketingFeed = useMemo(() => {
     const kinds = new Set([
       "ESTATEOS_PROMOTED",
@@ -386,6 +416,24 @@ export default function SellerMarketingCard({
     return Number.isFinite(due) && due - Date.now() < 7 * 86400000;
   }).length;
 
+  const eventsMetric = sellerEventsMetricSummary({
+    openHouseEvent: sellerMarketing?.sellerEvents?.openHouse?.event,
+    auctionEvent: sellerMarketing?.sellerEvents?.auction?.event,
+  });
+
+  const hasActiveOpenHouse = Boolean(
+    sellerMarketing?.sellerEvents?.openHouse?.event &&
+      !["CANCELLED", "COMPLETED"].includes(
+        String(sellerMarketing.sellerEvents.openHouse.event.status || "").toUpperCase(),
+      ),
+  );
+  const hasActiveAuction = Boolean(
+    sellerMarketing?.sellerEvents?.auction?.event &&
+      !["CANCELLED", "ENDED", "SETTLED"].includes(
+        String(sellerMarketing.sellerEvents.auction.event.status || "").toUpperCase(),
+      ),
+  );
+
   const runAction = async (
     action: string,
     body: Record<string, unknown>,
@@ -398,7 +446,18 @@ export default function SellerMarketingCard({
     });
     setBusy("");
     if (!res.ok) {
-      Alert.alert("Promocja", res.message);
+      const msg = String(res.message || "");
+      const alreadyPublished =
+        /już opublikowany|already published|ALREADY_PUBLISHED/i.test(msg);
+      if (alreadyPublished) {
+        revealSection("events");
+        setEventMode(null);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert("Już aktywne", "To wydarzenie jest już na ogłoszeniu — szczegóły poniżej.");
+        onRefresh();
+        return false;
+      }
+      Alert.alert("Promocja", msg);
       return false;
     }
     onRefresh();
@@ -640,6 +699,16 @@ export default function SellerMarketingCard({
       return;
     }
     if (!eventMode) return;
+    if (
+      mode === "start" &&
+      ((eventMode === "open_house" && hasActiveOpenHouse) ||
+        (eventMode === "auction" && hasActiveAuction))
+    ) {
+      revealSection("events");
+      setEventMode(null);
+      Alert.alert("Już aktywne", "To wydarzenie jest już na ogłoszeniu — szczegóły powyżej.");
+      return;
+    }
     if (!eventDate || !eventStartTime || !eventEndTime) {
       Alert.alert("Wydarzenie", "Uzupełnij datę i godziny.");
       return;
@@ -800,14 +869,19 @@ export default function SellerMarketingCard({
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => revealSection("facebook")}
+          onPress={() => revealSection("events")}
           style={[styles.metric, { backgroundColor: colors.input }]}
         >
-          <Text style={[styles.metricValue, { color: colors.text }]}>
-            {sellerMarketing?.facebookGroups?.length || 0}
+          <Text
+            style={[
+              styles.metricValue,
+              { color: eventsMetric.highlight ? "#34C759" : colors.text },
+            ]}
+          >
+            {eventsMetric.label}
           </Text>
           <Text style={[styles.metricLabel, { color: colors.secondary }]}>
-            grupy FB
+            wydarzenie
           </Text>
         </Pressable>
         <Pressable
@@ -834,11 +908,233 @@ export default function SellerMarketingCard({
         </Pressable>
       </View>
 
-      <View style={[styles.group, { backgroundColor: colors.input }]}>
-        <Text style={[styles.groupKicker, { color: colors.secondary }]}>DYSTRYBUCJA OFERTY</Text>
-        <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
-          Gdzie wisi ogłoszenie — EstateOS, portale i grupy.
-        </Text>
+      {/* Kategorie publikacji — kolejność jak screen 2 */}
+      <Text style={[styles.groupKicker, { color: colors.secondary, marginTop: 14 }]}>PUBLIKACJE</Text>
+      <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
+        Grupy, portale i EstateOS — każde osobno.
+      </Text>
+        <View style={{ marginTop: 6 }}>
+          <Pressable
+            onPress={() => toggleSection("facebook")}
+            style={[styles.sectionToggle, { borderColor: "rgba(24,119,242,0.35)", backgroundColor: colors.card }]}
+          >
+            <PortalBrandMark id="facebook" size="sm" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "800" }}>
+                Grupy Facebook · {sellerMarketing?.facebookGroups?.length || 0}
+              </Text>
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                {facebookPending
+                  ? `Dokończ wpis na „${facebookPending.groupName}”`
+                  : "Wystaw ogłoszenie, potem wklej link do posta"}
+              </Text>
+            </View>
+            <Ionicons
+              name={openSections.facebook || facebookPending ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.secondary}
+            />
+          </Pressable>
+          {openSections.facebook || facebookPending ? (
+        <View>
+          <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18, marginTop: 8 }}>
+            Otworzy się Facebook z kartą ogłoszenia. Żeby klik w panelu otwierał
+            ogłoszenie, wklej link do konkretnego posta (⋯ → Kopiuj link).
+          </Text>
+          {facebookPending ? (
+            <View
+              style={[
+                styles.channelRow,
+                {
+                  borderColor: "rgba(24,119,242,0.45)",
+                  backgroundColor: "rgba(24,119,242,0.12)",
+                  marginTop: 10,
+                },
+              ]}
+            >
+              <View style={{ flex: 1, gap: 8 }}>
+                <Text style={{ color: colors.text, fontWeight: "800" }}>
+                  Wklej link do posta na „{facebookPending.groupName}”
+                </Text>
+                <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
+                  Facebook nie oddaje adresu ogłoszenia. Pod wrzuconym postem: ⋯ → Kopiuj link.
+                </Text>
+                <TextInput
+                  value={fbGroupNameDraft}
+                  onChangeText={setFbGroupNameDraft}
+                  placeholder="Nazwa grupy"
+                  placeholderTextColor={colors.secondary}
+                  style={[
+                    styles.input,
+                    { color: colors.text, borderColor: colors.border },
+                  ]}
+                />
+                <TextInput
+                  value={fbPostUrl}
+                  onChangeText={setFbPostUrl}
+                  placeholder="https://www.facebook.com/groups/…/posts/…"
+                  placeholderTextColor={colors.secondary}
+                  autoCapitalize="none"
+                  style={[
+                    styles.input,
+                    { color: colors.text, borderColor: colors.border },
+                  ]}
+                />
+                <View style={styles.switchRow}>
+                  <Text style={{ color: colors.text, flex: 1 }}>
+                    Pokaż klientowi
+                  </Text>
+                  <Switch
+                    value={fbShowClient}
+                    onValueChange={setFbShowClient}
+                  />
+                </View>
+                <Pressable
+                  disabled={Boolean(busy) || !isFacebookPostPermalink(fbPostUrl)}
+                  onPress={() => void confirmFacebookShare()}
+                  style={[
+                    styles.fbShareBtn,
+                    !isFacebookPostPermalink(fbPostUrl) ? { opacity: 0.45 } : null,
+                  ]}
+                >
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
+                    ZAPISZ W ŚCIEŻCE
+                  </Text>
+                </Pressable>
+                <Pressable onPress={() => setFacebookPending(null)}>
+                  <Text style={{ color: colors.secondary, fontWeight: "700" }}>
+                    Nie teraz
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          {(sellerMarketing?.facebookShareOffers?.length || 0) > 1 ? (
+            <View style={styles.chips}>
+              {sellerMarketing?.facebookShareOffers?.slice(0, 8).map((offer) => (
+                <Pressable
+                  key={offer.id}
+                  onPress={() => setPickedFbOfferId(offer.id)}
+                  style={[
+                    styles.chip,
+                    {
+                      borderColor:
+                        (pickedFbOfferId || linkedOfferId) === offer.id
+                          ? "#1877F2"
+                          : colors.border,
+                      backgroundColor:
+                        (pickedFbOfferId || linkedOfferId) === offer.id
+                          ? "rgba(24,119,242,0.16)"
+                          : colors.input,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 11,
+                      fontWeight: "700",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {offer.id === linkedOfferId ? "Ta oferta" : offer.title}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {(sellerMarketing?.facebookGroups || []).slice(0, fbListLimit).map((group) => (
+            <View
+              key={group.key}
+              style={[
+                styles.channelRow,
+                {
+                  borderColor: "rgba(24,119,242,0.35)",
+                  backgroundColor: "rgba(24,119,242,0.08)",
+                },
+              ]}
+            >
+              <View
+                style={[styles.channelIcon, { backgroundColor: "#1877F2" }]}
+              >
+                <Ionicons name="logo-facebook" size={17} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: "800" }}>
+                  {group.groupName}
+                </Text>
+                <Text
+                  style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}
+                >
+                  {group.postCount}× · {formatDateLabel(group.lastPostedAt)}
+                </Text>
+              </View>
+              {linkedOfferId ? (
+                <Pressable
+                  disabled={Boolean(busy)}
+                  onPress={() =>
+                    void shareToFacebookGroup(group, linkedOfferId)
+                  }
+                  hitSlop={8}
+                >
+                  <Ionicons name="refresh-outline" size={19} color="#1877F2" />
+                </Pressable>
+              ) : null}
+              <Pressable
+                disabled={Boolean(busy)}
+                onPress={() =>
+                  void shareToFacebookGroup(
+                    group,
+                    pickedFbOfferId || linkedOfferId || 0,
+                  )
+                }
+                style={[styles.fbShareBtn, { opacity: busy === "facebook" ? 0.6 : 1 }]}
+              >
+                <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
+                  WYSTAW
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+          {(sellerMarketing?.facebookGroups?.length || 0) > fbListLimit ? (
+            <Pressable
+              onPress={() => setFbListLimit((current) => current + 8)}
+              style={[styles.secondaryBtn, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.accent, fontWeight: "800" }}>
+                Pokaż pozostałe {(sellerMarketing?.facebookGroups?.length || 0) - fbListLimit} grup
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+          ) : null}
+        </View>
+
+      <View style={{ marginTop: 6 }}>
+          <Pressable
+            onPress={() => toggleSection("channels")}
+            style={[styles.sectionToggle, { borderColor: colors.border, backgroundColor: colors.card }]}
+          >
+            <PortalBrandMark id="otodom" size="sm" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "800" }}>
+                Aktywne kanały · {sellerMarketing?.activeChannels.length}
+              </Text>
+              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                {renewalSoon
+                  ? `${renewalSoon} do odnowienia w tym tygodniu`
+                  : "Otodom, grupy i terminy odnowienia"}
+              </Text>
+            </View>
+            <Ionicons
+              name={openSections.channels ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.secondary}
+            />
+          </Pressable>
+          {openSections.channels ? (
+          <>
+          <View style={{ marginBottom: 8, gap: 0 }}>
       <View style={styles.row}>
         <View style={[styles.estateosState, { backgroundColor: colors.input }]}>
           <View
@@ -881,9 +1177,20 @@ export default function SellerMarketingCard({
 
       <Pressable
         onPress={() => toggleSection("external")}
-        style={[styles.sectionToggle, { borderColor: colors.border }]}
+        style={[styles.sectionToggle, { borderColor: colors.border, backgroundColor: colors.card }]}
       >
-        <Ionicons name="globe-outline" size={18} color={colors.accent} />
+        <PortalBrandMark
+          id={
+            /otodom/i.test(portalPreset)
+              ? "otodom"
+              : /olx/i.test(portalPreset)
+                ? "olx"
+                : /facebook/i.test(portalPreset)
+                  ? "facebook"
+                  : "portal"
+          }
+          size="sm"
+        />
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text, fontWeight: "800" }}>
             Dodaj publikację zewnętrzną
@@ -1167,227 +1474,7 @@ export default function SellerMarketingCard({
         </>
       ) : null}
 
-        <View style={{ marginTop: 6 }}>
-          <Pressable
-            onPress={() => toggleSection("facebook")}
-            style={[styles.sectionToggle, { borderColor: "rgba(24,119,242,0.35)" }]}
-          >
-            <Ionicons name="logo-facebook" size={18} color="#1877F2" />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: "800" }}>
-                Grupy Facebook · {sellerMarketing?.facebookGroups?.length || 0}
-              </Text>
-              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
-                {facebookPending
-                  ? `Dokończ wpis na „${facebookPending.groupName}”`
-                  : "Wystaw ogłoszenie, potem wklej link do posta"}
-              </Text>
-            </View>
-            <Ionicons
-              name={openSections.facebook || facebookPending ? "chevron-up" : "chevron-down"}
-              size={18}
-              color={colors.secondary}
-            />
-          </Pressable>
-          {openSections.facebook || facebookPending ? (
-        <View>
-          <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18, marginTop: 8 }}>
-            Otworzy się Facebook z kartą ogłoszenia. Żeby klik w panelu otwierał
-            ogłoszenie, wklej link do konkretnego posta (⋯ → Kopiuj link).
-          </Text>
-          {facebookPending ? (
-            <View
-              style={[
-                styles.channelRow,
-                {
-                  borderColor: "rgba(24,119,242,0.45)",
-                  backgroundColor: "rgba(24,119,242,0.12)",
-                  marginTop: 10,
-                },
-              ]}
-            >
-              <View style={{ flex: 1, gap: 8 }}>
-                <Text style={{ color: colors.text, fontWeight: "800" }}>
-                  Wklej link do posta na „{facebookPending.groupName}”
-                </Text>
-                <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
-                  Facebook nie oddaje adresu ogłoszenia. Pod wrzuconym postem: ⋯ → Kopiuj link.
-                </Text>
-                <TextInput
-                  value={fbGroupNameDraft}
-                  onChangeText={setFbGroupNameDraft}
-                  placeholder="Nazwa grupy"
-                  placeholderTextColor={colors.secondary}
-                  style={[
-                    styles.input,
-                    { color: colors.text, borderColor: colors.border },
-                  ]}
-                />
-                <TextInput
-                  value={fbPostUrl}
-                  onChangeText={setFbPostUrl}
-                  placeholder="https://www.facebook.com/groups/…/posts/…"
-                  placeholderTextColor={colors.secondary}
-                  autoCapitalize="none"
-                  style={[
-                    styles.input,
-                    { color: colors.text, borderColor: colors.border },
-                  ]}
-                />
-                <View style={styles.switchRow}>
-                  <Text style={{ color: colors.text, flex: 1 }}>
-                    Pokaż klientowi
-                  </Text>
-                  <Switch
-                    value={fbShowClient}
-                    onValueChange={setFbShowClient}
-                  />
-                </View>
-                <Pressable
-                  disabled={Boolean(busy) || !isFacebookPostPermalink(fbPostUrl)}
-                  onPress={() => void confirmFacebookShare()}
-                  style={[
-                    styles.fbShareBtn,
-                    !isFacebookPostPermalink(fbPostUrl) ? { opacity: 0.45 } : null,
-                  ]}
-                >
-                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
-                    ZAPISZ W ŚCIEŻCE
-                  </Text>
-                </Pressable>
-                <Pressable onPress={() => setFacebookPending(null)}>
-                  <Text style={{ color: colors.secondary, fontWeight: "700" }}>
-                    Nie teraz
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : null}
-          {(sellerMarketing?.facebookShareOffers?.length || 0) > 1 ? (
-            <View style={styles.chips}>
-              {sellerMarketing?.facebookShareOffers?.slice(0, 8).map((offer) => (
-                <Pressable
-                  key={offer.id}
-                  onPress={() => setPickedFbOfferId(offer.id)}
-                  style={[
-                    styles.chip,
-                    {
-                      borderColor:
-                        (pickedFbOfferId || linkedOfferId) === offer.id
-                          ? "#1877F2"
-                          : colors.border,
-                      backgroundColor:
-                        (pickedFbOfferId || linkedOfferId) === offer.id
-                          ? "rgba(24,119,242,0.16)"
-                          : colors.input,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontSize: 11,
-                      fontWeight: "700",
-                    }}
-                    numberOfLines={1}
-                  >
-                    {offer.id === linkedOfferId ? "Ta oferta" : offer.title}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          {(sellerMarketing?.facebookGroups || []).slice(0, fbListLimit).map((group) => (
-            <View
-              key={group.key}
-              style={[
-                styles.channelRow,
-                {
-                  borderColor: "rgba(24,119,242,0.35)",
-                  backgroundColor: "rgba(24,119,242,0.08)",
-                },
-              ]}
-            >
-              <View
-                style={[styles.channelIcon, { backgroundColor: "#1877F2" }]}
-              >
-                <Ionicons name="logo-facebook" size={17} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: "800" }}>
-                  {group.groupName}
-                </Text>
-                <Text
-                  style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}
-                >
-                  {group.postCount}× · {formatDateLabel(group.lastPostedAt)}
-                </Text>
-              </View>
-              {linkedOfferId ? (
-                <Pressable
-                  disabled={Boolean(busy)}
-                  onPress={() =>
-                    void shareToFacebookGroup(group, linkedOfferId)
-                  }
-                  hitSlop={8}
-                >
-                  <Ionicons name="refresh-outline" size={19} color="#1877F2" />
-                </Pressable>
-              ) : null}
-              <Pressable
-                disabled={Boolean(busy)}
-                onPress={() =>
-                  void shareToFacebookGroup(
-                    group,
-                    pickedFbOfferId || linkedOfferId || 0,
-                  )
-                }
-                style={[styles.fbShareBtn, { opacity: busy === "facebook" ? 0.6 : 1 }]}
-              >
-                <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
-                  WYSTAW
-                </Text>
-              </Pressable>
-            </View>
-          ))}
-          {(sellerMarketing?.facebookGroups?.length || 0) > fbListLimit ? (
-            <Pressable
-              onPress={() => setFbListLimit((current) => current + 8)}
-              style={[styles.secondaryBtn, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.accent, fontWeight: "800" }}>
-                Pokaż pozostałe {(sellerMarketing?.facebookGroups?.length || 0) - fbListLimit} grup
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-          ) : null}
-        </View>
-
-      <View style={{ marginTop: 6 }}>
-          <Pressable
-            onPress={() => toggleSection("channels")}
-            style={[styles.sectionToggle, { borderColor: colors.border }]}
-          >
-            <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: "800" }}>
-                Aktywne kanały · {sellerMarketing?.activeChannels.length}
-              </Text>
-              <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
-                {renewalSoon
-                  ? `${renewalSoon} do odnowienia w tym tygodniu`
-                  : "Otodom, grupy i terminy odnowienia"}
-              </Text>
-            </View>
-            <Ionicons
-              name={openSections.channels ? "chevron-up" : "chevron-down"}
-              size={18}
-              color={colors.secondary}
-            />
-          </Pressable>
-          {openSections.channels ? (
-          <>
+          </View>
           {(sellerMarketing?.activeChannels || []).length === 0 ? (
             <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
               Brak aktywnych kanałów. Zapisz publikację powyżej, żeby pojawiła się tutaj.
@@ -1403,13 +1490,12 @@ export default function SellerMarketingCard({
                 <View
                   style={[
                     styles.channelIcon,
-                    { backgroundColor: `${colors.accent}20` },
+                    { backgroundColor: "transparent", padding: 0 },
                   ]}
                 >
-                  <Ionicons
-                    name="megaphone-outline"
-                    size={17}
-                    color={colors.accent}
+                  <PortalBrandMark
+                    id={resolveMarketingChannel({ portal: channel.portal, url: channel.externalUrl }).id}
+                    size="sm"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -1470,16 +1556,15 @@ export default function SellerMarketingCard({
           </>
           ) : null}
         </View>
-      </View>
 
-      <View style={[styles.group, { backgroundColor: colors.input }]}>
+      <View style={styles.group}>
         <Text style={[styles.groupKicker, { color: colors.secondary }]}>KROK Z KLIENTEM</Text>
         <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
           Co ustalamy dziś i jakie decyzje czekają.
         </Text>
       <Pressable
         onPress={() => toggleSection("plan")}
-        style={[styles.sectionToggle, { borderColor: colors.border }]}
+        style={[styles.sectionToggle, { borderColor: colors.border, backgroundColor: colors.card }]}
       >
         <Ionicons name="navigate-outline" size={18} color={colors.accent} />
         <View style={{ flex: 1 }}>
@@ -1598,7 +1683,7 @@ export default function SellerMarketingCard({
       ) : null}
       <Pressable
         onPress={() => toggleSection("decision")}
-        style={[styles.sectionToggle, { borderColor: colors.border }]}
+        style={[styles.sectionToggle, { borderColor: colors.border, backgroundColor: colors.card }]}
       >
         <Ionicons name="help-circle-outline" size={19} color={colors.accent} />
         <View style={{ flex: 1 }}>
@@ -1723,14 +1808,17 @@ export default function SellerMarketingCard({
       ) : null}
 
       {(sellerMarketing?.pendingDecisions.length || 0) > 0 ? (
-        <View style={{ marginTop: 12 }}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
+        <View style={styles.group}>
+          <Text style={[styles.groupKicker, { color: colors.secondary }]}>
             OCZEKUJĄCE ODPOWIEDZI
+          </Text>
+          <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
+            Decyzje czekające na klienta.
           </Text>
           {sellerMarketing?.pendingDecisions.map((decision) => (
             <View
               key={decision.id}
-              style={[styles.pendingRow, { borderColor: colors.border }]}
+              style={[styles.pendingRow, { borderColor: colors.border, backgroundColor: colors.card }]}
             >
               <Ionicons name="hourglass-outline" size={18} color="#FF9500" />
               <View style={{ flex: 1 }}>
@@ -1769,14 +1857,14 @@ export default function SellerMarketingCard({
       ) : null}
       </View>
 
-      <View style={[styles.group, { backgroundColor: colors.input }]}>
+      <View style={styles.group}>
         <Text style={[styles.groupKicker, { color: colors.secondary }]}>WYDARZENIA SPRZEDAŻY</Text>
         <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
           Kalendarz dnia otwartego i licytacji — osobno od planu współpracy.
         </Text>
       <Pressable
         onPress={() => toggleSection("events")}
-        style={[styles.sectionToggle, { borderColor: colors.border }]}
+        style={[styles.sectionToggle, { borderColor: colors.border, backgroundColor: colors.card }]}
       >
         <Ionicons name="calendar-outline" size={18} color={colors.accent} />
         <View style={{ flex: 1 }}>
@@ -1804,57 +1892,27 @@ export default function SellerMarketingCard({
               Wydarzenie sprzedaży
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 4, lineHeight: 16 }}>
-              Uruchom dzień otwarty albo licytację na ogłoszeniu. Możesz od razu poinformować właściciela albo poprosić o zgodę.
+              Status, odliczanie i rezerwacje — albo uruchom dzień otwarty / licytację.
             </Text>
-            {sellerMarketing?.sellerEvents?.stage ? (
-              <View
-                style={[
-                  styles.eventStageChip,
-                  { backgroundColor: "#FF950022", marginTop: 8 },
-                ]}
-              >
-                <Text style={{ color: "#FF9500", fontSize: 10, fontWeight: "900" }}>
-                  {(sellerMarketing.sellerEvents.stage.kind === "auction"
-                    ? "LICYTACJA"
-                    : sellerMarketing.sellerEvents.stage.kind === "open_house"
-                      ? "DZIEŃ OTWARTY"
-                      : "WYDARZENIE") +
-                    ` · ${sellerMarketing.sellerEvents.stage.label.toUpperCase()}`}
-                </Text>
-              </View>
-            ) : null}
-            {(sellerMarketing?.sellerEvents?.openHouse.proposal ||
-              sellerMarketing?.sellerEvents?.auction.proposal) ? (
-              <Text
-                style={{
-                  color: "#FF9500",
-                  fontSize: 12,
-                  fontWeight: "700",
-                  marginTop: 8,
+
+            {sellerMarketing?.sellerEvents ? (
+              <SellerActiveEventsPanel
+                token={token}
+                openHouse={sellerMarketing.sellerEvents.openHouse}
+                auction={sellerMarketing.sellerEvents.auction}
+                stage={sellerMarketing.sellerEvents.stage}
+                colors={colors}
+                onRequestLaunch={(kind) => {
+                  setEventMode(kind);
+                  void Haptics.selectionAsync();
                 }}
-              >
-                {(() => {
-                  const pending =
-                    sellerMarketing.sellerEvents.auction.proposal ||
-                    sellerMarketing.sellerEvents.openHouse.proposal;
-                  const parsed = parseSellerEventProposal(pending?.payload);
-                  const when = parsed?.startsAt
-                    ? new Date(parsed.startsAt).toLocaleString("pl-PL", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "";
-                  const price =
-                    parsed?.kind === "auction" && parsed.startPrice != null
-                      ? ` · od ${Math.round(parsed.startPrice).toLocaleString("pl-PL")} zł`
-                      : "";
-                  return `Czeka na akceptację klienta${when ? `: ${when}` : ""}${price}`;
-                })()}
-              </Text>
+              />
             ) : null}
+
+            {(!hasActiveOpenHouse || !hasActiveAuction || eventMode) ? (
+              <>
             <View style={[styles.chips, { marginTop: 10 }]}>
+              {!hasActiveOpenHouse || eventMode === "open_house" ? (
               <Pressable
                 onPress={() =>
                   setEventMode(eventMode === "open_house" ? null : "open_house")
@@ -1868,6 +1926,7 @@ export default function SellerMarketingCard({
                       eventMode === "open_house"
                         ? `${colors.accent}22`
                         : colors.input,
+                    opacity: hasActiveOpenHouse && eventMode !== "open_house" ? 0.4 : 1,
                   },
                 ]}
               >
@@ -1875,6 +1934,8 @@ export default function SellerMarketingCard({
                   Dzień otwarty
                 </Text>
               </Pressable>
+              ) : null}
+              {!hasActiveAuction || eventMode === "auction" ? (
               <Pressable
                 onPress={() =>
                   setEventMode(eventMode === "auction" ? null : "auction")
@@ -1888,6 +1949,7 @@ export default function SellerMarketingCard({
                       eventMode === "auction"
                         ? `${colors.accent}22`
                         : colors.input,
+                    opacity: hasActiveAuction && eventMode !== "auction" ? 0.4 : 1,
                   },
                 ]}
               >
@@ -1895,6 +1957,7 @@ export default function SellerMarketingCard({
                   Licytacja
                 </Text>
               </Pressable>
+              ) : null}
             </View>
             {eventMode ? (
               <View style={{ marginTop: 10, gap: 8 }}>
@@ -2036,11 +2099,13 @@ export default function SellerMarketingCard({
                 </Pressable>
               </View>
             ) : null}
+              </>
+            ) : null}
           </View>
       ) : null}
       </View>
 
-      <View style={[styles.group, { backgroundColor: colors.input }]}>
+      <View style={styles.group}>
         <Text style={[styles.groupKicker, { color: colors.secondary }]}>HISTORIA</Text>
         <Text style={[styles.groupPurpose, { color: colors.secondary }]}>
           Co już zrobiliśmy przy promocji ogłoszenia.
@@ -2048,7 +2113,7 @@ export default function SellerMarketingCard({
       <View style={{ marginTop: 6 }}>
           <Pressable
             onPress={() => toggleSection("feed")}
-            style={[styles.sectionToggle, { borderColor: colors.border }]}
+            style={[styles.sectionToggle, { borderColor: colors.border, backgroundColor: colors.card }]}
           >
             <Ionicons name="time-outline" size={18} color={colors.accent} />
             <View style={{ flex: 1 }}>
@@ -2255,20 +2320,20 @@ const styles = StyleSheet.create({
   },
   group: {
     marginTop: 14,
-    borderRadius: 16,
-    padding: 10,
-    paddingBottom: 12,
+    borderRadius: 0,
+    padding: 0,
   },
   groupKicker: {
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.7,
+    textTransform: "uppercase",
   },
   groupPurpose: {
     fontSize: 12,
     lineHeight: 17,
     marginTop: 3,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   sectionLabel: {
     fontSize: 10,
@@ -2295,10 +2360,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
     marginTop: 8,
     backgroundColor: "transparent",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   row: { flexDirection: "row", gap: 8, marginTop: 12 },
   estateosState: {

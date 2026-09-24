@@ -198,6 +198,37 @@ export function isOfferClosed(offer: AnyObj | null | undefined, now: number = Da
   return getOfferLifecycleState(offer, now).isClosed;
 }
 
+/** Najlepszy dostępny timestamp końca publikacji (bez sztucznego +30 dni). */
+export function resolveOfferExpiryMs(offer: AnyObj | null | undefined): number | null {
+  if (!offer || typeof offer !== 'object') return null;
+  const expiryCandidates = [
+    offer.expiresAt,
+    offer.validUntil,
+    offer.publishedUntil,
+    offer.expirationDate,
+    offer.expireAt,
+  ];
+  for (const raw of expiryCandidates) {
+    if (!raw) continue;
+    const ts = new Date(String(raw)).getTime();
+    if (Number.isFinite(ts) && ts > 0) return ts;
+  }
+  return null;
+}
+
+/**
+ * Dni do końca publikacji. `null` = brak daty w payloadzie (UI: „—”).
+ * Nigdy nie wymyśla createdAt+30.
+ */
+export function resolveOfferDaysLeft(
+  offer: AnyObj | null | undefined,
+  now: number = Date.now(),
+): number | null {
+  const expiryMs = resolveOfferExpiryMs(offer);
+  if (expiryMs == null) return null;
+  return Math.max(0, Math.ceil((expiryMs - now) / (1000 * 60 * 60 * 24)));
+}
+
 /** Okno „NOWA OFERTA" od momentu aktywacji na rynku. */
 export const OFFER_NEW_LISTING_WINDOW_MS = 48 * 60 * 60 * 1000;
 

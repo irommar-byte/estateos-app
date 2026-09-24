@@ -207,6 +207,7 @@ export const offer = {
 
   closedOverlay: {
     eyebrow: 'STAN OFERTY',
+    republishCta: 'Wystaw ponownie',
     backToPanel: 'Wróć do panelu',
     backToRadar: 'Wróć do Radaru',
     similarOffers: 'Podobne oferty',

@@ -94,6 +94,8 @@ import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
 import { playFeaturedCelebration } from '../store/useFeaturedCelebrationStore';
 import { fetchMyCars } from '../services/carsApi';
 import { isOfferPromotionActive } from '../utils/listingPromotion';
+import { isOfferClosed, resolveOfferDaysLeft } from '../utils/offerLifecycle';
+import { consumeOpenMyOffersRequest } from '../utils/openMyOffersDeepLink';
 import { formatOfferLocationLine } from '../constants/locationEcosystem';
 import { useMoneyContext } from '../money/useMoneyContext';
 import {
@@ -736,7 +738,15 @@ function MyOffersVerticalSwitcher({ value, onChange, homeCount, carCount, isDark
   );
 }
 
-const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenShop }) => {
+const MyOffersModal = ({
+  visible,
+  onClose,
+  theme,
+  onOpenPhotoSessions,
+  onOpenShop,
+  initialTab,
+  focusOfferId,
+}) => {
   const { t, locale } = useI18n();
   const publicationCopy = useMemo(() => getPublicationCopy(), [locale]);
   const navigation = useNavigation();
@@ -746,7 +756,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
   const [loading, setLoading] = useState(false);
   const [carsLoading, setCarsLoading] = useState(false);
   const [listingVertical, setListingVertical] = useState('home');
-  const [activeTab, setActiveTab] = useState('ACTIVE');
+  const [activeTab, setActiveTab] = useState(initialTab || 'ACTIVE');
   const [selectedOffer, setSelectedOffer] = useState(null);
   const [selectedCar, setSelectedCar] = useState(null);
   const [reactivating, setReactivating] = useState(false);
@@ -764,7 +774,9 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
   const [proPhotoSessionVisible, setProPhotoSessionVisible] = useState(false);
   const [proPhotoSessionNote, setProPhotoSessionNote] = useState('');
   const pendingReactivationRef = useRef<{ offerId: number; offerTitle: string } | null>(null);
-  const recentlyReactivatedUntilRef = useRef<Record<number, number>>({});
+  const recentlyReactivatedUntilRef = useRef<
+    Record<number, { until: number; expiresAt?: string }>
+  >({});
   
   const { user, token, refreshUser } = useAuthStore();
   const isDark = theme.glass === 'dark';
@@ -773,7 +785,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
 
   const isOfferSyncing = (offerId: number) => {
     void syncTick;
-    return Number(recentlyReactivatedUntilRef.current[offerId] || 0) > Date.now();
+    return Number(recentlyReactivatedUntilRef.current[offerId]?.until || 0) > Date.now();
   };
 
   const clearReactivateLock = (offerId: number) => {
@@ -804,7 +816,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
       const now = Date.now();
       Object.keys(recentlyReactivatedUntilRef.current).forEach((k) => {
         const id = Number(k);
-        if ((recentlyReactivatedUntilRef.current[id] || 0) <= now) {
+        if ((recentlyReactivatedUntilRef.current[id]?.until || 0) <= now) {
           delete recentlyReactivatedUntilRef.current[id];
         }
       });
@@ -839,17 +851,20 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
         const now = Date.now();
         const protectedList = list.map((o: any) => {
           const id = Number(o?.id);
-          const lockUntil = Number(recentlyReactivatedUntilRef.current[id] || 0);
+          const lock = recentlyReactivatedUntilRef.current[id];
+          const lockUntil = Number(lock?.until || 0);
           if (!id || lockUntil <= now) return o;
           const normalized = normalizeOfferTabStatus(o?.status);
-          if (normalized === 'ACTIVE') {
+          const stillClosed = isOfferClosed(o);
+          if (normalized === 'ACTIVE' && !stillClosed) {
             clearReactivateLock(id);
             return o;
           }
-          if (normalized === 'ARCHIVED') {
-            return { ...o, status: 'ACTIVE' };
-          }
-          return o;
+          return {
+            ...o,
+            status: 'ACTIVE',
+            expiresAt: lock?.expiresAt || o?.expiresAt,
+          };
         });
         setOffers(protectedList);
       }
@@ -858,12 +873,27 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
 
   useEffect(() => { 
     if (visible) {
+      if (initialTab === 'ACTIVE' || initialTab === 'PENDING' || initialTab === 'ARCHIVED') {
+        setActiveTab(initialTab);
+      }
       fetchMyOffers();
       fetchMyCarsList();
       setSelectedOffer(null);
       setSelectedCar(null);
     }
-  }, [visible]);
+  }, [visible, initialTab]);
+
+  useEffect(() => {
+    if (!visible || !focusOfferId || !offers.length) return;
+    const target = offers.find((o) => Number(o?.id) === Number(focusOfferId));
+    if (!target) return;
+    const closed = isOfferClosed(target);
+    const st = normalizeOfferTabStatus(target.status);
+    if (closed || st === 'ARCHIVED') setActiveTab('ARCHIVED');
+    else if (st === 'PENDING') setActiveTab('PENDING');
+    else setActiveTab('ACTIVE');
+    setSelectedOffer(target);
+  }, [visible, focusOfferId, offers]);
 
   const handleOpenManagement = (offer) => {
     Haptics.selectionAsync();
@@ -929,28 +959,45 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
       const endsAt =
         typeof res.body?.publication?.endsAt === 'string'
           ? res.body.publication.endsAt
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          : null;
+      const awaitingModeration = Boolean(res.body?.awaitingModeration);
+      if (!awaitingModeration && !endsAt) {
+        throw new Error(
+          'Serwer nie przedłużył publikacji. Spróbuj ponownie za chwilę albo użyj Pakietu Plus.',
+        );
+      }
       const serverOffer = extractMobileOfferJson(res.body);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      recentlyReactivatedUntilRef.current[offerId] = Date.now() + REACTIVATE_STATUS_LOCK_MS;
-      setOffers((prev) =>
-        prev.map((o) => {
-          if (Number(o?.id) !== offerId) return o;
-          const merged = serverOffer ? { ...o, ...serverOffer } : { ...o, status: 'ACTIVE' };
-          return { ...merged, status: 'ACTIVE', expiresAt: endsAt };
-        }),
-      );
+      if (endsAt) {
+        recentlyReactivatedUntilRef.current[offerId] = {
+          until: Date.now() + REACTIVATE_STATUS_LOCK_MS,
+          expiresAt: endsAt,
+        };
+        setOffers((prev) =>
+          prev.map((o) => {
+            if (Number(o?.id) !== offerId) return o;
+            const merged = serverOffer ? { ...o, ...serverOffer } : { ...o, status: 'ACTIVE' };
+            return { ...merged, status: 'ACTIVE', expiresAt: endsAt };
+          }),
+        );
+      }
       if (opts?.redemption?.source === 'bonus_coupon' && user?.id) {
         await markProfilePromoCouponUsed(user.id, opts.redemption.couponId, token);
       }
       setSelectedOffer(null);
-      setActiveTab('ACTIVE');
+      setActiveTab(awaitingModeration ? 'PENDING' : 'ACTIVE');
       await refreshUser?.();
       await fetchMyOffers();
       Alert.alert(
-        t('profile.myOffers.alerts.onMarketTitle'),
-        t('profile.myOffers.alerts.onMarketBody', { title: offerTitle }),
+        awaitingModeration
+          ? t('profile.myOffers.alerts.pendingTitle', { defaultValue: 'W weryfikacji' })
+          : t('profile.myOffers.alerts.onMarketTitle'),
+        awaitingModeration
+          ? t('profile.myOffers.alerts.pendingBody', {
+              defaultValue: 'Ogłoszenie czeka na akceptację — potem wróci na rynek na 30 dni.',
+            })
+          : t('profile.myOffers.alerts.onMarketBody', { title: offerTitle }),
       );
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -1249,16 +1296,18 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
 
   const filteredOffers = offers.filter((o) => {
     const st = normalizeOfferTabStatus(o.status);
-    if (activeTab === 'ACTIVE') return st === 'ACTIVE';
+    const closed = isOfferClosed(o);
+    if (activeTab === 'ACTIVE') return st === 'ACTIVE' && !closed;
     if (activeTab === 'PENDING') return st === 'PENDING';
-    if (activeTab === 'ARCHIVED') return st === 'ARCHIVED';
+    if (activeTab === 'ARCHIVED') return st === 'ARCHIVED' || (st === 'ACTIVE' && closed);
     return false;
   });
 
   const renderMyOffer = ({ item }) => {
     const imageUri = extractOfferCardImage(item);
     const offerId = Number(item?.id);
-    const rowStatus = normalizeOfferTabStatus(item.status);
+    const closed = isOfferClosed(item);
+    const rowStatus = closed ? 'ARCHIVED' : normalizeOfferTabStatus(item.status);
     const syncing = offerId > 0 && isOfferSyncing(offerId);
 
     return (
@@ -1384,14 +1433,8 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
   const renderManagementView = () => {
     if (!selectedOffer) return null;
     const selSt = normalizeOfferTabStatus(selectedOffer.status);
-    const expiryDate = selectedOffer.expiresAt ? new Date(selectedOffer.expiresAt) : null;
-    const fallbackExpiryDate = selectedOffer.createdAt
-      ? new Date(new Date(selectedOffer.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000)
-      : null;
-    const effectiveExpiryDate = expiryDate || fallbackExpiryDate;
-    const daysLeft = effectiveExpiryDate
-      ? Math.max(0, Math.ceil((effectiveExpiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-      : 0;
+    const closed = isOfferClosed(selectedOffer);
+    const daysLeft = resolveOfferDaysLeft(selectedOffer);
     const realViews = Number(selectedOffer.viewsCount ?? selectedOffer.views ?? 0);
 
     const imageUri = extractOfferCardImage(selectedOffer);
@@ -1413,8 +1456,10 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
             <Text style={styles.mgtStatLabel}>{t('profile.myOffers.views')}</Text>
           </View>
           <View style={[styles.mgtStatBox, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
-            <Ionicons name="time" size={24} color={daysLeft < 5 ? '#FF3B30' : '#34C759'} />
-            <Text style={[styles.mgtStatValue, { color: theme.text }]}>{daysLeft}</Text>
+            <Ionicons name="time" size={24} color={daysLeft != null && daysLeft < 5 ? '#FF3B30' : '#34C759'} />
+            <Text style={[styles.mgtStatValue, { color: theme.text }]}>
+              {daysLeft == null ? '—' : daysLeft}
+            </Text>
             <Text style={styles.mgtStatLabel}>{t('profile.myOffers.daysLeft')}</Text>
           </View>
         </View>
@@ -1424,7 +1469,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
           <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title={t('profile.myOffers.preview')} subtitle={t('profile.myOffers.previewSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title={t('profile.myOffers.edit')} subtitle={t('profile.myOffers.editSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('COMMENTS')} icon="chatbubbles" color={{ bg: 'rgba(175,82,222,0.12)', icon: '#AF52DE' }} title={t('profile.myOffers.comments')} subtitle={t('profile.myOffers.commentsSubtitle')} theme={theme} isDark={isDark} />
-          {selSt !== 'ARCHIVED' ? (
+          {selSt !== 'ARCHIVED' && !closed ? (
             <PremiumActionButton
               onPress={() => handleAction('PRO_STUDIO')}
               icon="sparkles"
@@ -1435,7 +1480,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
               isDark={isDark}
             />
           ) : null}
-          {selSt === 'ACTIVE' ? (
+          {selSt === 'ACTIVE' && !closed ? (
             <PremiumActionButton
               disabled={promoting || isOfferPromotionActive(selectedOffer.promotedUntil)}
               onPress={() => handleAction('PROMOTE')}
@@ -1453,7 +1498,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
               isDark={isDark}
             />
           ) : null}
-          {selSt === 'ACTIVE' ? (
+          {selSt === 'ACTIVE' && !closed ? (
             <PremiumActionButton
               onPress={() => handleAction('AGENCY_TRANSFER')}
               icon="business"
@@ -1464,8 +1509,8 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenSho
               isDark={isDark}
             />
           ) : null}
-          <PremiumActionButton disabled={selSt === 'ARCHIVED' || archiving} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title={archiving ? t('profile.myOffers.withdrawing') : t('profile.myOffers.withdraw')} subtitle={t('profile.myOffers.withdrawSubtitle')} theme={theme} isDark={isDark} />
-          {selSt === 'ARCHIVED' && (
+          <PremiumActionButton disabled={selSt === 'ARCHIVED' || closed || archiving} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' || closed ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' || closed ? '#8E8E93' : '#FF3B30' }} title={archiving ? t('profile.myOffers.withdrawing') : t('profile.myOffers.withdraw')} subtitle={t('profile.myOffers.withdrawSubtitle')} theme={theme} isDark={isDark} />
+          {(selSt === 'ARCHIVED' || closed) && (
             <PremiumActionButton
               isPrimary
               disabled={reactivating || reactivationChoiceLoading}
@@ -3059,12 +3104,25 @@ function ProfileScreenLoggedIn({
   }, [hydrateDisplayCurrency]);
   
   const [isMyOffersVisible, setIsMyOffersVisible] = useState(false);
+  const [myOffersDeepLink, setMyOffersDeepLink] = useState<{
+    tab?: 'ACTIVE' | 'PENDING' | 'ARCHIVED';
+    offerId?: number;
+  } | null>(null);
   const [shopExpandRequestId, setShopExpandRequestId] = useState(0);
 
   const openManageListingsFromRoute = useCallback(() => {
     setIsMyOffersVisible(true);
     navigation.setParams({ openManageListings: undefined });
   }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const req = consumeOpenMyOffersRequest();
+      if (!req) return;
+      setMyOffersDeepLink(req);
+      setIsMyOffersVisible(true);
+    }, []),
+  );
 
   const openShopFromRoute = useCallback(() => {
     setShopExpandRequestId((v) => v + 1);
@@ -5151,14 +5209,21 @@ function ProfileScreenLoggedIn({
 
       <MyOffersModal
         visible={isMyOffersVisible}
-        onClose={() => setIsMyOffersVisible(false)}
+        onClose={() => {
+          setIsMyOffersVisible(false);
+          setMyOffersDeepLink(null);
+        }}
         theme={theme}
+        initialTab={myOffersDeepLink?.tab}
+        focusOfferId={myOffersDeepLink?.offerId}
         onOpenShop={() => {
           setIsMyOffersVisible(false);
+          setMyOffersDeepLink(null);
           setTimeout(() => setShopExpandRequestId((n) => n + 1), 320);
         }}
         onOpenPhotoSessions={() => {
           setIsMyOffersVisible(false);
+          setMyOffersDeepLink(null);
           setTimeout(() => setIsUserPhotoSessionsVisible(true), 320);
         }}
       />

@@ -400,6 +400,7 @@ export default function AgencyClientDetailScreen() {
   );
   const [radarExpanded, setRadarExpanded] = useState(false);
   const [presentationExpanded, setPresentationExpanded] = useState(false);
+  const [focusSellerEvents, setFocusSellerEvents] = useState(false);
   const [offerCovers, setOfferCovers] = useState<Record<number, string>>({});
   const chatScrollRef = useRef<ScrollView | null>(null);
   const chatPinnedToEndRef = useRef(true);
@@ -1505,27 +1506,29 @@ export default function AgencyClientDetailScreen() {
             <ActivityIndicator color="#34C759" style={{ marginTop: 40 }} />
           ) : (
             <>
-              <ClientPersonCard
-                clientId={client.id}
-                firstName={client.firstName}
-                lastName={client.lastName}
-                type={client.type}
-                roles={[
-                  ...(relatedProjects.selling.length || client.type === 'SELLER' ? (['SELLER'] as const) : []),
-                  ...(relatedProjects.buying.length || client.type === 'BUYER' ? (['BUYER'] as const) : []),
-                ]}
-                phone={client.phone}
-                email={client.email}
-                pesel={client.pesel}
-                kwNumbers={clientKwNumbers}
-                sentCount={sentMatches.length}
-                opinionCount={reactedMatches.length}
-                chatCount={portalMessages.length}
-                portalUrl={client.portalUrl}
-                colors={colors}
-                isDark={isDark}
-                onOpenKw={setEkwViewerKw}
-              />
+              {crmLevel !== 'project' ? (
+                <ClientPersonCard
+                  clientId={client.id}
+                  firstName={client.firstName}
+                  lastName={client.lastName}
+                  type={client.type}
+                  roles={[
+                    ...(relatedProjects.selling.length || client.type === 'SELLER' ? (['SELLER'] as const) : []),
+                    ...(relatedProjects.buying.length || client.type === 'BUYER' ? (['BUYER'] as const) : []),
+                  ]}
+                  phone={client.phone}
+                  email={client.email}
+                  pesel={client.pesel}
+                  kwNumbers={clientKwNumbers}
+                  sentCount={sentMatches.length}
+                  opinionCount={reactedMatches.length}
+                  chatCount={portalMessages.length}
+                  portalUrl={client.portalUrl}
+                  colors={colors}
+                  isDark={isDark}
+                  onOpenKw={setEkwViewerKw}
+                />
+              ) : null}
 
               {crmLevel !== 'project' ? (
                 <ClientPersonHub
@@ -1602,6 +1605,22 @@ export default function AgencyClientDetailScreen() {
                   eventStageColor="#FF9500"
                   coverUrl={offerCoverUrl}
                   emptyHint="Po zamknięciu pozysku powstanie szkic ogłoszenia z głównym zdjęciem."
+                  landRegistryNumber={
+                    linkedOffer?.landRegistryNumber || form?.ownership?.landRegisterNumber || null
+                  }
+                  portalLinks={(client.sellerMarketing?.activeChannels || [])
+                    .filter((ch) => ch.externalUrl)
+                    .map((ch) => ({ portal: ch.portal, externalUrl: ch.externalUrl as string }))}
+                  onOpenKw={setEkwViewerKw}
+                  onOpenClient={() => {
+                    setCrmLevel('person');
+                    setCrmLane(null);
+                  }}
+                  onEventPress={() => {
+                    setPresentationFocus(false);
+                    setFocusSellerEvents(false);
+                    requestAnimationFrame(() => setFocusSellerEvents(true));
+                  }}
                   colors={colors}
                   isDark={isDark}
                   onPress={
@@ -1622,6 +1641,10 @@ export default function AgencyClientDetailScreen() {
                   kicker="Poszukiwanie"
                   placeholderIcon="search-outline"
                   emptyHint={currentProject?.subtitle || 'Kryteria, radar i dopasowania w tym projekcie.'}
+                  onOpenClient={() => {
+                    setCrmLevel('person');
+                    setCrmLane(null);
+                  }}
                   colors={colors}
                   isDark={isDark}
                 />
@@ -3188,6 +3211,7 @@ export default function AgencyClientDetailScreen() {
                   sellerMarketing={client.sellerMarketing || null}
                   colors={colors}
                   onRefresh={() => void load()}
+                  focusEvents={focusSellerEvents}
                 />
               ) : null}
 
