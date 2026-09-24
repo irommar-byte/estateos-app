@@ -961,43 +961,43 @@ const MyOffersModal = ({
           ? res.body.publication.endsAt
           : null;
       const awaitingModeration = Boolean(res.body?.awaitingModeration);
-      if (!awaitingModeration && !endsAt) {
+      // Wznawianie NIGDY nie powinno kończyć się samym PENDING — kredyt był już ściągnięty.
+      if (awaitingModeration || !endsAt) {
         throw new Error(
-          'Serwer nie przedłużył publikacji. Spróbuj ponownie za chwilę albo użyj Pakietu Plus.',
+          'Publikacja nie została przedłużona (brak nowej daty końca). Spróbuj „Wystaw ponownie” jeszcze raz — kredyt nie powinien zostać pobrany drugi raz.',
         );
       }
       const serverOffer = extractMobileOfferJson(res.body);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (endsAt) {
-        recentlyReactivatedUntilRef.current[offerId] = {
-          until: Date.now() + REACTIVATE_STATUS_LOCK_MS,
-          expiresAt: endsAt,
-        };
-        setOffers((prev) =>
-          prev.map((o) => {
-            if (Number(o?.id) !== offerId) return o;
-            const merged = serverOffer ? { ...o, ...serverOffer } : { ...o, status: 'ACTIVE' };
-            return { ...merged, status: 'ACTIVE', expiresAt: endsAt };
-          }),
-        );
-      }
+      recentlyReactivatedUntilRef.current[offerId] = {
+        until: Date.now() + REACTIVATE_STATUS_LOCK_MS,
+        expiresAt: endsAt,
+      };
+      setOffers((prev) =>
+        prev.map((o) => {
+          if (Number(o?.id) !== offerId) return o;
+          const merged = serverOffer ? { ...o, ...serverOffer } : { ...o, status: 'ACTIVE' };
+          return { ...merged, status: 'ACTIVE', expiresAt: endsAt };
+        }),
+      );
       if (opts?.redemption?.source === 'bonus_coupon' && user?.id) {
         await markProfilePromoCouponUsed(user.id, opts.redemption.couponId, token);
       }
       setSelectedOffer(null);
-      setActiveTab(awaitingModeration ? 'PENDING' : 'ACTIVE');
+      setActiveTab('ACTIVE');
       await refreshUser?.();
       await fetchMyOffers();
+      const refreshed = (await (async () => {
+        // read from state is async — verify via local endsAt
+        return !isOfferClosed({ status: 'ACTIVE', expiresAt: endsAt });
+      })());
+      if (!refreshed) {
+        throw new Error('Oferta nadal wygląda na nieaktualną. Odśwież listę i spróbuj ponownie.');
+      }
       Alert.alert(
-        awaitingModeration
-          ? t('profile.myOffers.alerts.pendingTitle', { defaultValue: 'W weryfikacji' })
-          : t('profile.myOffers.alerts.onMarketTitle'),
-        awaitingModeration
-          ? t('profile.myOffers.alerts.pendingBody', {
-              defaultValue: 'Ogłoszenie czeka na akceptację — potem wróci na rynek na 30 dni.',
-            })
-          : t('profile.myOffers.alerts.onMarketBody', { title: offerTitle }),
+        t('profile.myOffers.alerts.onMarketTitle'),
+        t('profile.myOffers.alerts.onMarketBody', { title: offerTitle }),
       );
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

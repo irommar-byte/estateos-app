@@ -100,6 +100,9 @@ export const profile = {
       activationRejected: 'Serwer odrzucił aktywację ogłoszenia (HTTP {{status}}).',
       onMarketTitle: 'Ogłoszenie na rynku',
       onMarketBody: '„{{title}}" jest ponownie publicznie wystawione na 30 dni.',
+      pendingTitle: 'W weryfikacji',
+      pendingBody:
+        'Ogłoszenie czeka na akceptację — potem wróci na rynek na 30 dni. Jeśli już zapłaciłeś, tapnij „Wystaw ponownie” jeszcze raz.',
       publishFailedTitle: 'Nie udało się wystawić',
       publishFailedBody: 'Spróbuj ponownie za chwilę.',
       editTitle: 'Edycja',

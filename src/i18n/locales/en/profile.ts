@@ -99,6 +99,9 @@ export const profile = {
       activationRejected: 'Server rejected listing activation (HTTP {{status}}).',
       onMarketTitle: 'Listing live',
       onMarketBody: '"{{title}}" is publicly listed again for 30 days.',
+      pendingTitle: 'Under review',
+      pendingBody:
+        'The listing is waiting for approval — then it returns to the market for 30 days. If you already paid, tap Relist again.',
       publishFailedTitle: 'Could not publish',
       publishFailedBody: 'Try again in a moment.',
       editTitle: 'Edit',

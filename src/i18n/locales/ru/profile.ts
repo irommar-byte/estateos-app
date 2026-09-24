@@ -99,6 +99,9 @@ export const profile = {
       activationRejected: 'Сервер отклонил активацию листинга (HTTP {{status}}).',
       onMarketTitle: 'Листинг в прямом эфире',
       onMarketBody: '«{{title}}» снова публично котируется на 30 дней.',
+      pendingTitle: 'На проверке',
+      pendingBody:
+        'Объявление ждёт модерации — затем снова будет на рынке 30 дней. Если оплата уже прошла, нажмите «Выставить» ещё раз.',
       publishFailedTitle: 'Не удалось опубликовать',
       publishFailedBody: 'Повторите попытку через минуту.',
       editTitle: 'Редактировать',
