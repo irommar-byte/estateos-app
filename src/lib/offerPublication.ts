@@ -26,9 +26,17 @@ export type PublicationQuoteReason =
   | 'ALREADY_ACTIVE'
   | null;
 
-/** Republikacja z archiwum / po sprzedaży — bez ponownej moderacji admina. */
+/** Republikacja z archiwum / po sprzedaży / po wygaśnięciu — bez ponownej moderacji admina. */
 export function publicationQuoteSkipsModeration(reason: PublicationQuoteReason): boolean {
-  return reason === 'REACTIVATION_AFTER_ARCHIVE' || reason === 'REACTIVATION_AFTER_SOLD';
+  return (
+    reason === 'REACTIVATION_AFTER_ARCHIVE' ||
+    reason === 'REACTIVATION_AFTER_SOLD'
+  );
+}
+
+/** Czy oferta miała już sesję publikacji (w tym wygasłą) — wznawianie, nie first publish. */
+export function isOfferPublicationReactivation(last: OfferPublicationRow | null | undefined): boolean {
+  return Boolean(last);
 }
 
 type DbClient = typeof prisma;
@@ -234,28 +242,44 @@ export async function getPublicationQuote(params: {
   const user = userRows[0];
   if (!user) throw new Error('USER_NOT_FOUND');
 
+  const last = await lastPublicationForOffer(db, offerId);
+  const reactivationReason: PublicationQuoteReason | null =
+    last?.endReason === 'SOLD'
+      ? 'REACTIVATION_AFTER_SOLD'
+      : last
+        ? 'REACTIVATION_AFTER_ARCHIVE'
+        : null;
+
+  // Kredit Plus przy wznowieniu: nadal bez płatności, ale powód musi skipować moderację
+  // (wcześniej PLUS_CREDIT_AVAILABLE szło do kolejki admina → pobranie kredytu bez expiresAt).
   if (hasPlusCreditOnUser(user)) {
     return {
       offerId,
       action,
       requiresPayment: false,
       allowedFreeFirst: false,
-      reason: 'PLUS_CREDIT_AVAILABLE',
+      reason: reactivationReason || 'PLUS_CREDIT_AVAILABLE',
       productId: PAKIET_PLUS_PRODUCT_ID,
     };
   }
 
-  const last = await lastPublicationForOffer(db, offerId);
-  let reason: PublicationQuoteReason = 'NOT_FIRST_OFFER';
-  if (last?.endReason === 'SOLD') reason = 'REACTIVATION_AFTER_SOLD';
-  else if (last) reason = 'REACTIVATION_AFTER_ARCHIVE';
+  if (reactivationReason) {
+    return {
+      offerId,
+      action,
+      requiresPayment: true,
+      allowedFreeFirst: false,
+      reason: reactivationReason,
+      productId: PAKIET_PLUS_PRODUCT_ID,
+    };
+  }
 
   return {
     offerId,
     action,
     requiresPayment: true,
     allowedFreeFirst: false,
-    reason,
+    reason: 'NOT_FIRST_OFFER',
     productId: PAKIET_PLUS_PRODUCT_ID,
   };
 }
@@ -419,21 +443,51 @@ export async function submitOfferActivation(params: {
   const productId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
   const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
 
-  if (params.skipPlatformModeration || publicationQuoteSkipsModeration(quote.reason)) {
+  const last = await lastPublicationForOffer(asDb(), params.offerId);
+  const pending = await readPendingPublication(params.offerId);
+  const isReactivation =
+    isOfferPublicationReactivation(last) ||
+    // Utknięte po wcześniejszym błędzie: kredyt już ściągnięty, oferta w PENDING bez expiresAt
+    Boolean(pending?.kind && pending.entitlementConsumed);
+
+  const shouldGoLiveImmediately =
+    params.skipPlatformModeration ||
+    publicationQuoteSkipsModeration(quote.reason) ||
+    isReactivation;
+
+  if (shouldGoLiveImmediately) {
+    const pendingKind =
+      pending?.kind === 'FREE_FIRST' ||
+      pending?.kind === 'PLUS_PAID' ||
+      pending?.kind === 'PLUS_CREDIT'
+        ? pending.kind
+        : null;
+    const activationKind = pendingKind || params.kind;
     const activation = await activateOfferPublication({
       userId: params.userId,
       offerId: params.offerId,
-      kind: params.kind,
-      iapTransactionId: txId,
+      kind: activationKind,
+      iapTransactionId:
+        activationKind === 'PLUS_PAID'
+          ? txId || (pending?.iapTransactionId ? String(pending.iapTransactionId) : null)
+          : null,
       iapProductId: productId,
+      // Pending już skonsumowało kredyt / IAP — nie ściągaj drugi raz.
+      skipEntitlementConsume: Boolean(pending?.entitlementConsumed),
     });
-    const bonusCouponId = String(params.bonusCouponId || '').trim();
-    if (bonusCouponId && params.kind === 'FREE_FIRST' && params.onFreeFirstCouponUsed) {
+    await clearPendingPublication(params.offerId);
+    const bonusCouponId = String(params.bonusCouponId || pending?.bonusCouponId || '').trim();
+    if (
+      bonusCouponId &&
+      activationKind === 'FREE_FIRST' &&
+      params.onFreeFirstCouponUsed &&
+      !pending?.entitlementConsumed
+    ) {
       await params.onFreeFirstCouponUsed(params.userId, bonusCouponId);
     }
     return {
       status: 'ACTIVE',
-      kind: params.kind,
+      kind: activationKind,
       awaitingModeration: false,
       endsAt: activation.endsAt,
     };
@@ -567,7 +621,7 @@ export async function activateOfferPublication(params: {
   const endsAt = new Date(now.getTime() + PUBLICATION_DURATION_DAYS * 24 * 60 * 60 * 1000);
 
   const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
-  if (params.kind === 'PLUS_PAID' && !txId) {
+  if (params.kind === 'PLUS_PAID' && !txId && !params.skipEntitlementConsume) {
     throw new Error('IAP_TRANSACTION_REQUIRED');
   }
 
