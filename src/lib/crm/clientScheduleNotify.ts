@@ -62,6 +62,19 @@ export async function emailClientSchedule(params: {
     description: params.notes || params.reason || `${agentName} · ${agencyName}`,
   });
 
+  const slotButtons =
+    params.mode === 'proposed' && slots.length > 0
+      ? `<div style="margin:16px 0;display:flex;flex-direction:column;gap:8px">
+          ${slots
+            .map(
+              (slot, index) =>
+                `<a href="${portalUrl}" style="display:block;background:#0a0a0a;color:#fff;padding:14px 16px;border-radius:12px;text-decoration:none;font-weight:800;text-align:center">Termin ${index + 1}: ${escapeHtml(slot.toLocaleString('pl-PL'))}</a>`,
+            )
+            .join('')}
+          <a href="${portalUrl}" style="display:block;background:#ecfdf3;color:#065f46;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:700;text-align:center">Zaproponuj inną datę</a>
+        </div>`
+      : `<p><a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#07130e;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">Otwórz panel klienta</a></p>`;
+
   await sendTransactionalEmail({
     to: client.email,
     subject: `${title} · ${when} · ${agencyName}`,
@@ -70,11 +83,11 @@ export async function emailClientSchedule(params: {
       <h2 style="margin:8px 0 12px">${escapeHtml(title)}</h2>
       <p>Dzień dobry ${escapeHtml(client.firstName)},</p>
       <p>${intro}</p>
-      ${slotsHtml}
+      ${params.mode === 'proposed' ? '' : slotsHtml}
       ${params.location ? `<p>Miejsce: ${escapeHtml(params.location)}</p>` : ''}
       ${params.reason ? `<p>Powód: ${escapeHtml(params.reason)}</p>` : ''}
-      <p><a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#07130e;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">Otwórz panel klienta</a></p>
-      <p style="font-size:12px;color:#6b7280">W panelu możesz potwierdzić termin albo zaproponować inną godzinę z podaniem powodu.</p>
+      ${slotButtons}
+      <p style="font-size:12px;color:#6b7280">W panelu możesz potwierdzić termin albo zaproponować inną godzinę z podaniem powodu. Link: ${escapeHtml(portalUrl)}</p>
     </div>`,
     attachments: [
       {
