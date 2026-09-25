@@ -541,10 +541,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         {token ? (
           <div className="mt-6 space-y-3 border-t border-[var(--eos-border)]/60 pt-6">
             <ClientPortalLiveChat token={token} agentName={portal.agentName} />
-            <ClientPortalSetupPrompt
-              token={token}
-              deferUntilReady={fromSzukam && !onboardingDismissed}
-            />
           </div>
         ) : null}
       </header>
@@ -556,51 +552,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           slot={portal.presentation}
           agentName={portal.agentName}
           onDone={() => load()}
-        />
-      ) : null}
-
-      {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
-
-      {portal.type === "BUYER" && portal.pendingCheckback && token ? (
-        <ClientPortalIntelligenceCheckback
-          token={token}
-          checkback={portal.pendingCheckback}
-          onDone={() => void load()}
-        />
-      ) : null}
-
-      {portal.type === "BUYER" && token ? (
-        <ClientPortalAgentReplyInbox
-          token={token}
-          replies={collectAgentOfferReplies(portal.matches)}
-          onOpenOffer={(matchId) => {
-            ensureMatchOpen(matchId);
-            window.setTimeout(() => {
-              document.getElementById(`portal-match-${matchId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }, 80);
-          }}
-          onDone={() => void load({ silent: true })}
-        />
-      ) : null}
-
-      {portal.type === "BUYER" && fromSzukam && token ? (
-        <ClientPortalBuyerOnboarding
-          token={token}
-          agentName={portal.agentName}
-          hasPendingOffer={pendingMatches.length > 0}
-          welcomeEmailSent={welcomeEmailSent}
-          onDismiss={() => {
-            setFromSzukam(false);
-            setOnboardingDismissed(true);
-            try {
-              window.sessionStorage.setItem(buyerOnboardingStorageKey(token), "1");
-            } catch {
-              /* ignore */
-            }
-          }}
-          onShowOffers={() => {
-            matchesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
         />
       ) : null}
 
@@ -652,6 +603,51 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             />
           ) : null}
         </section>
+      ) : null}
+
+      {portal.type === "BUYER" && portal.pendingCheckback && token ? (
+        <ClientPortalIntelligenceCheckback
+          token={token}
+          checkback={portal.pendingCheckback}
+          onDone={() => void load()}
+        />
+      ) : null}
+
+      {portal.type === "BUYER" && token ? (
+        <ClientPortalAgentReplyInbox
+          token={token}
+          replies={collectAgentOfferReplies(portal.matches)}
+          onOpenOffer={(matchId) => {
+            ensureMatchOpen(matchId);
+            window.setTimeout(() => {
+              document.getElementById(`portal-match-${matchId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 80);
+          }}
+          onDone={() => void load({ silent: true })}
+        />
+      ) : null}
+
+      {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
+
+      {portal.type === "BUYER" && fromSzukam && token ? (
+        <ClientPortalBuyerOnboarding
+          token={token}
+          agentName={portal.agentName}
+          hasPendingOffer={pendingMatches.length > 0}
+          welcomeEmailSent={welcomeEmailSent}
+          onDismiss={() => {
+            setFromSzukam(false);
+            setOnboardingDismissed(true);
+            try {
+              window.sessionStorage.setItem(buyerOnboardingStorageKey(token), "1");
+            } catch {
+              /* ignore */
+            }
+          }}
+          onShowOffers={() => {
+            matchesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
       ) : null}
 
       {portal.type === "SELLER" && portal.acquisition ? (
@@ -842,6 +838,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             }}
           />
         </div>
+      ) : null}
+
+      {token ? (
+        <ClientPortalSetupPrompt
+          token={token}
+          deferUntilReady={fromSzukam && !onboardingDismissed}
+        />
       ) : null}
     </div>
     </main>

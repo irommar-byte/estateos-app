@@ -305,24 +305,26 @@ export default function ClientPortalLiveChat({
       >
         <div className="relative flex size-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-black shadow-[0_8px_22px_rgba(16,185,129,0.35)]">
           <MessageSquare className="size-5" />
+          <span className="absolute -right-0.5 -top-0.5 size-3.5 animate-ping rounded-full bg-emerald-400/80" />
+          <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
           {unreadCount > 0 ? (
-            <>
-              <span className="absolute -right-1 -top-1 size-3 animate-ping rounded-full bg-red-500" />
-              <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black leading-5 text-white">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            </>
+            <span className="absolute -bottom-1 -right-1 flex min-w-5 items-center justify-center rounded-full bg-emerald-700 px-1 text-[9px] font-black leading-5 text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
           ) : null}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-white shadow-sm">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-black shadow-sm">
               <Radio className="size-3 animate-pulse" />
               Live Chat
             </span>
             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              Bezpośrednio z {agentName}
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+              </span>
+              Online · {agentName}
             </span>
           </div>
           <p className="mt-1 truncate text-sm font-black text-[var(--eos-text)]">
@@ -336,7 +338,7 @@ export default function ClientPortalLiveChat({
                 : "Napisz — agent dostanie powiadomienie od razu"}
           </p>
         </div>
-        {unreadCount > 0 ? <BellRing className="size-5 shrink-0 animate-bounce text-red-500" /> : null}
+        {unreadCount > 0 ? <BellRing className="size-5 shrink-0 animate-bounce text-emerald-600" /> : null}
         <ChevronDown
           className={`size-5 shrink-0 text-[var(--eos-muted)] transition-transform duration-300 ${
             open ? "rotate-180" : ""
