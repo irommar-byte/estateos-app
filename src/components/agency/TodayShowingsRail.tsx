@@ -15,6 +15,7 @@ type Item = {
   status: string;
   clientId: number | null;
   offerId: number | null;
+  role?: 'BUYER' | 'SELLER' | null;
 };
 
 export default function TodayShowingsRail({
@@ -66,10 +67,21 @@ export default function TodayShowingsRail({
                 {when} · {item.clientName}
               </Text>
               <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
-                {item.location || item.title}
+                Kupujący
+                {item.offerId ? ` · #${item.offerId}` : ''}
+                {item.location ? ` · ${item.location}` : ` · ${item.title}`}
                 {item.status === 'pending' ? ' · do potwierdzenia' : ''}
               </Text>
             </View>
+            {item.offerId ? (
+              <Pressable
+                onPress={() => navigation.navigate('OfferDetail', { offerId: item.offerId })}
+                hitSlop={8}
+                style={{ marginRight: 6 }}
+              >
+                <Ionicons name="home-outline" size={22} color={colors.accent} />
+              </Pressable>
+            ) : null}
             {item.clientId ? (
               <Pressable
                 onPress={() =>

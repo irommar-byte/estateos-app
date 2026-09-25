@@ -121,6 +121,7 @@ export default function ClientPresentationComposer({
   onRequestListing,
   onMarkHeld,
   onCall,
+  onOpenOffer,
 }: {
   clientType: 'BUYER' | 'SELLER';
   matches: AgencyClientMatch[];
@@ -137,6 +138,7 @@ export default function ClientPresentationComposer({
   showing?: AgencyShowingCard | null;
   quote?: string | null;
   statusLabel?: string | null;
+  onOpenOffer?: (offerId: number) => void;
   listingNotes?: string;
   presentation?: {
     startsAt: string;
@@ -188,7 +190,17 @@ export default function ClientPresentationComposer({
     <View style={{ marginTop: 14 }}>
       {showing ? (
         <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.accent, overflow: 'hidden', marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', gap: 10, padding: 10 }}>
+          <Pressable
+            onPress={() => {
+              if (!showing.offerId) return;
+              if (onOpenOffer) {
+                onOpenOffer(showing.offerId);
+                return;
+              }
+              void Linking.openURL(`https://estateos.pl/oferta/${showing.offerId}`);
+            }}
+            style={{ flexDirection: 'row', gap: 10, padding: 10 }}
+          >
             {showing.imageUrl ? (
               <Image source={{ uri: showing.imageUrl }} style={{ width: 86, height: 72, borderRadius: 12 }} contentFit="cover" />
             ) : (
@@ -207,8 +219,9 @@ export default function ClientPresentationComposer({
               <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }}>
                 {[showing.street, showing.city].filter(Boolean).join(', ')}
               </Text>
+              <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '800', marginTop: 6 }}>Otwórz ofertę →</Text>
             </View>
-          </View>
+          </Pressable>
           {quote ? (
             <Text style={{ color: colors.text, fontSize: 13, fontStyle: 'italic', paddingHorizontal: 12, paddingBottom: 10 }}>
               „{quote}”

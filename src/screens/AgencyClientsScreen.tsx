@@ -19,7 +19,7 @@ import { fetchAgencyClients, archiveAgencyClients, type AgencyClientListItem } f
 import { emitCrmClientsChanged } from '../lib/crmClientsEvents';
 import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBar';
 import { useSellerClientPipelines } from '../hooks/useSellerClientPipelines';
-import { hasLiveMeetingCountdown, computeBuyerPipeline } from '../lib/sellerClientPipeline';
+import { hasLiveMeetingCountdown, hasLivePresentationCountdown, computeBuyerPipeline } from '../lib/sellerClientPipeline';
 import { formatPolishDateTime } from '../lib/polishText';
 import {
   applyCrmPersonOrder,
@@ -52,7 +52,17 @@ async function writeClientsCache(userId: number, clients: AgencyClientListItem[]
   }
 }
 
-function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso: string; location?: string | null; isDark?: boolean }) {
+function MeetingCountdownBadge({
+  startsAtIso,
+  location,
+  isDark,
+  label = 'Spotkanie',
+}: {
+  startsAtIso: string;
+  location?: string | null;
+  isDark?: boolean;
+  label?: string;
+}) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -67,13 +77,13 @@ function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso:
   if (diffSec < -3600 * 2) return null;
 
   const isLive = diffSec <= 0 && diffSec >= -3600 * 2;
-  const days = Math.floor(diffSec / 86400);
-  const hours = Math.floor((diffSec % 86400) / 3600);
-  const minutes = Math.floor((diffSec % 3600) / 60);
-  const seconds = Math.floor(diffSec % 60);
+  const days = Math.floor(Math.max(0, diffSec) / 86400);
+  const hours = Math.floor((Math.max(0, diffSec) % 86400) / 3600);
+  const minutes = Math.floor((Math.max(0, diffSec) % 3600) / 60);
+  const seconds = Math.floor(Math.max(0, diffSec) % 60);
 
   const countdownText = isLive
-    ? 'SPOTKANIE W TRAKCIE'
+    ? `${label.toUpperCase()} W TRAKCIE`
     : `Za ${days > 0 ? `${days}d ` : ''}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
   const dateStr = formatPolishDateTime(new Date(startsAtIso), { year: false });
@@ -83,10 +93,11 @@ function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso:
       <Ionicons name="time-outline" size={14} color={isLive ? '#FF9500' : '#34C759'} />
       <View style={{ flex: 1 }}>
         <Text style={{ color: isLive ? '#FF9500' : '#34C759', fontSize: 11, fontWeight: '800' }}>
-          Spotkanie: {countdownText}
+          {label}: {countdownText}
         </Text>
         <Text style={{ color: isDark ? '#8E8E93' : '#6C6C70', fontSize: 10, marginTop: 1 }}>
-          {dateStr}{location ? ` · ${location}` : ''}
+          {dateStr}
+          {location ? ` · ${location}` : ''}
         </Text>
       </View>
     </View>
@@ -176,7 +187,23 @@ export default function AgencyClientsScreen() {
     const grouped = groupCrmClientsByPerson(clients);
     const scoped =
       filter === 'ALL' ? grouped : grouped.filter((group) => group.types.includes(filter));
-    return applyCrmPersonOrder(scoped, personOrder);
+    const ordered = applyCrmPersonOrder(scoped, personOrder);
+    const withPres = ordered.filter((g) =>
+      g.members.some(
+        (row) =>
+          row.type === 'BUYER' &&
+          row.presentation?.startsAt &&
+          !row.presentation?.heldAt &&
+          hasLivePresentationCountdown(row.presentation.startsAt),
+      ),
+    );
+    const without = ordered.filter((g) => !withPres.includes(g));
+    withPres.sort((a, b) => {
+      const aStart = a.members.find((m) => m.presentation?.startsAt)?.presentation?.startsAt || '';
+      const bStart = b.members.find((m) => m.presentation?.startsAt)?.presentation?.startsAt || '';
+      return new Date(aStart).getTime() - new Date(bStart).getTime();
+    });
+    return [...withPres, ...without];
   }, [clients, filter, personOrder]);
 
   const toggleSelection = (ids: number[]) => {
@@ -324,8 +351,27 @@ export default function AgencyClientsScreen() {
                 startsAtIso={meetingClient.upcomingMeetingStartsAt}
                 location={meetingClient.upcomingMeetingLocation}
                 isDark={isDark}
+                label="Spotkanie"
               />
             ) : null}
+            {(() => {
+              const presClient = item.members.find(
+                (row) =>
+                  row.type === 'BUYER' &&
+                  row.presentation?.startsAt &&
+                  !row.presentation?.heldAt &&
+                  hasLivePresentationCountdown(row.presentation.startsAt),
+              );
+              if (!presClient?.presentation?.startsAt) return null;
+              return (
+                <MeetingCountdownBadge
+                  startsAtIso={presClient.presentation.startsAt}
+                  location={presClient.presentation.location}
+                  isDark={isDark}
+                  label="Prezentacja"
+                />
+              );
+            })()}
             {pipeline ? <SellerClientPipelineBar stages={pipeline} isDark={isDark} compact /> : null}
 
             {(() => {
@@ -479,7 +525,8 @@ export default function AgencyClientsScreen() {
         onDragEnd={({ data }) => persistOrder(data)}
         activationDistance={selectMode ? 10_000 : 12}
         renderItem={renderCard}
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 160 }}
+        ListFooterComponent={<View style={{ height: 48 }} />}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />}
         ListHeaderComponent={
           <View>

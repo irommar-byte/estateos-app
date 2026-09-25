@@ -47,6 +47,7 @@ import {
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { emailClientSchedule, emailGuestAgencyPresentation, emailListingAgentShowingRequest } from '@/lib/crm/clientScheduleNotify';
 import { findPresentationCounterpartId, mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
+import { ensurePresentationOfferMatch } from '@/lib/crm/ensurePresentationOfferMatch';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { facebookShareRecordGate } from '@/lib/crm/marketingChannel';
 import { offerOgContentStamp } from '@/lib/ogCardVersion';
@@ -1435,7 +1436,16 @@ export async function POST(req: Request, ctx: RouteCtx) {
         location: location || null,
         notes: notes || null,
         listingAgentCopy: Boolean(showing && (showing.kind === 'other_agent' || showing.kind === 'external_import')),
+        offerId,
+        audience: targetId === (client.type === 'BUYER' ? client.id : counterpartId) ? 'buyer' : 'seller',
       });
+    }
+
+    if (!isMeeting && offerId) {
+      const buyerId = client.type === 'BUYER' ? client.id : counterpartId;
+      if (buyerId) {
+        await ensurePresentationOfferMatch({ buyerClientId: buyerId, offerId }).catch(() => {});
+      }
     }
 
     if (!isMeeting && guestAgency) {
@@ -1740,6 +1750,56 @@ export async function POST(req: Request, ctx: RouteCtx) {
       notes: slot.notes,
     });
     return NextResponse.json({ success: true });
+  }
+
+  if (action === 'complete_presentation_visit') {
+    const { completePresentationVisit } = await import('@/lib/crm/completePresentationVisit');
+    const result = await completePresentationVisit({
+      agencyUserId,
+      clientId,
+      signatureDataUrl: String(body.signatureDataUrl || ''),
+      attestationConfirmed: body.attestationConfirmed === true,
+      pesel: body.pesel != null ? String(body.pesel) : null,
+      skipPesel: body.skipPesel === true,
+      offerId: body.offerId != null ? Number(body.offerId) : null,
+      debrief: (body.debrief || {}) as any,
+      pdfBase64: body.pdfBase64 ? String(body.pdfBase64) : null,
+      htmlOverride: body.htmlOverride ? String(body.htmlOverride) : null,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'resend_attendance_email') {
+    const { resendAttendanceEmail } = await import('@/lib/crm/completePresentationVisit');
+    const result = await resendAttendanceEmail({
+      agencyUserId,
+      clientId,
+      html: String(body.html || ''),
+      pdfBase64: body.pdfBase64 ? String(body.pdfBase64) : null,
+      documentId: String(body.documentId || 'PO'),
+      address: String(body.address || ''),
+      whenLabel: String(body.whenLabel || ''),
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'send_visit_prep_packet') {
+    const { sendVisitPrepPacket } = await import('@/lib/crm/visitPrepPacket');
+    const result = await sendVisitPrepPacket({
+      agencyUserId,
+      clientId,
+      parkingNote: body.parkingNote != null ? String(body.parkingNote) : null,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ success: true, ...result });
   }
 
   if (action === 'create_person_project') {

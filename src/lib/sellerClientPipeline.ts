@@ -215,3 +215,12 @@ export function hasLiveMeetingCountdown(startsAt?: string | null, nowMs = Date.n
   if (Number.isNaN(start)) return false;
   return nowMs <= start + 60 * 60 * 1000;
 }
+
+/** Prezentacja: widoczna od 7 dni przed do 2h po starcie. */
+export function hasLivePresentationCountdown(startsAt?: string | null, nowMs = Date.now()) {
+  if (!startsAt) return false;
+  const start = new Date(startsAt).getTime();
+  if (Number.isNaN(start)) return false;
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  return nowMs >= start - sevenDays && nowMs <= start + 2 * 60 * 60 * 1000;
+}

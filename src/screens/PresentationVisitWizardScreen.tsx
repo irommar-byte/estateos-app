@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useAuthStore } from '../store/useAuthStore';
-import SignaturePad from '../components/agency/SignaturePad';
 import { parsePesel, formatPeselDecode } from '../lib/pesel';
 import {
   completePresentationVisit,
@@ -31,7 +30,7 @@ import {
 } from '../lib/visitMessageCopy';
 import { SITE_ORIGIN } from '../utils/offerShareUrls';
 
-const STEPS = ['Ofertówka', 'Pokaz', 'Rozmowa', 'PESEL', 'Podpis'] as const;
+const STEPS = ['Ofertówka', 'Pokaz', 'Rozmowa', 'PESEL', 'Potwierdzenie'] as const;
 
 export default function PresentationVisitWizardScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -46,9 +45,24 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
     clientPesel?: string | null;
     offerTitle?: string;
     portalUrl?: string;
+    viewingStartsAt?: string | null;
   };
   const clientId = Number(p.clientId);
   const offerId = Number(p.offerId || 0) || null;
+  const viewingLabel = useMemo(() => {
+    const raw = p.viewingStartsAt || null;
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString('pl-PL', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }, [p.viewingStartsAt]);
 
   const [step, setStep] = useState(0);
   const [outcome, setOutcome] = useState<DebriefOutcome | null>(null);
@@ -61,7 +75,7 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
   const [rooms, setRooms] = useState('');
   const [pesel, setPesel] = useState(String(p.clientPesel || '').replace(/\D/g, ''));
   const [skipPesel, setSkipPesel] = useState(false);
-  const [signature, setSignature] = useState('');
+  const [attested, setAttested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<null | {
     html: string;
@@ -109,8 +123,8 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
 
   const finish = async () => {
     if (!token || !outcome) return;
-    if (!signature) {
-      Alert.alert('Podpis', 'Poproś klienta o podpis na tablecie.');
+    if (!attested) {
+      Alert.alert('Potwierdzenie', 'Poproś klienta o zaznaczenie checkboxa potwierdzenia oglądania.');
       return;
     }
     if (pesel && !peselParsed) {
@@ -118,15 +132,10 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
       return;
     }
     setBusy(true);
-    let pdfBase64: string | null = null;
-    try {
-      // PDF wygenerujemy po odpowiedzi HTML z API — najpierw complete bez pdf, potem opcjonalnie reprint
-    } catch {
-      /* noop */
-    }
 
     const res = await completePresentationVisit(token, clientId, {
-      signatureDataUrl: signature,
+      attestationConfirmed: true,
+      signatureDataUrl: null,
       pesel: peselParsed ? pesel : null,
       skipPesel: skipPesel || (!pesel && true),
       offerId,
@@ -148,36 +157,29 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
     });
     setBusy(false);
     if (!res.ok) {
-      Alert.alert('Wizyta', res.message || 'Nie udało się zapisać.');
+      Alert.alert('Wizyta', (res as any).message || 'Nie udało się zapisać.');
       return;
     }
-
-    const html = String((res as any).html || '');
-    if (html) {
-      try {
-        const file = await Print.printToFileAsync({ html, base64: false });
-        if (file.uri && (await Sharing.isAvailableAsync())) {
-          // best-effort local share; mail already sent from server (html or later pdf)
-        }
-        // Re-send with PDF if we can read file — skip for MVP; server already emailed HTML
-      } catch {
-        /* server already emailed HTML attachment */
-      }
-    }
-
-    if (outcome === 'reject') {
-      await refreshClientMatches(token, clientId);
-      // Agent może z karty wysłać „Propozycje dla Ciebie”; kryteria już zapisane na serwerze.
-    }
-
+    const data = res as any;
     setDone({
-      html,
-      documentId: String((res as any).documentId || ''),
-      emailSent: Boolean((res as any).emailSent),
-      emailSkippedReason: (res as any).emailSkippedReason || null,
-      clientEmail: (res as any).clientEmail || p.clientEmail || null,
-      clientPhone: (res as any).clientPhone || p.clientPhone || null,
+      html: data.html || '',
+      documentId: data.documentId || '',
+      emailSent: Boolean(data.emailSent),
+      emailSkippedReason: data.emailSkippedReason || null,
+      clientEmail: data.clientEmail || p.clientEmail || null,
+      clientPhone: data.clientPhone || p.clientPhone || null,
     });
+    if (data.emailSent) {
+      Alert.alert(
+        'Wysłano do klienta',
+        `Kopia potwierdzenia oglądania poszła na ${data.clientEmail || 'e-mail klienta'}.`,
+      );
+    } else if (data.emailSkippedReason) {
+      Alert.alert('Dokument zapisany', String(data.emailSkippedReason));
+    }
+    if (outcome === 'reject') {
+      void refreshClientMatches(token, clientId).catch(() => {});
+    }
   };
 
   const agentName = user?.name || 'Agent';
@@ -449,7 +451,8 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
             <Text style={[styles.h, { color: colors.text }]}>Potwierdzenie oglądania</Text>
             <Text style={{ color: colors.secondary, marginTop: 8, lineHeight: 20 }}>
               {p.clientName || 'Klient'} potwierdza obecność na oglądaniu
-              {offerId ? ` oferty #${offerId}` : ''}. To nie jest umowa pośrednictwa.
+              {offerId ? ` oferty #${offerId}` : ''}
+              {p.offerTitle ? ` — ${p.offerTitle}` : ''}. To nie jest umowa pośrednictwa.
             </Text>
             {peselParsed ? (
               <Text style={{ color: colors.accent, marginTop: 8, fontWeight: '700' }}>
@@ -458,10 +461,47 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
             ) : (
               <Text style={{ color: '#FF9F0A', marginTop: 8 }}>Bez PESEL</Text>
             )}
-            <View style={[styles.signBox, { borderColor: colors.border, backgroundColor: '#fff', marginTop: 16 }]}>
-              <SignaturePad onChange={setSignature} isDark={false} />
-            </View>
-            <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 12 }}>Podpis klienta</Text>
+            <Pressable
+              onPress={() => setAttested((v) => !v)}
+              style={{
+                marginTop: 20,
+                padding: 18,
+                borderRadius: 16,
+                borderWidth: 2,
+                borderColor: attested ? colors.accent : colors.border,
+                backgroundColor: attested ? 'rgba(52,199,89,0.12)' : colors.card,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 14,
+              }}
+            >
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  borderWidth: 2,
+                  borderColor: attested ? colors.accent : colors.secondary,
+                  backgroundColor: attested ? colors.accent : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 2,
+                }}
+              >
+                {attested ? <Ionicons name="checkmark" size={18} color="#000" /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, lineHeight: 22 }}>
+                  Potwierdzam oglądanie
+                  {p.offerTitle ? ` „${p.offerTitle}”` : offerId ? ` oferty #${offerId}` : ' tej nieruchomości'}
+                  {viewingLabel ? ` dnia ${viewingLabel}` : ' w dniu i godzinie otwarcia tego formularza'}.
+                </Text>
+                <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 13, lineHeight: 18 }}>
+                  Zaznaczenie zastępuje podpis odręczny. Po zapisaniu wyślemy kopię potwierdzenia na e-mail
+                  klienta{p.clientEmail ? ` (${p.clientEmail})` : ''}.
+                </Text>
+              </View>
+            </Pressable>
           </View>
         ) : null}
       </ScrollView>
@@ -490,7 +530,11 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
             onPress={() => void finish()}
             style={[styles.cta, { backgroundColor: colors.accent, opacity: busy ? 0.6 : 1 }]}
           >
-            {busy ? <ActivityIndicator color="#000" /> : <Text style={styles.ctaDark}>Zapisz i wyślij kopię na mail</Text>}
+            {busy ? <ActivityIndicator color="#000" /> : (
+              <Text style={styles.ctaDark}>
+                Zapisz i wyślij kopię{p.clientEmail ? ` na ${p.clientEmail}` : ' PDF/HTML na mail'}
+              </Text>
+            )}
           </Pressable>
         )}
       </View>

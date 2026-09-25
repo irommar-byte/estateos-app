@@ -2759,10 +2759,16 @@ export default function AgencyClientDetailScreen() {
                           if (!res.ok) Alert.alert('Pakiet', res.message);
                           else {
                             Alert.alert(
-                              'Pakiet przed wizytą',
-                              (res as any).emailSent || (res as any).smsSent
-                                ? 'Wysłano przypomnienie do klienta.'
-                                : 'Zapisano. Możesz też wysłać ręcznie SMS/mail z treścią systemową.',
+                              'Wysłano do klienta',
+                              [
+                                (res as any).emailSent ? `Mail pakietu przed wizytą${client?.email ? ` → ${client.email}` : ''}` : null,
+                                (res as any).smsSent ? 'SMS z przypomnieniem' : null,
+                                !(res as any).emailSent && !(res as any).smsSent
+                                  ? 'Zapisano. Uzupełnij e-mail/telefon klienta, żeby wysłać automatycznie.'
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join('\n'),
                             );
                           }
                         }}
@@ -2783,6 +2789,7 @@ export default function AgencyClientDetailScreen() {
                             clientPesel: client.pesel,
                             offerTitle: undefined,
                             portalUrl: client.portalUrl,
+                            viewingStartsAt: client.presentation?.startsAt || null,
                           })
                         }
                         style={[styles.primary, { backgroundColor: '#34C759' }]}
@@ -2826,6 +2833,7 @@ export default function AgencyClientDetailScreen() {
                   onChangeGuestVisitor={setGuestVisitorName}
                   onChangeListingNotes={setListingShowingNotes}
                   onCall={(phone) => void Linking.openURL(`tel:${phone}`)}
+                  onOpenOffer={(offerId) => navigation.navigate('OfferDetail', { offerId })}
                   onMarkHeld={async () => {
                     if (!token) return;
                     setBusy('held');
@@ -2902,10 +2910,10 @@ export default function AgencyClientDetailScreen() {
                       setPresentationSlots(['', '', '']);
                       setPresentationAt('');
                       Alert.alert(
-                        'Prezentacja',
+                        'Wysłano do klienta',
                         guestAgencyMode
-                          ? 'Wysłano termin do właściciela i do agencji gościa.'
-                          : 'Wysłano terminy na e-mail.',
+                          ? 'Mail z terminami: właściciel + agencja gościa.'
+                          : `Wysłano mail z propozycją terminów oglądania${client?.email ? ` na ${client.email}` : ''}. Kupujący zobaczy też ofertę w panelu.`,
                       );
                       void load();
                     }

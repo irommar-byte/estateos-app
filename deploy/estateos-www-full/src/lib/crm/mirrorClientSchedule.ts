@@ -111,6 +111,10 @@ export async function mirrorPresentationActivity(params: {
   if (params.emailMode) {
     const startsAt = new Date(String(params.metadata.startsAt || ''));
     if (Number.isFinite(startsAt.getTime())) {
+      const counterpart = await prisma.agencyClient.findFirst({
+        where: { id: counterpartId },
+        select: { type: true },
+      });
       await emailClientSchedule({
         clientId: counterpartId,
         kind: 'presentation',
@@ -119,6 +123,8 @@ export async function mirrorPresentationActivity(params: {
         location: params.metadata.location ? String(params.metadata.location) : null,
         notes: params.metadata.notes ? String(params.metadata.notes) : null,
         reason: params.metadata.reason ? String(params.metadata.reason) : null,
+        offerId: params.offerId ?? (Number(params.metadata.offerId) || null),
+        audience: counterpart?.type === 'SELLER' ? 'seller' : 'buyer',
       });
     }
   }
