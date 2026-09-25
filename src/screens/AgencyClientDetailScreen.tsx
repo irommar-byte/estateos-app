@@ -78,6 +78,7 @@ import {
   suggestAddresses,
   uploadAcquisitionPaper,
   postAgencyClientAction,
+  sendVisitPrepPacket,
   uploadClientPortalAttachment,
   type AcquisitionFormData,
   type AcquisitionRecord,
@@ -2746,6 +2747,49 @@ export default function AgencyClientDetailScreen() {
                         {busy === 'accept_pres' ? '…' : 'Akceptuj nowy termin pokazu'}
                       </Text>
                     </Pressable>
+                  ) : null}
+                  {!client.presentation.heldAt ? (
+                    <View style={{ gap: 8, marginTop: 10 }}>
+                      <Pressable
+                        onPress={async () => {
+                          if (!token) return;
+                          setBusy('prep_packet');
+                          const res = await sendVisitPrepPacket(token, clientId);
+                          setBusy('');
+                          if (!res.ok) Alert.alert('Pakiet', res.message);
+                          else {
+                            Alert.alert(
+                              'Pakiet przed wizytą',
+                              (res as any).emailSent || (res as any).smsSent
+                                ? 'Wysłano przypomnienie do klienta.'
+                                : 'Zapisano. Możesz też wysłać ręcznie SMS/mail z treścią systemową.',
+                            );
+                          }
+                        }}
+                        style={[styles.secondary, { borderColor: colors.border }]}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '800', textAlign: 'center' }}>
+                          {busy === 'prep_packet' ? '…' : 'Wyślij pakiet przed wizytą'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          (navigation as any).navigate('PresentationVisitWizard', {
+                            clientId,
+                            offerId: client.presentation?.offerId || Number(presentationOfferId) || undefined,
+                            clientName: `${client.firstName} ${client.lastName}`.trim(),
+                            clientEmail: client.email,
+                            clientPhone: client.phone,
+                            clientPesel: client.pesel,
+                            offerTitle: undefined,
+                            portalUrl: client.portalUrl,
+                          })
+                        }
+                        style={[styles.primary, { backgroundColor: '#34C759' }]}
+                      >
+                        <Text style={{ color: '#000', fontWeight: '900', textAlign: 'center' }}>Rozpocznij wizytę na tablecie</Text>
+                      </Pressable>
+                    </View>
                   ) : null}
                 </View>
                 ) : null}

@@ -119,6 +119,8 @@ import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
 import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
 import AgencyClientCreateScreen from './src/screens/AgencyClientCreateScreen';
 import AgencyClientDetailScreen from './src/screens/AgencyClientDetailScreen';
+import CapturePortalLeadScreen from './src/screens/CapturePortalLeadScreen';
+import PresentationVisitWizardScreen from './src/screens/PresentationVisitWizardScreen';
 import ClientPortalScreen from './src/screens/ClientPortalScreen';
 import ClientPortalChatScreen from './src/screens/ClientPortalChatScreen';
 import EstateOsMarketScreen from './src/screens/EstateOsMarketScreen';
@@ -359,16 +361,27 @@ const FloatingNextButton = (props: any) => {
 
   const quickActions = useMemo(
     () => [
-      {
-        key: 'DISCOVERY',
-        label: 'Discovery',
-        icon: 'sparkles',
-        angleDeg: 180,
-        distance: 90,
-        tint: '#D4AF37',
-        glassBg: resolvedDark ? 'rgba(212,175,55,0.28)' : 'rgba(212,175,55,0.2)',
-        target: () => navigation.navigate(discoveryEntrySeen ? 'EstateDiscovery' : 'DiscoveryEntry'),
-      },
+      user?.role === 'AGENT'
+        ? {
+            key: 'CRM_CLIENTS',
+            label: 'Moi klienci',
+            icon: 'people',
+            angleDeg: 180,
+            distance: 90,
+            tint: '#34C759',
+            glassBg: resolvedDark ? 'rgba(52,199,89,0.28)' : 'rgba(52,199,89,0.2)',
+            target: () => navigation.navigate('AgencyClients'),
+          }
+        : {
+            key: 'DISCOVERY',
+            label: 'Discovery',
+            icon: 'sparkles',
+            angleDeg: 180,
+            distance: 90,
+            tint: '#D4AF37',
+            glassBg: resolvedDark ? 'rgba(212,175,55,0.28)' : 'rgba(212,175,55,0.2)',
+            target: () => navigation.navigate(discoveryEntrySeen ? 'EstateDiscovery' : 'DiscoveryEntry'),
+          },
       {
         key: 'VERTICAL_SWITCH',
         label: switchToCar ? 'EstateOS™Car' : 'EstateOS™Home',
@@ -396,7 +409,7 @@ const FloatingNextButton = (props: any) => {
         target: () => openLivePanel(),
       },
     ],
-    [discoveryEntrySeen, navigation, openLivePanel, requestVerticalSwitch, resolvedDark, switchToCar],
+    [discoveryEntrySeen, navigation, openLivePanel, requestVerticalSwitch, resolvedDark, switchToCar, user?.role],
   );
 
   const clearLongPressTimer = useCallback(() => {
@@ -2063,6 +2076,16 @@ export default function App() {
               name="AgencyClientCreate"
               component={AgencyClientCreateScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="CapturePortalLead"
+              component={CapturePortalLeadScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="PresentationVisitWizard"
+              component={PresentationVisitWizardScreen}
+              options={{ headerShown: false, animation: 'slide_from_bottom' }}
             />
             <AppStack.Screen
               name="AgencyClientDetail"

@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -9,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DraggableFlatList, { ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -29,6 +29,28 @@ import {
   type CrmPersonGroup,
 } from '../lib/crmPersonGroups';
 import { loadCrmPersonOrder, saveCrmPersonOrder } from '../lib/crmClientListOrder';
+import TodayShowingsRail from '../components/agency/TodayShowingsRail';
+
+const clientsCacheKey = (userId: number) => `@estateos_crm_clients_v1_${userId}`;
+
+async function readClientsCache(userId: number): Promise<AgencyClientListItem[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(clientsCacheKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as AgencyClientListItem[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeClientsCache(userId: number, clients: AgencyClientListItem[]) {
+  try {
+    await AsyncStorage.setItem(clientsCacheKey(userId), JSON.stringify(clients));
+  } catch {
+    // ignore quota / storage errors
+  }
+}
 
 function MeetingCountdownBadge({ startsAtIso, location, isDark }: { startsAtIso: string; location?: string | null; isDark?: boolean }) {
   const [now, setNow] = useState(Date.now());
@@ -80,12 +102,15 @@ export default function AgencyClientsScreen() {
   const userId = useAuthStore((s) => s.user?.id || 0);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'ALL' | 'BUYER' | 'SELLER'>('ALL');
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [personOrder, setPersonOrder] = useState<string[]>([]);
+  const clientsRef = useRef(clients);
+  clientsRef.current = clients;
   const { pipelines, portalUrls } = useSellerClientPipelines(token, clients);
 
   const colors = {
@@ -96,24 +121,49 @@ export default function AgencyClientsScreen() {
     border: isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)',
   };
 
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      const res = await fetchAgencyClients(token);
-      if (!res.ok) {
-        Alert.alert('Klienci', res.message);
+  const load = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      if (!token) {
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
-      setClients(res.clients);
-    } finally {
+      const soft = Boolean(opts?.soft) && clientsRef.current.length > 0;
+      if (soft) setRefreshing(true);
+      else if (!clientsRef.current.length) setLoading(true);
+      else setRefreshing(true);
+      try {
+        const res = await fetchAgencyClients(token);
+        if (!res.ok) {
+          Alert.alert('Klienci', res.message);
+          return;
+        }
+        setClients(res.clients);
+        if (userId) void writeClientsCache(userId, res.clients);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [token, userId],
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void readClientsCache(userId).then((cached) => {
+      if (cancelled || !cached?.length) return;
+      setClients((prev) => (prev.length ? prev : cached));
       setLoading(false);
-    }
-  }, [token]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load({ soft: true });
     }, [load]),
   );
 
@@ -357,6 +407,9 @@ export default function AgencyClientsScreen() {
           <Text style={[styles.navKicker, { color: colors.secondary }]}>SEKCJA CRM</Text>
           <Text style={[styles.navTitle, { color: colors.text }]}>Moi klienci</Text>
         </View>
+        <Pressable onPress={() => navigation.navigate('CapturePortalLead')} hitSlop={8} style={styles.navBtn}>
+          <Ionicons name="mail-unread-outline" size={24} color="#FF9F0A" />
+        </Pressable>
         <Pressable onPress={() => navigation.navigate('AgencyClientCreate')} hitSlop={12} style={styles.navBtn}>
           <Ionicons name="add-circle" size={28} color="#34C759" />
         </Pressable>
@@ -427,19 +480,39 @@ export default function AgencyClientsScreen() {
         activationDistance={selectMode ? 10_000 : 12}
         renderItem={renderCard}
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />}
         ListHeaderComponent={
-          !loading && visible.length ? (
-            <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '600', marginBottom: 10 }}>
-              Przytrzymaj kartę, żeby ułożyć kolejność. Ta sama osoba nie dubluje się — sprzedający, który też szuka, ma obie role.
-            </Text>
-          ) : null
+          <View>
+            <TodayShowingsRail navigation={navigation} isDark={isDark} />
+            {!loading && visible.length ? (
+              <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '600', marginBottom: 10 }}>
+                Przytrzymaj kartę, żeby ułożyć kolejność. Ta sama osoba nie dubluje się — sprzedający, który też szuka, ma obie role.
+              </Text>
+            ) : null}
+          </View>
         }
         ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator color="#34C759" />
+          loading && !clients.length ? (
+            <View style={{ gap: 12, marginTop: 8 }}>
+              {[0, 1, 2, 3].map((i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.card,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      height: 96,
+                      opacity: 0.55 - i * 0.08,
+                    },
+                  ]}
+                />
+              ))}
+            </View>
           ) : (
-            <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 40 }}>Brak klientów w tej grupie.</Text>
+            <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 40 }}>
+              Brak klientów w tej grupie.
+            </Text>
           )
         }
       />

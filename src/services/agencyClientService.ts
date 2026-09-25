@@ -808,3 +808,77 @@ export async function previewPortalListing(token: string, url: string) {
     presentation: json.presentation as { title?: string } | undefined,
   };
 }
+
+export async function capturePortalLead(token: string, body: Record<string, unknown>) {
+  const res = await fetch(`${API_URL}/api/crm/clients/capture-portal-lead`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await parseJson(res);
+  if (res.status === 409) {
+    return {
+      ok: false as const,
+      code: 'DUPLICATE_CLIENT' as const,
+      message: String(json?.error || 'Klient już istnieje.'),
+      matches: (Array.isArray(json?.matches) ? json.matches : []) as Array<{
+        id: number;
+        firstName: string;
+        lastName: string;
+        email: string | null;
+        phone: string | null;
+      }>,
+      offerId: json?.offerId != null ? Number(json.offerId) : null,
+    };
+  }
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się przechwycić leada.') };
+  return { ok: true as const, ...json };
+}
+
+export async function fetchTodayShowings(token: string) {
+  const res = await fetch(`${API_URL}/api/crm/schedule/today-showings`, {
+    headers: authHeaders(token),
+  });
+  const json = await parseJson(res);
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się pobrać pokazów.'), items: [] as any[] };
+  return {
+    ok: true as const,
+    items: (Array.isArray(json.items) ? json.items : []) as Array<{
+      id: string;
+      kind: string;
+      title: string;
+      clientName: string;
+      location: string;
+      startsAt: string;
+      status: string;
+      clientId: number | null;
+      offerId: number | null;
+    }>,
+    dateLabel: String(json.dateLabel || ''),
+  };
+}
+
+export async function completePresentationVisit(
+  token: string,
+  clientId: number,
+  body: Record<string, unknown>,
+) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'complete_presentation_visit',
+    ...body,
+  });
+}
+
+export async function sendVisitPrepPacket(token: string, clientId: number, parkingNote?: string) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'send_visit_prep_packet',
+    parkingNote: parkingNote || null,
+  });
+}
+
+export async function resendAttendanceEmail(token: string, clientId: number, body: Record<string, unknown>) {
+  return postAgencyClientAction(token, clientId, {
+    action: 'resend_attendance_email',
+    ...body,
+  });
+}
