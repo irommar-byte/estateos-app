@@ -444,9 +444,9 @@ export default function ClientPortalOfferBoard({
           <ClientPortalOfferSearchPanel unscoredCount={unscoredCount} live={live} />
         ) : (
           <div className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center">
-            <p className="text-sm font-semibold text-[var(--eos-text)]">Agent przygotowuje propozycje</p>
+            <p className="text-sm font-semibold text-[var(--eos-text)]">Brak ofert w stosach</p>
             <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
-              Gdy agent udostępni ofertę, zobaczysz ją w stosie „Nowe do oceny”.
+              Gdy agent udostępni ofertę albo umówi prezentację, zobaczysz ją tutaj — w stosie „Nowe do oceny” lub jako umówione oglądanie powyżej.
             </p>
           </div>
         )

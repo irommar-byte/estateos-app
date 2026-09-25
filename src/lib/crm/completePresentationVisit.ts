@@ -39,7 +39,9 @@ function documentIdFor(clientId: number, offerId: number, at: Date) {
 export async function completePresentationVisit(params: {
   agencyUserId: number;
   clientId: number;
-  signatureDataUrl: string;
+  signatureDataUrl?: string | null;
+  /** Potwierdzenie checkboxem na tablecie (zamiast rysowanego podpisu). */
+  attestationConfirmed?: boolean;
   pesel?: string | null;
   skipPesel?: boolean;
   offerId?: number | null;
@@ -48,9 +50,17 @@ export async function completePresentationVisit(params: {
   htmlOverride?: string | null;
 }) {
   const signatureDataUrl = String(params.signatureDataUrl || '').trim();
-  if (!signatureDataUrl.startsWith('data:image')) {
-    return { ok: false as const, status: 400, error: 'Brak podpisu klienta.' };
+  const attestationConfirmed = params.attestationConfirmed === true;
+  if (!attestationConfirmed && !signatureDataUrl.startsWith('data:image')) {
+    return { ok: false as const, status: 400, error: 'Klient musi potwierdzić oglądanie (checkbox).' };
   }
+  // Checkbox attestation: optional synthetic stamp image for the PDF/HTML.
+  const effectiveSignature =
+    signatureDataUrl.startsWith('data:image')
+      ? signatureDataUrl
+      : attestationConfirmed
+        ? null
+        : null;
   if (!params.debrief?.outcome) {
     return { ok: false as const, status: 400, error: 'Wybierz wynik rozmowy po pokazie.' };
   }
@@ -145,9 +155,10 @@ export async function completePresentationVisit(params: {
       viewingAtLabel,
       viewingDatePart,
       viewingTimePart,
-      signatureDataUrl,
+      signatureDataUrl: effectiveSignature,
       signedAtLabel: heldAt.toLocaleString('pl-PL'),
       logoAbsoluteUrl,
+      attestationOnly: Boolean(attestationConfirmed && !effectiveSignature),
     });
 
   if (!slot?.heldAt) {

@@ -47,6 +47,7 @@ import {
 import { createOfferFromAcquisitionRecord } from '@/lib/crm/acquisitionOffer';
 import { emailClientSchedule, emailGuestAgencyPresentation, emailListingAgentShowingRequest } from '@/lib/crm/clientScheduleNotify';
 import { findPresentationCounterpartId, mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
+import { ensurePresentationOfferMatch } from '@/lib/crm/ensurePresentationOfferMatch';
 import { fetchPublicLinkPreview } from '@/lib/crm/publicLinkPreview';
 import { facebookShareRecordGate } from '@/lib/crm/marketingChannel';
 import { offerOgContentStamp } from '@/lib/ogCardVersion';
@@ -1435,7 +1436,16 @@ export async function POST(req: Request, ctx: RouteCtx) {
         location: location || null,
         notes: notes || null,
         listingAgentCopy: Boolean(showing && (showing.kind === 'other_agent' || showing.kind === 'external_import')),
+        offerId,
+        audience: targetId === (client.type === 'BUYER' ? client.id : counterpartId) ? 'buyer' : 'seller',
       });
+    }
+
+    if (!isMeeting && offerId) {
+      const buyerId = client.type === 'BUYER' ? client.id : counterpartId;
+      if (buyerId) {
+        await ensurePresentationOfferMatch({ buyerClientId: buyerId, offerId }).catch(() => {});
+      }
     }
 
     if (!isMeeting && guestAgency) {
@@ -1748,6 +1758,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       agencyUserId,
       clientId,
       signatureDataUrl: String(body.signatureDataUrl || ''),
+      attestationConfirmed: body.attestationConfirmed === true,
       pesel: body.pesel != null ? String(body.pesel) : null,
       skipPesel: body.skipPesel === true,
       offerId: body.offerId != null ? Number(body.offerId) : null,

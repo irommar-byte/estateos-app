@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck2, CalendarPlus, CheckCircle2, Clock3, MapPin } from "lucide-react";
 import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
-import { buildCalendarIcs, downloadIcsFile, googleCalendarUrl, outlookCalendarUrl } from "@/lib/crm/calendarLinks";
+import { buildCalendarIcs, downloadIcsFile, googleCalendarUrl } from "@/lib/crm/calendarLinks";
 import { eventCountdownState, splitCountdown } from "@/lib/crm/upcomingScheduleShared";
 
 export type PortalPresentationOffer = {
@@ -61,7 +61,6 @@ export default function ClientPortalPresentationHero({
   onDone: () => Promise<void> | void;
 }) {
   const [now, setNow] = useState(() => Date.now());
-  const [expanded, setExpanded] = useState(false);
   const confirmed = slot.status === "confirmed";
   const offer = slot.offer || null;
   const photos = (offer?.imageUrls?.length ? offer.imageUrls : offer?.imageUrl ? [offer.imageUrl] : []).filter(Boolean);
@@ -174,10 +173,11 @@ export default function ClientPortalPresentationHero({
       </div>
 
       {offer ? (
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/70 p-3 text-left"
+        <a
+          href={`/oferta/${offer.id}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/70 p-3 text-left transition hover:border-emerald-500/40"
         >
           {photos[0] ? (
             <img src={photos[0]} alt="" className="size-16 shrink-0 rounded-xl object-cover" />
@@ -194,18 +194,10 @@ export default function ClientPortalPresentationHero({
               {offer.area ? ` · ${offer.area} m²` : ""}
             </p>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-              {expanded ? "Zwiń podgląd" : "Rozwiń podgląd oferty"}
+              Otwórz ofertę
             </p>
           </div>
-        </button>
-      ) : null}
-
-      {expanded && photos.length > 1 ? (
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {photos.slice(1, 4).map((url) => (
-            <img key={url} src={url} alt="" className="h-20 w-full rounded-xl object-cover" />
-          ))}
-        </div>
+        </a>
       ) : null}
 
       {slot.status === "pending" && slot.reason ? (
@@ -213,40 +205,31 @@ export default function ClientPortalPresentationHero({
       ) : null}
 
       {confirmed ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          <a
-            href={googleCalendarUrl({
-              title: calendarTitle,
-              startsAt,
-              location,
-              description: calendarDescription,
-            })}
-            target="_blank"
-            rel="noreferrer"
-            className="eos-engraved-cta eos-engraved-cta--home inline-flex items-center gap-2"
+        <div className="mt-5 space-y-2">
+          <button
+            type="button"
+            onClick={addToDevice}
+            className="eos-engraved-cta eos-engraved-cta--home inline-flex w-full items-center justify-center gap-2"
           >
             <CalendarPlus className="size-4" />
-            Google Calendar
-          </a>
-          <a
-            href={outlookCalendarUrl({
-              title: calendarTitle,
-              startsAt,
-              location,
-              description: calendarDescription,
-            })}
-            target="_blank"
-            rel="noreferrer"
-            className="eos-engraved-cta inline-flex items-center gap-2"
-          >
-            Outlook
-          </a>
-          <button type="button" onClick={addToDevice} className="eos-engraved-cta inline-flex items-center gap-2">
-            Apple / .ics
+            Dodaj do kalendarza
           </button>
-          <a href={`/api/crm/client-portal/${token}/calendar?kind=presentation`} className="eos-engraved-cta">
-            Pobierz do kalendarza
-          </a>
+          <p className="text-center text-[11px] text-[var(--eos-muted)]">
+            Plik .ics · działa w Apple, Google i Outlook ·{" "}
+            <a
+              href={googleCalendarUrl({
+                title: calendarTitle,
+                startsAt,
+                location,
+                description: calendarDescription,
+              })}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-emerald-700 underline-offset-2 hover:underline"
+            >
+              Google Calendar
+            </a>
+          </p>
         </div>
       ) : null}
 

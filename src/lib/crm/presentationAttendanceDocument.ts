@@ -20,6 +20,8 @@ export type AttendanceDocInput = {
   signatureDataUrl: string | null;
   signedAtLabel: string;
   logoAbsoluteUrl: string;
+  /** Checkbox na tablecie zamiast podpisu odręcznego. */
+  attestationOnly?: boolean;
 };
 
 export function buildPresentationAttendanceHtml(input: AttendanceDocInput): string {
@@ -32,7 +34,9 @@ export function buildPresentationAttendanceHtml(input: AttendanceDocInput): stri
     : '';
   const sig = input.signatureDataUrl
     ? `<img src="${input.signatureDataUrl}" alt="Podpis klienta" style="display:block;max-width:280px;max-height:110px;margin-bottom:6px"/>`
-    : `<div style="height:72px"></div>`;
+    : input.attestationOnly
+      ? `<div style="padding:18px 8px 8px;font-size:15px;font-weight:800;color:#059669;">✓ Potwierdzam oglądanie na tablecie</div>`
+      : `<div style="height:72px"></div>`;
 
   return `<!doctype html>
 <html lang="pl">

@@ -64,6 +64,8 @@ import {
   respondToClientDecision,
 } from '@/lib/crm/sellerMarketing';
 import { mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
+import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
+import { ensurePresentationOfferMatch } from '@/lib/crm/ensurePresentationOfferMatch';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -367,6 +369,39 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const scheduleActs = await loadJourneyActivities(client.id);
   const meeting = resolveMeeting(scheduleActs);
   const presentation = resolvePresentation(scheduleActs);
+  if (client.type === 'BUYER' && presentation?.offerId && !presentation.heldAt) {
+    const seeded = await ensurePresentationOfferMatch({
+      buyerClientId: client.id,
+      offerId: presentation.offerId,
+    }).catch(() => ({ created: false, matchId: null }));
+    if (seeded?.created) {
+      const refreshed = await prisma.agencyClientMatch.findMany({
+        where: { clientId: client.id },
+        include: {
+          offer: {
+            select: {
+              id: true,
+              title: true,
+              price: true,
+              priceCurrency: true,
+              city: true,
+              district: true,
+              street: true,
+              description: true,
+              area: true,
+              rooms: true,
+              transactionType: true,
+              status: true,
+              managementStatus: true,
+              images: true,
+            },
+          },
+        },
+        orderBy: [{ notifiedAt: 'desc' }, { id: 'desc' }],
+      });
+      (client as { matches: typeof refreshed }).matches = refreshed;
+    }
+  }
   const presentationOffer = await loadPresentationOfferPreview(presentation?.offerId);
   const notifiedMatches = client.matches.filter((m) => m.notifiedAt);
   const reactedMatches = notifiedMatches.filter((m) => clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)));
@@ -1005,6 +1040,33 @@ export async function POST(req: Request, ctx: RouteCtx) {
       },
     });
     if (!isMeeting) {
+      const resolvedBuyerId =
+        client.type === 'BUYER'
+          ? client.id
+          : Number(slot.buyerClientId) > 0
+            ? Number(slot.buyerClientId)
+            : null;
+
+      // Bogaty mail potwierdzenia zawsze do kupującego (mapa + dowód).
+      if (resolvedBuyerId) {
+        await emailClientSchedule({
+          clientId: resolvedBuyerId,
+          kind: 'presentation',
+          mode: 'confirmed',
+          startsAt,
+          location: slot.location,
+          notes: slot.notes,
+          offerId: slot.offerId,
+          audience: 'buyer',
+        });
+        if (slot.offerId) {
+          await ensurePresentationOfferMatch({
+            buyerClientId: resolvedBuyerId,
+            offerId: slot.offerId,
+          }).catch(() => {});
+        }
+      }
+
       await mirrorPresentationActivity({
         agencyUserId: client.agencyUserId,
         sourceClientId: client.id,
@@ -1015,14 +1077,31 @@ export async function POST(req: Request, ctx: RouteCtx) {
         body: startsAt.toLocaleString('pl-PL'),
         offerId: slot.offerId,
         metadata,
-        emailMode: 'confirmed',
+        // Mirror wyśle lekką notę do counterpart (sprzedający jeśli potwierdził kupujący).
+        emailMode: client.type === 'BUYER' ? 'confirmed' : null,
+      });
+
+      // Gdy potwierdza sprzedający — counterpart (buyer) dostał mail powyżej; jeśli brak buyerId w meta, wyślij do klienta potwierdzającego tylko gdy to buyer (już obsłużone).
+      if (client.type === 'SELLER' && !resolvedBuyerId) {
+        /* brak kupującego w metadanych — skip */
+      }
+    } else {
+      await emailClientSchedule({
+        clientId: client.id,
+        kind: 'meeting',
+        mode: 'confirmed',
+        startsAt,
+        location: slot.location,
+        notes: slot.notes,
       });
     }
     await notifyAgent({
       agencyUserId: client.agencyUserId,
       clientId: client.id,
       title: isMeeting ? 'Termin spotkania potwierdzony' : 'Prezentacja potwierdzona',
-      body: `${clientName} · ${startsAt.toLocaleString('pl-PL')}`,
+      body: isMeeting
+        ? `${clientName} · ${startsAt.toLocaleString('pl-PL')}`
+        : `${clientName} potwierdził(a) · ${startsAt.toLocaleString('pl-PL')} · wysłano mail z mapą i prośbą o dowód`,
     });
     return NextResponse.json({ success: true });
   }
