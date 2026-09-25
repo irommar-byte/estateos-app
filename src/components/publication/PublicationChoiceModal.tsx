@@ -305,8 +305,10 @@ export default function PublicationChoiceModal({
 const styles = StyleSheet.create({
   overlayHost: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
-    elevation: 50,
+    // Musi być powyżej ClosedOfferOverlay (zIndex 9999) — inaczej sheet
+    // „Wystaw ponownie” otwiera się pod czarną zaślepką i wygląda jak martwy przycisk.
+    zIndex: 10050,
+    elevation: 10050,
   },
   overlayBackdrop: {
     ...StyleSheet.absoluteFillObject,

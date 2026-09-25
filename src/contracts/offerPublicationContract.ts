@@ -46,6 +46,8 @@ export type ActivateOfferPublicationResponse = {
     endsAt?: string;
     endReason?: string | null;
   };
+  /** Serwer może zwrócić true gdy oferta poszła do moderacji zamiast ACTIVE. */
+  awaitingModeration?: boolean;
   message?: string;
   error?: string;
   errorCode?: string;

@@ -1060,8 +1060,8 @@ const MyOffersModal = ({
           deferPublicationConsume: true,
           targetOfferId: pending.offerId,
         });
-        if (r.cancelled) return;
         if (!r.ok) {
+          if (r.cancelled) return;
           if (r.message) Alert.alert(t('profile.myOffers.alerts.storeTitle'), r.message);
           return;
         }

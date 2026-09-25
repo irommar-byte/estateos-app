@@ -27,7 +27,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Lock, Compass, ChevronLeft } from 'lucide-react-native';
@@ -53,6 +53,8 @@ type Props = {
   onBrowseSimilar?: () => void;
   /** Właściciel: bezpośrednie wznowienie publikacji (Moje ogłoszenia / activate). */
   onRepublish?: () => void;
+  /** Trwa quote / activate — blokuje CTA i pokazuje spinner. */
+  republishBusy?: boolean;
 };
 
 const ACCENT_BY_REASON: Record<OfferLifecycleReason, string> = {
@@ -73,6 +75,7 @@ export default function ClosedOfferOverlay({
   onGoBack,
   onBrowseSimilar,
   onRepublish,
+  republishBusy = false,
 }: Props) {
   const { t } = useI18n();
   const fade = useRef(new Animated.Value(0)).current;
@@ -167,15 +170,24 @@ export default function ClosedOfferOverlay({
         <View style={styles.actionsRow}>
           {isOwner && onRepublish && (reason === 'EXPIRED' || reason === 'ARCHIVED' || reason === 'INACTIVE') ? (
             <Pressable
+              disabled={republishBusy}
               onPress={() => {
+                if (republishBusy) return;
                 Haptics.selectionAsync();
                 onRepublish();
               }}
-              style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.88 }]}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                (pressed || republishBusy) && { opacity: 0.88 },
+              ]}
             >
-              <Text style={styles.primaryBtnText} numberOfLines={1}>
-                {t('offer.closedOverlay.republishCta')}
-              </Text>
+              {republishBusy ? (
+                <ActivityIndicator color="#0a0a0a" />
+              ) : (
+                <Text style={styles.primaryBtnText} numberOfLines={1}>
+                  {t('offer.closedOverlay.republishCta')}
+                </Text>
+              )}
             </Pressable>
           ) : onGoBack ? (
             <Pressable

@@ -54,8 +54,9 @@ import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard';
 import ClosedOfferOverlay from '../components/ClosedOfferOverlay';
+import PublicationChoiceModal from '../components/publication/PublicationChoiceModal';
 import { isOfferNewListing, getOfferLifecycleState } from '../utils/offerLifecycle';
-import { requestOpenMyOffers } from '../utils/openMyOffersDeepLink';
+import { useOfferRepublishFlow } from '../hooks/useOfferRepublishFlow';
 import { isOfferFeatured } from '../utils/listingPromotion';
 import {
   getAdditionalListingSlots,
@@ -1618,6 +1619,19 @@ export default function OfferDetail({ route, navigation }: any) {
       void reloadOfferHydration();
     }, [reloadOfferHydration]),
   );
+
+  const republishFlow = useOfferRepublishFlow({
+    onActivated: async (endsAt) => {
+      const id = Number(offer?.id || idFromParams || 0);
+      setHydratedOffer((prev: any) => ({
+        ...(prev || offerFromParams || {}),
+        id: id || prev?.id,
+        status: 'ACTIVE',
+        expiresAt: endsAt,
+      }));
+      await reloadOfferHydration();
+    },
+  });
 
   useEffect(() => {
     const loadOwnerProfile = async () => {
@@ -3617,18 +3631,23 @@ export default function OfferDetail({ route, navigation }: any) {
           isDark={isDark}
           isOwner={isOwner}
           onGoBack={handleGoBack}
+          republishBusy={republishFlow.busy}
           onRepublish={
             isOwner
               ? () => {
-                  try {
-                    requestOpenMyOffers({
-                      tab: 'ARCHIVED',
-                      offerId: Number(offer?.id) || undefined,
-                    });
-                    navigation?.navigate?.('MainTabs', { screen: 'Profile' });
-                  } catch {
-                    handleGoBack();
+                  if (republishFlow.busy) return;
+                  const offerId = Number(offer?.id || 0);
+                  if (!offerId || !token) {
+                    Alert.alert(
+                      t('profile.myOffers.alerts.publishFailedTitle'),
+                      t('profile.myOffers.alerts.publishFailedBody'),
+                    );
+                    return;
                   }
+                  void republishFlow.openChoice(
+                    offerId,
+                    String(offer?.title || t('profile.myOffers.defaultOfferTitle')),
+                  );
                 }
               : undefined
           }
@@ -3645,6 +3664,36 @@ export default function OfferDetail({ route, navigation }: any) {
           }
         />
       ) : null}
+
+      <PublicationChoiceModal
+        visible={republishFlow.choiceVisible}
+        isDark={isDark}
+        title={republishFlow.publicationCopy.reactivateTitle}
+        subtitle={republishFlow.publicationCopy.reactivateBody}
+        couponsSectionTitle={t('addOffer.step6.publicationChoice.couponsSection')}
+        couponsEmptyHint={t('addOffer.step6.publicationChoice.couponsEmpty')}
+        plusSectionTitle={t('addOffer.step6.publicationChoice.plusSection')}
+        plusCreditLabel={t('addOffer.step6.publicationChoice.plusCreditTitle')}
+        plusCreditSubtitle={t('addOffer.step6.publicationChoice.plusCreditSubtitle', {
+          count: republishFlow.plusSlots,
+        })}
+        buyPlusLabel={t('addOffer.step6.publicationChoice.buyPlusTitle')}
+        buyPlusSubtitle={t('addOffer.step6.publicationChoice.buyPlusSubtitle', {
+          price: republishFlow.plusPriceLabel,
+        })}
+        publishLabel={
+          republishFlow.busy
+            ? t('profile.myOffers.republishing')
+            : t('profile.myOffers.republish')
+        }
+        cancelLabel={t('common.cancel')}
+        couponPriorityHint={t('addOffer.step6.publicationChoice.couponPriorityHint')}
+        coupons={republishFlow.coupons}
+        plusSlots={republishFlow.plusSlots}
+        hasPlusCredit={republishFlow.hasPlusCredit}
+        onConfirm={republishFlow.onConfirmChoice}
+        onClose={republishFlow.dismissChoice}
+      />
 
       {/* Action sheet z opcjami „⋯" — Apple Guideline 1.2 (Report + Block). */}
       {isMoreMenuOpen ? (
