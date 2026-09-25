@@ -3,6 +3,11 @@ import { JOURNEY_ACTIVITY, resolvePresentation } from '@/lib/crm/clientJourney';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
+import {
+  buildAppleClientEmailHtml,
+  escapeEmailHtml,
+  loadAppleClientEmailIdentity,
+} from '@/lib/email/appleClientEmail';
 
 export async function sendVisitPrepPacket(params: {
   agencyUserId: number;
@@ -40,10 +45,7 @@ export async function sendVisitPrepPacket(params: {
       })
     : null;
 
-  const agency = await prisma.user.findUnique({
-    where: { id: params.agencyUserId },
-    select: { name: true, companyName: true, phone: true },
-  });
+  const identity = await loadAppleClientEmailIdentity(params.agencyUserId);
 
   const when = new Date(slot.startsAt);
   const whenLabel = when.toLocaleString('pl-PL', {
@@ -63,20 +65,28 @@ export async function sendVisitPrepPacket(params: {
       ? `https://maps.apple.com/?ll=${offer.lat},${offer.lng}&q=${encodeURIComponent(address)}`
       : `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : 'https://estateos.pl';
-  const agentName = agency?.name || 'Agent';
-  const agencyName = agency?.companyName || 'EstateOS';
-  const parking = String(params.parkingNote || '').trim() || 'Szczegóły parkingu ustalisz z agentem na miejscu.';
+  const parking =
+    String(params.parkingNote || '').trim() || 'Szczegóły parkingu ustalisz z agentem na miejscu.';
 
-  const sms = `Przypomnienie: ${whenLabel}, ${address}. Odbiorę Państwa na miejscu. Szczegóły: ${portalUrl} — ${agentName}`;
-  const emailHtml = `<div style="font-family:-apple-system,sans-serif;padding:24px;max-width:560px">
-    <p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#059669;font-weight:800">${agencyName}</p>
-    <h2>Pakiet przed wizytą</h2>
-    <p>Dzień dobry ${client.firstName},</p>
-    <p>spotykamy się na oglądaniu:</p>
-    <p>📅 <strong>${whenLabel}</strong><br/>📍 ${address}<br/>🗺️ <a href="${mapUrl}">Mapa</a><br/>🅿️ ${parking}<br/>👤 ${agentName}${agency?.phone ? `, tel. ${agency.phone}` : ''}</p>
-    <p>Na miejscu dostaną Państwo ofertówkę do ręki.</p>
-    <p><a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#07130e;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">Otwórz panel</a></p>
-  </div>`;
+  const sms = `Przypomnienie: ${whenLabel}, ${address}. Odbiorę Państwa na miejscu. Szczegóły: ${portalUrl} — ${identity.agentName}`;
+  const emailHtml = buildAppleClientEmailHtml({
+    eyebrow: identity.agencyName,
+    title: 'Pakiet przed wizytą',
+    greetingName: client.firstName,
+    bodyHtml: `
+      <p style="margin:0 0 12px;">jutro / dziś spotykamy się na oglądaniu. Na miejscu dostaną Państwo ofertówkę do ręki.</p>
+      <p style="margin:0;font-size:13px;color:#6b7280;">Parking: ${escapeEmailHtml(parking)}</p>
+    `,
+    highlightHtml: `<div style="margin:18px 0;padding:18px 20px;border-radius:18px;background:#ecfdf5;border:1px solid #a7f3d0;">
+      <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#047857;">Termin</p>
+      <p style="margin:8px 0 0;font-size:20px;font-weight:900;color:#064e3b;">${escapeEmailHtml(whenLabel)}</p>
+      <p style="margin:10px 0 0;color:#065f46;">${escapeEmailHtml(address)}</p>
+      <p style="margin:10px 0 0;"><a href="${escapeEmailHtml(mapUrl)}" style="color:#047857;font-weight:700;text-decoration:none;">Otwórz mapę</a></p>
+    </div>`,
+    identity,
+    ctas: [{ label: 'Otwórz panel klienta', href: portalUrl, variant: 'primary' }],
+    footerNote: 'EstateOS™ · pakiet przed wizytą',
+  });
 
   let emailSent = false;
   if (client.email) {
@@ -118,7 +128,7 @@ export async function sendVisitPrepPacket(params: {
       ? {
           to: client.email,
           subject: `Jutro oglądamy — ${address}`,
-          body: `Dzień dobry ${client.firstName},\n\nspotykamy się:\n${whenLabel}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${agentName}`,
+          body: `Dzień dobry ${client.firstName},\n\nspotykamy się:\n${whenLabel}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${identity.agentName}`,
         }
       : null,
   };

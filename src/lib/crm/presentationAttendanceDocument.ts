@@ -1,4 +1,5 @@
 import { escapeAcquisitionHtml } from '@/lib/crm/acquisitionDocument';
+import { buildAppleClientEmailHtml } from '@/lib/email/appleClientEmail';
 
 export type AttendanceDocInput = {
   documentId: string;
@@ -128,17 +129,35 @@ export function buildAttendanceClientEmailHtml(params: {
   agentName: string;
   agencyName: string;
   agentPhone: string | null;
+  agentEmail?: string | null;
+  agentTitle?: string | null;
+  avatarUrl?: string | null;
+  companyLogoUrl?: string | null;
 }): string {
-  const e = escapeAcquisitionHtml;
-  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;max-width:560px">
-    <p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#059669;font-weight:800">${e(params.agencyName)}</p>
-    <h2 style="margin:8px 0 12px">Potwierdzenie oglądania</h2>
-    <p>Dzień dobry ${e(params.firstName)},</p>
-    <p>w załączeniu przesyłamy kopię potwierdzenia oglądania nieruchomości:</p>
-    <p>📍 ${e(params.address)}<br/>📅 ${e(params.whenLabel)}<br/>👤 Agent: ${e(params.agentName)} (${e(params.agencyName)})</p>
-    <p style="font-size:13px;color:#555">Dokument jest wyłącznie potwierdzeniem obecności na oglądaniu — nie stanowi umowy pośrednictwa ani oferty kupna.</p>
-    <p>Pozdrawiamy,<br/>${e(params.agencyName)}${params.agentPhone ? `<br/>${e(params.agentPhone)}` : ''}</p>
-  </div>`;
+  return buildAppleClientEmailHtml({
+    eyebrow: params.agencyName,
+    title: 'Potwierdzenie oglądania',
+    greetingName: params.firstName,
+    bodyHtml: `
+      <p style="margin:0 0 12px;">w załączeniu przesyłamy kopię potwierdzenia oglądania nieruchomości.</p>
+      <p style="margin:0;font-size:13px;color:#6b7280;">Dokument jest wyłącznie potwierdzeniem obecności na oglądaniu — nie stanowi umowy pośrednictwa ani oferty kupna.</p>
+    `,
+    highlightHtml: `<div style="margin:18px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e5e7eb;">
+      <p style="margin:0 0 8px;font-size:15px;font-weight:800;color:#111827;">${escapeAcquisitionHtml(params.address)}</p>
+      <p style="margin:0;font-size:14px;color:#475569;">${escapeAcquisitionHtml(params.whenLabel)}</p>
+    </div>`,
+    identity: {
+      agentName: params.agentName,
+      agentTitle: params.agentTitle || 'Agent nieruchomości',
+      agencyName: params.agencyName,
+      phone: params.agentPhone,
+      email: params.agentEmail || null,
+      avatarUrl: params.avatarUrl || null,
+      companyLogoUrl: params.companyLogoUrl || null,
+      companyUrl: null,
+    },
+    footerNote: 'EstateOS™ · potwierdzenie obecności na oglądaniu',
+  });
 }
 
 export function formatMoneyPln(value: number | null | undefined): string | null {

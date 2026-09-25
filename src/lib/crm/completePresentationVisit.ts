@@ -8,6 +8,7 @@ import {
   formatMoneyPln,
 } from '@/lib/crm/presentationAttendanceDocument';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
+import { loadAppleClientEmailIdentity } from '@/lib/email/appleClientEmail';
 import { resumeIntelligenceForAgent } from '@/lib/crm/intelligenceCheckback';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 import { resolvePublicAppOrigin } from '@/lib/offerShareLanding';
@@ -100,10 +101,7 @@ export async function completePresentationVisit(params: {
   });
   if (!offer) return { ok: false as const, status: 404, error: `Oferta #${offerId} nie istnieje.` };
 
-  const agency = await prisma.user.findUnique({
-    where: { id: params.agencyUserId },
-    select: { name: true, companyName: true, phone: true },
-  });
+  const identity = await loadAppleClientEmailIdentity(params.agencyUserId);
 
   const heldAt = new Date();
   const viewingAt = slot?.startsAt ? new Date(slot.startsAt) : heldAt;
@@ -125,9 +123,9 @@ export async function completePresentationVisit(params: {
     [offer.street, offer.district, offer.city].filter(Boolean).join(', ') || offer.city || `Oferta #${offer.id}`;
   const docId = documentIdFor(client.id, offer.id, heldAt);
   const origin = resolvePublicAppOrigin();
-  const logoAbsoluteUrl = `${origin}/brand/estateos-logo-dark.jpg`;
-  const agencyName = agency?.companyName || 'EstateOS';
-  const agentName = agency?.name || 'Agent';
+  const logoAbsoluteUrl = identity.companyLogoUrl || `${origin}/brand/estateos-logo-dark.jpg`;
+  const agencyName = identity.agencyName;
+  const agentName = identity.agentName;
 
   const html =
     params.htmlOverride ||
@@ -135,7 +133,7 @@ export async function completePresentationVisit(params: {
       documentId: docId,
       agencyName,
       agentName,
-      agentPhone: agency?.phone || null,
+      agentPhone: identity.phone,
       clientName: `${client.firstName} ${client.lastName}`.trim(),
       clientPhone: client.phone,
       clientEmail: client.email,
@@ -352,7 +350,11 @@ export async function completePresentationVisit(params: {
         whenLabel: viewingAtLabel,
         agentName,
         agencyName,
-        agentPhone: agency?.phone || null,
+        agentPhone: identity.phone,
+        agentEmail: identity.email,
+        agentTitle: identity.agentTitle,
+        avatarUrl: identity.avatarUrl,
+        companyLogoUrl: identity.companyLogoUrl,
       }),
       attachments,
     });
@@ -405,10 +407,7 @@ export async function resendAttendanceEmail(params: {
   if (!client?.email) {
     return { ok: false as const, status: 400, error: 'Brak e-maila na karcie klienta.' };
   }
-  const agency = await prisma.user.findUnique({
-    where: { id: params.agencyUserId },
-    select: { name: true, companyName: true, phone: true },
-  });
+  const identity = await loadAppleClientEmailIdentity(params.agencyUserId);
   const attachments: Array<{ filename: string; content: Buffer; contentType: string }> = [];
   if (params.pdfBase64) {
     const raw = String(params.pdfBase64).replace(/^data:application\/pdf;base64,/, '');
@@ -431,9 +430,13 @@ export async function resendAttendanceEmail(params: {
       firstName: client.firstName,
       address: params.address,
       whenLabel: params.whenLabel,
-      agentName: agency?.name || 'Agent',
-      agencyName: agency?.companyName || 'EstateOS',
-      agentPhone: agency?.phone || null,
+      agentName: identity.agentName,
+      agencyName: identity.agencyName,
+      agentPhone: identity.phone,
+      agentEmail: identity.email,
+      agentTitle: identity.agentTitle,
+      avatarUrl: identity.avatarUrl,
+      companyLogoUrl: identity.companyLogoUrl,
     }),
     attachments,
   });
