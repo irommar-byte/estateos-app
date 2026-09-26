@@ -2421,13 +2421,12 @@ export default function AgencyClientDetailScreen() {
                         </Text>
                       </Pressable>
 
-                      {/* Signature Pad with Scroll Lock */}
                       <SignaturePad
                         isDark={isDark}
                         disabled={signed}
+                        value={signatureData}
+                        clientLabel={`${client.firstName} ${client.lastName}`.trim()}
                         onChange={setSignatureData}
-                        onBeginDrawing={() => setIsSigning(true)}
-                        onEndDrawing={() => setIsSigning(false)}
                       />
 
                       <Pressable

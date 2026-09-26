@@ -447,19 +447,32 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
         ) : null}
 
         {step === 4 ? (
-          <View>
-            <Text style={[styles.h, { color: colors.text }]}>Potwierdzenie oglądania</Text>
+          <View
+            style={{
+              marginTop: 4,
+              padding: 20,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+            }}
+          >
+            <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 }}>
+              DOKUMENT NA TABLECIE
+            </Text>
+            <Text style={[styles.h, { color: colors.text, marginTop: 8 }]}>Potwierdzenie oglądania</Text>
             <Text style={{ color: colors.secondary, marginTop: 8, lineHeight: 20 }}>
               {p.clientName || 'Klient'} potwierdza obecność na oglądaniu
               {offerId ? ` oferty #${offerId}` : ''}
-              {p.offerTitle ? ` — ${p.offerTitle}` : ''}. To nie jest umowa pośrednictwa.
+              {p.offerTitle ? ` — ${p.offerTitle}` : ''}.
+              {viewingLabel ? ` Termin: ${viewingLabel}.` : ''} To nie jest umowa pośrednictwa.
             </Text>
             {peselParsed ? (
-              <Text style={{ color: colors.accent, marginTop: 8, fontWeight: '700' }}>
+              <Text style={{ color: colors.accent, marginTop: 10, fontWeight: '700' }}>
                 PESEL OK · {formatPeselDecode(pesel)}
               </Text>
             ) : (
-              <Text style={{ color: '#FF9F0A', marginTop: 8 }}>Bez PESEL</Text>
+              <Text style={{ color: '#FF9F0A', marginTop: 10 }}>Bez PESEL — można uzupełnić później</Text>
             )}
             <Pressable
               onPress={() => setAttested((v) => !v)}
@@ -469,7 +482,7 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
                 borderRadius: 16,
                 borderWidth: 2,
                 borderColor: attested ? colors.accent : colors.border,
-                backgroundColor: attested ? 'rgba(52,199,89,0.12)' : colors.card,
+                backgroundColor: attested ? 'rgba(52,199,89,0.12)' : 'rgba(255,255,255,0.03)',
                 flexDirection: 'row',
                 alignItems: 'flex-start',
                 gap: 14,
@@ -494,11 +507,11 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
                 <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, lineHeight: 22 }}>
                   Potwierdzam oglądanie
                   {p.offerTitle ? ` „${p.offerTitle}”` : offerId ? ` oferty #${offerId}` : ' tej nieruchomości'}
-                  {viewingLabel ? ` dnia ${viewingLabel}` : ' w dniu i godzinie otwarcia tego formularza'}.
+                  {viewingLabel ? ` · ${viewingLabel}` : ''}.
                 </Text>
                 <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 13, lineHeight: 18 }}>
-                  Zaznaczenie zastępuje podpis odręczny. Po zapisaniu wyślemy kopię potwierdzenia na e-mail
-                  klienta{p.clientEmail ? ` (${p.clientEmail})` : ''}.
+                  Zaznaczenie zastępuje podpis odręczny i jest stemplem czasu na dokumencie. Kopia pójdzie na
+                  {p.clientEmail ? ` ${p.clientEmail}` : ' e-mail klienta'}.
                 </Text>
               </View>
             </Pressable>
