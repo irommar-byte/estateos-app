@@ -9,6 +9,33 @@ import {
   loadAppleClientEmailIdentity,
 } from '@/lib/email/appleClientEmail';
 
+/** Skróć adres do czytelnej formy (bez „województwo…, Polska” i duplikatów miasta). */
+export function formatVisitAddress(raw: string | null | undefined): string {
+  const text = String(raw || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  const parts = text
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => {
+      const lower = p.toLowerCase();
+      if (lower === 'polska' || lower === 'poland') return false;
+      if (lower.startsWith('województwo') || lower.startsWith('woj.')) return false;
+      return true;
+    });
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const part of parts) {
+    const key = part.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(part);
+  }
+  return unique.join(', ');
+}
+
 export async function sendVisitPrepPacket(params: {
   agencyUserId: number;
   clientId: number;
@@ -55,31 +82,52 @@ export async function sendVisitPrepPacket(params: {
     hour: '2-digit',
     minute: '2-digit',
   });
+  const whenShort = when.toLocaleString('pl-PL', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const fromOffer = [offer?.street, offer?.district, offer?.city].filter(Boolean).join(', ');
   const address =
-    slot.location ||
-    [offer?.street, offer?.district, offer?.city].filter(Boolean).join(', ') ||
+    formatVisitAddress(fromOffer) ||
+    formatVisitAddress(slot.location) ||
     offer?.title ||
     'adres u agenta';
+
   const mapUrl =
     offer?.lat != null && offer?.lng != null
       ? `https://maps.apple.com/?ll=${offer.lat},${offer.lng}&q=${encodeURIComponent(address)}`
       : `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : 'https://estateos.pl';
-  const parking =
-    String(params.parkingNote || '').trim() || 'Szczegóły parkingu ustalisz z agentem na miejscu.';
 
-  const sms = `Przypomnienie: ${whenLabel}, ${address}. Odbiorę Państwa na miejscu. Szczegóły: ${portalUrl} — ${identity.agentName}`;
+  const parkingCustom = String(params.parkingNote || '').trim();
+  const intro =
+    'Przypominamy o umówionym oglądaniu. Termin, adres i mapa są poniżej — prosimy o punktualność.';
+
+  const sms = `Oglądanie: ${whenShort}, ${address}. Szczegóły: ${portalUrl} — ${identity.agentName}`;
+
+  const subject = `Oglądanie · ${whenShort} · ${address}`;
+
   const emailHtml = buildAppleClientEmailHtml({
     eyebrow: identity.agencyName,
     title: 'Pakiet przed wizytą',
     greetingName: client.firstName,
     bodyHtml: `
-      <p style="margin:0 0 12px;">jutro / dziś spotykamy się na oglądaniu. Na miejscu dostaną Państwo ofertówkę do ręki.</p>
-      <p style="margin:0;font-size:13px;color:#6b7280;">Parking: ${escapeEmailHtml(parking)}</p>
+      <p style="margin:0 0 12px;">${escapeEmailHtml(intro)}</p>
+      <p style="margin:0 0 12px;">Na miejscu spotkacie się z agentem. W razie potrzeby napisz w panelu — odpowiemy od razu.</p>
+      ${
+        parkingCustom
+          ? `<p style="margin:0;font-size:13px;color:#6b7280;">Parking: ${escapeEmailHtml(parkingCustom)}</p>`
+          : ''
+      }
     `,
     highlightHtml: `<div style="margin:18px 0;padding:18px 20px;border-radius:18px;background:#ecfdf5;border:1px solid #a7f3d0;">
       <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#047857;">Termin</p>
       <p style="margin:8px 0 0;font-size:20px;font-weight:900;color:#064e3b;">${escapeEmailHtml(whenLabel)}</p>
+      ${offer?.title ? `<p style="margin:10px 0 0;font-weight:700;color:#064e3b;">${escapeEmailHtml(offer.title)}</p>` : ''}
       <p style="margin:10px 0 0;color:#065f46;">${escapeEmailHtml(address)}</p>
       <p style="margin:10px 0 0;"><a href="${escapeEmailHtml(mapUrl)}" style="color:#047857;font-weight:700;text-decoration:none;">Otwórz mapę</a></p>
     </div>`,
@@ -92,7 +140,7 @@ export async function sendVisitPrepPacket(params: {
   if (client.email) {
     emailSent = await sendTransactionalEmail({
       to: client.email,
-      subject: `Jutro oglądamy — ${address}`,
+      subject,
       html: emailHtml,
     });
   }
@@ -127,8 +175,8 @@ export async function sendVisitPrepPacket(params: {
     mailto: client.email
       ? {
           to: client.email,
-          subject: `Jutro oglądamy — ${address}`,
-          body: `Dzień dobry ${client.firstName},\n\nspotykamy się:\n${whenLabel}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${identity.agentName}`,
+          subject,
+          body: `Dzień dobry ${client.firstName},\n\n${intro}\n\n${whenLabel}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${identity.agentName}`,
         }
       : null,
   };
