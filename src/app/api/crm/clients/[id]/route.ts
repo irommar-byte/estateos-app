@@ -1301,15 +1301,31 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'propose_presentation' || action === 'propose_meeting') {
     const isMeeting = action === 'propose_meeting';
+    const alreadyAgreed =
+      !isMeeting &&
+      (body.confirmed === true ||
+        body.alreadyAgreed === true ||
+        String(body.mode || '').toLowerCase() === 'confirmed');
     const slotDates = isMeeting
       ? (() => {
           const one = parseStartsAtInput(body.startsAt);
           return one ? [one] : [];
         })()
-      : parseStartsAtList(body.startsAtList || body.proposedSlots, body.startsAt);
+      : alreadyAgreed
+        ? (() => {
+            const one =
+              parseStartsAtInput(body.startsAt) ||
+              parseStartsAtList(body.startsAtList || body.proposedSlots, body.startsAt)[0] ||
+              null;
+            return one ? [one] : [];
+          })()
+        : parseStartsAtList(body.startsAtList || body.proposedSlots, body.startsAt);
     const startsAt = slotDates[0] || null;
     if (!startsAt) {
-      return NextResponse.json({ error: 'Wybierz termin i godzinę.' }, { status: 400 });
+      return NextResponse.json(
+        { error: alreadyAgreed ? 'Wybierz ustalony termin i godzinę.' : 'Wybierz termin i godzinę.' },
+        { status: 400 },
+      );
     }
     const client = await prisma.agencyClient.findFirst({
       where: { id: clientId, agencyUserId, status: 'ACTIVE' },
@@ -1380,7 +1396,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
       location: location || null,
       notes: notes || null,
       proposedBy: 'agent',
-      status: isMeeting ? 'confirmed' : 'pending',
+      status: isMeeting || alreadyAgreed ? 'confirmed' : 'pending',
+      alreadyAgreed: alreadyAgreed || undefined,
       offerId,
       showingKind: showing?.kind || null,
       listingRequestSent: false,
@@ -1405,22 +1422,30 @@ export async function POST(req: Request, ctx: RouteCtx) {
             select: { id: true, firstName: true, lastName: true },
           });
       if (!target) continue;
+      const activityKind = isMeeting
+        ? JOURNEY_ACTIVITY.MEETING
+        : alreadyAgreed
+          ? JOURNEY_ACTIVITY.PRESENTATION_CONFIRMED
+          : JOURNEY_ACTIVITY.PRESENTATION;
       await prisma.agencyClientActivity.create({
         data: {
           clientId: targetId,
           agencyUserId,
           offerId,
-          kind: isMeeting ? JOURNEY_ACTIVITY.MEETING : JOURNEY_ACTIVITY.PRESENTATION,
+          kind: activityKind,
           title: isMeeting
             ? `Spotkanie · ${target.firstName} ${target.lastName}`
-            : guestAgency
-              ? `Prezentacja z agencją ${guestAgency.name}${offerId ? ` · #${offerId}` : ''}`
-              : `Prezentacja oferty${offerId ? ` #${offerId}` : ''} · ${target.firstName} ${target.lastName}`,
+            : alreadyAgreed
+              ? `Potwierdzona prezentacja${offerId ? ` · #${offerId}` : ''} · ${target.firstName} ${target.lastName}`
+              : guestAgency
+                ? `Prezentacja z agencją ${guestAgency.name}${offerId ? ` · #${offerId}` : ''}`
+                : `Prezentacja oferty${offerId ? ` #${offerId}` : ''} · ${target.firstName} ${target.lastName}`,
           body: [
             slotDates.map((slot) => slot.toLocaleString('pl-PL')).join(' · '),
             location,
             notes,
             guestAgency ? `Gość: ${guestAgency.name}` : null,
+            alreadyAgreed ? 'Termin ustalony z klientem — potwierdzenie' : null,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -1430,12 +1455,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
       await emailClientSchedule({
         clientId: targetId,
         kind: isMeeting ? 'meeting' : 'presentation',
-        mode: isMeeting ? 'confirmed' : 'proposed',
+        mode: isMeeting || alreadyAgreed ? 'confirmed' : 'proposed',
         startsAt,
-        proposedSlots: slotDates,
+        proposedSlots: alreadyAgreed ? [startsAt] : slotDates,
         location: location || null,
         notes: notes || null,
-        listingAgentCopy: Boolean(showing && (showing.kind === 'other_agent' || showing.kind === 'external_import')),
+        listingAgentCopy: Boolean(
+          !alreadyAgreed && showing && (showing.kind === 'other_agent' || showing.kind === 'external_import'),
+        ),
         offerId,
         audience: targetId === (client.type === 'BUYER' ? client.id : counterpartId) ? 'buyer' : 'seller',
       });
@@ -1471,11 +1498,17 @@ export async function POST(req: Request, ctx: RouteCtx) {
     await sendNotification({
       userId: agencyUserId,
       type: 'CRM_EVENT',
-      title: isMeeting ? 'Termin spotkania' : 'Propozycja prezentacji',
+      title: isMeeting
+        ? 'Termin spotkania'
+        : alreadyAgreed
+          ? 'Prezentacja potwierdzona'
+          : 'Propozycja prezentacji',
       body: `${client.firstName} ${client.lastName} · ${startsAt.toLocaleString('pl-PL')}${offerId ? ` · oferta #${offerId}` : ''}`,
-      data: crmAgentPushData(clientId, { notificationType: 'crm_client_schedule' }),
+      data: crmAgentPushData(clientId, {
+        notificationType: alreadyAgreed ? 'crm_presentation_confirmed' : 'crm_client_schedule',
+      }),
     }).catch(() => {});
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, confirmed: alreadyAgreed });
   }
 
   if (action === 'request_listing_showing') {
