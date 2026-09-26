@@ -130,6 +130,7 @@ export default function ClientPresentationComposer({
   onChangeGuestVisitor,
   onChangeListingNotes,
   onSubmit,
+  onConfirmAgreed,
   onRequestListing,
   onMarkHeld,
   onCall,
@@ -167,10 +168,11 @@ export default function ClientPresentationComposer({
   onChangeGuestVisitor: (value: string) => void;
   onChangeListingNotes?: (value: string) => void;
   onSubmit: () => void;
+  /** Termin już ustalony z klientem — od razu mail potwierdzenia. */
+  onConfirmAgreed?: () => void;
   onRequestListing?: () => void;
   onMarkHeld?: () => void;
   onCall?: (phone: string) => void;
-}) {
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
@@ -179,6 +181,7 @@ export default function ClientPresentationComposer({
   const [searchHits, setSearchHits] = useState<ManagedOfferOption[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [manualIdOpen, setManualIdOpen] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<'propose' | 'agreed'>('propose');
   const searchSeq = useRef(0);
   const authToken = useAuthStore((s: any) => s.token) as string | null;
 
@@ -255,10 +258,18 @@ export default function ClientPresentationComposer({
   const filledSlots = presentationSlots.filter(Boolean);
   const listingKind = showing?.kind === 'other_agent' || showing?.kind === 'external_import';
   const importKind = showing?.kind === 'own_import' || showing?.kind === 'external_import';
-  const canSubmit =
+  const hasOffer = Boolean(presentationOfferId.trim());
+  const hasFirstSlot = Boolean(presentationSlots[0]);
+  const canPropose =
     filledSlots.length > 0 &&
-    Boolean(presentationOfferId.trim()) &&
+    hasOffer &&
     (!guestMode || (guestName.trim() && guestEmail.includes('@')));
+  const canConfirmAgreed =
+    hasFirstSlot &&
+    hasOffer &&
+    Boolean(onConfirmAgreed) &&
+    (!guestMode || (guestName.trim() && guestEmail.includes('@')));
+  const canSubmit = scheduleMode === 'agreed' ? canConfirmAgreed : canPropose;
 
   const openPicker = () => {
     setPickerQuery('');
@@ -607,20 +618,102 @@ export default function ClientPresentationComposer({
         </View>
       ) : null}
 
-      <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', marginTop: 12 }}>
-        2–3 TERMINY
-      </Text>
-      {[0, 1, 2].map((index) => (
-        <Pressable
-          key={index}
-          onPress={() => onPickSlot(index)}
-          style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
-        >
-          <Text style={{ color: presentationSlots[index] ? colors.text : colors.secondary, fontWeight: '700' }}>
-            {presentationSlots[index] || `Termin ${index + 1}${index === 0 ? '' : ' (opcjonalnie)'}`}
+      <View style={{ marginTop: 14, gap: 8 }}>
+        <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>
+          JAK USTALACIE TERMIN
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable
+            onPress={() => setScheduleMode('propose')}
+            style={[
+              styles.modeChip,
+              {
+                borderColor: scheduleMode === 'propose' ? colors.accent : colors.border,
+                backgroundColor: scheduleMode === 'propose' ? 'rgba(52,199,89,0.14)' : colors.input,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: scheduleMode === 'propose' ? colors.accent : colors.text,
+                fontWeight: '800',
+                fontSize: 12,
+                textAlign: 'center',
+              }}
+            >
+              Propozycja 2–3 terminów
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setScheduleMode('agreed')}
+            style={[
+              styles.modeChip,
+              {
+                borderColor: scheduleMode === 'agreed' ? colors.accent : colors.border,
+                backgroundColor: scheduleMode === 'agreed' ? 'rgba(52,199,89,0.14)' : colors.input,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: scheduleMode === 'agreed' ? colors.accent : colors.text,
+                fontWeight: '800',
+                fontSize: 12,
+                textAlign: 'center',
+              }}
+            >
+              Termin już ustalony
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 16 }}>
+          {scheduleMode === 'agreed'
+            ? 'Klient już wie kiedy przychodzi — wyślemy od razu potwierdzenie (mapa + kalendarz), bez wyboru slotów.'
+            : 'Wyślij 2–3 opcje — klient potwierdzi jedną w panelu albo mailu.'}
+        </Text>
+      </View>
+
+      {scheduleMode === 'propose' ? (
+        <>
+          <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', marginTop: 12 }}>
+            2–3 TERMINY
           </Text>
-        </Pressable>
-      ))}
+          {[0, 1, 2].map((index) => (
+            <Pressable
+              key={index}
+              onPress={() => onPickSlot(index)}
+              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, marginTop: 8, justifyContent: 'center' }]}
+            >
+              <Text style={{ color: presentationSlots[index] ? colors.text : colors.secondary, fontWeight: '700' }}>
+                {presentationSlots[index] || `Termin ${index + 1}${index === 0 ? '' : ' (opcjonalnie)'}`}
+              </Text>
+            </Pressable>
+          ))}
+        </>
+      ) : (
+        <>
+          <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', marginTop: 12 }}>
+            USTALONY TERMIN
+          </Text>
+          <Pressable
+            onPress={() => onPickSlot(0)}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: presentationSlots[0] ? colors.accent : colors.border,
+                marginTop: 8,
+                justifyContent: 'center',
+                minHeight: 52,
+              },
+            ]}
+          >
+            <Text style={{ color: presentationSlots[0] ? colors.text : colors.secondary, fontWeight: '800', fontSize: 15 }}>
+              {presentationSlots[0] || 'Wybierz datę i godzinę'}
+            </Text>
+          </Pressable>
+        </>
+      )}
       {listingKind ? (
         <TextInput
           value={listingNotes || ''}
@@ -633,19 +726,33 @@ export default function ClientPresentationComposer({
       ) : null}
       <Pressable
         disabled={!canSubmit || busy}
-        onPress={listingKind && onRequestListing ? onRequestListing : onSubmit}
+        onPress={() => {
+          if (listingKind && onRequestListing) {
+            onRequestListing();
+            return;
+          }
+          if (scheduleMode === 'agreed' && onConfirmAgreed) {
+            onConfirmAgreed();
+            return;
+          }
+          onSubmit();
+        }}
         style={[styles.primary, { marginTop: 8, opacity: canSubmit ? 1 : 0.5 }]}
       >
         <Text style={styles.primaryText}>
           {busy
             ? 'Wysyłam…'
             : guestMode
-              ? 'Wyślij termin właścicielowi i agencji gościa'
+              ? scheduleMode === 'agreed'
+                ? 'Potwierdź termin właścicielowi i agencji gościa'
+                : 'Wyślij termin właścicielowi i agencji gościa'
               : listingKind
                 ? 'Poproś o pokaz'
-                : importKind
-                  ? 'Zaproponuj terminy kupującemu'
-                  : 'Zaproponuj terminy'}
+                : scheduleMode === 'agreed'
+                  ? 'Potwierdź termin i wyślij do klienta'
+                  : importKind
+                    ? 'Zaproponuj terminy kupującemu'
+                    : 'Zaproponuj terminy'}
         </Text>
       </Pressable>
     </View>
@@ -666,6 +773,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
+  },
+  modeChip: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    justifyContent: 'center',
   },
   primary: {
     minHeight: 48,
