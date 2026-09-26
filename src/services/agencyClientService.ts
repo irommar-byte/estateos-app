@@ -876,6 +876,19 @@ export async function sendVisitPrepPacket(token: string, clientId: number, parki
   });
 }
 
+export async function searchCrmOffersForPresentation(token: string, query: string) {
+  const q = encodeURIComponent(String(query || '').trim());
+  const res = await fetch(`${API_URL}/api/crm/offers/search?q=${q}&limit=30`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false as const, message: String(json.error || 'Nie udało się wyszukać ofert.'), offers: [] as ManagedOfferOption[] };
+  }
+  const offers = Array.isArray(json.offers) ? (json.offers as ManagedOfferOption[]) : [];
+  return { ok: true as const, offers };
+}
+
 export async function resendAttendanceEmail(token: string, clientId: number, body: Record<string, unknown>) {
   return postAgencyClientAction(token, clientId, {
     action: 'resend_attendance_email',
