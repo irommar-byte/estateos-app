@@ -50,6 +50,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       description: result.description,
+      title: result.title,
       model: result.model,
       generatedBy: "gpt",
     });

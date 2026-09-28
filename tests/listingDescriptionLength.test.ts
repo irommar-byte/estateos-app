@@ -4,6 +4,7 @@ import {
   fitDescriptionToTarget,
   maxTokensForLength,
   needsDescriptionExpand,
+  resolveGenerateTitle,
   resolveTargetLength,
   resolveUseEmojis,
   stripEmojiCharacters,
@@ -23,24 +24,30 @@ test("emoji flag is opt-in", () => {
   assert.equal(resolveUseEmojis("true"), true);
 });
 
-test("trims long copy on a sentence boundary inside ±50", () => {
+test("title flag is opt-in", () => {
+  assert.equal(resolveGenerateTitle(undefined), false);
+  assert.equal(resolveGenerateTitle(true), true);
+  assert.equal(resolveGenerateTitle("1"), true);
+});
+
+test("trims long copy on a sentence boundary inside soft ±150", () => {
   const head = "A".repeat(1460);
   const text = `${head} Pierwsze zdanie. Drugie zdanie kończy się tutaj.`;
   const fitted = fitDescriptionToTarget(text, 1500);
-  assert.ok(fitted.length >= 1450 && fitted.length <= 1550);
+  assert.ok(fitted.length >= 1350 && fitted.length <= 1650);
   assert.match(fitted, /zdanie/);
 });
 
-test("expand is needed only below the floor", () => {
-  assert.equal(needsDescriptionExpand("x".repeat(1449), 1500), true);
-  assert.equal(needsDescriptionExpand("x".repeat(1450), 1500), false);
+test("expand is needed only below the soft floor (±150)", () => {
+  assert.equal(needsDescriptionExpand("x".repeat(1349), 1500), true);
+  assert.equal(needsDescriptionExpand("x".repeat(1350), 1500), false);
 });
 
 test("strips emoji when requested", () => {
   assert.equal(stripEmojiCharacters("Salon 🌿 i balkon ✨."), "Salon i balkon .");
 });
 
-test("token budget scales with length and caps at 1800", () => {
-  assert.equal(maxTokensForLength(500), Math.ceil(500 / 2.2) + 80);
-  assert.equal(maxTokensForLength(4000), 1800);
+test("token budget scales with length and caps at 2200", () => {
+  assert.equal(maxTokensForLength(500), Math.ceil(500 / 1.6) + 120);
+  assert.equal(maxTokensForLength(4000), 2200);
 });
