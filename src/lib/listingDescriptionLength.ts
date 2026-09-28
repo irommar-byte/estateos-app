@@ -24,9 +24,9 @@ export function resolveGenerateTitle(raw: unknown): boolean {
   return raw === true || raw === 1 || raw === 'true' || raw === '1';
 }
 
-/** Większy budżet tokenów — polski opis ~2–2.5 znaków/token; unikamy urwania w połowie. */
+/** Większy budżet — polski + JSON; 2500 znaków ≈ 1900+ tokenów wyjścia. */
 export function maxTokensForLength(targetLength: number): number {
-  return Math.min(2200, Math.ceil(targetLength / 1.6) + 120);
+  return Math.min(2800, Math.ceil(targetLength / 1.25) + 220);
 }
 
 export function stripEmojiCharacters(text: string): string {

@@ -32,8 +32,8 @@ describe('listing description soft-fit', () => {
 
   it('maxTokensForLength gives room for Polish at 2500', () => {
     const tokens = maxTokensForLength(2500);
-    assert.ok(tokens >= 1600, `expected >=1600, got ${tokens}`);
-    assert.ok(tokens <= 2200);
+    assert.ok(tokens >= 2100, `expected >=2100, got ${tokens}`);
+    assert.ok(tokens <= 2800);
   });
 
   it('resolveGenerateTitle accepts truthy flags', () => {

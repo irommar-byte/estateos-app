@@ -272,30 +272,30 @@ function buildSystemPrompt(
 ): string {
   const min = options.targetLength - 150;
   const max = options.targetLength + 150;
-  const lengthRule = `- CEL DŁUGOŚCI: ok. ${options.targetLength} znaków (dopuszczalnie ${min}…${max}).
-- Domknij każde zdanie i każdy punkt listy. Lepiej nieco krócej niż urwane zakończenie.
-- Bez wody. Dłuższy budżet = więcej faktów o okolicy, układzie, komunikacji i „dla kogo”.`;
+  const lengthRule = `- CEL DŁUGOŚCI: OBOWIĄZKOWO ok. ${options.targetLength} znaków (minimum ${min}, maksimum ${max}).
+- NIE kończ poniżej ${min} znaków. Jeśli brakuje treści — rozwiń: okolica, układ, komunikacja, „dla kogo”, atuty z notatek (bez lania wody i bez powtórzeń).
+- Domknij każde zdanie i każdy punkt listy. Nie urywaj w połowie.`;
   const emojiRule = options.useEmojis
     ? '- Emotikony: użyj 4–10 trafnych emoji (🌿 ✨ 🏡 📍 🚇 🏫) przy nagłówkach i kluczowych atutach. Nie na początku każdego zdania.'
     : '- ZAKAZ emoji i emotikon. Zero piktogramów.';
 
   const rewriteBlock = options.hasNotes
-    ? `TRYB PRZEPISANIA (notatki sprzedawcy są OBOWIĄZKOWE):
-- Blok INSTRUKCJE I FAKTY OD SPRZEDAWCY ma pierwszeństwo nad JSON amenities i nad starym opisem.
-- Zastosuj KAŻDĄ instrukcję (nazewnictwo, akcenty, urgency). Nie dodawaj „lekkiej wzmianki” — ZASTĄP sprzeczne sformułowania.
-- Przykład: jeśli notatki mówią „suterena / poziom -1”, NIE pisz „komórka lokatorska” ani „schowek” — pisz **suterena** i podkreśl wartość.
-- Nazwy z JSON (np. „pomieszczenie dodatkowe”) NIE mogą nadpisać nazwy z notatek.
-- Wolno oddać urgency z notatek („cena atrakcyjna tylko do końca miesiąca”) BEZ podawania kwoty w zł/€.
-- ${options.hasExisting ? 'Masz OBECNY OPIS — przepisz go zgodnie z notatkami, zachowując mocne fakty, poprawiając narrację.' : 'Zbuduj pełny opis z parametrów + notatek.'}
+    ? `TRYB PEŁNEJ REDAKCJI (notatki sprzedawcy są OBOWIĄZKOWE):
+- Napisz CAŁY opis OD NOWA jako profesjonalny tekst agencji. NIE kosmetyczna poprawka (nie „dodaj parę słów” do starego tekstu).
+- OBECNY OPIS (jeśli jest) = tylko źródło faktów do przemapowania; wynik ma brzmieć jak nowa redakcja pod kątem notatek.
+- Zastosuj KAŻDĄ instrukcję z notatek (nazewnictwo, akcenty, metraże, potencjał użytkowy, urgency). ZASTĄP sprzeczne sformułowania w całym tekście.
+- Przykład: notatki „mieszkanie + suterena 9 m², dziś magazyn, może gabinet/biuro” → w całym opisie podkreśl **mieszkanie wraz z sutereną (~9 m²)**, potencjał (gabinet/biuro/działalność), nie „komórka/schowek” jako główny przekaz.
+- Nazwy z JSON NIE mogą nadpisać nazwy z notatek.
+- Wolno oddać urgency z notatek BEZ kwoty w zł/€.
 - Format sekcji zostaje, chyba że sprzedawca każe inaczej.
-- Ceny przyległości z notatek (garaż, parking, media) możesz podać liczbą, jeśli sprzedawca je podał.`
+- Ceny przyległości z notatek możesz podać, jeśli sprzedawca je podał.`
     : `TRYB NOWY (bez notatek):
 - Zbuduj NOWY opis wyłącznie z parametrów oferty i okolicy.
 - Nie wymyślaj sutereny/komórki poza tym, co wynika z amenities + rozsądnej ogólności.`;
 
   const titleRule = options.generateTitle
     ? `- Zwróć JSON: {"description":"...","title":"..."}.
-- title: 1 linia, max ${TITLE_MAX_CHARS} znaków, najbardziej atrakcyjny marketingowo po analizie całego ogłoszenia (lokalizacja, atuty z notatek, typ). Bez ceny, bez CAPS lock całego tytułu, bez cudzysłowów otaczających.`
+- title: NOWY, atrakcyjny tytuł (1 linia, max ${TITLE_MAX_CHARS} znaków) po analizie całego ogłoszenia i notatek — NIE lekka poprawka starego tytułu. Bez ceny, bez CAPS lock całego tytułu, bez otaczających cudzysłowów. Wpleć kluczowy atut z notatek (np. suterena), jeśli pasuje.`
     : `- Zwróć JSON: {"description":"...","title":null}.`;
 
   return `Jesteś copywriterem premium w EstateOS™ — tworzysz opisy nieruchomości na portal.
@@ -339,17 +339,19 @@ function buildUserPrompt(
   notes: string,
   existingDescription: string,
   generateTitle: boolean,
+  targetLength: number,
 ): string {
+  const minLen = targetLength - 150;
   const notesBlock = notes
-    ? `\nINSTRUKCJE I FAKTY OD SPRZEDAWCY (OBOWIĄZKOWE — zastosuj w 100%, nadpisują stary opis i amenities):\n${notes}\n`
+    ? `\nINSTRUKCJE I FAKTY OD SPRZEDAWCY (OBOWIĄZKOWE — zastosuj w 100% w CAŁYM opisie, nadpisują stary tekst i amenities):\n${notes}\n`
     : '';
   const existingBlock = existingDescription
-    ? `\nOBECNY OPIS DO PRZEPISANIA (zachowaj fakty zgodne z notatkami, zmień sprzeczne nazewnictwo i akcenty):\n${existingDescription}\n`
+    ? `\nOBECNY OPIS — TYLKO ŹRÓDŁO FAKTÓW (napisz nową pełną redakcję pod notatki, nie kosmetyczną poprawkę):\n${existingDescription}\n`
     : '';
 
   const task = notes
-    ? 'Przepisz / zbuduj opis oferty tak, by NOTATKI SPRZEDAWCY były w pełni zrealizowane (nie lekka wzmianka).'
-    : 'Wygeneruj NOWY opis oferty na podstawie parametrów i okolicy.';
+    ? `Napisz OD NOWA profesjonalny opis (minimum ${minLen} znaków, cel ${targetLength}) tak, by NOTATKI SPRZEDAWCY były w 100% wplecione w całą narrację — nie dopisek i nie lekka edycja starego tekstu.`
+    : `Wygeneruj NOWY opis oferty (minimum ${minLen} znaków, cel ${targetLength}) na podstawie parametrów i okolicy.`;
 
   return `${task}
 
@@ -410,22 +412,31 @@ async function expandDescriptionOnce(params: {
   neighborhood: NeighborhoodContext;
   locale: 'pl' | 'en' | 'ru';
   useEmojis: boolean;
+  notes: string;
 }): Promise<string | null> {
   const missing = params.targetLength - params.current.length;
   if (missing <= 80) return null;
+  const minLen = params.targetLength - 150;
+  const notesHint = params.notes
+    ? `\nZachowaj i wzmocnij przekaz z notatek sprzedawcy (nie wracaj do starych sformułowań):\n${params.notes}\n`
+    : '';
   try {
     const { text } = await callOpenAiText({
       apiKey: params.apiKey,
       model: params.model,
       skipReasoningFallback: true,
       logPrefix: 'listing-description-ai-expand',
-      maxOutputTokens: maxTokensForLength(Math.min(1200, missing + 200)),
+      maxOutputTokens: maxTokensForLength(Math.min(1600, missing + 400)),
       json: true,
-      system: `Dopisz brakujące fakty do opisu nieruchomości. Zwróć JSON {"description":"pełny opis","title":null}.
-Cel: ${params.targetLength} znaków (±150). Domknij zdania. Bez wody.
+      system: `Rozszerz opis nieruchomości do wymaganej długości. Zwróć JSON {"description":"pełny opis","title":null}.
+Cel: minimum ${minLen} znaków, idealnie ${params.targetLength} (±150).
+Dopisz fakty: okolica, układ, komunikacja, „dla kogo”, atuty — BEZ lania wody i BEZ powtórzeń.
+Domknij wszystkie zdania. Nie urywaj.
 ${params.useEmojis ? 'Zachowaj oszczędne emoji przy nagłówkach.' : 'Bez emoji.'}
 Język: ${params.locale}.`,
-      user: `DOTYCHCZASOWY OPIS:\n${params.current}\n\nOKOLICA:\n${formatNeighborhood(params.neighborhood)}\n\nZwróć pełny, dociągnięty opis w JSON.`,
+      user: `DOTYCHCZASOWY OPIS (${params.current.length} znaków — ZA KRÓTKI):\n${params.current}\n\nOKOLICA:\n${formatNeighborhood(params.neighborhood)}
+${notesHint}
+Zwróć PEŁNY opis (stary + uzupełnienie) w JSON, długość ≥ ${minLen} znaków.`,
     });
     const { description: next } = parseAiJsonPayload(text);
     return next.length > params.current.length ? next : null;
@@ -473,14 +484,22 @@ export async function generateListingDescriptionWithGpt(
     useEmojis,
     generateTitle,
   });
-  const user = buildUserPrompt(facts, neighborhood, locale, notes, existingDescription, generateTitle);
+  const user = buildUserPrompt(
+    facts,
+    neighborhood,
+    locale,
+    notes,
+    existingDescription,
+    generateTitle,
+    targetLength,
+  );
 
   const { text, model: usedModel } = await callOpenAiText({
     apiKey,
     model,
     system,
     user,
-    maxOutputTokens: maxTokensForLength(targetLength) + (generateTitle ? 80 : 0),
+    maxOutputTokens: maxTokensForLength(targetLength) + (generateTitle ? 100 : 0),
     skipReasoningFallback: true,
     json: true,
     logPrefix: 'listing-description-ai',
@@ -492,8 +511,8 @@ export async function generateListingDescriptionWithGpt(
   }
 
   description = fitDescriptionToTarget(description, targetLength);
-  // Expand tylko w trybie FROM_SCRATCH (bez notatek) — oszczędność przy rewrite.
-  if (!hasNotes && needsDescriptionExpand(description, targetLength)) {
+  // Zawsze dociągaj do celu długości (także przy notatkach — wcześniej to blokowało 2500→~1600).
+  if (needsDescriptionExpand(description, targetLength)) {
     const expanded = await expandDescriptionOnce({
       apiKey,
       model: usedModel,
@@ -502,8 +521,23 @@ export async function generateListingDescriptionWithGpt(
       neighborhood,
       locale,
       useEmojis,
+      notes,
     });
     if (expanded) description = fitDescriptionToTarget(expanded, targetLength);
+  }
+  // Druga próba, jeśli nadal wyraźnie za krótko
+  if (needsDescriptionExpand(description, targetLength)) {
+    const expanded2 = await expandDescriptionOnce({
+      apiKey,
+      model: usedModel,
+      current: description,
+      targetLength,
+      neighborhood,
+      locale,
+      useEmojis,
+      notes,
+    });
+    if (expanded2) description = fitDescriptionToTarget(expanded2, targetLength);
   }
   if (!useEmojis) description = stripEmojiCharacters(description);
   if (!generateTitle) title = null;

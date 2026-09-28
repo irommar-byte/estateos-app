@@ -47,7 +47,7 @@ test("strips emoji when requested", () => {
   assert.equal(stripEmojiCharacters("Salon 🌿 i balkon ✨."), "Salon i balkon .");
 });
 
-test("token budget scales with length and caps at 2200", () => {
-  assert.equal(maxTokensForLength(500), Math.ceil(500 / 1.6) + 120);
-  assert.equal(maxTokensForLength(4000), 2200);
+test("token budget scales with length and caps at 2800", () => {
+  assert.equal(maxTokensForLength(500), Math.ceil(500 / 1.25) + 220);
+  assert.equal(maxTokensForLength(4000), 2800);
 });
