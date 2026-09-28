@@ -678,9 +678,10 @@ export const offer = {
       createProfessional: 'Create professional description',
       detailsNotesLabel: 'Details / highlights (notes for AI)',
       detailsNotesPlaceholder:
-        'Longer description, garage included, near school, quiet street… Empty = listing params and neighborhood.',
+        'E.g. call the storage a garden-level suite, stress value, price attractive only until month-end… Empty = params and neighborhood.',
       lengthLabel: 'Description length: {{n}} characters',
       emoticonsLabel: 'Emoticons',
+      generateTitleLabel: 'Attractive AI title (from full listing analysis)',
       generating: 'Creating a professional description…',
       errorTitle: 'Description generation',
       insufficientData: 'Fill in basics (type, city, area or price) before generating a description.',

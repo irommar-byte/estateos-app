@@ -358,6 +358,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
   const [aiTargetLength, setAiTargetLength] = useState(1500);
   const [aiUseEmojis, setAiUseEmojis] = useState(false);
+  const [aiGenerateTitle, setAiGenerateTitle] = useState(false);
   const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
   const glowAnim = useRef(new Animated.Value(0)).current;
 
@@ -711,22 +712,8 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const isDescriptionBusy = isGeneratingGpt;
 
   const startDescriptionTyping = (fullText: string, onDone: () => void) => {
-    updateDraft({ description: '' });
-    const words = fullText.split(' ');
-    let currentWordIndex = 0;
-    let tempText = '';
-
-    const typingInterval = setInterval(() => {
-      if (currentWordIndex < words.length) {
-        tempText += (currentWordIndex === 0 ? '' : ' ') + words[currentWordIndex];
-        updateDraft({ description: tempText });
-        if (currentWordIndex % 4 === 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        currentWordIndex++;
-      } else {
-        clearInterval(typingInterval);
-        onDone();
-      }
-    }, 36);
+    updateDraft({ description: fullText });
+    requestAnimationFrame(() => onDone());
   };
 
   const stopGlowAnimation = () => {
@@ -772,7 +759,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
     startGlowAnimation();
 
     try {
-      const { description } = await generateListingDescriptionWithGpt(
+      const { description, title: generatedTitle } = await generateListingDescriptionWithGpt(
         token,
         {
           title: draft.title,
@@ -803,12 +790,17 @@ export default function Step5_Media({ theme }: { theme: any }) {
           isFurnished: draft.isFurnished,
           propertyRoomScans: draft.propertyRoomScans,
           floorPlanScanMeta: draft.floorPlanScanMeta,
+          existingDescription: String(draft.description || '').trim().slice(0, 2200),
           userNotes: aiDetailsNotes.trim(),
           targetLength: aiTargetLength,
           useEmojis: aiUseEmojis,
+          generateTitle: aiGenerateTitle,
         },
         locale,
       );
+      if (aiGenerateTitle && generatedTitle) {
+        updateDraft({ title: generatedTitle.slice(0, MAX_TITLE_LENGTH) });
+      }
       startDescriptionTyping(description, () => {
         setIsGeneratingGpt(false);
         stopGlowAnimation();
@@ -1086,10 +1078,13 @@ export default function Step5_Media({ theme }: { theme: any }) {
           <AiDescriptionOptions
             targetLength={aiTargetLength}
             useEmojis={aiUseEmojis}
+            generateTitle={aiGenerateTitle}
             onTargetLength={setAiTargetLength}
             onUseEmojis={setAiUseEmojis}
+            onGenerateTitle={setAiGenerateTitle}
             lengthLabel={translate('addOffer.step5.ai.lengthLabel', { n: aiTargetLength })}
             emoticonsLabel={translate('addOffer.step5.ai.emoticonsLabel')}
+            generateTitleLabel={translate('addOffer.step5.ai.generateTitleLabel')}
             textColor={theme.text}
             mutedColor={theme.subtitle}
             borderColor={isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.08)'}

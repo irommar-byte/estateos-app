@@ -30,6 +30,8 @@ type Props = {
   disabled?: boolean;
   maxLength?: number;
   minHeight?: number;
+  /** Maks. wysokość pola zanim wejdzie wewnętrzny scroll (domyślnie 520). */
+  maxHeight?: number;
 };
 
 type Mode = 'edit' | 'preview';
@@ -94,16 +96,20 @@ export default function ListingDescriptionEditor({
   disabled = false,
   maxLength,
   minHeight = 240,
+  maxHeight = 520,
 }: Props) {
   const inputRef = useRef<TextInput>(null);
   const [mode, setMode] = useState<Mode>('edit');
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [historyTick, setHistoryTick] = useState(0);
+  const [contentHeight, setContentHeight] = useState(minHeight);
   const historyRef = useRef<string[]>([value]);
   const historyIndexRef = useRef(0);
   const skipHistoryRef = useRef(false);
   const externalSyncRef = useRef(false);
+
+  const fieldHeight = Math.min(maxHeight, Math.max(minHeight, contentHeight + 24));
 
   const palette = {
     shell: isDark ? 'rgba(18,18,20,0.96)' : 'rgba(255,255,255,0.98)',
@@ -276,12 +282,18 @@ export default function ListingDescriptionEditor({
             value={value}
             onChangeText={(text) => commit(text)}
             onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
+            onContentSizeChange={(e) => {
+              const h = Math.ceil(e.nativeEvent.contentSize.height);
+              if (Number.isFinite(h) && h > 0) setContentHeight(h);
+            }}
             placeholder={placeholder}
             placeholderTextColor={palette.muted}
             textAlignVertical="top"
+            scrollEnabled={fieldHeight >= maxHeight - 1}
             style={[
               styles.input,
               {
+                height: fieldHeight,
                 minHeight,
                 color: palette.text,
                 backgroundColor: palette.field,

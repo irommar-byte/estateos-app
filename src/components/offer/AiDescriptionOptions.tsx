@@ -6,10 +6,13 @@ export const DESCRIPTION_LENGTH_PRESETS = [500, 1000, 1500, 2000, 2500, 3000, 35
 type Props = {
   targetLength: number;
   useEmojis: boolean;
+  generateTitle?: boolean;
   onTargetLength: (value: number) => void;
   onUseEmojis: (value: boolean) => void;
+  onGenerateTitle?: (value: boolean) => void;
   lengthLabel: string;
   emoticonsLabel: string;
+  generateTitleLabel?: string;
   textColor: string;
   mutedColor: string;
   borderColor: string;
@@ -20,10 +23,13 @@ type Props = {
 export default function AiDescriptionOptions({
   targetLength,
   useEmojis,
+  generateTitle = false,
   onTargetLength,
   onUseEmojis,
+  onGenerateTitle,
   lengthLabel,
   emoticonsLabel,
+  generateTitleLabel,
   textColor,
   mutedColor,
   borderColor,
@@ -38,6 +44,12 @@ export default function AiDescriptionOptions({
           <Text style={[styles.emojiLabel, { color: textColor }]}>{emoticonsLabel}</Text>
           <Switch value={useEmojis} onValueChange={onUseEmojis} />
         </View>
+        {onGenerateTitle && generateTitleLabel ? (
+          <View style={styles.switchRow}>
+            <Text style={[styles.emojiLabel, { color: textColor }]}>{generateTitleLabel}</Text>
+            <Switch value={generateTitle} onValueChange={onGenerateTitle} />
+          </View>
+        ) : null}
       </View>
       <View style={styles.chips}>
         {DESCRIPTION_LENGTH_PRESETS.map((n) => {

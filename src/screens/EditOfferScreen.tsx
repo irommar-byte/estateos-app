@@ -539,6 +539,7 @@ export default function EditOfferScreen({ route }: any) {
   const [legalCheckStatus, setLegalCheckStatus] = useState<'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED'>('NONE');
   const [isLegalSafeVerified, setIsLegalSafeVerified] = useState(false);
   const kwSectionYRef = useRef(0);
+  const descSectionYRef = useRef(0);
   const [price, setPrice] = useState('');
   const [priceCurrency, setPriceCurrency] = useState<ListingCurrency>('PLN');
   const [editFxRate, setEditFxRate] = useState(4.32);
@@ -571,6 +572,7 @@ export default function EditOfferScreen({ route }: any) {
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
   const [aiTargetLength, setAiTargetLength] = useState(1500);
   const [aiUseEmojis, setAiUseEmojis] = useState(false);
+  const [aiGenerateTitle, setAiGenerateTitle] = useState(false);
   const [isDraggingGallery, setIsDraggingGallery] = useState(false);
   const [dragSnapshot, setDragSnapshot] = useState<EditableImage[] | null>(null);
   const dragSnapshotRef = useRef<EditableImage[] | null>(null);
@@ -1481,21 +1483,13 @@ export default function EditOfferScreen({ route }: any) {
   );
 
   const startDescriptionTyping = (fullText: string, onDone: () => void) => {
-    setDescription('');
-    const words = fullText.split(' ');
-    let currentWordIndex = 0;
-    let tempText = '';
-    const typingInterval = setInterval(() => {
-      if (currentWordIndex < words.length) {
-        tempText += (currentWordIndex === 0 ? '' : ' ') + words[currentWordIndex];
-        setDescription(tempText);
-        if (currentWordIndex % 4 === 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        currentWordIndex++;
-      } else {
-        clearInterval(typingInterval);
-        onDone();
-      }
-    }, 36);
+    // Pełny tekst od razu — animacja słowo-po-słowie sprawiała wrażenie ucięcia przy długich opisach.
+    setDescription(fullText);
+    requestAnimationFrame(() => {
+      const y = descSectionYRef.current;
+      if (y > 0) mainScrollRef.current?.scrollTo({ y: Math.max(0, y - 40), animated: true });
+      onDone();
+    });
   };
 
   // -------- RESET FORMULARZA DO ORYGINAŁU --------
@@ -1606,9 +1600,11 @@ export default function EditOfferScreen({ route }: any) {
     try {
       const draftPayload = {
         title: title.trim(),
+        existingDescription: description.trim().slice(0, 2200),
         userNotes: aiDetailsNotes.trim(),
         targetLength: aiTargetLength,
         useEmojis: aiUseEmojis,
+        generateTitle: aiGenerateTitle,
         propertyType: originalData?.propertyType,
         transactionType: originalData?.transactionType,
         city: locationState.city,
@@ -1631,7 +1627,14 @@ export default function EditOfferScreen({ route }: any) {
         floorPlanScanMeta: floorPlanScanMetaLocal,
         ...amenities,
       };
-      const { description: generated } = await generateListingDescriptionWithGpt(token, draftPayload, locale);
+      const { description: generated, title: generatedTitle } = await generateListingDescriptionWithGpt(
+        token,
+        draftPayload,
+        locale,
+      );
+      if (aiGenerateTitle && generatedTitle) {
+        setTitle(generatedTitle);
+      }
       startDescriptionTyping(generated, () => {
         setIsGeneratingDescription(false);
         descGlowAnim.stopAnimation();
@@ -2807,7 +2810,12 @@ export default function EditOfferScreen({ route }: any) {
             />
           </View>
 
-          <View style={[styles.fieldCard, { backgroundColor: cardBg, borderColor, ...cardShadow }]}>
+          <View
+            style={[styles.fieldCard, { backgroundColor: cardBg, borderColor, ...cardShadow }]}
+            onLayout={(e) => {
+              descSectionYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
             <View style={styles.fieldHeaderRow}>
               <View style={[styles.fieldIconBadge, { backgroundColor: isDark ? '#1F1830' : '#F4ECFF' }]}>
                 <Ionicons name="document-text" size={17} color="#AF52DE" />
@@ -2825,10 +2833,13 @@ export default function EditOfferScreen({ route }: any) {
             <AiDescriptionOptions
               targetLength={aiTargetLength}
               useEmojis={aiUseEmojis}
+              generateTitle={aiGenerateTitle}
               onTargetLength={setAiTargetLength}
               onUseEmojis={setAiUseEmojis}
+              onGenerateTitle={setAiGenerateTitle}
               lengthLabel={t('offer.edit.ai.lengthLabel', { n: aiTargetLength })}
               emoticonsLabel={t('offer.edit.ai.emoticonsLabel')}
+              generateTitleLabel={t('offer.edit.ai.generateTitleLabel')}
               textColor={txtColor}
               mutedColor={subColor}
               borderColor={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)'}
@@ -2877,7 +2888,8 @@ export default function EditOfferScreen({ route }: any) {
                 value={description}
                 onChange={setDescription}
                 placeholder={t('offer.edit.mainInfo.descriptionPlaceholder')}
-                minHeight={260}
+                minHeight={280}
+                maxHeight={560}
               />
             </View>
           </View>

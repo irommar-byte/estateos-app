@@ -6,6 +6,7 @@ export type ListingDescriptionDraftPayload = Record<string, unknown> & {
 
 export type GenerateListingDescriptionResult = {
   description: string;
+  title?: string | null;
   model?: string;
 };
 
@@ -28,8 +29,10 @@ export async function generateListingDescriptionWithGpt(
     throw new Error(String(data?.error || 'Nie udało się wygenerować opisu GPT.'));
   }
 
+  const titleRaw = data?.title == null ? null : String(data.title).trim();
   return {
     description: String(data.description).trim(),
+    title: titleRaw || null,
     model: data.model ? String(data.model) : undefined,
   };
 }
