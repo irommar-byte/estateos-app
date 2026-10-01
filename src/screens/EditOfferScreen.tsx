@@ -1220,9 +1220,9 @@ export default function EditOfferScreen({ route }: any) {
       setFloorPlanLocalUri(result.assets[0].uri);
       setFloorPlanPreview(result.assets[0].uri);
       setPendingFloorPlanServerPath(null);
-      setFloorPlan3dLocalUri(null);
-      setFloorPlanScanMetaLocal(null);
-      setDropServerFloorPlan3d(Boolean(originalFloorPlan3dKey || originalFloorPlanScanMeta));
+      // Tylko podmieniamy obraz 2D — nie kasujemy skanu LiDAR / 3D /
+      // roomScans. Kasowanie meta było regresją: zapis oferty zerował
+      // floorPlanScanMeta i na www, i w aplikacji znikały pomieszczenia.
       setFloorPlanCleared(false);
     }
   };
@@ -1804,14 +1804,21 @@ export default function EditOfferScreen({ route }: any) {
       updatePayload.agentCommissionPercent = resolvedCommission;
     }
     if (floorPlanCleared) {
+      // Backend wymaga jawnej flagi — sam null w body nie kasuje już LiDAR/meta.
+      updatePayload.clearFloorPlan = true;
       updatePayload.floorPlanUrl = null;
       updatePayload.floorPlan3dUrl = null;
       updatePayload.floorPlanScanMeta = null;
       updatePayload.floorPlanExtraUrls = null;
     } else {
+      // dropServerFloorPlan3d kasuje TYLKO model 3D — nie wolno wraz z nim
+      // wyzerować floorPlanScanMeta (pomieszczenia / ściany LiDAR).
       if (dropServerFloorPlan3d && !floorPlan3dLocalUri) {
+        updatePayload.clearFloorPlan3d = true;
         updatePayload.floorPlan3dUrl = null;
-        updatePayload.floorPlanScanMeta = null;
+      }
+      if (floorPlanScanMetaLocal && floorPlanScanMetaLocal !== originalFloorPlanScanMeta) {
+        updatePayload.floorPlanScanMeta = floorPlanScanMetaLocal;
       }
       if (!floorPlanLocalUri && pendingFloorPlanServerPath) {
         updatePayload.floorPlanUrl = pendingFloorPlanServerPath;
@@ -2116,7 +2123,7 @@ export default function EditOfferScreen({ route }: any) {
         setFloorPlanPreview(null);
       } else if (dropServerFloorPlan3d && !floorPlan3dLocalUri) {
         nextFloorPlan3dKey = null;
-        nextScanMeta = null;
+        // Zachowaj scan meta — usunięcie USDZ nie powinno kasować pomieszczeń.
       }
 
       if (floorPlanTouched) {
