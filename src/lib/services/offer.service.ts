@@ -42,6 +42,7 @@ import {
   deleteRemovedOfferImages,
   parseOfferImagesField,
 } from '@/lib/upload/deleteOfferImageArtifacts';
+import { resolveFloorPlanAssetPatch } from '@/lib/offerFloorPlanPersist';
 
 function resolveDuplexFlag(body: Record<string, unknown>): boolean {
   if (body.isDuplex !== undefined) return !!body.isDuplex;
@@ -431,6 +432,8 @@ export async function updateOffer(body: any) {
       videoUrl: true,
       floorPlanUrl: true,
       floorPlanExtraUrls: true,
+      floorPlan3dUrl: true,
+      floorPlanScanMeta: true,
       hasBalcony: true,
       hasElevator: true,
       hasStorage: true,
@@ -631,17 +634,11 @@ export async function updateOffer(body: any) {
           : JSON.stringify(body.images)
       }),
       ...(body.videoUrl !== undefined && { videoUrl: body.videoUrl || null }),
-      ...(body.floorPlanUrl !== undefined && { floorPlanUrl: body.floorPlanUrl || null }),
-      ...(body.floorPlanExtraUrls !== undefined && {
-        floorPlanExtraUrls: body.floorPlanExtraUrls
-          ? typeof body.floorPlanExtraUrls === 'string'
-            ? body.floorPlanExtraUrls
-            : JSON.stringify(body.floorPlanExtraUrls)
-          : null,
-      }),
-      ...(body.floorPlan3dUrl !== undefined && { floorPlan3dUrl: body.floorPlan3dUrl || null }),
-      ...(body.floorPlanScanMeta !== undefined && {
-        floorPlanScanMeta: body.floorPlanScanMeta ? String(body.floorPlanScanMeta) : null,
+      ...resolveFloorPlanAssetPatch(body as Record<string, unknown>, {
+        floorPlanUrl: existing.floorPlanUrl,
+        floorPlanExtraUrls: (existing as { floorPlanExtraUrls?: string | null }).floorPlanExtraUrls,
+        floorPlan3dUrl: (existing as { floorPlan3dUrl?: string | null }).floorPlan3dUrl,
+        floorPlanScanMeta: (existing as { floorPlanScanMeta?: string | null }).floorPlanScanMeta,
       }),
       ...(body.hasBalcony !== undefined && { hasBalcony: !!body.hasBalcony }),
       ...(body.hasElevator !== undefined && { hasElevator: !!body.hasElevator }),

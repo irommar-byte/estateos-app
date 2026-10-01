@@ -38,6 +38,7 @@ import {
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
+import { resolveFloorPlanAssetPatch } from '@/lib/offerFloorPlanPersist';
 import {
   resolveSellerDisplayName,
   resolveSellerPersonName,
@@ -639,6 +640,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const mappedTransaction =
       body.transactionType !== undefined ? mapWebTransactionType(body.transactionType) : undefined;
 
+    const floorPlanPatch = resolveFloorPlanAssetPatch(body as Record<string, unknown>, {
+      floorPlanUrl: currentOffer.floorPlanUrl,
+      floorPlanExtraUrls: (currentOffer as { floorPlanExtraUrls?: string | null }).floorPlanExtraUrls,
+      floorPlan3dUrl: (currentOffer as { floorPlan3dUrl?: string | null }).floorPlan3dUrl,
+      floorPlanScanMeta: (currentOffer as { floorPlanScanMeta?: string | null }).floorPlanScanMeta,
+    });
+
     const updateData: Record<string, unknown> = {
         title: body.title != null ? String(body.title) : currentOffer.title,
         description: nextDescription,
@@ -666,30 +674,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         yearBuilt: parsedYear ?? null,
         plotArea: parsedPlot ?? null,
         floorPlanUrl:
-          body.floorPlanUrl != null
-            ? String(body.floorPlanUrl)
-            : body.floorPlan != null
-              ? String(body.floorPlan)
-              : currentOffer.floorPlanUrl,
+          floorPlanPatch.floorPlanUrl !== undefined
+            ? floorPlanPatch.floorPlanUrl
+            : currentOffer.floorPlanUrl,
         floorPlanExtraUrls:
-          body.floorPlanExtraUrls !== undefined
-            ? body.floorPlanExtraUrls
-              ? typeof body.floorPlanExtraUrls === 'string'
-                ? body.floorPlanExtraUrls
-                : JSON.stringify(body.floorPlanExtraUrls)
-              : null
+          floorPlanPatch.floorPlanExtraUrls !== undefined
+            ? floorPlanPatch.floorPlanExtraUrls
             : (currentOffer as { floorPlanExtraUrls?: string | null }).floorPlanExtraUrls ?? null,
         floorPlan3dUrl:
-          body.floorPlan3dUrl !== undefined
-            ? body.floorPlan3dUrl
-              ? String(body.floorPlan3dUrl)
-              : null
+          floorPlanPatch.floorPlan3dUrl !== undefined
+            ? floorPlanPatch.floorPlan3dUrl
             : (currentOffer as { floorPlan3dUrl?: string | null }).floorPlan3dUrl ?? null,
         floorPlanScanMeta:
-          body.floorPlanScanMeta !== undefined
-            ? body.floorPlanScanMeta
-              ? String(body.floorPlanScanMeta)
-              : null
+          floorPlanPatch.floorPlanScanMeta !== undefined
+            ? floorPlanPatch.floorPlanScanMeta
             : (currentOffer as { floorPlanScanMeta?: string | null }).floorPlanScanMeta ?? null,
         street: body.street != null ? String(body.street) : currentOffer.street,
         buildingNumber: body.buildingNumber != null ? String(body.buildingNumber) : currentOffer.buildingNumber,
