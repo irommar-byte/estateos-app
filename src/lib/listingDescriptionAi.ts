@@ -13,7 +13,6 @@ import {
 import {
   callOpenAiText,
   getOpenAiApiKey,
-  OPENAI_MODEL_DEFAULT,
   OPENAI_MODEL_LEGACY,
   openAiErrorMessage,
 } from '@/lib/openAiClient';
@@ -387,14 +386,18 @@ function parseAiJsonPayload(raw: string): { description: string; title: string |
   return { description: cleaned, title: null };
 }
 
-/** Scratch = tani mini; rewrite z notatkami = mocniejszy model (1 call). */
+/**
+ * Opis ogłoszenia idzie od razu na gpt-4o-mini.
+ * gpt-5-mini na tym projekcie OpenAI zwraca 403, a próba + dociąganie długości
+ * przekraczały 60 s i nginx ucinał odpowiedź (aplikacja: „Nie udało się wygenerować opisu GPT”).
+ * Mocniejszy model tylko gdy OPENAI_LISTING_REWRITE_MODEL jest ustawiony jawnie.
+ */
 export function resolveListingDescriptionModel(hasNotes: boolean): string {
   if (hasNotes) {
     return (
       process.env.OPENAI_LISTING_REWRITE_MODEL?.trim() ||
       process.env.OPENAI_LISTING_MODEL?.trim() ||
-      process.env.OPENAI_DEFAULT_MODEL?.trim() ||
-      OPENAI_MODEL_DEFAULT
+      OPENAI_MODEL_LEGACY
     );
   }
   return (
@@ -453,6 +456,7 @@ export async function generateListingDescriptionWithGpt(
     throw new Error('OPENAI_API_KEY niedostępny na serwerze.');
   }
 
+  const startedAt = Date.now();
   const locale = resolveLocale(draft.locale);
   const notes = sellerNotes(draft.userNotes);
   const existingDescription = String(draft.existingDescription || '')
@@ -511,8 +515,14 @@ export async function generateListingDescriptionWithGpt(
   }
 
   description = fitDescriptionToTarget(description, targetLength);
-  // Zawsze dociągaj do celu długości (także przy notatkach — wcześniej to blokowało 2500→~1600).
-  if (needsDescriptionExpand(description, targetLength)) {
+  // Jedno dociągnięcie tylko gdy pierwsza odpowiedź przyszła szybko i jest wyraźnie za krótka.
+  // Drugi przebieg przy 3500 znakach przekraczał 60 s — nginx zwracał 504, a apka ogólny błąd GPT.
+  const shortfall = targetLength - description.length;
+  if (
+    needsDescriptionExpand(description, targetLength) &&
+    shortfall > 400 &&
+    Date.now() - startedAt < 22000
+  ) {
     const expanded = await expandDescriptionOnce({
       apiKey,
       model: usedModel,
@@ -524,20 +534,6 @@ export async function generateListingDescriptionWithGpt(
       notes,
     });
     if (expanded) description = fitDescriptionToTarget(expanded, targetLength);
-  }
-  // Druga próba, jeśli nadal wyraźnie za krótko
-  if (needsDescriptionExpand(description, targetLength)) {
-    const expanded2 = await expandDescriptionOnce({
-      apiKey,
-      model: usedModel,
-      current: description,
-      targetLength,
-      neighborhood,
-      locale,
-      useEmojis,
-      notes,
-    });
-    if (expanded2) description = fitDescriptionToTarget(expanded2, targetLength);
   }
   if (!useEmojis) description = stripEmojiCharacters(description);
   if (!generateTitle) title = null;
