@@ -5,11 +5,17 @@ import {
   fitDescriptionToTarget,
   maxTokensForLength,
   needsDescriptionExpand,
+  resolveGenerateTitle,
   resolveTargetLength,
   resolveUseEmojis,
   stripEmojiCharacters,
 } from '@/lib/listingDescriptionLength';
-import { callOpenAiText, getOpenAiApiKey, openAiErrorMessage, resolveOpenAiModel } from '@/lib/openAiClient';
+import {
+  callOpenAiText,
+  getOpenAiApiKey,
+  OPENAI_MODEL_LEGACY,
+  openAiErrorMessage,
+} from '@/lib/openAiClient';
 
 export type ListingDescriptionDraftInput = {
   locale?: string;
@@ -30,6 +36,8 @@ export type ListingDescriptionDraftInput = {
   userNotes?: string;
   targetLength?: number;
   useEmojis?: boolean;
+  /** Gdy true — w tej samej odpowiedzi zwróć też atrakcyjny tytuł. */
+  generateTitle?: boolean;
   plotArea?: string;
   rooms?: string;
   floor?: string;
@@ -65,6 +73,8 @@ const POI_SEARCH_TERMS = [
 ];
 
 const NOTES_MAX_CHARS = 1500;
+const EXISTING_DESCRIPTION_MAX = 2200;
+const TITLE_MAX_CHARS = 90;
 
 function getMapboxToken(): string {
   return String(process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '').trim();
@@ -184,7 +194,8 @@ function buildDraftFacts(draft: ListingDescriptionDraftInput): Record<string, un
   const amenities: string[] = [];
   if (truthy(draft.hasBalcony)) amenities.push('balkon');
   if (truthy(draft.hasParking)) amenities.push('parking/garaż');
-  if (truthy(draft.hasStorage)) amenities.push('piwnica/komórka');
+  // Nazwa (suterena / komórka / piwnica) — wyłącznie z notatek sprzedawcy, nie zgaduj.
+  if (truthy(draft.hasStorage)) amenities.push('pomieszczenie dodatkowe (nazwa wg notatek sprzedawcy)');
   if (truthy(draft.hasElevator)) amenities.push('winda');
   if (truthy(draft.hasGarden)) amenities.push('ogród');
   if (truthy(draft.isTwoLevel)) amenities.push('dwupoziomowe');
@@ -250,59 +261,74 @@ Bez HTML — użyj formatu redakcyjnego opisanego poniżej.`;
 
 function buildSystemPrompt(
   locale: 'pl' | 'en' | 'ru',
-  options: { hasNotes: boolean; targetLength: number; useEmojis: boolean },
+  options: {
+    hasNotes: boolean;
+    hasExisting: boolean;
+    targetLength: number;
+    useEmojis: boolean;
+    generateTitle: boolean;
+  },
 ): string {
-  const min = options.targetLength - 50;
-  const max = options.targetLength + 50;
-  const lengthRule = `- CEL DŁUGOŚCI: ${options.targetLength} znaków (dopuszczalnie ${min}…${max}). Nie krócej, nie dłużej.
-- Bez wody. Dłuższy budżet = więcej faktów o okolicy, układzie, komunikacji i „dla kogo”, nie ozdobniki ani powtórzenia.`;
+  const min = options.targetLength - 150;
+  const max = options.targetLength + 150;
+  const lengthRule = `- CEL DŁUGOŚCI: OBOWIĄZKOWO ok. ${options.targetLength} znaków (minimum ${min}, maksimum ${max}).
+- NIE kończ poniżej ${min} znaków. Jeśli brakuje treści — rozwiń: okolica, układ, komunikacja, „dla kogo”, atuty z notatek (bez lania wody i bez powtórzeń).
+- Domknij każde zdanie i każdy punkt listy. Nie urywaj w połowie.`;
   const emojiRule = options.useEmojis
-    ? '- Emotikony: użyj 4–10 trafnych emoji (🌿 ✨ 🏡 📍 🚇 🏫) jako znaczników nagłówków i kluczowych atutów, żeby opis był nowocześniejszy i łatwiejszy do skanowania. Nie na początku każdego zdania.'
+    ? '- Emotikony: użyj 4–10 trafnych emoji (🌿 ✨ 🏡 📍 🚇 🏫) przy nagłówkach i kluczowych atutach. Nie na początku każdego zdania.'
     : '- ZAKAZ emoji i emotikon. Zero piktogramów.';
-  const notesRule = options.hasNotes
-    ? `- Masz blok INSTRUKCJE I FAKTY OD SPRZEDAWCY. Jest nadrzędny dla treści (fakty, akcenty). Długość steruje wyłącznie CEL DŁUGOŚCI powyżej, nie notatki.
+
+  const rewriteBlock = options.hasNotes
+    ? `TRYB PEŁNEJ REDAKCJI (notatki sprzedawcy są OBOWIĄZKOWE):
+- Napisz CAŁY opis OD NOWA jako profesjonalny tekst agencji. NIE kosmetyczna poprawka (nie „dodaj parę słów” do starego tekstu).
+- OBECNY OPIS (jeśli jest) = tylko źródło faktów do przemapowania; wynik ma brzmieć jak nowa redakcja pod kątem notatek.
+- Zastosuj KAŻDĄ instrukcję z notatek (nazewnictwo, akcenty, metraże, potencjał użytkowy, urgency). ZASTĄP sprzeczne sformułowania w całym tekście.
+- Przykład: notatki „mieszkanie + suterena 9 m², dziś magazyn, może gabinet/biuro” → w całym opisie podkreśl **mieszkanie wraz z sutereną (~9 m²)**, potencjał (gabinet/biuro/działalność), nie „komórka/schowek” jako główny przekaz.
+- Nazwy z JSON NIE mogą nadpisać nazwy z notatek.
+- Wolno oddać urgency z notatek BEZ kwoty w zł/€.
 - Format sekcji zostaje, chyba że sprzedawca każe inaczej.
-- Ceny przyległości z notatek (garaż, komórka, parking, media) możesz podać.`
-    : '- Nie ma notatek sprzedawcy — zbuduj opis wyłącznie z parametrów oferty i okolicy.';
+- Ceny przyległości z notatek możesz podać, jeśli sprzedawca je podał.`
+    : `TRYB NOWY (bez notatek):
+- Zbuduj NOWY opis wyłącznie z parametrów oferty i okolicy.
+- Nie wymyślaj sutereny/komórki poza tym, co wynika z amenities + rozsądnej ogólności.`;
+
+  const titleRule = options.generateTitle
+    ? `- Zwróć JSON: {"description":"...","title":"..."}.
+- title: NOWY, atrakcyjny tytuł (1 linia, max ${TITLE_MAX_CHARS} znaków) po analizie całego ogłoszenia i notatek — NIE lekka poprawka starego tytułu. Bez ceny, bez CAPS lock całego tytułu, bez otaczających cudzysłowów. Wpleć kluczowy atut z notatek (np. suterena), jeśli pasuje.`
+    : `- Zwróć JSON: {"description":"...","title":null}.`;
 
   return `Jesteś copywriterem premium w EstateOS™ — tworzysz opisy nieruchomości na portal.
 
 ${localeInstructions(locale)}
 
-FORMAT REDAKCYJNY (zwykły tekst):
+FORMAT REDAKCYJNY (zwykły tekst w polu description):
 - Obowiązkowa struktura sekcji (każda sekcja = nagłówek w osobnej linii, potem treść):
   1) Akapit wprowadzający (2–3 zdania lifestyle, bez nagłówka)
   2) Nagłówek: Atuty lokalu → lista z "• " (3–6 punktów)
   3) Jeśli JSON.roomAreas nie jest puste — Nagłówek: Układ pomieszczeń
-     najpierw 1 zdanie narracyjne (np. przestronny salon z aneksem), potem lista:
-     • Salon z aneksem kuchennym — 18,5 m²
+     najpierw 1 zdanie narracyjne, potem lista z metrażami z JSON
   4) (opcjonalnie) linia "——————"
   5) Nagłówek: Okolica i komunikacja → lista z "• " lub krótki akapit + 2–3 punkty
-  6) (opcjonalnie) Nagłówek: Dla kogo → 2–3 punkty z "✓ " dla potwierdzonych cech
-  7) Krótkie zaproszenie do kontaktu (1–2 zdania)
+  6) (opcjonalnie) Nagłówek: Dla kogo → 2–3 punkty z "✓ "
+  7) Krótkie zaproszenie do kontaktu (1–2 zdania) — ZAWSZE domknięte
 - Akapity oddzielone pustą linią.
-- Nagłówki sekcji: krótkie, Title Case (np. Atuty lokalu, Okolica i komunikacja) — bez CAPS lock.
-- Lista atutów: każda linia zaczyna się od "• ".
-- Potwierdzone udogodnienia: linia zaczyna się od "✓ ".
-- Elegancki podział sekcji: linia z samych "—" (sześć znaków).
-- Wyróżnienie frazy: **pogrubienie** (maks. 4–6 na cały opis).
-- Podkreślenie rzadko: __tekst__.
+- Nagłówki sekcji: krótkie, Title Case — bez CAPS lock.
+- Lista atutów: "• ". Potwierdzone udogodnienia: "✓ ".
+- Wyróżnienie: **pogrubienie** (maks. 4–6 na cały opis).
 ${emojiRule}
 
-ZASADY:
-- To jest NOWY opis z parametrów oferty. NIE przepisuj, NIE poprawiaj i NIE streszczaj tekstu z edytora ogłoszenia.
-- Opis ma być narracją marketingową: styl życia, atmosfera, układ, okolica — NIE sucha lista parametrów.
-- Parametry z JSON możesz wpleść naturalnie (1–2 zdania), a konkretne atuty zebrać w listę z "• " lub "✓ ".
-- Wykorzystaj kontekst okolicy (POI, reverse geocode) — komunikacja, sklepy, zieleń, infrastruktura rodzinna.
-- Nie wymyślaj konkretnych metrów/minut dojścia, chyba że wynikają wprost z POI (wtedy ostrożnie: "w pobliżu", "w zasięgu spaceru").
+${rewriteBlock}
+
+ZASADY OGÓLNE:
+- Opis = narracja marketingowa (styl życia, atmosfera, układ, okolica), nie sucha lista parametrów.
+- Wykorzystaj okolicę (POI), ostrożnie: "w pobliżu", bez zmyślonych metrów.
 - Nie podawaj dokładnego adresu ulicy, gdy locationPrecision = approximate_circle.
 - Nie powtarzaj tytułu oferty w pierwszym zdaniu dosłownie.
 ${lengthRule}
-- roomAreas: jeśli tablica ma elementy, MUSISZ wypisać każde pomieszczenie z dokładnie tą nazwą i metrażem (np. 18,5 m²). Nie zgaduj, nie zaokrąglaj inaczej, nie pomijaj. Nie wymyślaj pomieszczeń, których nie ma w JSON.
-- Jeśli roomAreas jest puste — nie podawaj metraży poszczególnych pokoi.
-${notesRule}
-- NIGDY nie podawaj ceny oferty (ceny sprzedaży / czynszu głównego), kaucji ani prowizji w zł/€ — cena główna jest poza opisem.
-- Zakończ krótkim zaproszeniem do kontaktu/prezentacji.`;
+- roomAreas: wypisz każde pomieszczenie z JSON z dokładną nazwą i metrażem; nie zgaduj.
+- NIGDY nie podawaj ceny sprzedaży / czynszu głównego / kaucji / prowizji w zł/€.
+- Zakończ pełnym zaproszeniem do kontaktu (nie urywaj zdania).
+${titleRule}`;
 }
 
 function buildUserPrompt(
@@ -310,27 +336,75 @@ function buildUserPrompt(
   neighborhood: NeighborhoodContext,
   locale: 'pl' | 'en' | 'ru',
   notes: string,
+  existingDescription: string,
+  generateTitle: boolean,
+  targetLength: number,
 ): string {
+  const minLen = targetLength - 150;
   const notesBlock = notes
-    ? `\nINSTRUKCJE I FAKTY OD SPRZEDAWCY (nadrzędne — zastosuj w całości):\n${notes}\n`
+    ? `\nINSTRUKCJE I FAKTY OD SPRZEDAWCY (OBOWIĄZKOWE — zastosuj w 100% w CAŁYM opisie, nadpisują stary tekst i amenities):\n${notes}\n`
+    : '';
+  const existingBlock = existingDescription
+    ? `\nOBECNY OPIS — TYLKO ŹRÓDŁO FAKTÓW (napisz nową pełną redakcję pod notatki, nie kosmetyczną poprawkę):\n${existingDescription}\n`
     : '';
 
-  return `Wygeneruj NOWY opis oferty na podstawie danych (nie przepisuj starego tekstu ogłoszenia).
+  const task = notes
+    ? `Napisz OD NOWA profesjonalny opis (minimum ${minLen} znaków, cel ${targetLength}) tak, by NOTATKI SPRZEDAWCY były w 100% wplecione w całą narrację — nie dopisek i nie lekka edycja starego tekstu.`
+    : `Wygeneruj NOWY opis oferty (minimum ${minLen} znaków, cel ${targetLength}) na podstawie parametrów i okolicy.`;
+
+  return `${task}
 
 PARAMETRY OFERTY (JSON):
 ${JSON.stringify(facts)}
 
 OKOLICA:
 ${formatNeighborhood(neighborhood)}
-${notesBlock}
-Język wyjściowy: ${locale}.`;
+${existingBlock}${notesBlock}
+Język wyjściowy: ${locale}.
+Odpowiedź WYŁĄCZNIE jako JSON z polami description${generateTitle ? ' i title' : ' oraz title=null'}.`;
 }
 
 function stripAiDescription(raw: string): string {
   let text = String(raw || '').trim();
-  text = text.replace(/^```(?:markdown|text)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  text = text.replace(/^```(?:markdown|text|json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   text = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
   return text;
+}
+
+function parseAiJsonPayload(raw: string): { description: string; title: string | null } {
+  const cleaned = stripAiDescription(raw);
+  try {
+    const parsed = JSON.parse(cleaned) as { description?: unknown; title?: unknown };
+    const description = stripAiDescription(String(parsed?.description || ''));
+    const titleRaw = parsed?.title == null ? '' : String(parsed.title).trim();
+    const title = titleRaw ? titleRaw.replace(/^["„]|["”]$/g, '').slice(0, TITLE_MAX_CHARS) : null;
+    if (description.length >= 40) return { description, title };
+  } catch {
+    /* plain text fallback */
+  }
+  // Model czasem zwraca sam opis bez JSON
+  return { description: cleaned, title: null };
+}
+
+/**
+ * Opis ogłoszenia idzie od razu na gpt-4o-mini.
+ * gpt-5-mini na tym projekcie OpenAI zwraca 403, a próba + dociąganie długości
+ * przekraczały 60 s i nginx ucinał odpowiedź (aplikacja: „Nie udało się wygenerować opisu GPT”).
+ * Mocniejszy model tylko gdy OPENAI_LISTING_REWRITE_MODEL jest ustawiony jawnie.
+ */
+export function resolveListingDescriptionModel(hasNotes: boolean): string {
+  if (hasNotes) {
+    return (
+      process.env.OPENAI_LISTING_REWRITE_MODEL?.trim() ||
+      process.env.OPENAI_LISTING_MODEL?.trim() ||
+      OPENAI_MODEL_LEGACY
+    );
+  }
+  return (
+    process.env.OPENAI_LISTING_CHEAP_MODEL?.trim() ||
+    process.env.OPENAI_LISTING_MODEL?.trim() ||
+    OPENAI_MODEL_LEGACY
+  );
 }
 
 async function expandDescriptionOnce(params: {
@@ -341,23 +415,33 @@ async function expandDescriptionOnce(params: {
   neighborhood: NeighborhoodContext;
   locale: 'pl' | 'en' | 'ru';
   useEmojis: boolean;
+  notes: string;
 }): Promise<string | null> {
   const missing = params.targetLength - params.current.length;
-  if (missing <= 50) return null;
+  if (missing <= 80) return null;
+  const minLen = params.targetLength - 150;
+  const notesHint = params.notes
+    ? `\nZachowaj i wzmocnij przekaz z notatek sprzedawcy (nie wracaj do starych sformułowań):\n${params.notes}\n`
+    : '';
   try {
     const { text } = await callOpenAiText({
       apiKey: params.apiKey,
       model: params.model,
       skipReasoningFallback: true,
       logPrefix: 'listing-description-ai-expand',
-      maxOutputTokens: maxTokensForLength(Math.min(1200, missing + 200)),
-      system: `Dopisz brakujące fakty do opisu nieruchomości. Zwróć CAŁY opis (stary tekst + uzupełnienie), nie sam dopisek.
-Cel: ${params.targetLength} znaków (±50). Dodaj tylko fakty okolicy, układu lub komunikacji, których brakuje. Bez wody, bez powtórzeń.
+      maxOutputTokens: maxTokensForLength(Math.min(1600, missing + 400)),
+      json: true,
+      system: `Rozszerz opis nieruchomości do wymaganej długości. Zwróć JSON {"description":"pełny opis","title":null}.
+Cel: minimum ${minLen} znaków, idealnie ${params.targetLength} (±150).
+Dopisz fakty: okolica, układ, komunikacja, „dla kogo”, atuty — BEZ lania wody i BEZ powtórzeń.
+Domknij wszystkie zdania. Nie urywaj.
 ${params.useEmojis ? 'Zachowaj oszczędne emoji przy nagłówkach.' : 'Bez emoji.'}
 Język: ${params.locale}.`,
-      user: `DOTYCHCZASOWY OPIS:\n${params.current}\n\nOKOLICA:\n${formatNeighborhood(params.neighborhood)}\n\nZwróć pełny, dociągnięty opis.`,
+      user: `DOTYCHCZASOWY OPIS (${params.current.length} znaków — ZA KRÓTKI):\n${params.current}\n\nOKOLICA:\n${formatNeighborhood(params.neighborhood)}
+${notesHint}
+Zwróć PEŁNY opis (stary + uzupełnienie) w JSON, długość ≥ ${minLen} znaków.`,
     });
-    const next = stripAiDescription(text);
+    const { description: next } = parseAiJsonPayload(text);
     return next.length > params.current.length ? next : null;
   } catch {
     return null;
@@ -366,37 +450,79 @@ Język: ${params.locale}.`,
 
 export async function generateListingDescriptionWithGpt(
   draft: ListingDescriptionDraftInput,
-): Promise<{ description: string; model: string }> {
+): Promise<{ description: string; title: string | null; model: string }> {
   const apiKey = getOpenAiApiKey();
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY niedostępny na serwerze.');
   }
 
+  const startedAt = Date.now();
   const locale = resolveLocale(draft.locale);
   const notes = sellerNotes(draft.userNotes);
+  const existingDescription = String(draft.existingDescription || '')
+    .trim()
+    .slice(0, EXISTING_DESCRIPTION_MAX);
   const targetLength = resolveTargetLength(draft.targetLength);
   const useEmojis = resolveUseEmojis(draft.useEmojis);
+  const generateTitle = resolveGenerateTitle(draft.generateTitle);
+  const hasNotes = Boolean(notes);
   const facts = buildDraftFacts(draft);
-  const neighborhood = await buildNeighborhoodContext(draft);
-  const model = resolveOpenAiModel('OPENAI_LISTING_MODEL');
-  const system = buildSystemPrompt(locale, { hasNotes: Boolean(notes), targetLength, useEmojis });
-  const user = buildUserPrompt(facts, neighborhood, locale, notes);
+  // Rewrite z notatkami: lżejszy kontekst okolicy (mniej tokenów) — i tak notatki rządzą.
+  const neighborhood = hasNotes
+    ? await buildNeighborhoodContext({
+        ...draft,
+        lat: draft.lat,
+        lng: draft.lng,
+      }).then((ctx) => ({
+        reverseLabel: ctx.reverseLabel,
+        nearbyPlaces: ctx.nearbyPlaces.slice(0, 2),
+        note: ctx.note,
+      }))
+    : await buildNeighborhoodContext(draft);
+
+  const model = resolveListingDescriptionModel(hasNotes);
+  const system = buildSystemPrompt(locale, {
+    hasNotes,
+    hasExisting: Boolean(existingDescription),
+    targetLength,
+    useEmojis,
+    generateTitle,
+  });
+  const user = buildUserPrompt(
+    facts,
+    neighborhood,
+    locale,
+    notes,
+    existingDescription,
+    generateTitle,
+    targetLength,
+  );
 
   const { text, model: usedModel } = await callOpenAiText({
     apiKey,
     model,
     system,
     user,
-    maxOutputTokens: maxTokensForLength(targetLength),
+    maxOutputTokens: maxTokensForLength(targetLength) + (generateTitle ? 100 : 0),
     skipReasoningFallback: true,
+    json: true,
     logPrefix: 'listing-description-ai',
   });
-  if (!text || text.length < 80) {
+
+  let { description, title } = parseAiJsonPayload(text);
+  if (!description || description.length < 80) {
     throw new Error('OpenAI zwróciło zbyt krótki opis.');
   }
 
-  let description = fitDescriptionToTarget(stripAiDescription(text), targetLength);
-  if (needsDescriptionExpand(description, targetLength)) {
+  description = fitDescriptionToTarget(description, targetLength);
+  // Jedno dociągnięcie tylko gdy pierwsza odpowiedź przyszła szybko i jest wyraźnie za krótka.
+  // Drugi przebieg przy 3500 znakach przekraczał 60 s — nginx zwracał 504, a apka ogólny błąd GPT.
+  const shortfall = targetLength - description.length;
+  if (
+    needsDescriptionExpand(description, targetLength) &&
+    shortfall > 400 &&
+    Date.now() - startedAt < 22000
+  ) {
     const expanded = await expandDescriptionOnce({
       apiKey,
       model: usedModel,
@@ -405,11 +531,19 @@ export async function generateListingDescriptionWithGpt(
       neighborhood,
       locale,
       useEmojis,
+      notes,
     });
     if (expanded) description = fitDescriptionToTarget(expanded, targetLength);
   }
   if (!useEmojis) description = stripEmojiCharacters(description);
-  return { description: description.slice(0, DESCRIPTION_MAX_CHARS), model: usedModel };
+  if (!generateTitle) title = null;
+  else if (title) title = title.slice(0, TITLE_MAX_CHARS);
+
+  return {
+    description: description.slice(0, DESCRIPTION_MAX_CHARS),
+    title,
+    model: usedModel,
+  };
 }
 
 export { openAiErrorMessage };
