@@ -167,7 +167,7 @@ export default function SzukajNieruchomosci() {
       if (isLoggedIn) {
         await fetch("/api/szukaj/aktualizuj", { method: "POST", body: JSON.stringify(formData) }).catch(() => {});
         // Ciche odpytanie ile ofert pasuje do radaru po zmianie
-        fetch("/api/user/profile").then(res => res.json()).then(data => {
+        fetch("/api/user/profile?scope=radar").then(res => res.json()).then(data => {
             if(data && data.matchedOffers) setMatchedCount(data.matchedOffers.length);
         }).catch(()=>{});
         
