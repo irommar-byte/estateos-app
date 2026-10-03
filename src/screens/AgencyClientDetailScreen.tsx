@@ -55,6 +55,9 @@ import SellerMarketingCard from '../components/agency/SellerMarketingCard';
 import ClientPersonHub from '../components/agency/ClientPersonHub';
 import ClientPersonCard from '../components/agency/ClientPersonCard';
 import ClientPresentationComposer from '../components/agency/ClientPresentationComposer';
+import ClientOutboundPreviewSheet, {
+  type ClientOutboundPreview,
+} from '../components/agency/ClientOutboundPreviewSheet';
 import OfferProjectCard from '../components/agency/OfferProjectCard';
 import { fetchPublicOfferCover } from '../lib/offerCoverUrl';
 import { resolveMediaUrl } from '../utils/userAvatar';
@@ -73,6 +76,9 @@ import {
   fetchAgencyClient,
   patchAgencyClient,
   proposeClientOffers,
+  previewClientOffers,
+  previewPresentationOutbound,
+  previewVisitPrepPacket,
   refreshClientMatches,
   saveAcquisition,
   suggestAddresses,
@@ -415,6 +421,10 @@ export default function AgencyClientDetailScreen() {
   const [guestAgencyPhone, setGuestAgencyPhone] = useState('');
   const [guestVisitorName, setGuestVisitorName] = useState('');
   const [presentationFocus, setPresentationFocus] = useState(false);
+  const [outboundPreview, setOutboundPreview] = useState<ClientOutboundPreview | null>(null);
+  const [outboundBusy, setOutboundBusy] = useState(false);
+  const [outboundLogOpen, setOutboundLogOpen] = useState(false);
+  const outboundConfirmRef = useRef<null | (() => Promise<void>)>(null);
   const pageScrollRef = useRef<ScrollView>(null);
   const presentationAnchorRef = useRef<View>(null);
 
@@ -990,8 +1000,9 @@ export default function AgencyClientDetailScreen() {
           )}
           {extra?.isKW && (
             <Pressable
-              onPress={() => Linking.openURL('https://przegladarka-ekw.ms.gov.pl/eukw_prz/KsiegiWieczyste/wyszukiwanieKW')}
+              onPress={() => setEkwViewerKw(value.trim() || null)}
               style={[styles.iconBtn, { backgroundColor: '#007AFF' }]}
+              accessibilityLabel="Otwórz księgę wieczystą w okienku"
             >
               <Ionicons name="open-outline" size={18} color="#fff" />
             </Pressable>
@@ -1304,22 +1315,36 @@ export default function AgencyClientDetailScreen() {
     else void load();
   };
 
+  const openOutboundPreview = (preview: ClientOutboundPreview, onConfirm: () => Promise<void>) => {
+    outboundConfirmRef.current = onConfirm;
+    setOutboundPreview(preview);
+  };
+
   const sendMatches = async (offerIds: number[], allowResend = false) => {
     if (!token || !offerIds.length) return;
     setBusy(`prop_${offerIds[0]}`);
-    const res = await proposeClientOffers(token, clientId, offerIds, { allowResend });
+    const previewRes = await previewClientOffers(token, clientId, offerIds);
     setBusy('');
-    if (!res.ok) {
-      Alert.alert('Wysyłka', res.message);
+    if (!previewRes.ok) {
+      Alert.alert('Wysyłka', previewRes.message);
       return;
     }
-    Alert.alert(
-      'Wysyłka',
-      offerIds.length > 1
-        ? `Wysłano ${offerIds.length} ofert do panelu klienta${client?.email ? ' i na e-mail' : ''}.`
-        : `Oferta jest w panelu klienta${client?.email ? ' i poszła na e-mail' : ''}.`,
-    );
-    void load();
+    openOutboundPreview(previewRes.preview, async () => {
+      setBusy(`prop_${offerIds[0]}`);
+      const res = await proposeClientOffers(token, clientId, offerIds, { allowResend });
+      setBusy('');
+      if (!res.ok) {
+        Alert.alert('Wysyłka', res.message);
+        return;
+      }
+      Alert.alert(
+        'Wysłano',
+        offerIds.length > 1
+          ? `Wysłano ${offerIds.length} ofert do panelu klienta${client?.email ? ' i na e-mail' : ''}.`
+          : `Oferta jest w panelu klienta${client?.email ? ' i poszła na e-mail' : ''}.`,
+      );
+      void load();
+    });
   };
 
   const resolveBuyerAgentTask = async (activityId: number) => {
@@ -2753,23 +2778,36 @@ export default function AgencyClientDetailScreen() {
                         onPress={async () => {
                           if (!token) return;
                           setBusy('prep_packet');
-                          const res = await sendVisitPrepPacket(token, clientId);
+                          const previewRes = await previewVisitPrepPacket(token, clientId);
                           setBusy('');
-                          if (!res.ok) Alert.alert('Pakiet', res.message);
-                          else {
-                            Alert.alert(
-                              'Wysłano do klienta',
-                              [
-                                (res as any).emailSent ? `Mail pakietu przed wizytą${client?.email ? ` → ${client.email}` : ''}` : null,
-                                (res as any).smsSent ? 'SMS z przypomnieniem' : null,
-                                !(res as any).emailSent && !(res as any).smsSent
-                                  ? 'Zapisano. Uzupełnij e-mail/telefon klienta, żeby wysłać automatycznie.'
-                                  : null,
-                              ]
-                                .filter(Boolean)
-                                .join('\n'),
-                            );
+                          if (!previewRes.ok) {
+                            Alert.alert('Pakiet', previewRes.message);
+                            return;
                           }
+                          openOutboundPreview(previewRes.preview, async () => {
+                            setBusy('prep_packet');
+                            const res = await sendVisitPrepPacket(token, clientId);
+                            setBusy('');
+                            if (!res.ok) Alert.alert('Pakiet', res.message);
+                            else {
+                              Alert.alert(
+                                'Wysłano',
+                                [
+                                  (res as { emailSent?: boolean }).emailSent
+                                    ? `Mail pakietu przed wizytą${client?.email ? ` → ${client.email}` : ''}`
+                                    : null,
+                                  (res as { smsSent?: boolean }).smsSent ? 'SMS z przypomnieniem' : null,
+                                  !(res as { emailSent?: boolean }).emailSent &&
+                                  !(res as { smsSent?: boolean }).smsSent
+                                    ? 'Zapisano. Uzupełnij e-mail/telefon klienta, żeby wysłać automatycznie.'
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join('\n'),
+                              );
+                              void load();
+                            }
+                          });
                         }}
                         style={[styles.secondary, { borderColor: colors.border }]}
                       >
@@ -2888,9 +2926,8 @@ export default function AgencyClientDetailScreen() {
                       Alert.alert('Prezentacja', 'Podaj nazwę agencji gościa i e-mail agenta.');
                       return;
                     }
-                    setBusy('propose_pres');
-                    const res = await postAgencyClientAction(token, clientId, {
-                      action: 'propose_presentation',
+                    const payload = {
+                      action: 'propose_presentation' as const,
                       startsAt: slots[0],
                       startsAtList: slots,
                       offerId: Number(presentationOfferId),
@@ -2902,18 +2939,45 @@ export default function AgencyClientDetailScreen() {
                             visitorName: guestVisitorName.trim() || undefined,
                           }
                         : undefined,
-                    });
+                    };
+                    if (!guestAgencyMode) {
+                      setBusy('propose_pres');
+                      const previewRes = await previewPresentationOutbound(token, clientId, {
+                        confirmed: false,
+                        startsAt: slots[0],
+                        startsAtList: slots,
+                        offerId: Number(presentationOfferId),
+                      });
+                      setBusy('');
+                      if (!previewRes.ok) {
+                        Alert.alert('Prezentacja', previewRes.message);
+                        return;
+                      }
+                      openOutboundPreview(previewRes.preview, async () => {
+                        setBusy('propose_pres');
+                        const res = await postAgencyClientAction(token, clientId, payload);
+                        setBusy('');
+                        if (!res.ok) Alert.alert('Prezentacja', res.message);
+                        else {
+                          setPresentationSlots(['', '', '']);
+                          setPresentationAt('');
+                          Alert.alert(
+                            'Wysłano',
+                            `Wysłano mail z propozycją terminów oglądania${client?.email ? ` na ${client.email}` : ''}. Kupujący zobaczy też ofertę w panelu.`,
+                          );
+                          void load();
+                        }
+                      });
+                      return;
+                    }
+                    setBusy('propose_pres');
+                    const res = await postAgencyClientAction(token, clientId, payload);
                     setBusy('');
                     if (!res.ok) Alert.alert('Prezentacja', res.message);
                     else {
                       setPresentationSlots(['', '', '']);
                       setPresentationAt('');
-                      Alert.alert(
-                        'Wysłano do klienta',
-                        guestAgencyMode
-                          ? 'Mail z terminami: właściciel + agencja gościa.'
-                          : `Wysłano mail z propozycją terminów oglądania${client?.email ? ` na ${client.email}` : ''}. Kupujący zobaczy też ofertę w panelu.`,
-                      );
+                      Alert.alert('Wysłano', 'Mail z terminami: właściciel + agencja gościa.');
                       void load();
                     }
                   }}
@@ -2940,9 +3004,8 @@ export default function AgencyClientDetailScreen() {
                       Alert.alert('Prezentacja', 'Podaj nazwę agencji gościa i e-mail agenta.');
                       return;
                     }
-                    setBusy('propose_pres');
-                    const res = await postAgencyClientAction(token, clientId, {
-                      action: 'propose_presentation',
+                    const payload = {
+                      action: 'propose_presentation' as const,
                       confirmed: true,
                       startsAt,
                       startsAtList: [startsAt],
@@ -2955,24 +3018,136 @@ export default function AgencyClientDetailScreen() {
                             visitorName: guestVisitorName.trim() || undefined,
                           }
                         : undefined,
-                    });
+                    };
+                    if (!guestAgencyMode) {
+                      setBusy('propose_pres');
+                      const previewRes = await previewPresentationOutbound(token, clientId, {
+                        confirmed: true,
+                        startsAt,
+                        startsAtList: [startsAt],
+                        offerId: Number(presentationOfferId),
+                      });
+                      setBusy('');
+                      if (!previewRes.ok) {
+                        Alert.alert('Prezentacja', previewRes.message);
+                        return;
+                      }
+                      openOutboundPreview(previewRes.preview, async () => {
+                        setBusy('propose_pres');
+                        const res = await postAgencyClientAction(token, clientId, payload);
+                        setBusy('');
+                        if (!res.ok) Alert.alert('Prezentacja', res.message);
+                        else {
+                          setPresentationSlots(['', '', '']);
+                          setPresentationAt('');
+                          Alert.alert(
+                            'Wysłano',
+                            `Wysłano potwierdzenie oglądania${client?.email ? ` na ${client.email}` : ''} (mapa + kalendarz).`,
+                          );
+                          void load();
+                        }
+                      });
+                      return;
+                    }
+                    setBusy('propose_pres');
+                    const res = await postAgencyClientAction(token, clientId, payload);
                     setBusy('');
                     if (!res.ok) Alert.alert('Prezentacja', res.message);
                     else {
                       setPresentationSlots(['', '', '']);
                       setPresentationAt('');
-                      Alert.alert(
-                        'Potwierdzenie wysłane',
-                        guestAgencyMode
-                          ? 'Potwierdzony termin: właściciel + agencja gościa.'
-                          : `Wysłano potwierdzenie oglądania${client?.email ? ` na ${client.email}` : ''} (mapa + kalendarz).`,
-                      );
+                      Alert.alert('Wysłano', 'Potwierdzony termin: właściciel + agencja gościa.');
                       void load();
                     }
                   }}
                 />
                 </View>
                 ) : null}
+
+                {(() => {
+                  const outboundLog = (client.activities || []).filter((a) => {
+                    const kind = String(a.kind || '');
+                    return (
+                      kind === 'VISIT_PREP_PACKET' ||
+                      kind === 'OUTBOUND_EMAIL' ||
+                      (a.metadata &&
+                        typeof a.metadata === 'object' &&
+                        ('subject' in a.metadata || 'bodyPreview' in a.metadata || 'smsBody' in a.metadata))
+                    );
+                  });
+                  if (!outboundLog.length) return null;
+                  return (
+                    <View
+                      style={[
+                        styles.card,
+                        { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 },
+                      ]}
+                    >
+                      <Pressable
+                        onPress={() => {
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                          setOutboundLogOpen((v) => !v);
+                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.6 }}>
+                            WYSŁANE DO KLIENTA · {outboundLog.length}
+                          </Text>
+                          <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 3 }}>
+                            Temat i treść tego, co już poszło
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={outboundLogOpen ? 'chevron-up' : 'chevron-down'}
+                          size={18}
+                          color={colors.text}
+                        />
+                      </Pressable>
+                      {outboundLogOpen
+                        ? outboundLog.slice(0, 12).map((item) => {
+                            const meta = (item.metadata || {}) as Record<string, unknown>;
+                            const subject = String(meta.subject || item.title || 'Wiadomość');
+                            const body = String(meta.bodyPreview || item.body || '');
+                            const sms = meta.smsBody ? String(meta.smsBody) : null;
+                            const to = meta.to ? String(meta.to) : client.email;
+                            return (
+                              <Pressable
+                                key={item.id}
+                                onPress={() =>
+                                  Alert.alert(
+                                    subject,
+                                    [
+                                      to ? `Do: ${to}` : null,
+                                      body,
+                                      sms ? `SMS:\n${sms}` : null,
+                                      new Date(item.createdAt).toLocaleString('pl-PL'),
+                                    ]
+                                      .filter(Boolean)
+                                      .join('\n\n'),
+                                  )
+                                }
+                                style={{
+                                  marginTop: 10,
+                                  paddingTop: 10,
+                                  borderTopWidth: StyleSheet.hairlineWidth,
+                                  borderTopColor: colors.border,
+                                }}
+                              >
+                                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }} numberOfLines={2}>
+                                  {subject}
+                                </Text>
+                                <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }}>
+                                  {new Date(item.createdAt).toLocaleString('pl-PL')}
+                                  {to ? ` · ${to}` : ''}
+                                </Text>
+                              </Pressable>
+                            );
+                          })
+                        : null}
+                    </View>
+                  );
+                })()}
 
               </View>
 
@@ -3566,6 +3741,29 @@ export default function AgencyClientDetailScreen() {
           text: colors.text,
           subtitle: colors.secondary,
           glass: isDark ? 'dark' : 'light',
+        }}
+      />
+      <ClientOutboundPreviewSheet
+        visible={Boolean(outboundPreview)}
+        preview={outboundPreview}
+        busy={outboundBusy}
+        colors={colors}
+        onCancel={() => {
+          if (outboundBusy) return;
+          setOutboundPreview(null);
+          outboundConfirmRef.current = null;
+        }}
+        onConfirm={() => {
+          const run = outboundConfirmRef.current;
+          if (!run) return;
+          setOutboundBusy(true);
+          void run()
+            .catch(() => {})
+            .finally(() => {
+              setOutboundBusy(false);
+              setOutboundPreview(null);
+              outboundConfirmRef.current = null;
+            });
         }}
       />
     </View>

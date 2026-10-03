@@ -8,6 +8,7 @@ export type AgencyTeamMember = {
   name: string | null;
   image: string | null;
   email?: string | null;
+  phone?: string | null;
   isSelf: boolean;
 };
 
@@ -63,6 +64,7 @@ export type AgencyDashboardMember = {
     id: number;
     name: string | null;
     email: string;
+    phone?: string | null;
     image: string | null;
     extraListings: number;
     plusExpiresAt: string | null;

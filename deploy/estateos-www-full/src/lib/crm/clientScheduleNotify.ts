@@ -8,6 +8,8 @@ import {
   escapeEmailHtml,
   loadAppleClientEmailIdentity,
 } from '@/lib/email/appleClientEmail';
+import { stripEmailHtml, type ClientOutboundPreview } from '@/lib/crm/outboundPreview';
+import { formatVisitAddress } from '@/lib/crm/visitPrepPacket';
 
 function siteBase(): string {
   return (
@@ -22,7 +24,7 @@ function mapsUrl(address: string): string {
   return `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
 }
 
-export async function emailClientSchedule(params: {
+type ScheduleMailParams = {
   clientId: number;
   kind: 'meeting' | 'presentation';
   mode: 'proposed' | 'confirmed' | 'changed';
@@ -36,7 +38,9 @@ export async function emailClientSchedule(params: {
   audience?: 'buyer' | 'seller' | 'auto';
   offerId?: number | null;
   offerTitle?: string | null;
-}): Promise<{ emailed: boolean; to: string | null }> {
+};
+
+async function composeClientScheduleMail(params: ScheduleMailParams) {
   const client = await prisma.agencyClient.findFirst({
     where: { id: params.clientId, status: 'ACTIVE' },
     select: {
@@ -47,7 +51,7 @@ export async function emailClientSchedule(params: {
       agencyUserId: true,
     },
   });
-  if (!client?.email) return { emailed: false, to: null };
+  if (!client?.email) return null;
 
   const audience =
     params.audience === 'buyer' || params.audience === 'seller'
@@ -80,6 +84,7 @@ export async function emailClientSchedule(params: {
       }
     }
   }
+  address = formatVisitAddress(address) || address;
 
   const noun = params.kind === 'meeting' ? 'spotkania' : 'prezentacji';
   const offerUrl = offerId ? `${siteBase()}/oferta/${offerId}` : null;
@@ -92,36 +97,47 @@ export async function emailClientSchedule(params: {
         : params.mode === 'changed'
           ? 'Zmiana terminu pokazu'
           : 'Propozycja pokazu u Twojej nieruchomości';
-    await sendTransactionalEmail({
-      to: client.email,
-      subject: `${title} · ${whenPrimary} · ${identity.agencyName}`,
-      html: buildAppleClientEmailHtml({
-        eyebrow: identity.agencyName,
-        title,
-        greetingName: client.firstName,
-        bodyHtml: `
+    const subject = `${title} · ${whenPrimary} · ${identity.agencyName}`;
+    const html = buildAppleClientEmailHtml({
+      eyebrow: identity.agencyName,
+      title,
+      greetingName: client.firstName,
+      bodyHtml: `
           <p style="margin:0 0 12px;">${escapeEmailHtml(identity.agentName)} ${
             params.mode === 'confirmed' ? 'potwierdza' : 'informuje o'
           } terminie pokazu${offerTitle ? ` oferty <strong>${escapeEmailHtml(offerTitle)}</strong>` : ''}.</p>
           ${address ? `<p style="margin:0 0 12px;">Adres: ${escapeEmailHtml(address)}</p>` : ''}
           <p style="margin:0;font-size:13px;color:#6b7280;">To informacja dla właściciela — nie musisz nic potwierdzać. Szczegóły w panelu.</p>
         `,
-        highlightHtml: `<div style="margin:18px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e5e7eb;">
+      highlightHtml: `<div style="margin:18px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e5e7eb;">
           <p style="margin:0;font-size:20px;font-weight:900;color:#111827;">${escapeEmailHtml(whenPrimary)}</p>
         </div>`,
-        identity,
-        ctas: [{ label: 'Otwórz panel', href: portalUrl, variant: 'primary' }],
-        footerNote: 'EstateOS™ · pokaz u Twojej nieruchomości',
-      }),
-    }).catch(() => {});
-    await sendClientPortalWebPush(params.clientId, {
+      identity,
+      ctas: [{ label: 'Otwórz panel', href: portalUrl, variant: 'primary' }],
+      footerNote: 'EstateOS™ · pokaz u Twojej nieruchomości',
+    });
+    const preview: ClientOutboundPreview = {
+      kind: 'schedule',
+      to: client.email,
+      subject,
+      bodyPreview: stripEmailHtml(html),
+      smsBody: null,
+      html,
+      channels: ['email', 'portal'],
+    };
+    return {
+      audience: 'seller' as const,
+      client,
+      identity,
       title,
-      body: whenPrimary.slice(0, 180),
-      tag: `schedule-seller-${params.clientId}`,
-      notificationType: 'client_schedule',
-      native: true,
-    }).catch(() => {});
-    return { emailed: true, to: client.email };
+      subject,
+      html,
+      ics: null as string | null,
+      whenPrimary,
+      address,
+      preview,
+      pushBody: whenPrimary.slice(0, 180),
+    };
   }
 
   // —— Kupujący / spotkanie ——
@@ -178,7 +194,7 @@ export async function emailClientSchedule(params: {
       ? [
           ...slots.map((slot, index) => ({
             label: `Termin ${index + 1}: ${slot.toLocaleString('pl-PL')}`,
-            href: portalUrl,
+            href: `${portalUrl}${portalUrl.includes('?') ? '&' : '?'}pickSlot=${encodeURIComponent(slot.toISOString())}`,
             variant: 'dark' as const,
           })),
           {
@@ -213,40 +229,100 @@ export async function emailClientSchedule(params: {
     <p style="margin:0;font-size:13px;color:#6b7280;">W panelu możesz potwierdzić termin albo zaproponować inną godzinę. W załączniku znajdziesz plik kalendarza (.ics).</p>
   `;
 
-  await sendTransactionalEmail({
+  const subject = `${title} · ${whenPrimary} · ${identity.agencyName}`;
+  const html = buildAppleClientEmailHtml({
+    eyebrow: identity.agencyName,
+    title,
+    greetingName: client.firstName,
+    bodyHtml,
+    highlightHtml,
+    identity,
+    ctas,
+    footerNote:
+      params.mode === 'confirmed' && params.kind === 'presentation'
+        ? 'EstateOS™ · potwierdzenie oglądania'
+        : 'EstateOS™ · termin prezentacji',
+  });
+
+  const plainSlots = slots.map((slot) => slot.toLocaleString('pl-PL')).join('\n');
+  const bodyPreview = [
+    `Do: ${client.email}`,
+    title,
+    offerTitle ? `Oferta: ${offerTitle}` : null,
+    address ? `Adres: ${address}` : null,
+    params.mode === 'proposed' ? `Proponowane terminy:\n${plainSlots}` : `Termin: ${whenPrimary}`,
+    params.mode === 'confirmed' && params.kind === 'presentation' ? 'Prosimy zabrać dowód tożsamości.' : null,
+    `Panel: ${portalUrl}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const preview: ClientOutboundPreview = {
+    kind: 'schedule',
     to: client.email,
-    subject: `${title} · ${whenPrimary} · ${identity.agencyName}`,
-    html: buildAppleClientEmailHtml({
-      eyebrow: identity.agencyName,
-      title,
-      greetingName: client.firstName,
-      bodyHtml,
-      highlightHtml,
-      identity,
-      ctas,
-      footerNote:
-        params.mode === 'confirmed' && params.kind === 'presentation'
-          ? 'EstateOS™ · potwierdzenie oglądania'
-          : 'EstateOS™ · termin prezentacji',
-    }),
-    attachments: [
-      {
-        filename: `${params.kind}.ics`,
-        content: ics,
-        contentType: 'text/calendar; charset=utf-8',
-      },
-    ],
+    subject,
+    bodyPreview,
+    smsBody: null,
+    html,
+    channels: ['email', 'portal'],
+  };
+
+  return {
+    audience: 'buyer' as const,
+    client,
+    identity,
+    title,
+    subject,
+    html,
+    ics,
+    whenPrimary,
+    address,
+    preview,
+    pushBody: `${whenPrimary}${address ? ` · ${address}` : ''}`.slice(0, 180),
+  };
+}
+
+export async function previewClientSchedule(
+  params: ScheduleMailParams,
+): Promise<{ ok: true; preview: ClientOutboundPreview } | { ok: false; error: string }> {
+  const composed = await composeClientScheduleMail(params);
+  if (!composed) return { ok: false, error: 'Klient nie ma adresu e-mail.' };
+  return { ok: true, preview: composed.preview };
+}
+
+export async function emailClientSchedule(
+  params: ScheduleMailParams,
+): Promise<{ emailed: boolean; to: string | null; preview?: ClientOutboundPreview }> {
+  const composed = await composeClientScheduleMail(params);
+  if (!composed) return { emailed: false, to: null };
+
+  await sendTransactionalEmail({
+    to: composed.client.email!,
+    subject: composed.subject,
+    html: composed.html,
+    attachments: composed.ics
+      ? [
+          {
+            filename: `${params.kind}.ics`,
+            content: composed.ics,
+            contentType: 'text/calendar; charset=utf-8',
+          },
+        ]
+      : undefined,
   }).catch(() => {});
 
   await sendClientPortalWebPush(params.clientId, {
-    title,
-    body: `${whenPrimary}${address ? ` · ${address}` : ''}`.slice(0, 180),
-    tag: `schedule-${params.kind}-${params.clientId}`,
+    title: composed.title,
+    body: composed.pushBody,
+    tag:
+      composed.audience === 'seller'
+        ? `schedule-seller-${params.clientId}`
+        : `schedule-${params.kind}-${params.clientId}`,
     notificationType: 'client_schedule',
     native: true,
   }).catch(() => {});
 
-  return { emailed: true, to: client.email };
+  return { emailed: true, to: composed.client.email, preview: composed.preview };
 }
 
 export async function emailGuestAgencyPresentation(params: {

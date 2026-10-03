@@ -32,6 +32,31 @@ function photosFor(offer: { imageUrl?: string | null; imageUrls?: string[] | nul
   return urls;
 }
 
+function shortOfferAddress(offer: {
+  street?: string | null;
+  district?: string | null;
+  city?: string | null;
+}) {
+  const parts = [offer.street, offer.district, offer.city]
+    .map((p) => String(p || '').trim())
+    .filter(Boolean)
+    .filter((p) => {
+      const lower = p.toLowerCase();
+      if (lower === 'polska' || lower === 'poland') return false;
+      if (lower.startsWith('województwo') || lower.startsWith('woj.')) return false;
+      return true;
+    });
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const part of parts) {
+    const key = part.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(part);
+  }
+  return unique.join(', ');
+}
+
 function OfferTile({
   offer,
   selected,
@@ -482,7 +507,7 @@ export default function ClientPresentationComposer({
                     #{selectedOffer.id} · {selectedOffer.title}
                   </Text>
                   <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
-                    {[selectedOffer.street, selectedOffer.city].filter(Boolean).join(', ') || 'Dotknij, aby zmienić'}
+                    {shortOfferAddress(selectedOffer) || 'Dotknij, aby zmienić'}
                   </Text>
                   <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '800', marginTop: 6 }}>Zmień ofertę →</Text>
                 </View>
@@ -503,21 +528,22 @@ export default function ClientPresentationComposer({
             </Pressable>
           )}
 
-          {matches.length ? (
+          {matches.filter((m) => String(m.offer.id) !== String(presentationOfferId)).length ? (
             <View style={{ gap: 8 }}>
               <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>
                 SZYBKI WYBÓR · DOPASOWANIA
               </Text>
               {[...matches]
+                .filter((m) => String(m.offer.id) !== String(presentationOfferId))
                 .sort((a, b) => Number(Boolean(b.notifiedAt)) - Number(Boolean(a.notifiedAt)) || b.score - a.score)
                 .slice(0, 4)
                 .map((m) => (
                   <OfferTile
                     key={m.id}
                     offer={m.offer}
-                    selected={presentationOfferId === String(m.offer.id)}
+                    selected={false}
                     expanded={expandedId === m.offer.id}
-                    meta={`${m.notifiedAt ? 'Wysłana' : 'Match'} · ${m.score}%`}
+                    meta={`${m.notifiedAt ? 'Wysłana' : 'Match'} · ${m.score}% · ${shortOfferAddress(m.offer)}`}
                     colors={colors}
                     onSelect={() => onChangeOfferId(String(m.offer.id))}
                     onToggle={() => setExpandedId((current) => (current === m.offer.id ? null : m.offer.id))}

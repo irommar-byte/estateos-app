@@ -84,6 +84,14 @@ export default function AgencyOfficeScreen() {
   const [officeQueue, setOfficeQueue] = useState<OfficeReviewQueueItem[]>([]);
   const [queueBusyId, setQueueBusyId] = useState<number | null>(null);
   const [rejectDraft, setRejectDraft] = useState<{ offerId: number; note: string } | null>(null);
+  const [cardEdit, setCardEdit] = useState<{
+    memberId: number;
+    name: string;
+    email: string;
+    phone: string;
+    agentTitle: string;
+  } | null>(null);
+  const [cardBusy, setCardBusy] = useState(false);
 
   const colors = useMemo(
     () => ({
@@ -101,6 +109,9 @@ export default function AgencyOfficeScreen() {
   );
 
   const isAdmin = membership?.role === 'ADMIN' && membership?.status === 'ACTIVE';
+  const canEditCards =
+    membership?.status === 'ACTIVE' &&
+    (membership?.role === 'ADMIN' || membership?.role === 'MANAGER');
   const isManager = membership?.role === 'MANAGER' && membership?.status === 'ACTIVE';
   const canManageOffers = isAdmin || isManager;
   const companyName = membership?.companyName || membership?.company?.name || user?.companyName || 'Biuro';
@@ -270,6 +281,51 @@ export default function AgencyOfficeScreen() {
     },
     [token, isAdmin, refreshAgencyMembership, loadDashboard],
   );
+
+  const openCardEdit = useCallback(
+    (member: { id: number; name?: string | null; email?: string | null; phone?: string | null; agentTitle: string }) => {
+      if (!canEditCards) return;
+      setCardEdit({
+        memberId: member.id,
+        name: member.name || '',
+        email: member.email || '',
+        phone: member.phone || '',
+        agentTitle: member.agentTitle || 'AGENT',
+      });
+    },
+    [canEditCards],
+  );
+
+  const handleSaveCard = useCallback(async () => {
+    if (!token || !cardEdit) return;
+    if (!cardEdit.name.trim()) {
+      Alert.alert('Wizytówka', 'Podaj imię i nazwisko.');
+      return;
+    }
+    if (!cardEdit.email.includes('@')) {
+      Alert.alert('Wizytówka', 'Podaj prawidłowy e-mail.');
+      return;
+    }
+    setCardBusy(true);
+    try {
+      const res = await patchAgencyMember(token, cardEdit.memberId, {
+        name: cardEdit.name.trim(),
+        email: cardEdit.email.trim(),
+        phone: cardEdit.phone.trim() || null,
+        agentTitle: cardEdit.agentTitle,
+      });
+      if (!res.ok) {
+        Alert.alert('Wizytówka', res.message || 'Nie udało się zapisać.');
+        return;
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCardEdit(null);
+      await refreshAgencyMembership();
+      await loadDashboard();
+    } finally {
+      setCardBusy(false);
+    }
+  }, [token, cardEdit, refreshAgencyMembership, loadDashboard]);
 
   const handleContactSave = useCallback(async () => {
     if (!token || !isAdmin) return;
@@ -664,6 +720,16 @@ export default function AgencyOfficeScreen() {
                 colors={colors}
                 busy={busyId === member.id}
                 isAdmin={isAdmin}
+                canEditCard={canEditCards}
+                onEditCard={() =>
+                  openCardEdit({
+                    id: member.id,
+                    name: member.user.name,
+                    email: member.user.email,
+                    phone: member.user.phone,
+                    agentTitle: member.agentTitle,
+                  })
+                }
                 onChangeTitle={() => {
                   const stub: AgencyTeamMember = {
                     id: member.id,
@@ -705,6 +771,16 @@ export default function AgencyOfficeScreen() {
                 colors={colors}
                 busy={busyId === member.id}
                 isAdmin={isAdmin}
+                canEditCard={canEditCards}
+                onEditCard={() =>
+                  openCardEdit({
+                    id: member.id,
+                    name: member.name,
+                    email: member.email,
+                    phone: member.phone,
+                    agentTitle: member.agentTitle,
+                  })
+                }
                 onApprove={() => void handleApprove(member)}
                 onReject={() => void handleReject(member)}
                 onChangeTitle={() => handleChangeTitle(member)}
@@ -805,6 +881,110 @@ export default function AgencyOfficeScreen() {
           </View>
         </View>
       ) : null}
+
+      {cardEdit ? (
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, gap: 10 }}>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Edytuj wizytówkę</Text>
+            <Text style={{ color: colors.secondary, fontSize: 12 }}>
+              Imię, e-mail, telefon i stanowisko — te same dane co przy rejestracji / dodawaniu.
+            </Text>
+            <TextInput
+              value={cardEdit.name}
+              onChangeText={(name) => setCardEdit((c) => (c ? { ...c, name } : c))}
+              placeholder="Imię i nazwisko"
+              placeholderTextColor={colors.secondary}
+              style={{
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.separator,
+                borderRadius: 12,
+                padding: 12,
+                color: colors.text,
+              }}
+            />
+            <TextInput
+              value={cardEdit.email}
+              onChangeText={(email) => setCardEdit((c) => (c ? { ...c, email } : c))}
+              placeholder="E-mail"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholderTextColor={colors.secondary}
+              style={{
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.separator,
+                borderRadius: 12,
+                padding: 12,
+                color: colors.text,
+              }}
+            />
+            <TextInput
+              value={cardEdit.phone}
+              onChangeText={(phone) => setCardEdit((c) => (c ? { ...c, phone } : c))}
+              placeholder="Telefon +48…"
+              keyboardType="phone-pad"
+              placeholderTextColor={colors.secondary}
+              style={{
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.separator,
+                borderRadius: 12,
+                padding: 12,
+                color: colors.text,
+              }}
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+              {AGENCY_TITLE_OPTIONS.map((key) => {
+                const on = cardEdit.agentTitle === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setCardEdit((c) => (c ? { ...c, agentTitle: key } : c))}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      marginRight: 8,
+                      borderWidth: 1,
+                      borderColor: on ? colors.accent : colors.separator,
+                      backgroundColor: on ? 'rgba(52,199,89,0.12)' : 'transparent',
+                    }}
+                  >
+                    <Text style={{ color: on ? colors.accent : colors.text, fontWeight: '700', fontSize: 12 }}>
+                      {TITLE_LABELS[key] || key}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+              <Pressable
+                onPress={() => setCardEdit(null)}
+                disabled={cardBusy}
+                style={{ flex: 1, height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.separator, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: colors.secondary, fontWeight: '700' }}>Anuluj</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void handleSaveCard()}
+                disabled={cardBusy}
+                style={{ flex: 1, height: 44, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: '#000', fontWeight: '900' }}>{cardBusy ? '…' : 'Zapisz'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -814,6 +994,8 @@ function MemberRow({
   colors,
   busy,
   isAdmin,
+  canEditCard,
+  onEditCard,
   onApprove,
   onReject,
   onChangeTitle,
@@ -822,6 +1004,8 @@ function MemberRow({
   colors: Record<string, string>;
   busy: boolean;
   isAdmin: boolean;
+  canEditCard?: boolean;
+  onEditCard?: () => void;
   onApprove: () => void;
   onReject: () => void;
   onChangeTitle: () => void;
@@ -863,6 +1047,11 @@ function MemberRow({
           </Pressable>
         </View>
       ) : null}
+      {canEditCard && member.status === 'ACTIVE' ? (
+        <Pressable onPress={onEditCard} hitSlop={8}>
+          <Text style={{ color: colors.accentBlue, fontWeight: '600', fontSize: 12 }}>Wizytówka</Text>
+        </Pressable>
+      ) : null}
       {isAdmin && member.status === 'ACTIVE' && member.role !== 'ADMIN' ? (
         <Pressable onPress={onChangeTitle} hitSlop={8}>
           <Text style={{ color: colors.accentBlue, fontWeight: '600', fontSize: 12 }}>Stanowisko</Text>
@@ -877,6 +1066,8 @@ function AdminMemberRow({
   colors,
   busy,
   isAdmin,
+  canEditCard,
+  onEditCard,
   onChangeTitle,
   onTransferCredits,
   onPromoteManager,
@@ -886,6 +1077,8 @@ function AdminMemberRow({
   colors: Record<string, string>;
   busy: boolean;
   isAdmin: boolean;
+  canEditCard?: boolean;
+  onEditCard?: () => void;
   onChangeTitle: () => void;
   onTransferCredits: () => void;
   onPromoteManager?: () => void;
@@ -938,24 +1131,33 @@ function AdminMemberRow({
         {u.averageRating != null ? ` · ★ ${u.averageRating}` : ''}
       </Text>
 
-      {isAdmin && member.role !== 'ADMIN' ? (
+      {(canEditCard || (isAdmin && member.role !== 'ADMIN')) ? (
         <View style={[styles.adminActions, { marginTop: 10, justifyContent: 'flex-end' }]}>
-          {onPromoteManager ? (
+          {canEditCard ? (
+            <Pressable onPress={onEditCard} style={[styles.inlineBtn, { borderColor: colors.accentBlue, backgroundColor: 'rgba(0,122,255,0.08)' }]}>
+              <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 12 }}>Wizytówka</Text>
+            </Pressable>
+          ) : null}
+          {isAdmin && member.role !== 'ADMIN' && onPromoteManager ? (
             <Pressable onPress={onPromoteManager} style={[styles.inlineBtn, { borderColor: colors.accentBlue, backgroundColor: 'rgba(0,122,255,0.08)' }]}>
               <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 12 }}>Awansuj</Text>
             </Pressable>
           ) : null}
-          {onDemoteManager ? (
+          {isAdmin && member.role !== 'ADMIN' && onDemoteManager ? (
             <Pressable onPress={onDemoteManager} style={[styles.inlineBtn, { borderColor: colors.separator }]}>
               <Text style={{ color: colors.secondary, fontWeight: '700', fontSize: 12 }}>Cofnij do agenta</Text>
             </Pressable>
           ) : null}
-          <Pressable onPress={onChangeTitle} style={[styles.inlineBtn, { borderColor: colors.separator }]}>
-            <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 12 }}>Stanowisko</Text>
-          </Pressable>
-          <Pressable onPress={onTransferCredits} style={[styles.inlineBtn, { borderColor: colors.accent, backgroundColor: 'rgba(52,199,89,0.1)' }]}>
-            <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 12 }}>Przydziel kredyty</Text>
-          </Pressable>
+          {isAdmin && member.role !== 'ADMIN' ? (
+            <Pressable onPress={onChangeTitle} style={[styles.inlineBtn, { borderColor: colors.separator }]}>
+              <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 12 }}>Stanowisko</Text>
+            </Pressable>
+          ) : null}
+          {isAdmin && member.role !== 'ADMIN' ? (
+            <Pressable onPress={onTransferCredits} style={[styles.inlineBtn, { borderColor: colors.accent, backgroundColor: 'rgba(52,199,89,0.1)' }]}>
+              <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 12 }}>Przydziel kredyty</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </View>

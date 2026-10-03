@@ -8,6 +8,7 @@ import {
   escapeEmailHtml,
   loadAppleClientEmailIdentity,
 } from '@/lib/email/appleClientEmail';
+import { stripEmailHtml, type ClientOutboundPreview } from '@/lib/crm/outboundPreview';
 
 /** Skróć adres do czytelnej formy (bez „województwo…, Polska” i duplikatów miasta). */
 export function formatVisitAddress(raw: string | null | undefined): string {
@@ -36,7 +37,7 @@ export function formatVisitAddress(raw: string | null | undefined): string {
   return unique.join(', ');
 }
 
-export async function sendVisitPrepPacket(params: {
+async function buildVisitPrepPacket(params: {
   agencyUserId: number;
   clientId: number;
   parkingNote?: string | null;
@@ -108,8 +109,8 @@ export async function sendVisitPrepPacket(params: {
     'Przypominamy o umówionym oglądaniu. Termin, adres i mapa są poniżej — prosimy o punktualność.';
 
   const sms = `Oglądanie: ${whenShort}, ${address}. Szczegóły: ${portalUrl} — ${identity.agentName}`;
-
   const subject = `Oglądanie · ${whenShort} · ${address}`;
+  const plainBody = `Dzień dobry ${client.firstName},\n\n${intro}\n\n${whenLabel}\n${offer?.title || ''}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${identity.agentName}`;
 
   const emailHtml = buildAppleClientEmailHtml({
     eyebrow: identity.agencyName,
@@ -136,19 +137,68 @@ export async function sendVisitPrepPacket(params: {
     footerNote: 'EstateOS™ · pakiet przed wizytą',
   });
 
+  const preview: ClientOutboundPreview = {
+    kind: 'visit_prep',
+    to: client.email,
+    subject,
+    bodyPreview: plainBody,
+    smsBody: client.phone ? sms : null,
+    html: emailHtml,
+    channels: [
+      ...(client.email ? (['email'] as const) : []),
+      ...(client.phone ? (['sms'] as const) : []),
+      'portal',
+    ],
+  };
+
+  return {
+    ok: true as const,
+    client,
+    offerId,
+    whenLabel,
+    address,
+    mapUrl,
+    subject,
+    sms,
+    intro,
+    emailHtml,
+    identity,
+    portalUrl,
+    preview,
+  };
+}
+
+export async function previewVisitPrepPacket(params: {
+  agencyUserId: number;
+  clientId: number;
+  parkingNote?: string | null;
+}) {
+  const built = await buildVisitPrepPacket(params);
+  if (!built.ok) return built;
+  return { ok: true as const, preview: built.preview };
+}
+
+export async function sendVisitPrepPacket(params: {
+  agencyUserId: number;
+  clientId: number;
+  parkingNote?: string | null;
+}) {
+  const built = await buildVisitPrepPacket(params);
+  if (!built.ok) return built;
+
   let emailSent = false;
-  if (client.email) {
+  if (built.client.email) {
     emailSent = await sendTransactionalEmail({
-      to: client.email,
-      subject,
-      html: emailHtml,
+      to: built.client.email,
+      subject: built.subject,
+      html: built.emailHtml,
     });
   }
 
   let smsSent = false;
-  if (client.phone) {
+  if (built.client.phone) {
     try {
-      await sendSMS(client.phone, sms);
+      await sendSMS(built.client.phone, built.sms);
       smsSent = true;
     } catch {
       smsSent = false;
@@ -157,13 +207,22 @@ export async function sendVisitPrepPacket(params: {
 
   await prisma.agencyClientActivity.create({
     data: {
-      clientId: client.id,
+      clientId: built.client.id,
       agencyUserId: params.agencyUserId,
-      offerId: offerId || undefined,
+      offerId: built.offerId || undefined,
       kind: 'VISIT_PREP_PACKET',
       title: 'Wysłano pakiet przed wizytą',
-      body: whenLabel,
-      metadata: { emailSent, smsSent, address, mapUrl },
+      body: built.whenLabel,
+      metadata: {
+        emailSent,
+        smsSent,
+        address: built.address,
+        mapUrl: built.mapUrl,
+        subject: built.subject,
+        bodyPreview: built.preview.bodyPreview,
+        smsBody: built.sms,
+        to: built.client.email,
+      },
     },
   });
 
@@ -171,12 +230,13 @@ export async function sendVisitPrepPacket(params: {
     ok: true as const,
     emailSent,
     smsSent,
-    smsBody: sms,
-    mailto: client.email
+    smsBody: built.sms,
+    preview: built.preview,
+    mailto: built.client.email
       ? {
-          to: client.email,
-          subject,
-          body: `Dzień dobry ${client.firstName},\n\n${intro}\n\n${whenLabel}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${identity.agentName}`,
+          to: built.client.email,
+          subject: built.subject,
+          body: built.preview.bodyPreview,
         }
       : null,
   };

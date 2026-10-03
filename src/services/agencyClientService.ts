@@ -454,6 +454,40 @@ export async function refreshClientMatches(token: string, id: number) {
   return { ok: true as const };
 }
 
+export type ClientOutboundPreview = {
+  kind?: string;
+  to: string | null;
+  subject: string;
+  bodyPreview: string;
+  smsBody?: string | null;
+  html?: string | null;
+  channels?: string[];
+};
+
+export async function previewClientOffers(token: string, id: number, offerIds: number[]) {
+  const res = await fetch(`${API_URL}/api/crm/clients/${id}`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'preview_offers', offerIds }),
+  });
+  const json = await parseJson(res);
+  if (!res.ok) return { ok: false as const, message: String(json?.error || 'Nie udało się zbudować podglądu.') };
+  const raw = json.preview || {};
+  const offers = Array.isArray(raw.offers) ? raw.offers : [];
+  const titles = offers.map((o: { title?: string }) => o.title).filter(Boolean).join('\n• ');
+  const preview: ClientOutboundPreview = {
+    kind: 'offers',
+    to: raw.clientEmail || null,
+    subject: String(raw.subject || 'Propozycje nieruchomości'),
+    bodyPreview: [raw.intro, titles ? `Oferty:\n• ${titles}` : null, raw.portalUrl ? `Panel: ${raw.portalUrl}` : null]
+      .filter(Boolean)
+      .join('\n\n'),
+    smsBody: null,
+    channels: raw.clientEmail ? ['email', 'portal'] : ['portal'],
+  };
+  return { ok: true as const, preview };
+}
+
 export async function proposeClientOffers(
   token: string,
   id: number,
@@ -869,11 +903,33 @@ export async function completePresentationVisit(
   });
 }
 
+export async function previewVisitPrepPacket(token: string, clientId: number, parkingNote?: string) {
+  const res = await postAgencyClientAction(token, clientId, {
+    action: 'preview_visit_prep_packet',
+    parkingNote: parkingNote || null,
+  });
+  if (!res.ok) return res;
+  return { ok: true as const, preview: (res as { preview?: ClientOutboundPreview }).preview as ClientOutboundPreview };
+}
+
 export async function sendVisitPrepPacket(token: string, clientId: number, parkingNote?: string) {
   return postAgencyClientAction(token, clientId, {
     action: 'send_visit_prep_packet',
     parkingNote: parkingNote || null,
   });
+}
+
+export async function previewPresentationOutbound(
+  token: string,
+  clientId: number,
+  body: Record<string, unknown>,
+) {
+  const res = await postAgencyClientAction(token, clientId, {
+    action: 'preview_presentation',
+    ...body,
+  });
+  if (!res.ok) return res;
+  return { ok: true as const, preview: (res as { preview?: ClientOutboundPreview }).preview as ClientOutboundPreview };
 }
 
 export async function searchCrmOffersForPresentation(token: string, query: string) {

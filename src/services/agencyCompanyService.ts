@@ -67,7 +67,14 @@ export async function fetchAgencyMembership(token: string): Promise<AgencyMember
 export async function patchAgencyMember(
   token: string,
   memberId: number,
-  body: { status?: 'ACTIVE' | 'REJECTED' | 'SUSPENDED'; agentTitle?: string; role?: 'AGENT' | 'MANAGER' },
+  body: {
+    status?: 'ACTIVE' | 'REJECTED' | 'SUSPENDED';
+    agentTitle?: string;
+    role?: 'AGENT' | 'MANAGER';
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  },
 ): Promise<{ ok: boolean; message?: string }> {
   const res = await fetch(`${API_URL}/api/agency-company/members/${memberId}`, {
     method: 'PATCH',

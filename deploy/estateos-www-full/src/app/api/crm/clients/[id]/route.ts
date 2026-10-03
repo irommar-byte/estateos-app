@@ -1452,7 +1452,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
           metadata,
         },
       });
-      await emailClientSchedule({
+      const mailed = await emailClientSchedule({
         clientId: targetId,
         kind: isMeeting ? 'meeting' : 'presentation',
         mode: isMeeting || alreadyAgreed ? 'confirmed' : 'proposed',
@@ -1466,6 +1466,23 @@ export async function POST(req: Request, ctx: RouteCtx) {
         offerId,
         audience: targetId === (client.type === 'BUYER' ? client.id : counterpartId) ? 'buyer' : 'seller',
       });
+      if (mailed.preview && targetId === clientId) {
+        await prisma.agencyClientActivity.create({
+          data: {
+            clientId: targetId,
+            agencyUserId,
+            offerId: offerId || undefined,
+            kind: 'OUTBOUND_EMAIL',
+            title: mailed.preview.subject,
+            body: mailed.preview.bodyPreview.slice(0, 500),
+            metadata: {
+              ...mailed.preview,
+              emailed: mailed.emailed,
+              to: mailed.to,
+            },
+          },
+        }).catch(() => {});
+      }
     }
 
     if (!isMeeting && offerId) {
@@ -1822,6 +1839,19 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ success: true });
   }
 
+  if (action === 'preview_visit_prep_packet') {
+    const { previewVisitPrepPacket } = await import('@/lib/crm/visitPrepPacket');
+    const result = await previewVisitPrepPacket({
+      agencyUserId,
+      clientId,
+      parkingNote: body.parkingNote != null ? String(body.parkingNote) : null,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ success: true, preview: result.preview });
+  }
+
   if (action === 'send_visit_prep_packet') {
     const { sendVisitPrepPacket } = await import('@/lib/crm/visitPrepPacket');
     const result = await sendVisitPrepPacket({
@@ -1833,6 +1863,47 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
     return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'preview_presentation') {
+    const alreadyAgreed =
+      body.confirmed === true ||
+      body.alreadyAgreed === true ||
+      String(body.mode || '').toLowerCase() === 'confirmed';
+    const slotDates = alreadyAgreed
+      ? (() => {
+          const one =
+            parseStartsAtInput(body.startsAt) ||
+            parseStartsAtList(body.startsAtList || body.proposedSlots, body.startsAt)[0] ||
+            null;
+          return one ? [one] : [];
+        })()
+      : parseStartsAtList(body.startsAtList || body.proposedSlots, body.startsAt);
+    const startsAt = slotDates[0] || null;
+    if (!startsAt) {
+      return NextResponse.json(
+        { error: alreadyAgreed ? 'Wybierz ustalony termin i godzinę.' : 'Wybierz termin i godzinę.' },
+        { status: 400 },
+      );
+    }
+    const offerIdRaw = Number(body.offerId || 0);
+    const offerId = Number.isFinite(offerIdRaw) && offerIdRaw > 0 ? offerIdRaw : null;
+    const { previewClientSchedule } = await import('@/lib/crm/clientScheduleNotify');
+    const result = await previewClientSchedule({
+      clientId,
+      kind: 'presentation',
+      mode: alreadyAgreed ? 'confirmed' : 'proposed',
+      startsAt,
+      proposedSlots: alreadyAgreed ? [startsAt] : slotDates,
+      location: body.location ? String(body.location).trim() : null,
+      notes: body.notes ? String(body.notes).trim() : null,
+      offerId,
+      audience: 'buyer',
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({ success: true, preview: result.preview });
   }
 
   if (action === 'create_person_project') {

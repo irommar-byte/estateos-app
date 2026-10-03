@@ -403,7 +403,41 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     }
   }
   const presentationOffer = await loadPresentationOfferPreview(presentation?.offerId);
-  const notifiedMatches = client.matches.filter((m) => m.notifiedAt);
+  const intelligenceEnabled = Boolean(client.intelligenceEnabled);
+  /** Przy wyłączonym asystencie cofamy auto-wypuszczone karty Intelligence — klient nie powinien ich widzieć. */
+  if (!intelligenceEnabled && client.type === 'BUYER') {
+    const leaked = client.matches.filter((m) => m.intelligenceSent && m.notifiedAt);
+    if (leaked.length) {
+      await prisma.agencyClientMatch.updateMany({
+        where: {
+          clientId: client.id,
+          intelligenceSent: true,
+          notifiedAt: { not: null },
+        },
+        data: {
+          notifiedAt: null,
+          sharedAt: null,
+          intelligenceSent: false,
+          intelligenceReason: null,
+        },
+      });
+      client.matches = client.matches.map((m) =>
+        m.intelligenceSent
+          ? {
+              ...m,
+              notifiedAt: null,
+              sharedAt: null,
+              intelligenceSent: false,
+              intelligenceReason: null,
+            }
+          : m,
+      );
+    }
+  }
+  const portalMatches = intelligenceEnabled
+    ? client.matches.filter((m) => m.notifiedAt)
+    : client.matches.filter((m) => m.notifiedAt && !m.intelligenceSent);
+  const notifiedMatches = portalMatches;
   const reactedMatches = notifiedMatches.filter((m) => clientFeedbackHasContent(parseClientOfferFeedback(m.clientFeedback)));
   const lastOfferSentAt = notifiedMatches
     .map((m) => m.notifiedAt)
@@ -497,17 +531,18 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       agencyAddress,
       syncVersion,
       searchCriteria,
-      intelligenceEnabled: Boolean(client.intelligenceEnabled),
-      pendingCheckback,
-      unscoredMatchCount: client.buyerPreference
-        ? await prisma.agencyClientMatch.count({
-            where: {
-              clientId: client.id,
-              notifiedAt: null,
-              score: { gte: client.buyerPreference.minMatchThreshold ?? 70 },
-            },
-          })
-        : 0,
+      intelligenceEnabled,
+      pendingCheckback: intelligenceEnabled ? pendingCheckback : null,
+      unscoredMatchCount:
+        intelligenceEnabled && client.buyerPreference
+          ? await prisma.agencyClientMatch.count({
+              where: {
+                clientId: client.id,
+                notifiedAt: null,
+                score: { gte: client.buyerPreference.minMatchThreshold ?? 70 },
+              },
+            })
+          : 0,
       canChat: true,
       account: { ...account, activation },
       meeting: meeting
@@ -525,7 +560,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
         : null,
       journey: stages,
       matches: client.buyerPreference
-        ? client.matches.map((m) => ({
+        ? portalMatches.map((m) => ({
             id: m.id,
             score: m.score,
             notifiedAt: m.notifiedAt?.toISOString() ?? null,
@@ -533,7 +568,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
             intelligenceSent: Boolean(m.intelligenceSent),
             intelligenceReason: m.intelligenceReason || null,
-            clientWhy: whyByOffer.get(m.offerId) || null,
+            clientWhy: intelligenceEnabled ? whyByOffer.get(m.offerId) || null : null,
             offer: shapeAgencyClientMatchOffer(m.offer),
           }))
         : [],
@@ -704,6 +739,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (action === 'release_first_match') {
     if (client.type !== 'BUYER') {
       return NextResponse.json({ error: 'Dostępne tylko dla kupujących.' }, { status: 400 });
+    }
+    if (!client.intelligenceEnabled) {
+      return NextResponse.json({
+        success: false,
+        reason: 'Asystent wyłączony — oferty wypuszcza tylko agent.',
+      });
     }
 
     const intel = await sendIntelligenceOffer({

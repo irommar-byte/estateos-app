@@ -586,9 +586,6 @@ export default function ClientPortalScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} />}
       >
-        {renderAccountSection()}
-        {renderPushRow()}
-
         {portal?.presentation ? (
           <PortalScheduleCard
             portalToken={portalToken}
@@ -601,6 +598,9 @@ export default function ClientPortalScreen() {
             onDone={() => void load('silent')}
           />
         ) : null}
+
+        {renderAccountSection()}
+        {renderPushRow()}
 
         {portal ? (
           <ClientPortalAgentReplyInbox

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getWebFormData } from '@/lib/requestFormData';
-import { requireActiveAgencyAdmin, updateMemberProfile } from '@/lib/agencyCompany';
+import { requireActiveAgencyManagerOrAdmin, updateMemberProfile } from '@/lib/agencyCompany';
 import { saveAgencyBrandingFile } from '@/lib/upload/agencyBrandingUpload';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { prisma } from '@/lib/prisma';
@@ -10,7 +10,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!userId) {
     return NextResponse.json({ success: false, message: 'Brak sesji.' }, { status: 401 });
   }
-  const admin = await requireActiveAgencyAdmin(userId);
+  const admin = await requireActiveAgencyManagerOrAdmin(userId);
   if (!admin) {
     return NextResponse.json({ success: false, message: 'Brak uprawnień.' }, { status: 403 });
   }

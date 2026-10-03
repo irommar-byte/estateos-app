@@ -224,13 +224,15 @@ export async function getAgencyTeamForViewer(userId: number) {
   if (!membership || membership.status !== 'ACTIVE') return { membership, team: [] };
 
   const isAdmin = membership.role === 'ADMIN';
+  const canSeeContact =
+    isAdmin || String(membership.role) === 'MANAGER' || membership.company.ownerUserId === userId;
   const members = await prisma.agencyCompanyMember.findMany({
     where: {
       companyId: membership.companyId,
-      status: isAdmin ? { in: ['ACTIVE', 'PENDING'] } : 'ACTIVE',
+      status: canSeeContact ? { in: ['ACTIVE', 'PENDING'] } : 'ACTIVE',
     },
     include: {
-      user: { select: { id: true, name: true, image: true, email: true } },
+      user: { select: { id: true, name: true, image: true, email: true, phone: true } },
     },
     orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
   });
@@ -246,7 +248,8 @@ export async function getAgencyTeamForViewer(userId: number) {
       titleLabel: formatAgentTitle(m.agentTitle),
       name: m.user.name,
       image: pickTeamMemberAvatar({ userImage: m.user.image, profilePhotoUrl: m.profilePhotoUrl }),
-      email: isAdmin ? m.user.email : null,
+      email: canSeeContact ? m.user.email : null,
+      phone: canSeeContact ? m.user.phone : null,
       isSelf: m.userId === userId,
     })),
   };
@@ -264,6 +267,7 @@ export function shapeAgencyMembershipResponse(
     name: string | null;
     image: string | null;
     email: string | null;
+    phone?: string | null;
     isSelf: boolean;
   }>,
 ) {
@@ -354,6 +358,7 @@ export async function getCompanyDashboard(companyId: number) {
               id: true,
               name: true,
               email: true,
+              phone: true,
               image: true,
               extraListings: true,
               plusExpiresAt: true,
@@ -503,6 +508,7 @@ export async function getCompanyDashboard(companyId: number) {
         id: m.user.id,
         name: m.user.name,
         email: m.user.email,
+        phone: m.user.phone,
         image: m.user.image,
         extraListings: m.user.extraListings,
         plusExpiresAt: m.user.plusExpiresAt?.toISOString() ?? null,
@@ -683,33 +689,72 @@ export async function updateMemberProfile(params: {
   memberId: number;
   agentTitle?: AgencyAgentTitle;
   profilePhotoUrl?: string | null;
+  /** Dane wizytówki / rejestracji — kierownik może poprawić u agenta i u siebie. */
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
 }) {
-  const admin = await requireActiveAgencyAdmin(params.adminUserId);
+  const admin = await requireActiveAgencyManagerOrAdmin(params.adminUserId);
   if (!admin || admin.companyId !== params.companyId) throw new Error('Brak uprawnień.');
 
   const member = await prisma.agencyCompanyMember.findFirst({
     where: { id: params.memberId, companyId: params.companyId },
+    include: { user: { select: { id: true, email: true, phone: true, name: true } } },
   });
   if (!member) throw new Error('Nie znaleziono pracownika.');
 
-  const data: { agentTitle?: AgencyAgentTitle; profilePhotoUrl?: string | null } = {};
+  const memberData: { agentTitle?: AgencyAgentTitle; profilePhotoUrl?: string | null } = {};
   if (params.agentTitle) {
     if (!AGENCY_AGENT_TITLES.includes(params.agentTitle)) {
       throw new Error('Nieprawidłowe stanowisko.');
     }
-    data.agentTitle = params.agentTitle;
+    memberData.agentTitle = params.agentTitle;
   }
   if (params.profilePhotoUrl !== undefined) {
-    data.profilePhotoUrl = params.profilePhotoUrl;
+    memberData.profilePhotoUrl = params.profilePhotoUrl;
   }
-  if (!Object.keys(data).length) throw new Error('Brak danych do zapisania.');
+
+  const userData: { name?: string | null; phone?: string | null; email?: string; image?: string | null } = {};
+  if (params.name !== undefined) {
+    const name = String(params.name || '').trim().slice(0, 120);
+    if (!name) throw new Error('Imię i nazwisko nie może być puste.');
+    userData.name = name;
+  }
+  if (params.phone !== undefined) {
+    const raw = String(params.phone || '').replace(/[^\d+]/g, '').trim();
+    if (raw && (!raw.startsWith('+') || raw.length < 8)) {
+      throw new Error('Telefon musi być w formacie międzynarodowym, np. +48501234567.');
+    }
+    userData.phone = raw || null;
+  }
+  if (params.email !== undefined) {
+    const email = String(params.email || '').trim().toLowerCase();
+    if (!email.includes('@') || email.length < 5) throw new Error('Podaj prawidłowy e-mail.');
+    if (email !== member.user.email.toLowerCase()) {
+      const taken = await prisma.user.findFirst({
+        where: { email, id: { not: member.userId } },
+        select: { id: true },
+      });
+      if (taken) throw new Error('Ten e-mail jest już używany przez inne konto.');
+    }
+    userData.email = email;
+  }
+  if (params.profilePhotoUrl !== undefined) {
+    userData.image = params.profilePhotoUrl;
+  }
+
+  if (!Object.keys(memberData).length && !Object.keys(userData).length) {
+    throw new Error('Brak danych do zapisania.');
+  }
 
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.agencyCompanyMember.update({ where: { id: params.memberId }, data });
-    if (data.profilePhotoUrl !== undefined) {
+    const updated = Object.keys(memberData).length
+      ? await tx.agencyCompanyMember.update({ where: { id: params.memberId }, data: memberData })
+      : member;
+    if (Object.keys(userData).length) {
       await tx.user.update({
         where: { id: member.userId },
-        data: { image: data.profilePhotoUrl },
+        data: userData,
       });
     }
     return updated;
