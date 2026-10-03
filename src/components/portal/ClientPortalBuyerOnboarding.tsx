@@ -28,7 +28,7 @@ export default function ClientPortalBuyerOnboarding({
 
   useEffect(() => {
     try {
-      if (window.sessionStorage.getItem(storageKey) === '1') return;
+      if (window.localStorage.getItem(storageKey) === '1') return;
     } catch {
       /* pokaż */
     }
@@ -40,7 +40,7 @@ export default function ClientPortalBuyerOnboarding({
 
   const dismiss = () => {
     try {
-      window.sessionStorage.setItem(storageKey, '1');
+      window.localStorage.setItem(storageKey, '1');
     } catch {
       /* ignore */
     }

@@ -225,4 +225,25 @@ test("buyer presentation is current only after a slot is sent and done only afte
   });
   assert.equal(held.find((s) => s.id === "presentation")?.done, true);
   assert.equal(held.find((s) => s.id === "presentation")?.current, false);
+  assert.equal(held.find((s) => s.id === "done")?.label, "Transakcja");
+  assert.equal(held.find((s) => s.id === "done")?.done, false);
+  assert.equal(held.find((s) => s.id === "done")?.current, true);
+
+  const bought = buildJourneyStages({
+    clientType: "BUYER",
+    hasMeeting: false,
+    meetingConfirmed: false,
+    acquisitionStarted: false,
+    signed: false,
+    hasOffer: false,
+    hasPresentation: true,
+    presentationConfirmed: true,
+    presentationHeld: true,
+    hasCriteria: true,
+    sentOfferCount: 2,
+    reactedCount: 2,
+    dealClosed: true,
+  });
+  assert.equal(bought.find((s) => s.id === "done")?.done, true);
+  assert.equal(bought.find((s) => s.id === "done")?.current, true);
 });

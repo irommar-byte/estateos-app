@@ -17,7 +17,7 @@ export function buyerOnboardingStorageKey(token: string): string {
 export function isBuyerOnboardingDismissed(token: string): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return window.sessionStorage.getItem(buyerOnboardingStorageKey(token)) === '1';
+    return window.localStorage.getItem(buyerOnboardingStorageKey(token)) === '1';
   } catch {
     return false;
   }
