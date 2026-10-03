@@ -57,7 +57,6 @@ const PROFILE_SELECT = {
       status: true,
       createdAt: true,
       updatedAt: true,
-      images: true,
       propertyType: true,
       area: true,
       rooms: true,
@@ -152,69 +151,73 @@ function normalizeForSearch(value: unknown): string {
     .trim();
 }
 
-export async function GET() {
-  try {
-    const user = await resolveSessionUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Niezalogowany' }, { status: 401 });
-    }
+const RADAR_MATCH_CACHE_TTL_MS = 60_000;
+const RADAR_MATCH_LIMIT = 24;
+const radarMatchCache = new Map<number, { at: number; offers: Array<Record<string, unknown>> }>();
 
-    let matchedOffers: Array<Record<string, unknown>> = [];
-    let radarPreference: RadarPreferenceDto | null = shapeRadarPreference(
-      'radarPreference' in user ? (user.radarPreference as RadarPreference | null) : null,
-      user.searchAmenities,
-    );
-    if (!radarPreference) {
-      try {
-        const pref = await prisma.radarPreference.findUnique({ where: { userId: user.id } });
-        radarPreference = shapeRadarPreference(pref, user.searchAmenities);
-      } catch {
-        radarPreference = null;
-      }
-    }
+function rememberRadarMatches(userId: number, offers: Array<Record<string, unknown>>) {
+  radarMatchCache.set(userId, { at: Date.now(), offers });
+  if (radarMatchCache.size <= 80) return;
+  const oldest = [...radarMatchCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+  if (oldest) radarMatchCache.delete(oldest[0]);
+}
 
-    const radarScoreInput = buildRadarScoreInputFromUser(user, radarPreference);
-    if (radarScoreInput) {
-      const allActiveOffers = await prisma.offer.findMany({
-        where: {
-          status: 'ACTIVE',
-          NOT: { userId: user.id },
-        },
-        select: MATCHED_OFFER_SELECT,
-      });
+const { images: _radarImages, ...RADAR_SCORE_SELECT } = MATCHED_OFFER_SELECT;
 
-      matchedOffers = scoreOffersForRadarPreference(
+async function hydrateMatchedThumbs(offers: Array<Record<string, unknown>>) {
+  const ids = offers.map((offer) => Number(offer.id)).filter((id) => Number.isFinite(id) && id > 0);
+  if (!ids.length) return offers;
+  const thumbs = await prisma.offer.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, images: true },
+  });
+  const imagesById = new Map(thumbs.map((row) => [row.id, row.images]));
+  return offers.map((offer) =>
+    shapeMatchedOfferForCrm({
+      ...offer,
+      images: imagesById.get(Number(offer.id)) ?? null,
+    }),
+  );
+}
+
+async function loadRadarMatches(
+  user: {
+    id: number;
+    searchType?: string | null;
+    searchTransactionType?: string | null;
+    searchMaxPrice?: number | null;
+    searchAreaFrom?: number | null;
+    searchRooms?: number | null;
+    searchDistricts?: string | null;
+    searchAmenities?: string | null;
+  },
+  radarScoreInput: Record<string, unknown> | null,
+): Promise<Array<Record<string, unknown>>> {
+  const cached = radarMatchCache.get(user.id);
+  if (cached && Date.now() - cached.at < RADAR_MATCH_CACHE_TTL_MS) return cached.offers;
+
+  let matchedOffers: any[] = [];
+  if (radarScoreInput) {
+    const allActiveOffers = await prisma.offer.findMany({
+      where: {
+        status: 'ACTIVE',
+        NOT: { userId: user.id },
+      },
+      select: RADAR_SCORE_SELECT,
+    });
+    matchedOffers = await hydrateMatchedThumbs(
+      scoreOffersForRadarPreference(
         allActiveOffers as Array<Record<string, unknown>>,
         radarScoreInput,
-      );
-    } else if (user.searchType) {
+      ).slice(0, RADAR_MATCH_LIMIT),
+    );
+  } else if (user.searchType) {
       const allActiveOffers = await prisma.offer.findMany({
         where: {
           status: 'ACTIVE',
           NOT: { userId: user.id },
         },
-        select: {
-          id: true,
-          title: true,
-          price: true,
-          pricePln: true,
-          priceCurrency: true,
-          area: true,
-          rooms: true,
-          city: true,
-          district: true,
-          propertyType: true,
-          hasBalcony: true,
-          hasElevator: true,
-          hasParking: true,
-          hasGarden: true,
-          hasStorage: true,
-          isFurnished: true,
-          images: true,
-          transactionType: true,
-          status: true,
-          userId: true,
-        },
+        select: RADAR_SCORE_SELECT,
       });
 
       matchedOffers = allActiveOffers.filter((offer) => {
@@ -264,10 +267,39 @@ export async function GET() {
         return true;
       });
 
-      matchedOffers = matchedOffers.map((offer) =>
-        shapeMatchedOfferForCrm({ ...offer, matchScore: 100 } as Record<string, unknown>),
+      matchedOffers = await hydrateMatchedThumbs(
+        matchedOffers.slice(0, RADAR_MATCH_LIMIT).map((offer) => ({ ...offer, matchScore: 100 })),
       );
     }
+
+  rememberRadarMatches(user.id, matchedOffers);
+  return matchedOffers;
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const user = await resolveSessionUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Niezalogowany' }, { status: 401 });
+    }
+
+    let radarPreference: RadarPreferenceDto | null = shapeRadarPreference(
+      'radarPreference' in user ? (user.radarPreference as RadarPreference | null) : null,
+      user.searchAmenities,
+    );
+    if (!radarPreference) {
+      try {
+        const pref = await prisma.radarPreference.findUnique({ where: { userId: user.id } });
+        radarPreference = shapeRadarPreference(pref, user.searchAmenities);
+      } catch {
+        radarPreference = null;
+      }
+    }
+
+    const wantsRadar = req.nextUrl.searchParams.get('scope') === 'radar';
+    const matchedOffers = wantsRadar
+      ? await loadRadarMatches(user, buildRadarScoreInputFromUser(user, radarPreference))
+      : [];
 
     const passkeyCount = await prisma.authenticator.count({ where: { userId: user.id } });
     const displayImage = await getUserDisplayAvatar(user.id);

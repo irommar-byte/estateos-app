@@ -8,6 +8,33 @@ import { listEnrichedLeadTransfersForUser } from "@/lib/leadTransfer";
 import { acquisitionActivityToAppointment } from "@/lib/crm/planningCalendar";
 import { resolveMeeting, resolvePresentation } from "@/lib/crm/clientJourney";
 
+/** Karta CRM — bez opisu, LiDAR i innych ciężkich JSON-ów, które blokowały proces. */
+const CRM_OFFER_CARD_SELECT = {
+  id: true,
+  title: true,
+  price: true,
+  pricePln: true,
+  priceCurrency: true,
+  city: true,
+  district: true,
+  street: true,
+  apartmentNumber: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  expiresAt: true,
+  images: true,
+  propertyType: true,
+  area: true,
+  rooms: true,
+  floor: true,
+  transactionType: true,
+  deposit: true,
+  adminFee: true,
+  legalCheckStatus: true,
+  userId: true,
+} as const;
+
 export async function GET(req: Request) {
   try {
     const cookieStore = await cookies();
@@ -41,6 +68,7 @@ export async function GET(req: Request) {
       prisma.offer.findMany({
         where: { userId: finalUserId },
         orderBy: { createdAt: 'desc' },
+        select: CRM_OFFER_CARD_SELECT,
       }),
       prisma.deal.findMany({
         where: {
@@ -49,7 +77,11 @@ export async function GET(req: Request) {
             { buyerId: finalUserId },
           ],
         },
-        include: { offer: true, buyer: true, seller: true },
+        include: {
+          offer: { select: CRM_OFFER_CARD_SELECT },
+          buyer: true,
+          seller: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.agencyClientActivity.findMany({
@@ -95,7 +127,7 @@ export async function GET(req: Request) {
             include: {
               deal: {
                 include: {
-                  offer: true,
+                  offer: { select: CRM_OFFER_CARD_SELECT },
                   buyer: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
                   seller: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
                 },

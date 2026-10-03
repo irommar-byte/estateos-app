@@ -683,7 +683,7 @@ export default function CRMDashboard() {
   };
 
   const refreshCurrentUserFromBackend = async () => {
-    const profileRes = await fetch('/api/user/profile', { cache: 'no-store' });
+    const profileRes = await fetch('/api/user/profile?scope=radar', { cache: 'no-store' });
     const profileData = await profileRes.json().catch(() => ({}));
     if (!profileRes.ok || !profileData?.id) {
       throw new Error(profileData?.error || 'Nie udało się odświeżyć profilu.');
