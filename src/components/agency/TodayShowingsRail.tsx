@@ -41,7 +41,26 @@ export default function TodayShowingsRail({
     setLoading(true);
     const res = await fetchTodayShowings(token);
     setLoading(false);
-    if (res.ok) setItems(res.items.filter((i) => i.kind === 'presentation'));
+    if (res.ok) {
+      const today = new Date();
+      const seen = new Set<string>();
+      const next: Item[] = [];
+      for (const item of res.items) {
+        if (item.kind !== 'presentation') continue;
+        const when = new Date(item.startsAt);
+        if (Number.isNaN(when.getTime())) continue;
+        const sameDay =
+          when.getFullYear() === today.getFullYear() &&
+          when.getMonth() === today.getMonth() &&
+          when.getDate() === today.getDate();
+        if (!sameDay) continue;
+        const key = `${item.clientId || item.clientName}-${Math.floor(when.getTime() / 60000)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push(item);
+      }
+      setItems(next);
+    }
   }, [token]);
 
   useFocusEffect(
