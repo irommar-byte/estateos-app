@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireActiveAgencyAdmin, setMemberRole, setMemberStatus, updateMemberProfile } from '@/lib/agencyCompany';
+import {
+  requireActiveAgencyAdmin,
+  requireActiveAgencyManagerOrAdmin,
+  setMemberRole,
+  setMemberStatus,
+  updateMemberProfile,
+} from '@/lib/agencyCompany';
 import type { AgencyAgentTitle, AgencyMemberStatus } from '@prisma/client';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { AGENCY_AGENT_TITLES } from '@/lib/agentProfile';
@@ -11,7 +17,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!userId) {
     return NextResponse.json({ success: false, message: 'Brak sesji.' }, { status: 401 });
   }
-  const admin = await requireActiveAgencyAdmin(userId);
+  const body = await req.json();
+  const wantsCard =
+    body.agentTitle != null ||
+    body.name !== undefined ||
+    body.phone !== undefined ||
+    body.email !== undefined ||
+    body.profilePhotoUrl !== undefined;
+
+  const admin = wantsCard
+    ? await requireActiveAgencyManagerOrAdmin(userId)
+    : await requireActiveAgencyAdmin(userId);
   if (!admin) {
     return NextResponse.json({ success: false, message: 'Brak uprawnień.' }, { status: 403 });
   }
@@ -21,8 +37,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!Number.isFinite(memberId)) {
     return NextResponse.json({ success: false, message: 'Nieprawidłowy identyfikator.' }, { status: 400 });
   }
-
-  const body = await req.json();
 
   try {
     if (body.role) {
@@ -42,20 +56,28 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
     }
 
-    if (body.agentTitle) {
-      const title = String(body.agentTitle).toUpperCase() as AgencyAgentTitle;
-      if (!AGENCY_AGENT_TITLES.includes(title)) {
+    if (wantsCard) {
+      const titleRaw = body.agentTitle != null ? String(body.agentTitle).toUpperCase() : undefined;
+      if (titleRaw && !AGENCY_AGENT_TITLES.includes(titleRaw as AgencyAgentTitle)) {
         return NextResponse.json({ success: false, message: 'Nieprawidłowe stanowisko.' }, { status: 400 });
       }
       const updated = await updateMemberProfile({
         companyId: admin.companyId,
         adminUserId: userId,
         memberId,
-        agentTitle: title,
+        agentTitle: titleRaw as AgencyAgentTitle | undefined,
+        profilePhotoUrl: body.profilePhotoUrl !== undefined ? body.profilePhotoUrl : undefined,
+        name: body.name !== undefined ? body.name : undefined,
+        phone: body.phone !== undefined ? body.phone : undefined,
+        email: body.email !== undefined ? body.email : undefined,
       });
       return NextResponse.json({
         success: true,
-        member: { id: updated.id, agentTitle: updated.agentTitle },
+        member: {
+          id: updated.id,
+          agentTitle: updated.agentTitle,
+          profilePhotoUrl: updated.profilePhotoUrl,
+        },
       });
     }
 

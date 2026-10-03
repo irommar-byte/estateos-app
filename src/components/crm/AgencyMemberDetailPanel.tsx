@@ -23,6 +23,7 @@ type MemberSummary = {
     id: number;
     name: string | null;
     email: string;
+    phone?: string | null;
     image: string | null;
     lastLoginAt: string | null;
     activeOffers: number;
@@ -36,6 +37,16 @@ type MemberSummary = {
     extraListings: number;
   };
 };
+
+const TITLE_OPTIONS = [
+  { value: 'DORADCA', label: 'Doradca' },
+  { value: 'AGENT', label: 'Agent' },
+  { value: 'BROKER', label: 'Broker' },
+  { value: 'EXPERT', label: 'Expert' },
+  { value: 'LEADER', label: 'Leader' },
+  { value: 'KIEROWNIK_BIURO', label: 'Kierownik biura' },
+  { value: 'ZASTEPCA_KIEROWNIKA', label: 'Zastępca kierownika biura' },
+] as const;
 
 type InsightsPayload = {
   offers: Array<{
@@ -97,6 +108,24 @@ export default function AgencyMemberDetailPanel({
   const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([]);
   const [transferTo, setTransferTo] = useState<number | ''>('');
   const [transferBusy, setTransferBusy] = useState(false);
+  const [cardBusy, setCardBusy] = useState(false);
+  const [cardSaved, setCardSaved] = useState(false);
+  const [card, setCard] = useState({
+    name: member.user.name || '',
+    email: member.user.email || '',
+    phone: member.user.phone || '',
+    agentTitle: member.agentTitle || 'AGENT',
+  });
+
+  useEffect(() => {
+    setCard({
+      name: member.user.name || '',
+      email: member.user.email || '',
+      phone: member.user.phone || '',
+      agentTitle: member.agentTitle || 'AGENT',
+    });
+    setCardSaved(false);
+  }, [member.id, member.user.name, member.user.email, member.user.phone, member.agentTitle]);
 
   const transferableOffers = useMemo(
     () => (insights?.offers || []).filter((o) => ['ACTIVE', 'PENDING', 'IN_DEAL'].includes(o.status)),
@@ -123,6 +152,36 @@ export default function AgencyMemberDetailPanel({
 
   const toggleOffer = (id: number) => {
     setSelectedOfferIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const handleSaveCard = async () => {
+    setCardBusy(true);
+    setError('');
+    setCardSaved(false);
+    try {
+      const res = await fetch(`/api/agency-company/members/${member.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: card.name.trim(),
+          email: card.email.trim(),
+          phone: card.phone.trim() || null,
+          agentTitle: card.agentTitle,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Nie udało się zapisać wizytówki.');
+        return;
+      }
+      setCardSaved(true);
+      onTransferred();
+    } catch {
+      setError('Błąd połączenia.');
+    } finally {
+      setCardBusy(false);
+    }
   };
 
   const handleTransfer = async () => {
@@ -208,6 +267,69 @@ export default function AgencyMemberDetailPanel({
                   </div>
                 ))}
               </div>
+
+              <section className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4">
+                <h3 className="mb-3 text-sm font-black uppercase tracking-widest text-[var(--eos-text)]">
+                  Wizytówka / dane konta
+                </h3>
+                <p className="mb-3 text-xs text-[var(--eos-muted)]">
+                  Te same pola co przy rejestracji i dodawaniu do biura — możesz poprawić też swoją kartę.
+                </p>
+                <div className="space-y-3">
+                  <label className="block text-xs font-bold text-[var(--eos-muted)]">
+                    Imię i nazwisko
+                    <input
+                      className="eos-field mt-1 w-full text-sm"
+                      value={card.name}
+                      onChange={(e) => setCard((c) => ({ ...c, name: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block text-xs font-bold text-[var(--eos-muted)]">
+                    E-mail
+                    <input
+                      type="email"
+                      className="eos-field mt-1 w-full text-sm"
+                      value={card.email}
+                      onChange={(e) => setCard((c) => ({ ...c, email: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block text-xs font-bold text-[var(--eos-muted)]">
+                    Telefon
+                    <input
+                      className="eos-field mt-1 w-full text-sm"
+                      placeholder="+48…"
+                      value={card.phone}
+                      onChange={(e) => setCard((c) => ({ ...c, phone: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block text-xs font-bold text-[var(--eos-muted)]">
+                    Stanowisko
+                    <select
+                      className="eos-field mt-1 w-full text-sm"
+                      value={card.agentTitle}
+                      onChange={(e) => setCard((c) => ({ ...c, agentTitle: e.target.value }))}
+                    >
+                      {TITLE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={cardBusy}
+                    onClick={() => void handleSaveCard()}
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
+                  >
+                    {cardBusy ? <Loader2 size={14} className="animate-spin" /> : null}
+                    Zapisz wizytówkę
+                  </button>
+                  {cardSaved ? (
+                    <p className="text-center text-xs font-semibold text-emerald-600">Zapisano.</p>
+                  ) : null}
+                </div>
+              </section>
 
               <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 text-sm">
                 <div className="flex items-center gap-2 text-[var(--eos-muted)]">

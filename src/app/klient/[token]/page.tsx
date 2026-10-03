@@ -369,8 +369,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   useEffect(() => {
     if (!token || !portal || releaseAttempted) return;
     if (portal.type !== "BUYER") return;
+    if (!portal.intelligenceEnabled) return;
     if (portal.matches.length > 0) return;
-    if (!portal.unscoredMatchCount && !portal.intelligenceEnabled) return;
+    if (!portal.unscoredMatchCount) return;
 
     setReleaseAttempted(true);
     void fetch(`/api/crm/client-portal/${token}`, {
@@ -381,6 +382,33 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       .then(() => load({ silent: true }))
       .catch(() => {});
   }, [token, portal, releaseAttempted, load]);
+
+  const pickSlotHandled = useRef(false);
+  useEffect(() => {
+    if (!token || !portal || pickSlotHandled.current) return;
+    if (portal.type !== "BUYER" || !portal.presentation) return;
+    if (portal.presentation.status === "confirmed") return;
+    const query = new URLSearchParams(window.location.search);
+    const pickSlot = query.get("pickSlot");
+    if (!pickSlot) return;
+    const allowed = [portal.presentation.startsAt, ...(portal.presentation.proposedSlots || [])];
+    if (!allowed.includes(pickSlot)) return;
+    pickSlotHandled.current = true;
+    void fetch(`/api/crm/client-portal/${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "confirm_presentation", startsAt: pickSlot }),
+    })
+      .then(() => {
+        query.delete("pickSlot");
+        const next = `${window.location.pathname}${query.toString() ? `?${query}` : ""}`;
+        window.history.replaceState({}, "", next);
+        return load({ silent: true });
+      })
+      .catch(() => {
+        pickSlotHandled.current = false;
+      });
+  }, [token, portal, load]);
   const pendingMatches = matches.filter((match) => !match.clientFeedback);
 
   useEffect(() => {
@@ -635,6 +663,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           agentName={portal.agentName}
           hasPendingOffer={pendingMatches.length > 0}
           welcomeEmailSent={welcomeEmailSent}
+          intelligenceEnabled={Boolean(portal.intelligenceEnabled)}
           onDismiss={() => {
             setFromSzukam(false);
             setOnboardingDismissed(true);

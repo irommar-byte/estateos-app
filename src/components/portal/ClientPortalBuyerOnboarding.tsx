@@ -9,6 +9,7 @@ type Props = {
   agentName: string;
   hasPendingOffer: boolean;
   welcomeEmailSent: boolean;
+  intelligenceEnabled?: boolean;
   onDismiss: () => void;
   onShowOffers: () => void;
 };
@@ -18,6 +19,7 @@ export default function ClientPortalBuyerOnboarding({
   agentName,
   hasPendingOffer,
   welcomeEmailSent,
+  intelligenceEnabled = false,
   onDismiss,
   onShowOffers,
 }: Props) {
@@ -73,8 +75,12 @@ export default function ClientPortalBuyerOnboarding({
           <h2 className="mt-1 text-lg font-black leading-snug text-[var(--eos-text)]">Jak to działa — w 30 sekund</h2>
           <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--eos-muted)]">
             {hasPendingOffer
-              ? 'EstateOS Intelligence właśnie wysłało pierwszą propozycję. Od Twojej reakcji zależy, co dostaniesz dalej.'
-              : 'System już przeszukuje rynek pod Twoje kryteria. Pierwsza propozycja pojawi się tutaj — warto wracać.'}
+              ? intelligenceEnabled
+                ? 'EstateOS Intelligence właśnie wysłało pierwszą propozycję. Od Twojej reakcji zależy, co dostaniesz dalej.'
+                : 'Twój agent wysłał pierwszą propozycję. Oceń ją — agent zobaczy Twoją reakcję od razu.'
+              : intelligenceEnabled
+                ? 'System już przeszukuje rynek pod Twoje kryteria. Pierwsza propozycja pojawi się tutaj — warto wracać.'
+                : 'Tu pojawią się oferty, które agent świadomie Ci wyśle. Nic nie idzie automatycznie bez jego decyzji.'}
             {welcomeEmailSent ? (
               <>
                 {' '}
@@ -95,7 +101,8 @@ export default function ClientPortalBuyerOnboarding({
         <li className="flex gap-3 rounded-xl bg-[var(--eos-input)]/60 px-3 py-2.5">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
           <div className="text-[12px] leading-snug text-[var(--eos-text)]">
-            <span className="font-bold">Sprawdź ofertę</span> — rozwiń kartę, zobacz zdjęcia i opis. Intelligence dobiera kolejne dopasowania w tle.
+            <span className="font-bold">Sprawdź ofertę</span> — rozwiń kartę, zobacz zdjęcia i opis.
+            {intelligenceEnabled ? ' Intelligence dobiera kolejne dopasowania w tle.' : ' Agent dobiera kolejne oferty ręcznie.'}
           </div>
         </li>
         <li className="flex gap-3 rounded-xl bg-[var(--eos-input)]/60 px-3 py-2.5">
@@ -104,7 +111,8 @@ export default function ClientPortalBuyerOnboarding({
             <span className="font-bold">Zareaguj</span> —{' '}
             <span className="font-semibold text-emerald-700">Chcę oglądać</span>,{' '}
             <span className="font-semibold text-amber-700">Do przemyślenia</span> albo{' '}
-            <span className="font-semibold text-rose-700">Nie pasuje</span>. System uczy się z każdej odpowiedzi.
+            <span className="font-semibold text-rose-700">Nie pasuje</span>.
+            {intelligenceEnabled ? ' System uczy się z każdej odpowiedzi.' : ' Agent zobaczy Twoją opinię w CRM.'}
           </div>
         </li>
         <li className="flex gap-3 rounded-xl bg-[var(--eos-input)]/60 px-3 py-2.5">

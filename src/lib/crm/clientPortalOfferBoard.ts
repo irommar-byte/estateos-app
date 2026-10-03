@@ -458,7 +458,7 @@ export function resolveAssistantPulse(input: {
   const pending = Math.max(0, input.pendingNewCount);
   const queued = Math.max(0, input.unscoredCount);
 
-  if (input.pendingCheckback) {
+  if (input.pendingCheckback && input.intelligenceEnabled) {
     return {
       mode: 'waiting_checkback',
       badge: 'Pytanie otwarte',
@@ -472,6 +472,17 @@ export function resolveAssistantPulse(input: {
 
   if (pending > 0) {
     const pendingLabel = `${pending} ${polishPlural(pending, 'nową ofertę', 'nowe oferty', 'nowych ofert')}`;
+    if (!input.intelligenceEnabled) {
+      return {
+        mode: 'waiting_reaction',
+        badge: 'Od agenta',
+        title: pending === 1 ? 'Agent wysłał ofertę' : 'Agent wysłał oferty',
+        body: `Masz ${pendingLabel} do decyzji. Oceń propozycję — agent zobaczy Twoją reakcję w CRM.`,
+        activity: 'Panel na żywo',
+        cta: 'Przejdź do ofert',
+        busy: false,
+      };
+    }
     const queuedLine =
       queued > 0
         ? ` W tle trzymamy jeszcze ${queued} ${polishPlural(queued, 'dopasowanie', 'dopasowania', 'dopasowań')} — nie pokażemy ich, zanim nie ocenisz tego, co już dostałeś.`
@@ -487,7 +498,7 @@ export function resolveAssistantPulse(input: {
     };
   }
 
-  if (queued > 0) {
+  if (queued > 0 && input.intelligenceEnabled) {
     return {
       mode: 'preparing',
       badge: 'Dobiera ofertę',
