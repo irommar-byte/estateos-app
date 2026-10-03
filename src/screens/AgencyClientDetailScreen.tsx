@@ -2940,20 +2940,24 @@ export default function AgencyClientDetailScreen() {
                           }
                         : undefined,
                     };
-                    if (!guestAgencyMode) {
-                      setBusy('propose_pres');
-                      const previewRes = await previewPresentationOutbound(token, clientId, {
-                        confirmed: false,
-                        startsAt: slots[0],
-                        startsAtList: slots,
-                        offerId: Number(presentationOfferId),
-                      });
-                      setBusy('');
-                      if (!previewRes.ok) {
-                        Alert.alert('Prezentacja', previewRes.message);
-                        return;
-                      }
-                      openOutboundPreview(previewRes.preview, async () => {
+                    setBusy('propose_pres');
+                    const previewRes = await previewPresentationOutbound(token, clientId, {
+                      confirmed: false,
+                      startsAt: slots[0],
+                      startsAtList: slots,
+                      offerId: Number(presentationOfferId),
+                    });
+                    setBusy('');
+                    if (!previewRes.ok) {
+                      Alert.alert('Prezentacja', previewRes.message);
+                      return;
+                    }
+                    const guestNote = guestAgencyMode
+                      ? `\n\nDodatkowo ten sam termin dostanie agencja gościa: ${guestAgencyName.trim()} (${guestAgencyEmail.trim()}).`
+                      : '';
+                    openOutboundPreview(
+                      { ...previewRes.preview, bodyPreview: `${previewRes.preview.bodyPreview}${guestNote}` },
+                      async () => {
                         setBusy('propose_pres');
                         const res = await postAgencyClientAction(token, clientId, payload);
                         setBusy('');
@@ -2963,23 +2967,14 @@ export default function AgencyClientDetailScreen() {
                           setPresentationAt('');
                           Alert.alert(
                             'Wysłano',
-                            `Wysłano mail z propozycją terminów oglądania${client?.email ? ` na ${client.email}` : ''}. Kupujący zobaczy też ofertę w panelu.`,
+                            guestAgencyMode
+                              ? 'Mail z terminami: kupujący, właściciel i agencja gościa.'
+                              : `Wysłano mail z propozycją terminów oglądania${client?.email ? ` na ${client.email}` : ''}. Kupujący zobaczy też ofertę w panelu.`,
                           );
                           void load();
                         }
-                      });
-                      return;
-                    }
-                    setBusy('propose_pres');
-                    const res = await postAgencyClientAction(token, clientId, payload);
-                    setBusy('');
-                    if (!res.ok) Alert.alert('Prezentacja', res.message);
-                    else {
-                      setPresentationSlots(['', '', '']);
-                      setPresentationAt('');
-                      Alert.alert('Wysłano', 'Mail z terminami: właściciel + agencja gościa.');
-                      void load();
-                    }
+                      },
+                    );
                   }}
                   onConfirmAgreed={async () => {
                     if (!token) return;
@@ -3019,20 +3014,24 @@ export default function AgencyClientDetailScreen() {
                           }
                         : undefined,
                     };
-                    if (!guestAgencyMode) {
-                      setBusy('propose_pres');
-                      const previewRes = await previewPresentationOutbound(token, clientId, {
-                        confirmed: true,
-                        startsAt,
-                        startsAtList: [startsAt],
-                        offerId: Number(presentationOfferId),
-                      });
-                      setBusy('');
-                      if (!previewRes.ok) {
-                        Alert.alert('Prezentacja', previewRes.message);
-                        return;
-                      }
-                      openOutboundPreview(previewRes.preview, async () => {
+                    setBusy('propose_pres');
+                    const previewRes = await previewPresentationOutbound(token, clientId, {
+                      confirmed: true,
+                      startsAt,
+                      startsAtList: [startsAt],
+                      offerId: Number(presentationOfferId),
+                    });
+                    setBusy('');
+                    if (!previewRes.ok) {
+                      Alert.alert('Prezentacja', previewRes.message);
+                      return;
+                    }
+                    const guestNote = guestAgencyMode
+                      ? `\n\nDodatkowo potwierdzenie dostanie agencja gościa: ${guestAgencyName.trim()} (${guestAgencyEmail.trim()}).`
+                      : '';
+                    openOutboundPreview(
+                      { ...previewRes.preview, bodyPreview: `${previewRes.preview.bodyPreview}${guestNote}` },
+                      async () => {
                         setBusy('propose_pres');
                         const res = await postAgencyClientAction(token, clientId, payload);
                         setBusy('');
@@ -3042,23 +3041,14 @@ export default function AgencyClientDetailScreen() {
                           setPresentationAt('');
                           Alert.alert(
                             'Wysłano',
-                            `Wysłano potwierdzenie oglądania${client?.email ? ` na ${client.email}` : ''} (mapa + kalendarz).`,
+                            guestAgencyMode
+                              ? 'Potwierdzony termin: kupujący, właściciel i agencja gościa.'
+                              : `Wysłano potwierdzenie oglądania${client?.email ? ` na ${client.email}` : ''} (mapa + kalendarz).`,
                           );
                           void load();
                         }
-                      });
-                      return;
-                    }
-                    setBusy('propose_pres');
-                    const res = await postAgencyClientAction(token, clientId, payload);
-                    setBusy('');
-                    if (!res.ok) Alert.alert('Prezentacja', res.message);
-                    else {
-                      setPresentationSlots(['', '', '']);
-                      setPresentationAt('');
-                      Alert.alert('Wysłano', 'Potwierdzony termin: właściciel + agencja gościa.');
-                      void load();
-                    }
+                      },
+                    );
                   }}
                 />
                 </View>

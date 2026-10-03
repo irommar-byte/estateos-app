@@ -96,6 +96,14 @@ type PortalData = {
   meeting: (ScheduleSlot & { prepLabels?: string[] }) | null;
   presentation: ScheduleSlot | null;
   journey: JourneyStage[];
+  purchase?: {
+    phase: "viewed" | "negotiating" | "closed";
+    title: string;
+    price: number | null;
+    address: string;
+    offerId: number;
+    statusLabel: string;
+  } | null;
   matches: Array<{
     id: number;
     score: number;
@@ -529,6 +537,49 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   return (
     <main className="client-portal-page pb-24 pt-2 text-[var(--eos-text)] sm:pb-28">
     <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
+      {portal.presentation && token ? (
+        <ClientPortalPresentationHero
+          token={token}
+          clientType={portal.type}
+          slot={portal.presentation}
+          agentName={portal.agentName}
+          onDone={() => load()}
+        />
+      ) : null}
+
+      {portal.type === "BUYER" && portal.purchase ? (
+        <section className="eos-lux-panel rounded-[1.75rem] p-6">
+          <p className="eos-portal-label eos-portal-label--ok">
+            {portal.purchase.phase === "closed"
+              ? "Twoja nieruchomość"
+              : portal.purchase.phase === "negotiating"
+                ? "Transakcja"
+                : "Po oglądaniu"}
+          </p>
+          <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">{portal.purchase.title}</h2>
+          {portal.purchase.address ? (
+            <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.purchase.address}</p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xl font-black text-emerald-600">
+              {portal.purchase.price
+                ? `${Number(portal.purchase.price).toLocaleString("pl-PL")} PLN`
+                : "Cena do uzgodnienia"}
+            </p>
+            <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-[10px]">
+              {portal.purchase.statusLabel}
+            </span>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
+            {portal.purchase.phase === "closed"
+              ? "Ta oferta jest kupiona. Akt notarialny i klucze domyka agent."
+              : portal.purchase.phase === "negotiating"
+                ? "Pokaz już był. Trwa rozmowa o cenie — zakup zamknie się dopiero przy akcie."
+                : "Oglądanie się odbyło. To jeszcze nie zakup. Kolejny krok to rezerwacja i uzgodniona cena."}
+          </p>
+        </section>
+      ) : null}
+
       <header className="eos-inset-frame eos-stack-card relative rounded-[2rem] p-6 sm:p-8">
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 space-y-1">
@@ -572,16 +623,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </div>
         ) : null}
       </header>
-
-      {portal.presentation && token ? (
-        <ClientPortalPresentationHero
-          token={token}
-          clientType={portal.type}
-          slot={portal.presentation}
-          agentName={portal.agentName}
-          onDone={() => load()}
-        />
-      ) : null}
 
       {portal.meeting && collapseAgentMeeting ? (
         <p className="px-1 text-sm leading-relaxed text-[var(--eos-muted)]">
@@ -657,7 +698,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
 
-      {portal.type === "BUYER" && fromSzukam && token ? (
+      {portal.type === "BUYER" && token && !onboardingDismissed ? (
         <ClientPortalBuyerOnboarding
           token={token}
           agentName={portal.agentName}
@@ -668,7 +709,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             setFromSzukam(false);
             setOnboardingDismissed(true);
             try {
-              window.sessionStorage.setItem(buyerOnboardingStorageKey(token), "1");
+              window.localStorage.setItem(buyerOnboardingStorageKey(token), "1");
             } catch {
               /* ignore */
             }

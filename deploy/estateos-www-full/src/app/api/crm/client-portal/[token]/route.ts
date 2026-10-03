@@ -450,6 +450,71 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const acquired =
     client.acquisition?.status === 'SIGNED' || Boolean(client.acquisition?.signedAt);
   const listingVisible = acquired && Boolean(client.linkedOffer);
+
+  const buyerDeal =
+    client.type === 'BUYER' && client.linkedUserId
+      ? await prisma.deal.findFirst({
+          where: { buyerId: client.linkedUserId, status: { not: 'CANCELLED' } },
+          orderBy: { updatedAt: 'desc' },
+          select: {
+            status: true,
+            offerId: true,
+            acceptedBid: { select: { amount: true } },
+            offer: {
+              select: {
+                id: true,
+                title: true,
+                price: true,
+                city: true,
+                district: true,
+                street: true,
+                status: true,
+              },
+            },
+          },
+        })
+      : null;
+  const shownOfferSold = String(buyerDeal?.offer.status || '').toUpperCase() === 'SOLD';
+  const dealFinalized = buyerDeal?.status === 'FINALIZED' || shownOfferSold;
+  const dealOpen = Boolean(buyerDeal && !dealFinalized);
+  const DEAL_PHASE_LABEL: Record<string, string> = {
+    INITIATED: 'Rozmowa otwarta',
+    NEGOTIATION: 'Negocjacje ceny',
+    AGREED: 'Cena uzgodniona',
+    MEETING: 'Domknięcie transakcji',
+    FINALIZED: 'Kupione',
+  };
+  const shortPlace = (parts: Array<string | null | undefined>) => {
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const part of parts) {
+      const value = String(part || '').trim();
+      const key = value.toLowerCase();
+      if (!value || seen.has(key)) continue;
+      if (key === 'polska' || key === 'poland' || key.startsWith('województwo') || key.startsWith('woj.')) continue;
+      seen.add(key);
+      unique.push(value);
+    }
+    return unique.join(', ');
+  };
+  const purchaseOffer = buyerDeal?.offer || (presentation?.heldAt ? presentationOffer : null);
+  const purchasePrice = buyerDeal?.acceptedBid?.amount ?? (purchaseOffer ? Number(purchaseOffer.price) || null : null);
+  const purchase =
+    client.type === 'BUYER' && purchaseOffer && (Boolean(presentation?.heldAt) || Boolean(buyerDeal))
+      ? {
+          phase: dealFinalized ? 'closed' : dealOpen ? 'negotiating' : 'viewed',
+          title: purchaseOffer.title,
+          price: purchasePrice,
+          address: shortPlace([purchaseOffer.street, purchaseOffer.district, purchaseOffer.city]),
+          offerId: purchaseOffer.id,
+          statusLabel: dealFinalized
+            ? 'Kupione'
+            : dealOpen
+              ? DEAL_PHASE_LABEL[buyerDeal?.status || ''] || 'Transakcja w toku'
+              : 'Po pokazie — jeszcze nie zakup',
+        }
+      : null;
+
   const stages = buildJourneyStages({
     clientType: client.type,
     hasMeeting: Boolean(meeting),
@@ -465,7 +530,11 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     reactedCount: reactedMatches.length,
     lastOfferSentAt: lastOfferSentAt ? lastOfferSentAt.toISOString() : null,
     lastReactionAt: lastReactionAt ? lastReactionAt.toISOString() : null,
-    listingSold: ['SOLD', 'ARCHIVED'].includes(String(client.linkedOffer?.status || '').toUpperCase()),
+    listingSold:
+      client.type === 'SELLER' &&
+      ['SOLD', 'ARCHIVED'].includes(String(client.linkedOffer?.status || '').toUpperCase()),
+    dealClosed: client.type === 'BUYER' ? dealFinalized : false,
+    dealOpen: client.type === 'BUYER' ? dealOpen : false,
   });
 
   const pendingCheckback = await getPendingCheckback(client.id);
@@ -559,6 +628,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           }
         : null,
       journey: stages,
+      purchase,
       matches: client.buyerPreference
         ? portalMatches.map((m) => ({
             id: m.id,

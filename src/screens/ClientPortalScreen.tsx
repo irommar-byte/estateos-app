@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -98,6 +99,7 @@ export default function ClientPortalScreen() {
   const establishSession = useAuthStore((s) => s.establishSession);
   const silent = useRef(false);
   const stacksInitialized = useRef(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const autoLinkAttempted = useRef(false);
   const loadSeq = useRef(0);
   const linkInFlight = useRef(false);
@@ -162,6 +164,15 @@ export default function ClientPortalScreen() {
   useEffect(() => {
     void load('full');
   }, [load]);
+
+  useEffect(() => {
+    if (!portalToken || portal?.type !== 'BUYER') {
+      setGuideOpen(false);
+      return;
+    }
+    const key = `estateos_buyer_onboard_${portalToken.slice(-12)}`;
+    void AsyncStorage.getItem(key).then((value) => setGuideOpen(value !== '1'));
+  }, [portalToken, portal?.type]);
 
   useAppActiveInterval(() => {
     if (silent.current) return;
@@ -597,6 +608,70 @@ export default function ClientPortalScreen() {
             colors={colors}
             onDone={() => void load('silent')}
           />
+        ) : null}
+
+        {portal?.type === 'BUYER' && portal.purchase ? (
+          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+            <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>
+              {portal.purchase.phase === 'closed'
+                ? 'TWOJA NIERUCHOMOŚĆ'
+                : portal.purchase.phase === 'negotiating'
+                  ? 'TRANSAKCJA'
+                  : 'PO OGLĄDANIU'}
+            </Text>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 6 }}>
+              {portal.purchase.title}
+            </Text>
+            {portal.purchase.address ? (
+              <Text style={{ color: colors.secondary, marginTop: 4 }}>{portal.purchase.address}</Text>
+            ) : null}
+            <Text style={{ color: colors.green, fontWeight: '800', marginTop: 8 }}>
+              {portal.purchase.price ? formatCurrencyPLN(portal.purchase.price) : 'Cena do uzgodnienia'}
+            </Text>
+            <Text style={{ color: colors.text, fontWeight: '700', marginTop: 6 }}>{portal.purchase.statusLabel}</Text>
+            <Text style={{ color: colors.secondary, marginTop: 6, lineHeight: 18 }}>
+              {portal.purchase.phase === 'closed'
+                ? 'Ta oferta jest kupiona. Akt i klucze domyka agent.'
+                : portal.purchase.phase === 'negotiating'
+                  ? 'Pokaz już był. Trwa rozmowa o cenie — zakup zamknie się przy akcie.'
+                  : 'Oglądanie się odbyło. To jeszcze nie zakup. Kolejny krok to rezerwacja i cena.'}
+            </Text>
+          </ProfileCardShell>
+        ) : null}
+
+        {portal?.type === 'BUYER' && portal.journey?.length ? (
+          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+            <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>PROCES ZAKUPU</Text>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 6 }}>
+              {(portal.journey.find((stage) => stage.current) || portal.journey[portal.journey.length - 1]).label}
+            </Text>
+            <Text style={{ color: colors.secondary, marginTop: 6, lineHeight: 18 }}>
+              {(portal.journey.find((stage) => stage.current) || portal.journey[portal.journey.length - 1]).hint}
+            </Text>
+            <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 12 }}>
+              {portal.journey.filter((stage) => stage.done).length}/{portal.journey.length} etapów
+            </Text>
+          </ProfileCardShell>
+        ) : null}
+
+        {guideOpen && portal?.type === 'BUYER' ? (
+          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>Jak to działa</Text>
+            <Text style={{ color: colors.secondary, marginTop: 6, lineHeight: 18 }}>
+              {portal.intelligenceEnabled
+                ? 'Oferty lądują tutaj. Oceń każdą: chcę oglądać, do przemyślenia albo nie pasuje. Asystent uczy się z odpowiedzi.'
+                : 'Tu pojawiają się tylko oferty, które agent świadomie wyśle. Oceń każdą — agent zobaczy to w CRM.'}
+            </Text>
+            <Pressable
+              onPress={() => {
+                setGuideOpen(false);
+                void AsyncStorage.setItem(`estateos_buyer_onboard_${portalToken.slice(-12)}`, '1');
+              }}
+              style={{ marginTop: 10 }}
+            >
+              <Text style={{ color: colors.green, fontWeight: '800' }}>Rozumiem</Text>
+            </Pressable>
+          </ProfileCardShell>
         ) : null}
 
         {renderAccountSection()}

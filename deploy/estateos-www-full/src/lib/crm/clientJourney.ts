@@ -360,6 +360,10 @@ export function buildJourneyStages(params: {
   lastOfferSentAt?: string | null;
   lastReactionAt?: string | null;
   listingSold?: boolean;
+  /** Dealroom FINALIZED albo oferta ze statusem SOLD. */
+  dealClosed?: boolean;
+  /** Jest otwarty deal (rozmowa, negocjacje, uzgodniona cena) — jeszcze nie akt. */
+  dealOpen?: boolean;
 }): JourneyStage[] {
   const stages: Array<{ id: JourneyStageId; label: string; done: boolean; hint?: string; at?: string | null }> =
     params.clientType === 'BUYER'
@@ -396,16 +400,22 @@ export function buildJourneyStages(params: {
             label: 'Prezentacja na żywo',
             done: Boolean(params.presentationHeld),
             hint: params.presentationHeld
-              ? 'Pokaz się odbył. Agent wraca do kolejnych ofert, jeśli nadal szukacie.'
+              ? 'Pokaz się odbył. To jeszcze nie zakup — transakcja jest osobnym krokiem.'
               : params.hasPresentation
-                ? 'Termin prezentacji jest ustalony. Szczegóły znajdziesz poniżej.'
+                ? 'Termin prezentacji jest ustalony. Szczegóły są na górze panelu.'
                 : 'Gdy któraś oferta naprawdę pasuje, agent umówi prezentację.',
           },
           {
             id: 'done',
-            label: 'Blisko mety',
-            done: Boolean(params.presentationHeld),
-            hint: 'Jesteśmy w procesie sprzedaży: kryteria → oferty → Twoja opinia → prezentacja.',
+            label: 'Transakcja',
+            done: Boolean(params.dealClosed),
+            hint: params.dealClosed
+              ? 'Ta nieruchomość jest kupiona. Akt i klucze domyka agent przy finalizacji.'
+              : params.dealOpen
+                ? 'Trwa transakcja wybranej nieruchomości. Cena i status są na karcie u góry. To jeszcze nie akt.'
+                : params.presentationHeld
+                  ? 'Pokaz się odbył. Zakup zaczyna się dopiero teraz: rezerwacja, uzgodniona cena, potem akt.'
+                  : 'Zakup zamyka się po pokazie. Samo oglądanie i polubienie oferty tego nie kończy.',
           },
         ]
       : [
@@ -446,7 +456,15 @@ export function buildJourneyStages(params: {
         ];
   const firstOpen = stages.findIndex((stage) => {
     if (stage.id === 'presentation' && !params.hasPresentation && !params.presentationHeld) return false;
-    if (stage.id === 'done' && params.clientType === 'BUYER' && !params.presentationHeld) return false;
+    if (
+      stage.id === 'done' &&
+      params.clientType === 'BUYER' &&
+      !params.presentationHeld &&
+      !params.dealOpen &&
+      !params.dealClosed
+    ) {
+      return false;
+    }
     return !stage.done;
   });
   return stages.map((stage, index) => {
@@ -454,13 +472,21 @@ export function buildJourneyStages(params: {
       return { ...stage, current: Boolean(params.hasPresentation) && !params.presentationHeld };
     }
     if (firstOpen < 0) {
-      if (params.clientType === 'BUYER' && !params.hasPresentation && !params.presentationHeld) {
+      if (
+        params.clientType === 'BUYER' &&
+        !params.hasPresentation &&
+        !params.presentationHeld &&
+        !params.dealOpen &&
+        !params.dealClosed
+      ) {
         const reactionIdx = stages.findIndex((row) => row.id === 'reaction');
         return { ...stage, current: index === (reactionIdx >= 0 ? reactionIdx : 0) };
       }
       return {
         ...stage,
-        current: index === stages.length - 1 && Boolean(params.presentationHeld || params.listingSold),
+        current:
+          index === stages.length - 1 &&
+          Boolean(params.dealClosed || params.listingSold || (params.clientType !== 'BUYER' && params.presentationHeld)),
       };
     }
     return {

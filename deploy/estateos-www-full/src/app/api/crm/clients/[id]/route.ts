@@ -131,16 +131,19 @@ export async function GET(req: Request, ctx: RouteCtx) {
       }),
       client.linkedUserId
         ? prisma.deal.findFirst({
-            where: { buyerId: client.linkedUserId, status: 'FINALIZED' },
-            select: { id: true },
+            where: { buyerId: client.linkedUserId, status: { not: 'CANCELLED' } },
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true, status: true, offer: { select: { status: true } } },
           })
         : Promise.resolve(null),
     ]);
+    const liteDealClosed =
+      closedDeal?.status === 'FINALIZED' || String(closedDeal?.offer?.status || '').toUpperCase() === 'SOLD';
     return NextResponse.json({
       success: true,
       client: {
         ...shapeClientListItem(client, {
-          dealClosed: Boolean(closedDeal),
+          dealClosed: liteDealClosed,
           sentCount,
           acquisitionSigned: acquisition?.status === 'SIGNED' || Boolean(acquisition?.signedAt),
           linkedOfferStatus: client.linkedOffer?.status ?? null,
@@ -181,14 +184,17 @@ export async function GET(req: Request, ctx: RouteCtx) {
     }),
     client.linkedUserId
       ? prisma.deal.findFirst({
-          where: { buyerId: client.linkedUserId, status: 'FINALIZED' },
-          select: { id: true },
+          where: { buyerId: client.linkedUserId, status: { not: 'CANCELLED' } },
+          orderBy: { updatedAt: 'desc' },
+          select: { id: true, status: true, offer: { select: { status: true } } },
         })
       : Promise.resolve(null),
     getOpenIntelligenceHandoff(client.id),
     listShowingCards(viewingOfferIds, agencyUserId),
   ]);
-  const dealClosed = Boolean(closedDeal);
+  const dealClosed =
+    closedDeal?.status === 'FINALIZED' || String(closedDeal?.offer?.status || '').toUpperCase() === 'SOLD';
+  const dealOpen = Boolean(closedDeal && !dealClosed);
   const journey = buildJourneyStages({
     clientType: client.type,
     hasMeeting: Boolean(meeting),
@@ -214,6 +220,11 @@ export async function GET(req: Request, ctx: RouteCtx) {
       .filter(Boolean)
       .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0]
       ?.toISOString?.() || null,
+    dealClosed: client.type === 'BUYER' ? dealClosed : false,
+    dealOpen: client.type === 'BUYER' ? dealOpen : false,
+    listingSold:
+      client.type === 'SELLER' &&
+      ['SOLD', 'ARCHIVED'].includes(String(client.linkedOffer?.status || '').toUpperCase()),
   });
 
   const buyerAgentTasks =

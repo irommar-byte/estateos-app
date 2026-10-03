@@ -222,6 +222,14 @@ export type ClientPortalPayload = {
   meeting?: PortalScheduleSlot | null;
   presentation?: PortalScheduleSlot | null;
   journey?: PortalJourneyStage[];
+  purchase?: {
+    phase: 'viewed' | 'negotiating' | 'closed';
+    title: string;
+    price: number | null;
+    address: string;
+    offerId: number;
+    statusLabel: string;
+  } | null;
   acquisition?: { status?: string | null } | null;
 };
 
