@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
 import { resolveMeeting, resolvePresentation } from '@/lib/crm/clientJourney';
+import { dedupeScheduleEvents } from '@/lib/crm/scheduleIdentity';
 
 export type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
 export { splitCountdown, eventCountdownState } from '@/lib/crm/upcomingScheduleShared';
@@ -78,6 +79,7 @@ export async function fetchUpcomingScheduleEvents(userId: number): Promise<Upcom
       endsAt: null,
       status,
       href: offer?.id ? `/oferta/${offer.id}` : `/moje-konto/crm?tab=planowanie`,
+      offerId: offer?.id || null,
     };
   });
 
@@ -195,7 +197,7 @@ export async function fetchUpcomingScheduleEvents(userId: number): Promise<Upcom
       client: { status: 'ACTIVE' },
     },
     include: {
-      client: { select: { id: true, firstName: true, lastName: true } },
+      client: { select: { id: true, firstName: true, lastName: true, type: true } },
     },
     take: 250,
   });
@@ -216,9 +218,10 @@ export async function fetchUpcomingScheduleEvents(userId: number): Promise<Upcom
     ];
     return slots
       .map(({ kind, title, slot }) => {
-        if (!slot) return null;
+        if (!slot || slot.heldAt) return null;
         const t = new Date(slot.startsAt).getTime();
         if (Number.isNaN(t) || t < graceStart.getTime() || t > horizon.getTime()) return null;
+        const role = seed.client.type === 'BUYER' || seed.client.type === 'SELLER' ? seed.client.type : null;
         return {
           id: `${kind}-${seed.client.id}-${slot.startsAt}`,
           kind,
@@ -229,22 +232,21 @@ export async function fetchUpcomingScheduleEvents(userId: number): Promise<Upcom
           endsAt: new Date(t + 60 * 60 * 1000).toISOString(),
           status: slot.status,
           href: `/moje-konto/crm?tab=klienci&clientId=${seed.client.id}`,
+          offerId: slot.offerId,
+          clientId: seed.client.id,
+          buyerClientId: slot.buyerClientId,
+          role,
         };
       })
       .filter(Boolean) as UpcomingScheduleEvent[];
   });
 
-  const merged = [...presentationEvents, ...openHouseHostEvents, ...openHouseGuestEvents, ...acquisitionEvents].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-  );
+  const merged = dedupeScheduleEvents([
+    ...presentationEvents,
+    ...openHouseHostEvents,
+    ...openHouseGuestEvents,
+    ...acquisitionEvents,
+  ]).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 
-  const seen = new Set<string>();
-  const unique: UpcomingScheduleEvent[] = [];
-  for (const ev of merged) {
-    if (seen.has(ev.id)) continue;
-    seen.add(ev.id);
-    unique.push(ev);
-  }
-
-  return unique.slice(0, 8);
+  return merged.slice(0, 40);
 }

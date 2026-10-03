@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
 import { fetchUpcomingScheduleEvents } from '@/lib/crm/upcomingScheduleEvents';
+import { isSameWarsawDay } from '@/lib/crm/scheduleIdentity';
 import { ensureDeskSchema } from '@/lib/desk/ensureSchema';
 import { backfillDeskCasesForAgency } from '@/lib/desk/prospects';
 import { runDeskSlaSweep } from '@/lib/desk/workflowEngine';
@@ -29,7 +30,6 @@ export async function GET(req: Request) {
     schedule,
     openTasks,
     attentionCases,
-    acquisitionActs,
     ohEvents,
     auctionEvents,
     photoSessions,
@@ -76,18 +76,6 @@ export async function GET(req: Request) {
           select: { id: true, firstName: true, lastName: true, phone: true },
         },
         tasks: { where: { status: 'OPEN' }, take: 1, orderBy: { dueAt: 'asc' } },
-      },
-    }),
-    prisma.agencyClientActivity.findMany({
-      where: {
-        agencyUserId,
-        kind: 'ACQUISITION_MEETING',
-        createdAt: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 40,
-      include: {
-        client: { select: { firstName: true, lastName: true, id: true } },
       },
     }),
     prisma.openHouseEvent.findMany({
@@ -165,10 +153,7 @@ export async function GET(req: Request) {
   ]);
 
   const todaySchedule = schedule
-    .filter((ev) => {
-      const t = new Date(ev.startsAt).getTime();
-      return t >= start.getTime() && t <= end.getTime();
-    })
+    .filter((ev) => isSameWarsawDay(ev.startsAt, now))
     .map((ev) => ({
       id: `sch-${ev.id}`,
       kind: ev.kind || 'schedule',
@@ -179,33 +164,17 @@ export async function GET(req: Request) {
       caseId: null as number | null,
     }));
 
-  const acquisitionToday = acquisitionActs
-    .map((a) => {
-      const meta = (a.metadata || {}) as Record<string, unknown>;
-      const startsAt = typeof meta.startsAt === 'string' ? meta.startsAt : null;
-      if (!startsAt) return null;
-      const t = new Date(startsAt).getTime();
-      if (Number.isNaN(t) || t < start.getTime() || t > end.getTime()) return null;
-      const deskCaseId = typeof meta.deskCaseId === 'number' ? meta.deskCaseId : null;
-      return {
-        id: `acq-${a.id}`,
-        kind: 'acquisition',
-        title: a.title || `Pozyskanie · ${a.client.firstName} ${a.client.lastName}`,
-        subtitle: typeof meta.location === 'string' ? meta.location : a.body,
-        startsAt,
-        href: deskCaseId ? `/crm/prospecting` : `/crm/prospecting`,
-        caseId: deskCaseId,
-      };
-    })
-    .filter(Boolean) as Array<{
-    id: string;
-    kind: string;
-    title: string;
-    subtitle?: string | null;
-    startsAt?: string | null;
-    href?: string | null;
-    caseId?: number | null;
-  }>;
+  const scheduledFamilies = new Set(
+    todaySchedule.map((ev) => {
+      const minute = ev.startsAt ? Math.floor(new Date(ev.startsAt).getTime() / 60_000) : 0;
+      const family = String(ev.kind).includes('open_house')
+        ? 'open_house'
+        : String(ev.kind).includes('presentation')
+          ? 'presentation'
+          : ev.kind;
+      return `${family}:${minute}`;
+    }),
+  );
 
   const ohToday = (ohEvents as any[]).map((ev) => ({
     id: `oh-${ev.id}`,
@@ -249,13 +218,20 @@ export async function GET(req: Request) {
       caseId: t.caseId,
     }));
 
+  const extras = [...ohToday, ...auctionToday, ...photoToday, ...taskCalls].filter((item) => {
+    if (!item.startsAt) return true;
+    const minute = Math.floor(new Date(item.startsAt).getTime() / 60_000);
+    const family = String(item.kind).includes('open_house')
+      ? 'open_house'
+      : String(item.kind).includes('presentation')
+        ? 'presentation'
+        : item.kind;
+    return !scheduledFamilies.has(`${family}:${minute}`);
+  });
+
   const timeline = [
     ...todaySchedule,
-    ...acquisitionToday,
-    ...ohToday,
-    ...auctionToday,
-    ...photoToday,
-    ...taskCalls,
+    ...extras,
   ].sort((a, b) => {
     const ta = a.startsAt ? new Date(a.startsAt).getTime() : 0;
     const tb = b.startsAt ? new Date(b.startsAt).getTime() : 0;

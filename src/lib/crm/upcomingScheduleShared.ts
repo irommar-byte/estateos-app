@@ -8,6 +8,10 @@ export type UpcomingScheduleEvent = {
   endsAt: string | null;
   status: 'confirmed' | 'pending';
   href: string | null;
+  offerId?: number | null;
+  clientId?: number | null;
+  buyerClientId?: number | null;
+  role?: 'BUYER' | 'SELLER' | null;
 };
 
 export function splitCountdown(totalMs: number) {
