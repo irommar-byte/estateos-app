@@ -543,4 +543,7 @@ CREATE INDEX IF NOT EXISTS PageVisitLog_userId_createdAt_idx ON PageVisitLog (us
 ALTER TABLE MobileContentReport ADD COLUMN IF NOT EXISTS adminNote TEXT NULL;
 ALTER TABLE MobileContentReport ADD COLUMN IF NOT EXISTS reviewerId INT NULL;
 
+ALTER TABLE AgencyClient ADD COLUMN IF NOT EXISTS contactAddress VARCHAR(191) NULL;
+ALTER TABLE AgencyClient ADD COLUMN IF NOT EXISTS profileVerifiedAt DATETIME(3) NULL;
+
 CREATE INDEX IF NOT EXISTS ContactMessage_threadId_createdAt_idx ON ContactMessage (threadId, createdAt);

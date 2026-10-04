@@ -9,6 +9,7 @@ export type AttendanceDocInput = {
   clientName: string;
   clientPhone: string | null;
   clientEmail: string | null;
+  clientAddress?: string | null;
   clientPesel: string | null;
   offerId: number;
   offerTitle: string;
@@ -92,6 +93,7 @@ export function buildPresentationAttendanceHtml(input: AttendanceDocInput): stri
         <p class="title">${e(input.clientName)}</p>
         ${input.clientPhone ? `<p>Tel. ${e(input.clientPhone)}</p>` : ''}
         ${input.clientEmail ? `<p>E-mail: ${e(input.clientEmail)}</p>` : ''}
+        ${input.clientAddress ? `<p>Adres: ${e(input.clientAddress)}</p>` : ''}
         ${peselRow}
       </div>
       <div class="rule"></div>

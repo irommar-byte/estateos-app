@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { parsePesel } from '@/lib/pesel';
+import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { hashPesel, normalizePeselDigits } from '@/lib/crm/peselHash';
 import { JOURNEY_ACTIVITY, resolvePresentation } from '@/lib/crm/clientJourney';
 import {
@@ -12,6 +13,15 @@ import { loadAppleClientEmailIdentity } from '@/lib/email/appleClientEmail';
 import { resumeIntelligenceForAgent } from '@/lib/crm/intelligenceCheckback';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 import { resolvePublicAppOrigin } from '@/lib/offerShareLanding';
+
+export type VisitClientProfile = {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  contactAddress?: string | null;
+  pesel?: string | null;
+};
 
 export type VisitDebrief = {
   outcome: 'interested' | 'maybe' | 'reject';
@@ -44,6 +54,7 @@ export async function completePresentationVisit(params: {
   attestationConfirmed?: boolean;
   pesel?: string | null;
   skipPesel?: boolean;
+  profile?: VisitClientProfile | null;
   offerId?: number | null;
   debrief: VisitDebrief;
   pdfBase64?: string | null;
@@ -85,8 +96,56 @@ export async function completePresentationVisit(params: {
   });
   if (!client) return { ok: false as const, status: 404, error: 'Nie znaleziono klienta.' };
 
+  let clientFirst = client.firstName;
+  let clientLast = client.lastName;
+  let clientEmail = client.email;
+  let clientPhone = client.phone;
+  let clientAddress = client.contactAddress || null;
   let peselDigits: string | null = client.pesel || null;
-  if (params.pesel != null && String(params.pesel).trim()) {
+
+  const profile = params.profile;
+  if (profile) {
+    const firstName = String(profile.firstName || '').trim().replace(/\s+/g, ' ');
+    const lastName = String(profile.lastName || '').trim().replace(/\s+/g, ' ');
+    const email = String(profile.email || '').trim().toLowerCase();
+    const phone = normalizePhoneE164(profile.phone);
+    const contactAddress = String(profile.contactAddress || '').trim().replace(/\s+/g, ' ');
+    const peselRaw = String(profile.pesel || '').replace(/\D/g, '');
+    if (firstName.length < 2 || lastName.length < 2) {
+      return { ok: false as const, status: 400, error: 'Uzupełnij imię i nazwisko klienta.' };
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false as const, status: 400, error: 'Podaj prawidłowy e-mail klienta.' };
+    }
+    if (!phone) {
+      return { ok: false as const, status: 400, error: 'Podaj telefon klienta, na przykład 501 234 567.' };
+    }
+    if (contactAddress.length < 3) {
+      return { ok: false as const, status: 400, error: 'Podaj adres klienta.' };
+    }
+    if (!parsePesel(peselRaw)) {
+      return { ok: false as const, status: 400, error: 'Podaj prawidłowy PESEL.' };
+    }
+    peselDigits = normalizePeselDigits(peselRaw);
+    await prisma.agencyClient.update({
+      where: { id: client.id },
+      data: {
+        firstName,
+        lastName,
+        email,
+        phone,
+        contactAddress,
+        pesel: peselDigits,
+        peselHash: hashPesel(peselDigits),
+        profileVerifiedAt: new Date(),
+      },
+    });
+    clientFirst = firstName;
+    clientLast = lastName;
+    clientEmail = email;
+    clientPhone = phone;
+    clientAddress = contactAddress;
+  } else if (params.pesel != null && String(params.pesel).trim()) {
     if (!parsePesel(String(params.pesel))) {
       return { ok: false as const, status: 400, error: 'Nieprawidłowy PESEL.' };
     }
@@ -144,9 +203,10 @@ export async function completePresentationVisit(params: {
       agencyName,
       agentName,
       agentPhone: identity.phone,
-      clientName: `${client.firstName} ${client.lastName}`.trim(),
-      clientPhone: client.phone,
-      clientEmail: client.email,
+      clientName: `${clientFirst} ${clientLast}`.trim(),
+      clientPhone,
+      clientEmail,
+      clientAddress,
       clientPesel: peselDigits,
       offerId: offer.id,
       offerTitle: offer.title,
@@ -334,7 +394,7 @@ export async function completePresentationVisit(params: {
 
   let emailSent = false;
   let emailSkippedReason: string | null = null;
-  if (!client.email) {
+  if (!clientEmail) {
     emailSkippedReason = 'Brak e-maila na karcie klienta — uzupełnij i użyj „Wyślij ponownie”.';
   } else {
     const attachments: Array<{ filename: string; content: Buffer; contentType: string }> = [];
@@ -353,10 +413,10 @@ export async function completePresentationVisit(params: {
       });
     }
     emailSent = await sendTransactionalEmail({
-      to: client.email,
+      to: clientEmail,
       subject: `Potwierdzenie oglądania — ${address} — ${viewingAtLabel}`,
       html: buildAttendanceClientEmailHtml({
-        firstName: client.firstName,
+        firstName: clientFirst,
         address,
         whenLabel: viewingAtLabel,
         agentName,
@@ -379,7 +439,7 @@ export async function completePresentationVisit(params: {
       offerId: offer.id,
       kind: 'PRESENTATION_ATTENDANCE_DOC',
       title: 'Potwierdzenie oglądania (PDF/HTML)',
-      body: emailSent ? `Wysłano na ${client.email}` : emailSkippedReason || 'Zapisano lokalnie',
+      body: emailSent ? `Wysłano na ${clientEmail}` : emailSkippedReason || 'Zapisano lokalnie',
       metadata: {
         documentId: docId,
         emailSent,
@@ -397,8 +457,8 @@ export async function completePresentationVisit(params: {
     emailSkippedReason,
     offerId: offer.id,
     debrief: params.debrief,
-    clientEmail: client.email,
-    clientPhone: client.phone,
+    clientEmail,
+    clientPhone,
   };
 }
 
