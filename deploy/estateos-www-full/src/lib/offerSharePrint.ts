@@ -284,6 +284,32 @@ export async function printOfferShareBrochure(): Promise<void> {
   window.print();
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('pdf-read'));
+    reader.onload = () => {
+      const raw = String(reader.result || '');
+      const comma = raw.indexOf(',');
+      resolve(comma >= 0 ? raw.slice(comma + 1) : raw);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** PDF tej samej kartki A4, którą WWW zapisuje jako ofertówkę — base64 dla tabletu. */
+export async function exportOfferSharePdfBase64(root: HTMLElement): Promise<string> {
+  const fit = root.parentElement;
+  const prev = fit?.style.transform ?? '';
+  if (fit) fit.style.transform = 'none';
+  try {
+    const blob = await buildOfferSharePdfBlob(root);
+    return await blobToBase64(blob);
+  } finally {
+    if (fit) fit.style.transform = prev;
+  }
+}
+
 export async function downloadOfferSharePdf(root: HTMLElement, filename: string): Promise<void> {
   await withVisiblePrintPortal(async () => {
     const blob = await buildOfferSharePdfBlob(root);

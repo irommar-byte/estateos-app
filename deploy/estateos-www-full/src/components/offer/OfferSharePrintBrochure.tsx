@@ -11,6 +11,8 @@ import {
 
 type OfferSharePrintBrochureProps = {
   card: OfferShareCard;
+  /** Widoczna kartka A4 (tablet). Domyślnie ukryty portal pod wydruk WWW. */
+  inline?: boolean;
 };
 
 function AgentPrintCard({ card }: { card: OfferShareCard }) {
@@ -86,7 +88,7 @@ function PrintMapPanel({ card }: { card: OfferShareCard }) {
   );
 }
 
-export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochureProps) {
+export default function OfferSharePrintBrochure({ card, inline = false }: OfferSharePrintBrochureProps) {
   const [mounted, setMounted] = useState(false);
   const hero = card.imageUrl || card.images[0] || '';
   const description = truncateOfferShareDescription(
@@ -110,8 +112,7 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
     card.heating ? { label: 'Ogrzewanie', value: card.heating } : null,
   ].filter((item): item is { label: string; value: string } => Boolean(item));
 
-  return createPortal(
-    <div id="offer-share-print-portal" className="offer-share-print-portal" aria-hidden="true">
+  const sheet = (
       <article id="offer-share-print-brochure" className="offer-share-print-brochure">
         <div className="offer-share-print-plate">
           <header className="offer-share-print-header">
@@ -229,6 +230,12 @@ export default function OfferSharePrintBrochure({ card }: OfferSharePrintBrochur
           </footer>
         </div>
       </article>
+  );
+
+  if (inline) return sheet;
+  return createPortal(
+    <div id="offer-share-print-portal" className="offer-share-print-portal" aria-hidden="true">
+      {sheet}
     </div>,
     document.body,
   );

@@ -3106,6 +3106,22 @@ html.light .eos-modal-panel {
   z-index: -1;
 }
 
+.offer-share-arkusz-page {
+  min-height: 100dvh;
+  margin: 0;
+  background: #111113;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.offer-share-arkusz-fit {
+  width: 210mm;
+  height: 297mm;
+  transform-origin: top left;
+}
+
 body.offer-share-pdf-capturing #offer-share-print-portal,
 #offer-share-print-portal.offer-share-pdf-capturing {
   opacity: 1 !important;

@@ -1,11 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -13,10 +11,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import { useAuthStore } from '../store/useAuthStore';
+import { API_URL } from '../config/network';
 import { parsePesel, formatPeselDecode } from '../lib/pesel';
+import { buildPresentationBrief } from '../lib/presentationBrief';
+import PresentationAttendanceSignSheet from '../components/agency/PresentationAttendanceSignSheet';
+import PresentationBriefView from '../components/agency/PresentationBriefView';
+import PresentationOfferSheet, { type PresentationOfferSheetHandle } from '../components/agency/PresentationOfferSheet';
 import {
   completePresentationVisit,
   refreshClientMatches,
@@ -28,9 +29,19 @@ import {
   smsUrl,
   type DebriefOutcome,
 } from '../lib/visitMessageCopy';
-import { SITE_ORIGIN } from '../utils/offerShareUrls';
 
-const STEPS = ['Ofertówka', 'Pokaz', 'Rozmowa', 'PESEL', 'Potwierdzenie'] as const;
+const STEPS = ['Ofertówka', 'Ściąga', 'Rozmowa', 'Dane', 'Podpis'] as const;
+
+function normalizeVisitPhone(raw: string): string | null {
+  const input = raw.trim();
+  const digits = input.replace(/\D/g, '');
+  if (!digits) return null;
+  if (input.startsWith('+') && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  if (digits.length === 9) return `+48${digits}`;
+  if (digits.length === 11 && digits.startsWith('48')) return `+${digits}`;
+  if (digits.length >= 10 && digits.length <= 15) return `+${digits}`;
+  return null;
+}
 
 export default function PresentationVisitWizardScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -49,19 +60,25 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
   };
   const clientId = Number(p.clientId);
   const offerId = Number(p.offerId || 0) || null;
-  const viewingLabel = useMemo(() => {
+  const viewing = useMemo(() => {
     const raw = p.viewingStartsAt || null;
-    if (!raw) return null;
+    if (!raw) return { label: null as string | null, date: null as string | null, time: null as string | null };
     const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleString('pl-PL', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    if (Number.isNaN(d.getTime())) {
+      return { label: null as string | null, date: null as string | null, time: null as string | null };
+    }
+    return {
+      label: d.toLocaleString('pl-PL', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      date: d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }),
+      time: d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
+    };
   }, [p.viewingStartsAt]);
 
   const [step, setStep] = useState(0);
@@ -73,9 +90,25 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
   const [budget, setBudget] = useState('');
   const [district, setDistrict] = useState('');
   const [rooms, setRooms] = useState('');
+  const nameParts = String(p.clientName || '').trim().split(/\s+/).filter(Boolean);
+  const [firstName, setFirstName] = useState(nameParts[0] || '');
+  const [lastName, setLastName] = useState(nameParts.slice(1).join(' '));
+  const [email, setEmail] = useState(String(p.clientEmail || ''));
+  const [phone, setPhone] = useState(String(p.clientPhone || ''));
+  const [address, setAddress] = useState('');
+  const [verifiedAt, setVerifiedAt] = useState<string | null>(null);
+  const [editingProfile, setEditingProfile] = useState(true);
   const [pesel, setPesel] = useState(String(p.clientPesel || '').replace(/\D/g, ''));
-  const [skipPesel, setSkipPesel] = useState(false);
+  const [offerRecord, setOfferRecord] = useState<Record<string, unknown> | null>(null);
+  const sheetRef = useRef<PresentationOfferSheetHandle>(null);
   const [attested, setAttested] = useState(false);
+  const [signature, setSignature] = useState('');
+  const [signOpen, setSignOpen] = useState(false);
+  const [offerFacts, setOfferFacts] = useState<{ title: string; address: string; price: string | null }>({
+    title: '',
+    address: '',
+    price: null,
+  });
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<null | {
     html: string;
@@ -98,46 +131,110 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
   const peselParsed = useMemo(() => (pesel.length ? parsePesel(pesel) : null), [pesel]);
   const peselDecode = useMemo(() => (pesel.length ? formatPeselDecode(pesel) : null), [pesel]);
 
-  const shareOfferSheet = async () => {
-    if (!offerId) {
-      Alert.alert('Ofertówka', 'Brak ID oferty — otwórz wizytę z karty powiązanej z ofertą.');
-      return;
-    }
-    const url = `${SITE_ORIGIN}/oferta/${offerId}?print=1`;
-    try {
-      await Share.share({ message: `Ofertówka #${offerId}\n${url}`, url });
-    } catch {
-      void Linking.openURL(url);
-    }
-  };
-
-  const printOffer = async () => {
+  useEffect(() => {
     if (!offerId) return;
-    const html = `<html><body style="font-family:-apple-system;padding:24px"><h1>Ofertówka #${offerId}</h1><p>${p.offerTitle || ''}</p><p>Otwórz pełną ofertówkę: ${SITE_ORIGIN}/oferta/${offerId}</p></body></html>`;
-    try {
-      await Print.printAsync({ html });
-    } catch {
-      await shareOfferSheet();
-    }
+    let cancelled = false;
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+    void fetch(`${API_URL}/api/offers/${offerId}`, { headers })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return;
+        const offer = json.offer || json.data?.offer || json.data || json;
+        if (!offer || typeof offer !== 'object') return;
+        setOfferRecord(offer as Record<string, unknown>);
+        const line = [offer?.street, offer?.district, offer?.city].filter(Boolean).join(', ');
+        const priceNum = Number(offer?.price);
+        setOfferFacts({
+          title: typeof offer?.title === 'string' ? offer.title : '',
+          address: line,
+          price:
+            Number.isFinite(priceNum) && priceNum > 0
+              ? `${Math.round(priceNum).toLocaleString('pl-PL')} zł`
+              : null,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [offerId, token]);
+
+  useEffect(() => {
+    if (!token || !clientId) return;
+    let cancelled = false;
+    void fetch(`${API_URL}/api/crm/clients/${clientId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.client) return;
+        const client = json.client;
+        if (client.firstName) setFirstName(String(client.firstName));
+        if (client.lastName) setLastName(String(client.lastName));
+        if (client.email) setEmail(String(client.email));
+        if (client.phone) setPhone(String(client.phone));
+        if (client.contactAddress) setAddress(String(client.contactAddress));
+        if (client.pesel) setPesel(String(client.pesel).replace(/\D/g, ''));
+        const stamp = client.profileVerifiedAt ? String(client.profileVerifiedAt) : null;
+        setVerifiedAt(stamp);
+        setEditingProfile(!stamp);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token, clientId]);
+
+  const agentName = user?.name || 'Agent';
+  const agencyName = user?.companyName || 'EstateOS';
+  const clientFullName = `${firstName} ${lastName}`.trim() || p.clientName || 'Klient';
+  const brief = useMemo(
+    () => buildPresentationBrief(offerRecord, offerFacts.title || p.offerTitle || (offerId ? `Oferta #${offerId}` : 'Nieruchomość')),
+    [offerRecord, offerFacts.title, p.offerTitle, offerId],
+  );
+
+  const profileIssue = (): string | null => {
+    if (firstName.trim().length < 2 || lastName.trim().length < 2) return 'Uzupełnij imię i nazwisko.';
+    if (address.trim().length < 3) return 'Uzupełnij adres klienta.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Uzupełnij prawidłowy e-mail.';
+    if (!normalizeVisitPhone(phone)) return 'Uzupełnij telefon, na przykład 501 234 567.';
+    if (!peselParsed) return 'Uzupełnij prawidłowy PESEL — 11 cyfr.';
+    return null;
   };
 
   const finish = async () => {
     if (!token || !outcome) return;
     if (!attested) {
-      Alert.alert('Potwierdzenie', 'Poproś klienta o zaznaczenie checkboxa potwierdzenia oglądania.');
+      Alert.alert('Potwierdzenie', 'Poproś klienta o zaznaczenie zgody, że oglądał nieruchomość.');
+      setSignOpen(true);
       return;
     }
-    if (pesel && !peselParsed) {
-      Alert.alert('PESEL', 'Numer jest niepoprawny — popraw albo wyczyść i kontynuuj bez PESEL.');
+    if (!signature.startsWith('data:image')) {
+      Alert.alert('Podpis', 'Poproś klienta o podpis na tablecie. Bez niego pole na dokumencie zostaje puste.');
+      setSignOpen(true);
+      return;
+    }
+    const issue = profileIssue();
+    if (issue) {
+      Alert.alert('Dane klienta', issue);
+      setSignOpen(false);
+      setStep(3);
       return;
     }
     setBusy(true);
 
     const res = await completePresentationVisit(token, clientId, {
       attestationConfirmed: true,
-      signatureDataUrl: null,
-      pesel: peselParsed ? pesel : null,
-      skipPesel: skipPesel || (!pesel && true),
+      signatureDataUrl: signature,
+      pesel,
+      profile: {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phone,
+        contactAddress: address.trim(),
+        pesel,
+      },
       offerId,
       debrief: {
         outcome,
@@ -160,6 +257,7 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
       Alert.alert('Wizyta', (res as any).message || 'Nie udało się zapisać.');
       return;
     }
+    setSignOpen(false);
     const data = res as any;
     setDone({
       html: data.html || '',
@@ -182,13 +280,11 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
     }
   };
 
-  const agentName = user?.name || 'Agent';
-  const agencyName = user?.companyName || 'EstateOS';
   const portalUrl = p.portalUrl || 'https://estateos.pl';
 
   if (done) {
     const sms = buildPostVisitSms({
-      firstName: (p.clientName || 'Klient').split(' ')[0],
+      firstName: firstName || (p.clientName || 'Klient').split(' ')[0],
       outcome: outcome!,
       offerTitle: p.offerTitle || 'oferta',
       priceHint: priceHint || undefined,
@@ -197,7 +293,7 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
       agentName,
     });
     const mail = buildPostVisitEmail({
-      firstName: (p.clientName || 'Klient').split(' ')[0],
+      firstName: firstName || (p.clientName || 'Klient').split(' ')[0],
       outcome: outcome!,
       offerTitle: p.offerTitle || 'oferta',
       priceHint: priceHint || undefined,
@@ -277,35 +373,11 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100 }} keyboardShouldPersistTaps="handled">
-        {step === 0 ? (
-          <View>
-            <Text style={[styles.h, { color: colors.text }]}>Ofertówka na start</Text>
-            <Text style={{ color: colors.secondary, marginTop: 8, lineHeight: 20 }}>
-              Wydrukuj lub udostępnij ofertówkę klientowi zanim wejdziecie do mieszkania.
-            </Text>
-            <Text style={{ color: colors.text, fontWeight: '800', marginTop: 16 }}>{p.offerTitle || `Oferta #${offerId}`}</Text>
-            <Pressable onPress={() => void printOffer()} style={[styles.cta, { backgroundColor: '#fff', marginTop: 20 }]}>
-              <Text style={[styles.ctaDark, { color: '#000' }]}>Drukuj / PDF</Text>
-            </Pressable>
-            <Pressable onPress={() => void shareOfferSheet()} style={[styles.cta, { backgroundColor: colors.accent, marginTop: 10 }]}>
-              <Text style={styles.ctaDark}>Udostępnij link ofertówki</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {step === 1 ? (
-          <View>
-            <Text style={[styles.h, { color: colors.text }]}>Pokaz</Text>
-            <Text style={{ color: colors.secondary, marginTop: 8, lineHeight: 20 }}>
-              Schowaj iPada i prowadź prezentację. Gdy skończycie — wróćcie do rozmowy.
-            </Text>
-            <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card, marginTop: 20 }]}>
-              <Text style={{ color: colors.text, fontWeight: '800' }}>{p.clientName || 'Klient'}</Text>
-              <Text style={{ color: colors.secondary, marginTop: 6 }}>{p.offerTitle || `Oferta #${offerId}`}</Text>
-            </View>
-          </View>
-        ) : null}
+      {step === 0 ? (
+        <PresentationOfferSheet ref={sheetRef} offerId={offerId} agentId={Number(user?.id) || null} />
+      ) : (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100 }} keyboardShouldPersistTaps="handled">
+        {step === 1 ? <PresentationBriefView brief={brief} /> : null}
 
         {step === 2 ? (
           <View>
@@ -405,44 +477,52 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
 
         {step === 3 ? (
           <View>
-            <Text style={[styles.h, { color: colors.text }]}>PESEL (opcjonalnie)</Text>
-            <Text style={{ color: '#FF9F0A', marginTop: 8, lineHeight: 20 }}>
-              Bez PESEL potwierdzenie jest słabiej identyfikowalne. Możesz uzupełnić później.
-            </Text>
-            <TextInput
-              value={pesel}
-              onChangeText={(v) => {
-                setPesel(v.replace(/\D/g, '').slice(0, 11));
-                setSkipPesel(false);
-              }}
-              keyboardType="number-pad"
-              placeholder="11 cyfr"
-              placeholderTextColor={colors.secondary}
-              style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card, marginTop: 14 }]}
-            />
-            {pesel.length > 0 ? (
-              <Text
-                style={{
-                  marginTop: 10,
-                  fontWeight: '800',
-                  color: peselParsed ? colors.accent : '#FF3B30',
-                }}
-              >
-                {peselParsed
-                  ? `PESEL poprawny · ${peselParsed.gender === 'M' ? 'Mężczyzna' : 'Kobieta'} · ${peselParsed.birthDate} · ${peselDecode}`
-                  : 'PESEL niepoprawny'}
-              </Text>
-            ) : null}
-            <Pressable
-              onPress={() => {
-                setPesel('');
-                setSkipPesel(true);
-                setStep(4);
-              }}
-              style={{ marginTop: 16 }}
-            >
-              <Text style={{ color: colors.secondary, fontWeight: '700' }}>Kontynuuj bez PESEL — uzupełnię później</Text>
-            </Pressable>
+            <Text style={[styles.h, { color: colors.text }]}>Dane klienta</Text>
+            {verifiedAt && !editingProfile ? (
+              <View style={{ marginTop: 14, padding: 16, borderRadius: 16, backgroundColor: 'rgba(52,199,89,0.12)' }}>
+                <Text style={{ color: colors.accent, fontWeight: '900' }}>Klient zweryfikowany</Text>
+                <Text style={{ color: colors.text, marginTop: 8, fontWeight: '800', fontSize: 18 }}>{clientFullName}</Text>
+                <Text style={{ color: colors.secondary, marginTop: 6 }}>{address}</Text>
+                <Text style={{ color: colors.secondary, marginTop: 4 }}>{email}</Text>
+                <Text style={{ color: colors.secondary, marginTop: 4 }}>{phone}</Text>
+                <Text style={{ color: colors.secondary, marginTop: 4 }}>PESEL {pesel}</Text>
+                <Pressable onPress={() => setEditingProfile(true)} style={{ marginTop: 12 }}>
+                  <Text style={{ color: '#0A84FF', fontWeight: '800' }}>Popraw dane</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View>
+                <Text style={{ color: colors.secondary, marginTop: 8, lineHeight: 20 }}>
+                  Sprawdź dane z klientem. Po poprawnym zapisie nie pytamy o nie przy następnym pokazie.
+                </Text>
+                <Text style={styles.fieldLabel}>Imię</Text>
+                <TextInput value={firstName} onChangeText={setFirstName} autoCapitalize="words" placeholder="Imię" placeholderTextColor={colors.secondary} style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <Text style={styles.fieldLabel}>Nazwisko</Text>
+                <TextInput value={lastName} onChangeText={setLastName} autoCapitalize="words" placeholder="Nazwisko" placeholderTextColor={colors.secondary} style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <Text style={styles.fieldLabel}>Adres</Text>
+                <TextInput value={address} onChangeText={setAddress} placeholder="Ulica, kod, miasto" placeholderTextColor={colors.secondary} style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <Text style={styles.fieldLabel}>E-mail</Text>
+                <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="e-mail" placeholderTextColor={colors.secondary} style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <Text style={styles.fieldLabel}>Telefon</Text>
+                <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="501 234 567" placeholderTextColor={colors.secondary} style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <Text style={styles.fieldLabel}>PESEL</Text>
+                <TextInput
+                  value={pesel}
+                  onChangeText={(v) => setPesel(v.replace(/\D/g, '').slice(0, 11))}
+                  keyboardType="number-pad"
+                  placeholder="11 cyfr"
+                  placeholderTextColor={colors.secondary}
+                  style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+                />
+                {pesel.length > 0 ? (
+                  <Text style={{ marginTop: 10, fontWeight: '800', color: peselParsed ? colors.accent : '#FF3B30' }}>
+                    {peselParsed
+                      ? `PESEL poprawny · ${peselParsed.gender === 'M' ? 'Mężczyzna' : 'Kobieta'} · ${peselParsed.birthDate} · ${peselDecode}`
+                      : 'PESEL niepoprawny'}
+                  </Text>
+                ) : null}
+              </View>
+            )}
           </View>
         ) : null}
 
@@ -458,68 +538,41 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
             }}
           >
             <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 }}>
-              DOKUMENT NA TABLECIE
+              PODPIS NA TABLECIE
             </Text>
-            <Text style={[styles.h, { color: colors.text, marginTop: 8 }]}>Potwierdzenie oglądania</Text>
+            <Text style={[styles.h, { color: colors.text, marginTop: 8 }]}>Potwierdzenie czeka na klienta</Text>
             <Text style={{ color: colors.secondary, marginTop: 8, lineHeight: 20 }}>
-              {p.clientName || 'Klient'} potwierdza obecność na oglądaniu
-              {offerId ? ` oferty #${offerId}` : ''}
-              {p.offerTitle ? ` — ${p.offerTitle}` : ''}.
-              {viewingLabel ? ` Termin: ${viewingLabel}.` : ''} To nie jest umowa pośrednictwa.
+              {clientFullName} dostaje kartkę z nieruchomością, zgodą i polem podpisu. Podpis wkleja się
+              w kopię
+              {email ? ` na ${email.trim()}` : ''}.
             </Text>
-            {peselParsed ? (
-              <Text style={{ color: colors.accent, marginTop: 10, fontWeight: '700' }}>
-                PESEL OK · {formatPeselDecode(pesel)}
-              </Text>
-            ) : (
-              <Text style={{ color: '#FF9F0A', marginTop: 10 }}>Bez PESEL — można uzupełnić później</Text>
-            )}
-            <Pressable
-              onPress={() => setAttested((v) => !v)}
-              style={{
-                marginTop: 20,
-                padding: 18,
-                borderRadius: 16,
-                borderWidth: 2,
-                borderColor: attested ? colors.accent : colors.border,
-                backgroundColor: attested ? 'rgba(52,199,89,0.12)' : 'rgba(255,255,255,0.03)',
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 14,
-              }}
-            >
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
-                  borderWidth: 2,
-                  borderColor: attested ? colors.accent : colors.secondary,
-                  backgroundColor: attested ? colors.accent : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginTop: 2,
-                }}
-              >
-                {attested ? <Ionicons name="checkmark" size={18} color="#000" /> : null}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, lineHeight: 22 }}>
-                  Potwierdzam oglądanie
-                  {p.offerTitle ? ` „${p.offerTitle}”` : offerId ? ` oferty #${offerId}` : ' tej nieruchomości'}
-                  {viewingLabel ? ` · ${viewingLabel}` : ''}.
-                </Text>
-                <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 13, lineHeight: 18 }}>
-                  Zaznaczenie zastępuje podpis odręczny i jest stemplem czasu na dokumencie. Kopia pójdzie na
-                  {p.clientEmail ? ` ${p.clientEmail}` : ' e-mail klienta'}.
-                </Text>
-              </View>
-            </Pressable>
+            <Text style={{ color: signature.startsWith('data:image') && attested ? colors.accent : '#FF9F0A', marginTop: 12, fontWeight: '700' }}>
+              {signature.startsWith('data:image') && attested
+                ? 'Zgoda i podpis są na dokumencie.'
+                : 'Brakuje zgody albo podpisu odręcznego.'}
+            </Text>
           </View>
         ) : null}
       </ScrollView>
+      )}
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12, borderTopColor: colors.border }]}>
+        {step === 0 ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+            <Pressable
+              onPress={() => void sheetRef.current?.share().catch((err) => Alert.alert('Ofertówka', err?.message || 'Nie udało się wysłać.'))}
+              style={[styles.cta, { flex: 1, backgroundColor: '#fff' }]}
+            >
+              <Text style={styles.ctaDark}>Wyślij</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void sheetRef.current?.print().catch((err) => Alert.alert('Ofertówka', err?.message || 'Nie udało się wydrukować.'))}
+              style={[styles.cta, { flex: 1, backgroundColor: '#fff' }]}
+            >
+              <Text style={styles.ctaDark}>Drukuj</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {step < 4 ? (
           <Pressable
             onPress={() => {
@@ -527,11 +580,17 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
                 Alert.alert('Rozmowa', 'Wybierz jedną z trzech ścieżek.');
                 return;
               }
-              if (step === 3 && pesel && !peselParsed) {
-                Alert.alert('PESEL', 'Popraw numer albo kontynuuj bez PESEL.');
-                return;
+              if (step === 3) {
+                const issue = profileIssue();
+                if (issue) {
+                  setEditingProfile(true);
+                  Alert.alert('Dane klienta', issue);
+                  return;
+                }
               }
-              setStep((s) => s + 1);
+              const next = step + 1;
+              setStep(next);
+              if (next === 4) setSignOpen(true);
             }}
             style={[styles.cta, { backgroundColor: colors.accent }]}
           >
@@ -540,17 +599,43 @@ export default function PresentationVisitWizardScreen({ navigation, route }: any
         ) : (
           <Pressable
             disabled={busy}
-            onPress={() => void finish()}
+            onPress={() => setSignOpen(true)}
             style={[styles.cta, { backgroundColor: colors.accent, opacity: busy ? 0.6 : 1 }]}
           >
-            {busy ? <ActivityIndicator color="#000" /> : (
-              <Text style={styles.ctaDark}>
-                Zapisz i wyślij kopię{p.clientEmail ? ` na ${p.clientEmail}` : ' PDF/HTML na mail'}
-              </Text>
-            )}
+            <Text style={styles.ctaDark}>Otwórz potwierdzenie do podpisu</Text>
           </Pressable>
         )}
       </View>
+
+      <PresentationAttendanceSignSheet
+        visible={signOpen}
+        busy={busy}
+        attested={attested}
+        signature={signature}
+        onAttestedChange={setAttested}
+        onSignatureChange={setSignature}
+        onClose={() => {
+          if (!busy) setSignOpen(false);
+        }}
+        onSubmit={() => void finish()}
+        facts={{
+          agencyName,
+          agentName,
+          agentPhone: user?.phone ? String(user.phone) : null,
+          clientName: clientFullName,
+          clientPhone: phone || null,
+          clientEmail: email.trim() || null,
+          clientAddress: address.trim() || null,
+          peselLabel: peselParsed ? pesel : null,
+          offerId,
+          offerTitle: offerFacts.title || p.offerTitle || (offerId ? `Oferta #${offerId}` : 'Nieruchomość'),
+          offerAddress: offerFacts.address,
+          offerPriceLabel: offerFacts.price,
+          viewingAtLabel: viewing.label,
+          viewingDatePart: viewing.date,
+          viewingTimePart: viewing.time,
+        }}
+      />
     </View>
   );
 }
@@ -569,7 +654,8 @@ const styles = StyleSheet.create({
   h: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
   card: { borderWidth: 1, borderRadius: 14, padding: 14 },
   choice: { borderWidth: 1, borderRadius: 14, padding: 16, marginTop: 10 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15, marginTop: 10 },
+  fieldLabel: { color: '#8e8e93', fontSize: 12, fontWeight: '800', marginTop: 14 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16, marginTop: 6 },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   signBox: { borderWidth: 1, borderRadius: 14, overflow: 'hidden', minHeight: 160 },
   footer: { paddingHorizontal: 16, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth },

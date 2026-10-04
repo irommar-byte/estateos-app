@@ -1156,6 +1156,10 @@ model AgencyClient {
   pesel                     String?            @db.VarChar(16)
   /// HMAC-SHA256 of PESEL for privacy-preserving duplicate detection.
   peselHash                 String?            @db.VarChar(64)
+  /// Adres zamieszkania klienta — uzupełniany przy weryfikacji na pokazie.
+  contactAddress            String?            @db.VarChar(191)
+  /// Ustawiane, gdy na tablecie potwierdzono imię, nazwisko, adres, e-mail, telefon i PESEL.
+  profileVerifiedAt         DateTime?
   emailVerifiedAt           DateTime?
   phoneVerifiedAt           DateTime?
   emailVerifyCode           String?            @db.VarChar(16)
