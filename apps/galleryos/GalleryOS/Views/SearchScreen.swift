@@ -53,6 +53,7 @@ struct SearchScreen: View {
                         },
                         onSelect: { _ in },
                         onFavorite: { _ in },
+                        onConceal: { library.setConcealed(true, ids: [$0]) },
                         onZoom: { _, _ in },
                         onVisiblePlaces: { _ in }
                     )

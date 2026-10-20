@@ -51,6 +51,12 @@ final class TVCatalogTests: XCTestCase {
         XCTAssertEqual(snapshot.albums.map(\.name), ["Rodzina", "Wakacje"])
         XCTAssertEqual(snapshot.albums.first { $0.name == "Wakacje" }?.photos.first?.cloudHash, "bb02")
         XCTAssertEqual(snapshot.videos, 1)
+        var secret = asset("ee05", date(2026, 10, 2), albums: ["Wakacje"])
+        secret.hidden = true
+        let withSecret = TVCatalog.build(from: list + [secret])
+        XCTAssertEqual(withSecret.model.all.count, 3)
+        XCTAssertNil(withSecret.assets["ee05"])
+        XCTAssertFalse(withSecret.albums.flatMap(\.photos).contains { $0.cloudHash == "ee05" })
         XCTAssertEqual(snapshot.model.years.map(\.year), [2025, 2026])
     }
 

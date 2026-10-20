@@ -479,6 +479,10 @@ async function handlePeople(req, res, url, pathname, root, body, send, peopleOpt
     await handlePairing(req, res, url, pathname, body, send);
     return;
   }
+  if (pathname.startsWith("/v1/people/passkey/")) {
+    await handlePasskey(req, res, pathname, body, send, social, root, me);
+    return;
+  }
   if (!me) {
     send(res, 401, { error: "Zaloguj się." });
     return;
@@ -506,6 +510,8 @@ async function handlePeople(req, res, url, pathname, root, body, send, peopleOpt
       localPort: Number(payload.localPort || 0),
       localName: String(payload.localName || ""),
       remoteHost: String(payload.remoteHost || ""),
+      remotePort: Number(payload.remotePort || 0),
+      secret: String(payload.secret || ""),
     };
     saveSocial(root, social);
     send(res, 200, { ok: true });
@@ -710,8 +716,196 @@ async function handlePairing(req, res, url, pathname, body, send) {
   send(res, 404, { error: "Nie ma takiej ścieżki." });
 }
 
-function readJSON(file, fallback) {
-  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; }
+const passkeyChallenges = new Map();
+const passkeyRP = "estateos.pl";
+
+async function handlePasskey(req, res, pathname, body, send, social, root, me) {
+  if (req.method === "POST" && pathname === "/v1/people/passkey/login/start") {
+    const sessionId = crypto.randomBytes(16).toString("base64url");
+    const challenge = crypto.randomBytes(32).toString("base64url");
+    passkeyChallenges.set(sessionId, { challenge, exp: Date.now() + 5 * 60 * 1000, kind: "login" });
+    send(res, 200, { sessionId, challenge, rpId: passkeyRP });
+    return;
+  }
+  if (req.method === "POST" && pathname === "/v1/people/passkey/login/finish") {
+    const payload = JSON.parse((await body(req, 64 * 1024)).toString("utf8") || "{}");
+    const box = takeChallenge(payload.sessionId, "login");
+    if (!box) {
+      send(res, 400, { error: "To logowanie wygasło. Spróbuj jeszcze raz." });
+      return;
+    }
+    const account = accountForPasskey(social, payload.id);
+    if (!account) {
+      send(res, 401, { error: "Nie ma klucza Face ID dla tego konta." });
+      return;
+    }
+    try {
+      verifyPasskeyAssertion(payload, box.challenge, account);
+    } catch (error) {
+      send(res, 401, { error: error.message || "Face ID nie pasuje." });
+      return;
+    }
+    const issued = issuePeopleSession(social, account.name);
+    saveSocial(root, social);
+    send(res, 200, personSession(issued, account));
+    return;
+  }
+  if (!me) {
+    send(res, 401, { error: "Zaloguj się." });
+    return;
+  }
+  const account = social.accounts[me.toLowerCase()];
+  if (!account) {
+    send(res, 401, { error: "Zaloguj się." });
+    return;
+  }
+  if (req.method === "POST" && pathname === "/v1/people/passkey/register/start") {
+    const sessionId = crypto.randomBytes(16).toString("base64url");
+    const challenge = crypto.randomBytes(32).toString("base64url");
+    passkeyChallenges.set(sessionId, { challenge, exp: Date.now() + 5 * 60 * 1000, kind: "register", name: account.name });
+    send(res, 200, {
+      sessionId,
+      challenge,
+      rpId: passkeyRP,
+      userID: Buffer.from(account.name, "utf8").toString("base64url"),
+      name: account.name,
+    });
+    return;
+  }
+  if (req.method === "POST" && pathname === "/v1/people/passkey/register/finish") {
+    const payload = JSON.parse((await body(req, 128 * 1024)).toString("utf8") || "{}");
+    const box = takeChallenge(payload.sessionId, "register");
+    if (!box || box.name !== account.name) {
+      send(res, 400, { error: "Zapisywanie klucza wygasło. Spróbuj jeszcze raz." });
+      return;
+    }
+    try {
+      const key = verifyPasskeyRegistration(payload, box.challenge);
+      account.passkeys = (account.passkeys || []).filter((item) => item.id !== key.id);
+      account.passkeys.push(key);
+      saveSocial(root, social);
+      send(res, 200, { ok: true });
+    } catch (error) {
+      send(res, 400, { error: error.message || "Nie udało się zapisać klucza." });
+    }
+    return;
+  }
+  send(res, 404, { error: "Nie ma takiej ścieżki." });
+}
+
+function takeChallenge(sessionId, kind) {
+  const box = passkeyChallenges.get(String(sessionId || ""));
+  passkeyChallenges.delete(String(sessionId || ""));
+  if (!box || box.kind !== kind || box.exp < Date.now()) return null;
+  return box;
+}
+
+function accountForPasskey(social, id) {
+  const key = String(id || "");
+  return Object.values(social.accounts).find((account) => (account.passkeys || []).some((item) => item.id === key)) || null;
+}
+
+function verifyPasskeyAssertion(payload, challenge, account) {
+  const response = payload.response || {};
+  const clientData = Buffer.from(String(response.clientDataJSON || ""), "base64url");
+  const authData = Buffer.from(String(response.authenticatorData || ""), "base64url");
+  const signature = Buffer.from(String(response.signature || ""), "base64url");
+  checkClientData(clientData, challenge, "webauthn.get");
+  const parsed = parseAuthData(authData);
+  if (!parsed.rpIdHash.equals(crypto.createHash("sha256").update(passkeyRP).digest())) {
+    throw new Error("Klucz jest dla innej strony.");
+  }
+  if ((parsed.flags & 0x01) === 0) throw new Error("Face ID nie zostało potwierdzone.");
+  const stored = (account.passkeys || []).find((item) => item.id === String(payload.id || ""));
+  if (!stored) throw new Error("Nie ma klucza Face ID dla tego konta.");
+  const key = crypto.createPublicKey({
+    key: { kty: "EC", crv: "P-256", x: stored.x, y: stored.y },
+    format: "jwk",
+  });
+  const signed = Buffer.concat([authData, crypto.createHash("sha256").update(clientData).digest()]);
+  const ok = crypto.verify("sha256", signed, key, signature);
+  if (!ok) throw new Error("Face ID nie pasuje.");
+}
+
+function verifyPasskeyRegistration(payload, challenge) {
+  const response = payload.response || {};
+  const clientData = Buffer.from(String(response.clientDataJSON || ""), "base64url");
+  const attestation = decodeCBOR(Buffer.from(String(response.attestationObject || ""), "base64url"));
+  const authData = attestation.get("authData");
+  if (!Buffer.isBuffer(authData)) throw new Error("Klucz jest niekompletny.");
+  checkClientData(clientData, challenge, "webauthn.create");
+  const parsed = parseAuthData(authData);
+  if (!parsed.credential) throw new Error("Klucz jest niekompletny.");
+  if (!parsed.rpIdHash.equals(crypto.createHash("sha256").update(passkeyRP).digest())) {
+    throw new Error("Klucz jest dla innej strony.");
+  }
+  const x = parsed.credential.cose.get(-2);
+  const y = parsed.credential.cose.get(-3);
+  if (!Buffer.isBuffer(x) || !Buffer.isBuffer(y)) throw new Error("Klucz jest niekompletny.");
+  return { id: String(payload.id || parsed.credential.id.toString("base64url")), x: x.toString("base64url"), y: y.toString("base64url") };
+}
+
+function checkClientData(clientData, challenge, type) {
+  const json = JSON.parse(clientData.toString("utf8"));
+  if (json.type !== type) throw new Error("Face ID nie pasuje.");
+  if (json.challenge !== challenge) throw new Error("To logowanie wygasło. Spróbuj jeszcze raz.");
+  const origin = String(json.origin || "");
+  if (!origin.endsWith(passkeyRP)) throw new Error("Klucz jest dla innej strony.");
+}
+
+function parseAuthData(authData) {
+  const rpIdHash = authData.subarray(0, 32);
+  const flags = authData[32];
+  let credential = null;
+  if (flags & 0x40) {
+    let offset = 37 + 16;
+    const idLength = authData.readUInt16BE(offset);
+    offset += 2;
+    const id = authData.subarray(offset, offset + idLength);
+    offset += idLength;
+    credential = { id, cose: decodeCBOR(authData.subarray(offset)) };
+  }
+  return { rpIdHash, flags, credential };
+}
+
+function decodeCBOR(buffer) {
+  let offset = 0;
+  function read(count) {
+    const slice = buffer.subarray(offset, offset + count);
+    offset += count;
+    return slice;
+  }
+  function value() {
+    const initial = buffer[offset++];
+    const major = initial >> 5;
+    const info = initial & 31;
+    let length = info;
+    if (info === 24) length = buffer[offset++];
+    else if (info === 25) { length = buffer.readUInt16BE(offset); offset += 2; }
+    else if (info === 26) { length = buffer.readUInt32BE(offset); offset += 4; }
+    else if (info >= 28) throw new Error("Klucz jest niekompletny.");
+    if (major === 0) return length;
+    if (major === 1) return -1 - length;
+    if (major === 2) return Buffer.from(read(length));
+    if (major === 3) return read(length).toString("utf8");
+    if (major === 4) {
+      const list = [];
+      for (let index = 0; index < length; index += 1) list.push(value());
+      return list;
+    }
+    if (major === 5) {
+      const map = new Map();
+      for (let index = 0; index < length; index += 1) map.set(value(), value());
+      return map;
+    }
+    if (major === 7 && info === 20) return false;
+    if (major === 7 && info === 21) return true;
+    if (major === 7 && info === 22) return null;
+    throw new Error("Klucz jest niekompletny.");
+  }
+  return value();
+}
+
 }
 
 const invokedDirectly = process.env.pm_id || (

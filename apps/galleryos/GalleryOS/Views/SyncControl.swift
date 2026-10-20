@@ -1,15 +1,28 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum SyncLight: Equatable {
     case off
     case working
     case waiting
+    case partial
     case ok
     case error
 
     static func resolve(status: SyncStatus, uploads: Bool, connected: Bool, online: Bool) -> SyncLight {
         guard connected else { return .off }
+        if !uploads {
+            if status.busy && (status.detail.hasPrefix("Wybran") || status.detail == "Zatrzymuję kopię zapasową") {
+                return .working
+            }
+            if status.visible, status.title == "Wstrzymano" {
+                return status.detail.hasPrefix("Czeka") || status.detail.hasPrefix("Ponawiam") ? .waiting : .error
+            }
+            if status.visible, status.title == "Gotowe", status.detail.hasPrefix("Wybran") { return .ok }
+            return .off
+        }
         if status.busy { return .working }
+        if status.visible, status.detail.contains("nie dosz") { return .partial }
         if status.visible, status.title == "Wstrzymano" {
             return status.detail.hasPrefix("Czeka") ? .waiting : .error
         }
@@ -21,7 +34,7 @@ enum SyncLight: Equatable {
     var color: Color {
         switch self {
         case .off: Color.secondary
-        case .working, .waiting: Color(red: 1.0, green: 0.78, blue: 0.16)
+        case .working, .waiting, .partial: Color(red: 1.0, green: 0.78, blue: 0.16)
         case .ok: Color(red: 0.2, green: 0.84, blue: 0.42)
         case .error: Color(red: 1.0, green: 0.27, blue: 0.23)
         }
@@ -29,9 +42,10 @@ enum SyncLight: Equatable {
 
     var headline: String {
         switch self {
-        case .off: "Synchronizacja wyłączona"
+        case .off: "Kopia zapasowa wyłączona"
         case .working: "Synchronizuję"
         case .waiting: "Czekam"
+        case .partial: "Zostało kilka zdjęć"
         case .ok: "Wszystko aktualne"
         case .error: "Wymaga uwagi"
         }
@@ -40,6 +54,7 @@ enum SyncLight: Equatable {
     var symbol: String {
         switch self {
         case .ok: "checkmark"
+        case .partial: "exclamationmark"
         case .error: "exclamationmark"
         case .waiting: "pause.fill"
         case .off: "moon.zzz.fill"
@@ -106,6 +121,7 @@ private struct SyncToolbarLabel: View {
         }
         .animation(GalleryTheme.snappy, value: library.destinationConnected)
         .sensoryFeedback(trigger: light) { old, new in
+            // Only a real finish clicks. Flipping through "almost done" was clicking on every lap.
             if old == .working, new == .ok { return .success }
             if old != .error, new == .error { return .warning }
             return nil
@@ -160,6 +176,11 @@ struct SyncPanel: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var feed = SyncFeed.shared
     @ObservedObject private var servers = SavedServerStore.shared
+    @ObservedObject private var repair = GalleryRepair.shared
+    @ObservedObject private var disks = SpareDisks.shared
+    @State private var pickingDisk = false
+    @State private var showCatalog = false
+    @State private var catalogLabel = ""
     @AppStorage("galleryos.sync.enabled") private var uploads = true
     @AppStorage("galleryos.sync.wifiOnly") private var wifiOnly = false
     @AppStorage("galleryos.sync.chargingOnly") private var chargingOnly = false
@@ -201,6 +222,20 @@ struct SyncPanel: View {
             }
             .task { LibraryEngine.shared.publishCounts() }
             .task { freeSpace = await library.freeSpaceText() }
+            .fileImporter(isPresented: $pickingDisk, allowedContentTypes: [.folder]) { result in
+                guard case .success(let url) = result else { return }
+                guard url.startAccessingSecurityScopedResource() else { return }
+                defer { url.stopAccessingSecurityScopedResource() }
+                guard let data = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) else { return }
+                _ = disks.add(data: data, name: url.lastPathComponent)
+            }
+            .sheet(isPresented: $showCatalog, onDismiss: {
+                catalogLabel = LibraryEngine.shared.serverShareName()
+            }) {
+                ServerCatalogSheet()
+                    .environmentObject(library)
+            }
+            .onAppear { catalogLabel = LibraryEngine.shared.serverShareName() }
             .animation(GalleryTheme.snappy, value: light)
             .animation(GalleryTheme.snappy, value: status)
         }
@@ -232,7 +267,7 @@ struct SyncPanel: View {
             .padding(.top, 8)
 
             VStack(spacing: 4) {
-                Text(light.headline)
+                Text(!uploads && light == .working ? "Wysyłam na serwer" : light.headline)
                     .font(.title2.weight(.bold))
                 if let progress = status.progress, status.busy {
                     Text("\(Int((progress * 100).rounded())) %")
@@ -254,7 +289,7 @@ struct SyncPanel: View {
     private var ringFraction: CGFloat {
         switch light {
         case .working: CGFloat(status.progress ?? 0.12)
-        case .ok: 1
+        case .ok, .partial: 1
         case .error, .waiting: 0.62
         case .off: 0
         }
@@ -263,12 +298,14 @@ struct SyncPanel: View {
     private var detailLine: String {
         if !status.detail.isEmpty, status.visible {
             let line = status.title.isEmpty ? status.detail : "\(status.title) · \(status.detail)"
-            if keepUnlocked, status.busy { return line + "\nEkran zostaje włączony do 100%." }
+            if keepUnlocked, status.busy, uploads { return line + "\nEkran zostaje włączony, dopóki kopiowanie trwa." }
             return line
         }
         switch light {
-        case .off: return library.destinationConnected ? "Kopiowanie na serwer jest wstrzymane." : "Nie wybrano jeszcze serwera."
-        case .ok: return "Każde zdjęcie z tego iPhone’a ma kopię na serwerze."
+        case .off: return library.destinationConnected
+            ? "Nic nie zapisuje się samo. Chmurka przy zdjęciu wysyła tylko ten plik."
+            : "Nie wybrano jeszcze serwera."
+        case .ok: return "Każde zdjęcie z tego \(ThisDevice.genitive) ma kopię na serwerze."
         default: return ""
         }
     }
@@ -287,9 +324,23 @@ struct SyncPanel: View {
                     }
                 }
             )) {
-                PanelLabel("Kopiuj na serwer", symbol: "icloud.and.arrow.up", tint: GalleryTheme.accent)
+                PanelLabel("Kopia zapasowa", symbol: "icloud.and.arrow.up", tint: GalleryTheme.accent)
             }
             .tint(GalleryTheme.accent)
+            Text("Nowe zdjęcia i filmy zapisują się same na serwerze GalleryOS. Wyłączone — po otwarciu nic nie startuje. Chmurka wysyła tylko wskazany plik.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider().padding(.vertical, 2)
+            Button {
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                repair.start(library: library)
+            } label: {
+                PanelLabel(repair.line ?? "Sprawdź puste kadry", symbol: "viewfinder", tint: .orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .disabled(repair.running)
         }
     }
 
@@ -317,7 +368,66 @@ struct SyncPanel: View {
             if library.destinationConnected {
                 Divider().padding(.vertical, 2)
                 ConnectionCard()
+                Button {
+                    showCatalog = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(Color.orange.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Katalog")
+                                .font(.subheadline.weight(.semibold))
+                            Text(catalogLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
+            Divider().padding(.vertical, 2)
+            Button {
+                disks.selectServer()
+            } label: {
+                HStack {
+                    PanelLabel("Kopia na serwer", symbol: "externaldrive.connected.to.line.below", tint: GalleryTheme.accent)
+                    Spacer()
+                    if disks.targetID == "server" {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(GalleryTheme.accent)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            ForEach(disks.disks) { disk in
+                Button {
+                    disks.select(disk.id)
+                } label: {
+                    HStack {
+                        PanelLabel(disk.name, symbol: "externaldrive.fill", tint: .orange)
+                        Spacer()
+                        if disks.targetID == disk.id {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            Button {
+                pickingDisk = true
+            } label: {
+                PanelLabel("Dodaj pendrive", symbol: "plus", tint: .orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
             if tvReady {
                 Divider().padding(.vertical, 2)
                 AppleTVShareToggle()
@@ -345,7 +455,7 @@ struct SyncPanel: View {
         return PanelCard {
             Text("Skąd jest kolejka")
                 .font(.headline)
-            SourceLine(symbol: "iphone", tint: GalleryTheme.accent, title: "Z tego iPhone’a",
+            SourceLine(symbol: ThisDevice.symbol, tint: GalleryTheme.accent, title: "Z tego \(ThisDevice.genitive)",
                        detail: "\(PhotoFormat.count(item.toSend)) · \(ByteText.amount(item.toSendBytes))")
             if item.cloudOriginals > 0 {
                 SourceLine(symbol: "icloud", tint: .blue, title: "Oryginał tylko w iCloud",
@@ -447,6 +557,8 @@ private struct PanelLabel: View {
                 .frame(width: 28, height: 28)
                 .background(tint.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             Text(title)
+                .multilineTextAlignment(.leading)
+                .lineLimit(3)
         }
     }
 }
@@ -498,5 +610,123 @@ private struct StatTile: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+struct ServerCatalogSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var share = ""
+    @State private var shares: [String] = []
+    @State private var path: [String] = []
+    @State private var entries: [WebEntry] = []
+    @State private var note = ""
+    @State private var busy = false
+
+    private var folder: String { path.joined(separator: "/") }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Udział na serwerze") {
+                    if shares.isEmpty, busy {
+                        ProgressView()
+                    }
+                    ForEach(shares, id: \.self) { item in
+                        Button {
+                            choose(item)
+                        } label: {
+                            HStack {
+                                Label(item, systemImage: "externaldrive.fill")
+                                Spacer()
+                                if item.caseInsensitiveCompare(share) == .orderedSame {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(GalleryTheme.accent)
+                                }
+                            }
+                        }
+                        .disabled(busy)
+                    }
+                }
+                Section(folder.isEmpty ? share : folder) {
+                    if path.isEmpty == false {
+                        Button {
+                            path.removeLast()
+                            Task { await loadFolder() }
+                        } label: {
+                            Label("W górę", systemImage: "arrow.up")
+                        }
+                    }
+                    if entries.isEmpty, !busy {
+                        Text(note.isEmpty ? "Ten folder jest pusty." : note)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(entries) { entry in
+                        if entry.isDirectory {
+                            Button {
+                                path.append(entry.name)
+                                Task { await loadFolder() }
+                            } label: {
+                                Label(entry.name, systemImage: "folder")
+                            }
+                        } else {
+                            Label(entry.name, systemImage: "doc")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(share.isEmpty ? "Katalog" : share)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Zamknij") { dismiss() }
+                }
+            }
+            .overlay {
+                if busy { ProgressView().controlSize(.large) }
+            }
+            .task { await open() }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func open() async {
+        share = LibraryEngine.shared.serverShareName()
+        busy = true
+        shares = await LibraryEngine.shared.serverShares()
+        if shares.isEmpty { shares = [share] }
+        await loadFolder()
+    }
+
+    private func loadFolder() async {
+        busy = true
+        note = ""
+        let found = await LibraryEngine.shared.serverChildren(folder)
+        entries = found
+        if found.isEmpty { note = "" }
+        busy = false
+    }
+
+    private func choose(_ name: String) {
+        guard name.caseInsensitiveCompare(share) != .orderedSame else {
+            path = []
+            Task { await loadFolder() }
+            return
+        }
+        busy = true
+        Task {
+            if let problem = await LibraryEngine.shared.switchShare(to: name) {
+                note = problem
+                busy = false
+                return
+            }
+            share = name
+            path = []
+            shares = await LibraryEngine.shared.serverShares()
+            if !shares.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+                shares.insert(name, at: 0)
+            }
+            await loadFolder()
+        }
     }
 }

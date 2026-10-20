@@ -103,7 +103,7 @@ struct AppleTVForm: View {
                     Text("Apple TV czyta zdjęcia z serwera GalleryOS albo z QNAP-a (WebDAV). Wybierz jedno z tych miejsc w ustawieniach biblioteki.")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Najpierw połącz iPhone’a z serwerem, a potem sparuj Apple TV.")
+                    Text("Najpierw połącz \(ThisDevice.genitive) z serwerem, a potem sparuj Apple TV.")
                         .foregroundStyle(.secondary)
                 }
             } header: {

@@ -170,6 +170,29 @@ assert.equal(saved.status, 200);
 const loaded = await request("/v1/people/library", { token: entered.json.token });
 assert.equal(loaded.json.library.host, "nas.local");
 assert.equal(loaded.json.library.password, undefined);
+const withSecret = await request("/v1/people/library", {
+  method: "PUT",
+  token: entered.json.token,
+  body: JSON.stringify({
+    host: "nas.local",
+    port: 5000,
+    username: "ola",
+    remoteHost: "ola.myqnapcloud.com",
+    remotePort: 5001,
+    directory: "Multimedia",
+    secret: "nas-haslo",
+  }),
+});
+assert.equal(withSecret.status, 200);
+const restored = await request("/v1/people/library", { token: entered.json.token });
+assert.equal(restored.json.library.remoteHost, "ola.myqnapcloud.com");
+assert.equal(restored.json.library.remotePort, 5001);
+assert.equal(restored.json.library.secret, "nas-haslo");
+const passkey = await request("/v1/people/passkey/login/start", { method: "POST", body: "{}" });
+assert.equal(passkey.status, 200);
+assert.equal(passkey.json.rpId, "estateos.pl");
+assert.ok(passkey.json.challenge);
+assert.ok(passkey.json.sessionId);
 
 // Apple TV pairing relays only ciphertext and works once.
 const tvKey = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });

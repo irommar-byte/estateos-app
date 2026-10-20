@@ -109,7 +109,10 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
     static let thumbSide: CGFloat = 640
 
     func cachedThumbnail(hash: String) -> UIImage? {
-        if let hit = thumbs.object(forKey: hash as NSString) { return hit }
+        if let hit = thumbs.object(forKey: hash as NSString) {
+            if Self.hasPicture(hit) { return hit }
+            thumbs.removeObject(forKey: hash as NSString)
+        }
         guard hash.hasPrefix("preview-") else { return nil }
         let image = Self.previewImage(hash)
         keepThumb(image, hash)
@@ -117,6 +120,7 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
     }
 
     private func keepThumb(_ image: UIImage, _ hash: String) {
+        guard Self.hasPicture(image) else { return }
         let pixels = image.size.width * image.size.height * image.scale * image.scale
         thumbs.setObject(image, forKey: hash as NSString, cost: Int(pixels * 4))
     }
@@ -126,12 +130,18 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
         if let hit = cachedThumbnail(hash: hash) { return hit }
         let key = "t:" + hash
         return await run(key: key) { [self] in
-            if let hit = thumbs.object(forKey: hash as NSString) { return hit }
+            if let hit = thumbs.object(forKey: hash as NSString) {
+                if Self.hasPicture(hit) { return hit }
+                thumbs.removeObject(forKey: hash as NSString)
+            }
             let file = diskURL(CatalogPaths.thumb(hash: hash))
             if let data = try? Data(contentsOf: file), Self.isImageData(data),
                let image = Self.decode(data, maxSide: Self.thumbSide) {
-                keepThumb(image, hash)
-                return image
+                if Self.hasPicture(image) {
+                    keepThumb(image, hash)
+                    return image
+                }
+                try? FileManager.default.removeItem(at: file)
             }
             guard currentTransport() != nil else {
                 tvThumbLog.debug("thumb \(hash, privacy: .public): no transport")
@@ -148,7 +158,7 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
             let small = await readBytes(CatalogPaths.thumb(hash: hash), timeout: 12)
             await thumbGate.leave()
             if Task.isCancelled { return nil }
-            if let small, Self.isImageData(small), let image = Self.decode(small, maxSide: Self.thumbSide) {
+            if let small, Self.isImageData(small), let image = Self.decode(small, maxSide: Self.thumbSide), Self.hasPicture(image) {
                 write(small, to: file)
                 keepThumb(image, hash)
                 return image
@@ -207,6 +217,7 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
             expected: primary.bytes
         ), Self.isImageData(data),
               let image = Self.decode(data, maxSide: Self.thumbSide) else { return nil }
+        guard Self.hasPicture(image) else { return nil }
         if let jpeg = image.jpegData(compressionQuality: 0.82) {
             write(jpeg, to: cacheFile)
         }
@@ -229,7 +240,7 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
         }
         let image = await Self.frame(of: avAsset, maxSide: Self.thumbSide, timeout: 25)
         withExtendedLifetime(loader) {}
-        guard let image else {
+        guard let image, Self.hasPicture(image) else {
             tvThumbLog.debug("video frame \(hash, privacy: .public): none")
             return nil
         }
@@ -251,11 +262,19 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
         return await withTaskGroup(of: UIImage?.self) { group in
             group.addTask {
                 let duration = (try? await asset.load(.duration))?.seconds ?? 0
-                let second = duration.isFinite && duration > 2 ? min(1.5, duration * 0.1) : 0
-                guard let cg = try? await generator.image(at: CMTime(seconds: second, preferredTimescale: 600)).image else {
-                    return nil
+                let spots: [Double]
+                if duration.isFinite, duration > 2 {
+                    spots = [min(1.5, duration * 0.1), min(duration * 0.4, max(0.2, duration - 0.2))]
+                } else {
+                    spots = [0.5, 0]
                 }
-                return UIImage(cgImage: cg)
+                for second in spots {
+                    if Task.isCancelled { return nil }
+                    guard let cg = try? await generator.image(at: CMTime(seconds: second, preferredTimescale: 600)).image else { continue }
+                    let image = UIImage(cgImage: cg)
+                    if hasPicture(image) { return image }
+                }
+                return nil
             }
             group.addTask {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
@@ -593,6 +612,11 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
             UIColor.white.withAlphaComponent(0.18).setFill()
             context.cgContext.fillEllipse(in: CGRect(x: size.width * 0.55, y: size.height * 0.12, width: 120, height: 120))
         }
+    }
+
+    /// A 1×1 decode is not a photo. A dark frame still is.
+    static func hasPicture(_ image: UIImage) -> Bool {
+        image.size.width >= 2 && image.size.height >= 2
     }
 
     /// Rejects HTML/XML error bodies from WebDAV so they are never cached as “thumbs”.

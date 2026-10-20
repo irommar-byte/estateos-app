@@ -100,9 +100,12 @@ struct LibraryPlaceSheet: View {
                     defer { url.stopAccessingSecurityScopedResource() }
                     do {
                         let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-                        LibraryEngine.shared.saveBookmark(data, name: url.lastPathComponent)
-                        folderName = url.lastPathComponent
-                        message = ""
+                        if let problem = SpareDisks.shared.add(data: data, name: url.lastPathComponent) {
+                            message = problem
+                        } else {
+                            folderName = url.lastPathComponent
+                            message = ""
+                        }
                     } catch {
                         message = "Nie udało się zapamiętać folderu."
                     }
@@ -224,7 +227,7 @@ struct LibraryPlaceSheet: View {
             DisclosureGroup("Zaawansowane", isExpanded: $advanced) {
                 TextField("Port zdalny (DDNS), jeśli znasz", text: $port)
                     .keyboardType(.numberPad)
-                TextField("Udział, na przykład Multimedia", text: $directory)
+                TextField("Udział, na przykład Public", text: $directory)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
@@ -296,7 +299,7 @@ struct LibraryPlaceSheet: View {
 
     private var footer: String {
         switch LibraryPlace(rawValue: place) {
-        case .thisPhone: "Zdjęcia zostają w Rolce tego iPhone’a."
+        case .thisPhone: "Zdjęcia zostają w Rolce tego \(ThisDevice.genitive)."
         case .server: "Ten sam katalog biblioteki, wysyłany w kawałkach, także poza domem."
         case .qnap: "Wybierz serwer w sieci domowej, dopisz DDNS do pracy poza domem i zaloguj się raz."
         case .otherServer: "WebDAV, SFTP albo Immich, jeśli taki serwer już działa."
@@ -371,6 +374,14 @@ struct LibraryPlaceSheet: View {
     // MARK: Connect
 
     private func enable() async {
+        if place == LibraryPlace.disk.rawValue {
+            if folderName.isEmpty {
+                message = "Wybierz dysk, folder albo udział SMB."
+                return
+            }
+            dismiss()
+            return
+        }
         message = ""
         if LibraryPlace(rawValue: place) == .server, ConnectionURL.isCloudNAS(clean(host)) {
             let name = ConnectionURL.bare(host)
@@ -419,6 +430,7 @@ struct LibraryPlaceSheet: View {
             settings.localPort = local.isEmpty ? 0 : localPort
             settings.localName = local.isEmpty ? "" : localName
             settings.remoteHost = remote
+            settings.namedRemotePort = Int(port) ?? 0
         } else {
             settings.host = clean(host)
             settings.port = Int(port) ?? 0

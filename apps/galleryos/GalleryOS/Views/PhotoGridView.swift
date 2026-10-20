@@ -41,6 +41,9 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var onOpen: (OpenRequest) -> Void
     var onSelect: (String) -> Void
     var onFavorite: (String) -> Void
+    var onConceal: (String) -> Void = { _ in }
+    var onSendNow: (String) -> Void = { _ in }
+    var concealedAlbum = false
     var onSelectionSet: (Set<String>) -> Void = { _ in }
     var onDelete: ((String) -> Void)?
     var onZoom: (PhotoZoom, GridAnchor?) -> Void
@@ -87,6 +90,9 @@ struct PhotoGrid: UIViewControllerRepresentable {
         controller.onOpen = onOpen
         controller.onSelect = onSelect
         controller.onFavorite = onFavorite
+        controller.onConceal = onConceal
+        controller.onSendNow = onSendNow
+        controller.concealedAlbum = concealedAlbum
         controller.onSelectionSet = onSelectionSet
         controller.onDelete = onDelete
         controller.onZoom = onZoom
@@ -105,6 +111,9 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     var onOpen: (OpenRequest) -> Void = { _ in }
     var onSelect: (String) -> Void = { _ in }
     var onFavorite: (String) -> Void = { _ in }
+    var onConceal: (String) -> Void = { _ in }
+    var onSendNow: (String) -> Void = { _ in }
+    var concealedAlbum = false
     var onSelectionSet: (Set<String>) -> Void = { _ in }
     var onDelete: ((String) -> Void)?
     var onZoom: (PhotoZoom, GridAnchor?) -> Void = { _, _ in }
@@ -145,6 +154,13 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     private var retryTimer: Timer?
     var isPinching: Bool { pinching }
     private let imageManager = PHCachingImageManager()
+    private var posterAsked = Set<String>()
+    private let posterQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 6
+        queue.qualityOfService = .userInitiated
+        return queue
+    }()
     private let cacheOptions: PHImageRequestOptions = {
         let options = PHImageRequestOptions()
         options.deliveryMode = .fastFormat
@@ -228,6 +244,16 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         layout.markDirty()
         collection.reloadData()
         startThumbRetry()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(postersReady),
+            name: FilmPoster.filled,
+            object: nil
+        )
+    }
+
+    @objc private func postersReady() {
+        fillVisibleThumbs()
     }
 
     override func viewDidLayoutSubviews() {
@@ -236,6 +262,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         flushAnchor()
         updatePinnedHeader()
         refreshChronology()
+        updateCache()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -245,13 +272,68 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
     private func fillThumb(id: String, cell: PhotoThumbCell) {
         let asset = assetLookup(id)
-        let fallback = thumbs.cached(id) ?? thumb(id)
+        let saved = FilmPoster.image(for: id)
+        let fallback = saved ?? thumbs.cached(id) ?? thumb(id)
         if let fallback {
             cell.applyCloudThumb(fallback, id: id)
         }
+        if saved != nil { return }
         let scale = max(collection?.traitCollection.displayScale ?? 2, 2)
         let side = max(cell.bounds.width, 120) * scale
-        let pixel = CGSize(width: side, height: side)
+        var pixel = CGSize(width: side, height: side)
+        if let asset, asset.mediaType == .video {
+            pixel = CGSize(width: 480, height: 480)
+            FilmPoster.ensure(id: id, asset: asset) { [weak self, weak cell] image in
+                guard let image else { return }
+                if let cell, cell.displays(id: id) {
+                    cell.applyCloudThumb(image, id: id)
+                } else {
+                    self?.applyCached(id, image)
+                }
+            }
+        }
+        if let asset, asset.mediaType != .video {
+            // A retry must not cancel a poster that is still on its way. That left every film as an empty square.
+            if !cell.isLoadingThumb(for: id) {
+                cell.cancelThumbRequest(on: imageManager)
+                let options = PHImageRequestOptions()
+                options.deliveryMode = .fastFormat
+                options.resizeMode = .fast
+                options.isNetworkAccessAllowed = true
+                options.isSynchronous = false
+                let token = imageManager.requestImage(
+                    for: asset,
+                    targetSize: pixel,
+                    contentMode: .aspectFill,
+                    options: options
+                ) { [weak self, weak cell] image, info in
+                    let cancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                    let degraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                    if cancelled { return }
+                    if let image, image.size.width >= 2, image.size.height >= 2 {
+                        DispatchQueue.main.async {
+                            if asset.mediaType == .video {
+                                FilmPoster.store(image, id: id)
+                            }
+                            GridImageStore.shared.remember(id, image)
+                            guard let self else { return }
+                            if let cell, cell.displays(id: id) {
+                                cell.applyCloudThumb(image, id: id)
+                            } else {
+                                self.applyCached(id, image)
+                            }
+                        }
+                        return
+                    }
+                    if !degraded {
+                        DispatchQueue.main.async { cell?.stopLoadingThumb(id) }
+                    }
+                }
+                cell.noteThumbRequest(token, id: id)
+            }
+        } else if let asset, posterAsked.insert(id).inserted {
+            localVideoPoster(id: id, asset: asset, cell: cell)
+        }
         thumbs.load(
             id: id,
             asset: asset,
@@ -264,6 +346,36 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                 cell.applyCloudThumb(image, id: readyID)
             } else {
                 self.applyCached(readyID, image)
+            }
+        }
+    }
+
+    /// A film poster from the copy already on this device. Does not download the movie.
+    private func localVideoPoster(id: String, asset: PHAsset, cell: PhotoThumbCell) {
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = false
+        options.deliveryMode = .fastFormat
+        imageManager.requestAVAsset(forVideo: asset, options: options) { [weak self, weak cell] avAsset, _, _ in
+            guard let avAsset else { return }
+            let generator = AVAssetImageGenerator(asset: avAsset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 480, height: 480)
+            generator.requestedTimeToleranceBefore = .positiveInfinity
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
+            let time = CMTime(seconds: 0.4, preferredTimescale: 600)
+            self?.posterQueue.addOperation { [weak self, weak cell] in
+                guard let cg = try? generator.copyCGImage(at: time, actualTime: nil) else { return }
+                let image = UIImage(cgImage: cg)
+                DispatchQueue.main.async {
+                    FilmPoster.store(image, id: id)
+                    GridImageStore.shared.remember(id, image)
+                    guard let self else { return }
+                    if let cell, cell.displays(id: id) {
+                        cell.applyCloudThumb(image, id: id)
+                    } else {
+                        self.applyCached(id, image)
+                    }
+                }
             }
         }
     }
@@ -290,7 +402,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     private func startThumbRetry() {
         retryTimer?.invalidate()
         // Only refill still-empty tiles — never shimmer already-painted ones.
-        retryTimer = Timer.scheduledTimer(withTimeInterval: 2.4, repeats: true) { [weak self] _ in
+        retryTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.fillVisibleThumbs() }
         }
     }
@@ -467,6 +579,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                 image: thumbs.cached(photo.id) ?? thumb(photo.id)
             )
             cell.contentView.alpha = photo.id == hiddenID ? 0 : 1
+            cell.onSyncTap = { [weak self] id in self?.onSendNow(id) }
             fillThumb(id: photo.id, cell: cell)
             return cell
         }
@@ -542,6 +655,12 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                 image: UIImage(systemName: photo.isFavorite ? "heart.slash" : "heart")
             ) { [weak self] _ in
                 self?.onFavorite(photo.id)
+            })
+            top.append(UIAction(
+                title: concealedAlbum ? "Pokaż w bibliotece" : "Ukryj",
+                image: UIImage(systemName: concealedAlbum ? "eye" : "eye.slash")
+            ) { [weak self] _ in
+                self?.onConceal(photo.id)
             })
             var sections: [UIMenuElement] = [UIMenu(options: .displayInline, children: top)]
             if let onDelete = self.onDelete {
@@ -1463,6 +1582,7 @@ final class PhotoThumbCell: UICollectionViewCell {
     private let heart = UIImageView()
     private let check = UIImageView()
     private let syncMark = UIImageView()
+    private let syncHit = UIButton(type: .custom)
     private let selectedVeil = UIView()
     private var wasSelected = false
     private var syncShown: (id: String, symbol: String)?
@@ -1472,6 +1592,7 @@ final class PhotoThumbCell: UICollectionViewCell {
     private var assetRef: PHAsset?
     private(set) var currentImage: UIImage?
     private let shade = CAGradientLayer()
+    var onSyncTap: ((String) -> Void)?
     var hasImage: Bool { currentImage != nil }
 
     override init(frame: CGRect) {
@@ -1505,7 +1626,12 @@ final class PhotoThumbCell: UICollectionViewCell {
         contentView.addSubview(check)
         syncMark.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)
         syncMark.tintColor = .white
+        syncMark.isUserInteractionEnabled = false
         contentView.addSubview(syncMark)
+        syncHit.addTarget(self, action: #selector(syncTapped), for: .touchUpInside)
+        syncHit.isHidden = true
+        syncHit.accessibilityLabel = "Wyślij na serwer"
+        contentView.addSubview(syncHit)
         isAccessibilityElement = true
     }
 
@@ -1522,6 +1648,7 @@ final class PhotoThumbCell: UICollectionViewCell {
         heart.frame = CGRect(x: 6, y: 6, width: 14, height: 14)
         check.frame = CGRect(x: contentView.bounds.width - 26, y: contentView.bounds.height - 26, width: 22, height: 22)
         syncMark.frame = CGRect(x: contentView.bounds.width - 16, y: 4, width: 12, height: 12)
+        syncHit.frame = CGRect(x: contentView.bounds.width - 36, y: 0, width: 36, height: 36)
     }
 
     override func prepareForReuse() {
@@ -1535,6 +1662,7 @@ final class PhotoThumbCell: UICollectionViewCell {
         selectedVeil.isHidden = true
         wasSelected = false
         syncMark.isHidden = true
+        syncHit.isHidden = true
         syncShown = nil
         traits = []
         loopingID = nil
@@ -1544,8 +1672,33 @@ final class PhotoThumbCell: UICollectionViewCell {
         currentAssetID == id
     }
 
+    private var thumbRequest: PHImageRequestID = PHInvalidImageRequestID
+    private var loadingThumbID: String?
+
+    func isLoadingThumb(for id: String) -> Bool {
+        loadingThumbID == id && thumbRequest != PHInvalidImageRequestID
+    }
+
+    func noteThumbRequest(_ token: PHImageRequestID, id: String) {
+        thumbRequest = token
+        loadingThumbID = id
+    }
+
+    func stopLoadingThumb(_ id: String) {
+        guard loadingThumbID == id else { return }
+        loadingThumbID = nil
+        thumbRequest = PHInvalidImageRequestID
+    }
+
+    func cancelThumbRequest(on manager: PHImageManager) {
+        guard thumbRequest != PHInvalidImageRequestID else { return }
+        manager.cancelImageRequest(thumbRequest)
+        thumbRequest = PHInvalidImageRequestID
+        loadingThumbID = nil
+    }
+
     func applyCloudThumb(_ image: UIImage, id: String) {
-        guard currentAssetID == id else { return }
+        guard currentAssetID == id, PreviewCheck.isUsable(image) else { return }
         imageView.image = image
         currentImage = image
         imageView.backgroundColor = .clear
@@ -1567,7 +1720,7 @@ final class PhotoThumbCell: UICollectionViewCell {
         if !same { loopingID = nil }
         setChrome(photo: photo, selecting: selecting, selected: selected, sync: sync)
         accessibilityLabel = photo.traits.isVideo ? "Wideo" : "Zdjęcie"
-        if let image {
+        if let image, PreviewCheck.isUsable(image) {
             imageView.image = image
             currentImage = image
             imageView.backgroundColor = .clear
@@ -1637,10 +1790,19 @@ final class PhotoThumbCell: UICollectionViewCell {
         }
         guard let symbol, let image = UIImage(systemName: symbol) else {
             syncMark.isHidden = true
+            syncHit.isHidden = true
             syncShown = nil
+            accessibilityCustomActions = nil
             return
         }
         syncMark.isHidden = selecting
+        syncHit.isHidden = selecting || sync != .waiting
+        accessibilityCustomActions = sync == .waiting && !selecting
+            ? [UIAccessibilityCustomAction(name: "Wyślij na serwer") { [weak self] _ in
+                self?.syncTapped()
+                return true
+            }]
+            : nil
         // Same photo, new state: morph the badge the way Photos does instead of swapping it.
         if let previous = syncShown, previous.id == photo.id, previous.symbol != symbol, !selecting, window != nil {
             syncMark.setSymbolImage(image, contentTransition: .replace.downUp.byLayer)
@@ -1651,6 +1813,13 @@ final class PhotoThumbCell: UICollectionViewCell {
             syncMark.image = image
         }
         syncShown = (photo.id, symbol)
+    }
+
+    @objc private func syncTapped() {
+        guard let currentAssetID else { return }
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        syncMark.addSymbolEffect(.bounce.up, options: .speed(1.4))
+        onSyncTap?(currentAssetID)
     }
 }
 

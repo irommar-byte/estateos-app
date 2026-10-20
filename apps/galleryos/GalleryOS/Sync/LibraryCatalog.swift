@@ -22,10 +22,13 @@ struct DestinationSettings: Codable, Equatable {
     var localPort: Int = 0
     var localName: String = ""
     var remoteHost: String = ""
+    /// Port typed for the DDNS route. Zero means the app may choose one.
+    var namedRemotePort: Int = 0
 
     /// Port for the DDNS route. A port learned at home (QNAP's plain-HTTP 5000) is rarely
     /// forwarded on the router, so it is never forced on the remote address.
     var remotePort: Int {
+        if namedRemotePort > 0 { return namedRemotePort }
         guard port > 0 else { return 0 }
         if localPort > 0, port == localPort, !remoteHost.isEmpty { return 0 }
         return port
@@ -48,7 +51,7 @@ struct DestinationSettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case place, kind, host, port, username, directory, folderName, connected
-        case localHost, localPort, localName, remoteHost
+        case localHost, localPort, localName, remoteHost, namedRemotePort
     }
 
     init(place: String, kind: String, host: String, port: Int, username: String, directory: String, folderName: String, connected: Bool, localHost: String = "", localPort: Int = 0, localName: String = "", remoteHost: String = "") {
@@ -80,6 +83,7 @@ struct DestinationSettings: Codable, Equatable {
         localPort = try container.decodeIfPresent(Int.self, forKey: .localPort) ?? 0
         localName = try container.decodeIfPresent(String.self, forKey: .localName) ?? ""
         remoteHost = try container.decodeIfPresent(String.self, forKey: .remoteHost) ?? ""
+        namedRemotePort = try container.decodeIfPresent(Int.self, forKey: .namedRemotePort) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
@@ -96,6 +100,7 @@ struct DestinationSettings: Codable, Equatable {
         try container.encode(localPort, forKey: .localPort)
         try container.encode(localName, forKey: .localName)
         try container.encode(remoteHost, forKey: .remoteHost)
+        try container.encode(namedRemotePort, forKey: .namedRemotePort)
     }
 
     private static let key = "galleryos.destination.v1"
@@ -166,6 +171,8 @@ struct LibraryAsset: Codable, Equatable, Sendable {
     var albumNames: [String]
     var resources: [LibraryResource]
     var updatedAt: Date
+    /// Kept on the server, but left out of every shared library. Only the Hidden album shows it.
+    var hidden: Bool = false
 
     func photoRef() -> PhotoRef {
         PhotoRef(
@@ -188,6 +195,51 @@ struct LibraryAsset: Codable, Equatable, Sendable {
 
     var paired: LibraryResource? {
         resources.first { $0.role == "paired" }
+    }
+}
+
+extension LibraryAsset {
+    private enum CodingKeys: String, CodingKey {
+        case hash, created, pixelWidth, pixelHeight, traits, favorite, latitude, longitude
+        case duration, deletedAt, albumNames, resources, updatedAt, hidden
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            hash: try c.decode(String.self, forKey: .hash),
+            created: try c.decode(Date.self, forKey: .created),
+            pixelWidth: try c.decode(Int.self, forKey: .pixelWidth),
+            pixelHeight: try c.decode(Int.self, forKey: .pixelHeight),
+            traits: try c.decode(Int.self, forKey: .traits),
+            favorite: try c.decode(Bool.self, forKey: .favorite),
+            latitude: try c.decodeIfPresent(Double.self, forKey: .latitude),
+            longitude: try c.decodeIfPresent(Double.self, forKey: .longitude),
+            duration: try c.decode(Double.self, forKey: .duration),
+            deletedAt: try c.decodeIfPresent(Date.self, forKey: .deletedAt),
+            albumNames: try c.decode([String].self, forKey: .albumNames),
+            resources: try c.decode([LibraryResource].self, forKey: .resources),
+            updatedAt: try c.decode(Date.self, forKey: .updatedAt),
+            hidden: try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(hash, forKey: .hash)
+        try c.encode(created, forKey: .created)
+        try c.encode(pixelWidth, forKey: .pixelWidth)
+        try c.encode(pixelHeight, forKey: .pixelHeight)
+        try c.encode(traits, forKey: .traits)
+        try c.encode(favorite, forKey: .favorite)
+        try c.encodeIfPresent(latitude, forKey: .latitude)
+        try c.encodeIfPresent(longitude, forKey: .longitude)
+        try c.encode(duration, forKey: .duration)
+        try c.encodeIfPresent(deletedAt, forKey: .deletedAt)
+        try c.encode(albumNames, forKey: .albumNames)
+        try c.encode(resources, forKey: .resources)
+        try c.encode(updatedAt, forKey: .updatedAt)
+        if hidden { try c.encode(true, forKey: .hidden) }
     }
 }
 
@@ -221,7 +273,111 @@ enum LibraryRules {
     }
 
     static func isVisible(_ asset: LibraryAsset) -> Bool {
-        asset.deletedAt == nil
+        asset.deletedAt == nil && !asset.hidden
+    }
+
+    /// A movie, not a still and not a Live Photo. Duration keeps a one-frame clip from matching.
+    static func isFilm(duration: Double, traits: PhotoTraits) -> Bool {
+        traits.contains(.video) && duration >= 0.8
+    }
+
+    static func isFilm(_ photo: PhotoRef) -> Bool {
+        isFilm(duration: photo.duration, traits: photo.traits)
+    }
+
+    static func isFilm(_ asset: LibraryAsset) -> Bool {
+        isFilm(duration: asset.duration, traits: PhotoTraits(rawValue: asset.traits))
+    }
+
+    /// Same capture even when a second upload hashed the file differently.
+    /// Portrait video often swaps width and height, and Photos rarely reports the real byte size.
+    static func sameFilm(_ lhs: PhotoRef, _ rhs: PhotoRef) -> Bool {
+        guard lhs.id != rhs.id else { return false }
+        return sameCapture(
+            created: lhs.created,
+            duration: lhs.duration,
+            width: lhs.pixelWidth,
+            height: lhs.pixelHeight,
+            traits: lhs.traits,
+            otherCreated: rhs.created,
+            otherDuration: rhs.duration,
+            otherWidth: rhs.pixelWidth,
+            otherHeight: rhs.pixelHeight,
+            otherTraits: rhs.traits
+        )
+    }
+
+    /// One tile per movie. The first copy stays where it already sits in the list.
+    static func keepingOneFilm(_ photos: [PhotoRef]) -> [PhotoRef] {
+        var result: [PhotoRef] = []
+        var films: [PhotoRef] = []
+        result.reserveCapacity(photos.count)
+        for photo in photos {
+            if isFilm(photo) {
+                if films.contains(where: { sameFilm($0, photo) }) { continue }
+                films.append(photo)
+            }
+            result.append(photo)
+        }
+        return result
+    }
+
+    static func sameFilm(_ photo: PhotoRef, _ asset: LibraryAsset) -> Bool {
+        sameCapture(
+            created: photo.created,
+            duration: photo.duration,
+            width: photo.pixelWidth,
+            height: photo.pixelHeight,
+            traits: photo.traits,
+            otherCreated: asset.created,
+            otherDuration: asset.duration,
+            otherWidth: asset.pixelWidth,
+            otherHeight: asset.pixelHeight,
+            otherTraits: PhotoTraits(rawValue: asset.traits)
+        )
+    }
+
+    static func sameFilm(_ lhs: LibraryAsset, _ rhs: LibraryAsset) -> Bool {
+        guard lhs.hash != rhs.hash else { return false }
+        return sameCapture(
+            created: lhs.created,
+            duration: lhs.duration,
+            width: lhs.pixelWidth,
+            height: lhs.pixelHeight,
+            traits: PhotoTraits(rawValue: lhs.traits),
+            otherCreated: rhs.created,
+            otherDuration: rhs.duration,
+            otherWidth: rhs.pixelWidth,
+            otherHeight: rhs.pixelHeight,
+            otherTraits: PhotoTraits(rawValue: rhs.traits)
+        )
+    }
+
+    private static func sameCapture(
+        created: Date,
+        duration: Double,
+        width: Int,
+        height: Int,
+        traits: PhotoTraits,
+        otherCreated: Date,
+        otherDuration: Double,
+        otherWidth: Int,
+        otherHeight: Int,
+        otherTraits: PhotoTraits
+    ) -> Bool {
+        guard isFilm(duration: duration, traits: traits),
+              isFilm(duration: otherDuration, traits: otherTraits) else { return false }
+        guard abs(created.timeIntervalSince(otherCreated)) < 2 else { return false }
+        guard abs(duration - otherDuration) < 0.45 else { return false }
+        return dimensionsMatch(width, height, otherWidth, otherHeight)
+    }
+
+    private static func dimensionsMatch(_ width: Int, _ height: Int, _ otherWidth: Int, _ otherHeight: Int) -> Bool {
+        if width <= 1 || height <= 1 || otherWidth <= 1 || otherHeight <= 1 { return true }
+        let close = { (lhs: Int, rhs: Int) in abs(lhs - rhs) <= 16 }
+        let straight = close(width, otherWidth) && close(height, otherHeight)
+        let swapped = close(width, otherHeight) && close(height, otherWidth)
+        return straight || swapped
     }
 }
 

@@ -29,6 +29,32 @@ final class GalleryLayoutTests: XCTestCase {
         XCTAssertEqual(days.last?.photos.first?.id, "b")
     }
 
+    func testNewestPutsTodayFirst() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = Date(timeIntervalSince1970: 1_791_936_000)
+        let today = PhotoRef.sample(id: "b", created: now.addingTimeInterval(3_600))
+        let yesterday = PhotoRef.sample(id: "a", created: now.addingTimeInterval(-86_400))
+        let days = PhotoGrouping.days(from: [today, yesterday], calendar: calendar, now: now)
+        let model = GridModel(
+            days: days,
+            months: PhotoGrouping.months(from: days, calendar: calendar),
+            years: PhotoGrouping.years(from: days, calendar: calendar),
+            all: days.flatMap(\.photos)
+        )
+        let newest = model.arranged(.newest)
+        XCTAssertEqual(newest.days.map(\.title), ["Dzisiaj", "Wczoraj"])
+        XCTAssertEqual(newest.all.map(\.id), ["b", "a"])
+        let longestFirst = PhotoRef.sample(id: "short", created: now)
+        var longer = PhotoRef.sample(id: "long", created: now.addingTimeInterval(10))
+        longer.duration = 20
+        longer.traits = .video
+        var day = days[1]
+        day.photos = [longestFirst, longer]
+        let timed = GridModel(days: [day], months: [], years: [], all: day.photos)
+        XCTAssertEqual(timed.arranged(.longest).all.map(\.id), ["long", "short"])
+    }
+
     /// Building a title used to allocate a DateFormatter per day and froze launch long enough for iOS to kill the app.
     func testALongLibraryGetsDayTitlesQuickly() {
         var calendar = Calendar(identifier: .gregorian)
@@ -59,6 +85,25 @@ final class GalleryLayoutTests: XCTestCase {
         let cars = ObjectSearch.match(photos: [car, beach], labels: labels, query: "czerwony samochód")
         XCTAssertEqual(cars, ["car"])
         XCTAssertTrue(ObjectSearch.match(photos: [car, beach], labels: labels, query: "czerwony").isEmpty)
+    }
+
+    func testARealPhotoIsShownEvenWhenItIsDarkOrBright() {
+        XCTAssertTrue(PreviewCheck.isUsable(Self.swatch(.white)))
+        XCTAssertTrue(PreviewCheck.isUsable(Self.swatch(.black)))
+        XCTAssertTrue(PreviewCheck.isUsable(Self.swatch(.white, mark: true)))
+        XCTAssertFalse(PreviewCheck.isUsable(Self.swatch(.white, size: CGSize(width: 1, height: 1))))
+    }
+
+    private static func swatch(_ color: UIColor, size: CGSize = CGSize(width: 32, height: 32), mark: Bool = false) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            color.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            guard mark else { return }
+            UIColor.systemRed.setFill()
+            context.fill(CGRect(x: 4, y: 4, width: 12, height: 12))
+        }
     }
 
     func testVideoShortcut() {

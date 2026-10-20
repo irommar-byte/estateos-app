@@ -86,7 +86,7 @@ enum TVCatalog {
     }
 
     static func build(from list: [LibraryAsset]) -> TVSnapshot {
-        let visible = list.filter { $0.deletedAt == nil && $0.primary != nil }
+        let visible = list.filter { $0.deletedAt == nil && $0.primary != nil && !$0.hidden }
         var byHash: [String: LibraryAsset] = [:]
         for asset in visible { byHash[asset.hash] = asset }
         let photos = visible.map { $0.photoRef() }

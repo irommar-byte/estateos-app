@@ -18,6 +18,8 @@ final class LibraryStore {
     private var mapDirty = false
     private var flushScheduled = false
     private(set) var people: [String: [String]] = [:]
+    /// Local ids hidden before a server record exists. The journal flag covers everything already copied.
+    private(set) var concealed = Set<String>()
     private(set) var serverCursor = 0
     private var nextSeq = 1
 
@@ -72,7 +74,7 @@ final class LibraryStore {
 
     func visible(now: Date = .now) -> [LibraryAsset] {
         if let visibleCache { return visibleCache }
-        let sorted = assets.values.filter { $0.deletedAt == nil }.sorted { $0.created < $1.created }
+        let sorted = assets.values.filter { LibraryRules.isVisible($0) }.sorted { $0.created < $1.created }
         visibleCache = sorted
         return sorted
     }
@@ -80,6 +82,18 @@ final class LibraryStore {
     func trashed(now: Date = .now) -> [LibraryAsset] {
         assets.values.filter { LibraryRules.isInTrash($0, now: now) }.sorted { $0.created < $1.created }
     }
+
+    func conceal(_ id: String) {
+        guard concealed.insert(id).inserted else { return }
+        saveConcealed()
+    }
+
+    func reveal(_ id: String) {
+        guard concealed.remove(id) != nil else { return }
+        saveConcealed()
+    }
+
+    func isConcealed(_ id: String) -> Bool { concealed.contains(id) }
 
     func albumNames() -> [String] {
         Set(assets.values.flatMap(\.albumNames)).sorted()
@@ -174,6 +188,7 @@ final class LibraryStore {
     private func load() {
         localToHash = read([String: String].self, name: "map.json") ?? [:]
         people = read([String: [String]].self, name: "people.json") ?? [:]
+        concealed = Set(read([String].self, name: "concealed.json") ?? [])
         if let snapshot = read(SnapshotFile.self, name: "snapshot.json") {
             assets = snapshot.assets
             serverCursor = snapshot.serverCursor
@@ -223,6 +238,12 @@ final class LibraryStore {
             guard let self, self.flushScheduled else { return }
             self.flush()
         }
+    }
+
+    private func saveConcealed() {
+        let ids = Array(concealed)
+        let root = root
+        writer.async { Self.write(ids, name: "concealed.json", root: root) }
     }
 
     private func savePeople() {

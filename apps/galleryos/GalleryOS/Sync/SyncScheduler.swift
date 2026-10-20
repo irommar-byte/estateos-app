@@ -156,7 +156,13 @@ enum SyncScheduler {
         }
     }
 
+    static func cancelAutomatic() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: processingIdentifier)
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: continuedIdentifier)
+    }
+
     static func schedule() {
+        guard SyncPolicy.uploadsEnabled else { return }
         submitProcessing(after: 15 * 60)
     }
 

@@ -188,6 +188,9 @@ final class ServerTransport: CatalogTransport {
             let (body, chunkResponse) = try await GalleryNetwork.shared.data(for: chunkRequest)
             try Self.validate(chunkResponse, data: body)
             offset += chunk.count
+            if size > 0 {
+                GalleryNetwork.shared.noteUpload(fraction: Double(offset) / Double(size))
+            }
         }
         var commit = URLRequest(url: baseURL.appendingPathComponent("v1/assets/\(uploadID)/commit"))
         commit.httpMethod = "POST"

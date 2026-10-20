@@ -208,3 +208,62 @@ enum AccountVault {
         }
     }
 }
+
+struct SpareDisk: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var bookmark: Data
+}
+
+@MainActor
+final class SpareDisks: ObservableObject {
+    static let shared = SpareDisks()
+    @Published private(set) var disks: [SpareDisk] = []
+    @Published private(set) var targetID: String = "server"
+    private let file: URL
+    private let targetKey = "galleryos.backup.target"
+
+    private init() {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let folder = base.appendingPathComponent("GalleryOS", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        file = folder.appendingPathComponent("disks.json")
+        if let data = try? Data(contentsOf: file),
+           let stored = try? JSONDecoder().decode([SpareDisk].self, from: data) {
+            disks = stored
+        }
+        targetID = UserDefaults.standard.string(forKey: targetKey) ?? "server"
+        if targetID != "server", disks.contains(where: { $0.id == targetID }) == false {
+            targetID = "server"
+        }
+    }
+
+    func bookmarkForCopy() -> Data? {
+        guard targetID != "server" else { return nil }
+        return disks.first { $0.id == targetID }?.bookmark
+    }
+
+    func add(data: Data, name: String) -> String? {
+        disks.append(SpareDisk(id: UUID().uuidString, name: name, bookmark: data))
+        persist()
+        return nil
+    }
+
+    func selectServer() {
+        targetID = "server"
+        UserDefaults.standard.set(targetID, forKey: targetKey)
+    }
+
+    func select(_ id: String) {
+        guard disks.contains(where: { $0.id == id }) else { return }
+        targetID = id
+        UserDefaults.standard.set(targetID, forKey: targetKey)
+    }
+
+    private func persist() {
+        if let data = try? JSONEncoder().encode(disks) {
+            try? data.write(to: file, options: .atomic)
+        }
+    }
+}

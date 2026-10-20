@@ -47,6 +47,11 @@ final class GalleryNetwork: NSObject, URLSessionTaskDelegate, @unchecked Sendabl
         uploads.onByteProgress = handler
     }
 
+    /// Chunked originals do not go through the file upload task, so the meter hears them here.
+    func noteUpload(fraction: Double) {
+        uploads.onByteProgress?(min(0.99, max(0, fraction)))
+    }
+
     func useBackgroundTransfers(_ enabled: Bool) {
         _ = enabled
     }

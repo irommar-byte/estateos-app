@@ -82,7 +82,7 @@ struct LibraryMapScreen: View {
                     HStack(spacing: 8) {
                         Image(systemName: "square.grid.2x2.fill")
                             .font(.system(size: 14, weight: .semibold))
-                        Text(PhotoFormat.things(visible.ids.count))
+                        Text(PhotoFormat.onMap(visible.ids.count))
                             .font(.subheadline.weight(.semibold))
                             .monospacedDigit()
                             .contentTransition(.numericText(value: Double(visible.ids.count)))
@@ -162,6 +162,7 @@ private struct MapPlaceAlbumScreen: View {
                     let current = library.photo(id: id)?.isFavorite ?? false
                     library.setFavorite(!current, ids: [id])
                 },
+                onConceal: { library.setConcealed(true, ids: [$0]) },
                 onZoom: { _, _ in },
                 onVisiblePlaces: { _ in }
             )

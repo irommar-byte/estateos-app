@@ -177,6 +177,7 @@ final class SetupGuideModel: ObservableObject {
             settings.localPort = local.isEmpty ? 0 : localPort
             settings.localName = local.isEmpty ? "" : localName
             settings.remoteHost = remote
+            settings.namedRemotePort = Int(remotePort) ?? 0
         } else {
             settings.host = place == .disk ? "" : Self.clean(host)
             settings.port = Int(port) ?? 0
@@ -476,14 +477,14 @@ private struct GuidePlace: View {
     let onNext: () -> Void
     @EnvironmentObject private var model: SetupGuideModel
 
-    private let order: [LibraryPlace] = [.qnap, .disk, .server, .otherServer, .thisPhone]
+    private let order: [LibraryPlace] = [.qnap, .server, .otherServer, .thisPhone]
 
     var body: some View {
         GuideLayout(
             symbol: "arrow.triangle.branch",
             tint: GalleryTheme.accent,
             title: "Gdzie mają trafiać zdjęcia?",
-            subtitle: "Wybierz miejsce na kopię biblioteki. Zmienisz je później w menu Biblioteki."
+            subtitle: "Wybierz serwer na kopię biblioteki. Pendrive dodasz później, jednym przyciskiem w synchronizacji."
         ) {
             VStack(spacing: 10) {
                 ForEach(order) { item in
@@ -536,7 +537,7 @@ private struct GuidePlace: View {
     static func detail(_ place: LibraryPlace) -> String {
         switch place {
         case .qnap: "QNAP, Synology lub inny NAS z WebDAV. W domu i zdalnie."
-        case .disk: "Dysk USB‑C podłączony do iPhone’a albo folder sieciowy w Plikach."
+        case .disk: "Dysk USB‑C podłączony do \(ThisDevice.genitive) albo folder sieciowy w Plikach."
         case .server: "Własny serwer GalleryOS. Wysyła w kawałkach, także poza domem."
         case .otherServer: "WebDAV, SFTP albo Immich, który już działa."
         case .thisPhone: "Bez kopii. Przeglądanie i porządkowanie Rolki."
@@ -564,7 +565,7 @@ private struct GuideFind: View {
             symbol: "wifi",
             tint: .green,
             title: "Znajdź serwer w sieci",
-            subtitle: "iPhone musi być w tym samym Wi‑Fi co serwer. Gdy iOS zapyta o dostęp do sieci lokalnej, wybierz „Zezwól”."
+            subtitle: "\(ThisDevice.name) musi być w tym samym Wi‑Fi co serwer. Gdy iOS zapyta o dostęp do sieci lokalnej, wybierz „Zezwól”."
         ) {
             if !model.atHome {
                 GuideGroup {
@@ -618,7 +619,7 @@ private struct GuideFind: View {
             }
             GuideTip(title: "Pierwszy raz z QNAP?", lines: [
                 "W QTS otwórz Panel sterowania → Usługi sieciowe → WebDAV i włącz WebDAV.",
-                "Nadaj swojemu kontu uprawnienia WebDAV do udziału ze zdjęciami, na przykład Multimedia.",
+                "Nadaj swojemu kontu uprawnienia WebDAV do udziału Public.",
             ])
         } footer: {
             GuidePrimary(title: "Dalej", action: onNext)
@@ -672,9 +673,9 @@ private struct GuideAccount: View {
             .onChange(of: model.username) { model.homeCheck = .idle }
             .onChange(of: model.password) { model.homeCheck = .idle }
             GuideCheckRow(check: model.homeCheck, idle: nil)
-            GuideGroup(footer: "Zostaw puste, a GalleryOS sam znajdzie udział ze zdjęciami.") {
+            GuideGroup(footer: "Biblioteka zapisuje się w udziale Public.") {
                 DisclosureGroup("Zaawansowane", isExpanded: $advanced) {
-                    GuideField(label: "Udział", prompt: "Multimedia", text: $model.directory)
+                    GuideField(label: "Udział", prompt: "Public", text: $model.directory)
                         .padding(.horizontal, -16)
                 }
                 .padding(.horizontal, 16)
@@ -827,7 +828,7 @@ private struct GuideDisk: View {
             subtitle: "GalleryOS założy na nim katalog biblioteki i nie ruszy pozostałych plików."
         ) {
             GuideGroup(title: "Zanim wybierzesz") {
-                GuideStepLine(number: 1, text: "Podłącz dysk do iPhone’a przez USB‑C albo dodaj udział SMB w Plikach: Przeglądaj → ⋯ → Połącz z serwerem.")
+                GuideStepLine(number: 1, text: "Podłącz dysk do \(ThisDevice.genitive) przez USB‑C albo dodaj udział SMB w Plikach: Przeglądaj → ⋯ → Połącz z serwerem.")
                 Divider().padding(.leading, 56)
                 GuideStepLine(number: 2, text: "Stuknij „Wybierz dysk lub folder” i wskaż dysk albo folder na zdjęcia.")
             }
@@ -952,7 +953,7 @@ private struct GuideDone: View {
             tint: .green,
             title: phoneOnly ? "Gotowe" : "Wszystko gotowe",
             subtitle: phoneOnly
-                ? "Zdjęcia zostają w Rolce tego iPhone’a. Dysk albo serwer dodasz w każdej chwili w menu Biblioteki → Kreator połączenia."
+                ? "Zdjęcia zostają w Rolce tego \(ThisDevice.genitive). Dysk albo serwer dodasz w każdej chwili w menu Biblioteki → Kreator połączenia."
                 : "GalleryOS jest połączony. Oto co dalej."
         ) {
             if !phoneOnly {
@@ -966,9 +967,9 @@ private struct GuideDone: View {
                     GuideFeature(symbol: "arrow.triangle.2.circlepath", tint: GalleryTheme.accent, title: "Kopia rusza sama",
                                  detail: "Postęp widać na pasku w Bibliotece. Pierwsza kopia idzie najszybciej w domowym Wi‑Fi i na ładowarce.")
                     GuideFeature(symbol: "rectangle.on.rectangle", tint: .orange, title: "Zakładka Serwer",
-                                 detail: "Zdjęcia już skopiowane możesz bezpiecznie usunąć z iPhone’a, a zostaną na serwerze.")
+                                 detail: "Zdjęcia już skopiowane możesz bezpiecznie usunąć z \(ThisDevice.genitive), a zostaną na serwerze.")
                     GuideFeature(symbol: "appletv.fill", tint: .purple, title: "Apple TV",
-                                 detail: "Otwórz GalleryOS na Apple TV i sparuj go z tym iPhone’em.")
+                                 detail: "Otwórz GalleryOS na Apple TV i sparuj go z tym \(ThisDevice.instrumental).")
                 }
                 .padding(.top, 4)
             }

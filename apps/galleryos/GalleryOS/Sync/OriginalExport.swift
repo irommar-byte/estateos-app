@@ -56,8 +56,58 @@ enum OriginalExport {
             return (resources, thumb)
         } catch {
             written.forEach { try? FileManager.default.removeItem(at: $0) }
+            if asset.mediaType == .image, missing(error), let still = try? await renderedStill(asset) {
+                let hash = try await Task.detached(priority: .utility) {
+                    try ContentHash.sha256(of: still)
+                }.value
+                let thumb = await thumbnail(primary: still, video: false)
+                return (
+                    [ExportedResource(role: "primary", file: still, ext: "jpg", hash: hash, bytes: size(still))],
+                    thumb
+                )
+            }
+            if missing(error) {
+                throw LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce. Stuknij chmurkę jeszcze raz za chwilę.")
+            }
             throw error
         }
+    }
+
+    private static func missing(_ error: Error) -> Bool {
+        let cocoa = error as NSError
+        if cocoa.domain == NSCocoaErrorDomain, cocoa.code == NSFileNoSuchFileError || cocoa.code == NSFileReadNoSuchFileError {
+            return true
+        }
+        let text = error.localizedDescription.lowercased()
+        return text.contains("nie ma takiego pliku") || text.contains("no such file")
+    }
+
+    /// A photo that was just taken often has no HEIC file yet. The rendered still is already in Photos.
+    private static func renderedStill(_ asset: PHAsset) async throws -> URL {
+        let data: Data = try await withCheckedThrowingContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.version = .current
+            let gate = Once()
+            let timeout = Task {
+                try? await Task.sleep(for: .seconds(20))
+                gate.finishData(continuation, LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce."))
+            }
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+                timeout.cancel()
+                if let data, !data.isEmpty {
+                    gate.finishData(continuation, data)
+                } else {
+                    let error = (info?[PHImageErrorKey] as? Error) ?? LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce.")
+                    gate.finishData(continuation, error)
+                }
+            }
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+        try data.write(to: url, options: .atomic)
+        return url
     }
 
     private static func first(_ resources: [PHAssetResource], _ types: [PHAssetResourceType]) -> PHAssetResource? {
@@ -68,6 +118,20 @@ enum OriginalExport {
     }
 
     private static func write(_ resource: PHAssetResource, wait: TimeInterval?) async throws -> URL {
+        var last: Error = LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce.")
+        for attempt in 0..<3 {
+            do {
+                return try await writeOnce(resource, wait: wait)
+            } catch {
+                last = error
+                guard missing(error), attempt < 2 else { throw error }
+                try? await Task.sleep(for: .milliseconds(800))
+            }
+        }
+        throw last
+    }
+
+    private static func writeOnce(_ resource: PHAssetResource, wait: TimeInterval?) async throws -> URL {
         let ext = (resource.originalFilename as NSString).pathExtension
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + (ext.isEmpty ? "" : ".\(ext)"))
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -80,8 +144,7 @@ enum OriginalExport {
             let limit = UInt64((wait ?? standard) * 1_000_000_000)
             let timeout = Task {
                 try? await Task.sleep(nanoseconds: limit)
-                try? FileManager.default.removeItem(at: url)
-                gate.finish(continuation, LibraryError(message: "To zdjęcie się zacina. Idę dalej."))
+                gate.finish(continuation, LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce. Stuknij chmurkę jeszcze raz za chwilę."))
             }
             PHAssetResourceManager.default().writeData(for: resource, toFile: url, options: options) { error in
                 timeout.cancel()
@@ -151,5 +214,21 @@ private final class Once: @unchecked Sendable {
         guard !done else { return }
         done = true
         if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+    }
+
+    func finishData(_ continuation: CheckedContinuation<Data, Error>, _ result: Result<Data, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !done else { return }
+        done = true
+        continuation.resume(with: result)
+    }
+
+    func finishData(_ continuation: CheckedContinuation<Data, Error>, _ data: Data) {
+        finishData(continuation, .success(data))
+    }
+
+    func finishData(_ continuation: CheckedContinuation<Data, Error>, _ error: Error) {
+        finishData(continuation, .failure(error))
     }
 }

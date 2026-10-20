@@ -91,10 +91,26 @@ final class PhotoLibrary: NSObject, ObservableObject {
         phoneGrid.all.first { $0.id == id }
             ?? serverGrid.all.first { $0.id == id }
             ?? grid.all.first { $0.id == id }
+            ?? LibraryEngine.shared.hiddenRefs().first { $0.id == id }
+    }
+
+    func isConcealed(_ id: String) -> Bool {
+        LibraryEngine.shared.isConcealed(id)
+    }
+
+    func sendNow(_ id: String) {
+        LibraryEngine.shared.sendNow(id)
+    }
+
+    func setConcealed(_ concealed: Bool, ids: [String]) {
+        LibraryEngine.shared.setConcealed(concealed, ids: ids)
     }
 
     func grid(albumID: String?) -> GridModel {
         guard let albumID else { return grid }
+        if albumID == "galleryos.hidden" {
+            return GridModel(photos: LibraryEngine.shared.hiddenRefs())
+        }
         if albumID == "galleryos.trash" {
             return GridModel(photos: LibraryEngine.shared.trashedRefs())
         }
@@ -106,7 +122,7 @@ final class PhotoLibrary: NSObject, ObservableObject {
         let photos = (albumMembers[albumID] ?? []).compactMap { id in
             grid.all.first { $0.id == id } ?? outsidePhotos[id]
         }
-        let model = GridModel(photos: photos)
+        let model = GridModel(photos: LibraryRules.keepingOneFilm(photos))
         albumGrids[albumID] = model
         return model
     }
@@ -207,7 +223,7 @@ final class PhotoLibrary: NSObject, ObservableObject {
         if let bytes = await LibraryEngine.shared.freeSpace() {
             return ByteText.amount(bytes)
         }
-        return "Serwer nie podał wolnego miejsca"
+        return "—"
     }
 
     var keptOnServer: Int {

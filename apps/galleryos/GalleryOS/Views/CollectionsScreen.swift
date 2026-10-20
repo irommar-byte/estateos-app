@@ -1,3 +1,4 @@
+import LocalAuthentication
 import MapKit
 import SwiftUI
 
@@ -12,7 +13,7 @@ struct CollectionsScreen: View {
     @State private var deleting: AlbumRecord?
     @State private var albumNote = ""
     @State private var showMap = false
-    @State private var open: Set<String> = ["Przypięte", "Albumy"]
+    @State private var open: Set<String> = ["Przypięte", "Ukryte", "Albumy"]
 
     private var pinned: [AlbumRecord] {
         library.albums.filter { album in
@@ -21,8 +22,12 @@ struct CollectionsScreen: View {
         }
     }
 
+    private var hiddenAlbum: AlbumRecord? {
+        library.albums.first { $0.id == "galleryos.hidden" }
+    }
+
     private var media: [AlbumRecord] {
-        library.albums.filter { $0.system && !pinned.contains($0) && $0.count > 0 }
+        library.albums.filter { $0.system && $0.id != "galleryos.hidden" && !pinned.contains($0) && $0.count > 0 }
     }
 
     private var userAlbums: [AlbumRecord] {
@@ -33,6 +38,9 @@ struct CollectionsScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 tape("Przypięte", albums: pinned, map: true)
+                if let hiddenAlbum {
+                    tape("Ukryte", albums: [hiddenAlbum], map: false)
+                }
                 if !media.isEmpty {
                     tape("Typy multimediów", albums: media, map: false)
                 }
@@ -117,7 +125,11 @@ struct CollectionsScreen: View {
             AlbumArrangeSheet(albums: arranged(userAlbums), orderRaw: $orderRaw, sort: $sort)
         }
         .navigationDestination(for: String.self) { id in
-            LibraryScreen(albumID: id)
+            if id == "galleryos.hidden" {
+                HiddenLibrary()
+            } else {
+                LibraryScreen(albumID: id)
+            }
         }
         .fullScreenCover(isPresented: $showMap) {
             LibraryMapScreen()
@@ -245,9 +257,20 @@ private struct AlbumCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            AlbumCover(assetID: album.coverID)
-                .frame(width: wide ? nil : 148, height: wide ? 92 : 148)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            Group {
+                if album.id == "galleryos.hidden" {
+                    Color(uiColor: .secondarySystemFill)
+                        .overlay {
+                            Image(systemName: "lock.fill")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                        }
+                } else {
+                    AlbumCover(assetID: album.coverID)
+                }
+            }
+            .frame(width: wide ? nil : 148, height: wide ? 92 : 148)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             Text(album.title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
@@ -522,6 +545,42 @@ private struct AlbumArrangeSheet: View {
                     sort = "manual"
                     dismiss()
                 }
+            }
+        }
+    }
+}
+
+/// The shared library never lists these photos. Opening the album asks for Face ID or the device code.
+struct HiddenLibrary: View {
+    @State private var unlocked = false
+
+    var body: some View {
+        Group {
+            if unlocked {
+                LibraryScreen(albumID: "galleryos.hidden")
+            } else {
+                ContentUnavailableView {
+                    Label("Ukryte", systemImage: "lock.fill")
+                } description: {
+                    Text("Tych zdjęć nie ma w bibliotece na serwerze ani na Apple TV. Widać je tylko tutaj.")
+                } actions: {
+                    Button("Potwierdź, że to Ty") { authenticate() }
+                }
+            }
+        }
+        .task { authenticate() }
+    }
+
+    private func authenticate() {
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            unlocked = true
+            return
+        }
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Pokaż ukryte zdjęcia") { ok, _ in
+            DispatchQueue.main.async {
+                unlocked = ok
             }
         }
     }

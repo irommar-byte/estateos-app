@@ -142,7 +142,7 @@ struct PhotoViewerHost: View {
             }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Zniknie z biblioteki tego iPhone’a i z biblioteki GalleryOS na innych urządzeniach. Przez 30 dni zostanie w Ostatnio usuniętych.")
+            Text("Zniknie z biblioteki tego \(ThisDevice.genitive) i z biblioteki GalleryOS na innych urządzeniach. Przez 30 dni zostanie w Ostatnio usuniętych.")
         }
     }
 
@@ -292,6 +292,13 @@ struct PhotoViewerHost: View {
         Menu {
             Button("Informacje", systemImage: "info.circle") { info = true }
             Button("Kopiuj", systemImage: "doc.on.doc") { copyPhoto() }
+            if let photoID {
+                let concealed = library.isConcealed(photoID)
+                Button(concealed ? "Pokaż w bibliotece" : "Ukryj", systemImage: concealed ? "eye" : "eye.slash") {
+                    library.setConcealed(!concealed, ids: [photoID])
+                    if !concealed { dismiss() }
+                }
+            }
             Button("Usuń", systemImage: "trash", role: .destructive) { confirmDelete = true }
         } label: {
             Image(systemName: "ellipsis")
@@ -1017,6 +1024,8 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
     private let liveView = PHLivePhotoView()
     private let playButton = UIImageView()
     private var request: PHImageRequestID = PHInvalidImageRequestID
+    private var videoRequest: PHImageRequestID = PHInvalidImageRequestID
+    private var videoExportStarted = false
     private var loadToken = 0
     private var player: AVPlayer?
     private var playerLayer: AVPlayerLayer?
@@ -1113,7 +1122,12 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         if request != PHInvalidImageRequestID {
             images.cancelImageRequest(request)
         }
+        if videoRequest != PHInvalidImageRequestID {
+            images.cancelImageRequest(videoRequest)
+        }
         request = PHInvalidImageRequestID
+        videoRequest = PHInvalidImageRequestID
+        videoExportStarted = false
         imageView.image = nil
         waiting.isHidden = true
         liveView.stopPlayback()
@@ -1200,24 +1214,47 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
             return
         }
         if asset.mediaType == .video {
+            waiting.text = "Otwieram film…"
+            waiting.sizeToFit()
+            waiting.isHidden = false
             let still = PHImageRequestOptions()
-            still.deliveryMode = .highQualityFormat
+            still.deliveryMode = .fastFormat
             still.resizeMode = .fast
             still.isNetworkAccessAllowed = true
-            request = images.requestImage(for: asset, targetSize: size, contentMode: .aspectFit, options: still) { [weak self] image, info in
+            request = images.requestImage(for: asset, targetSize: CGSize(width: 1200, height: 1200), contentMode: .aspectFit, options: still) { [weak self] image, info in
                 let degraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 DispatchQueue.main.async {
                     self?.applyDisplayImage(image, token: token, asset: asset, degraded: degraded)
                 }
             }
+            if let file = media?.video {
+                startFilm(AVPlayerItem(url: file), token: token)
+            }
             let video = PHVideoRequestOptions()
             video.isNetworkAccessAllowed = true
             video.deliveryMode = .automatic
-            images.requestPlayerItem(forVideo: asset, options: video) { [weak self] item, _ in
+            video.progressHandler = { [weak self] progress, _, _, _ in
                 DispatchQueue.main.async {
-                    guard let self, self.loadToken == token, let item else { return }
-                    self.attachPlayer(item: item, visible: false)
+                    guard let self, self.loadToken == token, self.player == nil else { return }
+                    self.waiting.text = "Pobieram film… \(Int((progress * 100).rounded()))%"
+                    self.waiting.sizeToFit()
+                    self.waiting.center = CGPoint(x: self.contentView.bounds.midX, y: self.contentView.bounds.midY)
+                    self.waiting.isHidden = false
                 }
+            }
+            videoRequest = images.requestPlayerItem(forVideo: asset, options: video) { [weak self] item, _ in
+                DispatchQueue.main.async {
+                    guard let self, self.loadToken == token else { return }
+                    if let item {
+                        self.startFilm(item, token: token)
+                    } else if self.player == nil {
+                        self.exportFilm(asset, token: token)
+                    }
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+                guard let self, self.loadToken == token, self.player == nil else { return }
+                self.exportFilm(asset, token: token)
             }
             return
         }
@@ -1229,6 +1266,52 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
             let degraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
             DispatchQueue.main.async {
                 self?.applyDisplayImage(image, token: token, asset: asset, degraded: degraded)
+            }
+        }
+    }
+
+    private func startFilm(_ item: AVPlayerItem, token: Int) {
+        guard loadToken == token else { return }
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        attachPlayer(item: item, visible: true)
+        waiting.isHidden = true
+        player?.play()
+    }
+
+    /// Photos sometimes returns no player item for an iCloud film. Writing the file is the path that still opens it.
+    private func exportFilm(_ asset: PHAsset, token: Int) {
+        guard !videoExportStarted, player == nil, loadToken == token else { return }
+        videoExportStarted = true
+        waiting.text = "Pobieram film…"
+        waiting.sizeToFit()
+        waiting.isHidden = false
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let resource = resources.first(where: { $0.type == .video || $0.type == .fullSizeVideo }) else {
+            waiting.text = "Nie mogę otworzyć filmu"
+            return
+        }
+        let ext = (resource.originalFilename as NSString).pathExtension
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(ext.isEmpty ? "mov" : ext)
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = true
+        PHAssetResourceManager.default().writeData(for: resource, toFile: url, options: options) { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self, self.loadToken == token else {
+                    try? FileManager.default.removeItem(at: url)
+                    return
+                }
+                if error != nil || self.player != nil {
+                    if self.player == nil {
+                        self.waiting.text = "Film jest w iCloud i nie schodzi"
+                        self.waiting.isHidden = false
+                    }
+                    try? FileManager.default.removeItem(at: url)
+                    return
+                }
+                self.startFilm(AVPlayerItem(url: url), token: token)
             }
         }
     }
@@ -1342,7 +1425,8 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
             return
         }
         if let video = media.video {
-            playButton.isHidden = false
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
             let player = AVPlayer(url: video)
             let layer = AVPlayerLayer(player: player)
             layer.videoGravity = .resizeAspect
@@ -1350,6 +1434,8 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
             canvas.layer.addSublayer(layer)
             self.player = player
             playerLayer = layer
+            waiting.isHidden = true
+            player.play()
             return
         }
         if let still = media.still {
@@ -1743,10 +1829,10 @@ private struct ViewerAdjustments: View {
                 slider("Jasność", value: $brightness, range: -0.35...0.35)
                 slider("Kontrast", value: $contrast, range: 0.7...1.4)
                 slider("Nasycenie", value: $saturation, range: 0...2)
-                Text("Gotowe zapisuje nową wersję w bibliotece tego iPhone’a.")
+                Text("Gotowe zapisuje nową wersję w bibliotece tego \(ThisDevice.genitive).")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.center)
             }
             .padding(20)
             .navigationTitle("Dopasuj")

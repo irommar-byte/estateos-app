@@ -124,6 +124,12 @@ struct WebDAVLink {
     var message: String
 }
 
+struct WebEntry: Identifiable, Hashable {
+    var name: String
+    var isDirectory: Bool
+    var id: String { name }
+}
+
 final class WebDAVTransport: CatalogTransport {
     let baseURL: URL
     let username: String
@@ -209,7 +215,7 @@ final class WebDAVTransport: CatalogTransport {
             throw LibraryError(message: "Błędny login lub hasło.")
         }
         let portText = forcedPort > 0 ? "\(forcedPort)" : "5001"
-        throw LibraryError(message: "Nie udało się otworzyć WebDAV na porcie \(portText). Zostaw ten port i udział Multimedia, hasło wpisz w polu Hasło i stuknij Włącz jeszcze raz.")
+        throw LibraryError(message: "Nie udało się otworzyć WebDAV na porcie \(portText). Zostaw ten port i udział Public, hasło wpisz w polu Hasło i stuknij Włącz jeszcze raz.")
     }
 
     private static func attempts(forced: Int) -> [(String, Int)] {
@@ -282,37 +288,23 @@ final class WebDAVTransport: CatalogTransport {
         return (box.found, box.port, box.sawAuth, box.sawTimeout)
     }
 
+    /// One library, on the Public share. An empty share name used to probe Multimedia
+    /// first and create a second GalleryOS folder there.
     private static func place(on root: WebDAVTransport, directory: String, username: String) async throws -> (transport: WebDAVTransport, directory: String) {
-        var candidates: [String] = []
+        _ = username
         let requested = directory.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !requested.isEmpty, !requested.allSatisfy(\.isNumber) {
-            candidates.append(requested)
+        let share = (requested.isEmpty || requested.caseInsensitiveCompare("Multimedia") == .orderedSame)
+            ? "Public"
+            : requested
+        let child = WebDAVTransport(
+            baseURL: shareURL(root.baseURL, path: share),
+            username: root.username,
+            password: root.password
+        )
+        if await child.acceptsLibrary() {
+            return (child, share)
         }
-        if !username.isEmpty {
-            candidates.append("homes/\(username)")
-            candidates.append("home/\(username)")
-        }
-        candidates.append(contentsOf: ["Multimedia", "homes", "home", "Public", "Photos", "photo", "Web"])
-        let names = (try? await root.list("")) ?? []
-        for name in names where !name.hasPrefix(".") {
-            if !candidates.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
-                candidates.append(name)
-            }
-        }
-        var seen = Set<String>()
-        for name in candidates.prefix(8) {
-            let key = name.lowercased()
-            guard seen.insert(key).inserted else { continue }
-            let child = WebDAVTransport(
-                baseURL: shareURL(root.baseURL, path: name),
-                username: root.username,
-                password: root.password
-            )
-            if await child.acceptsLibrary() {
-                return (child, name)
-            }
-        }
-        throw LibraryError(message: "Konto nie może zapisać folderu na QNAP. Nadaj mu prawo zapisu do Multimedia albo homes.")
+        throw LibraryError(message: "Konto nie może zapisać folderu na QNAP. Nadaj mu prawo zapisu do \(share).")
     }
 
     private static func shareURL(_ root: URL, path: String) -> URL {
@@ -386,18 +378,102 @@ final class WebDAVTransport: CatalogTransport {
     }
 
     func availableBytes() async -> Int64? {
-        var request = URLRequest(url: baseURL)
+        if let quota = await quotaBytes(at: baseURL) { return quota }
+        let parent = baseURL.deletingLastPathComponent()
+        if parent != baseURL, let quota = await quotaBytes(at: parent) { return quota }
+        return await qnapFreeBytes()
+    }
+
+    private func quotaBytes(at url: URL) async -> Int64? {
+        var request = URLRequest(url: url)
         request.httpMethod = "PROPFIND"
         request.timeoutInterval = 8
         request.setValue("0", forHTTPHeaderField: "Depth")
         request.setValue(authorization, forHTTPHeaderField: "Authorization")
-        request.httpBody = Data("<?xml version=\"1.0\" encoding=\"utf-8\"?><D:propfind xmlns:D=\"DAV:\"><D:prop><D:quota-available-bytes/></D:prop></D:propfind>".utf8)
+        request.httpBody = Data("<?xml version=\"1.0\" encoding=\"utf-8\"?><D:propfind xmlns:D=\"DAV:\"><D:prop><D:quota-available-bytes/><D:quota-used-bytes/></D:prop></D:propfind>".utf8)
         guard let (data, _) = try? await GalleryNetwork.shared.data(for: request) else { return nil }
         let text = String(decoding: data, as: UTF8.self)
-        guard let marker = text.range(of: "quota-available-bytes>") else { return nil }
-        let digits = text[marker.upperBound...].prefix { $0.isNumber }
-        guard !digits.isEmpty else { return nil }
-        return Int64(digits)
+        guard let regex = try? NSRegularExpression(pattern: "quota-available-bytes[^>]*>\\s*([0-9]+)", options: .caseInsensitive) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = regex.firstMatch(in: text, range: range), let span = Range(match.range(at: 1), in: text) else { return nil }
+        return Int64(text[span])
+    }
+
+    /// QNAP leaves the WebDAV quota empty. The volume list on the admin port has the real free space.
+    private func qnapFreeBytes() async -> Int64? {
+        guard let host = baseURL.host, !host.isEmpty else { return nil }
+        GalleryNetwork.shared.trust(host)
+        let encoded = username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? username
+        let secret = Data(password.utf8).base64EncodedString()
+        let doors = [("http", 8080), ("https", 443), ("https", 8443)]
+        for (scheme, port) in doors {
+            guard let login = URL(string: "\(scheme)://\(host):\(port)/cgi-bin/authLogin.cgi") else { continue }
+            var request = URLRequest(url: login)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 5
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.httpBody = "user=\(encoded)&pwd=\(secret)".data(using: .utf8)
+            guard let (data, response) = try? await GalleryNetwork.shared.data(for: request),
+                  let http = response as? HTTPURLResponse, http.statusCode < 400,
+                  let xml = String(data: data, encoding: .utf8),
+                  xml.contains("<authPassed>1</authPassed>"),
+                  let sid = Self.xmlValue("authSid", in: xml) else { continue }
+            if let free = await qnapVolumeFree(scheme: scheme, host: host, port: port, sid: sid) {
+                return free
+            }
+        }
+        return nil
+    }
+
+    private func qnapVolumeFree(scheme: String, host: String, port: Int, sid: String) async -> Int64? {
+        guard let url = URL(string: "\(scheme)://\(host):\(port)/cgi-bin/filemanager/utilRequest.cgi?func=volume_list&sid=\(sid)") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6
+        guard let (data, _) = try? await GalleryNetwork.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let rows = (json["datas"] as? [[String: Any]]) ?? (json["result"] as? [[String: Any]]) ?? []
+        var total: Int64 = 0
+        for row in rows {
+            let raw = row["free_size"] ?? row["freeSize"] ?? row["freesize"]
+            guard let number = Self.byteCount(raw) else { continue }
+            total += number
+        }
+        return total > 0 ? total : nil
+    }
+
+    private static func byteCount(_ raw: Any?) -> Int64? {
+        let number: Int64?
+        if let value = raw as? Int64 { number = value }
+        else if let value = raw as? Int { number = Int64(value) }
+        else if let value = raw as? NSNumber { number = value.int64Value }
+        else if let value = raw as? String { number = Int64(value.filter(\.isNumber)) }
+        else { number = nil }
+        guard let number, number > 0 else { return nil }
+        // A figure under 1 GB is the volume size in megabytes, not bytes.
+        if number < 1_048_576 { return number * 1024 * 1024 }
+        return number
+    }
+
+    private static func xmlValue(_ tag: String, in xml: String) -> String? {
+        guard let start = xml.range(of: "<\(tag)>"), let end = xml.range(of: "</\(tag)>", range: start.upperBound..<xml.endIndex) else { return nil }
+        let value = xml[start.upperBound..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    func children(_ relative: String) async throws -> [WebEntry] {
+        let data = try await propfindData(relative)
+        return Self.entries(in: data, current: relative)
+    }
+
+    func shareChoices() async -> [String] {
+        let parent = baseURL.deletingLastPathComponent()
+        let root = parent == baseURL ? self : WebDAVTransport(baseURL: parent, username: username, password: password)
+        let found = (try? await root.children("")) ?? []
+        let folders = found.filter(\.isDirectory).map(\.name).filter { !$0.hasPrefix(".") }
+        if !folders.isEmpty {
+            return folders.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        }
+        return ((try? await root.list("")) ?? []).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     func list(_ relative: String) async throws -> [String] {
@@ -405,6 +481,10 @@ final class WebDAVTransport: CatalogTransport {
     }
 
     func propfind(_ relative: String, timeout: TimeInterval, requireDAV: Bool) async throws -> [String] {
+        Self.names(in: try await propfindData(relative, timeout: timeout, requireDAV: requireDAV), current: relative)
+    }
+
+    private func propfindData(_ relative: String, timeout: TimeInterval = 20, requireDAV: Bool = false) async throws -> Data {
         var request = URLRequest(url: try url(relative, directory: true))
         request.httpMethod = "PROPFIND"
         request.timeoutInterval = timeout
@@ -422,8 +502,8 @@ final class WebDAVTransport: CatalogTransport {
         }
         try throwIfNeeded(response, data: data, allowMissing: true)
         if requireDAV { try Self.requireWebDAV(response, data: data) }
-        if let http = response as? HTTPURLResponse, http.statusCode == 404 { return [] }
-        return Self.names(in: data, current: relative)
+        if let http = response as? HTTPURLResponse, http.statusCode == 404 { return Data() }
+        return data
     }
 
     private static func confirmsWebDAVPassword(_ response: HTTPURLResponse, port: Int) -> Bool {
@@ -556,6 +636,33 @@ final class WebDAVTransport: CatalogTransport {
         } catch {
             return false
         }
+    }
+
+    private static func entries(in data: Data, current: String) -> [WebEntry] {
+        let xml = String(decoding: data, as: UTF8.self)
+        let blocks = xml.components(separatedBy: "esponse>")
+        let here = current.trimmingCharacters(in: CharacterSet(charactersIn: "/")).split(separator: "/").last.map(String.init)
+        var items: [WebEntry] = []
+        for block in blocks {
+            guard let href = Self.firstTag("href", in: block) else { continue }
+            let decoded = href.removingPercentEncoding ?? href
+            let trimmed = decoded.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let name = trimmed.split(separator: "/").last.map(String.init) ?? ""
+            if name.isEmpty || name == here { continue }
+            let folder = decoded.hasSuffix("/") || block.lowercased().contains("collection")
+            if items.contains(where: { $0.name == name }) { continue }
+            items.append(WebEntry(name: name, isDirectory: folder))
+        }
+        return items.sorted { lhs, rhs in
+            if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory && !rhs.isDirectory }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private static func firstTag(_ tag: String, in xml: String) -> String? {
+        let lower = xml.lowercased()
+        guard let marker = lower.range(of: tag + ">"), let end = xml[marker.upperBound...].firstIndex(of: "<") else { return nil }
+        return String(xml[marker.upperBound..<end])
     }
 
     private static func names(in data: Data, current: String) -> [String] {

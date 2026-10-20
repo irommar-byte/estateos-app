@@ -106,6 +106,8 @@ final class LibraryEngine {
     private var poolCache: (key: [Int], bytes: Int64?)?
     private var poolRevision = 0
     private var sinceJournal = 0
+    /// A hide or unhide must reach the server journal even when nothing is uploading.
+    private var privacyDirty = false
     private var uploadedSinceIdle = 0
     private var lastJournal = Date.distantPast
     private var lastOverlay = Date.distantPast
@@ -117,7 +119,9 @@ final class LibraryEngine {
     private weak var library: PhotoLibrary?
     private var running = false
     private var again = false
+    private var stopBulk = false
     private var current: Task<Void, Never>?
+    private var manualTask: Task<Void, Never>?
     private var online = true
     private var onWiFi = false
     private var constrained = false
@@ -143,6 +147,12 @@ final class LibraryEngine {
     private var sentByteCache: (key: [Int], bytes: Int64)?
     private var activeID: String?
     private var attempts: [String: Int] = [:]
+    /// Files that failed three times. They stay out of the queue so the last two cannot spin forever.
+    private var postponed = Set<String>()
+    /// Photos the user tapped to send. They go even while automatic copy is off.
+    private var manual = Set<String>()
+    /// Set when those leftovers are parked, so the next network blip does not start another lap.
+    private var settled = false
     private var removedFromPhone = Set<String>()
     private var lastUploadReport = Date.distantPast
     private let monitor = NWPathMonitor()
@@ -177,13 +187,57 @@ final class LibraryEngine {
 
     func attach(_ library: PhotoLibrary) {
         self.library = library
+        guard SyncPolicy.uploadsEnabled else {
+            UserDefaults.standard.set(false, forKey: "galleryos.sync.awake")
+            SyncScheduler.cancelAutomatic()
+            library.syncStatus = .hidden
+            return
+        }
         restoreShownProgress()
     }
 
     func freeSpace() async -> Int64? {
-        guard let transport = try? await makeTransport(DestinationSettings.load()) else { return nil }
+        guard let transport = try? await makeTransport(DestinationSettings.load()) as? WebDAVTransport else { return nil }
         defer { Task { await transport.close() } }
-        return await (transport as? WebDAVTransport)?.availableBytes()
+        return await transport.availableBytes()
+    }
+
+    func serverShareName() -> String {
+        let name = DestinationSettings.load().directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Public" : name
+    }
+
+    func serverShares() async -> [String] {
+        guard let web = try? await copyTransport() else { return [] }
+        return await web.shareChoices()
+    }
+
+    func serverChildren(_ path: String) async -> [WebEntry] {
+        guard let web = try? await copyTransport() else { return [] }
+        return (try? await web.children(path)) ?? []
+    }
+
+    func switchShare(to name: String) async -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Wybierz folder." }
+        var settings = DestinationSettings.load()
+        settings.directory = trimmed
+        settings.save()
+        await dropTransport()
+        do {
+            _ = try await connect()
+            return nil
+        } catch {
+            return SyncPause.message(for: error)
+        }
+    }
+
+    private func copyTransport() async throws -> WebDAVTransport {
+        let settings = DestinationSettings.load()
+        guard let web = try await openTransport(settings) as? WebDAVTransport else {
+            throw LibraryError(message: "Ten serwer nie pokazuje folderów.")
+        }
+        return web
     }
 
     func isUploaded(_ id: String) -> Bool {
@@ -209,7 +263,11 @@ final class LibraryEngine {
         store.detachLocals(goneFromPhone)
         store.purgeLocalOriginals()
         adoptDuplicates()
-        if DestinationSettings.load().connected, !photos.isEmpty, SyncPolicy.uploadsEnabled {
+        if settled {
+            snapshotCache = nil
+            if hasPendingUploads() { settled = false }
+        }
+        if !settled, DestinationSettings.load().connected, !photos.isEmpty, SyncPolicy.uploadsEnabled {
             reportUpload()
         }
     }
@@ -272,6 +330,34 @@ final class LibraryEngine {
                 recognized += 1
             }
         }
+        let films = store.visible().filter { LibraryRules.isFilm($0) }
+        if !films.isEmpty {
+            for photo in photos.values where store.hash(forLocal: photo.id) == nil && !pendingDelete.contains(photo.id) {
+                guard LibraryRules.isFilm(photo) else { continue }
+                let matches = films.filter {
+                    LibraryRules.sameFilm(photo, $0) && store.localID(forHash: $0.hash) == nil
+                }
+                guard let hash = matches.max(by: { $0.updatedAt < $1.updatedAt })?.hash else { continue }
+                store.remember(local: photo.id, hash: hash)
+                recognized += 1
+            }
+        }
+        var filmKept: [PhotoRef] = []
+        for photo in photos.values where LibraryRules.isFilm(photo) && !pendingDelete.contains(photo.id) {
+            if let index = filmKept.firstIndex(where: { LibraryRules.sameFilm($0, photo) }) {
+                let earlier = filmKept[index]
+                let earlierUploaded = store.hash(forLocal: earlier.id) != nil
+                let thisUploaded = store.hash(forLocal: photo.id) != nil
+                if thisUploaded && !earlierUploaded {
+                    copies.insert(earlier.id)
+                    filmKept[index] = photo
+                } else if earlier.id != photo.id {
+                    copies.insert(photo.id)
+                }
+            } else {
+                filmKept.append(photo)
+            }
+        }
         copies.subtract(photos.keys.filter { store.hash(forLocal: $0) != nil })
         for photo in photos.values where store.hash(forLocal: photo.id) == nil && !copies.contains(photo.id) && !pendingDelete.contains(photo.id) {
             sendCount += 1
@@ -312,23 +398,152 @@ final class LibraryEngine {
     func setUploadsEnabled(_ enabled: Bool) {
         SyncPolicy.uploadsEnabled = enabled
         if enabled {
+            stopBulk = false
+            postponed.removeAll()
+            attempts.removeAll()
+            settled = false
+            snapshotCache = nil
             kick()
             return
         }
+        stopAutomaticCopy()
+    }
+
+    /// Backup is off. The queue, the background relaunch and the on-screen meter all stop.
+    private func stopAutomaticCopy() {
+        stopBulk = true
         again = false
+        current?.cancel()
         releaseContinued()
+        SyncScheduler.cancelAutomatic()
         SyncRun.setCopying(false)
-        UIApplication.shared.isIdleTimerDisabled = false
+        UIApplication.shared.isIdleTimerDisabled = manualTask != nil
         UserDefaults.standard.set(false, forKey: "galleryos.sync.awake")
-        library?.syncStatus = .hidden
-        Task { await SyncLiveActivity.shared.end() }
+        if manual.isEmpty {
+            library?.syncStatus = .hidden
+            Task { await SyncLiveActivity.shared.end() }
+        }
+    }
+
+    /// Send one photo the user pointed at. Automatic backup can stay off.
+    func sendNow(_ id: String) {
+        guard !id.hasPrefix("cloud:"), store.hash(forLocal: id) == nil else { return }
+        manual.insert(id)
+        postponed.remove(id)
+        attempts[id] = 0
+        if SyncPolicy.uploadsEnabled {
+            settled = false
+            if running {
+                again = true
+                return
+            }
+            kick()
+            return
+        }
+        stopBulk = true
+        again = false
+        if running { current?.cancel() }
+        guard manualTask == nil else {
+            reportManual()
+            return
+        }
+        manualTask = Task { @MainActor in
+            await self.deliverChosen()
+            self.manualTask = nil
+        }
+    }
+
+    /// One finger tap, one file. This never walks the rest of the library.
+    private func deliverChosen() async {
+        while running {
+            library?.syncStatus = SyncStatus(
+                title: "Wysyłanie",
+                detail: "Zatrzymuję kopię zapasową",
+                progress: nil,
+                busy: true,
+                visible: true
+            )
+            try? await Task.sleep(for: .milliseconds(200))
+            if Task.isCancelled { return }
+        }
+        guard !SyncPolicy.uploadsEnabled else { return }
+        let settings = DestinationSettings.load()
+        guard settings.connected, settings.kind != DestinationKind.none else {
+            manual.removeAll()
+            library?.syncStatus = .paused("Nie wybrano jeszcze serwera.")
+            return
+        }
+        if settings.kind != DestinationKind.folder, !online {
+            library?.syncStatus = .paused("Brak sieci")
+            return
+        }
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer {
+            if manualTask != nil || !SyncPolicy.uploadsEnabled {
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+        }
+        var failed = false
+        do {
+            let transport = try await openCopyTransport(settings)
+            while let id = manual.first {
+                if SyncPolicy.uploadsEnabled || Task.isCancelled { return }
+                guard let photo = photos[id], let asset = assets[id] else {
+                    manual.remove(id)
+                    library?.syncStatus = .paused("Tego pliku nie ma na \(ThisDevice.locative).")
+                    continue
+                }
+                var sent = false
+                var last: Error = LibraryError(message: "Nie udało się wysłać tego pliku.")
+                for tryIndex in 0..<3 {
+                    if SyncPolicy.uploadsEnabled || Task.isCancelled { return }
+                    reportManual()
+                    do {
+                        try await send(photo, asset: asset, transport: transport)
+                        if store.hash(forLocal: id) != nil {
+                            sent = true
+                            manual.remove(id)
+                            attempts[id] = 0
+                            postponed.remove(id)
+                            library?.overlayCatalog()
+                            break
+                        }
+                        last = LibraryError(message: "Plik nie został potwierdzony na serwerze.")
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        last = error
+                        if !keepsGoing(error) { break }
+                    }
+                    if tryIndex < 2 {
+                        library?.syncStatus = .paused("Ponawiam · \(SyncPause.message(for: last))")
+                        try? await Task.sleep(for: .seconds(1))
+                    }
+                }
+                if !sent {
+                    failed = true
+                    manual.remove(id)
+                    library?.syncStatus = .paused(SyncPause.message(for: last))
+                }
+            }
+            if manual.isEmpty, !failed {
+                try? await writeJournal(transport)
+                library?.syncStatus = .ready("Wybrany plik jest na serwerze.")
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            library?.syncStatus = .paused(SyncPause.message(for: error))
+        }
     }
 
     func kick() {
         guard canSync(), SyncPolicy.uploadsEnabled else { return }
+        if settled, !hasPendingUploads() { return }
+        if hasPendingUploads() { settled = false }
         stayAwake()
         if running {
-            again = true
+            if hasPendingUploads() { again = true }
             return
         }
         running = true
@@ -342,6 +557,7 @@ final class LibraryEngine {
     /// Resume the copy loop only when it has actually stopped. A running upload is left alone.
     func keepCopying() {
         guard canSync(), SyncPolicy.uploadsEnabled else { return }
+        if settled, !hasPendingUploads() { return }
         if running {
             stayAwake()
             return
@@ -355,12 +571,13 @@ final class LibraryEngine {
 
     func resume() {
         guard canSync(), SyncPolicy.uploadsEnabled else { return }
+        if settled, !hasPendingUploads() { return }
         blockedReason = nil
-        let stuck = attempts.values.contains { $0 >= 3 }
-        for (id, count) in attempts where count >= 3 {
+        let retry = attempts.contains { $0.value >= 3 && !postponed.contains($0.key) }
+        for (id, count) in attempts where count >= 3 && !postponed.contains(id) {
             attempts[id] = 0
         }
-        if stuck || hasPendingUploads() {
+        if retry || hasPendingUploads() {
             reportUpload()
         }
         if running {
@@ -426,7 +643,9 @@ final class LibraryEngine {
         let line = continuedSubtitle()
         continuedLine = line
         task.updateTitle("Wysyłanie zdjęć", subtitle: line)
-        reportUpload()
+        if SyncPolicy.uploadsEnabled {
+            reportUpload()
+        }
         return continuedGeneration
     }
 
@@ -481,6 +700,10 @@ final class LibraryEngine {
     }
 
     func resumeFromBackgroundTransfer() {
+        guard SyncPolicy.uploadsEnabled else {
+            SyncScheduler.cancelAutomatic()
+            return
+        }
         kick()
     }
 
@@ -617,6 +840,72 @@ final class LibraryEngine {
         Task { await SyncLiveActivity.shared.end() }
     }
 
+    func setConcealed(_ concealed: Bool, ids: [String]) {
+        for id in ids {
+            let hash = hash(for: id)
+            let local = id.hasPrefix("cloud:") ? hash.flatMap { store.localID(forHash: $0) } : id
+            let cloud = hash.map { "cloud:\($0)" }
+            if concealed {
+                store.conceal(id)
+                if let local { store.conceal(local) }
+                if let cloud { store.conceal(cloud) }
+            } else {
+                store.reveal(id)
+                if let local { store.reveal(local) }
+                if let cloud { store.reveal(cloud) }
+            }
+            guard let hash, var asset = store.assets[hash], asset.hidden != concealed else { continue }
+            asset.hidden = concealed
+            store.append(asset)
+            privacyDirty = true
+        }
+        if privacyDirty { pushPrivacyJournal() }
+        library?.overlayCatalog()
+    }
+
+    func isConcealed(_ id: String) -> Bool {
+        if store.isConcealed(id) { return true }
+        if let hash = hash(for: id), store.assets[hash]?.hidden == true { return true }
+        return false
+    }
+
+    func hiddenRefs() -> [PhotoRef] {
+        var result: [PhotoRef] = []
+        var seen = Set<String>()
+        for photo in photos.values {
+            let onServer = hash(for: photo.id).flatMap { store.assets[$0] }?.hidden == true
+            guard store.isConcealed(photo.id) || onServer else { continue }
+            guard !pendingDelete.contains(photo.id) else { continue }
+            result.append(photo)
+            seen.insert(photo.id)
+        }
+        for asset in store.assets.values where asset.hidden && asset.deletedAt == nil {
+            if let local = store.localID(forHash: asset.hash), seen.contains(local) { continue }
+            result.append(asset.photoRef())
+        }
+        return result.sorted { $0.created < $1.created }
+    }
+
+    /// Uploads the journal so Apple TV and the server library drop the hidden photos immediately.
+    private func pushPrivacyJournal() {
+        Task { [weak self] in
+            guard let self else { return }
+            let settings = DestinationSettings.load()
+            guard settings.connected,
+                  settings.kind != DestinationKind.none,
+                  settings.kind != DestinationKind.immich else { return }
+            do {
+                let transport = try await self.makeTransport(settings)
+                try await transport.open()
+                try await self.writeJournal(transport)
+                await transport.close()
+                self.privacyDirty = false
+            } catch {
+                // The next copy cycle writes the same journal.
+            }
+        }
+    }
+
     func updateFavorite(_ favorite: Bool, ids: [String]) {
         for id in ids {
             pendingFavorite[id] = favorite
@@ -647,16 +936,18 @@ final class LibraryEngine {
     }
 
     func phoneRefs(local: [PhotoRef]) -> [PhotoRef] {
-        local.compactMap { photo in
+        let refs = local.compactMap { photo -> PhotoRef? in
             if pendingDelete.contains(photo.id) || removedFromPhone.contains(photo.id) { return nil }
+            if store.isConcealed(photo.id) { return nil }
             var copy = photo
             if let hash = store.hash(forLocal: photo.id), let asset = store.assets[hash] {
-                if asset.deletedAt != nil { return nil }
+                if asset.deletedAt != nil || asset.hidden { return nil }
                 copy.cloudHash = hash
                 copy.isFavorite = pendingFavorite[photo.id] ?? asset.favorite
             }
             return copy
         }
+        return LibraryRules.keepingOneFilm(refs)
     }
 
     /// True while remote favorite/delete mutations are being applied to Photos (suppress full rebuild loops).
@@ -665,9 +956,11 @@ final class LibraryEngine {
 
     func serverRefs() -> [PhotoRef] {
         // Always use cloud:<hash> so the server shelf never flips identity when a photo leaves the phone.
+        let visible = store.visible()
+        let dropped = duplicateFilmHashes(in: visible)
         var result: [PhotoRef] = []
-        result.reserveCapacity(store.visible().count)
-        for asset in store.visible() {
+        result.reserveCapacity(visible.count)
+        for asset in visible where !dropped.contains(asset.hash) {
             var photo = asset.photoRef()
             if let local = store.localID(forHash: asset.hash),
                !removedFromPhone.contains(local),
@@ -696,20 +989,58 @@ final class LibraryEngine {
         var result: [PhotoRef] = []
         for var photo in local {
             if pendingDelete.contains(photo.id) || removedFromPhone.contains(photo.id) { continue }
+            if store.isConcealed(photo.id) { continue }
             if let hash = store.hash(forLocal: photo.id), let asset = store.assets[hash] {
-                if asset.deletedAt != nil { continue }
+                if !LibraryRules.isVisible(asset) { continue }
                 photo.isFavorite = pendingFavorite[photo.id] ?? asset.favorite
                 photo.cloudHash = hash
                 seen.insert(hash)
             }
             result.append(photo)
         }
+        result = LibraryRules.keepingOneFilm(result)
+        let filmsOnPhone = result.filter { LibraryRules.isFilm($0) }
         for asset in store.visible() where !seen.contains(asset.hash) && store.localID(forHash: asset.hash) == nil {
+            if LibraryRules.isFilm(asset), filmsOnPhone.contains(where: { LibraryRules.sameFilm($0, asset) }) {
+                continue
+            }
             var photo = asset.photoRef()
             photo.isFavorite = asset.favorite
             result.append(photo)
         }
         return result
+    }
+
+    /// Extra uploads of one movie. The copy linked to the phone stays; otherwise the newest one stays.
+    private func duplicateFilmHashes(in visible: [LibraryAsset]) -> Set<String> {
+        let ranked = visible.sorted { lhs, rhs in
+            let lhsLocal = store.localID(forHash: lhs.hash) != nil
+            let rhsLocal = store.localID(forHash: rhs.hash) != nil
+            if lhsLocal != rhsLocal { return lhsLocal && !rhsLocal }
+            return lhs.updatedAt > rhs.updatedAt
+        }
+        var kept: [LibraryAsset] = []
+        var dropped = Set<String>()
+        for asset in ranked where LibraryRules.isFilm(asset) {
+            if kept.contains(where: { LibraryRules.sameFilm($0, asset) }) {
+                dropped.insert(asset.hash)
+            } else {
+                kept.append(asset)
+            }
+        }
+        return dropped
+    }
+
+    /// A movie the server already has for this capture. A second export must not become a second tile.
+    private func filmKeeper(for photo: PhotoRef) -> LibraryAsset? {
+        guard LibraryRules.isFilm(photo) else { return nil }
+        let matches = store.visible().filter { LibraryRules.sameFilm(photo, $0) }
+        if let linked = matches.first(where: { store.localID(forHash: $0.hash) == photo.id }) {
+            return linked
+        }
+        return matches
+            .filter { store.localID(forHash: $0.hash) == nil }
+            .max { $0.updatedAt < $1.updatedAt }
     }
 
     func trashedRefs() -> [PhotoRef] {
@@ -732,6 +1063,14 @@ final class LibraryEngine {
 
     func supplementalAlbums() -> [AlbumRecord] {
         var records: [AlbumRecord] = []
+        let hidden = hiddenRefs()
+        records.append(AlbumRecord(
+            id: "galleryos.hidden",
+            title: "Ukryte",
+            count: hidden.count,
+            coverID: nil,
+            system: true
+        ))
         let trash = trashedRefs()
         if !trash.isEmpty {
             records.append(AlbumRecord(
@@ -759,19 +1098,29 @@ final class LibraryEngine {
 
     func thumbnail(id: String) -> UIImage? {
         guard id.hasPrefix("cloud:"), let hash = hash(for: id) else { return nil }
-        if let image = thumbImages[hash] { return image }
-        guard let image = UIImage(contentsOfFile: store.replicaURL(CatalogPaths.thumb(hash: hash)).path) else { return nil }
+        if let image = thumbImages[hash] {
+            if PreviewCheck.isUsable(image) { return image }
+            thumbImages.removeValue(forKey: hash)
+        }
+        let url = store.replicaURL(CatalogPaths.thumb(hash: hash))
+        guard let image = usableThumb(at: url) else { return nil }
         rememberThumb(hash, image)
         return image
     }
 
     func prioritizeThumbs(_ ids: [String]) {
         for id in ids.reversed() {
-            guard let hash = hash(for: id), thumbImages[hash] == nil, !thumbMiss.contains(hash) else { continue }
-            let thumbPath = store.replicaURL(CatalogPaths.thumb(hash: hash)).path
-            if FileManager.default.fileExists(atPath: thumbPath) {
+            guard let hash = hash(for: id), !thumbMiss.contains(hash) else { continue }
+            if let image = thumbImages[hash] {
+                if PreviewCheck.isUsable(image) { continue }
+                thumbImages.removeValue(forKey: hash)
+            }
+            let thumbURL = store.replicaURL(CatalogPaths.thumb(hash: hash))
+            if FileManager.default.fileExists(atPath: thumbURL.path) {
                 if thumbnail(id: id) != nil { continue }
-                try? FileManager.default.removeItem(atPath: thumbPath)
+                // A large file that failed to decode once stays. A blank or tiny one was already removed.
+                if fileBytes(thumbURL) >= 200 { continue }
+                try? FileManager.default.removeItem(at: thumbURL)
             }
             guard !thumbFlight.contains(hash) else { continue }
             if let index = thumbOrder.firstIndex(of: hash) {
@@ -782,7 +1131,23 @@ final class LibraryEngine {
         pumpThumbsIfNeeded()
     }
 
+    /// Deletes a preview that is empty, tiny, or a flat black/white field. Leaves a large file alone when decoding fails once.
+    private func usableThumb(at url: URL) -> UIImage? {
+        let size = fileBytes(url)
+        guard size > 0 else { return nil }
+        guard let image = UIImage(contentsOfFile: url.path) else {
+            if size < 200 { try? FileManager.default.removeItem(at: url) }
+            return nil
+        }
+        guard image.size.width > 1, image.size.height > 1, PreviewCheck.isUsable(image) else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        return image
+    }
+
     private func rememberThumb(_ hash: String, _ image: UIImage) {
+        guard PreviewCheck.isUsable(image) else { return }
         if thumbImages.count > 480 { thumbImages.removeAll(keepingCapacity: true) }
         thumbImages[hash] = image
     }
@@ -886,17 +1251,26 @@ final class LibraryEngine {
 
     private func fetchThumb(_ hash: String, transport: CatalogTransport) async -> UIImage? {
         let dest = store.replicaURL(CatalogPaths.thumb(hash: hash))
-        if let image = UIImage(contentsOfFile: dest.path), image.size.width > 1 { return image }
-        try? FileManager.default.removeItem(at: dest)
-        if let data = try? await transport.readFile(CatalogPaths.thumb(hash: hash)),
-           let image = UIImage(data: data), image.size.width > 1 {
-            write(data, to: dest)
+        if let image = usableThumb(at: dest) {
             rememberThumb(hash, image)
             return image
         }
+        let thumbPath = CatalogPaths.thumb(hash: hash)
+        if let data = try? await transport.readFile(thumbPath) {
+            let image = UIImage(data: data)
+            if let image, PreviewCheck.isUsable(image) {
+                write(data, to: dest)
+                rememberThumb(hash, image)
+                return image
+            }
+            // An unfinished or flat preview is not a picture. Drop it so the next build can replace it.
+            if data.count < 200 || image != nil {
+                try? await transport.removeFile(thumbPath)
+            }
+        }
         // The server copy has no usable preview. The photo is still on this device, so build
         // the tile from the camera roll and put that JPEG back on the server.
-        if let image = await localPreview(hash: hash) {
+        if let image = await localPreview(hash: hash), PreviewCheck.isUsable(image) {
             if let jpeg = image.jpegData(compressionQuality: 0.82) {
                 write(jpeg, to: dest)
                 await publishThumb(jpeg, hash: hash, on: transport, force: true)
@@ -912,6 +1286,7 @@ final class LibraryEngine {
            let data = try? await transport.readFile(CatalogPaths.original(hash: primary.hash, ext: primary.ext)),
            let full = UIImage(data: data) {
             let image = Self.downscale(full, maxSide: 720)
+            guard PreviewCheck.isUsable(image) else { return nil }
             if let jpeg = image.jpegData(compressionQuality: 0.82) {
                 write(jpeg, to: dest)
                 await publishThumb(jpeg, hash: hash, on: transport)
@@ -926,29 +1301,18 @@ final class LibraryEngine {
         return nil
     }
 
-    /// A frame for a film whose preview was never uploaded. Uses the copy already on this iPhone,
-    /// and fetches the original from the server when it is not here yet.
+    /// A frame for a film whose preview was never uploaded. Uses a complete copy already on this
+    /// iPhone. A short download is removed and is not used as a tile.
     private func videoThumb(primary: LibraryResource, dest: URL, transport: CatalogTransport) async -> UIImage? {
         let local = store.replicaURL(CatalogPaths.original(hash: primary.hash, ext: primary.ext))
-        if !FileManager.default.fileExists(atPath: local.path),
-           let data = try? await transport.readFile(CatalogPaths.original(hash: primary.hash, ext: primary.ext)),
-           !data.isEmpty {
-            write(data, to: local)
+        let expected = Int64(primary.bytes)
+        let size = fileBytes(local)
+        if size > 0, expected > 0, size < expected {
+            try? FileManager.default.removeItem(at: local)
+            return nil
         }
-        guard FileManager.default.fileExists(atPath: local.path) else { return nil }
-        let clip = AVURLAsset(url: local)
-        let generator = AVAssetImageGenerator(asset: clip)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 720, height: 720)
-        generator.dynamicRangePolicy = .forceSDR
-        generator.requestedTimeToleranceBefore = .positiveInfinity
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
-        let length = (try? await clip.load(.duration))?.seconds ?? 0
-        let second = length.isFinite && length > 2 ? min(1.0, length * 0.1) : 0.5
-        let picked = try? await generator.image(at: CMTime(seconds: second, preferredTimescale: 600)).image
-        let fallback = picked == nil ? try? await generator.image(at: .zero).image : nil
-        guard let cg = picked ?? fallback else { return nil }
-        let image = UIImage(cgImage: cg)
+        guard size >= 200 else { return nil }
+        guard let image = await filmStill(at: local) else { return nil }
         if let jpeg = image.jpegData(compressionQuality: 0.82) {
             write(jpeg, to: dest)
             await publishThumb(jpeg, hash: primary.hash, on: transport)
@@ -956,9 +1320,34 @@ final class LibraryEngine {
         return image
     }
 
+    /// Skips the black frame many clips open on. Returns nothing when every sample is a flat field.
+    private func filmStill(at url: URL) async -> UIImage? {
+        let clip = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: clip)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 720, height: 720)
+        generator.dynamicRangePolicy = .forceSDR
+        generator.requestedTimeToleranceBefore = .positiveInfinity
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
+        let length = (try? await clip.load(.duration))?.seconds ?? 0
+        let spots: [Double]
+        if length.isFinite, length > 1 {
+            spots = [min(1, length * 0.12), min(length * 0.4, max(0.2, length - 0.2))]
+        } else {
+            spots = [0.2, 0]
+        }
+        for second in spots {
+            guard let cg = try? await generator.image(at: CMTime(seconds: second, preferredTimescale: 600)).image else { continue }
+            let image = UIImage(cgImage: cg)
+            if PreviewCheck.isUsable(image) { return image }
+        }
+        return nil
+    }
+
     /// Uploads a freshly built preview so every device, including Apple TV, finds it next time.
     /// `force` replaces a file that is present but not a usable picture.
     private func publishThumb(_ jpeg: Data, hash: String, on transport: CatalogTransport, force: Bool = false) async {
+        guard let image = UIImage(data: jpeg), PreviewCheck.isUsable(image) else { return }
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
         guard (try? jpeg.write(to: file, options: .atomic)) != nil else { return }
         defer { try? FileManager.default.removeItem(at: file) }
@@ -978,32 +1367,38 @@ final class LibraryEngine {
               !pendingDelete.contains(local) else { return nil }
         let asset = assets[local] ?? PHAsset.fetchAssets(withLocalIdentifiers: [local], options: nil).firstObject
         guard let asset else { return nil }
+        if let image = await previewImage(asset, network: false) { return image }
+        // The local file was evicted (Optimize Storage). Ask Photos for a small thumbnail only.
+        return await previewImage(asset, network: true)
+    }
+
+    private func previewImage(_ asset: PHAsset, network: Bool) async -> UIImage? {
         let box = PreviewBox()
-        return await withCheckedContinuation { continuation in
+        let image = await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
-            options.deliveryMode = .opportunistic
+            options.deliveryMode = .fastFormat
             options.resizeMode = .fast
-            // A preview must not pull the iCloud original. That download is what heated the phone
-            // while the upload meter sat still.
-            options.isNetworkAccessAllowed = false
+            options.isNetworkAccessAllowed = network
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: CGSize(width: 720, height: 720),
+                targetSize: CGSize(width: 480, height: 480),
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in
                 let cancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
                 let degraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if let image { box.latest = image }
-                if cancelled || (image != nil && !degraded) || (image == nil && !degraded) {
-                    box.finish(continuation, image ?? box.latest)
+                if let image, PreviewCheck.isUsable(image) { box.latest = image }
+                if cancelled || !degraded || (!network && box.latest != nil) {
+                    box.finish(continuation, box.latest)
                 }
             }
             Task {
-                try? await Task.sleep(for: .seconds(6))
+                try? await Task.sleep(for: .seconds(network ? 8 : 4))
                 box.finish(continuation, box.latest)
             }
         }
+        guard let image, PreviewCheck.isUsable(image) else { return nil }
+        return image
     }
 
     private static func downscale(_ image: UIImage, maxSide: CGFloat) -> UIImage {
@@ -1049,7 +1444,8 @@ final class LibraryEngine {
         let thumb = FileManager.default.fileExists(atPath: store.replicaURL(CatalogPaths.thumb(hash: hash)).path)
             ? store.replicaURL(CatalogPaths.thumb(hash: hash)) : nil
         let still = primaryVideo ? thumb : (primary ?? thumb)
-        let video = primaryVideo ? primary : paired
+        // A half-written movie opens as a black screen. Leave it out so the phone copy can play.
+        let video = primaryVideo ? completeFile(asset.primary) : completeFile(asset.paired)
         guard still != nil || video != nil else { return nil }
         return CloudMedia(still: still, video: video, isLive: asset.paired != nil && !primaryVideo)
     }
@@ -1110,13 +1506,19 @@ final class LibraryEngine {
         if SyncPolicy.keepUnlocked { SyncNotice.allow() }
         UserDefaults.standard.set(true, forKey: "galleryos.sync.awake")
         repeat {
+            if stopBulk || !SyncPolicy.uploadsEnabled {
+                again = false
+                break
+            }
             again = false
             await run()
-        } while again && !Task.isCancelled
-        if let liveTransport {
-            await liveTransport.close()
+        } while again && !settled && !Task.isCancelled && SyncPolicy.uploadsEnabled && !stopBulk
+        if manualTask == nil {
+            if let liveTransport {
+                await liveTransport.close()
+            }
+            self.liveTransport = nil
         }
-        liveTransport = nil
         stopPulse()
         store.flush()
         endHold()
@@ -1130,7 +1532,9 @@ final class LibraryEngine {
             SyncScheduler.scheduleSoon()
         } else {
             UserDefaults.standard.set(false, forKey: "galleryos.sync.awake")
-            UIApplication.shared.isIdleTimerDisabled = false
+            if manualTask == nil {
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
         }
     }
 
@@ -1144,6 +1548,15 @@ final class LibraryEngine {
         if UIApplication.shared.isIdleTimerDisabled != hold {
             UIApplication.shared.isIdleTimerDisabled = hold
         }
+    }
+
+    private func openCopyTransport(_ settings: DestinationSettings) async throws -> CatalogTransport {
+        if let data = SpareDisks.shared.bookmarkForCopy() {
+            let transport = try FolderTransport.resolve(bookmark: data)
+            try await transport.open()
+            return transport
+        }
+        return try await openTransport(settings)
     }
 
     private func openTransport(_ settings: DestinationSettings) async throws -> CatalogTransport {
@@ -1185,7 +1598,11 @@ final class LibraryEngine {
     func noteFileProgress(_ fraction: Double) {
         fileFraction = min(0.99, max(0, fraction))
         guard running, canSync() else { return }
-        reportUpload()
+        if SyncPolicy.uploadsEnabled {
+            reportUpload()
+        } else if !manual.isEmpty {
+            reportManual()
+        }
     }
 
     private func pulseProgress() {
@@ -1193,8 +1610,10 @@ final class LibraryEngine {
         holdScreenIfNeeded()
         if continued != nil {
             tickContinued(continuedGeneration)
-        } else {
+        } else if SyncPolicy.uploadsEnabled {
             reportUpload()
+        } else if !manual.isEmpty {
+            reportManual()
         }
     }
 
@@ -1204,51 +1623,58 @@ final class LibraryEngine {
             library?.syncStatus = .hidden
             return
         }
-        guard SyncPolicy.uploadsEnabled else {
+        guard SyncPolicy.uploadsEnabled, !stopBulk else {
             again = false
-            library?.syncStatus = .hidden
             return
         }
-        let needsNetwork = settings.kind != DestinationKind.folder
+        let diskCopy = SpareDisks.shared.bookmarkForCopy() != nil
+        let needsNetwork = !diskCopy && settings.kind != DestinationKind.folder
         if let reason = policyBlock(needsNetwork: needsNetwork) {
+            let handPicked = !SyncPolicy.uploadsEnabled && !manual.isEmpty
             let userChoice = reason == "Czeka na ładowanie" || reason == "Czeka na Wi-Fi"
-            if userChoice || !stillCopying() {
+            if handPicked && userChoice {
+                // A finger tap sends now. Wi-Fi and charging rules stay on the automatic queue.
+            } else if userChoice || !stillCopying() {
                 blockedReason = reason
                 library?.syncStatus = .paused(reason)
                 SyncScheduler.schedule()
                 return
+            } else {
+                again = true
+                reportUpload()
+                try? await Task.sleep(for: .seconds(2))
+                return
             }
-            again = true
-            reportUpload()
-            try? await Task.sleep(for: .seconds(2))
-            return
         }
         blockedReason = nil
         holdScreenIfNeeded()
-        if !photos.isEmpty || (library?.grid.all.isEmpty == false) {
+        if SyncPolicy.uploadsEnabled && hasPendingUploads() {
             reportUpload()
+        } else if !manual.isEmpty {
+            reportManual()
         }
         do {
             if settings.kind == DestinationKind.immich {
                 try await syncImmich(settings)
             } else {
-                let transport = try await openTransport(settings)
+                let transport = try await openCopyTransport(settings)
                 if !journalLoaded {
                     try await pull(transport)
                     journalLoaded = true
                 }
                 // Already-copied files are rechecked only after the queue is empty.
                 // Doing that first left the meter at 2% while the phone hashed the whole library.
-                if hasPendingUploads() {
+                if SyncPolicy.uploadsEnabled && hasPendingUploads() {
                     try await push(transport, settings: settings)
-                } else {
+                } else if !manual.isEmpty {
+                    try await push(transport, settings: settings)
+                } else if SyncPolicy.uploadsEnabled {
                     await repairShort(transport)
                     await repairLocalPreviews(transport)
                 }
             }
-            guard SyncPolicy.uploadsEnabled else {
+            if !SyncPolicy.uploadsEnabled || stopBulk {
                 again = false
-                library?.syncStatus = .hidden
                 return
             }
             await applyRemoteEdits()
@@ -1260,30 +1686,49 @@ final class LibraryEngine {
             }
             await refreshCatalog(now: !again)
             if !again, !photos.isEmpty {
-                let note = await remoteNote(settings)
-                library?.syncStatus = .ready(note)
-                let alive = photos.values.filter { !pendingDelete.contains($0.id) }
-                let sent = alive.filter { store.hash(forLocal: $0.id) != nil }.count
-                if sent > 0, sent >= alive.count {
-                    if uploadedSinceIdle > 0 {
-                        let count = uploadedSinceIdle
-                        uploadedSinceIdle = 0
-                        ServerLink.shared.announce(
-                            "Wszystko na serwerze",
-                            detail: "Wysłano \(TransferText.groupedPublic(count)) \(Self.photoWord(count))",
-                            symbol: "checkmark",
-                            tint: Color(red: 0.2, green: 0.78, blue: 0.42)
-                        )
-                        SyncNotice.finished(count: count)
-                    }
+                let parked = postponed.count
+                if parked > 0 {
+                    let word = Self.photoWord(parked)
+                    library?.syncStatus = .ready("\(parked) \(word) nie doszły. Reszta jest na serwerze.")
                     UIApplication.shared.isIdleTimerDisabled = false
                     finishContinued()
-                    SyncLiveActivity.shared.finish(done: sent, total: max(alive.count, 1), bytesSent: storedBytes(), place: uploadPlace(settings))
+                    SyncLiveActivity.shared.finish(
+                        done: max(photos.count - parked, 0),
+                        total: max(photos.count, 1),
+                        bytesSent: storedBytes(),
+                        place: uploadPlace(settings)
+                    )
                     resetShownProgress()
+                } else {
+                    let note = await remoteNote(settings)
+                    library?.syncStatus = .ready(note)
+                    let alive = photos.values.filter { !pendingDelete.contains($0.id) }
+                    let sent = alive.filter { store.hash(forLocal: $0.id) != nil }.count
+                    if sent > 0, sent >= alive.count {
+                        if uploadedSinceIdle > 0 {
+                            let count = uploadedSinceIdle
+                            uploadedSinceIdle = 0
+                            ServerLink.shared.announce(
+                                "Wszystko na serwerze",
+                                detail: "Wysłano \(TransferText.groupedPublic(count)) \(Self.photoWord(count))",
+                                symbol: "checkmark",
+                                tint: Color(red: 0.2, green: 0.78, blue: 0.42)
+                            )
+                            SyncNotice.finished(count: count)
+                        }
+                        UIApplication.shared.isIdleTimerDisabled = false
+                        finishContinued()
+                        SyncLiveActivity.shared.finish(done: sent, total: max(alive.count, 1), bytesSent: storedBytes(), place: uploadPlace(settings))
+                        resetShownProgress()
+                    }
                 }
                 SavedServerStore.shared.remember(settings, online: true)
                 await ShareAccount.shared.publishLibrary()
             }
+        } catch is CancellationError {
+            again = false
+        } catch let url as URLError where url.code == .cancelled {
+            again = false
         } catch {
             if stillCopying(), keepsGoing(error) {
                 await dropTransport()
@@ -1303,14 +1748,22 @@ final class LibraryEngine {
     }
 
     private func push(_ transport: CatalogTransport, settings: DestinationSettings) async throws {
+        if !SyncPolicy.uploadsEnabled || stopBulk {
+            again = false
+            return
+        }
         let waiting = photos.values.filter {
             store.hash(forLocal: $0.id) == nil && inQueue($0.id)
         }
+        let pool = Array(waiting)
         let remote = ServerLink.shared.route == .remote
-        let ready = waiting.filter { (attempts[$0.id] ?? 0) < 3 && !(remote && cloudLater.contains($0.id)) }
+        let ready = pool.filter { (attempts[$0.id] ?? 0) < 3 && !(remote && cloudLater.contains($0.id)) }
         // One linear pass. Sorting used to ask Photos whether every file was on the device,
-        // tens of thousands of times, on the main thread.
+        // tens of thousands of times, on the main thread. A tapped photo goes first.
         let chosen = ready.min { lhs, rhs in
+            let leftManual = manual.contains(lhs.id)
+            let rightManual = manual.contains(rhs.id)
+            if leftManual != rightManual { return leftManual && !rightManual }
             let left = attempts[lhs.id] ?? 0
             let right = attempts[rhs.id] ?? 0
             if left != right { return left < right }
@@ -1323,40 +1776,80 @@ final class LibraryEngine {
             return lhs.id < rhs.id
         }
         let batch = chosen.map { [$0] } ?? []
-        reportUpload()
+        if SyncPolicy.uploadsEnabled {
+            reportUpload()
+        } else {
+            reportManual()
+        }
         var lastError: Error?
         for photo in batch {
-            if Task.isCancelled || !SyncPolicy.uploadsEnabled {
+            let handPicked = manual.contains(photo.id)
+            if Task.isCancelled || stopBulk || !SyncPolicy.uploadsEnabled {
                 again = false
                 return
             }
-            guard let asset = assets[photo.id] else { continue }
-            reportUpload()
+            guard let asset = assets[photo.id] else {
+                attempts[photo.id, default: 0] += 1
+                if handPicked { manual.remove(photo.id) }
+                again = !manual.isEmpty || SyncPolicy.uploadsEnabled
+                continue
+            }
+            if handPicked { reportManual() } else { reportUpload() }
             do {
+                let linkedBefore = store.hash(forLocal: photo.id) != nil
                 try await send(photo, asset: asset, transport: transport)
-                attempts[photo.id] = 0
+                if store.hash(forLocal: photo.id) != nil {
+                    attempts[photo.id] = 0
+                    postponed.remove(photo.id)
+                    manual.remove(photo.id)
+                    if handPicked { library?.overlayCatalog() }
+                } else if !linkedBefore {
+                    attempts[photo.id, default: 0] += 1
+                    again = true
+                    if handPicked, (attempts[photo.id] ?? 0) >= 3 {
+                        manual.remove(photo.id)
+                        library?.syncStatus = .paused("Plik nie został potwierdzony na serwerze.")
+                    }
+                }
+            } catch is CancellationError {
+                again = false
+                return
+            } catch let url as URLError where url.code == .cancelled {
+                again = false
+                return
             } catch SendLater.cloud {
                 cloudLater.insert(photo.id)
                 again = true
                 stepNote = "Oryginał jest w iCloud. Zdalnie biorę najpierw to, co jest na telefonie."
-                reportUpload()
+                if handPicked { reportManual() } else { reportUpload() }
             } catch {
                 lastError = error
                 attempts[photo.id, default: 0] += 1
                 again = true
                 stepNote = ""
-                reportUpload()
+                if handPicked, (attempts[photo.id] ?? 0) >= 3 {
+                    manual.remove(photo.id)
+                    library?.syncStatus = .paused(SyncPause.message(for: error))
+                } else if handPicked {
+                    reportManual()
+                } else {
+                    reportUpload()
+                }
                 if keepsGoing(error) {
                     try? await Task.sleep(for: .milliseconds(400))
                 }
             }
+        }
+        if !SyncPolicy.uploadsEnabled || stopBulk {
+            again = false
+            return
         }
         if !batch.isEmpty {
             sinceJournal += batch.count
             // The journal holds the whole catalogue; re-uploading it after every photo
             // costs more than the photo itself on big libraries.
             let last = ready.count <= batch.count
-            if last || sinceJournal >= 12 || Date().timeIntervalSince(lastJournal) > 25 {
+            if last || sinceJournal >= 12 || privacyDirty || Date().timeIntervalSince(lastJournal) > 25 {
                 do {
                     try await writeJournal(transport)
                 } catch {
@@ -1364,6 +1857,9 @@ final class LibraryEngine {
                     again = true
                 }
             }
+        }
+        if !SyncPolicy.uploadsEnabled {
+            return
         }
         if ready.count > batch.count { again = true }
         reportUpload()
@@ -1380,10 +1876,13 @@ final class LibraryEngine {
                 again = true
                 return
             }
-            for photo in waiting { attempts[photo.id] = 0 }
-            again = true
-            reportUpload()
-            try? await Task.sleep(for: .seconds(3))
+            // Three failures is enough. Resetting the counter here made the last files spin at 100%.
+            for photo in waiting {
+                postponed.insert(photo.id)
+            }
+            snapshotCache = nil
+            settled = true
+            again = false
             return
         }
         if batch.isEmpty, let lastError, waiting.isEmpty == false {
@@ -1450,7 +1949,6 @@ final class LibraryEngine {
             return !verifiedBytes.contains(hash)
         }
         guard !pending.isEmpty else { return }
-        if pending.count > 4 { again = true }
         for local in pending.prefix(4) {
             guard let hash = store.hash(forLocal: local),
                   let record = store.assets[hash],
@@ -1473,7 +1971,6 @@ final class LibraryEngine {
                 verifiedBytes.insert(hash)
             } catch {
                 repairSkipped.insert(local)
-                again = true
             }
             saveVerified()
             return
@@ -1515,7 +2012,6 @@ final class LibraryEngine {
             made += 1
         }
         previewCursor = index
-        if made > 0 { again = true }
     }
 
     /// HEAD on a silent DDNS link must not sit past a few seconds.
@@ -1562,6 +2058,7 @@ final class LibraryEngine {
     private func writeJournal(_ transport: CatalogTransport) async throws {
         try await transport.writeFile(CatalogPaths.journal(device: store.deviceID), from: store.journalFile())
         sinceJournal = 0
+        privacyDirty = false
         lastJournal = .now
     }
 
@@ -1609,6 +2106,7 @@ final class LibraryEngine {
         activeID = photo.id
         fileFraction = 0
         prepareUnits = 0
+        try guardBulk(photo.id)
         if poolBytes[photo.id] == nil {
             poolBytes[photo.id] = Self.assetBytes(asset)
         }
@@ -1623,6 +2121,7 @@ final class LibraryEngine {
         stepNote = "Przygotowuję"
         reportUpload()
         let exported = try await OriginalExport.export(asset, wait: ServerLink.shared.route == .remote ? 20 : nil)
+        try guardBulk(photo.id)
         defer {
             if activeID == photo.id {
                 activeID = nil
@@ -1633,6 +2132,32 @@ final class LibraryEngine {
         }
         guard let primary = exported.resources.first(where: { $0.role == "primary" }) else { return }
         poolBytes[photo.id] = Int64(exported.resources.reduce(0) { $0 + $1.bytes })
+        if let keeper = filmKeeper(for: photo), keeper.hash != primary.hash {
+            let owner = store.localID(forHash: keeper.hash)
+            if owner == photo.id, let resource = keeper.primary {
+                let path = CatalogPaths.original(hash: resource.hash, ext: resource.ext)
+                if try await storedMatches(path, expected: resource.bytes, on: transport) {
+                    reportUpload()
+                    return
+                }
+                try? await transport.removeFile(path)
+                try await writeGuarded { try await transport.writeFile(path, from: primary.file) }
+                guard try await storedMatches(path, expected: primary.bytes, on: transport) else {
+                    try? await transport.removeFile(path)
+                    throw LibraryError(message: "Oryginał nie został potwierdzony.")
+                }
+                reportUpload()
+                return
+            }
+            if owner == nil, let resource = keeper.primary {
+                let path = CatalogPaths.original(hash: resource.hash, ext: resource.ext)
+                if try await storedMatches(path, expected: resource.bytes, on: transport) {
+                    store.remember(local: photo.id, hash: keeper.hash)
+                    reportUpload()
+                    return
+                }
+            }
+        }
         let original = CatalogPaths.original(hash: primary.hash, ext: primary.ext)
         stepNote = "Sprawdzam, czy już jest na serwerze"
         reportUpload()
@@ -1643,6 +2168,7 @@ final class LibraryEngine {
         }
         let record = makeAsset(photo: photo, exported: exported)
         for resource in exported.resources {
+            try guardBulk(photo.id)
             let path = CatalogPaths.original(hash: resource.hash, ext: resource.ext)
             stepNote = "Wysyłam"
             reportUpload()
@@ -1698,7 +2224,9 @@ final class LibraryEngine {
         let thumbDest = store.replicaURL(thumb)
         if fileBytes(thumbDest) == 0, try await transport.exists(thumb) {
             let data = try await transport.readFile(thumb)
-            if !data.isEmpty { write(data, to: thumbDest) }
+            if let image = UIImage(data: data), PreviewCheck.isUsable(image) {
+                write(data, to: thumbDest)
+            }
         }
         guard originals else { return }
         for resource in asset.resources {
@@ -1792,7 +2320,9 @@ final class LibraryEngine {
         let thumbDest = store.replicaURL(CatalogPaths.thumb(hash: asset.hash))
         if !FileManager.default.fileExists(atPath: thumbDest.path) {
             let data = try await client.download(id: match.id, original: false)
-            write(data, to: thumbDest)
+            if let image = UIImage(data: data), PreviewCheck.isUsable(image) {
+                write(data, to: thumbDest)
+            }
         }
         guard originals, let resource = asset.primary else { return }
         let dest = store.replicaURL(CatalogPaths.original(hash: resource.hash, ext: resource.ext))
@@ -1820,7 +2350,8 @@ final class LibraryEngine {
             resources: exported.resources.map {
                 LibraryResource(role: $0.role, hash: $0.hash, ext: $0.ext, bytes: $0.bytes)
             },
-            updatedAt: .now
+            updatedAt: .now,
+            hidden: store.isConcealed(photo.id)
         )
     }
 
@@ -2045,6 +2576,71 @@ final class LibraryEngine {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// The replica counts only when the whole original is on disk.
+    private func completeFile(_ resource: LibraryResource?) -> URL? {
+        guard let resource, let url = existing(resource) else { return nil }
+        guard resource.bytes > 0 else { return url }
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value ?? 0
+        guard size + 4096 >= Int64(resource.bytes) else { return nil }
+        return url
+    }
+
+    /// Fills server tiles whose preview file is missing. Does not delete originals or photos.
+    func repairServerPreviews() async -> String {
+        let hashes = Array(store.assets.keys)
+        var broken: [String] = []
+        for hash in hashes {
+            let url = store.replicaURL(CatalogPaths.thumb(hash: hash))
+            let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+            if bytes < 200 { broken.append(hash) }
+        }
+        guard !broken.isEmpty else { return "Serwer: miniatury na miejscu." }
+        let settings = DestinationSettings.load()
+        var transport: CatalogTransport?
+        if settings.connected {
+            transport = try? await makeTransport(settings)
+            try? await transport?.open()
+        }
+        var fixed = 0
+        for hash in broken {
+            if Task.isCancelled { break }
+            var image = await localPreview(hash: hash)
+            if image == nil, let asset = store.assets[hash] {
+                image = await stillFromReplica(asset)
+            }
+            guard let image, PreviewCheck.isUsable(image), let jpeg = image.jpegData(compressionQuality: 0.72) else { continue }
+            let dest = store.replicaURL(CatalogPaths.thumb(hash: hash))
+            try? FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? jpeg.write(to: dest, options: .atomic)
+            FilmPoster.store(image, id: "cloud:\(hash)")
+            if let local = store.localID(forHash: hash), (store.assets[hash]?.duration ?? 0) >= 0.8 {
+                FilmPoster.store(image, id: local)
+            }
+            GridImageStore.shared.remember("cloud:\(hash)", image)
+            if let transport {
+                await publishThumb(jpeg, hash: hash, on: transport, force: true)
+            }
+            fixed += 1
+        }
+        await transport?.close()
+        return "Serwer: \(fixed) z \(broken.count) pustych kadrów uzupełnione."
+    }
+
+    private func stillFromReplica(_ asset: LibraryAsset) async -> UIImage? {
+        let videoExt: Set<String> = ["mov", "mp4", "m4v"]
+        guard let primary = asset.primary, videoExt.contains(primary.ext.lowercased()),
+              let url = completeFile(primary) else { return nil }
+        return await Task.detached {
+            let generator = AVAssetImageGenerator(asset: AVAsset(url: url))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 480, height: 480)
+            generator.requestedTimeToleranceBefore = .positiveInfinity
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
+            guard let cg = try? generator.copyCGImage(at: CMTime(seconds: 0.4, preferredTimescale: 600), actualTime: nil) else { return nil }
+            return UIImage(cgImage: cg)
+        }.value
+    }
+
     private func remember(directory: String, settings: DestinationSettings) {
         guard directory != settings.directory else { return }
         var saved = DestinationSettings.load()
@@ -2143,12 +2739,12 @@ final class LibraryEngine {
                     } else if ok {
                         continuation.resume()
                     } else {
-                        continuation.resume(throwing: LibraryError(message: "iPhone nie usunął zdjęć."))
+                        continuation.resume(throwing: LibraryError(message: "\(ThisDevice.name) nie usunął zdjęć."))
                     }
                 }
             }
         } catch {
-            library?.syncStatus = .paused("iPhone nie usunął zdjęć")
+            library?.syncStatus = .paused("\(ThisDevice.name) nie usunął zdjęć")
             return "Nie skasowałem nic. Zdjęcia zostały na iPhonie i na serwerze."
         }
         for id in safe {
@@ -2157,7 +2753,7 @@ final class LibraryEngine {
         }
         library?.overlayCatalog()
         library?.syncStatus = .ready("\(safe.count) zdjęć zostało na serwerze")
-        return "Usunąłem \(safe.count) zdjęć z iPhone’a. Zostały na serwerze i przez 30 dni są w Ostatnio usuniętych."
+        return "Usunąłem \(safe.count) zdjęć z \(ThisDevice.genitive). Zostały na serwerze i przez 30 dni są w Ostatnio usuniętych."
     }
 
     private func noteRoute(_ label: String) {
@@ -2174,7 +2770,7 @@ final class LibraryEngine {
     }
 
     private func inQueue(_ id: String) -> Bool {
-        !pendingDelete.contains(id) && !duplicateIDs.contains(id)
+        !pendingDelete.contains(id) && !duplicateIDs.contains(id) && !postponed.contains(id)
     }
 
     private func hasPendingUploads() -> Bool {
@@ -2205,7 +2801,28 @@ final class LibraryEngine {
         SyncPolicy.blockReason(needsNetwork: needsNetwork, online: online, onWiFi: onWiFi, constrained: constrained)
     }
 
+    private func guardBulk(_ id: String) throws {
+        if stopBulk, !manual.contains(id) {
+            throw CancellationError()
+        }
+    }
+
+    private func reportManual() {
+        let left = manual.filter { store.hash(forLocal: $0) == nil }.count
+        library?.syncStatus = SyncStatus(
+            title: "Wysyłanie",
+            detail: left <= 1 ? "Wybrany plik" : "Wybrane · zostało \(left)",
+            progress: min(max(fileFraction, 0.08), 0.99),
+            busy: true,
+            visible: true
+        )
+    }
+
     private func reportUpload() {
+        guard SyncPolicy.uploadsEnabled, !stopBulk else {
+            if manual.contains(activeID ?? "") { reportManual() }
+            return
+        }
         let settings = DestinationSettings.load()
         let snapshot = progressSnapshot()
         guard snapshot.total > 0 else { return }
@@ -2222,13 +2839,15 @@ final class LibraryEngine {
             ? 1.0
             : min(1, (Double(shownDone) + min(max(fileFraction, 0), 0.99)) / Double(shownTotal))
         let raw = byteProgress(countProgress: byCount)
-        shownProgress = previousTotal == shownTotal && previousTotal > 0 ? max(shownProgress, raw) : raw
+        var capped = previousTotal == shownTotal && previousTotal > 0 ? max(shownProgress, raw) : raw
+        if pending > 0 { capped = min(capped, 0.994) }
+        shownProgress = capped
         ensurePoolScan()
         let bytesLeft = pending == 0 ? 0 : (remainingPoolBytes() ?? -1)
         if pending == 0 {
             let done = SyncStatus(
                 title: "Synchronizacja",
-                detail: "Wysłane z tego iPhone’a · \(TransferText.groupedPublic(shownTotal))",
+                detail: "Wysłane z tego \(ThisDevice.genitive) · \(TransferText.groupedPublic(shownTotal))",
                 progress: nil,
                 busy: false,
                 visible: true
@@ -2508,7 +3127,7 @@ final class LibraryEngine {
     /// Counting walks every photo; the engine asks several times per tick, so cache it until
     /// the photo list, deletions or the server mapping change.
     private func progressSnapshot() -> (sent: Int, total: Int) {
-        let key = [countsRevision, store.mapRevision]
+        let key = [countsRevision, store.mapRevision, postponed.count]
         if let snapshotCache, snapshotCache.key == key {
             return (snapshotCache.sent, snapshotCache.total)
         }

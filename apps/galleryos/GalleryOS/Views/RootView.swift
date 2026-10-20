@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var library: PhotoLibrary
+    @State private var review = false
 
     var body: some View {
         Group {
@@ -16,14 +17,19 @@ struct RootView: View {
             LinkAnnouncementBanner()
         }
         .task { library.prepare() }
+        .sheet(isPresented: $review) {
+            ReviewPrompt()
+        }
         .task { ServerLink.shared.start() }
         .task {
             guard ShareAccount.shared.signedIn else { return }
             await AccountVault.restoreIfNeeded()
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
             case .active:
+                GalleryReview.noteLaunch()
+                if GalleryReview.due() { review = true }
                 LibraryEngine.shared.resume()
             case .background:
                 LibraryEngine.shared.stayAwake()
@@ -81,7 +87,7 @@ private struct PadRoot: View {
                     .tag(SideItem.friends)
                 Section("Kolekcje") {
                     ForEach(library.albums) { album in
-                        Label(album.title, systemImage: "rectangle.stack")
+                        Label(album.title, systemImage: album.id == "galleryos.hidden" ? "lock.fill" : "rectangle.stack")
                             .tag(SideItem.album(album.id))
                     }
                 }
@@ -103,7 +109,11 @@ private struct PadRoot: View {
                     FriendsScreen()
                         .syncControl()
                 case .album(let id):
-                    LibraryScreen(albumID: id)
+                    if id == "galleryos.hidden" {
+                        HiddenLibrary()
+                    } else {
+                        LibraryScreen(albumID: id)
+                    }
                 }
             }
         }

@@ -129,6 +129,10 @@ struct GridModel: Equatable {
             all: sorted
         )
     }
+
+    func arranged(_ sort: LibrarySort) -> GridModel {
+        GridModel(photos: all.sorted { sort.places($0, before: $1) })
+    }
 }
 
 enum PhotoZoom: Int, CaseIterable, Identifiable {
@@ -148,6 +152,55 @@ enum PhotoZoom: Int, CaseIterable, Identifiable {
     func zoomed(out: Bool) -> PhotoZoom? {
         let next = rawValue + (out ? 1 : -1)
         return PhotoZoom(rawValue: next)
+    }
+}
+
+enum LibrarySort: String, CaseIterable, Identifiable {
+    case oldest
+    case newest
+    case longest
+    case favorites
+    case videos
+    case largest
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .oldest: return "Od najstarszych"
+        case .newest: return "Od najnowszych"
+        case .longest: return "Od najdłuższych"
+        case .favorites: return "Ulubione na górze"
+        case .videos: return "Najpierw filmy"
+        case .largest: return "Największe kadry"
+        }
+    }
+
+    func places(_ lhs: PhotoRef, before rhs: PhotoRef) -> Bool {
+        switch self {
+        case .oldest:
+            if lhs.created != rhs.created { return lhs.created < rhs.created }
+            return lhs.id < rhs.id
+        case .newest:
+            if lhs.created != rhs.created { return lhs.created > rhs.created }
+            return lhs.id > rhs.id
+        case .longest:
+            if lhs.duration != rhs.duration { return lhs.duration > rhs.duration }
+            return lhs.created > rhs.created
+        case .favorites:
+            if lhs.isFavorite != rhs.isFavorite { return lhs.isFavorite && !rhs.isFavorite }
+            return lhs.created > rhs.created
+        case .videos:
+            let left = lhs.traits.contains(.video)
+            let right = rhs.traits.contains(.video)
+            if left != right { return left && !right }
+            return lhs.created > rhs.created
+        case .largest:
+            let left = lhs.pixelWidth * lhs.pixelHeight
+            let right = rhs.pixelWidth * rhs.pixelHeight
+            if left != right { return left > right }
+            return lhs.created > rhs.created
+        }
     }
 }
 
@@ -267,6 +320,11 @@ enum PhotoFormat {
         return "\(number) \(noun)"
     }
 
+    static func onMap(_ value: Int) -> String {
+        if value == 1 { return "1 na mapie" }
+        return "\(grouped(value)) na mapie"
+    }
+
     /// Apple Photos place albums: „6 rzeczy”.
     static func things(_ value: Int) -> String {
         let number = grouped(value)
@@ -301,4 +359,18 @@ enum PhotoFormat {
         }
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+}
+
+/// The device this copy of GalleryOS is running on. Library copy says iPad on an iPad.
+enum ThisDevice {
+    private static var pad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    static var name: String { pad ? "iPad" : "iPhone" }
+    /// iPada / iPhone’a
+    static var genitive: String { pad ? "iPada" : "iPhone’a" }
+    /// iPadzie / iPhonie
+    static var locative: String { pad ? "iPadzie" : "iPhonie" }
+    /// iPadem / iPhone’em
+    static var instrumental: String { pad ? "iPadem" : "iPhone’em" }
+    static var symbol: String { pad ? "ipad" : "iphone" }
+    static var slashSymbol: String { pad ? "ipad.slash" : "iphone.slash" }
 }

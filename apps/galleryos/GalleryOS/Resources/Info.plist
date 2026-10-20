@@ -59,6 +59,8 @@
 		<string>_webdav._tcp</string>
 		<string>_webdavs._tcp</string>
 	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>GalleryOS prosi o potwierdzenie, zanim pokaże album Ukryte.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>GalleryOS szuka QNAP-a i innych serwerów w domowej sieci, żeby synchronizować bibliotekę.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

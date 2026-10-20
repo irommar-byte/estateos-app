@@ -32,7 +32,6 @@ struct GalleryOSApp: App {
                         withAnimation(.easeIn(duration: 0.35)) {
                             intro = false
                         }
-                        if SetupGuide.needed { guide = true }
                     }
                     .transition(.opacity)
                     .zIndex(2)

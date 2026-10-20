@@ -64,6 +64,67 @@ final class ShareAccount: ObservableObject {
         await session(path: "/v1/people/enter", name: trimmed, password: password)
     }
 
+    func signInWithPasskey() async {
+        do {
+            let start: PasskeyStart = try await postAnonymous("/v1/people/passkey/login/start", body: Data("{}".utf8))
+            guard let challenge = Base64URL.decode(start.challenge) else {
+                message = "Serwer nie przygotował Face ID."
+                return
+            }
+            let assertion = try await PasskeyCeremony.shared.assert(challenge: challenge)
+            let payload = try JSONEncoder().encode(PasskeyFinish(
+                sessionId: start.sessionId,
+                id: assertion.id,
+                response: .assertion(assertion.response)
+            ))
+            let data = try await send("/v1/people/passkey/login/finish", method: "POST", body: payload, anonymous: true)
+            try acceptSession(data)
+            UserDefaults.standard.set(true, forKey: PasskeyCeremony.readyKey)
+        } catch PasskeyError.cancelled {
+            return
+        } catch {
+            let text = AccountFailure.message(for: error)
+            message = text.isEmpty ? "Nie udało się wejść przez Face ID." : text
+        }
+    }
+
+    func registerPasskey() async -> Bool {
+        do {
+            let start: PasskeyRegisterStart = try await post("/v1/people/passkey/register/start", body: Data("{}".utf8))
+            guard let challenge = Base64URL.decode(start.challenge),
+                  let userID = Base64URL.decode(start.userID) else {
+                message = "Nie udało się przygotować klucza."
+                return false
+            }
+            let made = try await PasskeyCeremony.shared.register(challenge: challenge, name: start.name, userID: userID)
+            let payload = try JSONEncoder().encode(PasskeyFinish(
+                sessionId: start.sessionId,
+                id: made.id,
+                response: .registration(made.response)
+            ))
+            _ = try await send("/v1/people/passkey/register/finish", method: "POST", body: payload)
+            UserDefaults.standard.set(true, forKey: PasskeyCeremony.readyKey)
+            UserDefaults.standard.set(true, forKey: PasskeyCeremony.offeredKey)
+            message = ""
+            return true
+        } catch PasskeyError.cancelled {
+            return false
+        } catch {
+            message = AccountFailure.message(for: error)
+            return false
+        }
+    }
+
+    private func post<T: Decodable>(_ path: String, body: Data) async throws -> T {
+        let data = try await send(path, method: "POST", body: body)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func postAnonymous<T: Decodable>(_ path: String, body: Data) async throws -> T {
+        let data = try await send(path, method: "POST", body: body, anonymous: true)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
     func signIn(with apple: AppleIdentity.Credential) async {
         do {
             let payload = try JSONEncoder().encode(AppleDraft(
@@ -206,6 +267,7 @@ final class ShareAccount: ObservableObject {
         message = ""
         Task {
             await refresh()
+            await publishLibrary()
             await AccountVault.restoreIfNeeded()
         }
     }
@@ -283,6 +345,8 @@ struct LibraryProfile: Codable {
     var localPort: Int
     var localName: String
     var remoteHost: String
+    var remotePort: Int
+    var secret: String
 
     init(settings: DestinationSettings) {
         place = settings.place
@@ -294,11 +358,58 @@ struct LibraryProfile: Codable {
         localHost = settings.localHost
         localPort = settings.localPort
         localName = settings.localName
-        remoteHost = settings.remoteHost
+        var remote = settings.remoteHost
+        if remote.isEmpty, !settings.host.isEmpty, !GalleryNetwork.isLocalHost(settings.host) {
+            remote = settings.host
+        }
+        remoteHost = remote
+        remotePort = settings.namedRemotePort > 0 ? settings.namedRemotePort : settings.remotePort
+        secret = GalleryKeychain.string(account: "destination-password") ?? ""
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        place = try container.decodeIfPresent(String.self, forKey: .place) ?? ""
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 0
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        directory = try container.decodeIfPresent(String.self, forKey: .directory) ?? ""
+        localHost = try container.decodeIfPresent(String.self, forKey: .localHost) ?? ""
+        localPort = try container.decodeIfPresent(Int.self, forKey: .localPort) ?? 0
+        localName = try container.decodeIfPresent(String.self, forKey: .localName) ?? ""
+        remoteHost = try container.decodeIfPresent(String.self, forKey: .remoteHost) ?? ""
+        remotePort = try container.decodeIfPresent(Int.self, forKey: .remotePort) ?? 0
+        secret = try container.decodeIfPresent(String.self, forKey: .secret) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case place, kind, host, port, username, directory
+        case localHost, localPort, localName, remoteHost, remotePort, secret
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(place, forKey: .place)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(host, forKey: .host)
+        try container.encode(port, forKey: .port)
+        try container.encode(username, forKey: .username)
+        try container.encode(directory, forKey: .directory)
+        try container.encode(localHost, forKey: .localHost)
+        try container.encode(localPort, forKey: .localPort)
+        try container.encode(localName, forKey: .localName)
+        try container.encode(remoteHost, forKey: .remoteHost)
+        try container.encode(remotePort, forKey: .remotePort)
+        try container.encode(secret, forKey: .secret)
     }
 
     func settings() -> DestinationSettings {
-        DestinationSettings(
+        var remote = remoteHost
+        if remote.isEmpty, !host.isEmpty, !GalleryNetwork.isLocalHost(host) {
+            remote = host
+        }
+        var settings = DestinationSettings(
             place: place,
             kind: kind,
             host: host,
@@ -310,8 +421,13 @@ struct LibraryProfile: Codable {
             localHost: localHost,
             localPort: localPort,
             localName: localName,
-            remoteHost: remoteHost
+            remoteHost: remote
         )
+        settings.namedRemotePort = remotePort
+        if !secret.isEmpty {
+            try? GalleryKeychain.set(secret, account: "destination-password")
+        }
+        return settings
     }
 }
 
