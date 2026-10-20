@@ -21,7 +21,7 @@ const PL: LegalDocumentContent = {
   updatedLabel: 'Ostatnia aktualizacja:',
   updated: '20 października 2026 r.',
   intro:
-    'Niniejsza Polityka prywatności opisuje przetwarzanie danych osobowych w **aplikacjach GalleryOS™ na iOS oraz tvOS** (identyfikatory `pl.galleryos.app` i `pl.galleryos.app.tv`, dalej łącznie: „Aplikacja”). Dokument **nie dotyczy** serwisu nieruchomości EstateOS™ ani aplikacji ParagonOS™. Korzystając z Aplikacji, akceptujesz tę Politykę. Jeśli się nie zgadzasz, nie korzystaj z Aplikacji.',
+    'Niniejsza Polityka prywatności opisuje przetwarzanie danych osobowych w **aplikacjach GalleryOS™ na iOS oraz tvOS** (identyfikatory pl.galleryos.app i pl.galleryos.app.tv, dalej łącznie: „Aplikacja”). Dokument **nie dotyczy** serwisu nieruchomości EstateOS™ ani aplikacji ParagonOS™. Korzystając z Aplikacji, akceptujesz tę Politykę. Jeśli się nie zgadzasz, nie korzystaj z Aplikacji.',
   sections: [
     {
       title: '1. Administrator i kontakt',
@@ -50,7 +50,7 @@ const PL: LegalDocumentContent = {
       bullets: [
         '**Na urządzeniu** — podgląd biblioteki Zdjęć, sortowanie, album ukryty, Face ID.',
         '**Na Twoim serwerze lub dysku** — oryginały, miniatury i katalog biblioteki, gdy włączysz kopię zapasową. To Ty jesteś administratorem tego miejsca.',
-        '**W Twoim iCloud** — profil połączenia (adres, udział, login, bez hasła w treści profilu), znacznik okresu próbnego i stanu opłacenia oraz, gdy zaprosisz kogoś, metadane albumu przez CloudKit (`iCloud.pl.galleryos.app`). Hasło NAS jest w pęku kluczy iCloud.',
+        '**W Twoim iCloud** — profil połączenia (adres, udział, login, bez hasła w treści profilu), znacznik okresu próbnego i stanu opłacenia oraz, gdy zaprosisz kogoś, metadane albumu przez CloudKit (iCloud.pl.galleryos.app). Hasło NAS jest w pęku kluczy iCloud.',
         '**U Apple** — App Store i płatności (StoreKit). Numer karty zna Apple, nie administrator Aplikacji.',
       ],
     },
@@ -156,7 +156,7 @@ const EN: LegalDocumentContent = {
   updatedLabel: 'Last updated:',
   updated: '20 October 2026',
   intro:
-    'This Privacy Policy describes personal-data processing in the **GalleryOS™ apps for iOS and tvOS** (bundle IDs `pl.galleryos.app` and `pl.galleryos.app.tv`, together the “App”). It does **not** apply to the EstateOS™ real-estate service or to ParagonOS™. By using the App you accept this Policy. If you do not agree, do not use the App.',
+    'This Privacy Policy describes personal-data processing in the **GalleryOS™ apps for iOS and tvOS** (bundle IDs pl.galleryos.app and pl.galleryos.app.tv, together the “App”). It does **not** apply to the EstateOS™ real-estate service or to ParagonOS™. By using the App you accept this Policy. If you do not agree, do not use the App.',
   sections: [
     {
       title: '1. Controller and contact',
@@ -185,7 +185,7 @@ const EN: LegalDocumentContent = {
       bullets: [
         '**On the device** — the Photos library view, sorting, the hidden album, and Face ID.',
         '**On your server or disk** — originals, thumbnails and the library catalogue, when you enable backup. You are the controller of that place.',
-        '**In your iCloud** — the connection profile (address, share, username; the password is not written into the profile text), the trial and entitlement flag, and, if you invite someone, album metadata via CloudKit (`iCloud.pl.galleryos.app`). The NAS password stays in iCloud Keychain.',
+        '**In your iCloud** — the connection profile (address, share, username; the password is not written into the profile text), the trial and entitlement flag, and, if you invite someone, album metadata via CloudKit (iCloud.pl.galleryos.app). The NAS password stays in iCloud Keychain.',
         '**At Apple** — the App Store and payments (StoreKit). Apple, not the App operator, holds the card number.',
       ],
     },

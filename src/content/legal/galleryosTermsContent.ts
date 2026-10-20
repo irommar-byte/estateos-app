@@ -27,7 +27,7 @@ const PL: LegalDocumentContent = {
       title: '§1. Definicje',
       paragraphs: ['Na potrzeby Regulaminu:'],
       bullets: [
-        '**Aplikacja / GalleryOS™** — oprogramowanie na iPhone’a, iPada (`pl.galleryos.app`) i Apple TV (`pl.galleryos.app.tv`) do przeglądania zdjęć i filmów oraz kopii na miejsce wybrane przez Użytkownika;',
+        '**Aplikacja / GalleryOS™** — oprogramowanie na iPhone’a, iPada (pl.galleryos.app) i Apple TV (pl.galleryos.app.tv) do przeglądania zdjęć i filmów oraz kopii na miejsce wybrane przez Użytkownika;',
         `**Operator** — Marian Romanienko; kontakt: ${GALLERYOS_CONTACT_EMAIL}, tel. ${GALLERYOS_PHONE_DISPLAY};`,
         '**Użytkownik** — osoba, która instaluje lub używa Aplikacji;',
         '**Miejsce kopii** — serwer NAS, WebDAV, dysk albo samo urządzenie, które Użytkownik wskaże;',
@@ -123,7 +123,7 @@ const EN: LegalDocumentContent = {
       title: '§1. Definitions',
       paragraphs: ['In these Terms:'],
       bullets: [
-        '**App / GalleryOS™** — the software for iPhone and iPad (`pl.galleryos.app`) and Apple TV (`pl.galleryos.app.tv`) used to view photos and videos and to copy them to a place the user chooses;',
+        '**App / GalleryOS™** — the software for iPhone and iPad (pl.galleryos.app) and Apple TV (pl.galleryos.app.tv) used to view photos and videos and to copy them to a place the user chooses;',
         `**Operator** — Marian Romanienko; contact: ${GALLERYOS_CONTACT_EMAIL}, tel. ${GALLERYOS_PHONE_DISPLAY};`,
         '**User** — a person who installs or uses the App;',
         '**Backup place** — a NAS, WebDAV server, disk, or the device itself, as named by the User;',
