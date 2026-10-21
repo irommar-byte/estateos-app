@@ -11,35 +11,34 @@ struct CarsCatalogView: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 22) {
+            LazyHStack(alignment: .top, spacing: 48) {
                 ForEach(items) { car in
                     carButton(car)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 2)
+            .padding(.vertical, 36)
         }
+        .scrollClipDisabled()
         .focusSection()
     }
 
     private func carButton(_ car: CarListing) -> some View {
-        Button {
-            app.noteShowroomSection(sectionTitle)
-            onSelect(car)
-        } label: {
-            CarCardView(
-                car: car,
-                isFavorite: app.isFavoriteCar(car.id),
-                distanceLabel: app.distanceLabel(forCity: car.city),
-                imageHeight: 180,
-                compact: true
-            )
-            .frame(width: 360)
-            .background(CarFocusSectionProbe(title: sectionTitle))
+        let item = ShowroomItem(car: car)
+        return EOSPosterCard(
+            imageURL: item.imageURL,
+            title: item.title,
+            subtitle: item.cardSubtitle,
+            width: 400,
+            onFocus: { app.noteShowroomSection(sectionTitle) },
+            action: {
+                app.noteShowroomSection(sectionTitle)
+                onSelect(car)
+            }
+        ) {
+            if app.isFavoriteCar(car.id) {
+                EOSGlassBadge(text: "♥ Ulubione", tint: .pink)
+            }
         }
-        .buttonStyle(EOSPosterButtonStyle(focusScale: 1.06))
-        .focusEffectDisabled()
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .contextMenu {
             carPosterContextMenu(car, sectionTitle: sectionTitle)
         }

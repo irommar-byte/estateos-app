@@ -5,43 +5,37 @@ struct RootView: View {
     @Namespace private var heroNamespace
     @EnvironmentObject private var heroTransition: HeroTransitionCoordinator
     @State private var splashFinished = false
+    /// Flips when the splash doors start opening — the showroom underneath settles into place.
+    @State private var launchRevealed = false
     @State private var bootstrapTimedOut = false
-
-    private var showHome: Bool {
-        splashFinished
-    }
-
-    private var showExtendedHold: Bool {
-        false
-    }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if showHome {
-                HomeView()
-                    .transition(.opacity)
-            }
+            // Like iOS: the app is already rendered under the splash, so the doors open onto it.
+            HomeView()
+                .environment(\.eosLaunchRevealed, launchRevealed)
+                .disabled(!splashFinished)
 
             if !splashFinished {
-                AppleSplashView {
-                    TvLaunchMetrics.recordSplashEnd()
-                    splashFinished = true
-                    Task { await app.fulfillPendingDeepLink() }
-                }
+                AppleSplashView(
+                    onDoorsOpen: {
+                        withAnimation(EOSMotion.launchReveal) { launchRevealed = true }
+                    },
+                    onFinish: {
+                        TvLaunchMetrics.recordSplashEnd()
+                        launchRevealed = true
+                        splashFinished = true
+                        Task { await app.fulfillPendingDeepLink() }
+                    }
+                )
                 .environmentObject(app)
                 .id("estateos-splash")
-                .transition(.opacity)
+                .transition(.identity)
                 .zIndex(2)
-            } else if showExtendedHold {
-                LivingHoldView()
-                    .transition(.opacity)
-                    .zIndex(2)
             }
         }
-        .animation(.easeOut(duration: 0.35), value: showHome)
-        .animation(.easeOut(duration: 0.25), value: splashFinished)
         .preferredColorScheme(.dark)
         .task {
             try? await Task.sleep(nanoseconds: UInt64(SplashAnimationTimeline.bootstrapCapMs * 1_000_000))

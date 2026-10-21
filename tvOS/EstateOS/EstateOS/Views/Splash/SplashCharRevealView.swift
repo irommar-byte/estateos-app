@@ -1,13 +1,25 @@
 import SwiftUI
 
-/// Per-character reveal with word grouping — matches iOS `SplashWordWrappedLine`.
-struct SplashCharRevealView: View {
+/// Per-character reveal with word grouping — matches iOS `SplashWordWrappedLine` / `SplashChar`.
+///
+/// `Animatable` is the important part: SwiftUI interpolates `progress` frame by frame, so every
+/// letter fades and rises inside its own slice of the timeline (the iOS 30 ms stagger). Without it
+/// SwiftUI only interpolates the final per-letter opacity, and the whole line cross-fades at once.
+struct SplashCharRevealView: View, Animatable {
     let text: String
-    let progress: Double
-    var font: Font = .system(size: 28, weight: .medium)
-    var tracking: CGFloat = 6
-    var foreground: Color = .white.opacity(0.92)
-    var wordSpacing: CGFloat = 10
+    var progress: Double
+    /// iOS: AvenirNext-Medium 13.5 pt, letterSpacing 2.75 — scaled ×2 for the 10-foot screen.
+    var font: Font = SplashCharRevealView.splashFont
+    var kerning: CGFloat = 5.5
+    var foreground: Color = Color(red: 248 / 255, green: 248 / 255, blue: 252 / 255).opacity(0.98)
+    var wordSpacing: CGFloat = 20
+
+    static let splashFont: Font = .custom("AvenirNext-Medium", size: 28)
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     private struct WordSpan: Identifiable {
         let id: Int
@@ -17,8 +29,8 @@ struct SplashCharRevealView: View {
 
     private var wordSpans: [WordSpan] {
         var result: [WordSpan] = []
-        var i = 0
         let chars = Array(text)
+        var i = 0
         var wordId = 0
         while i < chars.count {
             while i < chars.count, chars[i].isWhitespace { i += 1 }
@@ -42,42 +54,105 @@ struct SplashCharRevealView: View {
                 }
             }
         }
+        .fixedSize()
     }
 
     @ViewBuilder
     private func charView(ch: Character, index: Int, total: Int) -> some View {
         let start = Double(index) / Double(total)
         let end = Double(index + 1) / Double(total)
-        let t = clamped(progress, from: start, to: end)
+        // iOS: opacity 0→1 and translateY 14→0 across [start, end]; scale 0.88→1 across the first 5 %.
+        let t = Self.ramp(progress, from: start, to: end)
+        let s = Self.ramp(progress, from: start, to: min(end, start + 0.05))
         Text(String(ch))
             .font(font)
-            .tracking(index == 0 ? tracking : 0)
+            .kerning(kerning)
             .foregroundStyle(foreground)
+            .shadow(color: .black.opacity(0.42), radius: 5, x: 0, y: 1)
             .opacity(t)
             .offset(y: (1 - t) * 14)
-            .scaleEffect(0.88 + t * 0.12)
+            .scaleEffect(0.88 + 0.12 * s)
     }
 
-    private func clamped(_ value: Double, from start: Double, to end: Double) -> Double {
+    private static func ramp(_ value: Double, from start: Double, to end: Double) -> Double {
         guard end > start else { return value >= start ? 1 : 0 }
         return min(1, max(0, (value - start) / (end - start)))
     }
 }
 
-struct SplashTaglineRevealView: View {
+/// Second splash line — on iOS it uses exactly the same character style as line 1.
+struct SplashTaglineRevealView: View, Animatable {
     let text: String
-    let progress: Double
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     var body: some View {
-        SplashCharRevealView(
-            text: text,
-            progress: progress,
-            font: .system(size: 22, weight: .regular),
-            tracking: 0,
-            foreground: .white.opacity(0.72),
-            wordSpacing: 8
-        )
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: 900)
+        SplashCharRevealView(text: text, progress: progress)
+    }
+}
+
+/// The single golden light band that sweeps across both lines (iOS `sunBandWrap`).
+struct SplashSunBand: View, Animatable {
+    var progress: CGFloat
+    let screenWidth: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let travel = screenWidth * 0.52
+        ZStack {
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: Color(red: 100 / 255, green: 62 / 255, blue: 22 / 255).opacity(0.2), location: 0.18),
+                    .init(color: Color(red: 168 / 255, green: 112 / 255, blue: 38 / 255).opacity(0.55), location: 0.38),
+                    .init(color: Color(red: 245 / 255, green: 210 / 255, blue: 150 / 255), location: 0.5),
+                    .init(color: Color(red: 195 / 255, green: 138 / 255, blue: 48 / 255).opacity(0.62), location: 0.58),
+                    .init(color: Color(red: 130 / 255, green: 82 / 255, blue: 28 / 255).opacity(0.22), location: 0.78),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: screenWidth * 0.3)
+            .scaleEffect(y: 1.12)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: Color(red: 248 / 255, green: 220 / 255, blue: 140 / 255).opacity(0.10), location: 0.2),
+                    .init(color: Color(red: 1, green: 235 / 255, blue: 170 / 255).opacity(0.26), location: 0.43),
+                    .init(color: Color(red: 1, green: 235 / 255, blue: 170 / 255).opacity(0.42), location: 0.5),
+                    .init(color: Color(red: 224 / 255, green: 180 / 255, blue: 80 / 255).opacity(0.16), location: 0.58),
+                    .init(color: Color(red: 180 / 255, green: 130 / 255, blue: 40 / 255).opacity(0.06), location: 0.78),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: screenWidth * 0.45)
+            .scaleEffect(y: 1.18)
+        }
+        .blendMode(.screen)
+        .offset(x: -travel + progress * travel * 2)
+        .opacity(Self.bandOpacity(progress))
+        .allowsHitTesting(false)
+    }
+
+    /// iOS: interpolate(sunSweep, [0, 0.08, 0.92, 1], [0, 0.94, 0.94, 0]).
+    private static func bandOpacity(_ p: CGFloat) -> Double {
+        let v = Double(p)
+        if v <= 0 { return 0 }
+        if v < 0.08 { return 0.94 * v / 0.08 }
+        if v <= 0.92 { return 0.94 }
+        if v < 1 { return 0.94 * (1 - v) / 0.08 }
+        return 0
     }
 }

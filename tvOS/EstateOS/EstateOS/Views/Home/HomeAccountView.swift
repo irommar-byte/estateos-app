@@ -59,9 +59,6 @@ struct HomeAccountView: View {
                 .focusEffectDisabled()
                 .focused(accountFocusedItem, equals: .refresh)
                 .id(HomeAccountFocus.refresh)
-                .onMoveCommand { direction in
-                    if direction == .up { chromeFocus.wrappedValue = .tab(.account) }
-                }
 
                 if app.session == nil {
                     Button("Zaloguj się") { app.openLoginSheet() }

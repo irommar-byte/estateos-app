@@ -8,8 +8,8 @@ enum EOSPalette {
     static let canvas = Color.black
     static let elevated = Color(white: 0.10)
     static let textPrimary = Color.white.opacity(0.96)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.38)
+    static let textSecondary = Color.white.opacity(0.70)
+    static let textTertiary = Color.white.opacity(0.55)
     static let hairline = Color.white.opacity(0.14)
     static let hairlineSoft = Color.white.opacity(0.08)
     /// Brand gold — used sparingly (splash, rare accents).
@@ -183,9 +183,9 @@ struct EOSBrandButtonStyle: ButtonStyle {
         configuration.label
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(selected ? Color.white.opacity(0.14) : Color.white.opacity(0.04))
+                    .fill(isFocused ? Color.white : (selected ? Color.white.opacity(0.14) : Color.white.opacity(0.04)))
             )
-            .foregroundStyle(selected ? EOSPalette.textPrimary : EOSPalette.textSecondary)
+            .foregroundStyle(isFocused ? Color.black : (selected ? EOSPalette.textPrimary : EOSPalette.textSecondary))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(
@@ -220,9 +220,9 @@ struct EOSChipButtonStyle: ButtonStyle {
             .padding(.vertical, 12)
             .background(
                 Capsule(style: .continuous)
-                    .fill(selected ? Color.white.opacity(0.16) : Color.white.opacity(0.05))
+                    .fill(isFocused ? Color.white : (selected ? Color.white.opacity(0.16) : Color.white.opacity(0.05)))
             )
-            .foregroundStyle(selected ? EOSPalette.textPrimary : EOSPalette.textSecondary)
+            .foregroundStyle(isFocused ? Color.black : (selected ? EOSPalette.textPrimary : EOSPalette.textSecondary))
             .overlay(
                 Capsule(style: .continuous)
                     .stroke(
@@ -248,14 +248,14 @@ struct EOSMicroChipButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .font(.callout.weight(.semibold))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
             .background(
                 Capsule(style: .continuous)
-                    .fill(selected ? Color.white.opacity(0.12) : Color.clear)
+                    .fill(isFocused ? Color.white : (selected ? Color.white.opacity(0.12) : Color.clear))
             )
-            .foregroundStyle(selected ? EOSPalette.textPrimary : EOSPalette.textSecondary)
+            .foregroundStyle(isFocused ? Color.black : (selected ? EOSPalette.textPrimary : EOSPalette.textSecondary))
             .overlay(
                 Capsule(style: .continuous)
                     .stroke(
@@ -514,8 +514,8 @@ struct EOSPosterCardChrome: ViewModifier {
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
-                        isFocused ? accent : Color.white.opacity(0.12),
-                        lineWidth: isFocused ? 3.5 : 1
+                        isFocused ? Color.white : Color.white.opacity(0.12),
+                        lineWidth: isFocused ? 4 : 1
                     )
             )
             .shadow(
@@ -790,10 +790,10 @@ struct EOSDetailChromeButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.callout.weight(.semibold))
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.7 : 0.92))
+            .foregroundStyle(isFocused ? Color.black : Color.white.opacity(configuration.isPressed ? 0.7 : 0.92))
             .padding(.horizontal, 22)
             .padding(.vertical, 12)
-            .background(Capsule(style: .continuous).fill(.ultraThinMaterial.opacity(isFocused ? 0.62 : 0.38)))
+            .background(Capsule(style: .continuous).fill(isFocused ? AnyShapeStyle(Color.white) : AnyShapeStyle(.ultraThinMaterial.opacity(0.38))))
             .overlay(Capsule(style: .continuous).stroke(.white.opacity(isFocused ? 0.55 : 0.2), lineWidth: isFocused ? 2 : 1))
             .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
             .shadow(color: .black.opacity(isFocused ? 0.4 : 0.12), radius: isFocused ? 18 : 6, y: isFocused ? 10 : 3)
@@ -808,14 +808,14 @@ struct EOSDetailActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.callout.weight(.semibold))
-            .foregroundStyle(EOSPalette.textPrimary)
+            .foregroundStyle(isFocused ? Color.black : EOSPalette.textPrimary)
             .padding(.horizontal, 24)
             .padding(.vertical, 15)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(
                         isFocused
-                            ? AnyShapeStyle(Color.white.opacity(0.16))
+                            ? AnyShapeStyle(Color.white)
                             : AnyShapeStyle(.ultraThinMaterial.opacity(0.36))
                     )
             )
@@ -851,5 +851,227 @@ struct EOSGalleryThumbButtonStyle: ButtonStyle {
             .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
             .shadow(color: .black.opacity(isFocused ? 0.5 : 0.2), radius: isFocused ? 22 : 8, y: isFocused ? 14 : 4)
             .animation(.easeOut(duration: 0.18), value: isFocused)
+    }
+}
+
+// MARK: - v2 · Liquid Glass, native focus, motion (redesign 2026-10)
+
+/// One place for every timing in the app, so motion feels like one system.
+enum EOSMotion {
+    /// Focus lift on cards and buttons.
+    static let focus = Animation.spring(response: 0.3, dampingFraction: 0.8)
+    /// Full-screen backdrop following the focused offer.
+    static let backdrop = Animation.easeInOut(duration: 0.6)
+    /// Debounce before the backdrop follows focus — fast scrolling never flickers.
+    static let backdropDelayNs: UInt64 = 250_000_000
+    /// Text block that describes the focused offer.
+    static let spotlightText = Animation.easeInOut(duration: 0.35)
+    /// Showroom settling in while the launch doors open.
+    static let launchReveal = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 1.4)
+    /// Gallery photo swap.
+    static let gallery = Animation.spring(response: 0.45, dampingFraction: 0.9)
+}
+
+private struct EOSLaunchRevealedKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// False while the launch doors are still closed (RootView flips it as they open).
+    var eosLaunchRevealed: Bool {
+        get { self[EOSLaunchRevealedKey.self] }
+        set { self[EOSLaunchRevealedKey.self] = newValue }
+    }
+}
+
+/// Liquid Glass on tvOS 26, a blurred material with a hairline and soft shadow before that.
+struct EOSGlassModifier<S: Shape>: ViewModifier {
+    var shape: S
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(tvOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            legacy(content)
+        }
+        #else
+        legacy(content)
+        #endif
+    }
+
+    private func legacy(_ content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: shape)
+            .overlay(shape.stroke(Color.white.opacity(0.18), lineWidth: 1))
+            .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
+    }
+}
+
+extension View {
+    func eosGlassPanel<S: Shape>(_ shape: S) -> some View {
+        modifier(EOSGlassModifier(shape: shape))
+    }
+
+    func eosGlassPanel(cornerRadius: CGFloat = 32) -> some View {
+        modifier(EOSGlassModifier(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)))
+    }
+
+    /// System tvOS button: glass on tvOS 26; on earlier systems the native bordered button,
+    /// which turns bright white with dark text when focused — the clearest focus state on TV.
+    @ViewBuilder
+    func eosButton() -> some View {
+        #if compiler(>=6.2)
+        if #available(tvOS 26.0, *) {
+            self.buttonStyle(.glass).buttonBorderShape(.capsule)
+        } else {
+            self.buttonStyle(.bordered).buttonBorderShape(.capsule)
+        }
+        #else
+        self.buttonStyle(.bordered).buttonBorderShape(.capsule)
+        #endif
+    }
+}
+
+/// Reports when the nearest focusable ancestor (the card button) gains focus.
+struct EOSFocusProbe: View {
+    var onFocus: () -> Void
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: isFocused) { _, focused in
+                if focused { onFocus() }
+            }
+    }
+}
+
+/// Apple TV lockup: native `.borderless` button + `.hoverEffect(.highlight)` on the artwork —
+/// the same lift, parallax tilt under the remote's touch surface and moving specular highlight
+/// as the Apple TV app. Title and subtitle sit under the artwork.
+struct EOSPosterCard<Badge: View>: View {
+    let imageURL: URL?
+    let title: String
+    var subtitle: String? = nil
+    var width: CGFloat = 400
+    var onFocus: () -> Void = {}
+    let action: () -> Void
+    @ViewBuilder var badge: () -> Badge
+
+    private var height: CGFloat { (width * 9 / 16).rounded() }
+    private var corner: CGFloat { 24 }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 16) {
+                EOSCachedRemoteImage(url: imageURL, contentMode: .fill) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                        .overlay {
+                            Image(systemName: "photo")
+                                .font(.system(size: 34, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.3))
+                        }
+                }
+                .frame(width: width, height: height)
+                .clipped()
+                .overlay(alignment: .bottomLeading) {
+                    badge().padding(14)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: corner, style: .continuous))
+                .hoverEffect(.highlight)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 25, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.system(size: 21, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.62))
+                            .lineLimit(1)
+                    }
+                }
+                .frame(width: width, alignment: .leading)
+            }
+            .background(EOSFocusProbe(onFocus: onFocus))
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel([title, subtitle].compactMap { $0 }.joined(separator: ", "))
+    }
+}
+
+extension EOSPosterCard where Badge == EmptyView {
+    init(imageURL: URL?, title: String, subtitle: String? = nil, width: CGFloat = 400, onFocus: @escaping () -> Void = {}, action: @escaping () -> Void) {
+        self.init(imageURL: imageURL, title: title, subtitle: subtitle, width: width, onFocus: onFocus, action: action) { EmptyView() }
+    }
+}
+
+/// Small frosted capsule for overlays on artwork (e.g. "−5%", "Wynajem").
+struct EOSGlassBadge: View {
+    let text: String
+    var tint: Color = .white
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
+    }
+}
+
+/// Full-screen photo backdrop that cross-fades whenever the URL changes, with a very slow
+/// Ken Burns drift and the launch "settle" (1.08 → 1.0 while the doors open).
+struct EOSBackdrop: View {
+    let url: URL?
+    @Environment(\.eosLaunchRevealed) private var revealed
+
+    var body: some View {
+        ZStack {
+            Color.black
+            EOSFullBleedOfferImage(url: url, ambient: true)
+                .id(url?.absoluteString ?? "none")
+                .transition(.opacity)
+        }
+        .scaleEffect(revealed ? 1.0 : 1.08)
+        .animation(EOSMotion.backdrop, value: url)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
+/// Scrims that keep white text legible over any photo (left column + bottom).
+struct EOSBackdropScrim: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.75), location: 0),
+                    .init(color: .black.opacity(0.35), location: 0.4),
+                    .init(color: .clear, location: 0.68),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.35),
+                    .init(color: .black.opacity(0.6), location: 0.62),
+                    .init(color: .black.opacity(0.92), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 }

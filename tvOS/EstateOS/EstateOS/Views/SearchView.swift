@@ -23,13 +23,6 @@ struct SearchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .focusSection()
-        .onMoveCommand { direction in
-            if direction == .up {
-                queryFocused = false
-                auxFocus.wrappedValue = nil
-                chromeFocus.wrappedValue = .tab(.search)
-            }
-        }
         .onChange(of: auxFocus.wrappedValue) { _, value in
             if value == .searchQuery { queryFocused = true }
         }

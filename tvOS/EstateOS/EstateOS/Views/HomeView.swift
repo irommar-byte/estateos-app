@@ -1,13 +1,13 @@
 import SwiftUI
 
+/// App shell: the glass tvOS sidebar (collapsed by default, ◀ or MENU opens it).
+/// Nieruchomości and Samochody are two first-class sections — no separate brand switcher,
+/// no filter strip and no hand-written focus jumps: the tvOS focus engine handles direction.
 struct HomeView: View {
     @EnvironmentObject private var app: AppModel
-    @EnvironmentObject private var heroTransition: HeroTransitionCoordinator
-    @Namespace private var heroNamespace
 
     @State private var tab: HomeTab = .showroom
     @FocusState private var chromeFocus: HomeChromeFocus?
-    @FocusState private var showroomFocus: HomeShowroomFocus?
     @FocusState private var accountFocusedItem: HomeAccountFocus?
     @FocusState private var auxFocus: HomeAuxFocus?
     @State private var accountContentFocus = false
@@ -15,8 +15,12 @@ struct HomeView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("Showroom", systemImage: "play.rectangle.fill", value: HomeTab.showroom) {
-                showroomPage
+            Tab(HomeTab.showroom.rawValue, systemImage: HomeTab.showroom.iconName, value: HomeTab.showroom) {
+                HomeShowroomView(brand: .home, onOpenFilters: openFilters)
+            }
+
+            Tab(HomeTab.cars.rawValue, systemImage: HomeTab.cars.iconName, value: HomeTab.cars) {
+                HomeShowroomView(brand: .car, onOpenFilters: openFilters)
             }
 
             Tab(value: HomeTab.search, role: .search) {
@@ -24,15 +28,17 @@ struct HomeView: View {
                     .environmentObject(app)
                     .padding(.horizontal, EOSTvSpacing.screenHorizontal)
                     .padding(.vertical, EOSTvSpacing.screenVertical)
+                    .background { secondaryBackdrop }
             }
 
-            Tab("Ulubione", systemImage: "heart.fill", value: HomeTab.favorites) {
+            Tab(HomeTab.favorites.rawValue, systemImage: HomeTab.favorites.iconName, value: HomeTab.favorites) {
                 HomeFavoritesView(tab: $tab, chromeFocus: $chromeFocus)
                     .padding(.horizontal, EOSTvSpacing.screenHorizontal)
                     .padding(.vertical, EOSTvSpacing.screenVertical)
+                    .background { secondaryBackdrop }
             }
 
-            Tab("Konto", systemImage: "gearshape", value: HomeTab.account) {
+            Tab(HomeTab.account.rawValue, systemImage: HomeTab.account.iconName, value: HomeTab.account) {
                 HomeAccountView(
                     chromeFocus: $chromeFocus,
                     accountFocusedItem: $accountFocusedItem,
@@ -40,82 +46,49 @@ struct HomeView: View {
                 )
                 .padding(.horizontal, EOSTvSpacing.screenHorizontal)
                 .padding(.vertical, EOSTvSpacing.screenVertical)
+                .background { secondaryBackdrop }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .background { HomeChromeBackground() }
-        .fullScreenCover(isPresented: $showFilterSheet, onDismiss: {
-            chromeFocus = .moreFilters
-        }) {
-            FilterSheetView(tab: $tab, onDismissFocus: {
-                showFilterSheet = false
-                chromeFocus = .moreFilters
-            })
-            .environmentObject(app)
+        .fullScreenCover(isPresented: $showFilterSheet) {
+            FilterSheetView(tab: $tab, onDismissFocus: { showFilterSheet = false })
+                .environmentObject(app)
         }
         .onAppear {
-            if tab == .showroom {
-                showroomFocus = .hero
-            }
+            syncBrand(with: tab)
             if tab == .account { accountContentFocus = true }
-            Task { await app.fulfillPendingDeepLink() }
         }
         .onChange(of: tab) { _, newTab in
+            syncBrand(with: newTab)
             switch newTab {
-            case .showroom:
-                showroomFocus = .hero
-                auxFocus = nil
-            case .account:
-                accountContentFocus = true
-                auxFocus = nil
-            case .search:
-                chromeFocus = nil
-                auxFocus = .searchQuery
-            case .favorites:
-                chromeFocus = nil
-                auxFocus = nil
+            case .account: accountContentFocus = true
+            case .search: auxFocus = .searchQuery
+            default: break
             }
         }
     }
 
-    private var showroomPage: some View {
-        VStack(spacing: 18) {
-            HomeChromeView(
-                tab: $tab,
-                chromeFocus: $chromeFocus,
-                accountFocusedItem: $accountFocusedItem,
-                accountContentFocus: $accountContentFocus,
-                showFilterSheet: $showFilterSheet,
-                showroomFocus: $showroomFocus,
-                auxFocus: $auxFocus,
-                onBrandChange: { _ in
-                    tab = .showroom
-                    showroomFocus = .hero
-                }
-            )
-
-            catalogLoadingGate {
-                HomeShowroomView(
-                    showroomFocus: $showroomFocus,
-                    chromeFocus: $chromeFocus,
-                    heroNamespace: heroNamespace
-                )
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    private func syncBrand(with tab: HomeTab) {
+        if let brand = tab.brand, brand != app.catalogBrand {
+            app.setCatalogBrand(brand)
         }
-        .padding(.horizontal, EOSTvSpacing.screenHorizontal)
-        .padding(.vertical, EOSTvSpacing.screenVertical)
     }
 
-    @ViewBuilder
-    private func catalogLoadingGate<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        let loading = app.catalogBrand == .home ? app.isLoadingOffers : app.isLoadingCars
-        let empty = app.catalogBrand == .home ? app.offers.isEmpty : app.cars.isEmpty
-        if loading && empty {
-            ProgressView(app.catalogBrand == .home ? "Ładowanie nieruchomości…" : "Ładowanie samochodów…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            content()
+    private func openFilters() {
+        syncBrand(with: tab)
+        showFilterSheet = true
+    }
+
+    /// Search / Ulubione / Konto sit on a deeply blurred photo, so glass panels have depth.
+    private var secondaryBackdrop: some View {
+        let url = app.offers.first.flatMap { EOSOfferMedia.primaryImageURL(for: $0) }
+        return ZStack {
+            Color.black
+            EOSFullBleedOfferImage(url: url)
+                .blur(radius: 70)
+                .opacity(0.55)
+            Color.black.opacity(0.35)
         }
+        .ignoresSafeArea()
     }
 }

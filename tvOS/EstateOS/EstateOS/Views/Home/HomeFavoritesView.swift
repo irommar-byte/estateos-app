@@ -54,8 +54,7 @@ struct HomeFavoritesView: View {
                         ],
                         cta: "Przejdź do katalogu Car",
                         action: {
-                            app.setCatalogBrand(.car)
-                            tab = .showroom
+                            tab = .cars
                         },
                         accent: EOSPalette.car
                     )
@@ -66,11 +65,6 @@ struct HomeFavoritesView: View {
             .padding(.bottom, 40)
         }
         .focusSection()
-        .onMoveCommand { direction in
-            if direction == .up {
-                chromeFocus.wrappedValue = .tab(.favorites)
-            }
-        }
     }
 
     private func favoritesHeader(title: String, syncing: Bool) -> some View {

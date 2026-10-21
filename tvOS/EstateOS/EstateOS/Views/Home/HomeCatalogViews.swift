@@ -10,36 +10,34 @@ struct OffersCatalogView: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 22) {
+            LazyHStack(alignment: .top, spacing: 48) {
                 ForEach(items) { offer in
                     offerButton(offer)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 2)
+            .padding(.vertical, 36)
         }
+        .scrollClipDisabled()
         .focusSection()
     }
 
     private func offerButton(_ offer: EstateOffer) -> some View {
-        Button {
-            app.noteShowroomSection(sectionTitle)
-            onSelect(offer)
-        } label: {
-            OfferCardView(
-                offer: offer,
-                isFavorite: app.isFavorite(offer.id),
-                showsOwnerStats: app.isOwner(of: offer),
-                distanceLabel: app.distanceLabel(forCity: offer.city),
-                imageHeight: 180,
-                compact: true
-            )
-            .frame(width: 360)
-            .background(FocusSectionProbe(title: sectionTitle))
+        let item = ShowroomItem(offer: offer)
+        return EOSPosterCard(
+            imageURL: item.imageURL,
+            title: item.title,
+            subtitle: item.cardSubtitle,
+            width: 400,
+            onFocus: { app.noteShowroomSection(sectionTitle) },
+            action: {
+                app.noteShowroomSection(sectionTitle)
+                onSelect(offer)
+            }
+        ) {
+            if let badge = item.badge {
+                EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
+            }
         }
-        .buttonStyle(EOSPosterButtonStyle(focusScale: 1.06))
-        .focusEffectDisabled()
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .contextMenu {
             offerPosterContextMenu(offer, sectionTitle: sectionTitle)
         }

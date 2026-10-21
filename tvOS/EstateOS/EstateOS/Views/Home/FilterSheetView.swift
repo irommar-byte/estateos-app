@@ -101,7 +101,7 @@ struct FilterSheetView: View {
                     ForEach(app.homePropertyTypeCounts, id: \.kind) { item in
                         filterChip("\(item.kind.title) (\(item.count))", selected: app.selectedHomePropertyTypes.contains(item.kind), accent: EOSPalette.home) {
                             app.toggleHomePropertyType(item.kind)
-                            tab = .showroom
+                            tab = HomeTab.tab(for: app.catalogBrand)
                         }
                         .accessibilityLabel("Typ \(item.kind.title)")
                     }
@@ -130,7 +130,7 @@ struct FilterSheetView: View {
                     ForEach(Array(app.popularCarMakes.prefix(24)), id: \.name) { item in
                         filterChip("\(item.name) (\(item.count))", selected: app.selectedCarMakes.contains(where: { $0.caseInsensitiveCompare(item.name) == .orderedSame }), accent: EOSPalette.car) {
                             app.toggleCarMake(item.name)
-                            tab = .showroom
+                            tab = HomeTab.tab(for: app.catalogBrand)
                         }
                         .accessibilityLabel("Marka \(item.name)")
                     }

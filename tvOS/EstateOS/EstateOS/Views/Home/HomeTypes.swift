@@ -1,15 +1,27 @@
 import SwiftUI
 
+/// Sections of the glass sidebar. `.showroom` is the real-estate showroom (kept as the case name
+/// so older call sites like `tab = .showroom` still mean "Nieruchomości").
 enum HomeTab: String, CaseIterable, Hashable {
-    case showroom = "Showroom"
-    case search = "Spotlight"
+    case showroom = "Nieruchomości"
+    case cars = "Samochody"
+    case search = "Szukaj"
     case favorites = "Ulubione"
     case account = "Konto"
 
+    var brand: CatalogBrand? {
+        switch self {
+        case .showroom: return .home
+        case .cars: return .car
+        default: return nil
+        }
+    }
+
     var accessibilityLabel: String {
         switch self {
-        case .showroom: return "Showroom, przeglądaj oferty"
-        case .search: return "Spotlight, szukaj ofert, agentów i biur"
+        case .showroom: return "Nieruchomości, przeglądaj oferty"
+        case .cars: return "Samochody, przeglądaj auta"
+        case .search: return "Szukaj ofert, agentów i biur"
         case .favorites: return "Ulubione oferty"
         case .account: return "Konto i ustawienia"
         }
@@ -17,11 +29,16 @@ enum HomeTab: String, CaseIterable, Hashable {
 
     var iconName: String {
         switch self {
-        case .showroom: return "play.rectangle.fill"
+        case .showroom: return "house.fill"
+        case .cars: return "car.fill"
         case .search: return "magnifyingglass"
         case .favorites: return "heart.fill"
-        case .account: return "gearshape"
+        case .account: return "person.crop.circle"
         }
+    }
+
+    static func tab(for brand: CatalogBrand) -> HomeTab {
+        brand == .car ? .cars : .showroom
     }
 }
 
