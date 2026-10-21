@@ -51,6 +51,22 @@ struct ShowroomSection: Identifiable {
     let id: String
     let title: String
     let items: [ShowroomItem]
+    /// Category signature: glyph, tint and a one-line explanation under the title.
+    var icon: String = "square.grid.2x2"
+    var tint: Color = .white
+    var caption: String = ""
+}
+
+/// Category palette — muted, close in lightness, so rails feel like chapters of one book.
+enum ShowroomCategory {
+    static let fresh = Color(red: 0.36, green: 0.84, blue: 0.62)      // nowe
+    static let favorite = Color(red: 1.00, green: 0.45, blue: 0.58)   // ulubione
+    static let picked = Color(red: 0.98, green: 0.80, blue: 0.42)     // polecane / wyróżnione
+    static let place = Color(red: 0.48, green: 0.72, blue: 1.00)      // lokalizacja
+    static let premium = Color(red: 0.86, green: 0.74, blue: 0.52)    // premium
+    static let deal = Color(red: 1.00, green: 0.58, blue: 0.40)       // przecenione
+    static let rent = Color(red: 0.70, green: 0.62, blue: 1.00)       // wynajem
+    static let neutral = Color(white: 0.85)
 }
 
 /// What the big photo and hero text are "about".
@@ -126,7 +142,7 @@ struct HomeShowroomView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if snapshot.featured != nil {
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 64) {
+                    LazyVStack(alignment: .leading, spacing: 72) {
                         ShowroomHero(
                             spotlight: spotlight,
                             fallback: snapshot.featured,
@@ -247,41 +263,59 @@ struct HomeShowroomView: View {
 
     private func makeSections() -> [ShowroomSection] {
         var result: [ShowroomSection] = []
-        func add(_ title: String, offers: [EstateOffer], limit: Int = 40) {
-            let items = offers.prefix(limit).map(ShowroomItem.init(offer:))
-            if !items.isEmpty { result.append(ShowroomSection(id: title, title: title, items: Array(items))) }
+        typealias C = ShowroomCategory
+        func section(_ title: String, _ items: [ShowroomItem], icon: String, tint: Color, caption: String) {
+            guard !items.isEmpty else { return }
+            result.append(ShowroomSection(id: title, title: title, items: items, icon: icon, tint: tint, caption: caption))
         }
-        func add(_ title: String, cars: [CarListing], limit: Int = 40) {
-            let items = cars.prefix(limit).map(ShowroomItem.init(car:))
-            if !items.isEmpty { result.append(ShowroomSection(id: title, title: title, items: Array(items))) }
+        func add(_ title: String, offers: [EstateOffer], limit: Int = 40, icon: String, tint: Color, caption: String) {
+            section(title, offers.prefix(limit).map(ShowroomItem.init(offer:)), icon: icon, tint: tint, caption: caption)
+        }
+        func add(_ title: String, cars: [CarListing], limit: Int = 40, icon: String, tint: Color, caption: String) {
+            section(title, cars.prefix(limit).map(ShowroomItem.init(car:)), icon: icon, tint: tint, caption: caption)
         }
 
         switch brand {
         case .home:
             if app.isHomeFilteringActive {
-                add("Wyniki · \(app.homeFilterSummary)", offers: app.filteredOffersForBrowse, limit: 80)
+                add("Wyniki wyszukiwania", offers: app.filteredOffersForBrowse, limit: 80,
+                    icon: "line.3.horizontal.decrease", tint: C.neutral, caption: app.homeFilterSummary)
             } else {
-                add("Nowe w ostatnich 24 h", offers: app.showroomHomeNewest, limit: 24)
+                add("Nowe w ostatnich 24 h", offers: app.showroomHomeNewest, limit: 24,
+                    icon: "clock.badge.checkmark", tint: C.fresh, caption: "Dodane w ciągu doby")
                 if app.session != nil {
                     let favs = app.favoriteOffers.isEmpty ? app.offers.filter { app.isFavorite($0.id) } : app.favoriteOffers
-                    add("Twoje ulubione", offers: favs, limit: 28)
+                    add("Twoje ulubione", offers: favs, limit: 28,
+                        icon: "heart.fill", tint: C.favorite, caption: "Zapisane na iPhonie, w przeglądarce i tutaj")
                 }
-                add("Polecane", offers: app.filteredOffersForBrowse)
-                add("Warszawa i okolice", offers: app.showroomHomeWarsaw)
-                add("Segment premium", offers: app.showroomHomePremium)
-                add("Przecenione", offers: app.showroomHomeDiscounted)
-                add("Na wynajem", offers: app.showroomHomeRent)
+                add("Polecane", offers: app.filteredOffersForBrowse,
+                    icon: "star.fill", tint: C.picked, caption: "Wybór EstateOS")
+                add("Warszawa i okolice", offers: app.showroomHomeWarsaw,
+                    icon: "mappin.and.ellipse", tint: C.place, caption: "Stolica i miejscowości wokół")
+                add("Segment premium", offers: app.showroomHomePremium,
+                    icon: "crown.fill", tint: C.premium, caption: "Najbardziej wyjątkowe nieruchomości")
+                add("Przecenione", offers: app.showroomHomeDiscounted,
+                    icon: "tag.fill", tint: C.deal, caption: "Cena spadła w ostatnim czasie")
+                add("Na wynajem", offers: app.showroomHomeRent,
+                    icon: "key.fill", tint: C.rent, caption: "Mieszkania i domy do wynajęcia")
             }
         case .car:
             if app.isCarFilteringActive {
-                add("Wyniki · \(app.carFilterSummary)", cars: app.filteredCars, limit: 80)
+                add("Wyniki wyszukiwania", cars: app.filteredCars, limit: 80,
+                    icon: "line.3.horizontal.decrease", tint: C.neutral, caption: app.carFilterSummary)
             } else {
-                add("Nowe auta · 24 h", cars: app.showroomCarFresh, limit: 24)
-                add("Twoje ulubione auta", cars: app.favoriteCars, limit: 28)
-                add("Wyróżnione", cars: app.carsFeatured, limit: 28)
-                add("Wszystkie samochody", cars: app.filteredCars, limit: 48)
-                add("Automatyczna skrzynia", cars: app.showroomCarAutomatic)
-                add("Elektryczne i hybrydy", cars: app.showroomCarElectricHybrid)
+                add("Nowe auta · 24 h", cars: app.showroomCarFresh, limit: 24,
+                    icon: "clock.badge.checkmark", tint: C.fresh, caption: "Dodane w ciągu doby")
+                add("Twoje ulubione auta", cars: app.favoriteCars, limit: 28,
+                    icon: "heart.fill", tint: C.favorite, caption: "Zapisane na tym Apple TV")
+                add("Wyróżnione", cars: app.carsFeatured, limit: 28,
+                    icon: "star.fill", tint: C.picked, caption: "Wybór EstateOS Car")
+                add("Wszystkie samochody", cars: app.filteredCars, limit: 48,
+                    icon: "car.fill", tint: C.neutral, caption: "Cały katalog")
+                add("Automatyczna skrzynia", cars: app.showroomCarAutomatic,
+                    icon: "gearshape.2.fill", tint: C.place, caption: "Wygodnie w mieście i w trasie")
+                add("Elektryczne i hybrydy", cars: app.showroomCarElectricHybrid,
+                    icon: "bolt.fill", tint: C.fresh, caption: "Napęd elektryczny i hybrydowy")
             }
         }
         return result
@@ -427,15 +461,8 @@ private struct ShowroomRail: View {
     let spotlight: ShowroomSpotlight   // not observed: cards only report focus
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                Text(section.title)
-                    .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text("\(section.items.count)")
-                    .font(.system(size: 24, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.6))
-            }
+        VStack(alignment: .leading, spacing: 4) {
+            ShowroomSectionHeader(section: section)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 48) {
                     ForEach(section.items) { item in
@@ -490,5 +517,62 @@ private struct ShowroomRail: View {
         } else {
             app.openImmersiveCarBrowse(at: index, from: section.items.compactMap(\.car))
         }
+    }
+}
+
+// MARK: - Section header
+
+/// Chapter header for a rail: tinted glyph in a glass disc, bold title with count, one-line
+/// caption, and a hairline in the category colour fading out to the right.
+private struct ShowroomSectionHeader: View {
+    let section: ShowroomSection
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 22) {
+            Image(systemName: section.icon)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(section.tint)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(section.tint.opacity(0.16)))
+                .background(Circle().fill(.ultraThinMaterial))
+                .overlay(Circle().strokeBorder(section.tint.opacity(0.45), lineWidth: 1.5))
+                .shadow(color: section.tint.opacity(0.25), radius: 14)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    Text(section.title)
+                        .font(.system(size: 36, weight: .bold))
+                        .tracking(-0.4)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text("\(section.items.count)")
+                        .font(.system(size: 20, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(section.tint)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(section.tint.opacity(0.16)))
+                }
+                if !section.caption.isEmpty {
+                    Text(section.caption)
+                        .font(.system(size: 21, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .lineLimit(1)
+                }
+            }
+            .fixedSize()
+
+            LinearGradient(
+                colors: [section.tint.opacity(0.55), section.tint.opacity(0.0)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 1.5)
+            .frame(maxWidth: 520)
+            .padding(.leading, 8)
+        }
+        .padding(.top, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(section.title), \(section.items.count) ofert. \(section.caption)")
     }
 }
