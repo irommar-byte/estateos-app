@@ -14,32 +14,36 @@ struct HomeView: View {
     @State private var showFilterSheet = false
 
     var body: some View {
-        ZStack {
-            HomeChromeBackground()
-            VStack(spacing: 0) {
-                HomeChromeView(
-                    tab: $tab,
+        TabView(selection: $tab) {
+            Tab("Showroom", systemImage: "play.rectangle.fill", value: HomeTab.showroom) {
+                showroomPage
+            }
+
+            Tab(value: HomeTab.search, role: .search) {
+                SearchView(chromeFocus: $chromeFocus, auxFocus: $auxFocus)
+                    .environmentObject(app)
+                    .padding(.horizontal, EOSTvSpacing.screenHorizontal)
+                    .padding(.vertical, EOSTvSpacing.screenVertical)
+            }
+
+            Tab("Ulubione", systemImage: "heart.fill", value: HomeTab.favorites) {
+                HomeFavoritesView(tab: $tab, chromeFocus: $chromeFocus)
+                    .padding(.horizontal, EOSTvSpacing.screenHorizontal)
+                    .padding(.vertical, EOSTvSpacing.screenVertical)
+            }
+
+            Tab("Konto", systemImage: "gearshape", value: HomeTab.account) {
+                HomeAccountView(
                     chromeFocus: $chromeFocus,
                     accountFocusedItem: $accountFocusedItem,
-                    accountContentFocus: $accountContentFocus,
-                    showFilterSheet: $showFilterSheet,
-                    showroomFocus: $showroomFocus,
-                    auxFocus: $auxFocus,
-                    onBrandChange: { _ in
-                        tab = .showroom
-                        showroomFocus = .hero
-                    }
+                    accountContentFocus: $accountContentFocus
                 )
-                .padding(.bottom, 18)
-                .zIndex(2)
-
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .zIndex(1)
+                .padding(.horizontal, EOSTvSpacing.screenHorizontal)
+                .padding(.vertical, EOSTvSpacing.screenVertical)
             }
-            .padding(.horizontal, EOSTvSpacing.screenHorizontal)
-            .padding(.vertical, EOSTvSpacing.screenVertical)
         }
+        .tabViewStyle(.sidebarAdaptable)
+        .background { HomeChromeBackground() }
         .fullScreenCover(isPresented: $showFilterSheet, onDismiss: {
             chromeFocus = .moreFilters
         }) {
@@ -52,8 +56,6 @@ struct HomeView: View {
         .onAppear {
             if tab == .showroom {
                 showroomFocus = .hero
-            } else if chromeFocus == nil {
-                chromeFocus = .tab(tab)
             }
             if tab == .account { accountContentFocus = true }
             Task { await app.fulfillPendingDeepLink() }
@@ -76,37 +78,33 @@ struct HomeView: View {
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        Group {
-            switch tab {
-            case .showroom:
-                catalogLoadingGate {
-                    HomeShowroomView(
-                        showroomFocus: $showroomFocus,
-                        chromeFocus: $chromeFocus,
-                        heroNamespace: heroNamespace
-                    )
+    private var showroomPage: some View {
+        VStack(spacing: 18) {
+            HomeChromeView(
+                tab: $tab,
+                chromeFocus: $chromeFocus,
+                accountFocusedItem: $accountFocusedItem,
+                accountContentFocus: $accountContentFocus,
+                showFilterSheet: $showFilterSheet,
+                showroomFocus: $showroomFocus,
+                auxFocus: $auxFocus,
+                onBrandChange: { _ in
+                    tab = .showroom
+                    showroomFocus = .hero
                 }
-                .transition(.eosModeTransition)
-            case .search:
-                SearchView(chromeFocus: $chromeFocus, auxFocus: $auxFocus)
-                    .environmentObject(app)
-                    .transition(.eosModeTransition)
-            case .favorites:
-                HomeFavoritesView(tab: $tab, chromeFocus: $chromeFocus)
-                    .transition(.eosModeTransition)
-            case .account:
-                HomeAccountView(
+            )
+
+            catalogLoadingGate {
+                HomeShowroomView(
+                    showroomFocus: $showroomFocus,
                     chromeFocus: $chromeFocus,
-                    accountFocusedItem: $accountFocusedItem,
-                    accountContentFocus: $accountContentFocus
+                    heroNamespace: heroNamespace
                 )
-                .transition(.eosModeTransition)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .animation(.spring(response: 0.5, dampingFraction: 0.88, blendDuration: 0.25), value: tab)
+        .padding(.horizontal, EOSTvSpacing.screenHorizontal)
+        .padding(.vertical, EOSTvSpacing.screenVertical)
     }
 
     @ViewBuilder

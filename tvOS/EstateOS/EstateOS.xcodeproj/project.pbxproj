@@ -30,7 +30,6 @@
 		655DD6E9F854400FA67EB00C /* HomeShowroomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D2A2CD94417402BAE32522B /* HomeShowroomView.swift */; };
 		76B5ABE2696F4C0584CBAD18 /* FilterSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2D3620E2894D899DAEAD25 /* FilterSheetView.swift */; };
 		7812ED4B8B024442B1FE2648 /* TvCatalogCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E6E8859A70452CBFB017CF /* TvCatalogCache.swift */; };
-		D5E6F708192A0B1C2D3E4F50 /* TopShelfArtBaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D5E6F708192A0B1C2D3E4F /* TopShelfArtBaker.swift */; };
 		819B0365994C44BAA8CD369F /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 051FFDD056154896AD0E1646 /* HomeView.swift */; };
 		86611B4235E14342BDBCEF50 /* EOSTvStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D30E1328EE049C192E37B3B /* EOSTvStyle.swift */; };
 		8A9505494CF24FACBDCF6915 /* EOSEbookText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15DCC3A173E4E799EED972E /* EOSEbookText.swift */; };
@@ -50,6 +49,7 @@
 		CE39A7151BF64760B06F7697 /* ImmersiveCarBrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0CE4BD2F20347DEA8BED281 /* ImmersiveCarBrowseView.swift */; };
 		D3365F3C69954C79815E9D71 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FC8EFC070D3447AAA0462EC /* SearchView.swift */; };
 		D47B3A4B5B6B7C89ABCD14 /* ContentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E25D6E7F8095A1523ABCD0E /* ContentProvider.swift */; };
+		D5E6F708192A0B1C2D3E4F50 /* TopShelfArtBaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D5E6F708192A0B1C2D3E4F /* TopShelfArtBaker.swift */; };
 		D9059E9A3F2D4B718BF8EEE7 /* DetailPresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD99B7E41704BAD8EF8A92D /* DetailPresentable.swift */; };
 		DFDE48EDF4514650A7275691 /* DetailHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6C0C5D498844A0894F569A /* DetailHeroView.swift */; };
 		E28D335453464D1590E10031 /* SplashParticleField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53E31B098AA1457DA3421DA4 /* SplashParticleField.swift */; };
@@ -106,7 +106,6 @@
 		4E3D06C2E8EC4E73A37FFE91 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		53E31B098AA1457DA3421DA4 /* SplashParticleField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashParticleField.swift; sourceTree = "<group>"; };
 		57E6E8859A70452CBFB017CF /* TvCatalogCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvCatalogCache.swift; sourceTree = "<group>"; };
-		C4D5E6F708192A0B1C2D3E4F /* TopShelfArtBaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopShelfArtBaker.swift; sourceTree = "<group>"; };
 		5A193ECC0CE04AF8AE361F8B /* EOSAdaptiveTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSAdaptiveTitle.swift; sourceTree = "<group>"; };
 		5DF38EE440414CE09570302C /* ImmersiveBrowseShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveBrowseShell.swift; sourceTree = "<group>"; };
 		5E4D8575F4164289BB62E555 /* EstateOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EstateOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -141,6 +140,7 @@
 		BE3557BA6A4843478C5295D1 /* HomeCatalogViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCatalogViews.swift; sourceTree = "<group>"; };
 		C1E78DBA897143FE92BBD03D /* EstateOSTvApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstateOSTvApp.swift; sourceTree = "<group>"; };
 		C36A293A4A5A6A78ABCD13 /* TVServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TVServices.framework; path = System/Library/Frameworks/TVServices.framework; sourceTree = SDKROOT; };
+		C4D5E6F708192A0B1C2D3E4F /* TopShelfArtBaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopShelfArtBaker.swift; sourceTree = "<group>"; };
 		CD0B52416BBA4BAAAE5FDC35 /* TvLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvLocation.swift; sourceTree = "<group>"; };
 		D0CE4BD2F20347DEA8BED281 /* ImmersiveCarBrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveCarBrowseView.swift; sourceTree = "<group>"; };
 		D6524ABE13BC4773B24C73F2 /* ContactQrSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactQrSheet.swift; sourceTree = "<group>"; };
@@ -540,7 +540,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
 			};
 			name = Release;
 		};
@@ -572,7 +572,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
 			};
 			name = Release;
 		};
@@ -622,7 +622,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
 			};
 			name = Debug;
 		};
@@ -666,7 +666,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
 			};
 			name = Debug;
 		};
