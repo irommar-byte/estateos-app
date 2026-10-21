@@ -11,7 +11,7 @@ final class AppModel: ObservableObject {
     @Published var isBootstrapping = true
     /// True while the launch splash is on screen (RootView clears it).
     @Published var splashActive = true
-    @Published var offers: [EstateOffer] = []
+    @Published var offers: [EstateOffer] = [] { didSet { offersRevision &+= 1 } }
     @Published var selectedOffer: EstateOffer?
     @Published var globalError: String?
     @Published var isLoadingOffers = false
@@ -27,7 +27,7 @@ final class AppModel: ObservableObject {
     @Published var favoriteOffers: [EstateOffer] = []
     @Published var isLoadingFavorites = false
     @Published var catalogBrand: CatalogBrand = .home
-    @Published var cars: [CarListing] = []
+    @Published var cars: [CarListing] = [] { didSet { carsRevision &+= 1 } }
     @Published var selectedCar: CarListing?
     @Published var isLoadingCars = false
     @Published var carSearchQuery = ""
@@ -53,6 +53,47 @@ final class AppModel: ObservableObject {
     @Published var requestedTab: HomeTab?
     /// Offer the map should centre on when it opens.
     @Published var mapFocusOfferId: Int?
+
+    // MARK: Account and personal settings (Konto)
+    @Published var profile: AccountProfile?
+
+    // MARK: Browse memo — filtering the whole catalog runs once per change, not once per read.
+    private var offersRevision = 0
+    private var carsRevision = 0
+    private var browseMemo: (key: BrowseKey, value: [EstateOffer])?
+    private var carsMemo: (key: CarsKey, value: [CarListing])?
+
+    private struct BrowseKey: Hashable {
+        let revision: Int, query: String, transactions: Set<HomeTransactionFilter>, premium: Bool
+        let discounted: Bool, cities: Set<String>, types: Set<HomePropertyKind>, criteria: HomeCriteria
+        let nearest: Bool, located: Bool
+    }
+
+    private struct CarsKey: Hashable {
+        let revision: Int, query: String, makes: Set<String>, cities: Set<String>
+        let attributes: Set<CarAttributeFilter>, criteria: CarCriteria, nearest: Bool, located: Bool
+    }
+    @Published var appearance: EOSAppearance = EOSSettings.appearance {
+        didSet { EOSSettings.appearance = appearance }
+    }
+    @Published var startTab: HomeTab = EOSSettings.startTab {
+        didSet { EOSSettings.startTab = startTab }
+    }
+    /// Slow drift of the big photos (off = still photos, also follows "Reduce Motion").
+    @Published var ambientMotion: Bool = EOSSettings.ambientMotion {
+        didSet { EOSSettings.ambientMotion = ambientMotion }
+    }
+    @Published var rememberRecents: Bool = EOSSettings.rememberRecents {
+        didSet {
+            EOSSettings.rememberRecents = rememberRecents
+            if !rememberRecents { clearRecents() }
+        }
+    }
+    /// Local Intelligence switch, used until the account has decided on the server.
+    @Published var intelligenceLocal: Bool = EOSSettings.intelligence {
+        didSet { EOSSettings.intelligence = intelligenceLocal }
+    }
+    @Published var isUpdatingIntelligence = false
     @Published var carCriteria = CarCriteria()
     @Published var selectedHomePropertyTypes: Set<HomePropertyKind> = []
     @Published var favoriteCarIds: Set<Int> = TvPreferences.favoriteCarIds
@@ -102,7 +143,7 @@ final class AppModel: ObservableObject {
             }
         }
         consumePendingDeepLink()
-        await refreshIntelligence()
+        await refreshAccount()
     }
 
     func login(login: String, password: String) async {
@@ -113,7 +154,7 @@ final class AppModel: ObservableObject {
             try await refreshOffers()
             try? await refreshCars()
             await refreshFavorites()
-            await refreshIntelligence()
+            await refreshAccount()
             closeLoginSheet()
         } catch {
             globalError = TvErrorMessages.message(for: error)
@@ -144,6 +185,7 @@ final class AppModel: ObservableObject {
 
     func logout() {
         intelligenceOfferIds = []
+        profile = nil
         SessionStore.clear()
         session = nil
         selectedOffer = nil
@@ -510,6 +552,19 @@ final class AppModel: ObservableObject {
     }
 
     var filteredOffersForBrowse: [EstateOffer] {
+        let key = BrowseKey(
+            revision: offersRevision, query: searchQuery, transactions: selectedHomeTransactions,
+            premium: homePremium, discounted: homeDiscounted, cities: selectedHomeCities,
+            types: selectedHomePropertyTypes, criteria: homeCriteria, nearest: homeNearest,
+            located: location.coordinate != nil
+        )
+        if let memo = browseMemo, memo.key == key { return memo.value }
+        let value = computeFilteredOffersForBrowse()
+        browseMemo = (key, value)
+        return value
+    }
+
+    private func computeFilteredOffersForBrowse() -> [EstateOffer] {
         var base = filteredOffers
         if !selectedHomeTransactions.isEmpty {
             base = base.filter { offer in
@@ -714,6 +769,18 @@ final class AppModel: ObservableObject {
     }
 
     var filteredCars: [CarListing] {
+        let key = CarsKey(
+            revision: carsRevision, query: carSearchQuery, makes: selectedCarMakes, cities: selectedCarCities,
+            attributes: selectedCarAttributes, criteria: carCriteria, nearest: carNearest,
+            located: location.coordinate != nil
+        )
+        if let memo = carsMemo, memo.key == key { return memo.value }
+        let value = computeFilteredCars()
+        carsMemo = (key, value)
+        return value
+    }
+
+    private func computeFilteredCars() -> [CarListing] {
         var base = api.searchCars(query: carSearchQuery, source: cars)
         if !selectedCarMakes.isEmpty {
             base = base.filter { car in
@@ -1032,7 +1099,7 @@ final class AppModel: ObservableObject {
                 try? SessionStore.save(session)
                 self.pairingStatusMessage = "Zalogowano przez iPhone."
                 self.isLoginSheetPresented = false
-                Task { await self.refreshIntelligence() }
+                Task { await self.refreshAccount() }
                 try? await self.refreshOffers()
                 await self.refreshFavorites()
                 tvPairPollTask?.cancel()
@@ -1585,6 +1652,7 @@ extension AppModel {
     /// Written to disk at once; published only after the detail closes, so the showroom under
     /// the detail does not rebuild during the open animation.
     func noteRecent(_ id: Int, key: String) {
+        guard EOSSettings.rememberRecents else { return }
         var list = Self.storedRecents(key)
         list.removeAll { $0 == id }
         list.insert(id, at: 0)
@@ -1645,7 +1713,7 @@ extension AppModel {
     }
 
     func refreshIntelligence() async {
-        guard session != nil else {
+        guard session != nil, intelligenceActive else {
             intelligenceOfferIds = []
             return
         }
@@ -1662,5 +1730,109 @@ extension AppModel {
             .map(ShowroomItem.init(offer:))
         guard !items.isEmpty else { return nil }
         return ShowroomSection.intelligence(items: Array(items), caption: "Dobrane do Twojego gustu na podstawie tego, co oglądasz")
+    }
+}
+
+
+// MARK: - Account
+
+extension AppModel {
+    /// Profile + Intelligence picks, after sign-in and at launch.
+    func refreshAccount() async {
+        await refreshProfile()
+        await refreshIntelligence()
+    }
+
+    func refreshProfile() async {
+        guard session != nil else { profile = nil; return }
+        if let fresh = try? await api.profile() { profile = fresh }
+    }
+
+    /// The account decision wins (estateos.pl / iPhone); before one exists, the local switch.
+    var intelligenceActive: Bool {
+        guard session != nil else { return false }
+        if let profile, profile.intelligenceDecided == true { return profile.intelligenceEnabled == true }
+        return intelligenceLocal
+    }
+
+    func setIntelligence(_ enabled: Bool) async {
+        intelligenceLocal = enabled
+        profile?.intelligenceEnabled = enabled
+        profile?.intelligenceDecided = true
+        if !enabled { intelligenceOfferIds = [] }
+        guard session != nil else { return }
+        isUpdatingIntelligence = true
+        defer { isUpdatingIntelligence = false }
+        try? await api.setIntelligence(enabled: enabled)
+        if enabled { await refreshIntelligence() }
+    }
+
+    var ownOffers: [EstateOffer] {
+        guard let me = session?.user.id else { return [] }
+        return offers.filter { $0.userId == me }
+    }
+}
+
+// MARK: - Personal settings
+
+enum EOSAppearance: String, CaseIterable, Identifiable {
+    case dark, light, system
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dark: return "Ciemny"
+        case .light: return "Jasny"
+        case .system: return "Automatyczny"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .dark: return "moon.fill"
+        case .light: return "sun.max.fill"
+        case .system: return "circle.lefthalf.filled"
+        }
+    }
+
+    /// nil = follow the Apple TV setting (Ustawienia › Ogólne › Wygląd).
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .dark: return .dark
+        case .light: return .light
+        case .system: return nil
+        }
+    }
+}
+
+enum EOSSettings {
+    private static let d = UserDefaults.standard
+
+    static var appearance: EOSAppearance {
+        get { EOSAppearance(rawValue: d.string(forKey: "eos.appearance") ?? "") ?? .dark }
+        set { d.set(newValue.rawValue, forKey: "eos.appearance") }
+    }
+
+    static var startTab: HomeTab {
+        get {
+            let tab = HomeTab(rawValue: d.string(forKey: "eos.startTab") ?? "") ?? .showroom
+            return [.showroom, .cars, .map].contains(tab) ? tab : .showroom
+        }
+        set { d.set(newValue.rawValue, forKey: "eos.startTab") }
+    }
+
+    static var ambientMotion: Bool {
+        get { d.object(forKey: "eos.ambientMotion") as? Bool ?? true }
+        set { d.set(newValue, forKey: "eos.ambientMotion") }
+    }
+
+    static var rememberRecents: Bool {
+        get { d.object(forKey: "eos.rememberRecents") as? Bool ?? true }
+        set { d.set(newValue, forKey: "eos.rememberRecents") }
+    }
+
+    static var intelligence: Bool {
+        get { d.object(forKey: "eos.intelligence") as? Bool ?? true }
+        set { d.set(newValue, forKey: "eos.intelligence") }
     }
 }

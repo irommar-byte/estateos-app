@@ -12,158 +12,211 @@ struct LoginView: View {
     @FocusState private var focusedField: Field?
 
     enum LoginMode: String, CaseIterable {
-        case passkey = "Passkey (iPhone)"
-        case password = "Hasło"
+        case passkey = "iPhone · Face ID"
+        case qr = "iPhone · hasło"
+        case password = "E-mail i hasło"
+
+        var icon: String {
+            switch self {
+            case .passkey: return "faceid"
+            case .qr: return "qrcode"
+            case .password: return "keyboard"
+            }
+        }
     }
 
     enum Field: Hashable {
         case login, password, submit, cancel
     }
 
+    private var backdropURL: URL? {
+        app.offers.first.flatMap { EOSOfferMedia.primaryImageURL(for: $0) }
+    }
+
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 28) {
-                header
-                modePicker
+        ZStack {
+            EOSBackdrop(url: backdropURL, soft: true)
+            LinearGradient(colors: [.black.opacity(0.88), .black.opacity(0.6)], startPoint: .leading, endPoint: .trailing)
+                .ignoresSafeArea()
 
-                switch mode {
-                case .passkey:
-                    passkeyPane
-                case .password:
-                    passwordPane
+            HStack(alignment: .center, spacing: 90) {
+                intro
+                    .frame(width: 760, alignment: .leading)
+                    .focusSection()
+                Group {
+                    switch mode {
+                    case .passkey:
+                        qrCard(
+                            payload: passkeyQrPayload,
+                            code: app.passkeyPairingCode,
+                            caption: "Zeskanuj iPhone’em i potwierdź Face ID — telewizor zaloguje się sam."
+                        ) { Task { await app.refreshTvPairCode(mode: "passkey") } }
+                    case .qr:
+                        qrCard(
+                            payload: loginQrPayload,
+                            code: app.loginPairingCode,
+                            caption: "Zeskanuj i zaloguj się na iPhonie hasłem — Apple TV połączy się z kontem."
+                        ) { Task { await app.refreshTvPairCode(mode: "password") } }
+                    case .password:
+                        passwordPane
+                    }
                 }
-
-                if let localError {
-                    Text(localError)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Błąd logowania: \(localError)")
-                }
-
-                if let status = app.pairingStatusMessage {
-                    Text(status)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                .focusSection()
             }
-            .padding(.horizontal, 72)
-            .padding(.vertical, 48)
+            .foregroundStyle(.white)
+            .padding(80)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color.black, Color.black.opacity(0.92), Color(red: 0.05, green: 0.08, blue: 0.12)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-        .focusSection()
+        .animation(.easeInOut(duration: 0.3), value: mode)
         .onAppear {
             focusedField = mode == .password ? .login : nil
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 8) {
-            Text("Logowanie EstateOS")
-                .font(.system(size: 52, weight: .bold, design: .rounded))
-            Text("Passkey przez iPhone albo login i hasło z konta EstateOS")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: 26) {
+            EOSWordmark(size: 40)
+            Text("Zaloguj się")
+                .font(.system(size: 76, weight: .bold))
+                .tracking(-1)
+            VStack(alignment: .leading, spacing: 16) {
+                benefit("heart.fill", .pink, "Ulubione z iPhone’a i estateos.pl")
+                benefit("sparkles", EOSIntelligence.violet, "„Dla Ciebie” od EstateOS Intelligence")
+                benefit("crown.fill", EOSGold.deep, "Status Pro i Twoje ogłoszenia")
+            }
 
-    private var modePicker: some View {
-        HStack(spacing: 14) {
-            ForEach(LoginMode.allCases, id: \.self) { item in
-                Button(item.rawValue) {
-                    mode = item
-                    localError = nil
-                    if item == .password { focusedField = .login }
+            VStack(alignment: .leading, spacing: 14) {
+                Text("SPOSÓB LOGOWANIA")
+                    .font(.system(size: 16, weight: .heavy))
+                    .tracking(2.2)
+                    .foregroundStyle(.white.opacity(0.55))
+                HStack(spacing: 16) {
+                    ForEach(LoginMode.allCases, id: \.self) { item in
+                        Button {
+                            mode = item
+                            localError = nil
+                            if item == .password { focusedField = .login }
+                        } label: {
+                            Label(item.rawValue, systemImage: item.icon)
+                                .font(.system(size: 21, weight: .semibold))
+                        }
+                        .buttonStyle(LoginModeStyle(selected: mode == item))
+                    }
                 }
-                .buttonStyle(EOSChipButtonStyle(selected: mode == item, accent: EOSPalette.gold, icon: item == .passkey ? "faceid" : "key.fill"))
-                .focusEffectDisabled()
             }
+            .padding(.top, 18)
+
+            if let localError {
+                Label(localError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 21, weight: .medium))
+                    .foregroundStyle(Color(red: 1, green: 0.45, blue: 0.4))
+                    .accessibilityLabel("Błąd logowania: \(localError)")
+            } else if let status = app.pairingStatusMessage, mode != .password {
+                HStack(spacing: 12) {
+                    ProgressView().scaleEffect(0.7)
+                    Text(status)
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+            }
+
+            Button("Nie teraz") { app.closeLoginSheet() }
+                .eosButton()
+                .focused($focusedField, equals: .cancel)
         }
-        .padding(8)
-        .eosGlass(cornerRadius: 20, opacity: 0.28)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var passkeyPane: some View {
-        HStack(alignment: .top, spacing: 24) {
-            qrCard(
-                title: "Passkey / Face ID",
-                subtitle: "Zeskanuj iPhonem — logowanie biometryczne sparuje Apple TV automatycznie",
-                pairingCode: app.passkeyPairingCode,
-                payload: passkeyQrPayload
-            ) {
-                Task { await app.refreshTvPairCode(mode: "passkey") }
-            }
+    private func benefit(_ icon: String, _ tint: Color, _ text: String) -> some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 34)
+            Text(text).font(.system(size: 25, weight: .medium))
+        }
+    }
 
-            qrCard(
-                title: "QR logowania hasłem",
-                subtitle: "Otwiera logowanie na iPhonie z kodem parowania",
-                pairingCode: app.loginPairingCode,
-                payload: loginQrPayload
-            ) {
-                Task { await app.refreshTvPairCode(mode: "password") }
+    private func qrCard(payload: String, code: String, caption: String, onRefresh: @escaping () -> Void) -> some View {
+        VStack(spacing: 22) {
+            ZStack {
+                if code.isEmpty {
+                    ProgressView().tint(.black)
+                } else {
+                    QRCodeImage(text: payload)
+                }
+            }
+            .frame(width: 420, height: 420)
+            .padding(34)
+            .background(RoundedRectangle(cornerRadius: 42, style: .continuous).fill(.white))
+            .shadow(color: .black.opacity(0.5), radius: 50, y: 24)
+            .id(payload)
+            .transition(.opacity)
+            .accessibilityLabel("Kod QR do logowania")
+
+            Text(caption)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+                .multilineTextAlignment(.center)
+                .frame(width: 480)
+
+            HStack(spacing: 18) {
+                Text(code.isEmpty ? "••••••" : code)
+                    .font(.system(size: 34, weight: .bold).monospaced())
+                    .tracking(4)
+                    .accessibilityLabel(code.isEmpty ? "Ładowanie kodu parowania" : "Kod parowania \(code)")
+                Button { onRefresh() } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .accessibilityLabel("Nowy kod")
+                }
+                .eosButton()
             }
         }
-        .focusSection()
     }
 
     private var passwordPane: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 20) {
             Text("Konto EstateOS")
-                .font(.title2.bold())
+                .font(.system(size: 34, weight: .bold))
 
-            TextField("E-mail", text: $login)
-                .textFieldStyle(.plain)
-                .font(.title3)
-                .padding(18)
-                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.12)))
-                .focused($focusedField, equals: .login)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityLabel("Adres e-mail")
-
-            SecureField("Hasło", text: $password)
-                .textFieldStyle(.plain)
-                .font(.title3)
-                .padding(18)
-                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.12)))
-                .focused($focusedField, equals: .password)
-                .accessibilityLabel("Hasło")
-
-            HStack(spacing: 16) {
-                Button {
-                    Task { await submitPasswordLogin() }
-                } label: {
-                    if isLoading {
-                        ProgressView().frame(maxWidth: .infinity)
-                    } else {
-                        Text("Zaloguj").fontWeight(.semibold).frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.home))
-                .focusEffectDisabled()
-                .focused($focusedField, equals: .submit)
-
-                Button("Anuluj") { app.closeLoginSheet() }
-                    .buttonStyle(EOSDetailChromeButtonStyle())
-                    .focusEffectDisabled()
-                    .focused($focusedField, equals: .cancel)
+            field {
+                TextField("E-mail", text: $login)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($focusedField, equals: .login)
+                    .accessibilityLabel("Adres e-mail")
             }
+            field {
+                SecureField("Hasło", text: $password)
+                    .focused($focusedField, equals: .password)
+                    .accessibilityLabel("Hasło")
+            }
+
+            Button {
+                Task { await submitPasswordLogin() }
+            } label: {
+                HStack {
+                    Spacer()
+                    if isLoading { ProgressView() } else { Text("Zaloguj").font(.system(size: 26, weight: .semibold)) }
+                    Spacer()
+                }
+                .frame(height: 50)
+            }
+            .eosButton()
+            .focused($focusedField, equals: .submit)
+            .padding(.top, 8)
         }
-        .padding(28)
-        .eosGlass(cornerRadius: 28, opacity: 0.4)
-        .frame(maxWidth: 760, alignment: .leading)
-        .focusSection()
+        .padding(40)
+        .frame(width: 660)
+        .eosGlassPanel(cornerRadius: 40)
+    }
+
+    private func field<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .textFieldStyle(.plain)
+            .font(.system(size: 26, weight: .medium))
+            .padding(.horizontal, 26)
+            .frame(height: 80)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.white.opacity(0.1)))
     }
 
     private func submitPasswordLogin() async {
@@ -184,65 +237,29 @@ struct LoginView: View {
         }
     }
 
-    private func qrCard(
-        title: String,
-        subtitle: String,
-        pairingCode: String,
-        payload: String,
-        onRefresh: @escaping () -> Void
-    ) -> some View {
-        VStack(spacing: 14) {
-            if let image = qrImage(from: payload) {
-                Image(uiImage: image)
-                    .interpolation(.none)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(minWidth: 280, minHeight: 280)
-                    .frame(maxWidth: 320, maxHeight: 320)
-                    .padding(16)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .accessibilityLabel("Kod QR do logowania")
-            }
-
-            Text(title)
-                .font(.headline)
-
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Text(pairingCode.isEmpty ? "Ładowanie kodu…" : pairingCode)
-                .font(.title2.weight(.bold))
-                .monospaced()
-                .accessibilityLabel(pairingCode.isEmpty ? "Ładowanie kodu parowania" : "Kod parowania \(pairingCode)")
-
-            Button("Odśwież kod") { onRefresh() }
-                .buttonStyle(EOSDetailChromeButtonStyle())
-                .focusEffectDisabled()
-        }
-        .frame(width: 460)
-        .padding(20)
-        .eosGlass(cornerRadius: 24, opacity: 0.38)
-    }
-
-    private func qrImage(from payload: String) -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        let context = CIContext()
-        filter.setValue(Data(payload.utf8), forKey: "inputMessage")
-        filter.setValue("M", forKey: "inputCorrectionLevel")
-        guard let output = filter.outputImage else { return nil }
-        let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
-        guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cg)
-    }
-
     private var loginQrPayload: String {
         "https://estateos.pl/login?source=tvos&pair=\(app.loginPairingCode)&authIntent=login"
     }
 
     private var passkeyQrPayload: String {
         "https://estateos.pl/passkey-login?source=tvos&pair=\(app.passkeyPairingCode)&mode=passkey"
+    }
+}
+
+/// Login method chip: glass at rest, softly filled when chosen, white when focused.
+private struct LoginModeStyle: ButtonStyle {
+    var selected: Bool
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 22)
+            .padding(.vertical, 14)
+            .foregroundStyle(isFocused ? Color.black : .white)
+            .background(Capsule().fill(isFocused ? Color.white : Color.white.opacity(selected ? 0.22 : 0.08)))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(selected && !isFocused ? 0.55 : 0.12), lineWidth: 1.5))
+            .scaleEffect(configuration.isPressed ? 0.97 : (isFocused ? 1.06 : 1))
+            .shadow(color: .black.opacity(isFocused ? 0.4 : 0), radius: 18, y: 10)
+            .animation(EOSMotion.focus, value: isFocused)
     }
 }

@@ -12,9 +12,18 @@ struct TopShelfImmersiveView: View {
             items: offers,
             startIndex: startIndex,
             accent: EOSPalette.home,
-            hintText: "← → oferty  ·  ↓ zamknij",
-            onShow: { app.openDetail($0) },
-            onDismiss: { dismiss() }
+            hintText: "",
+            onShow: { offer in
+                // The detail is presented from the same root as this browse — close it first.
+                dismiss()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 450_000_000)
+                    app.openDetail(offer)
+                }
+            },
+            onDismiss: { dismiss() },
+            isFavorite: { app.isFavorite($0.id) },
+            onToggleFavorite: app.session == nil ? nil : { offer in Task { await app.toggleFavorite(offer) } }
         )
     }
 }

@@ -200,7 +200,7 @@ struct QRCodeImage: View {
     private static func make(_ text: String) -> UIImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)
-        filter.correctionLevel = "M"
+        filter.correctionLevel = "H"
         guard let output = filter.outputImage else { return nil }
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
         guard let cg = CIContext().createCGImage(scaled, from: scaled.extent) else { return nil }

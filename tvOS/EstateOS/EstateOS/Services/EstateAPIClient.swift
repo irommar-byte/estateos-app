@@ -47,6 +47,24 @@ final class EstateAPIClient {
         return user
     }
 
+    /// Full profile: plan, Pro status, verification, Intelligence opt-in.
+    func profile() async throws -> AccountProfile {
+        struct Envelope: Decodable { let user: AccountProfile? }
+        let response: Envelope = try await request("GET", path: "/api/mobile/v1/user/me")
+        guard let user = response.user else { throw APIError.decode }
+        return user
+    }
+
+    /// Account-wide EstateOS Intelligence opt-in (same switch as on estateos.pl and iPhone).
+    func setIntelligence(enabled: Bool) async throws {
+        struct Envelope: Decodable { let success: Bool? }
+        let _: Envelope = try await request(
+            "PATCH",
+            path: "/api/discovery/intelligence-preference",
+            body: ["enabled": enabled]
+        )
+    }
+
     func searchSpotlight(query: String) async throws -> SpotlightSearchResponse {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {

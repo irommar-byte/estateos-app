@@ -35,20 +35,30 @@ extension CarListing: ImmersiveItem {
     var immersiveBadgeText: String? { featured ? "PROMO" : nil }
 }
 
+/// Full-screen browse (Top Shelf "Play", "Przeglądaj na pełnym ekranie") — 2026-10 redesign.
+///
+/// A slideshow you can lean back to: the photo fills the screen and drifts slowly, the essentials
+/// sit bottom-left, a thin progress line shows the next slide coming.
+///   ◀ ▶ previous / next · Select — open the offer · ⏯ — pause / play the slideshow
+///   ▲ — add to favourites · ▼ or MENU — close
 struct ImmersiveBrowseShell<Item: ImmersiveItem>: View {
     let items: [Item]
     @State private var selectedIndex: Int
-    @State private var slideDirection: SlideDirection = .none
+    @State private var forward = true
+    @State private var playing = true
+    @State private var progress: CGFloat = 0
+    @State private var ticker: Task<Void, Never>?
     @FocusState private var focused: Bool
-    @State private var showHint = true
+    @Environment(\.eosAmbientMotion) private var ambientMotion
 
     var accent: Color
     var hintText: String
     var onShow: (Item) -> Void
     var onDismiss: () -> Void
-    var trailingActions: ((Item) -> AnyView)? = nil
+    var isFavorite: ((Item) -> Bool)? = nil
+    var onToggleFavorite: ((Item) -> Void)? = nil
 
-    enum SlideDirection { case none, forward, back }
+    private static var slideSeconds: Double { 9 }
 
     init(
         items: [Item],
@@ -57,179 +67,202 @@ struct ImmersiveBrowseShell<Item: ImmersiveItem>: View {
         hintText: String,
         onShow: @escaping (Item) -> Void,
         onDismiss: @escaping () -> Void,
-        trailingActions: ((Item) -> AnyView)? = nil
+        isFavorite: ((Item) -> Bool)? = nil,
+        onToggleFavorite: ((Item) -> Void)? = nil
     ) {
         self.items = items
         self.accent = accent
         self.hintText = hintText
         self.onShow = onShow
         self.onDismiss = onDismiss
-        self.trailingActions = trailingActions
+        self.isFavorite = isFavorite
+        self.onToggleFavorite = onToggleFavorite
         _selectedIndex = State(initialValue: min(max(0, startIndex), max(0, items.count - 1)))
     }
 
     private var current: Item { items[selectedIndex] }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottomLeading) {
             Color.black.ignoresSafeArea()
 
-            ImmersiveBackdrop(url: current.immersiveImageURL, accent: accent)
+            EOSBackdrop(url: current.immersiveImageURL)
                 .id(current.id)
-                .transition(backdropTransition)
-                .ignoresSafeArea()
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .offset(x: forward ? 60 : -60)),
+                    removal: .opacity
+                ))
 
             LinearGradient(
-                colors: [.black.opacity(0.15), .clear, .black.opacity(0.35), .black.opacity(0.92)],
-                startPoint: .top,
-                endPoint: .bottom
+                stops: [
+                    .init(color: .black.opacity(0.35), location: 0),
+                    .init(color: .clear, location: 0.25),
+                    .init(color: .clear, location: 0.5),
+                    .init(color: .black.opacity(0.88), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
             )
             .ignoresSafeArea()
 
-            VStack {
-                Spacer()
-                glassPanel
-                    .padding(.horizontal, 64)
-                    .padding(.bottom, 56)
-            }
+            Button { onShow(current) } label: { Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity) }
+                .buttonStyle(ImmersiveStageStyle())
+                .focused($focused)
+                .onMoveCommand(perform: handleMove)
+                .onPlayPauseCommand(perform: togglePlay)
+                .onExitCommand { onDismiss() }
+                .accessibilityLabel("\(current.immersiveTitle), \(current.immersivePriceText). Naciśnij, aby otworzyć.")
+
+            info
+                .padding(.horizontal, 90)
+                .padding(.bottom, 70)
+                .allowsHitTesting(false)
         }
-        .focusable()
-        .focused($focused)
+        .overlay(alignment: .topTrailing) { counter.padding(.top, 60).padding(.trailing, 90) }
         .onAppear {
             prefetchAdjacent(around: selectedIndex)
             focused = true
-            Task {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                withAnimation(.easeOut(duration: 0.4)) { showHint = false }
-            }
+            restartTicker()
         }
-        .onMoveCommand(perform: handleMove)
-        .onExitCommand { onDismiss() }
+        .onDisappear { ticker?.cancel() }
     }
 
-    private var glassPanel: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top) {
-                Text("\(selectedIndex + 1) / \(items.count)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-                Spacer()
+    // MARK: Pieces
+
+    private var info: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
                 if let badge = current.immersiveBadgeText {
                     Text(badge.uppercased())
-                        .font(.system(size: 14, weight: .heavy, design: .rounded))
-                        .tracking(1.1)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Capsule(style: .continuous).fill(accent.opacity(0.34)))
-                        .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.22), lineWidth: 1))
+                        .font(.system(size: 17, weight: .heavy))
+                        .tracking(1.6)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(accent.opacity(0.32)))
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+                }
+                if isFavorite?(current) == true {
+                    Image(systemName: "heart.fill").foregroundStyle(.pink)
                 }
             }
-
-            ImmersiveAdaptiveTitle(text: current.immersiveTitle, maxSize: 56, minSize: 28)
+            ImmersiveAdaptiveTitle(text: current.immersiveTitle, maxSize: 72, minSize: 34)
                 .foregroundStyle(.white)
-                .id("title-\(current.id)")
-
-            VStack(alignment: .leading, spacing: 10) {
+                .shadow(color: .black.opacity(0.4), radius: 20, y: 4)
+            HStack(alignment: .firstTextBaseline, spacing: 22) {
                 Text(current.immersivePriceText)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(accent)
+                    .font(.system(size: 44, weight: .semibold))
                 if !current.immersiveSubtitleText.isEmpty {
                     Text(current.immersiveSubtitleText)
-                        .font(.system(size: 22, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.86))
-                }
-                EOSCountryLocationLabel(
-                    locationLine: current.immersiveLocationLine,
-                    country: current.immersiveCountry,
-                    font: .system(size: 20, weight: .medium, design: .rounded),
-                    foreground: .white.opacity(0.78)
-                )
-            }
-            .id("meta-\(current.id)")
-
-            HStack(spacing: 18) {
-                Button("POKAŻ") { onShow(current) }
-                    .buttonStyle(EOSDetailActionButtonStyle(accent: accent))
-                    .focusEffectDisabled()
-                    .accessibilityLabel("Pokaż szczegóły")
-
-                if let trailingActions {
-                    trailingActions(current)
-                }
-
-                Spacer()
-
-                if showHint {
-                    Text(hintText)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.45))
-                        .transition(.opacity)
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
                 }
             }
+            .foregroundStyle(.white)
+            EOSCountryLocationLabel(
+                locationLine: current.immersiveLocationLine,
+                country: current.immersiveCountry,
+                font: .system(size: 22, weight: .medium),
+                foreground: .white.opacity(0.75)
+            )
+
+            HStack(spacing: 26) {
+                hint("hand.tap", "zobacz")
+                hint("arrow.left.and.right", "kolejne")
+                hint("playpause", playing ? "pauza" : "pokaz slajdów")
+                if onToggleFavorite != nil { hint("arrow.up", "ulubione") }
+                hint("arrow.down", "zamknij")
+            }
+            .padding(.top, 18)
         }
-        .padding(40)
-        .eosGlass(cornerRadius: 34, opacity: 0.48)
-        .animation(.spring(response: 0.52, dampingFraction: 0.84), value: selectedIndex)
+        .id(current.id)
+        .transition(.opacity)
+        .animation(.easeOut(duration: 0.45), value: selectedIndex)
+        .frame(maxWidth: 1400, alignment: .leading)
     }
 
-    private var backdropTransition: AnyTransition {
-        switch slideDirection {
-        case .forward, .back:
-            return .asymmetric(
-                insertion: .opacity.combined(with: .scale(scale: 1.04)),
-                removal: .opacity
-            )
-        case .none:
-            return .opacity
+    private func hint(_ icon: String, _ text: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.system(size: 19, weight: .medium))
+            .foregroundStyle(.white.opacity(0.6))
+    }
+
+    private var counter: some View {
+        HStack(spacing: 16) {
+            Image(systemName: playing ? "play.fill" : "pause.fill")
+                .font(.system(size: 16, weight: .bold))
+            Text("\(selectedIndex + 1) / \(items.count)")
+                .font(.system(size: 20, weight: .semibold).monospacedDigit())
+            Capsule()
+                .fill(Color.white.opacity(0.2))
+                .frame(width: 140, height: 4)
+                .overlay(alignment: .leading) {
+                    Capsule().fill(Color.white).frame(width: 140 * progress, height: 4)
+                }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .eosGlassPanel(Capsule())
+        .environment(\.colorScheme, .dark)
+    }
+
+    // MARK: Remote
+
+    private func handleMove(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .left: step(-1)
+        case .right: step(1)
+        case .up: onToggleFavorite?(current)
+        case .down: onDismiss()
+        default: break
+        }
+    }
+
+    private func step(_ delta: Int) {
+        let next = selectedIndex + delta
+        guard items.indices.contains(next) else {
+            if delta > 0, playing, items.count > 1 { go(to: 0, forward: true) }
+            return
+        }
+        go(to: next, forward: delta > 0)
+    }
+
+    private func go(to index: Int, forward: Bool) {
+        self.forward = forward
+        withAnimation(.spring(response: 0.7, dampingFraction: 0.9)) { selectedIndex = index }
+        prefetchAdjacent(around: index)
+        restartTicker()
+    }
+
+    private func togglePlay() {
+        playing.toggle()
+        restartTicker()
+    }
+
+    /// Slideshow clock: fills the progress line, then moves to the next photo.
+    private func restartTicker() {
+        ticker?.cancel()
+        progress = 0
+        guard playing, items.count > 1 else { return }
+        let seconds = Self.slideSeconds
+        withAnimation(.linear(duration: seconds)) { progress = 1 }
+        ticker = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            step(1)
         }
     }
 
     private func prefetchAdjacent(around index: Int) {
         var urls: [URL] = []
-        for i in [index - 1, index, index + 1] where i >= 0 && i < items.count {
+        for i in [index - 1, index, index + 1, index + 2] where i >= 0 && i < items.count {
             if let u = items[i].immersiveImageURL { urls.append(u) }
         }
         EOSImageCache.prefetch(urls: urls, size: .screen)
     }
-
-    private func handleMove(_ direction: MoveCommandDirection) {
-        switch direction {
-        case .left:
-            guard selectedIndex > 0 else { return }
-            slideDirection = .back
-            withAnimation(.spring(response: 0.58, dampingFraction: 0.86)) { selectedIndex -= 1 }
-            prefetchAdjacent(around: selectedIndex)
-        case .right:
-            guard selectedIndex < items.count - 1 else { return }
-            slideDirection = .forward
-            withAnimation(.spring(response: 0.58, dampingFraction: 0.86)) { selectedIndex += 1 }
-            prefetchAdjacent(around: selectedIndex)
-        case .down:
-            onDismiss()
-        default:
-            break
-        }
-    }
 }
 
-private struct ImmersiveBackdrop: View {
-    let url: URL?
-    let accent: Color
-
-    var body: some View {
-        GeometryReader { proxy in
-            EOSCachedRemoteImage(url: url, contentMode: .fill, size: .screen) {
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(white: 0.14), accent.opacity(0.12), Color(white: 0.06)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
-        }
+private struct ImmersiveStageStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.contentShape(Rectangle())
     }
 }

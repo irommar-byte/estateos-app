@@ -975,6 +975,10 @@ private struct EOSLaunchFinishedKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+private struct EOSAmbientMotionKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 extension EnvironmentValues {
     /// False while the launch doors are still closed (RootView flips it as they open).
     var eosLaunchRevealed: Bool {
@@ -986,6 +990,12 @@ extension EnvironmentValues {
     var eosLaunchFinished: Bool {
         get { self[EOSLaunchFinishedKey.self] }
         set { self[EOSLaunchFinishedKey.self] = newValue }
+    }
+
+    /// Konto › "Ruchome zdjęcia w tle": the slow Ken Burns drift of big photos.
+    var eosAmbientMotion: Bool {
+        get { self[EOSAmbientMotionKey.self] }
+        set { self[EOSAmbientMotionKey.self] = newValue }
     }
 }
 
@@ -1091,12 +1101,12 @@ struct EOSPosterCard<Badge: View>: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(size: 25, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.system(size: 21, weight: .regular))
-                            .foregroundStyle(.white.opacity(0.62))
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -1153,6 +1163,8 @@ struct EOSBackdrop: View {
 
     @State private var shown: Layer?
     @State private var drift = false
+    @Environment(\.eosAmbientMotion) private var ambientMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(url: URL?, soft: Bool = false) {
         self.url = url
@@ -1196,10 +1208,17 @@ struct EOSBackdrop: View {
             guard !Task.isCancelled, let image else { return }
             withAnimation(EOSMotion.backdrop) { shown = Layer(url: url, image: image) }
         }
-        .onAppear {
-            guard !soft else { return }
-            withAnimation(.easeInOut(duration: 24).repeatForever(autoreverses: true)) { drift = true }
+        .onAppear(perform: startDrift)
+        .onChange(of: ambientMotion) { _, on in
+            if on { startDrift() } else { withAnimation(.easeOut(duration: 1.2)) { drift = false } }
         }
+    }
+}
+
+extension EOSBackdrop {
+    fileprivate func startDrift() {
+        guard !soft, ambientMotion, !reduceMotion, !drift else { return }
+        withAnimation(.easeInOut(duration: 24).repeatForever(autoreverses: true)) { drift = true }
     }
 }
 

@@ -38,7 +38,7 @@ struct RootView: View {
                 .zIndex(2)
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(app.appearance.colorScheme)
         .task {
             try? await Task.sleep(nanoseconds: UInt64(SplashAnimationTimeline.bootstrapCapMs * 1_000_000))
             if app.isBootstrapping { bootstrapTimedOut = true; TvLaunchMetrics.recordExtendedHold() }
@@ -46,6 +46,7 @@ struct RootView: View {
         .fullScreenCover(isPresented: $app.isLoginSheetPresented) {
             LoginView()
                 .environmentObject(app)
+                .environment(\.colorScheme, .dark)
         }
         .fullScreenCover(item: $app.selectedOffer) { offer in
             OfferDetailView(
@@ -55,6 +56,7 @@ struct RootView: View {
             )
             .environmentObject(app)
             .environmentObject(heroTransition)
+            .environment(\.colorScheme, .dark)
         }
         .fullScreenCover(item: $app.selectedCar) { car in
             CarDetailView(
@@ -64,16 +66,19 @@ struct RootView: View {
             )
             .environmentObject(app)
             .environmentObject(heroTransition)
+            .environment(\.colorScheme, .dark)
         }
         .fullScreenCover(item: $app.immersiveBrowse, onDismiss: app.closeImmersiveBrowse) { context in
-            switch context.kind {
-            case .homes(let offers):
-                TopShelfImmersiveView(offers: offers, startIndex: context.startIndex)
-                    .environmentObject(app)
-            case .cars(let cars):
-                ImmersiveCarBrowseView(cars: cars, startIndex: context.startIndex)
-                    .environmentObject(app)
+            Group {
+                switch context.kind {
+                case .homes(let offers):
+                    TopShelfImmersiveView(offers: offers, startIndex: context.startIndex)
+                case .cars(let cars):
+                    ImmersiveCarBrowseView(cars: cars, startIndex: context.startIndex)
+                }
             }
+            .environmentObject(app)
+            .environment(\.colorScheme, .dark)
         }
         .alert("Błąd", isPresented: .constant(app.globalError != nil)) {
             Button("OK") {
@@ -82,6 +87,7 @@ struct RootView: View {
         } message: {
             Text(app.globalError ?? "")
         }
+        .environment(\.eosAmbientMotion, app.ambientMotion)
     }
 }
 

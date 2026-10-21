@@ -12,24 +12,18 @@ struct ImmersiveCarBrowseView: View {
             items: cars,
             startIndex: startIndex,
             accent: EOSPalette.car,
-            hintText: "← → auta  ·  ↓ zamknij",
-            onShow: { app.openCarDetail($0) },
+            hintText: "",
+            onShow: { car in
+                // The detail is presented from the same root as this browse — close it first.
+                dismiss()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 450_000_000)
+                    app.openCarDetail(car)
+                }
+            },
             onDismiss: { dismiss() },
-            trailingActions: { car in
-                AnyView(
-                    Button {
-                        app.toggleFavoriteCar(car)
-                    } label: {
-                        Label(
-                            app.isFavoriteCar(car.id) ? "W ulubionych" : "Ulubione",
-                            systemImage: app.isFavoriteCar(car.id) ? "heart.fill" : "heart"
-                        )
-                    }
-                    .buttonStyle(EOSDetailActionButtonStyle(accent: app.isFavoriteCar(car.id) ? .pink : .cyan))
-                    .focusEffectDisabled()
-                    .accessibilityLabel(app.isFavoriteCar(car.id) ? "Usuń z ulubionych" : "Dodaj do ulubionych")
-                )
-            }
+            isFavorite: { app.isFavoriteCar($0.id) },
+            onToggleFavorite: { app.toggleFavoriteCar($0) }
         )
     }
 }

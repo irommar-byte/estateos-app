@@ -14,15 +14,17 @@ struct HomeView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.eosLaunchRevealed) private var launchRevealed
 
-    @State private var tab: HomeTab = .showroom
+    @State private var tab: HomeTab = EOSSettings.startTab
+    @Environment(\.colorScheme) private var colorScheme
     @State private var menuOpen = false
     @State private var showFilterSheet = false
     @FocusState private var chromeFocus: HomeChromeFocus?
-    @FocusState private var accountFocusedItem: HomeAccountFocus?
     @FocusState private var auxFocus: HomeAuxFocus?
     @State private var accountContentFocus = false
     @FocusState private var headerFocused: Bool
     @FocusState private var menuFocus: HomeMenuItem?
+    /// The map moves between pins with the arrows, so the header steps aside meanwhile.
+    @State private var mapOwnsRemote = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -33,6 +35,7 @@ struct HomeView: View {
 
             if !menuOpen {
                 header
+                    .environment(\.colorScheme, .dark)
                     .opacity(launchRevealed ? 1 : 0)
                     .offset(y: launchRevealed ? 0 : -16)
                     .animation(EOSMotion.launchReveal.delay(0.45), value: launchRevealed)
@@ -45,6 +48,7 @@ struct HomeView: View {
                     .transition(.opacity)
                     .allowsHitTesting(false)
                 menu
+                    .environment(\.colorScheme, .dark)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
@@ -54,6 +58,7 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $showFilterSheet) {
             FilterSheetView(tab: $tab, onDismissFocus: { showFilterSheet = false })
                 .environmentObject(app)
+                .environment(\.colorScheme, .dark)
         }
         .onAppear { syncBrand(with: tab) }
         .onChange(of: app.requestedTab) { _, requested in
@@ -79,37 +84,46 @@ struct HomeView: View {
         switch tab {
         case .showroom:
             HomeShowroomView(brand: .home, onOpenFilters: openFilters)
+                .environment(\.colorScheme, .dark)
         case .cars:
             HomeShowroomView(brand: .car, onOpenFilters: openFilters)
+                .environment(\.colorScheme, .dark)
         case .map:
-            OfferMapView(onOpenFilters: openFilters)
+            OfferMapView(
+                onOpenFilters: openFilters,
+                ownsRemote: $mapOwnsRemote,
+                onRelease: {
+                    mapOwnsRemote = false
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 60_000_000)
+                        headerFocused = true
+                    }
+                }
+            )
+            .environment(\.colorScheme, .dark)
         case .search:
             SearchView(chromeFocus: $chromeFocus, auxFocus: $auxFocus)
                 .environmentObject(app)
                 .padding(.top, EOSShellMetrics.contentTopInset)
                 .background { secondaryBackdrop }
         case .favorites:
-            HomeFavoritesView(tab: $tab, chromeFocus: $chromeFocus)
-                .padding(.top, EOSShellMetrics.contentTopInset)
-                .background { secondaryBackdrop }
+            HomeFavoritesView(tab: $tab)
+                .environment(\.colorScheme, .dark)
         case .account:
-            HomeAccountView(
-                chromeFocus: $chromeFocus,
-                accountFocusedItem: $accountFocusedItem,
-                accountContentFocus: $accountContentFocus
-            )
-            .padding(.top, EOSShellMetrics.contentTopInset)
-            .background { secondaryBackdrop }
+            HomeAccountView(claimFocus: $accountContentFocus, onOpenFilters: openFilters)
+                .background { secondaryBackdrop }
         }
     }
 
-    /// Search / Ulubione / Konto sit on a deeply blurred photo, so glass panels have depth.
+    /// Szukaj / Konto sit on a deeply blurred photo, so glass panels have depth — darkened in the
+    /// dark theme, washed with white in the light one.
     private var secondaryBackdrop: some View {
         let url = app.offers.first.flatMap { EOSOfferMedia.primaryImageURL(for: $0) }
         return ZStack {
+            colorScheme == .dark ? Color.black : Color(white: 0.93)
             EOSBackdrop(url: url, soft: true)
-                .opacity(0.6)
-            Color.black.opacity(0.35)
+                .opacity(colorScheme == .dark ? 0.6 : 0.4)
+            colorScheme == .dark ? Color.black.opacity(0.4) : Color.white.opacity(0.6)
         }
         .ignoresSafeArea()
     }
@@ -120,6 +134,9 @@ struct HomeView: View {
         Button(action: openMenu) {
             HStack(spacing: 22) {
                 EOSWordmark(size: 30)
+                if app.profile?.tier.isPremium == true {
+                    EOSProBadge(size: .small)
+                }
                 Rectangle()
                     .fill(Color.white.opacity(0.28))
                     .frame(width: 1.5, height: 32)
@@ -135,6 +152,7 @@ struct HomeView: View {
             .padding(.vertical, 18)
         }
         .buttonStyle(EOSHeaderCapsuleStyle())
+        .disabled(mapOwnsRemote && tab == .map)
         .focused($headerFocused)
         .focusSection()
         .accessibilityLabel("EstateOS, \(tab.rawValue). Otwórz menu")

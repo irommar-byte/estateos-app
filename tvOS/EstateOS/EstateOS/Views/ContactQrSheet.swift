@@ -12,7 +12,9 @@ struct ContactQrSheet: View {
             title: "Otwórz na iPhonie",
             subtitle: offer.title,
             urlString: deepLink,
-            footnote: "Zeskanuj aparatem iPhona, aby otworzyć ofertę i skontaktować się ze sprzedającym."
+            footnote: "Na iPhonie napiszesz do sprzedającego, zadzwonisz albo umówisz oglądanie.",
+            eyebrow: "KONTAKT ZE SPRZEDAJĄCYM",
+            backdrop: EOSOfferMedia.primaryImageURL(for: offer)
         )
     }
 }
@@ -29,7 +31,9 @@ struct CarContactQrSheet: View {
             title: "EstateOS™ Car",
             subtitle: car.displayHeadline,
             urlString: link,
-            footnote: "Zeskanuj telefonem, aby otworzyć ogłoszenie i skontaktować się ze sprzedającym."
+            footnote: "Na iPhonie napiszesz do sprzedającego albo zadzwonisz.",
+            eyebrow: "KONTAKT ZE SPRZEDAJĄCYM",
+            backdrop: EOSOfferMedia.imageURL(from: car.imageUrl)
         )
     }
 }

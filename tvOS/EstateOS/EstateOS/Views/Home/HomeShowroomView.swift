@@ -365,7 +365,7 @@ struct HomeShowroomView: View {
 
 // MARK: - Backdrop (observes the spotlight on its own)
 
-private struct ShowroomBackdrop: View {
+struct ShowroomBackdrop: View {
     @ObservedObject var spotlight: ShowroomSpotlight
     let fallback: URL?
 
@@ -488,7 +488,7 @@ private struct ShowroomHero: View {
 
 // MARK: - Rail
 
-private struct ShowroomRail: View {
+struct ShowroomRail: View {
     @EnvironmentObject private var app: AppModel
     let section: ShowroomSection
     let spotlight: ShowroomSpotlight   // not observed: cards only report focus

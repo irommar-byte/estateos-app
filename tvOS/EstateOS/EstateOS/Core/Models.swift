@@ -652,3 +652,109 @@ extension CarListing {
         try c.encode(favoritesCount, forKey: .favoritesCount)
     }
 }
+
+// MARK: - Account profile (GET /api/mobile/v1/user/me → shapeMobileUser)
+
+struct AccountProfile: Decodable {
+    var id: Int?
+    var email: String?
+    var name: String?
+    var phone: String?
+    var image: String?
+    var role: String?
+    var planType: String?
+    var isPro: Bool?
+    var officePro: Bool?
+    var hasMarketPro: Bool?
+    var proExpiresAt: String?
+    var plusExpiresAt: String?
+    var companyName: String?
+    var emailVerified: Bool?
+    var phoneVerified: Bool?
+    var isVerified: Bool?
+    var intelligenceEnabled: Bool?
+    var intelligenceDecided: Bool?
+    var extraListings: Int?
+    var hasPasskey: Bool?
+
+    enum Tier: Equatable {
+        case admin, pro, agency, plus, investor, basic
+
+        var title: String {
+            switch self {
+            case .admin: return "Administrator"
+            case .pro: return "EstateOS Pro"
+            case .agency: return "Biuro partnerskie"
+            case .plus: return "EstateOS Plus"
+            case .investor: return "Inwestor"
+            case .basic: return "Konto podstawowe"
+            }
+        }
+
+        /// Pro-level membership — the gold treatment.
+        var isPremium: Bool { self == .pro || self == .agency || self == .admin }
+    }
+
+    var tier: Tier {
+        let plan = (planType ?? "").uppercased()
+        if (role ?? "").uppercased() == "ADMIN" { return .admin }
+        if isPro == true || plan == "PRO" { return .pro }
+        if officePro == true || plan == "AGENCY" { return .agency }
+        if plan == "PLUS", (plusExpiry.map { $0 > Date() } ?? true) { return .plus }
+        if plan == "INVESTOR" { return .investor }
+        return .basic
+    }
+
+    var roleLabel: String? {
+        switch (role ?? "").uppercased() {
+        case "AGENT": return "Agent nieruchomości"
+        case "ADMIN": return "Zespół EstateOS"
+        default: return nil
+        }
+    }
+
+    var displayName: String {
+        let n = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !n.isEmpty { return n }
+        return (email ?? "Konto EstateOS")
+    }
+
+    var initials: String {
+        let parts = displayName.split(separator: " ").prefix(2)
+        let letters = parts.compactMap { $0.first }.map { String($0).uppercased() }.joined()
+        return letters.isEmpty ? "E" : letters
+    }
+
+    var proExpiry: Date? { Self.parse(proExpiresAt) }
+    var plusExpiry: Date? { Self.parse(plusExpiresAt) }
+
+    /// "aktywne do 12 marca 2027" for the membership card.
+    var membershipValidity: String? {
+        let date: Date?
+        switch tier {
+        case .pro: date = proExpiry
+        case .plus: date = plusExpiry
+        default: date = nil
+        }
+        guard let date else { return tier == .basic ? nil : "Aktywne bezterminowo" }
+        return "Aktywne do " + Self.longDate.string(from: date)
+    }
+
+    private static let iso: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+    private static let longDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "pl_PL")
+        f.dateFormat = "d MMMM yyyy"
+        return f
+    }()
+
+    private static func parse(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return iso.date(from: raw) ?? isoPlain.date(from: raw)
+    }
+}
