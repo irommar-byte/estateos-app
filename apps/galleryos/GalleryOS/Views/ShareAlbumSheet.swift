@@ -53,7 +53,7 @@ struct ShareAlbumSheet: View {
                         .focused($titleFocused)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
-                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .galleryGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous), interactive: true)
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -81,7 +81,7 @@ struct ShareAlbumSheet: View {
                             .foregroundStyle(.secondary)
                             .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .galleryGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     } else {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 14)], spacing: 16) {
                             ForEach(account.friends) { friend in
@@ -111,7 +111,7 @@ struct ShareAlbumSheet: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .galleryGlassButton()
                 .controlSize(.large)
                 .disabled(phase == .sending || localIDs.isEmpty)
             }
@@ -150,7 +150,7 @@ struct ShareAlbumSheet: View {
             .frame(maxWidth: .infinity)
             .frame(height: 30)
         }
-        .buttonStyle(.glassProminent)
+        .galleryGlassButton(prominent: true)
         .controlSize(.large)
         .tint(phase == .done ? LinkRoute.home.tint : GalleryTheme.accent)
         .disabled(phase != .editing || members.isEmpty || title.trimmingCharacters(in: .whitespaces).isEmpty)

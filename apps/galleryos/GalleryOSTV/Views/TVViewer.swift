@@ -173,7 +173,7 @@ struct TVViewer: View {
             .font(.headline)
             .padding(.horizontal, 28)
             .padding(.vertical, 14)
-            .glassEffect(.regular, in: .capsule)
+            .galleryGlass(in: Capsule())
             .padding(.bottom, 60)
         }
         .allowsHitTesting(false)
@@ -186,7 +186,7 @@ struct TVViewer: View {
                 .font(.headline)
                 .padding(.horizontal, 28)
                 .padding(.vertical, 14)
-                .glassEffect(.regular, in: .capsule)
+                .galleryGlass(in: Capsule())
                 .padding(.bottom, 60)
         }
         .allowsHitTesting(false)
@@ -207,7 +207,7 @@ struct TVViewer: View {
             }
             .padding(36)
             .frame(maxWidth: 1000, alignment: .leading)
-            .glassEffect(.regular, in: .rect(cornerRadius: 34))
+            .galleryGlass(in: RoundedRectangle(cornerRadius: 34, style: .continuous))
             .padding(.bottom, 60)
         }
         .foregroundStyle(.white)

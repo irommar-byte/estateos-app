@@ -148,7 +148,7 @@ struct TVZoomSource: ViewModifier {
     let namespace: Namespace.ID?
 
     func body(content: Content) -> some View {
-        if let namespace {
+        if let namespace, #available(tvOS 26.0, *) {
             content.matchedTransitionSource(id: id, in: namespace)
         } else {
             content
@@ -304,7 +304,7 @@ struct TVLinkPill: View {
         .padding(.leading, 10)
         .padding(.trailing, 24)
         .padding(.vertical, 10)
-        .glassEffect(.regular, in: .capsule)
+        .galleryGlass(in: Capsule())
         .animation(TVTheme.spring, value: link.kind)
         .animation(TVTheme.spring, value: link.refreshing)
         .accessibilityElement(children: .combine)

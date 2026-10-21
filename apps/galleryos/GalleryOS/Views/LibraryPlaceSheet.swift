@@ -456,7 +456,7 @@ struct LibraryPlaceSheet: View {
         if password.isEmpty {
             GalleryKeychain.remove(account: "destination-password")
         } else {
-            try? GalleryKeychain.set(password, account: "destination-password")
+            GalleryKeychain.keep(password, account: "destination-password")
         }
 
         var plan: [SetupStep] = []
@@ -544,7 +544,7 @@ struct LibraryPlaceSheet: View {
         self.restore = nil
         restore.settings.save()
         if let password = restore.password {
-            try? GalleryKeychain.set(password, account: "destination-password")
+            GalleryKeychain.keep(password, account: "destination-password")
         }
         if restore.settings.connected {
             ServerLink.shared.reset()
@@ -621,10 +621,10 @@ private struct ConnectingOverlay: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .galleryGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 if stage == .failed {
                     Button("Popraw dane", action: onBack)
-                        .buttonStyle(.glassProminent)
+                        .galleryGlassButton(prominent: true)
                         .controlSize(.large)
                         .transition(.scale.combined(with: .opacity))
                 }

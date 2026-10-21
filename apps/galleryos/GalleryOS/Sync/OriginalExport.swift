@@ -161,8 +161,9 @@ enum OriginalExport {
             let generator = AVAssetImageGenerator(asset: clip)
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 480, height: 480)
-            // HDR and Dolby Vision clips are tone-mapped so the tile is not washed out or black.
-            generator.dynamicRangePolicy = .forceSDR
+            if #available(iOS 18.0, *) {
+                generator.dynamicRangePolicy = .forceSDR
+            }
             generator.requestedTimeToleranceBefore = .positiveInfinity
             generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
             let length = (try? await clip.load(.duration))?.seconds ?? 0

@@ -141,9 +141,116 @@ struct CloudHandoff: Codable, Equatable {
     var password: String
 }
 
-/// Same-Apple-ID path. The server and its password travel together in iCloud Key-Value Storage,
-/// which both apps can read. The keychain copy stays too, but iOS and tvOS do not share a keychain
-/// group, so the television cannot see a password that was saved only there.
+/// The library connection, without the NAS password. The password lives in the shared iCloud keychain.
+struct LibraryCloudProfile: Codable, Equatable {
+    var place: String
+    var kind: String
+    var host: String
+    var port: Int
+    var username: String
+    var directory: String
+    var folderName: String
+    var localHost: String
+    var localPort: Int
+    var localName: String
+    var remoteHost: String
+    var namedRemotePort: Int
+
+    static let key = "galleryos.library.profile.v1"
+
+    init(_ settings: DestinationSettings) {
+        place = settings.place
+        kind = settings.kind
+        host = settings.host
+        port = settings.port
+        username = settings.username
+        directory = settings.directory
+        folderName = settings.folderName
+        localHost = settings.localHost
+        localPort = settings.localPort
+        localName = settings.localName
+        remoteHost = settings.remoteHost
+        namedRemotePort = settings.namedRemotePort
+    }
+
+    func settings() -> DestinationSettings {
+        var value = DestinationSettings(
+            place: place,
+            kind: kind,
+            host: host,
+            port: port,
+            username: username,
+            directory: directory,
+            folderName: folderName,
+            connected: false,
+            localHost: localHost,
+            localPort: localPort,
+            localName: localName,
+            remoteHost: remoteHost
+        )
+        value.namedRemotePort = namedRemotePort
+        return value
+    }
+
+    static func publish(_ settings: DestinationSettings) {
+        guard settings.kind == DestinationKind.webdav
+            || settings.kind == DestinationKind.server
+            || settings.kind == DestinationKind.immich else { return }
+        guard !settings.host.isEmpty else { return }
+        guard let data = try? JSONEncoder().encode(LibraryCloudProfile(settings)) else { return }
+        let store = NSUbiquitousKeyValueStore.default
+        store.set(data, forKey: key)
+        store.synchronize()
+        if let password = GalleryKeychain.string(account: "destination-password"), !password.isEmpty {
+            GalleryKeychain.keep(password, account: "destination-password")
+        }
+    }
+
+    static func load() -> DestinationSettings? {
+        let store = NSUbiquitousKeyValueStore.default
+        store.synchronize()
+        guard let data = store.data(forKey: key),
+              let profile = try? JSONDecoder().decode(LibraryCloudProfile.self, from: data),
+              !profile.host.isEmpty else { return nil }
+        return profile.settings()
+    }
+}
+
+/// Whether GalleryOS and Apple TV may open. The clock and the receipt live in iCloud, so a reinstall does not start the three days again.
+enum GalleryAccess {
+    static let trialKey = "galleryos.trial.start"
+    static let untilKey = "galleryos.membership.until"
+    static let lifetimeKey = "galleryos.membership.lifetime"
+    static let trial: TimeInterval = 3 * 24 * 60 * 60
+
+    static func noteStartIfNeeded() {
+        let store = NSUbiquitousKeyValueStore.default
+        store.synchronize()
+        guard store.double(forKey: trialKey) == 0 else { return }
+        store.set(Date().timeIntervalSince1970, forKey: trialKey)
+        store.synchronize()
+    }
+
+    static func allowed() -> Bool {
+        let store = NSUbiquitousKeyValueStore.default
+        store.synchronize()
+        if store.bool(forKey: lifetimeKey) { return true }
+        if store.double(forKey: untilKey) > Date().timeIntervalSince1970 { return true }
+        let start = store.double(forKey: trialKey)
+        guard start > 0 else { return true }
+        return Date().timeIntervalSince1970 - start < trial
+    }
+
+    static func publish(lifetime: Bool, until: Date?) {
+        let store = NSUbiquitousKeyValueStore.default
+        store.set(lifetime, forKey: lifetimeKey)
+        store.set(until?.timeIntervalSince1970 ?? 0, forKey: untilKey)
+        store.synchronize()
+    }
+}
+
+/// Same-Apple-ID path for Apple TV. The server profile is in iCloud Key-Value Storage.
+/// The password is only in the shared keychain, which both apps can read.
 enum CloudServerShare {
     static let profileKey = "galleryos.appletv.server.v1"
     static let handoffKey = "galleryos.appletv.handoff.v2"
@@ -159,15 +266,15 @@ enum CloudServerShare {
     }
 
     static func publish(_ server: AppleTVServer, password: String) {
-        let handoff = CloudHandoff(server: server, password: password)
-        guard let data = try? JSONEncoder().encode(handoff) else { return }
-        storePassword(password, id: server.id)
         let store = NSUbiquitousKeyValueStore.default
-        store.set(data, forKey: handoffKey)
         if let profile = try? JSONEncoder().encode(server) {
             store.set(profile, forKey: profileKey)
         }
+        store.removeObject(forKey: handoffKey)
         store.synchronize()
+        guard !password.isEmpty else { return }
+        GalleryKeychain.keep(password, account: "destination-password")
+        storePassword(password, id: server.id)
     }
 
     static func withdraw() {
@@ -184,15 +291,19 @@ enum CloudServerShare {
     static func load() -> (server: AppleTVServer, password: String)? {
         let store = NSUbiquitousKeyValueStore.default
         store.synchronize()
+        if let data = store.data(forKey: profileKey),
+           let server = try? JSONDecoder().decode(AppleTVServer.self, from: data) {
+            let password = GalleryKeychain.string(account: "destination-password")
+                ?? readPassword(id: server.id)
+                ?? ""
+            if !password.isEmpty { return (server, password) }
+        }
         if let data = store.data(forKey: handoffKey),
            let handoff = try? JSONDecoder().decode(CloudHandoff.self, from: data),
            !handoff.password.isEmpty {
             return (handoff.server, handoff.password)
         }
-        guard let data = store.data(forKey: profileKey),
-              let server = try? JSONDecoder().decode(AppleTVServer.self, from: data),
-              let password = readPassword(id: server.id), !password.isEmpty else { return nil }
-        return (server, password)
+        return nil
     }
 
     private static func baseQuery(id: String) -> [String: Any] {

@@ -425,7 +425,7 @@ struct LibraryProfile: Codable {
         )
         settings.namedRemotePort = remotePort
         if !secret.isEmpty {
-            try? GalleryKeychain.set(secret, account: "destination-password")
+            GalleryKeychain.keep(secret, account: "destination-password")
         }
         return settings
     }

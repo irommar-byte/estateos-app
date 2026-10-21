@@ -1,3 +1,4 @@
+import CloudKit
 import SwiftUI
 import UIKit
 
@@ -64,6 +65,13 @@ final class GalleryAppDelegate: NSObject, UIApplicationDelegate {
         GalleryNetwork.shared.prepareBackgroundUploads()
         SyncLiveActivity.shared.collapseExtras()
         return true
+    }
+
+    func application(_ application: UIApplication, userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata) {
+        let container = CKContainer(identifier: GalleryShareModel.containerID)
+        Task {
+            try? await container.accept(cloudKitShareMetadata)
+        }
     }
 
     func application(

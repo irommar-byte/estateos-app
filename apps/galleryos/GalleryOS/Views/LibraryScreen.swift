@@ -7,7 +7,6 @@ struct LibraryScreen: View {
     @EnvironmentObject private var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var account = ShareAccount.shared
-    @AppStorage(AccountGate.skippedKey) private var accountSkipped = false
     @State private var showChoices = false
     var albumID: String?
     @AppStorage("galleryos.zoom") private var zoomRaw = PhotoZoom.days.rawValue
@@ -49,9 +48,7 @@ struct LibraryScreen: View {
     }
     private var stage: some View {
         ZStack {
-            if !account.signedIn && !accountSkipped {
-                StartGate(onEntered: accountEntered, onLater: accountLater)
-            } else if library.authorization == .authorized || library.authorization == .limited {
+            if library.authorization == .authorized || library.authorization == .limited {
                 if library.isLoading && model.all.isEmpty {
                     ProgressView("Wczytywanie biblioteki")
                 } else if model.all.isEmpty {
@@ -76,7 +73,7 @@ struct LibraryScreen: View {
     private var covers: some View {
         stage
         .navigationTitle(title.isEmpty ? "Biblioteka" : title)
-        .navigationSubtitle(selecting ? "" : caption)
+        .galleryNavigationSubtitle(selecting ? "" : caption)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             if showsShelf, library.authorization == .authorized || library.authorization == .limited {
@@ -148,7 +145,6 @@ struct LibraryScreen: View {
             if !open, SyncChoices.shouldAsk { showChoices = true }
         }
         .task {
-            guard account.signedIn else { return }
             await AccountVault.restoreIfNeeded()
             if SetupGuide.needed {
                 showGuide = true
@@ -484,30 +480,9 @@ struct LibraryScreen: View {
         .animation(GalleryTheme.snappy, value: selection.isEmpty)
         .padding(.horizontal, 30)
         .padding(.vertical, 15)
-        .glassEffect(.regular.interactive(), in: Capsule())
+        .galleryGlass(in: Capsule(), interactive: true)
         .padding(.horizontal, 22)
         .padding(.bottom, 6)
-    }
-
-    private func accountLater() {
-        accountSkipped = true
-        if library.authorization == .notDetermined {
-            library.requestAccess()
-        }
-    }
-
-    private func accountEntered() {
-        Task {
-            await AccountVault.restoreIfNeeded()
-            if SetupGuide.needed {
-                showGuide = true
-            } else {
-                if library.authorization == .notDetermined {
-                    library.requestAccess()
-                }
-                if SyncChoices.shouldAsk { showChoices = true }
-            }
-        }
     }
 
     private var welcome: some View {

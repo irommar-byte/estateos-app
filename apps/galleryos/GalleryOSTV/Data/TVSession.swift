@@ -103,6 +103,7 @@ final class TVSession: ObservableObject {
         case checking
         case needsPairing
         case ready
+        case locked
     }
 
     @Published private(set) var state: State = .checking
@@ -131,6 +132,11 @@ final class TVSession: ObservableObject {
                let zoom = Int(args[args.index(after: index)]) {
                 UserDefaults.standard.set(zoom, forKey: "galleryos.tv.zoom")
             }
+            return
+        }
+        GalleryAccess.noteStartIfNeeded()
+        guard GalleryAccess.allowed() else {
+            state = .locked
             return
         }
         if let saved = TVProfileStore.load() {

@@ -76,7 +76,7 @@ struct TVMapScreen: View {
                     }
                     .padding(.horizontal, 22)
                     .padding(.vertical, 12)
-                    .glassEffect(.regular, in: Capsule())
+                    .galleryGlass(in: Capsule())
                     .padding(.trailing, 70)
                     .padding(.top, 20)
                     .transition(.opacity)
@@ -394,7 +394,7 @@ private struct TVPinCard: View {
             .frame(maxWidth: 420, alignment: .leading)
         }
         .padding(18)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .galleryGlass(in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         .id(place.id)
     }
 }

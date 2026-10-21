@@ -368,7 +368,7 @@ struct SyncChoicesSheet: View {
                 .padding(22)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .safeAreaBar(edge: .bottom) {
+            .galleryBottomBar(edge: .bottom) {
                 Button("Gotowe") {
                     SyncChoices.finish(backup: backup, outsideHome: outsideHome, charging: charging)
                     onDone()
@@ -562,5 +562,154 @@ final class PasskeyCeremony: NSObject, ASAuthorizationControllerDelegate, ASAuth
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
         return scene?.keyWindow ?? UIWindow()
+    }
+}
+
+enum GalleryProduct {
+    static let monthly = "pl.galleryos.app.monthly"
+    static let yearly = "pl.galleryos.app.yearly"
+    static let lifetime = "pl.galleryos.app.lifetime"
+    static let all = [yearly, monthly, lifetime]
+}
+
+@MainActor
+final class GalleryMembership: ObservableObject {
+    static let shared = GalleryMembership()
+    @Published private(set) var unlocked: Bool
+    @Published private(set) var products: [Product] = []
+    @Published var message = ""
+
+    private init() {
+        GalleryAccess.noteStartIfNeeded()
+        unlocked = GalleryAccess.allowed()
+    }
+
+    func refresh() async {
+        GalleryAccess.noteStartIfNeeded()
+        var lifetime = false
+        var until: Date?
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result, transaction.revocationDate == nil else { continue }
+            if transaction.productID == GalleryProduct.lifetime {
+                lifetime = true
+            } else if let expiration = transaction.expirationDate {
+                if let current = until {
+                    until = max(current, expiration)
+                } else {
+                    until = expiration
+                }
+            }
+        }
+        GalleryAccess.publish(lifetime: lifetime, until: until)
+        unlocked = lifetime || (until ?? .distantPast) > .now || GalleryAccess.allowed()
+        if products.isEmpty {
+            products = (try? await Product.products(for: GalleryProduct.all)) ?? []
+            products.sort { lhs, rhs in
+                GalleryProduct.all.firstIndex(of: lhs.id) ?? 0 < GalleryProduct.all.firstIndex(of: rhs.id) ?? 0
+            }
+        }
+    }
+
+    func purchase(_ id: String) async {
+        message = ""
+        if products.isEmpty { await refresh() }
+        guard let product = products.first(where: { $0.id == id }) else {
+            message = "Plan nie jest jeszcze dostępny w App Store."
+            return
+        }
+        do {
+            let result = try await product.purchase()
+            if case .success(let verification) = result, case .verified(let transaction) = verification {
+                await transaction.finish()
+                await refresh()
+            }
+        } catch {
+            message = "Nie udało się dokończyć zakupu."
+        }
+    }
+
+    func restore() async {
+        message = ""
+        try? await AppStore.sync()
+        await refresh()
+        if !unlocked {
+            message = "Na tym Apple ID nie ma opłaconego GalleryOS."
+        }
+    }
+
+    func price(for id: String, fallback: String) -> String {
+        products.first { $0.id == id }?.displayPrice ?? fallback
+    }
+}
+
+struct MembershipGate: View {
+    @ObservedObject private var membership = GalleryMembership.shared
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("GalleryOS")
+                        .font(.largeTitle.bold())
+                    Text("Trzy dni minęły. Zdjęcia zostają na telefonie i na serwerze. GalleryOS i Apple TV otwierają się z jednym z tych planów.")
+                        .foregroundStyle(.secondary)
+                    plan(
+                        id: GalleryProduct.yearly,
+                        title: "Rocznie",
+                        price: membership.price(for: GalleryProduct.yearly, fallback: "99 zł"),
+                        detail: "Dwa miesiące taniej niż płacenie co miesiąc. Apple TV w cenie.",
+                        prominent: true
+                    )
+                    plan(
+                        id: GalleryProduct.monthly,
+                        title: "Miesięcznie",
+                        price: membership.price(for: GalleryProduct.monthly, fallback: "9,99 zł"),
+                        detail: "Można zrezygnować, gdy GalleryOS nie jest już potrzebny.",
+                        prominent: false
+                    )
+                    plan(
+                        id: GalleryProduct.lifetime,
+                        title: "Na stałe",
+                        price: membership.price(for: GalleryProduct.lifetime, fallback: "299 zł"),
+                        detail: "Raz. Działa dalej na tym Apple ID, w Chmurze rodzinnej i na Apple TV.",
+                        prominent: false
+                    )
+                    Button("Przywróć zakupy") {
+                        Task { await membership.restore() }
+                    }
+                    .frame(maxWidth: .infinity)
+                    if !membership.message.isEmpty {
+                        Text(membership.message)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding(24)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+        }
+    }
+
+    private func plan(id: String, title: String, price: String, detail: String, prominent: Bool) -> some View {
+        Button {
+            Task { await membership.purchase(id) }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(title).font(.headline)
+                    Spacer()
+                    Text(price).font(.headline.monospacedDigit())
+                }
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(prominent ? Color.white.opacity(0.85) : Color.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(prominent ? Color.white : Color.primary)
+        .background(prominent ? GalleryTheme.accent : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }

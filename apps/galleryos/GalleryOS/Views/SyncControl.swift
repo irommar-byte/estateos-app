@@ -149,18 +149,40 @@ struct SyncControl: ViewModifier {
                         } label: {
                             SyncToolbarLabel()
                         }
+                        .modifier(SyncDropletSource(namespace: droplet))
                     }
-                    .matchedTransitionSource(id: "sync.droplet", in: droplet)
                 }
             }
             .sheet(isPresented: $open) {
                 SyncPanel()
                     .environmentObject(library)
-                    .navigationTransition(.zoom(sourceID: "sync.droplet", in: droplet))
+                    .modifier(SyncDropletZoom(namespace: droplet))
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(34)
             }
+    }
+}
+
+private struct SyncDropletSource: ViewModifier {
+    var namespace: Namespace.ID
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.matchedTransitionSource(id: "sync.droplet", in: namespace)
+        } else {
+            content
+        }
+    }
+}
+
+private struct SyncDropletZoom: ViewModifier {
+    var namespace: Namespace.ID
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.navigationTransition(.zoom(sourceID: "sync.droplet", in: namespace))
+        } else {
+            content
+        }
     }
 }
 
@@ -217,7 +239,7 @@ struct SyncPanel: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(role: .close) { dismiss() }
+                    Button("Gotowe") { dismiss() }
                 }
             }
             .task { LibraryEngine.shared.publishCounts() }
@@ -534,7 +556,7 @@ private struct PanelCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .galleryGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 }
 
@@ -609,7 +631,7 @@ private struct StatTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .galleryGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 

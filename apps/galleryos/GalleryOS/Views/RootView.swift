@@ -3,14 +3,19 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var library: PhotoLibrary
+    @ObservedObject private var membership = GalleryMembership.shared
     @State private var review = false
 
     var body: some View {
         Group {
-            if UIDevice.current.userInterfaceIdiom == .pad {
-                PadRoot()
+            if membership.unlocked {
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    PadRoot()
+                } else {
+                    PhoneRoot()
+                }
             } else {
-                PhoneRoot()
+                MembershipGate()
             }
         }
         .overlay(alignment: .top) {
@@ -22,12 +27,13 @@ struct RootView: View {
         }
         .task { ServerLink.shared.start() }
         .task {
-            guard ShareAccount.shared.signedIn else { return }
             await AccountVault.restoreIfNeeded()
+            await membership.refresh()
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
             case .active:
+                Task { await membership.refresh() }
                 GalleryReview.noteLaunch()
                 if GalleryReview.due() { review = true }
                 LibraryEngine.shared.resume()
@@ -70,7 +76,17 @@ private struct PhoneRoot: View {
                 }
             }
         }
-        .tabBarMinimizeBehavior(.never)
+        .modifier(KeepTabBarVisible())
+    }
+}
+
+private struct KeepTabBarVisible: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.never)
+        } else {
+            content
+        }
     }
 }
 

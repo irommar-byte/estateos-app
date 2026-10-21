@@ -122,6 +122,10 @@ enum SyncScheduler {
             }
         }
         BGTaskScheduler.shared.register(forTaskWithIdentifier: continuedIdentifier, using: nil) { task in
+            guard #available(iOS 26.0, *) else {
+                task.setTaskCompleted(success: true)
+                return
+            }
             guard let task = task as? BGContinuedProcessingTask else { return }
             let gate = TaskFinish()
             let expired = GateFlag()
@@ -184,11 +188,13 @@ enum SyncScheduler {
 
     @discardableResult
     static func submitContinued(subtitle: String) -> Bool {
+        guard #available(iOS 26.0, *) else { return false }
         let line = subtitle.isEmpty ? "Wysyłanie" : subtitle
         if submitContinued(subtitle: line, strategy: .fail) { return true }
         return submitContinued(subtitle: line, strategy: .queue)
     }
 
+    @available(iOS 26.0, *)
     private static func submitContinued(
         subtitle: String,
         strategy: BGContinuedProcessingTaskRequest.SubmissionStrategy

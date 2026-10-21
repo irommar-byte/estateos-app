@@ -13,6 +13,9 @@ struct TVRootView: View {
             case .needsPairing:
                 TVPairingView()
                     .transition(.opacity)
+            case .locked:
+                TVLockedView()
+                    .transition(.opacity)
             case .ready:
                 TVReadyView()
                     .transition(.opacity)
@@ -27,6 +30,20 @@ struct TVRootView: View {
             }
         }
         .animation(TVTheme.spring, value: session.state)
+    }
+}
+
+struct TVLockedView: View {
+    var body: some View {
+        VStack(spacing: 24) {
+            TVWordmark(size: 72)
+            Text("Trzy dni minęły. Apple TV otwiera bibliotekę razem z opłaconym GalleryOS na iPhonie.")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 760)
+        }
+        .padding(48)
     }
 }
 

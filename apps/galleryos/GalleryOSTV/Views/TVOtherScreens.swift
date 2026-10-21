@@ -274,7 +274,7 @@ struct TVSettingsScreen: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
-            .glassEffect(.regular, in: .capsule)
+            .galleryGlass(in: Capsule())
             .animation(TVTheme.spring, value: link.kind)
             Label("Konfiguracja z GalleryOS na iPhonie", systemImage: "iphone")
                 .font(.callout)

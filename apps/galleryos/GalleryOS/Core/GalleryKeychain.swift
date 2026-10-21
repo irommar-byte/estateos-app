@@ -7,6 +7,14 @@ enum GalleryKeychainError: Error {
 
 enum GalleryKeychain {
     static let service = "pl.galleryos.app"
+    /// Shared by GalleryOS and GalleryOSTV. The entitlement uses the same suffix.
+    static let accessGroup = "NW3YW69KL9.pl.galleryos.shared"
+
+    /// Keeps a copy on this device and in iCloud Keychain.
+    static func keep(_ value: String, account: String) {
+        try? set(value, account: account)
+        try? setShared(value, account: account)
+    }
 
     static func set(_ value: String, account: String) throws {
         try set(Data(value.utf8), account: account)
@@ -32,6 +40,7 @@ enum GalleryKeychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
         ]
         SecItemDelete(query as CFDictionary)
@@ -39,6 +48,7 @@ enum GalleryKeychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecAttrSynchronizable as String: kCFBooleanTrue as Any,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
             kSecValueData as String: Data(value.utf8),
@@ -48,7 +58,11 @@ enum GalleryKeychain {
     }
 
     static func data(account: String) -> Data? {
-        let query: [String: Any] = [
+        copy(account: account, group: accessGroup) ?? copy(account: account, group: nil)
+    }
+
+    private static func copy(account: String, group: String?) -> Data? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -56,6 +70,9 @@ enum GalleryKeychain {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if let group {
+            query[kSecAttrAccessGroup as String] = group
+        }
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
         return item as? Data
@@ -66,13 +83,18 @@ enum GalleryKeychain {
     }
 
     static func remove(account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-        ]
-        SecItemDelete(query as CFDictionary)
+        for group in [accessGroup, nil] as [String?] {
+            var query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account,
+                kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
+            ]
+            if let group {
+                query[kSecAttrAccessGroup as String] = group
+            }
+            SecItemDelete(query as CFDictionary)
+        }
     }
 
     static func deviceID() -> String {

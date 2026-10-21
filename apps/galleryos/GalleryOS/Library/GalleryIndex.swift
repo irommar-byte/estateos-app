@@ -107,7 +107,13 @@ enum GalleryIndex {
         if subtypes.contains(.photoScreenshot) { traits.insert(.screenshot) }
         if subtypes.contains(.photoPanorama) { traits.insert(.panorama) }
         if subtypes.contains(.photoDepthEffect) { traits.insert(.portrait) }
-        if asset.contentType.conforms(to: .rawImage) { traits.insert(.raw) }
+        if #available(iOS 26.0, tvOS 26.0, *) {
+            if asset.contentType.conforms(to: .rawImage) { traits.insert(.raw) }
+        } else if PHAssetResource.assetResources(for: asset).contains(where: {
+            UTType($0.uniformTypeIdentifier)?.conforms(to: .rawImage) == true
+        }) {
+            traits.insert(.raw)
+        }
         if asset.playbackStyle == .imageAnimated || isGIF(asset) { traits.insert(.animated) }
         return PhotoRef(
             id: asset.localIdentifier,

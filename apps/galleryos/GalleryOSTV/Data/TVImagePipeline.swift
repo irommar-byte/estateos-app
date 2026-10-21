@@ -258,7 +258,9 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
         generator.maximumSize = CGSize(width: maxSide, height: maxSide)
         generator.requestedTimeToleranceBefore = .positiveInfinity
         generator.requestedTimeToleranceAfter = CMTime(seconds: 3, preferredTimescale: 600)
-        generator.dynamicRangePolicy = .forceSDR
+        if #available(tvOS 18.0, *) {
+            generator.dynamicRangePolicy = .forceSDR
+        }
         return await withTaskGroup(of: UIImage?.self) { group in
             group.addTask {
                 let duration = (try? await asset.load(.duration))?.seconds ?? 0

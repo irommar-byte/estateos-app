@@ -335,12 +335,11 @@ final class PhotoLibrary: NSObject, ObservableObject {
 
     private func geocode(_ request: PlaceRequest) async {
         let location = CLLocation(latitude: request.latitude, longitude: request.longitude)
-        var name: String?
-        if let lookup = MKReverseGeocodingRequest(location: location) {
-            lookup.preferredLocale = Locale(identifier: "pl_PL")
-            if let item = try? await lookup.mapItems.first {
-                name = Self.placeTitle(item)
-            }
+        let name: String?
+        if #available(iOS 26.0, *) {
+            name = await Self.modernPlace(location)
+        } else {
+            name = await Self.legacyPlace(location)
         }
         placeTasks[request.dayKey] = nil
         if let name {
@@ -366,6 +365,29 @@ final class PhotoLibrary: NSObject, ObservableObject {
         placeNames = next
     }
 
+    @available(iOS 26.0, *)
+    private static func modernPlace(_ location: CLLocation) async -> String? {
+        guard let lookup = MKReverseGeocodingRequest(location: location) else { return nil }
+        lookup.preferredLocale = Locale(identifier: "pl_PL")
+        guard let item = try? await lookup.mapItems.first else { return nil }
+        return placeTitle(item)
+    }
+
+    private static func legacyPlace(_ location: CLLocation) async -> String? {
+        guard let mark = try? await CLGeocoder().reverseGeocodeLocation(location).first else { return nil }
+        let city = readable(mark.locality ?? mark.subAdministrativeArea)
+        let region = readable(mark.administrativeArea)
+        let country = readable(mark.country)
+        let home = Locale.current.localizedString(forRegionCode: "PL") ?? "Polska"
+        if let city, let region, region.caseInsensitiveCompare(home) != .orderedSame, region != city {
+            return "\(city), \(region)"
+        }
+        if let city { return city }
+        if let country, country.caseInsensitiveCompare(home) != .orderedSame { return country }
+        return city ?? country
+    }
+
+    @available(iOS 26.0, *)
     private static func placeTitle(_ item: MKMapItem) -> String? {
         let reps = item.addressRepresentations
         let city = readable(reps?.cityName)
@@ -382,6 +404,15 @@ final class PhotoLibrary: NSObject, ObservableObject {
             if !rest.isEmpty { return "\(city), \(rest)" }
         }
         return city ?? context
+    }
+
+    private static func legacyPlaceTitle(_ mark: CLPlacemark) -> String? {
+        let city = readable(mark.locality ?? mark.subLocality)
+        let region = readable(mark.administrativeArea)
+        if let city, let region, region.caseInsensitiveCompare(city) != .orderedSame {
+            return "\(city), \(region)"
+        }
+        return city ?? region
     }
 
     private static func readable(_ raw: String?) -> String? {

@@ -94,21 +94,31 @@ final class TVPlaces: @unchecked Sendable {
         for (key, latitude, longitude) in pending {
             if Task.isCancelled { break }
             let location = CLLocation(latitude: latitude, longitude: longitude)
-            if let request = MKReverseGeocodingRequest(location: location) {
-                request.preferredLocale = Locale(identifier: "pl_PL")
-                if let item = try? await request.mapItems.first, let address = item.addressRepresentations {
-                    let parts = [address.cityName, address.regionName].compactMap { $0 }.filter { !$0.isEmpty }
-                    if !parts.isEmpty {
-                        remember(key, parts.joined(separator: ", "))
-                        sinceSave += 1
-                        if sinceSave % 10 == 0 { save(); changed() }
-                    }
-                }
+            let parts: [String]
+            if #available(tvOS 26.0, *) {
+                parts = await Self.modernParts(location)
+            } else if let marks = try? await CLGeocoder().reverseGeocodeLocation(location), let mark = marks.first {
+                parts = [mark.locality, mark.administrativeArea].compactMap { $0 }.filter { !$0.isEmpty }
+            } else {
+                parts = []
+            }
+            if !parts.isEmpty {
+                remember(key, parts.joined(separator: ", "))
+                sinceSave += 1
+                if sinceSave % 10 == 0 { save(); changed() }
             }
             try? await Task.sleep(nanoseconds: 1_300_000_000)
         }
         save()
         changed()
+    }
+
+    @available(tvOS 26.0, *)
+    private static func modernParts(_ location: CLLocation) async -> [String] {
+        guard let request = MKReverseGeocodingRequest(location: location) else { return [] }
+        request.preferredLocale = Locale(identifier: "pl_PL")
+        guard let item = try? await request.mapItems.first, let address = item.addressRepresentations else { return [] }
+        return [address.cityName, address.regionName].compactMap { $0 }.filter { !$0.isEmpty }
     }
 
     private func save() {

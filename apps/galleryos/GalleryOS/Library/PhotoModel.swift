@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import SwiftUI
 import UIKit
 
 struct PhotoTraits: OptionSet, Hashable {
@@ -373,4 +374,56 @@ enum ThisDevice {
     static var instrumental: String { pad ? "iPadem" : "iPhone’em" }
     static var symbol: String { pad ? "ipad" : "iphone" }
     static var slashSymbol: String { pad ? "ipad.slash" : "iphone.slash" }
+}
+
+extension View {
+    @ViewBuilder
+    func galleryGlass<S: InsettableShape>(in shape: S, interactive: Bool = false) -> some View {
+        if #available(iOS 26.0, tvOS 26.0, *) {
+            if interactive {
+                self.glassEffect(.regular.interactive(), in: shape)
+            } else {
+                self.glassEffect(.regular, in: shape)
+            }
+        } else {
+            self.background(.ultraThinMaterial, in: shape)
+        }
+    }
+
+    @ViewBuilder
+    func galleryGlassButton(prominent: Bool = false) -> some View {
+        if #available(iOS 26.0, tvOS 26.0, *) {
+            if prominent {
+                self.buttonStyle(.glassProminent)
+            } else {
+                self.buttonStyle(.glass)
+            }
+        } else if prominent {
+            self.buttonStyle(.borderedProminent)
+        } else {
+            self.buttonStyle(.bordered)
+        }
+    }
+
+    @ViewBuilder
+    func galleryNavigationSubtitle(_ subtitle: String) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        if #available(iOS 26.0, *) {
+            self.navigationSubtitle(subtitle)
+        } else {
+            self
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    func galleryBottomBar<V: View>(edge: VerticalEdge = .bottom, @ViewBuilder content: () -> V) -> some View {
+        if #available(iOS 26.0, tvOS 26.0, *) {
+            self.safeAreaBar(edge: edge, content: content)
+        } else {
+            self.safeAreaInset(edge: edge, spacing: 0, content: content)
+        }
+    }
 }

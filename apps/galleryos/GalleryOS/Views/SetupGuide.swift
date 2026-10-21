@@ -203,7 +203,7 @@ final class SetupGuideModel: ObservableObject {
         if password.isEmpty {
             GalleryKeychain.remove(account: "destination-password")
         } else {
-            try? GalleryKeychain.set(password, account: "destination-password")
+            GalleryKeychain.keep(password, account: "destination-password")
         }
 
         var plan: [SetupStep] = []
@@ -290,7 +290,7 @@ final class SetupGuideModel: ObservableObject {
         self.restore = nil
         restore.settings.save()
         if let password = restore.password {
-            try? GalleryKeychain.set(password, account: "destination-password")
+            GalleryKeychain.keep(password, account: "destination-password")
         }
         if restore.settings.connected {
             ServerLink.shared.reset()
@@ -746,7 +746,7 @@ private struct GuideRemote: View {
                     Label("Sprawdź połączenie", systemImage: "bolt.horizontal.circle")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .galleryGlassButton()
                 .controlSize(.large)
                 .disabled(model.remoteCheck == .running)
             }
@@ -849,7 +849,7 @@ private struct GuideDisk: View {
                 Label(model.folderName.isEmpty ? "Wybierz dysk lub folder" : "Wybierz inny", systemImage: "folder.badge.plus")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glass)
+            .galleryGlassButton()
             .controlSize(.large)
         } footer: {
             GuidePrimary(title: "Połącz", action: onNext)
@@ -909,7 +909,7 @@ private struct GuideConnect: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-        .safeAreaBar(edge: .bottom) {
+        .galleryBottomBar(edge: .bottom) {
             if model.stage == .failed {
                 VStack(spacing: 10) {
                     GuidePrimary(title: "Popraw dane", action: onEdit)
@@ -1051,7 +1051,7 @@ private struct GuideLayout<Content: View, Footer: View>: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-        .safeAreaBar(edge: .bottom) {
+        .galleryBottomBar(edge: .bottom) {
             VStack(spacing: 10) { footer }
                 .guideFooter()
         }
@@ -1085,7 +1085,7 @@ private struct GuidePrimary: View {
             .font(.body.weight(.semibold))
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glassProminent)
+        .galleryGlassButton(prominent: true)
         .controlSize(.large)
     }
 }

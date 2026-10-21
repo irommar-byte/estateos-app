@@ -95,20 +95,26 @@ struct LaunchCinema: View {
         let sway = Float(cos(t * 0.6) * 0.05)
         let deep = Color(red: 0.02, green: 0.02, blue: 0.05)
         return ZStack {
-            MeshGradient(
-                width: 3,
-                height: 3,
-                points: [
-                    [0, 0], [0.5 + sway, 0], [1, 0],
-                    [0, 0.42 + drift], [0.5 - drift, 0.44 + sway], [1, 0.46 - drift],
-                    [0, 1], [0.5 + drift, 1], [1, 1],
-                ],
-                colors: [
-                    deep, Color(red: 0.06, green: 0.08, blue: 0.24), deep,
-                    Color(red: 0.32, green: 0.12, blue: 0.52), Self.accent.opacity(0.9), Color(red: 0.10, green: 0.30, blue: 0.62),
-                    deep, Color(red: 0.42, green: 0.18, blue: 0.10), deep,
-                ]
-            )
+            Group {
+                if #available(iOS 18.0, *) {
+                    MeshGradient(
+                        width: 3,
+                        height: 3,
+                        points: [
+                            [0, 0], [0.5 + sway, 0], [1, 0],
+                            [0, 0.42 + drift], [0.5 - drift, 0.44 + sway], [1, 0.46 - drift],
+                            [0, 1], [0.5 + drift, 1], [1, 1],
+                        ],
+                        colors: [
+                            deep, Color(red: 0.06, green: 0.08, blue: 0.24), deep,
+                            Color(red: 0.32, green: 0.12, blue: 0.52), Self.accent.opacity(0.9), Color(red: 0.10, green: 0.30, blue: 0.62),
+                            deep, Color(red: 0.42, green: 0.18, blue: 0.10), deep,
+                        ]
+                    )
+                } else {
+                    LinearGradient(colors: [deep, Self.accent.opacity(0.55), deep], startPoint: .top, endPoint: .bottom)
+                }
+            }
             .opacity(0.85 * rise)
             .blur(radius: 26)
             .scaleEffect(1 + out * 0.4 + (1 - rise) * 0.15)

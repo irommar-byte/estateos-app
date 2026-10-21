@@ -69,7 +69,7 @@ struct LinkAnnouncementBanner: View {
                 .padding(.trailing, 18)
                 .padding(.vertical, 8)
                 .frame(maxWidth: 340)
-                .glassEffect(.regular, in: Capsule())
+                .galleryGlass(in: Capsule())
                 .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
                 .padding(.horizontal, 24)
                 .transition(
@@ -171,7 +171,7 @@ struct ConnectionCard: View {
                     Label("Sprawdź", systemImage: "bolt.horizontal")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .galleryGlassButton()
                 if settings.kind == DestinationKind.webdav {
                     if localTitle.isEmpty {
                         Button {
@@ -188,7 +188,7 @@ struct ConnectionCard: View {
                             }
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.glass)
+                        .galleryGlassButton()
                         .disabled(link.learning || !link.network.isLocal)
                     } else {
                         Menu {
@@ -200,7 +200,7 @@ struct ConnectionCard: View {
                             Label("Dom", systemImage: "ellipsis")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.glass)
+                        .galleryGlassButton()
                     }
                 }
             }
@@ -355,7 +355,7 @@ private struct RouteDiagram: View {
             .font(.system(size: 20, weight: .semibold))
             .foregroundStyle(tint)
             .frame(width: 46, height: 46)
-            .glassEffect(.regular, in: Circle())
+            .galleryGlass(in: Circle())
     }
 }
 

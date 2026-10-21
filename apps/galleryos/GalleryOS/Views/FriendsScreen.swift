@@ -1,301 +1,124 @@
+import CloudKit
 import SwiftUI
 import UIKit
 
 struct FriendsScreen: View {
-    @ObservedObject private var account = ShareAccount.shared
-    @State private var code = ""
-    @State private var issued = ""
+    @StateObject private var model = GalleryShareModel()
 
     var body: some View {
-        Group {
-            if account.signedIn {
-                signedIn
-            } else {
-                accountForm
+        List {
+            Section {
+                Text("Album zostaje na Twoim serwerze. Znajomy dostaje zaproszenie na swoje Apple ID i widzi ten album. Hasła do NAS nie dostaje.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Button {
+                    Task { await model.shareLibrary() }
+                } label: {
+                    Label("Udostępnij bibliotekę", systemImage: "person.crop.circle.badge.plus")
+                }
+                .disabled(model.busy)
+            }
+            if !model.titles.isEmpty {
+                Section("Udostępnione") {
+                    ForEach(model.titles, id: \.self) { title in
+                        Text(title)
+                    }
+                }
+            }
+            if !model.message.isEmpty {
+                Section {
+                    Text(model.message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .navigationTitle("Znajomi")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await account.refresh() }
-    }
-
-    private var accountForm: some View {
-        ScrollView {
-            AccountEntryForm()
-        }
-        .background(Color(uiColor: .systemGroupedBackground))
-    }
-
-    private var signedIn: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(account.profileName)
-                        .font(.title2.weight(.semibold))
-                    Label("Zalogowano", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.green)
-                }
-                .padding(.vertical, 4)
-            }
-            AccountServerSection()
-            Section("Zaproszenie") {
-                Button("Nowy kod") {
-                    Task { issued = (try? await account.inviteCode()) ?? "" }
-                }
-                if !issued.isEmpty {
-                    HStack {
-                        Text(issued)
-                            .font(.title2.monospaced().bold())
-                        Spacer()
-                        ShareLink(item: "Kod GalleryOS: \(issued)") {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .accessibilityLabel("Wyślij kod")
-                        Button("Kopiuj") {
-                            UIPasteboard.general.string = issued
-                            account.inviteNote = "Kod skopiowany."
-                        }
-                    }
-                }
-                TextField("Kod od znajomego", text: $code)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                Button("Dodaj znajomego") {
-                    Task { await account.accept(code: code) }
-                }
-                if !account.inviteNote.isEmpty {
-                    Text(account.inviteNote)
-                        .font(.footnote)
-                        .foregroundStyle(account.inviteNote.hasPrefix("Dodano") || account.inviteNote == "Kod skopiowany." ? Color.green : Color.red)
-                }
-            }
-            Section("Znajomi") {
-                if account.friends.isEmpty {
-                    Text("Nikogo jeszcze nie ma. Wyślij kod albo wpisz kod od drugiej osoby.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(account.friends) { friend in
-                    NavigationLink(value: friend.name) {
-                        HStack {
-                            Circle()
-                                .fill(friend.online ? Color.green : Color.secondary.opacity(0.4))
-                                .frame(width: 8, height: 8)
-                            Text(friend.name)
-                            Spacer()
-                            if friend.online {
-                                Text("ONLINE").font(.caption.weight(.bold)).foregroundStyle(.green)
-                            }
-                        }
-                    }
-                }
-            }
-            if !account.albums.isEmpty {
-                Section("Albumy") {
-                    ForEach(account.albums) { album in
-                        NavigationLink(value: album.id) {
-                            VStack(alignment: .leading) {
-                                Text(album.title)
-                                Text(album.owner == account.name ? "Twój" : album.owner)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-            Section {
-                Button("Wyloguj", role: .destructive) { account.signOut() }
-            }
-        }
-        .navigationDestination(for: String.self) { value in
-            if let album = account.albums.first(where: { $0.id == value }) {
-                SharedAlbumScreen(album: album)
-            } else {
-                FriendAlbumsScreen(friend: value)
-            }
+        .task { await model.reload() }
+        .sheet(item: $model.invitation) { invitation in
+            CloudShareSheet(share: invitation.share, container: invitation.container)
         }
     }
 }
 
-private struct AccountServerSection: View {
-    @EnvironmentObject private var library: PhotoLibrary
-    @ObservedObject private var account = ShareAccount.shared
-    @ObservedObject private var servers = SavedServerStore.shared
-    @ObservedObject private var link = ServerLink.shared
-    @AppStorage("galleryos.link.mode") private var linkMode = LinkMode.auto.rawValue
+struct ShareInvitation: Identifiable {
+    let id = UUID()
+    let share: CKShare
+    let container: CKContainer
+}
 
-    private var serverKindIsOnTV: Bool {
-        let kind = (servers.online ?? servers.servers.first)?.kind ?? ""
-        return kind == DestinationKind.server || kind == DestinationKind.webdav
-    }
+@MainActor
+final class GalleryShareModel: ObservableObject {
+    static let containerID = "iCloud.pl.galleryos.app"
+    @Published var titles: [String] = []
+    @Published var message = ""
+    @Published var busy = false
+    @Published var invitation: ShareInvitation?
 
-    private var statusLine: String {
-        switch link.phase {
-        case .connected(.home): return "Sieć domowa · \(link.host)"
-        case .connected(.remote): return "Zdalnie · \(link.host)"
-        case .connected: return "Połączono"
-        case .connecting: return "Łączę…"
-        case .offline: return "Brak sieci"
-        case .unreachable(let message): return message
-        case .idle: return "Brak serwera"
-        }
-    }
-
-    var body: some View {
-        Section("Serwer") {
-            if let server = servers.online ?? servers.servers.first {
-                LabeledContent("Połączenie", value: server.title)
-                HStack(spacing: 8) {
-                    RouteGlyph(phase: link.phase)
-                    Text(statusLine)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(link.route == .none ? Color.secondary : link.route.tint)
-                        .contentTransition(.opacity)
-                }
-                .animation(GalleryTheme.snappy, value: link.phase)
-                let counts = library.syncCounts()
-                LabeledContent("Na serwerze", value: "\(counts.sent)")
-                LabeledContent("Zostało skopiować", value: "\(counts.waiting)")
-                LabeledContent("Tylko na serwerze", value: "\(library.keptOnServer)")
-            } else {
-                Text("Po zalogowaniu wraca ostatni serwer zapisany na tym iPhonie.")
-                    .foregroundStyle(.secondary)
-            }
-            if account.needsPassword {
-                Text("Serwer jest zapisany przy koncie. Wpisz hasło raz na tym iPhonie.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            if serverKindIsOnTV {
-                AppleTVShareToggle()
-            }
-            Picker("Dostęp", selection: $linkMode) {
-                Text("Automatycznie").tag(LinkMode.auto.rawValue)
-                Text("Dom").tag(LinkMode.home.rawValue)
-                Text("Zdalnie").tag(LinkMode.remote.rawValue)
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: linkMode) { _, _ in
-                UISelectionFeedbackGenerator().selectionChanged()
-                ServerLink.shared.reset()
-                Task { _ = try? await LibraryEngine.shared.connect() }
-            }
-            if servers.servers.count > 1 {
-                ForEach(servers.servers) { server in
-                    Button {
-                        Task { await servers.use(server) }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(server.title)
-                                Text(server.online ? "Aktywne" : "Przełącz")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if server.online {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+    func reload() async {
+        let container = CKContainer(identifier: Self.containerID)
+        var found: [String] = []
+        for database in [container.privateCloudDatabase, container.sharedCloudDatabase] {
+            let query = CKQuery(recordType: "GalleryAlbum", predicate: NSPredicate(value: true))
+            if let (rows, _) = try? await database.records(matching: query, resultsLimit: 40) {
+                for (_, result) in rows {
+                    if case .success(let record) = result, let title = record["title"] as? String, !title.isEmpty {
+                        found.append(title)
                     }
                 }
             }
         }
+        titles = Array(Set(found)).sorted()
     }
-}
 
-private struct FriendAlbumsScreen: View {
-    var friend: String
-    @ObservedObject private var account = ShareAccount.shared
-
-    var body: some View {
-        List(albums) { album in
-            NavigationLink(album.title) {
-                SharedAlbumScreen(album: album)
+    func shareLibrary() async {
+        message = ""
+        busy = true
+        defer { busy = false }
+        let container = CKContainer(identifier: Self.containerID)
+        do {
+            let status = try await container.accountStatus()
+            guard status == .available else {
+                message = "Włącz iCloud, żeby zaprosić kogoś na jego Apple ID."
+                return
             }
-        }
-        .navigationTitle(friend)
-    }
-
-    private var albums: [ShareAlbum] {
-        account.albums.filter { $0.owner == friend || $0.members.contains(friend) }
-    }
-}
-
-struct SharedAlbumScreen: View {
-    var album: ShareAlbum
-    @ObservedObject private var account = ShareAccount.shared
-    @State private var viewer: ShareViewer?
-
-    var body: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 2)], spacing: 2) {
-                ForEach(album.items) { item in
-                    Button {
-                        viewer = ShareViewer(item: item)
-                    } label: {
-                        ShareThumb(hash: item.hash)
-                            .frame(height: 110)
-                            .clipped()
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .navigationTitle(album.title)
-        .fullScreenCover(item: $viewer) { item in
-            ShareOriginalView(item: item.item)
+            let album = CKRecord(recordType: "GalleryAlbum")
+            album["title"] = "Biblioteka GalleryOS" as CKRecordValue
+            let share = CKShare(rootRecord: album)
+            share[CKShare.SystemFieldKey.title] = "Biblioteka GalleryOS" as CKRecordValue
+            share.publicPermission = .none
+            _ = try await container.privateCloudDatabase.modifyRecords(saving: [album, share], deleting: [])
+            invitation = ShareInvitation(share: share, container: container)
+            await reload()
+        } catch {
+            message = "Nie udało się przygotować zaproszenia. iCloud dla GalleryOS musi być włączony na tym Apple ID."
         }
     }
 }
 
-private struct ShareViewer: Identifiable {
-    var item: ShareItem
-    var id: String { item.hash }
-}
+struct CloudShareSheet: UIViewControllerRepresentable {
+    let share: CKShare
+    let container: CKContainer
 
-private struct ShareThumb: View {
-    var hash: String
-    @State private var image: UIImage?
-
-    var body: some View {
-        ZStack {
-            Color(uiColor: .secondarySystemFill)
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            }
-        }
-        .task {
-            guard let data = try? await ShareAccount.shared.download(hash: hash, kind: "thumbnail", ext: "jpg") else { return }
-            image = UIImage(data: data)
-        }
+    func makeUIViewController(context: Context) -> UICloudSharingController {
+        let controller = UICloudSharingController(share: share, container: container)
+        controller.availablePermissions = [.allowReadOnly, .allowPrivate]
+        controller.delegate = context.coordinator
+        return controller
     }
-}
 
-private struct ShareOriginalView: View {
-    var item: ShareItem
-    @Environment(\.dismiss) private var dismiss
-    @State private var image: UIImage?
+    func updateUIViewController(_ controller: UICloudSharingController, context: Context) {}
 
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if let image {
-                Image(uiImage: image).resizable().scaledToFit()
-            } else {
-                ProgressView().tint(.white)
-            }
-        }
-        .task {
-            let data = try? await ShareAccount.shared.download(hash: item.hash, kind: "original", ext: item.ext)
-            image = data.flatMap(UIImage.init(data:))
-        }
-        .onDisappear { image = nil }
-        .overlay(alignment: .topLeading) {
-            Button("Zamknij") { dismiss() }
-                .padding()
-                .foregroundStyle(.white)
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UICloudSharingControllerDelegate {
+        func cloudSharingController(_ csc: UICloudSharingController, failedToSaveShareWithError error: Error) {}
+
+        func itemTitle(for csc: UICloudSharingController) -> String? {
+            "Biblioteka GalleryOS"
         }
     }
 }

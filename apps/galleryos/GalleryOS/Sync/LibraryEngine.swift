@@ -125,7 +125,15 @@ final class LibraryEngine {
     private var online = true
     private var onWiFi = false
     private var constrained = false
-    private var continued: BGContinuedProcessingTask?
+    /// Holds a `BGContinuedProcessingTask` on iOS 26 and later. Stored as `Any` so iOS 18 still compiles.
+    private var continuedTask: Any?
+
+    @available(iOS 26.0, *)
+    private var continued: BGContinuedProcessingTask? {
+        get { continuedTask as? BGContinuedProcessingTask }
+        set { continuedTask = newValue }
+    }
+
     private var continuedSubmitted = false
     private var continuedGeneration = 0
     private var continuedTotal: Int64 = 0
@@ -606,13 +614,16 @@ final class LibraryEngine {
     /// The system asked for the current background task back. Hand the same queue to the next one
     /// without clearing the counter or the in-flight upload.
     func handoffContinued() {
-        continued = nil
+        if #available(iOS 26.0, *) {
+            continued = nil
+        }
         continuedLine = ""
         // The expiring task already queued its replacement off the main thread.
         continuedSubmitted = SyncRun.isCopying
     }
 
     func retitleContinued(_ reason: String) {
+        guard #available(iOS 26.0, *) else { return }
         guard let continued, reason != continuedLine else { return }
         continuedLine = reason
         continued.updateTitle("Wysyłanie zdjęć", subtitle: reason)
@@ -629,6 +640,7 @@ final class LibraryEngine {
         )
     }
 
+    @available(iOS 26.0, *)
     @discardableResult
     func bind(_ task: BGContinuedProcessingTask) -> Int {
         continuedGeneration += 1
@@ -652,6 +664,7 @@ final class LibraryEngine {
     /// The system expires a continued task that sits still for a few seconds.
     /// Exporting and hashing do not move bytes, so the counter still creeps forward.
     func tickContinued(_ generation: Int) {
+        guard #available(iOS 26.0, *) else { return }
         guard generation == continuedGeneration, let continued, stillCopying() else { return }
         let snapshot = progressSnapshot()
         continuedTotal = max(continuedTotal, Int64(max(snapshot.total, 1)) * 1000)
@@ -673,26 +686,32 @@ final class LibraryEngine {
     /// The queue cannot move on its own. Drop the system task without reporting a failure:
     /// `success: false` shows "Niepowodzenie" and iOS then terminates the app.
     func endContinued(_ reason: String) {
-        continued?.updateTitle("Wysyłanie zdjęć", subtitle: reason)
-        continued = nil
+        if #available(iOS 26.0, *) {
+            continued?.updateTitle("Wysyłanie zdjęć", subtitle: reason)
+            continued = nil
+        }
         continuedSubmitted = false
         continuedLine = ""
     }
 
     func releaseContinued() {
-        continued = nil
+        if #available(iOS 26.0, *) {
+            continued = nil
+        }
         continuedSubmitted = false
         continuedLine = ""
     }
 
     func finishContinued() {
-        if let continued {
-            if continuedTotal > 0 {
-                continued.progress.completedUnitCount = continuedTotal
+        if #available(iOS 26.0, *) {
+            if let continued {
+                if continuedTotal > 0 {
+                    continued.progress.completedUnitCount = continuedTotal
+                }
+                continued.updateTitle("Wysyłanie zdjęć", subtitle: "Gotowe")
             }
-            continued.updateTitle("Wysyłanie zdjęć", subtitle: "Gotowe")
+            continued = nil
         }
-        continued = nil
         continuedSubmitted = false
         continuedTotal = 0
         continuedCompleted = 0
@@ -787,7 +806,9 @@ final class LibraryEngine {
         }
         library?.syncStatus = .ready(message)
         await dropTransport()
-        SavedServerStore.shared.remember(DestinationSettings.load(), online: true)
+        let connected = DestinationSettings.load()
+        SavedServerStore.shared.remember(connected, online: true)
+        LibraryCloudProfile.publish(connected)
         AppleTVSharing.refreshIfEnabled()
         await ShareAccount.shared.publishLibrary()
         kick()
@@ -1326,7 +1347,9 @@ final class LibraryEngine {
         let generator = AVAssetImageGenerator(asset: clip)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 720, height: 720)
-        generator.dynamicRangePolicy = .forceSDR
+        if #available(iOS 18.0, *) {
+            generator.dynamicRangePolicy = .forceSDR
+        }
         generator.requestedTimeToleranceBefore = .positiveInfinity
         generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
         let length = (try? await clip.load(.duration))?.seconds ?? 0
@@ -1608,7 +1631,7 @@ final class LibraryEngine {
     private func pulseProgress() {
         guard running, canSync() else { return }
         holdScreenIfNeeded()
-        if continued != nil {
+        if #available(iOS 26.0, *), continued != nil {
             tickContinued(continuedGeneration)
         } else if SyncPolicy.uploadsEnabled {
             reportUpload()
@@ -2884,7 +2907,7 @@ final class LibraryEngine {
             bytesLeft: bytesLeft,
             place: uploadPlace(settings)
         )
-        guard let continued else { return }
+        guard #available(iOS 26.0, *), let continued else { return }
         continuedTotal = max(continuedTotal, Int64(shownTotal) * 1000)
         let observed = Int64(shownDone) * 1000 + Int64(min(max(fileFraction, 0), 0.99) * 900)
         let next = min(max(continuedCompleted, observed), max(continuedTotal - 1, 0))

@@ -87,7 +87,7 @@ final class SavedServerStore: ObservableObject {
 
     func use(_ server: SavedServer) async {
         if let password = GalleryKeychain.string(account: "server-\(server.id)"), !password.isEmpty {
-            try? GalleryKeychain.set(password, account: "destination-password")
+            GalleryKeychain.keep(password, account: "destination-password")
         }
         var settings = settings(for: server)
         settings.connected = false
@@ -175,7 +175,14 @@ enum AccountVault {
         defer { restoring = false }
         let current = DestinationSettings.load()
         let ready = current.connected && !current.host.isEmpty && current.kind != DestinationKind.none
-        guard !ready else { return }
+        if ready {
+            LibraryCloudProfile.publish(current)
+            return
+        }
+        if let cloud = LibraryCloudProfile.load() {
+            await apply(cloud, identity: "icloud")
+            return
+        }
         let accountName = UserDefaults.standard.string(forKey: "galleryos.people-name") ?? ""
         guard !accountName.isEmpty else { return }
         var restored: DestinationSettings?
@@ -188,17 +195,22 @@ enum AccountVault {
             restored = remote
             identity = "\(remote.username.lowercased())@\(remote.remoteHost.isEmpty ? remote.host : remote.remoteHost)".lowercased()
         }
-        guard var settings = restored else { return }
+        guard let restored else { return }
+        await apply(restored, identity: identity)
+    }
+
+    private static func apply(_ restored: DestinationSettings, identity: String) async {
+        var settings = restored
         settings.connected = false
         settings.save()
-        let password = GalleryKeychain.string(account: "server-\(identity)")
-            ?? GalleryKeychain.string(account: "destination-password")
+        let password = GalleryKeychain.string(account: "destination-password")
+            ?? GalleryKeychain.string(account: "server-\(identity)")
         guard let password, !password.isEmpty else {
             await SavedServerStore.shared.remember(settings, online: false)
             await MainActor.run { ShareAccount.shared.needsPassword = true }
             return
         }
-        try? GalleryKeychain.set(password, account: "destination-password")
+        GalleryKeychain.keep(password, account: "destination-password")
         do {
             _ = try await LibraryEngine.shared.connect()
             await MainActor.run { ShareAccount.shared.needsPassword = false }

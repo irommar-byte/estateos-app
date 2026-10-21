@@ -266,7 +266,7 @@ struct PhotoViewerHost: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
-            .glassEffect(.regular, in: Capsule())
+            .galleryGlass(in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityHint("Pokaż informacje i miejsce")
@@ -305,7 +305,7 @@ struct PhotoViewerHost: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
-                .glassEffect(.regular, in: Circle())
+                .galleryGlass(in: Circle())
         }
         .accessibilityLabel("Więcej")
     }
@@ -344,7 +344,7 @@ struct PhotoViewerHost: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular, in: Circle())
+                .galleryGlass(in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -1553,7 +1553,7 @@ private struct ViewerTransport: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 48)
-        .glassEffect(.regular, in: Capsule())
+        .galleryGlass(in: Capsule())
     }
 }
 

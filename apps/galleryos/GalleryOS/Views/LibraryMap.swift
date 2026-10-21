@@ -38,7 +38,7 @@ struct LibraryMapScreen: View {
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: Circle())
+            .galleryGlass(in: Circle(), interactive: true)
             .padding(.leading, 16)
             .padding(.top, 6)
             .accessibilityLabel("Wstecz")
@@ -69,7 +69,7 @@ struct LibraryMapScreen: View {
             .font(.system(size: 17, weight: .medium))
             .foregroundStyle(.primary)
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .galleryGlass(in: Capsule(), interactive: true)
             .padding(.trailing, 16)
             .padding(.top, 6)
         }
@@ -91,7 +91,7 @@ struct LibraryMapScreen: View {
                     .padding(.vertical, 12)
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: Capsule())
+                .galleryGlass(in: Capsule(), interactive: true)
                 .padding(.bottom, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.85, anchor: .bottom)))
             }
@@ -168,7 +168,7 @@ private struct MapPlaceAlbumScreen: View {
             )
             .ignoresSafeArea(edges: .bottom)
             .navigationTitle(title)
-            .navigationSubtitle(PhotoFormat.things(model.all.count))
+            .galleryNavigationSubtitle(PhotoFormat.things(model.all.count))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
