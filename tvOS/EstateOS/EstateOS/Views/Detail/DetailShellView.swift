@@ -1,12 +1,16 @@
 import SwiftUI
 
-/// Listing detail as ONE scrolling page (2026-10 redesign) — replaces the old hidden
-/// hero → info → description → gallery mode machine.
+/// Listing detail — two composed screens plus a photo strip (2026-10 redesign, v3).
 ///
-/// Screen 1: full-bleed photo, title, price, actions (Zdjęcia is focused first).
-/// Scroll ▼: facts grid, description card, contact card, photo rail. The photo behind
-/// blurs and dims as you scroll so the glass panels stay readable.
-/// MENU always closes the page in one step.
+///  Screen 1 · Oferta     full-bleed photo, title, the key numbers (m², pokoje, cena/m² …) as a
+///                        calm spec strip, price and actions. Nothing half-visible at the bottom.
+///  Screen 2 · Szczegóły  ALL parameters in one grid, description and contact — composed to fit
+///                        exactly one TV screen, so nothing ever sits under the edge.
+///  Screen 3 · Zdjęcia    the photo strip.
+///
+/// The page moves screen by screen: the moment focus enters another screen, the whole page glides
+/// to that screen's top in one spring — never a half-scrolled state. The photo behind softens
+/// (pre-blurred copy, cross-fade) once you leave screen 1. MENU goes back a screen, then closes.
 struct DetailShellView<QRSheet: View>: View {
     let presentation: DetailPresentation
     let isFavorite: Bool
@@ -21,69 +25,83 @@ struct DetailShellView<QRSheet: View>: View {
     @State private var showQR = false
     @State private var showDescription = false
     @State private var gallery: GalleryRequest?
-    @State private var scrolled = false
-    @FocusState private var primaryFocused: Bool
+    @State private var page: DetailPage = .offer
+    @FocusState private var focus: DetailFocus?
 
     private struct GalleryRequest: Identifiable {
         let id = UUID()
         let start: Int
     }
 
+    private enum DetailPage: Hashable { case offer, details, photos }
+
+    private enum DetailFocus: Hashable {
+        case gallery, contact, favorite
+        case description, contactCard
+        case photo(Int)
+
+        var page: DetailPage {
+            switch self {
+            case .gallery, .contact, .favorite: return .offer
+            case .description, .contactCard: return .details
+            case .photo: return .photos
+            }
+        }
+    }
+
     private var imageURLs: [URL] { presentation.imageURLs }
-    private static var topAnchor: String { "detail-top" }
+    private var softened: Bool { page != .offer }
+    private var firstFocus: DetailFocus { imageURLs.isEmpty ? .contact : .gallery }
+    private static var pageSpring: Animation { .spring(response: 0.6, dampingFraction: 0.92) }
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                // Scrolling down cross-fades to a soft, pre-blurred low-res copy of the photo —
-                // an opacity change only, instead of re-blurring a 4K image every frame.
                 EOSBackdrop(url: imageURLs.first)
                 EOSBackdrop(url: imageURLs.first, soft: true)
-                    .overlay(Color.black.opacity(0.5))
-                    .opacity(scrolled ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.45), value: scrolled)
+                    .overlay(Color.black.opacity(0.52))
+                    .opacity(softened ? 1 : 0)
                 EOSBackdropScrim()
-                    .opacity(scrolled ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.45), value: scrolled)
+                    .opacity(softened ? 0 : 1)
 
                 ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 64) {
-                        hero
-                            .frame(height: geo.size.height * 0.86, alignment: .bottomLeading)
-                            .id(Self.topAnchor)
-                        if !presentation.specRows.isEmpty { factsGrid }
-                        HStack(alignment: .top, spacing: 36) {
-                            descriptionCard
-                            contactCard
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            offerScreen
+                                .frame(height: geo.size.height, alignment: .bottomLeading)
+                                .id(DetailPage.offer)
+
+                            detailsScreen
+                                .frame(height: geo.size.height, alignment: .topLeading)
+                                .id(DetailPage.details)
+
+                            if imageURLs.count > 1 {
+                                photosScreen
+                                    .id(DetailPage.photos)
+                            }
                         }
-                        .focusSection()
-                        if imageURLs.count > 1 { photoRail }
                     }
-                    .padding(.bottom, 90)
-                }
-                .scrollClipDisabled()
-                .onScrollGeometryChange(for: Bool.self) { geometry in
-                    geometry.contentOffset.y > 160
-                } action: { _, isScrolled in
-                    scrolled = isScrolled
-                }
-                // MENU: from further down the page, back to the top first; from the top, close.
-                .onExitCommand {
-                    if scrolled {
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
-                            proxy.scrollTo(Self.topAnchor, anchor: .top)
+                    .scrollClipDisabled()
+                    .onChange(of: focus) { _, newFocus in
+                        guard let newPage = newFocus?.page, newPage != page else { return }
+                        withAnimation(Self.pageSpring) {
+                            page = newPage
+                            proxy.scrollTo(newPage, anchor: .top)
                         }
-                        primaryFocused = true
-                    } else {
-                        onClose()
                     }
-                }
                 }
             }
+            .animation(.easeInOut(duration: 0.45), value: softened)
         }
-        .defaultFocus($primaryFocused, true)
-        .onAppear { primaryFocused = true }
+        .defaultFocus($focus, firstFocus)
+        .onAppear { focus = firstFocus }
+        .onExitCommand {
+            switch page {
+            case .offer: onClose()
+            case .details: focus = firstFocus
+            case .photos: focus = .description
+            }
+        }
         .fullScreenCover(isPresented: $showQR, content: qrSheet)
         .fullScreenCover(item: $gallery) { request in
             EOSGalleryView(urls: imageURLs, title: presentation.title, startIndex: request.start)
@@ -97,39 +115,46 @@ struct DetailShellView<QRSheet: View>: View {
         }
     }
 
-    // MARK: Screen 1
+    // MARK: Screen 1 · Oferta
 
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 18) {
+    private var offerScreen: some View {
+        VStack(alignment: .leading, spacing: 0) {
             Text(eyebrow)
                 .font(.system(size: 20, weight: .bold))
-                .tracking(2)
+                .tracking(2.4)
                 .foregroundStyle(.white.opacity(0.78))
                 .lineLimit(1)
+                .padding(.bottom, 16)
+
             Text(presentation.title)
-                .font(.system(size: 76, weight: .bold))
+                .font(.system(size: 72, weight: .bold))
                 .tracking(-1)
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.6)
                 .shadow(color: .black.opacity(0.35), radius: 24, y: 4)
-            if !presentation.subtitleText.isEmpty {
-                Text(presentation.subtitleText)
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.86))
-                    .lineLimit(1)
+                .frame(maxWidth: 1300, alignment: .leading)
+                .padding(.bottom, 30)
+
+            if !keyFacts.isEmpty {
+                keyFactsStrip
+                    .padding(.bottom, 30)
             }
+
             HStack(alignment: .firstTextBaseline, spacing: 22) {
                 Text(presentation.priceText)
-                    .font(.system(size: 48, weight: .semibold))
+                    .font(.system(size: 52, weight: .semibold))
+                    .tracking(-0.5)
                     .foregroundStyle(.white)
                 if let stats = presentation.ownerStats {
                     Label("\(stats.views)", systemImage: "eye.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
                     Label("\(stats.favorites)", systemImage: "heart.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
                 }
             }
-            .font(.system(size: 22, weight: .medium))
-            .foregroundStyle(.white.opacity(0.7))
 
             HStack(spacing: 24) {
                 if !imageURLs.isEmpty {
@@ -137,32 +162,71 @@ struct DetailShellView<QRSheet: View>: View {
                         Label("Zdjęcia · \(imageURLs.count)", systemImage: "photo.on.rectangle.angled")
                     }
                     .eosButton()
-                    .focused($primaryFocused)
+                    .focused($focus, equals: .gallery)
                 }
                 Button { showQR = true } label: {
                     Label("Kontakt", systemImage: "qrcode")
                 }
                 .eosButton()
+                .focused($focus, equals: .contact)
                 Button(action: onToggleFavorite) {
                     Image(systemName: isFavorite ? "heart.fill" : "heart")
                         .foregroundStyle(isFavorite ? Color.pink : Color.primary)
                         .accessibilityLabel(isFavorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
                 }
                 .eosButton()
+                .focused($focus, equals: .favorite)
             }
-            .padding(.top, 22)
+            .padding(.top, 34)
 
             HStack(spacing: 10) {
-                Text("Szczegóły i opis")
+                Text("Wszystkie parametry, opis i kontakt")
                 Image(systemName: "chevron.down")
             }
             .font(.system(size: 21, weight: .medium))
-            .foregroundStyle(.white.opacity(0.6))
-            .padding(.top, 34)
-            .opacity(scrolled ? 0 : 1)
+            .foregroundStyle(.white.opacity(0.62))
+            .padding(.top, 40)
+            .opacity(page == .offer ? 1 : 0)
         }
-        .frame(maxWidth: 1240, alignment: .leading)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
+    }
+
+    /// The numbers people look for first, as one calm row: value large, label small.
+    private var keyFactsStrip: some View {
+        HStack(alignment: .center, spacing: 0) {
+            ForEach(Array(keyFacts.enumerated()), id: \.element.id) { index, row in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(width: 1.5, height: 56)
+                        .padding(.horizontal, 36)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(row.value)
+                        .font(.system(size: 36, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(row.label.uppercased())
+                        .font(.system(size: 17, weight: .semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+                .fixedSize()
+            }
+        }
+    }
+
+    /// Up to five headline facts, in the order a buyer scans them.
+    private var keyFacts: [DetailPresentation.SpecRow] {
+        let preferred = [
+            "area", "rooms", "ppsm", "type",                             // nieruchomości
+            "year", "mileage", "power", "fuel", "gear",                  // samochody
+        ]
+        let byId = Dictionary(presentation.specRows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return preferred.compactMap { byId[$0] }.prefix(5).map { $0 }
     }
 
     private var eyebrow: String {
@@ -173,37 +237,75 @@ struct DetailShellView<QRSheet: View>: View {
             .uppercased()
     }
 
-    // MARK: Scroll content
+    // MARK: Screen 2 · Szczegóły
 
+    private var detailsScreen: some View {
+        VStack(alignment: .leading, spacing: 30) {
+            HStack(alignment: .firstTextBaseline, spacing: 20) {
+                Text("Szczegóły")
+                    .font(.system(size: 44, weight: .bold))
+                    .tracking(-0.5)
+                Text(presentation.title)
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(presentation.priceText)
+                    .font(.system(size: 32, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+
+            if !presentation.specRows.isEmpty {
+                factsGrid
+            }
+
+            HStack(alignment: .top, spacing: 32) {
+                descriptionCard
+                contactCard
+            }
+            .focusSection()
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 70)
+    }
+
+    /// Every parameter, sized so up to 16 fit on screen 2 together with description and contact.
     private var factsGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 24), count: 4), alignment: .leading, spacing: 24) {
-            ForEach(presentation.specRows) { row in
+        let rows = Array(presentation.specRows.prefix(16))
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 20), count: 4),
+            alignment: .leading,
+            spacing: 20
+        ) {
+            ForEach(rows) { row in
                 HStack(spacing: 18) {
                     Image(systemName: row.icon)
-                        .font(.system(size: 28, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 40)
-                    VStack(alignment: .leading, spacing: 4) {
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .frame(width: 36)
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(row.label)
-                            .font(.system(size: 19, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.62))
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
                         Text(row.value)
-                            .font(.system(size: 28, weight: .semibold))
+                            .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 26)
-                .padding(.vertical, 22)
+                .padding(.horizontal, 24)
+                .frame(height: rows.count > 12 ? 82 : 96)
                 .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Color.white.opacity(0.09))
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
                 )
             }
         }
@@ -213,15 +315,16 @@ struct DetailShellView<QRSheet: View>: View {
         Button { showDescription = true } label: {
             VStack(alignment: .leading, spacing: 14) {
                 Text("OPIS")
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .tracking(2)
                     .foregroundStyle(.secondary)
                 if let text = presentation.descriptionText, !text.isEmpty {
                     Text(text)
-                        .font(.system(size: 25))
+                        .font(.system(size: 24))
                         .lineSpacing(6)
-                        .lineLimit(6)
+                        .lineLimit(4)
                         .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
                     Text("Czytaj całość ›")
                         .font(.system(size: 22, weight: .semibold))
                 } else if isLoadingDescription {
@@ -231,47 +334,52 @@ struct DetailShellView<QRSheet: View>: View {
                     }
                 } else {
                     Text("Ta oferta nie ma jeszcze opisu.")
-                        .font(.system(size: 25))
+                        .font(.system(size: 24))
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(36)
-            .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
+            .padding(34)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: 260, alignment: .topLeading)
         }
         .buttonStyle(.card)
-        .disabled((presentation.descriptionText ?? "").isEmpty)
+        .focused($focus, equals: .description)
     }
 
     private var contactCard: some View {
         Button { showQR = true } label: {
             HStack(spacing: 28) {
                 Image(systemName: "qrcode")
-                    .font(.system(size: 120, weight: .regular))
-                    .frame(width: 170, height: 170)
-                VStack(alignment: .leading, spacing: 12) {
+                    .font(.system(size: 110, weight: .regular))
+                    .frame(width: 150, height: 150)
+                VStack(alignment: .leading, spacing: 10) {
                     Text("KONTAKT")
-                        .font(.system(size: 19, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .tracking(2)
                         .foregroundStyle(.secondary)
                     Text("Zadzwoń lub napisz z iPhone’a")
-                        .font(.system(size: 28, weight: .semibold))
-                    Text("Pokaż kod QR — oferta otworzy się w EstateOS na telefonie.")
-                        .font(.system(size: 22))
+                        .font(.system(size: 27, weight: .semibold))
+                    Text("Kod QR otworzy tę ofertę w EstateOS na telefonie.")
+                        .font(.system(size: 21))
                         .foregroundStyle(.secondary)
-                        .lineLimit(3)
+                        .lineLimit(2)
                 }
             }
-            .padding(36)
-            .frame(width: 720, alignment: .leading)
-            .frame(minHeight: 300)
+            .padding(34)
+            .frame(width: 680, height: 260, alignment: .leading)
         }
         .buttonStyle(.card)
+        .focused($focus, equals: .contactCard)
     }
 
-    private var photoRail: some View {
+    // MARK: Screen 3 · Zdjęcia
+
+    private var photosScreen: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Zdjęcia")
-                .font(.system(size: 32, weight: .semibold))
+                .font(.system(size: 44, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(.white)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 40) {
                     ForEach(Array(imageURLs.enumerated()), id: \.offset) { index, url in
@@ -279,19 +387,23 @@ struct DetailShellView<QRSheet: View>: View {
                             EOSCachedRemoteImage(url: url, contentMode: .fill) {
                                 Color.white.opacity(0.08)
                             }
-                            .frame(width: 400, height: 225)
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                            .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 24, style: .continuous))
+                            .frame(width: 480, height: 270)
+                            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                            .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 26, style: .continuous))
                             .hoverEffect(.highlight)
                         }
                         .buttonStyle(.borderless)
+                        .focused($focus, equals: .photo(index))
                         .accessibilityLabel("Zdjęcie \(index + 1) z \(imageURLs.count)")
                     }
                 }
-                .padding(.vertical, 36)
+                .padding(.vertical, 40)
             }
             .scrollClipDisabled()
+            .frame(height: 350)
         }
+        .padding(.top, 70)
+        .padding(.bottom, 120)
         .focusSection()
     }
 }
