@@ -35,12 +35,16 @@ struct DetailShellView<QRSheet: View>: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
+                // Scrolling down cross-fades to a soft, pre-blurred low-res copy of the photo —
+                // an opacity change only, instead of re-blurring a 4K image every frame.
                 EOSBackdrop(url: imageURLs.first)
-                    .blur(radius: scrolled ? 50 : 0)
-                    .overlay(Color.black.opacity(scrolled ? 0.45 : 0))
-                    .animation(.easeInOut(duration: 0.5), value: scrolled)
+                EOSBackdrop(url: imageURLs.first, soft: true)
+                    .overlay(Color.black.opacity(0.5))
+                    .opacity(scrolled ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.45), value: scrolled)
                 EOSBackdropScrim()
-                    .opacity(scrolled ? 0.6 : 1)
+                    .opacity(scrolled ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.45), value: scrolled)
 
                 ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
@@ -193,7 +197,14 @@ struct DetailShellView<QRSheet: View>: View {
                 }
                 .padding(.horizontal, 26)
                 .padding(.vertical, 22)
-                .eosGlassPanel(cornerRadius: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Color.white.opacity(0.09))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                )
             }
         }
     }
@@ -294,8 +305,7 @@ private struct DescriptionReader: View {
 
     var body: some View {
         ZStack {
-            EOSBackdrop(url: backdrop)
-                .blur(radius: 60)
+            EOSBackdrop(url: backdrop, soft: true)
                 .overlay(Color.black.opacity(0.5))
             VStack(alignment: .leading, spacing: 28) {
                 Text(title)
@@ -327,7 +337,9 @@ struct EOSGalleryView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var index: Int
-    @State private var direction: EOSGallerySlideDirection = .none
+    /// The big photo follows `index` once the strip stops moving (no download per flicked thumb).
+    @State private var photoIndex: Int
+    @State private var photoTask: Task<Void, Never>?
     @State private var chromeHidden = false
     @State private var slideshow: Task<Void, Never>?
     @FocusState private var focusedThumb: Int?
@@ -338,18 +350,17 @@ struct EOSGalleryView: View {
     init(urls: [URL], title: String, startIndex: Int) {
         self.urls = urls
         self.title = title
-        _index = State(initialValue: min(max(0, startIndex), max(0, urls.count - 1)))
+        let start = min(max(0, startIndex), max(0, urls.count - 1))
+        _index = State(initialValue: start)
+        _photoIndex = State(initialValue: start)
     }
 
     var body: some View {
         ZStack {
-            // 1. Photo
+            // 1. Photo — swaps only when the next one is decoded, so it never flashes black.
             Color.black.ignoresSafeArea()
-            if urls.indices.contains(index) {
-                EOSFullBleedOfferImage(url: urls[index], ambient: chromeHidden, quietPlaceholder: true)
-                    .id(index)
-                    .transition(direction.transition)
-                    .ignoresSafeArea()
+            if urls.indices.contains(photoIndex) {
+                EOSBackdrop(url: urls[photoIndex])
             }
 
             // 2. Gradient (only under the strip)
@@ -373,7 +384,6 @@ struct EOSGalleryView: View {
             }
             .opacity(chromeHidden ? 0 : 1)
         }
-        .animation(EOSMotion.gallery, value: index)
         .animation(.easeInOut(duration: 0.35), value: chromeHidden)
         .defaultFocus($focusedThumb, index)
         .onAppear {
@@ -389,7 +399,10 @@ struct EOSGalleryView: View {
                 dismiss()
             }
         }
-        .onDisappear { slideshow?.cancel() }
+        .onDisappear {
+            slideshow?.cancel()
+            photoTask?.cancel()
+        }
     }
 
     private var titleCapsule: some View {
@@ -419,7 +432,7 @@ struct EOSGalleryView: View {
                 LazyHStack(spacing: 22) {
                     ForEach(Array(urls.enumerated()), id: \.offset) { i, url in
                         Button { chromeHidden.toggle() } label: {
-                            EOSCachedRemoteImage(url: url, contentMode: .fill) {
+                            EOSCachedRemoteImage(url: url, contentMode: .fill, size: .thumb) {
                                 Color.white.opacity(0.08)
                             }
                             .frame(width: Self.thumbSize.width, height: Self.thumbSize.height)
@@ -452,14 +465,19 @@ struct EOSGalleryView: View {
 
     private func select(_ i: Int) {
         guard i != index else { return }
-        direction = i > index ? .forward : .back
         index = i
-        prefetchNeighbours()
+        photoTask?.cancel()
+        photoTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 140_000_000)
+            guard !Task.isCancelled else { return }
+            photoIndex = i
+            prefetchNeighbours()
+        }
     }
 
     private func prefetchNeighbours() {
-        let around = [index - 1, index + 1, index + 2].filter { urls.indices.contains($0) }
-        EOSImageCache.prefetch(urls: around.map { urls[$0] })
+        let around = [photoIndex + 1, photoIndex - 1, photoIndex + 2].filter { urls.indices.contains($0) }
+        EOSImageCache.prefetch(urls: around.map { urls[$0] }, size: .screen)
     }
 
     private func toggleSlideshow() {
@@ -474,9 +492,10 @@ struct EOSGalleryView: View {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 guard !Task.isCancelled, !urls.isEmpty else { return }
                 let next = (index + 1) % urls.count
-                direction = .forward
                 index = next
+                photoIndex = next
                 focusedThumb = next
+                prefetchNeighbours()
             }
         }
     }

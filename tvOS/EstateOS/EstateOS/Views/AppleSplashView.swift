@@ -39,6 +39,8 @@ struct AppleSplashView: View {
     @State private var didStartSequence = false
 
     private typealias TL = SplashAnimationTimeline
+    /// The band crosses ~1000 pt of text on a TV; 2.2 s reads as the same speed as iOS.
+    private static let sunSweepMs: Double = 2200
 
     private var taglineText: String { taglineBoot?.text ?? TL.taglines[0] }
 
@@ -121,7 +123,7 @@ struct AppleSplashView: View {
             .padding(.vertical, 14)
             .padding(.horizontal, 12)
             .overlay {
-                SplashSunBand(progress: sunProgress, screenWidth: size.width)
+                SplashSunBand(progress: sunProgress)
             }
             .padding(.top, 26)
             .offset(y: exitLift * size.height * 0.52)
@@ -217,13 +219,16 @@ struct AppleSplashView: View {
             line2Progress = 1
         }
         // 6. Golden band.
-        withAnimation(.timingCurve(0.4, 0.02, 0.18, 1, duration: TL.seconds(TL.sunDurationMs)).delay(TL.seconds(TL.sunStartMs(taglineLength: tagLen)))) {
+        // Even pace across the letters (iOS curve lingered off-text at the start on a wide TV).
+        let sunStart = TL.sunStartMs(taglineLength: tagLen)
+        withAnimation(.timingCurve(0.42, 0, 0.36, 1, duration: TL.seconds(Self.sunSweepMs)).delay(TL.seconds(sunStart))) {
             sunProgress = 1
         }
 
         // 7–9. Fly-out, then doors. If the catalog is still loading, the logo and text simply stay
         // on screen (the gold band has finished) — never an empty black screen behind closed doors.
-        let flyOutAt = TL.flyOutStartMs(taglineLength: tagLen)
+        // The fly-out never cuts the sweep: it starts a beat after the band has left the text.
+        let flyOutAt = max(TL.flyOutStartMs(taglineLength: tagLen), sunStart + Self.sunSweepMs + 220)
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(flyOutAt * 1_000_000))
             guard !skipped else { return }

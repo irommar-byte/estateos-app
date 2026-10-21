@@ -99,10 +99,8 @@ struct HomeView: View {
     private var secondaryBackdrop: some View {
         let url = app.offers.first.flatMap { EOSOfferMedia.primaryImageURL(for: $0) }
         return ZStack {
-            Color.black
-            EOSFullBleedOfferImage(url: url, quietPlaceholder: true)
-                .blur(radius: 70)
-                .opacity(0.55)
+            EOSBackdrop(url: url, soft: true)
+                .opacity(0.6)
             Color.black.opacity(0.35)
         }
         .ignoresSafeArea()

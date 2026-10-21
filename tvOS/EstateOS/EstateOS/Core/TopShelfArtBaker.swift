@@ -83,18 +83,8 @@ enum TopShelfArtBaker {
     }
 
     private static func loadImage(_ url: URL) async -> UIImage? {
-        if let cached = EOSImageCache.image(for: url) { return cached }
-        do {
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 8
-            request.setValue(AppConfig.userAgent, forHTTPHeaderField: "User-Agent")
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard let image = UIImage(data: data) else { return nil }
-            EOSImageCache.store(image, for: url)
-            return image
-        } catch {
-            return nil
-        }
+        // Shared, downsampled, off-main-thread pipeline (see EOSImageCache).
+        await EOSImageCache.load(url, size: .screen)
     }
 
     private static func jpegData(from image: UIImage, size: CGSize) -> Data? {

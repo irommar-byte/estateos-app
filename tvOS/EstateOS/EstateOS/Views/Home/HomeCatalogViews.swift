@@ -28,7 +28,6 @@ struct OffersCatalogView: View {
             title: item.title,
             subtitle: item.cardSubtitle,
             width: 400,
-            onFocus: { app.noteShowroomSection(sectionTitle) },
             action: {
                 app.noteShowroomSection(sectionTitle)
                 onSelect(offer)

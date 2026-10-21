@@ -47,10 +47,54 @@ struct ShowroomItem: Identifiable {
     }
 }
 
-private struct ShowroomSection: Identifiable {
+struct ShowroomSection: Identifiable {
     let id: String
     let title: String
     let items: [ShowroomItem]
+}
+
+/// What the big photo and hero text are "about".
+///
+/// Flying across cards changes nothing on screen except the focus lift. Only when focus
+/// RESTS on a card (~0.35 s) is its screen-size photo fetched and decoded in the background;
+/// then the title, price and photo change together in one cross-fade — the same feel as the
+/// Apple TV app. It lives outside the showroom's view state, so a focus change never
+/// re-renders the rails.
+@MainActor
+final class ShowroomSpotlight: ObservableObject {
+    @Published private(set) var item: ShowroomItem?
+    private var pending: Task<Void, Never>?
+
+    static let restDelayNs: UInt64 = 350_000_000
+
+    func reset(to item: ShowroomItem?) {
+        pending?.cancel()
+        self.item = item
+    }
+
+    func focus(_ item: ShowroomItem) {
+        pending?.cancel()
+        guard item.id != self.item?.id else { return }
+        pending = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.restDelayNs)
+            guard !Task.isCancelled else { return }
+            if let url = item.imageURL {
+                _ = await EOSImageCache.load(url, size: .screen)
+            }
+            guard !Task.isCancelled, let self else { return }
+            withAnimation(EOSMotion.spotlightText) { self.item = item }
+        }
+    }
+
+    func cancelPending() { pending?.cancel() }
+}
+
+/// Sections are built from the whole catalog (filters, sorting) — expensive. They are rebuilt
+/// only when the catalog or filters actually change, never on a focus move.
+final class ShowroomMemo {
+    var key = ""
+    var sections: [ShowroomSection] = []
+    var featured: ShowroomItem?
 }
 
 /// Showroom (Nieruchomości or Samochody): full-screen photo of the offer in focus, its title and
@@ -63,33 +107,39 @@ struct HomeShowroomView: View {
     let brand: CatalogBrand
     var onOpenFilters: () -> Void
 
-    /// The offer the screen is "about": the featured one, then whatever card has focus.
-    @State private var spotlight: ShowroomItem?
-    @State private var backdropURL: URL?
-    @State private var backdropTask: Task<Void, Never>?
+    // Plain @State (not @StateObject): this view must NOT re-render when the spotlight changes.
+    @State private var spotlight = ShowroomSpotlight()
+    @State private var memo = ShowroomMemo()
     @FocusState private var primaryFocused: Bool
 
     private var accent: Color { brand == .car ? EOSPalette.car : Color(red: 0.17, green: 0.82, blue: 0.54) }
 
     var body: some View {
-        let sections = makeSections()
-        let featured = featuredItem()
-        let current = spotlight ?? featured
+        let snapshot = refreshedMemo()
 
         ZStack(alignment: .topLeading) {
-            EOSBackdrop(url: backdropURL ?? current?.imageURL)
+            ShowroomBackdrop(spotlight: spotlight, fallback: snapshot.featured?.imageURL)
             EOSBackdropScrim()
 
             if isLoading {
                 ProgressView(brand == .home ? "Ładowanie nieruchomości…" : "Ładowanie samochodów…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let current {
+            } else if snapshot.featured != nil {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 64) {
-                        hero(current, newest: sections.first?.items ?? [])
-                            .containerRelativeFrame(.vertical, alignment: .bottomLeading) { h, _ in h * 0.66 }
-                        ForEach(sections) { section in
-                            rail(section)
+                    LazyVStack(alignment: .leading, spacing: 64) {
+                        ShowroomHero(
+                            spotlight: spotlight,
+                            fallback: snapshot.featured,
+                            newest: snapshot.sections.first?.items ?? [],
+                            brand: brand,
+                            accent: accent,
+                            primaryFocused: $primaryFocused,
+                            onOpenFilters: onOpenFilters
+                        )
+                        .containerRelativeFrame(.vertical, alignment: .bottomLeading) { h, _ in h * 0.66 }
+
+                        ForEach(snapshot.sections) { section in
+                            ShowroomRail(section: section, spotlight: spotlight)
                         }
                     }
                     .padding(.bottom, 80)
@@ -104,132 +154,39 @@ struct HomeShowroomView: View {
         }
         .defaultFocus($primaryFocused, true)
         .onAppear {
-            if spotlight == nil { spotlight = featured }
-            app.noteShowroomSection(sections.first?.title ?? "")
-            // Arriving from the menu: land on the main action, not on the header capsule.
+            if spotlight.item == nil { spotlight.reset(to: snapshot.featured) }
             if launchFinished { claimPrimaryFocus() }
         }
+        .onDisappear { spotlight.cancelPending() }
         .onChange(of: launchFinished) { _, finished in
             if finished { claimPrimaryFocus() }
         }
-        .onChange(of: featured?.id) { _, _ in
-            spotlight = featuredItem()
-            backdropURL = nil
+        .onChange(of: snapshot.featured?.id) { _, _ in
+            spotlight.reset(to: memo.featured)
         }
     }
 
-    // MARK: Hero
+    // MARK: Memo
 
-    @ViewBuilder
-    private func hero(_ item: ShowroomItem, newest: [ShowroomItem]) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Spacer(minLength: 0)
-            VStack(alignment: .leading, spacing: 16) {
-                Text(item.eyebrow)
-                    .font(.system(size: 20, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(accent)
-                    .lineLimit(1)
-                Text(item.title)
-                    .font(.system(size: 76, weight: .bold))
-                    .tracking(-1)
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.6)
-                    .shadow(color: .black.opacity(0.35), radius: 24, y: 4)
-                if !item.meta.isEmpty {
-                    Text(item.meta)
-                        .font(.system(size: 28, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.86))
-                        .lineLimit(1)
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 18) {
-                    Text(item.price)
-                        .font(.system(size: 44, weight: .semibold))
-                        .foregroundStyle(.white)
-                    if let badge = item.badge {
-                        EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
-                    }
-                }
-            }
-            .id(item.id)
-            .transition(.opacity.combined(with: .offset(y: 8)))
-            .animation(EOSMotion.spotlightText, value: item.id)
-
-            HStack(spacing: 24) {
-                Button { open(item) } label: {
-                    Label(brand == .home ? "Zobacz ofertę" : "Zobacz auto", systemImage: "arrow.up.forward")
-                        .background(EOSFocusProbe { setSpotlight(item, immediately: true) })
-                }
-                .eosButton()
-                .focused($primaryFocused)
-
-                if newest.count > 1 {
-                    Button { openImmersive(newest) } label: {
-                        Label("Przeglądaj nowe", systemImage: "rectangle.stack")
-                    }
-                    .eosButton()
-                }
-
-                Button { toggleFavorite(item) } label: {
-                    Image(systemName: isFavorite(item) ? "heart.fill" : "heart")
-                        .accessibilityLabel(isFavorite(item) ? "Usuń z ulubionych" : "Dodaj do ulubionych")
-                }
-                .eosButton()
-
-                Button(action: onOpenFilters) {
-                    Label(filterLabel, systemImage: "line.3.horizontal.decrease")
-                }
-                .eosButton()
-            }
-            .padding(.top, 22)
-        }
-        .frame(maxWidth: 1180, alignment: .leading)
-        .focusSection()
+    private var catalogSignature: String {
+        let firstHome = app.offers.first?.id ?? 0
+        let firstCar = app.cars.first?.id ?? 0
+        return [
+            "\(brand)", "\(app.offers.count)", "\(firstHome)", "\(app.cars.count)", "\(firstCar)",
+            app.homeFilterSummary, app.carFilterSummary,
+            "\(app.isHomeFilteringActive)", "\(app.isCarFilteringActive)",
+            "\(app.favoriteOfferIds.count)", "\(app.favoriteCarIds.count)", "\(app.session != nil)",
+        ].joined(separator: "|")
     }
 
-    // MARK: Rails
-
-    private func rail(_ section: ShowroomSection) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                Text(section.title)
-                    .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text("\(section.items.count)")
-                    .font(.system(size: 24, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.6))
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 48) {
-                    ForEach(section.items) { item in
-                        EOSPosterCard(
-                            imageURL: item.imageURL,
-                            title: item.title,
-                            subtitle: item.cardSubtitle,
-                            width: 400,
-                            onFocus: {
-                                setSpotlight(item, immediately: false)
-                                app.noteShowroomSection(section.title)
-                            },
-                            action: { open(item) }
-                        ) {
-                            if let badge = item.badge {
-                                EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
-                            }
-                        }
-                        .contextMenu {
-                            Button(isFavorite(item) ? "Usuń z ulubionych" : "Dodaj do ulubionych") { toggleFavorite(item) }
-                            Button("Przeglądaj na pełnym ekranie") { openImmersive(section.items, startingAt: item) }
-                        }
-                    }
-                }
-                .padding(.vertical, 36)
-            }
-            .scrollClipDisabled()
+    private func refreshedMemo() -> ShowroomMemo {
+        let key = catalogSignature
+        if memo.key != key {
+            memo.key = key
+            memo.sections = makeSections()
+            memo.featured = featuredItem()
         }
-        .focusSection()
-        .onAppear { prefetch(section.items) }
+        return memo
     }
 
     // MARK: Empty / loading
@@ -301,8 +258,7 @@ struct HomeShowroomView: View {
 
         switch brand {
         case .home:
-            let filtering = app.isHomeFilteringActive
-            if filtering {
+            if app.isHomeFilteringActive {
                 add("Wyniki · \(app.homeFilterSummary)", offers: app.filteredOffersForBrowse, limit: 80)
             } else {
                 add("Nowe w ostatnich 24 h", offers: app.showroomHomeNewest, limit: 24)
@@ -317,8 +273,7 @@ struct HomeShowroomView: View {
                 add("Na wynajem", offers: app.showroomHomeRent)
             }
         case .car:
-            let filtering = app.isCarFilteringActive
-            if filtering {
+            if app.isCarFilteringActive {
                 add("Wyniki · \(app.carFilterSummary)", cars: app.filteredCars, limit: 80)
             } else {
                 add("Nowe auta · 24 h", cars: app.showroomCarFresh, limit: 24)
@@ -332,15 +287,6 @@ struct HomeShowroomView: View {
         return result
     }
 
-    private var filterLabel: String {
-        let count = brand == .home ? app.homeSecondaryFilterCount : app.carSecondaryFilterCount
-        let active = brand == .home ? app.isHomeFilteringActive : app.isCarFilteringActive
-        if count > 0 { return "Filtry · \(count)" }
-        return active ? "Filtry · aktywne" : "Filtry"
-    }
-
-    // MARK: Actions
-
     private func claimPrimaryFocus() {
         Task { @MainActor in
             // Let the view become enabled first, then take focus.
@@ -348,20 +294,176 @@ struct HomeShowroomView: View {
             primaryFocused = true
         }
     }
+}
 
-    private func setSpotlight(_ item: ShowroomItem, immediately: Bool) {
-        if spotlight?.id != item.id {
-            withAnimation(EOSMotion.spotlightText) { spotlight = item }
+// MARK: - Backdrop (observes the spotlight on its own)
+
+private struct ShowroomBackdrop: View {
+    @ObservedObject var spotlight: ShowroomSpotlight
+    let fallback: URL?
+
+    var body: some View {
+        EOSBackdrop(url: spotlight.item?.imageURL ?? fallback)
+    }
+}
+
+// MARK: - Hero (observes the spotlight on its own)
+
+private struct ShowroomHero: View {
+    @EnvironmentObject private var app: AppModel
+    @ObservedObject var spotlight: ShowroomSpotlight
+    let fallback: ShowroomItem?
+    let newest: [ShowroomItem]
+    let brand: CatalogBrand
+    let accent: Color
+    var primaryFocused: FocusState<Bool>.Binding
+    var onOpenFilters: () -> Void
+
+    var body: some View {
+        let item = spotlight.item ?? fallback
+        VStack(alignment: .leading, spacing: 16) {
+            Spacer(minLength: 0)
+            if let item {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(item.eyebrow)
+                        .font(.system(size: 20, weight: .bold))
+                        .tracking(2)
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                    Text(item.title)
+                        .font(.system(size: 76, weight: .bold))
+                        .tracking(-1)
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.6)
+                        .shadow(color: .black.opacity(0.35), radius: 24, y: 4)
+                    if !item.meta.isEmpty {
+                        Text(item.meta)
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.86))
+                            .lineLimit(1)
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Text(item.price)
+                            .font(.system(size: 44, weight: .semibold))
+                            .foregroundStyle(.white)
+                        if let badge = item.badge {
+                            EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
+                        }
+                    }
+                }
+                .id(item.id)
+                .transition(.opacity.combined(with: .offset(y: 8)))
+
+                HStack(spacing: 24) {
+                    Button { open(item) } label: {
+                        Label(brand == .home ? "Zobacz ofertę" : "Zobacz auto", systemImage: "arrow.up.forward")
+                    }
+                    .eosButton()
+                    .focused(primaryFocused)
+
+                    if newest.count > 1 {
+                        Button { openImmersive(newest) } label: {
+                            Label("Przeglądaj nowe", systemImage: "rectangle.stack")
+                        }
+                        .eosButton()
+                    }
+
+                    Button { toggleFavorite(item) } label: {
+                        Image(systemName: isFavorite(item) ? "heart.fill" : "heart")
+                            .accessibilityLabel(isFavorite(item) ? "Usuń z ulubionych" : "Dodaj do ulubionych")
+                    }
+                    .eosButton()
+
+                    Button(action: onOpenFilters) {
+                        Label(filterLabel, systemImage: "line.3.horizontal.decrease")
+                    }
+                    .eosButton()
+                }
+                .padding(.top, 22)
+            }
         }
-        backdropTask?.cancel()
-        if immediately {
-            backdropURL = item.imageURL
-            return
+        .frame(maxWidth: 1180, alignment: .leading)
+        .focusSection()
+    }
+
+    private var filterLabel: String {
+        let count = brand == .home ? app.homeSecondaryFilterCount : app.carSecondaryFilterCount
+        let active = brand == .home ? app.isHomeFilteringActive : app.isCarFilteringActive
+        if count > 0 { return "Filtry · \(count)" }
+        return active ? "Filtry · aktywne" : "Filtry"
+    }
+
+    private func open(_ item: ShowroomItem) {
+        if let offer = item.offer { app.openDetail(offer) }
+        if let car = item.car { app.openCarDetail(car) }
+    }
+
+    private func isFavorite(_ item: ShowroomItem) -> Bool {
+        if let offer = item.offer { return app.isFavorite(offer.id) }
+        if let car = item.car { return app.isFavoriteCar(car.id) }
+        return false
+    }
+
+    private func toggleFavorite(_ item: ShowroomItem) {
+        if let offer = item.offer { Task { await app.toggleFavorite(offer) } }
+        if let car = item.car { app.toggleFavoriteCar(car) }
+    }
+
+    private func openImmersive(_ items: [ShowroomItem]) {
+        if brand == .home {
+            app.openImmersiveBrowse(at: 0, from: items.compactMap(\.offer))
+        } else {
+            app.openImmersiveCarBrowse(at: 0, from: items.compactMap(\.car))
         }
-        backdropTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: EOSMotion.backdropDelayNs)
-            guard !Task.isCancelled else { return }
-            backdropURL = item.imageURL
+    }
+}
+
+// MARK: - Rail
+
+private struct ShowroomRail: View {
+    @EnvironmentObject private var app: AppModel
+    let section: ShowroomSection
+    let spotlight: ShowroomSpotlight   // not observed: cards only report focus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Text(section.title)
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("\(section.items.count)")
+                    .font(.system(size: 24, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 48) {
+                    ForEach(section.items) { item in
+                        EOSPosterCard(
+                            imageURL: item.imageURL,
+                            title: item.title,
+                            subtitle: item.cardSubtitle,
+                            width: 400,
+                            onFocus: { spotlight.focus(item) },
+                            action: { open(item) }
+                        ) {
+                            if let badge = item.badge {
+                                EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
+                            }
+                        }
+                        .contextMenu {
+                            Button(isFavorite(item) ? "Usuń z ulubionych" : "Dodaj do ulubionych") { toggleFavorite(item) }
+                            Button("Przeglądaj na pełnym ekranie") { openImmersive(startingAt: item) }
+                        }
+                    }
+                }
+                .padding(.vertical, 36)
+            }
+            .scrollClipDisabled()
+        }
+        .focusSection()
+        .onAppear {
+            EOSImageCache.prefetch(urls: section.items.prefix(8).compactMap(\.imageURL), size: .card)
         }
     }
 
@@ -381,16 +483,12 @@ struct HomeShowroomView: View {
         if let car = item.car { app.toggleFavoriteCar(car) }
     }
 
-    private func openImmersive(_ items: [ShowroomItem], startingAt start: ShowroomItem? = nil) {
-        let index = start.flatMap { s in items.firstIndex { $0.id == s.id } } ?? 0
-        if brand == .home {
-            app.openImmersiveBrowse(at: index, from: items.compactMap(\.offer))
+    private func openImmersive(startingAt start: ShowroomItem) {
+        let index = section.items.firstIndex { $0.id == start.id } ?? 0
+        if start.offer != nil {
+            app.openImmersiveBrowse(at: index, from: section.items.compactMap(\.offer))
         } else {
-            app.openImmersiveCarBrowse(at: index, from: items.compactMap(\.car))
+            app.openImmersiveCarBrowse(at: index, from: section.items.compactMap(\.car))
         }
-    }
-
-    private func prefetch(_ items: [ShowroomItem]) {
-        EOSImageCache.prefetch(urls: items.prefix(6).compactMap(\.imageURL))
     }
 }

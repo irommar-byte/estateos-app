@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 // MARK: - Luxury TV design system (Apple-like restraint)
 
@@ -272,99 +273,167 @@ struct EOSMicroChipButtonStyle: ButtonStyle {
 
 
 
-// MARK: - Cached remote images (cancellable)
+// MARK: - Image pipeline (2026-10 performance rewrite)
+//
+// Why the showroom stuttered: every card decoded the FULL-resolution listing photo on the main
+// thread, and each cache store re-encoded the image to JPEG just to estimate its size. Now:
+//   • photos are downsampled with ImageIO to the size they are shown at (card / thumb / screen),
+//   • decoding happens off the main thread and is forced up front (no lazy decode at draw time),
+//   • identical requests share one download (in-flight de-duplication),
+//   • raw data goes through a dedicated URLCache (memory + disk), so re-visits are instant,
+//   • cache cost is width × height × 4 — no re-encoding.
+
+/// Pixel buckets — a request is served by its bucket or any bigger one already in memory.
+enum EOSImageSize: Int, CaseIterable, Comparable {
+    case thumb = 480     // gallery filmstrip, small rows
+    case card = 960      // 400 pt lockups on a 4K Apple TV (@2x)
+    case screen = 2560   // full-screen photos and backdrops
+
+    static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
+}
 
 enum EOSImageCache {
-    private static let cache: NSCache<NSURL, UIImage> = {
-        let c = NSCache<NSURL, UIImage>()
-        c.totalCostLimit = 200 * 1024 * 1024
+    private static let cache: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.totalCostLimit = 320 * 1024 * 1024
         return c
     }()
 
-    static func image(for url: URL) -> UIImage? {
-        cache.object(forKey: url as NSURL)
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.urlCache = URLCache(memoryCapacity: 48 * 1024 * 1024, diskCapacity: 600 * 1024 * 1024)
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        config.httpMaximumConnectionsPerHost = 6
+        config.timeoutIntervalForRequest = 20
+        return URLSession(configuration: config)
+    }()
+
+    private static let loader = EOSImageLoader()
+
+    private static func key(_ url: URL, _ size: EOSImageSize) -> NSString {
+        "\(size.rawValue)|\(url.absoluteString)" as NSString
     }
 
-    static func store(_ image: UIImage, for url: URL) {
-        let cost = image.jpegData(compressionQuality: 0.92)?.count ?? (Int(image.size.width * image.size.height * 4))
-        cache.setObject(image, forKey: url as NSURL, cost: Int(cost))
+    /// Best image already in memory for `size` (that bucket or a larger one).
+    static func image(for url: URL, size: EOSImageSize = .card) -> UIImage? {
+        for bucket in EOSImageSize.allCases where bucket >= size {
+            if let hit = cache.object(forKey: key(url, bucket)) { return hit }
+        }
+        return nil
     }
 
-    /// Downloads one image into the cache and waits for it (bounded), so a screen can appear
-    /// with its photo already in place instead of popping in.
-    static func ensure(_ url: URL?, timeout: TimeInterval = 2.5) async {
-        guard let url, image(for: url) == nil else { return }
+    static func store(_ image: UIImage, for url: URL, size: EOSImageSize = .screen) {
+        let px = image.size.width * image.scale * image.size.height * image.scale
+        cache.setObject(image, forKey: key(url, size), cost: Int(px * 4))
+    }
+
+    /// Loads (or reuses) the image for `size`. Safe to call from anywhere; never decodes on main.
+    static func load(_ url: URL, size: EOSImageSize = .card) async -> UIImage? {
+        if let hit = image(for: url, size: size) { return hit }
+        return await loader.image(url: url, size: size)
+    }
+
+    /// Waits (bounded) until the photo is ready — used before the launch doors open.
+    static func ensure(_ url: URL?, size: EOSImageSize = .screen, timeout: TimeInterval = 2.5) async {
+        guard let url, image(for: url, size: size) == nil else { return }
         await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                guard let (data, _) = try? await URLSession.shared.data(from: url),
-                      let ui = UIImage(data: data) else { return }
-                store(ui, for: url)
-            }
+            group.addTask { _ = await load(url, size: size) }
             group.addTask { try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) }
             await group.next()
             group.cancelAll()
         }
     }
 
-    static func prefetch(urls: [URL]) {
+    /// Fire-and-forget warm-up at low priority (never competes with what is on screen).
+    static func prefetch(urls: [URL], size: EOSImageSize = .card) {
+        let todo = urls.prefix(12).filter { image(for: $0, size: size) == nil }
+        guard !todo.isEmpty else { return }
         Task.detached(priority: .utility) {
-            for url in urls.prefix(6) {
-                if image(for: url) != nil { continue }
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: url)
-                    guard let ui = UIImage(data: data) else { continue }
-                    store(ui, for: url)
-                } catch {
-                    continue
-                }
-            }
+            for url in todo { _ = await load(url, size: size) }
         }
+    }
+
+    /// ImageIO downsample + forced decode. Runs on a background thread.
+    nonisolated static func decode(_ data: Data, maxPixel: Int) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
     }
 }
 
+/// De-duplicates concurrent requests for the same image and size.
+private actor EOSImageLoader {
+    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+
+    func image(url: URL, size: EOSImageSize) async -> UIImage? {
+        let key = "\(size.rawValue)|\(url.absoluteString)"
+        if let running = inFlight[key] { return await running.value }
+        let task = Task.detached(priority: size == .screen ? .userInitiated : .medium) { () -> UIImage? in
+            guard let (data, response) = try? await EOSImageCache.session.data(from: url),
+                  (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+                  let image = EOSImageCache.decode(data, maxPixel: size.rawValue)
+            else { return nil }
+            EOSImageCache.store(image, for: url, size: size)
+            return image
+        }
+        inFlight[key] = task
+        let result = await task.value
+        inFlight[key] = nil
+        return result
+    }
+}
+
+/// Remote image view: shows a cached photo on the very first frame, otherwise loads the
+/// downsampled version in the background and fades it in.
 struct EOSCachedRemoteImage<Placeholder: View>: View {
     let url: URL?
     var contentMode: ContentMode
+    var size: EOSImageSize
     var placeholder: () -> Placeholder
 
     @State private var image: UIImage?
 
-    init(url: URL?, contentMode: ContentMode = .fill, @ViewBuilder placeholder: @escaping () -> Placeholder) {
+    init(
+        url: URL?,
+        contentMode: ContentMode = .fill,
+        size: EOSImageSize = .card,
+        @ViewBuilder placeholder: @escaping () -> Placeholder
+    ) {
         self.url = url
         self.contentMode = contentMode
+        self.size = size
         self.placeholder = placeholder
-        // Cached photos render on the very first frame — no placeholder flash.
-        _image = State(initialValue: url.flatMap { EOSImageCache.image(for: $0) })
+        _image = State(initialValue: url.flatMap { EOSImageCache.image(for: $0, size: size) })
     }
 
     var body: some View {
-        Group {
+        ZStack {
             if let image {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
+                    .transition(.opacity)
             } else {
                 placeholder()
             }
         }
         .task(id: url?.absoluteString) {
             guard let url else { image = nil; return }
-            if let cached = EOSImageCache.image(for: url) {
+            if let cached = EOSImageCache.image(for: url, size: size) {
                 if image !== cached { image = cached }
                 return
             }
             image = nil
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                try Task.checkCancellation()
-                guard let ui = UIImage(data: data) else { return }
-                EOSImageCache.store(ui, for: url)
-                image = ui
-            } catch is CancellationError {
-                return
-            } catch {
-                return
-            }
+            let loaded = await EOSImageCache.load(url, size: size)
+            guard !Task.isCancelled, let loaded else { return }
+            withAnimation(.easeOut(duration: 0.25)) { image = loaded }
         }
     }
 }
@@ -415,7 +484,7 @@ struct EOSFullBleedOfferImage: View {
 
     var body: some View {
         GeometryReader { proxy in
-            EOSCachedRemoteImage(url: url, contentMode: .fill) {
+            EOSCachedRemoteImage(url: url, contentMode: .fill, size: .screen) {
                 if quietPlaceholder { Color.black } else { placeholder }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -460,7 +529,7 @@ struct EOSOfferThumbnail: View {
     @Environment(\.isFocused) private var isFocused
 
     var body: some View {
-        EOSCachedRemoteImage(url: url, contentMode: .fill) {
+        EOSCachedRemoteImage(url: url, contentMode: .fill, size: height > 300 ? .screen : .card) {
             placeholder
         }
         .frame(height: height)
@@ -1064,23 +1133,73 @@ struct EOSGlassBadge: View {
     }
 }
 
-/// Full-screen photo backdrop that cross-fades whenever the URL changes, with a very slow
-/// Ken Burns drift and the launch "settle" (1.08 → 1.0 while the doors open).
+/// Full-screen photo backdrop.
+///
+/// The photo on screen is replaced only when the next one is fully downloaded and decoded
+/// (screen-size, off the main thread) — then the two cross-fade. While the remote flies
+/// across cards nothing is loaded here at all: the caller only changes `url` once focus rests.
+/// One very slow Ken Burns drift keeps the still photo alive.
 struct EOSBackdrop: View {
     let url: URL?
+    /// Pre-blurred, softer variant (detail page when scrolled, secondary screens).
+    var soft: Bool = false
     @Environment(\.eosLaunchRevealed) private var revealed
 
-    var body: some View {
-        ZStack {
-            Color.black
-            EOSFullBleedOfferImage(url: url, ambient: true, quietPlaceholder: true)
-                .id(url?.absoluteString ?? "none")
-                .transition(.opacity)
+    private struct Layer: Equatable {
+        let url: URL
+        let image: UIImage
+        static func == (a: Layer, b: Layer) -> Bool { a.url == b.url }
+    }
+
+    @State private var shown: Layer?
+    @State private var drift = false
+
+    init(url: URL?, soft: Bool = false) {
+        self.url = url
+        self.soft = soft
+        let size: EOSImageSize = soft ? .thumb : .screen
+        if let url, let image = EOSImageCache.image(for: url, size: size) {
+            _shown = State(initialValue: Layer(url: url, image: image))
         }
-        .scaleEffect(revealed ? 1.0 : 1.08)
-        .animation(EOSMotion.backdrop, value: url)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.black
+                if let shown {
+                    Image(uiImage: shown.image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .blur(radius: soft ? 28 : 0, opaque: true)
+                        .clipped()
+                        .id(shown.url)
+                        .transition(.opacity)
+                }
+            }
+            .scaleEffect((revealed ? 1.0 : 1.08) * (drift && !soft ? 1.045 : 1.0))
+        }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .animation(EOSMotion.launchReveal, value: revealed)
+        .task(id: url) {
+            guard let url else { return }
+            if shown?.url == url { return }
+            let size: EOSImageSize = soft ? .thumb : .screen
+            let image: UIImage?
+            if let cached = EOSImageCache.image(for: url, size: size) {
+                image = cached
+            } else {
+                image = await EOSImageCache.load(url, size: size)
+            }
+            guard !Task.isCancelled, let image else { return }
+            withAnimation(EOSMotion.backdrop) { shown = Layer(url: url, image: image) }
+        }
+        .onAppear {
+            guard !soft else { return }
+            withAnimation(.easeInOut(duration: 24).repeatForever(autoreverses: true)) { drift = true }
+        }
     }
 }
 

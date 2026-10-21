@@ -68,17 +68,40 @@ enum OfferPresentation {
         return text
     }
 
+    // Formatters are expensive to create; sorting the catalog used to build three per comparison.
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    private static let fallbackFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        return f
+    }()
+    private static let dateCacheLock = NSLock()
+    nonisolated(unsafe) private static var dateCache: [String: Date] = [:]
+
     static func parseCreatedAt(_ raw: String?) -> Date {
         guard let raw, !raw.isEmpty else { return .distantPast }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = iso.date(from: raw) { return date }
-        iso.formatOptions = [.withInternetDateTime]
-        if let date = iso.date(from: raw) { return date }
-        let fallback = DateFormatter()
-        fallback.locale = Locale(identifier: "en_US_POSIX")
-        fallback.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-        return fallback.date(from: raw) ?? .distantPast
+        dateCacheLock.lock()
+        if let hit = dateCache[raw] { dateCacheLock.unlock(); return hit }
+        dateCacheLock.unlock()
+        let date = isoFractional.date(from: raw)
+            ?? isoPlain.date(from: raw)
+            ?? fallbackFormatter.date(from: raw)
+            ?? .distantPast
+        dateCacheLock.lock()
+        if dateCache.count > 20_000 { dateCache.removeAll(keepingCapacity: true) }
+        dateCache[raw] = date
+        dateCacheLock.unlock()
+        return date
     }
 
     static func isWithinLast24Hours(_ date: Date, reference: Date = Date()) -> Bool {

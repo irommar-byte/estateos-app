@@ -779,7 +779,7 @@ final class AppModel: ObservableObject {
         for car in cars.prefix(6) {
             if let u = EOSOfferMedia.imageURL(from: car.imageUrl) { urls.append(u) }
         }
-        EOSImageCache.prefetch(urls: Array(urls.prefix(12)))
+        EOSImageCache.prefetch(urls: Array(urls.prefix(12)), size: .card)
     }
 
     private func refreshFavoritesIfNeeded() async {

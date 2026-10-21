@@ -189,7 +189,7 @@ struct ImmersiveBrowseShell<Item: ImmersiveItem>: View {
         for i in [index - 1, index, index + 1] where i >= 0 && i < items.count {
             if let u = items[i].immersiveImageURL { urls.append(u) }
         }
-        EOSImageCache.prefetch(urls: urls)
+        EOSImageCache.prefetch(urls: urls, size: .screen)
     }
 
     private func handleMove(_ direction: MoveCommandDirection) {
@@ -218,7 +218,7 @@ private struct ImmersiveBackdrop: View {
 
     var body: some View {
         GeometryReader { proxy in
-            EOSCachedRemoteImage(url: url, contentMode: .fill) {
+            EOSCachedRemoteImage(url: url, contentMode: .fill, size: .screen) {
                 Rectangle()
                     .fill(
                         LinearGradient(

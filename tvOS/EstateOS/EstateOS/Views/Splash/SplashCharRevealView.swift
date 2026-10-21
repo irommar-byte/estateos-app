@@ -96,9 +96,13 @@ struct SplashTaglineRevealView: View, Animatable {
 }
 
 /// The single golden light band that sweeps across both lines (iOS `sunBandWrap`).
+///
+/// On a phone the iOS band travels ±52 % of the screen — which is about the width of the text.
+/// On a TV the same formula sent it across 2000 pt, so it spent most of its time beside the
+/// letters. Here it travels exactly across the text block: it enters at the first letter's
+/// left, crosses every letter and leaves after the last one.
 struct SplashSunBand: View, Animatable {
     var progress: CGFloat
-    let screenWidth: CGFloat
 
     var animatableData: CGFloat {
         get { progress }
@@ -106,43 +110,46 @@ struct SplashSunBand: View, Animatable {
     }
 
     var body: some View {
-        let travel = screenWidth * 0.52
-        ZStack {
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: Color(red: 100 / 255, green: 62 / 255, blue: 22 / 255).opacity(0.2), location: 0.18),
-                    .init(color: Color(red: 168 / 255, green: 112 / 255, blue: 38 / 255).opacity(0.55), location: 0.38),
-                    .init(color: Color(red: 245 / 255, green: 210 / 255, blue: 150 / 255), location: 0.5),
-                    .init(color: Color(red: 195 / 255, green: 138 / 255, blue: 48 / 255).opacity(0.62), location: 0.58),
-                    .init(color: Color(red: 130 / 255, green: 82 / 255, blue: 28 / 255).opacity(0.22), location: 0.78),
-                    .init(color: .clear, location: 1),
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: screenWidth * 0.3)
-            .scaleEffect(y: 1.12)
+        GeometryReader { geo in
+            let textWidth = geo.size.width
+            let band = max(textWidth * 0.34, 300)
+            let travel = textWidth / 2 + band / 2
+            ZStack {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: Color(red: 100 / 255, green: 62 / 255, blue: 22 / 255).opacity(0.2), location: 0.18),
+                        .init(color: Color(red: 168 / 255, green: 112 / 255, blue: 38 / 255).opacity(0.55), location: 0.38),
+                        .init(color: Color(red: 245 / 255, green: 210 / 255, blue: 150 / 255), location: 0.5),
+                        .init(color: Color(red: 195 / 255, green: 138 / 255, blue: 48 / 255).opacity(0.62), location: 0.58),
+                        .init(color: Color(red: 130 / 255, green: 82 / 255, blue: 28 / 255).opacity(0.22), location: 0.78),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: band, height: geo.size.height * 1.12)
 
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: Color(red: 248 / 255, green: 220 / 255, blue: 140 / 255).opacity(0.10), location: 0.2),
-                    .init(color: Color(red: 1, green: 235 / 255, blue: 170 / 255).opacity(0.26), location: 0.43),
-                    .init(color: Color(red: 1, green: 235 / 255, blue: 170 / 255).opacity(0.42), location: 0.5),
-                    .init(color: Color(red: 224 / 255, green: 180 / 255, blue: 80 / 255).opacity(0.16), location: 0.58),
-                    .init(color: Color(red: 180 / 255, green: 130 / 255, blue: 40 / 255).opacity(0.06), location: 0.78),
-                    .init(color: .clear, location: 1),
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: screenWidth * 0.45)
-            .scaleEffect(y: 1.18)
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: Color(red: 248 / 255, green: 220 / 255, blue: 140 / 255).opacity(0.10), location: 0.2),
+                        .init(color: Color(red: 1, green: 235 / 255, blue: 170 / 255).opacity(0.26), location: 0.43),
+                        .init(color: Color(red: 1, green: 235 / 255, blue: 170 / 255).opacity(0.42), location: 0.5),
+                        .init(color: Color(red: 224 / 255, green: 180 / 255, blue: 80 / 255).opacity(0.16), location: 0.58),
+                        .init(color: Color(red: 180 / 255, green: 130 / 255, blue: 40 / 255).opacity(0.06), location: 0.78),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: band * 1.5, height: geo.size.height * 1.18)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .offset(x: -travel + progress * travel * 2)
+            .opacity(Self.bandOpacity(progress))
         }
         .blendMode(.screen)
-        .offset(x: -travel + progress * travel * 2)
-        .opacity(Self.bandOpacity(progress))
         .allowsHitTesting(false)
     }
 
