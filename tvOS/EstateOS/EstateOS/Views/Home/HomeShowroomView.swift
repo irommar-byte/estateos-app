@@ -57,11 +57,21 @@ struct ShowroomSection: Identifiable {
     var caption: String = ""
     /// EstateOS Intelligence rail — drawn with the iridescent Siri-style brand.
     var isIntelligence = false
+    /// Rails about the viewer (Dla Ciebie, Ostatnio oglądane) — never feed the hero's "Przeglądaj".
+    var isPersonal = false
 
     static func intelligence(items: [ShowroomItem], caption: String) -> ShowroomSection {
         ShowroomSection(
             id: "intelligence-for-you", title: "Dla Ciebie", items: items,
-            icon: "brain", tint: EOSIntelligence.violet, caption: caption, isIntelligence: true
+            icon: "brain", tint: EOSIntelligence.violet, caption: caption, isIntelligence: true, isPersonal: true
+        )
+    }
+
+    static func recent(items: [ShowroomItem]) -> ShowroomSection {
+        ShowroomSection(
+            id: "recently-viewed", title: "Ostatnio oglądane", items: items,
+            icon: "clock.arrow.circlepath", tint: ShowroomCategory.neutral,
+            caption: "Wróć tam, gdzie skończyłeś", isPersonal: true
         )
     }
 }
@@ -155,7 +165,7 @@ struct HomeShowroomView: View {
                         ShowroomHero(
                             spotlight: spotlight,
                             fallback: snapshot.featured,
-                            newest: snapshot.sections.first(where: { !$0.isIntelligence })?.items ?? [],
+                            newest: snapshot.sections.first(where: { !$0.isPersonal })?.items ?? [],
                             brand: brand,
                             accent: accent,
                             primaryFocused: $primaryFocused,
@@ -205,6 +215,8 @@ struct HomeShowroomView: View {
             "\(app.isHomeFilteringActive)", "\(app.isCarFilteringActive)",
             "\(app.favoriteOfferIds.count)", "\(app.favoriteCarIds.count)", "\(app.session != nil)",
             "\(app.intelligenceOfferIds.count)", "\(app.intelligenceOfferIds.first ?? 0)",
+            app.recentOfferIds.prefix(12).map(String.init).joined(separator: ","),
+            app.recentCarIds.prefix(12).map(String.init).joined(separator: ","),
         ].joined(separator: "|")
     }
 
@@ -298,6 +310,8 @@ struct HomeShowroomView: View {
                 if !picks.isEmpty {
                     result.append(.intelligence(items: Array(picks), caption: "Dobrane przez EstateOS Intelligence do Twojego gustu"))
                 }
+                let recent = app.recentOffers.prefix(16).map(ShowroomItem.init(offer:))
+                if !recent.isEmpty { result.append(.recent(items: Array(recent))) }
                 add("Nowe w ostatnich 24 h", offers: app.showroomHomeNewest, limit: 24,
                     icon: "clock.badge.checkmark", tint: C.fresh, caption: "Dodane w ciągu doby")
                 if app.session != nil {
@@ -321,6 +335,8 @@ struct HomeShowroomView: View {
                 add("Wyniki wyszukiwania", cars: app.filteredCars, limit: 80,
                     icon: "line.3.horizontal.decrease", tint: C.neutral, caption: app.carFilterSummary)
             } else {
+                let recent = app.recentCars.prefix(16).map(ShowroomItem.init(car:))
+                if !recent.isEmpty { result.append(.recent(items: Array(recent))) }
                 add("Nowe auta · 24 h", cars: app.showroomCarFresh, limit: 24,
                     icon: "clock.badge.checkmark", tint: C.fresh, caption: "Dodane w ciągu doby")
                 add("Twoje ulubione auta", cars: app.favoriteCars, limit: 28,

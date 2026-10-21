@@ -23,11 +23,15 @@ struct DetailShellView<QRSheet: View>: View {
     /// "Może Ci się spodobać" rails at the end of the page (similar area / price / layout).
     var similar: [ShowroomSection] = []
     var onOpenSimilar: (ShowroomItem) -> Void = { _ in }
+    /// "Na mapie" — nil when the listing has no location.
+    var onShowOnMap: (() -> Void)? = nil
     @ViewBuilder var qrSheet: () -> QRSheet
 
     @State private var showQR = false
     @State private var showDescription = false
     @State private var gallery: GalleryRequest?
+    @State private var showVideo = false
+    @State private var showPlan = false
     @State private var page: DetailPage = .offer
     @FocusState private var focus: DetailFocus?
 
@@ -39,14 +43,14 @@ struct DetailShellView<QRSheet: View>: View {
     private enum DetailPage: Hashable { case offer, details, photos, similar }
 
     private enum DetailFocus: Hashable {
-        case gallery, contact, favorite
+        case gallery, video, plan, map, contact, favorite
         case description, contactCard
         case photo(Int)
         case similar(String)
 
         var page: DetailPage {
             switch self {
-            case .gallery, .contact, .favorite: return .offer
+            case .gallery, .video, .plan, .map, .contact, .favorite: return .offer
             case .description, .contactCard: return .details
             case .photo: return .photos
             case .similar: return .similar
@@ -122,6 +126,16 @@ struct DetailShellView<QRSheet: View>: View {
                 info: GalleryOfferInfo(presentation: presentation, eyebrow: eyebrow)
             )
         }
+        .fullScreenCover(isPresented: $showVideo) {
+            if let video = presentation.video {
+                OfferVideoScreen(source: video, title: presentation.title, backdrop: imageURLs.first)
+            }
+        }
+        .fullScreenCover(isPresented: $showPlan) {
+            if let plan = presentation.floorPlan {
+                FloorPlanScreen(media: plan)
+            }
+        }
         .fullScreenCover(isPresented: $showDescription) {
             DescriptionReader(
                 title: presentation.title,
@@ -180,6 +194,27 @@ struct DetailShellView<QRSheet: View>: View {
                     .eosButton()
                     .focused($focus, equals: .gallery)
                 }
+                if presentation.video != nil {
+                    Button { showVideo = true } label: {
+                        Label("Spacer wideo", systemImage: "play.rectangle.fill")
+                    }
+                    .eosButton()
+                    .focused($focus, equals: .video)
+                }
+                if let plan = presentation.floorPlan, !plan.isEmpty {
+                    Button { showPlan = true } label: {
+                        Label(planButtonTitle(plan), systemImage: plan.model != nil ? "cube.transparent" : "square.split.bottomrightquarter")
+                    }
+                    .eosButton()
+                    .focused($focus, equals: .plan)
+                }
+                if let onShowOnMap {
+                    Button(action: onShowOnMap) {
+                        Label("Na mapie", systemImage: "map")
+                    }
+                    .eosButton()
+                    .focused($focus, equals: .map)
+                }
                 Button { showQR = true } label: {
                     Label("Kontakt", systemImage: "qrcode")
                 }
@@ -236,6 +271,15 @@ struct DetailShellView<QRSheet: View>: View {
     }
 
     private var keyFacts: [DetailPresentation.SpecRow] { presentation.keyFacts }
+
+    private func planButtonTitle(_ plan: FloorPlanMedia) -> String {
+        let hasPlan = plan.scan != nil || !plan.images.isEmpty
+        switch (hasPlan, plan.model != nil) {
+        case (true, true): return "Plan i 3D"
+        case (false, true): return "Model 3D"
+        default: return "Plan"
+        }
+    }
 
     private var eyebrow: String {
         [presentation.transactionBadgeText, presentation.locationLine]

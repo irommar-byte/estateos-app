@@ -73,6 +73,12 @@ struct HomeAccountView: View {
                         .focused(accountFocusedItem, equals: .login)
                         .id(HomeAccountFocus.login)
                 }
+
+                if !app.recentOfferIds.isEmpty || !app.recentCarIds.isEmpty {
+                    Button("Wyczyść „Ostatnio oglądane”") { app.clearRecents() }
+                        .buttonStyle(EOSDetailChromeButtonStyle())
+                        .focusEffectDisabled()
+                }
             }
         }
         .padding(28)

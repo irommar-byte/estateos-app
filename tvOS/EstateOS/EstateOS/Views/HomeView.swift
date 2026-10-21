@@ -56,6 +56,12 @@ struct HomeView: View {
                 .environmentObject(app)
         }
         .onAppear { syncBrand(with: tab) }
+        .onChange(of: app.requestedTab) { _, requested in
+            guard let requested else { return }
+            app.requestedTab = nil
+            menuOpen = false
+            tab = requested
+        }
         .onChange(of: tab) { _, newTab in
             syncBrand(with: newTab)
             switch newTab {
@@ -75,6 +81,8 @@ struct HomeView: View {
             HomeShowroomView(brand: .home, onOpenFilters: openFilters)
         case .cars:
             HomeShowroomView(brand: .car, onOpenFilters: openFilters)
+        case .map:
+            OfferMapView(onOpenFilters: openFilters)
         case .search:
             SearchView(chromeFocus: $chromeFocus, auxFocus: $auxFocus)
                 .environmentObject(app)
@@ -205,6 +213,9 @@ struct HomeView: View {
             return active ? summary : "Wszystkie oferty"
         case .account:
             return app.session?.user.login ?? "Zaloguj się przez iPhone’a"
+        case .tab(.map):
+            let count = app.mappableOffers.count
+            return count > 0 ? "\(FilterFormat.offers(count)) z lokalizacją" : nil
         default:
             return nil
         }
@@ -272,7 +283,7 @@ enum HomeMenuItem: Hashable, Identifiable {
     case tab(HomeTab)
     case filters
 
-    static let sections: [HomeMenuItem] = [.tab(.showroom), .tab(.cars), .tab(.search), .tab(.favorites)]
+    static let sections: [HomeMenuItem] = [.tab(.showroom), .tab(.cars), .tab(.map), .tab(.search), .tab(.favorites)]
     static let account: HomeMenuItem = .tab(.account)
 
     init(tab: HomeTab) { self = .tab(tab) }
@@ -307,6 +318,7 @@ extension HomeTab {
         switch self {
         case .showroom: return "house"
         case .cars: return "car"
+        case .map: return "map"
         case .search: return "magnifyingglass"
         case .favorites: return "heart"
         case .account: return "person.crop.circle"

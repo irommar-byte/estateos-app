@@ -46,6 +46,13 @@ final class AppModel: ObservableObject {
     @Published var homeCriteria = HomeCriteria()
     /// EstateOS Intelligence "Dla Ciebie" — offer ids ranked for the signed-in user.
     @Published var intelligenceOfferIds: [Int] = []
+    /// "Ostatnio oglądane" — newest first, persisted on this Apple TV.
+    @Published var recentOfferIds: [Int] = AppModel.storedRecents(AppModel.recentOffersKey)
+    @Published var recentCarIds: [Int] = AppModel.storedRecents(AppModel.recentCarsKey)
+    /// Shell navigation asked for from inside a detail ("Na mapie").
+    @Published var requestedTab: HomeTab?
+    /// Offer the map should centre on when it opens.
+    @Published var mapFocusOfferId: Int?
     @Published var carCriteria = CarCriteria()
     @Published var selectedHomePropertyTypes: Set<HomePropertyKind> = []
     @Published var favoriteCarIds: Set<Int> = TvPreferences.favoriteCarIds
@@ -810,11 +817,13 @@ final class AppModel: ObservableObject {
 
     func openCarDetail(_ car: CarListing) {
         selectedCar = car
+        noteRecent(car.id, key: Self.recentCarsKey)
         Task { await api.recordCarView(id: car.id) }
     }
 
     func closeCarDetail() {
         selectedCar = nil
+        publishRecentsAfterDismiss()
     }
 
     func searchSpotlight(query: String) async throws -> SpotlightSearchResponse {
@@ -845,6 +854,7 @@ final class AppModel: ObservableObject {
 
     func openDetail(_ offer: EstateOffer) {
         selectedOffer = offer
+        noteRecent(offer.id, key: Self.recentOffersKey)
         Task {
             await api.recordOfferView(id: offer.id)
             await refreshSelectedOfferDetail(id: offer.id)
@@ -872,6 +882,7 @@ final class AppModel: ObservableObject {
 
     func closeDetail() {
         selectedOffer = nil
+        publishRecentsAfterDismiss()
     }
 
     func openImmersiveBrowse(at index: Int, from source: [EstateOffer]? = nil) {
@@ -1365,6 +1376,14 @@ struct CarCriteria: Hashable {
 }
 
 enum FilterFormat {
+    /// 1 oferta · 3 oferty · 5 ofert (mianownik).
+    static func offers(_ n: Int) -> String {
+        if n == 1 { return "1 oferta" }
+        let mod10 = n % 10, mod100 = n % 100
+        let word = (2...4).contains(mod10) && !(12...14).contains(mod100) ? "oferty" : "ofert"
+        return "\(grouped(n)) \(word)"
+    }
+
     static func grouped(_ value: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
@@ -1542,11 +1561,75 @@ extension AppModel {
     }
 
     func recordView(of offer: EstateOffer) {
+        noteRecent(offer.id, key: Self.recentOffersKey)
         Task { await api.recordOfferView(id: offer.id) }
     }
 
     func recordView(of car: CarListing) {
+        noteRecent(car.id, key: Self.recentCarsKey)
         Task { await api.recordCarView(id: car.id) }
+    }
+}
+
+// MARK: - Ostatnio oglądane
+
+extension AppModel {
+    nonisolated static let recentOffersKey = "eos.recentOfferIds"
+    nonisolated static let recentCarsKey = "eos.recentCarIds"
+    private static let recentLimit = 24
+
+    nonisolated static func storedRecents(_ key: String) -> [Int] {
+        (UserDefaults.standard.array(forKey: key) as? [Int]) ?? []
+    }
+
+    /// Written to disk at once; published only after the detail closes, so the showroom under
+    /// the detail does not rebuild during the open animation.
+    func noteRecent(_ id: Int, key: String) {
+        var list = Self.storedRecents(key)
+        list.removeAll { $0 == id }
+        list.insert(id, at: 0)
+        UserDefaults.standard.set(Array(list.prefix(Self.recentLimit)), forKey: key)
+    }
+
+    private func publishRecentsAfterDismiss() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            let offers = Self.storedRecents(Self.recentOffersKey)
+            let cars = Self.storedRecents(Self.recentCarsKey)
+            if offers != recentOfferIds { recentOfferIds = offers }
+            if cars != recentCarIds { recentCarIds = cars }
+        }
+    }
+
+    var recentOffers: [EstateOffer] {
+        let byId = Dictionary(offers.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return recentOfferIds.compactMap { byId[$0] }
+    }
+
+    var recentCars: [CarListing] {
+        let byId = Dictionary(cars.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return recentCarIds.compactMap { byId[$0] }
+    }
+
+    func clearRecents() {
+        UserDefaults.standard.removeObject(forKey: Self.recentOffersKey)
+        UserDefaults.standard.removeObject(forKey: Self.recentCarsKey)
+        recentOfferIds = []
+        recentCarIds = []
+    }
+
+    // MARK: Mapa
+
+    /// Offers that can be placed on the map — the current browse set (filters applied).
+    var mappableOffers: [EstateOffer] {
+        filteredOffersForBrowse.filter { $0.extras.coordinate != nil }
+    }
+
+    /// "Na mapie" from an offer: close the detail and open the map centred on it.
+    func showOnMap(_ offer: EstateOffer) {
+        mapFocusOfferId = offer.id
+        closeDetail()
+        requestedTab = .map
     }
 }
 

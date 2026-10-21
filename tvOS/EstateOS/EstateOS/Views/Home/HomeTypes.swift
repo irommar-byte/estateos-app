@@ -5,13 +5,14 @@ import SwiftUI
 enum HomeTab: String, CaseIterable, Hashable {
     case showroom = "Nieruchomości"
     case cars = "Samochody"
+    case map = "Mapa"
     case search = "Szukaj"
     case favorites = "Ulubione"
     case account = "Konto"
 
     var brand: CatalogBrand? {
         switch self {
-        case .showroom: return .home
+        case .showroom, .map: return .home
         case .cars: return .car
         default: return nil
         }
@@ -21,6 +22,7 @@ enum HomeTab: String, CaseIterable, Hashable {
         switch self {
         case .showroom: return "Nieruchomości, przeglądaj oferty"
         case .cars: return "Samochody, przeglądaj auta"
+        case .map: return "Mapa ofert"
         case .search: return "Szukaj ofert, agentów i biur"
         case .favorites: return "Ulubione oferty"
         case .account: return "Konto i ustawienia"
@@ -31,6 +33,7 @@ enum HomeTab: String, CaseIterable, Hashable {
         switch self {
         case .showroom: return "house.fill"
         case .cars: return "car.fill"
+        case .map: return "map.fill"
         case .search: return "magnifyingglass"
         case .favorites: return "heart.fill"
         case .account: return "person.crop.circle"

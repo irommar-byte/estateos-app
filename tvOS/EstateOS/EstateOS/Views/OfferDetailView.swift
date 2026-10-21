@@ -36,6 +36,7 @@ struct OfferDetailView: View {
             heroTransitionID: heroTransitionID,
             similar: similar,
             onOpenSimilar: openSimilar,
+            onShowOnMap: liveOffer.extras.coordinate == nil ? nil : showOnMap,
             qrSheet: {
                 ContactQrSheet(offer: liveOffer)
             }
@@ -73,6 +74,11 @@ struct OfferDetailView: View {
         withAnimation(.easeInOut(duration: 0.5)) { trail.append(next) }
     }
 
+    private func showOnMap() {
+        heroTransition.end()
+        app.showOnMap(liveOffer)
+    }
+
     private func goBack() {
         if !trail.isEmpty {
             withAnimation(.easeInOut(duration: 0.45)) { _ = trail.removeLast() }
@@ -108,7 +114,12 @@ struct OfferDetailView: View {
             specsPanelIcon: "list.bullet.rectangle",
             ownerStats: ownerStats,
             transactionBadgeText: live.transactionLabel,
-            transactionBadgeIsRent: isRent
+            transactionBadgeIsRent: isRent,
+            video: OfferVideoSource(raw: live.extras.videoUrl),
+            floorPlan: {
+                let media = FloorPlanMedia(title: live.title, extras: live.extras)
+                return media.isEmpty ? nil : media
+            }()
         )
     }
 

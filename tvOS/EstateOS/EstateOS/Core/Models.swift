@@ -437,6 +437,16 @@ struct EstateOfferExtras: Codable, Hashable {
     var hasAirConditioning = false
     var isDuplex = false
     var isFurnished = false
+    // Media & location
+    var videoUrl: String?
+    var floorPlanUrl: String?
+    var floorPlanExtraUrls: [String] = []
+    var floorPlan3dUrl: String?
+    var scan: FloorPlanScan?
+    var lat: Double?
+    var lng: Double?
+    var isExactLocation = true
+    var street: String?
 
     static let empty = EstateOfferExtras()
 
@@ -444,6 +454,14 @@ struct EstateOfferExtras: Codable, Hashable {
         case floor, totalFloors, yearBuilt, plotArea, pricePerSqm, pricePln, condition, heating
         case hasBalcony, hasElevator, hasStorage, hasParking, hasGarden, hasAirConditioning
         case isDuplex, isFurnished
+        case videoUrl, floorPlanUrl, floorPlan, floorPlanExtraUrls, floorPlan3dUrl, floorPlanScanMeta
+        case lat, lng, isExactLocation, street
+    }
+
+    var hasFloorPlan: Bool { floorPlanUrl != nil || !floorPlanExtraUrls.isEmpty || (scan?.walls.isEmpty == false) }
+    var coordinate: (lat: Double, lng: Double)? {
+        guard let lat, let lng, lat != 0 || lng != 0 else { return nil }
+        return (lat, lng)
     }
 
     init() {}
@@ -484,6 +502,30 @@ struct EstateOfferExtras: Codable, Hashable {
         hasAirConditioning = flag(.hasAirConditioning)
         isDuplex = flag(.isDuplex)
         isFurnished = flag(.isFurnished)
+        func text(_ k: CodingKeys) -> String? {
+            guard let v = try? c.decodeIfPresent(String.self, forKey: k) else { return nil }
+            let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        videoUrl = text(.videoUrl)
+        floorPlanUrl = text(.floorPlanUrl) ?? text(.floorPlan)
+        floorPlan3dUrl = text(.floorPlan3dUrl)
+        if let list = try? c.decodeIfPresent([String].self, forKey: .floorPlanExtraUrls) {
+            floorPlanExtraUrls = list
+        } else if let raw = text(.floorPlanExtraUrls), let data = raw.data(using: .utf8),
+                  let list = try? JSONDecoder().decode([String].self, from: data) {
+            floorPlanExtraUrls = list
+        }
+        floorPlanExtraUrls = floorPlanExtraUrls.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        if let obj = try? c.decodeIfPresent(FloorPlanScan.self, forKey: .floorPlanScanMeta) {
+            scan = obj
+        } else if let raw = text(.floorPlanScanMeta), let data = raw.data(using: .utf8) {
+            scan = try? JSONDecoder().decode(FloorPlanScan.self, from: data)
+        }
+        lat = dbl(.lat)
+        lng = dbl(.lng)
+        if let exact = try? c.decodeIfPresent(Bool.self, forKey: .isExactLocation) { isExactLocation = exact }
+        street = text(.street)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -504,6 +546,77 @@ struct EstateOfferExtras: Codable, Hashable {
         try c.encode(hasAirConditioning, forKey: .hasAirConditioning)
         try c.encode(isDuplex, forKey: .isDuplex)
         try c.encode(isFurnished, forKey: .isFurnished)
+        try c.encodeIfPresent(videoUrl, forKey: .videoUrl)
+        try c.encodeIfPresent(floorPlanUrl, forKey: .floorPlanUrl)
+        if !floorPlanExtraUrls.isEmpty { try c.encode(floorPlanExtraUrls, forKey: .floorPlanExtraUrls) }
+        try c.encodeIfPresent(floorPlan3dUrl, forKey: .floorPlan3dUrl)
+        try c.encodeIfPresent(scan, forKey: .floorPlanScanMeta)
+        try c.encodeIfPresent(lat, forKey: .lat)
+        try c.encodeIfPresent(lng, forKey: .lng)
+        try c.encode(isExactLocation, forKey: .isExactLocation)
+        try c.encodeIfPresent(street, forKey: .street)
+    }
+}
+
+/// LiDAR floor-plan geometry (`Offer.floorPlanScanMeta`, RoomPlan → metres on the floor plane).
+/// Mirrors `src/types/roomScan.ts` (FloorPlanScanMeta) — only what the TV draws.
+struct FloorPlanScan: Codable, Hashable {
+    struct Wall: Codable, Hashable { var x1, z1, x2, z2: Double }
+    struct Opening: Codable, Hashable {
+        var kind: String
+        var x1, z1, x2, z2: Double
+    }
+    struct Point: Codable, Hashable { var x, z: Double }
+    struct Section: Codable, Hashable {
+        var label: String?
+        var centerX: Double
+        var centerZ: Double
+        var areaSqM: Double?
+        var floorPolygon: [Point]?
+    }
+    struct Object: Codable, Hashable {
+        var category: String
+        var centerX: Double
+        var centerZ: Double
+        var widthM: Double?
+        var depthM: Double?
+        var rotationDeg: Double?
+    }
+    struct Bounds: Codable, Hashable { var minX, maxX, minZ, maxZ: Double }
+
+    var walls: [Wall]
+    var openings: [Opening]
+    var sections: [Section]
+    var objects: [Object]
+    var bounds: Bounds?
+    var totalAreaSqM: Double?
+    var ceilingHeightM: Double?
+    var northRotationDegrees: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case walls, openings, sections, objects, bounds, totalAreaSqM, ceilingHeightM, northRotationDegrees
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        walls = (try? c.decodeIfPresent([Wall].self, forKey: .walls)) ?? []
+        openings = (try? c.decodeIfPresent([Opening].self, forKey: .openings)) ?? []
+        sections = (try? c.decodeIfPresent([Section].self, forKey: .sections)) ?? []
+        objects = (try? c.decodeIfPresent([Object].self, forKey: .objects)) ?? []
+        bounds = try? c.decodeIfPresent(Bounds.self, forKey: .bounds)
+        totalAreaSqM = try? c.decodeIfPresent(Double.self, forKey: .totalAreaSqM)
+        ceilingHeightM = try? c.decodeIfPresent(Double.self, forKey: .ceilingHeightM)
+        northRotationDegrees = try? c.decodeIfPresent(Double.self, forKey: .northRotationDegrees)
+    }
+
+    /// Bounds from the data, or computed from the walls.
+    var resolvedBounds: Bounds? {
+        if let bounds, bounds.maxX > bounds.minX, bounds.maxZ > bounds.minZ { return bounds }
+        let xs = walls.flatMap { [$0.x1, $0.x2] }
+        let zs = walls.flatMap { [$0.z1, $0.z2] }
+        guard let minX = xs.min(), let maxX = xs.max(), let minZ = zs.min(), let maxZ = zs.max(),
+              maxX > minX, maxZ > minZ else { return nil }
+        return Bounds(minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ)
     }
 }
 
