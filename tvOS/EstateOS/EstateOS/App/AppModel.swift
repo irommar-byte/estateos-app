@@ -44,6 +44,8 @@ final class AppModel: ObservableObject {
     @Published var selectedCarMakes: Set<String> = []
     /// Extended criteria edited on the filter screen (location cascade, ranges, amenities, sort).
     @Published var homeCriteria = HomeCriteria()
+    /// EstateOS Intelligence "Dla Ciebie" — offer ids ranked for the signed-in user.
+    @Published var intelligenceOfferIds: [Int] = []
     @Published var carCriteria = CarCriteria()
     @Published var selectedHomePropertyTypes: Set<HomePropertyKind> = []
     @Published var favoriteCarIds: Set<Int> = TvPreferences.favoriteCarIds
@@ -93,6 +95,7 @@ final class AppModel: ObservableObject {
             }
         }
         consumePendingDeepLink()
+        await refreshIntelligence()
     }
 
     func login(login: String, password: String) async {
@@ -103,6 +106,7 @@ final class AppModel: ObservableObject {
             try await refreshOffers()
             try? await refreshCars()
             await refreshFavorites()
+            await refreshIntelligence()
             closeLoginSheet()
         } catch {
             globalError = TvErrorMessages.message(for: error)
@@ -132,6 +136,7 @@ final class AppModel: ObservableObject {
     }
 
     func logout() {
+        intelligenceOfferIds = []
         SessionStore.clear()
         session = nil
         selectedOffer = nil
@@ -1016,6 +1021,7 @@ final class AppModel: ObservableObject {
                 try? SessionStore.save(session)
                 self.pairingStatusMessage = "Zalogowano przez iPhone."
                 self.isLoginSheetPresented = false
+                Task { await self.refreshIntelligence() }
                 try? await self.refreshOffers()
                 await self.refreshFavorites()
                 tvPairPollTask?.cancel()
@@ -1541,5 +1547,37 @@ extension AppModel {
 
     func recordView(of car: CarListing) {
         Task { await api.recordCarView(id: car.id) }
+    }
+}
+
+
+// MARK: - EstateOS Intelligence
+
+extension AppModel {
+    /// Offers Intelligence picked for this viewer, in its order (only those in the catalog).
+    var intelligenceOffers: [EstateOffer] {
+        guard !intelligenceOfferIds.isEmpty else { return [] }
+        let byId = Dictionary(offers.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return intelligenceOfferIds.compactMap { byId[$0] }
+    }
+
+    func refreshIntelligence() async {
+        guard session != nil else {
+            intelligenceOfferIds = []
+            return
+        }
+        guard let picks = try? await api.intelligenceFeed(limit: 30) else { return }
+        intelligenceOfferIds = picks.map(\.offerId)
+    }
+
+    /// Intelligence picks related to an open offer: same transaction, excluding the offer itself.
+    func intelligenceSection(excluding offer: EstateOffer) -> ShowroomSection? {
+        let isRent = (offer.transactionType ?? "").uppercased().contains("RENT")
+        let items = intelligenceOffers
+            .filter { $0.id != offer.id && (($0.transactionType ?? "").uppercased().contains("RENT")) == isRent }
+            .prefix(20)
+            .map(ShowroomItem.init(offer:))
+        guard !items.isEmpty else { return nil }
+        return ShowroomSection.intelligence(items: Array(items), caption: "Dobrane do Twojego gustu na podstawie tego, co oglądasz")
     }
 }

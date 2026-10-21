@@ -406,7 +406,9 @@ struct DetailShellView<QRSheet: View>: View {
                                     width: 400,
                                     action: { onOpenSimilar(item) }
                                 ) {
-                                    if let badge = item.badge {
+                                    if section.isIntelligence {
+                                        IntelligenceBadge()
+                                    } else if let badge = item.badge {
                                         EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
                                     }
                                 }

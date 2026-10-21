@@ -55,6 +55,15 @@ struct ShowroomSection: Identifiable {
     var icon: String = "square.grid.2x2"
     var tint: Color = .white
     var caption: String = ""
+    /// EstateOS Intelligence rail — drawn with the iridescent Siri-style brand.
+    var isIntelligence = false
+
+    static func intelligence(items: [ShowroomItem], caption: String) -> ShowroomSection {
+        ShowroomSection(
+            id: "intelligence-for-you", title: "Dla Ciebie", items: items,
+            icon: "brain", tint: EOSIntelligence.violet, caption: caption, isIntelligence: true
+        )
+    }
 }
 
 /// Category palette — muted, close in lightness, so rails feel like chapters of one book.
@@ -146,7 +155,7 @@ struct HomeShowroomView: View {
                         ShowroomHero(
                             spotlight: spotlight,
                             fallback: snapshot.featured,
-                            newest: snapshot.sections.first?.items ?? [],
+                            newest: snapshot.sections.first(where: { !$0.isIntelligence })?.items ?? [],
                             brand: brand,
                             accent: accent,
                             primaryFocused: $primaryFocused,
@@ -154,8 +163,11 @@ struct HomeShowroomView: View {
                         )
                         .containerRelativeFrame(.vertical, alignment: .bottomLeading) { h, _ in h * 0.66 }
 
-                        ForEach(snapshot.sections) { section in
+                        ForEach(Array(snapshot.sections.enumerated()), id: \.element.id) { index, section in
                             ShowroomRail(section: section, spotlight: spotlight)
+                            if index == 0, brand == .home, app.session == nil {
+                                IntelligenceInviteCard { app.openLoginSheet() }
+                            }
                         }
                     }
                     .padding(.bottom, 80)
@@ -192,6 +204,7 @@ struct HomeShowroomView: View {
             app.homeFilterSummary, app.carFilterSummary,
             "\(app.isHomeFilteringActive)", "\(app.isCarFilteringActive)",
             "\(app.favoriteOfferIds.count)", "\(app.favoriteCarIds.count)", "\(app.session != nil)",
+            "\(app.intelligenceOfferIds.count)", "\(app.intelligenceOfferIds.first ?? 0)",
         ].joined(separator: "|")
     }
 
@@ -281,6 +294,10 @@ struct HomeShowroomView: View {
                 add("Wyniki wyszukiwania", offers: app.filteredOffersForBrowse, limit: 80,
                     icon: "line.3.horizontal.decrease", tint: C.neutral, caption: app.homeFilterSummary)
             } else {
+                let picks = app.intelligenceOffers.prefix(24).map(ShowroomItem.init(offer:))
+                if !picks.isEmpty {
+                    result.append(.intelligence(items: Array(picks), caption: "Dobrane przez EstateOS Intelligence do Twojego gustu"))
+                }
                 add("Nowe w ostatnich 24 h", offers: app.showroomHomeNewest, limit: 24,
                     icon: "clock.badge.checkmark", tint: C.fresh, caption: "Dodane w ciągu doby")
                 if app.session != nil {
@@ -474,7 +491,9 @@ private struct ShowroomRail: View {
                             onFocus: { spotlight.focus(item) },
                             action: { open(item) }
                         ) {
-                            if let badge = item.badge {
+                            if section.isIntelligence {
+                                IntelligenceBadge()
+                            } else if let badge = item.badge {
                                 EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
                             }
                         }
@@ -528,6 +547,14 @@ struct ShowroomSectionHeader: View {
     let section: ShowroomSection
 
     var body: some View {
+        if section.isIntelligence {
+            IntelligenceSectionHeader(count: section.items.count, caption: section.caption)
+        } else {
+            categoryHeader
+        }
+    }
+
+    private var categoryHeader: some View {
         HStack(alignment: .center, spacing: 22) {
             Image(systemName: section.icon)
                 .font(.system(size: 26, weight: .semibold))
@@ -574,5 +601,190 @@ struct ShowroomSectionHeader: View {
         .padding(.top, 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(section.title), \(section.items.count) ofert. \(section.caption)")
+    }
+}
+
+
+// MARK: - EstateOS Intelligence brand (mirrors src/lib/discovery/intelligenceBrand.ts)
+
+/// "Gasoline on water" iridescence — the same Siri palette as the iPhone app.
+enum EOSIntelligence {
+    static func hex(_ v: UInt32) -> Color {
+        Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+    static let base: [Color] = [0xFF2D55, 0xBF5AF2, 0x5E5CE6, 0x64D2FF, 0x30D158, 0xFFD60A, 0xFF9F0A, 0xFF2D55].map(hex)
+    static let hot: [Color] = [0xFF375F, 0xFFD60A, 0x64D2FF, 0xBF5AF2, 0xFF375F].map(hex)
+    static let cool: [Color] = [0x64D2FF, 0x5E5CE6, 0x30D158, 0xBF5AF2, 0x64D2FF].map(hex)
+    static let violet = hex(0xBF5AF2)
+}
+
+/// Living orb: rotating oil-on-water ring, soft rainbow glow, white brain glyph in a dark core.
+struct EOSIntelligenceOrb: View {
+    var size: CGFloat = 60
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var spin = false
+    @State private var breathe = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(AngularGradient(colors: EOSIntelligence.base, center: .center))
+                .blur(radius: size * 0.32)
+                .opacity(breathe ? 0.85 : 0.55)
+                .scaleEffect(breathe ? 1.25 : 1.05)
+            Circle()
+                .fill(AngularGradient(colors: EOSIntelligence.base, center: .center))
+                .rotationEffect(.degrees(spin ? 360 : 0))
+            Circle()
+                .fill(AngularGradient(colors: EOSIntelligence.cool, center: .center))
+                .rotationEffect(.degrees(spin ? -360 : 0))
+                .blendMode(.screen)
+                .opacity(0.6)
+                .padding(size * 0.06)
+            Circle()
+                .fill(Color.black.opacity(0.62))
+                .padding(size * 0.14)
+            Image(systemName: "brain")
+                .font(.system(size: size * 0.36, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: size, height: size)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 9).repeatForever(autoreverses: false)) { spin = true }
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) { breathe = true }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Rail header for "Dla Ciebie": orb, iridescent title, brand eyebrow, rainbow hairline.
+struct IntelligenceSectionHeader: View {
+    let count: Int
+    let caption: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shimmer = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 22) {
+            EOSIntelligenceOrb(size: 64)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ESTATEOS™ INTELLIGENCE")
+                    .font(.system(size: 16, weight: .heavy))
+                    .tracking(2.6)
+                    .foregroundStyle(.white.opacity(0.7))
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    Text("Dla Ciebie")
+                        .font(.system(size: 38, weight: .bold))
+                        .tracking(-0.4)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: EOSIntelligence.hot,
+                                startPoint: shimmer ? .topLeading : .leading,
+                                endPoint: shimmer ? .trailing : .bottomTrailing
+                            )
+                        )
+                        .hueRotation(.degrees(shimmer ? 40 : 0))
+                    Text("\(count)")
+                        .font(.system(size: 20, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule().fill(
+                                LinearGradient(colors: EOSIntelligence.cool, startPoint: .leading, endPoint: .trailing)
+                            ).opacity(0.45)
+                        )
+                }
+                if !caption.isEmpty {
+                    Text(caption)
+                        .font(.system(size: 21, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .lineLimit(1)
+                }
+            }
+            .fixedSize()
+
+            LinearGradient(colors: EOSIntelligence.base + [.clear], startPoint: .leading, endPoint: .trailing)
+                .frame(height: 2)
+                .frame(maxWidth: 560)
+                .opacity(0.8)
+                .padding(.leading, 8)
+        }
+        .padding(.top, 8)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) { shimmer = true }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("EstateOS Intelligence, Dla Ciebie, \(count) ofert. \(caption)")
+    }
+}
+
+/// Small iridescent capsule on cards picked by Intelligence.
+struct IntelligenceBadge: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .bold))
+            Text("Dla Ciebie")
+                .font(.system(size: 16, weight: .bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule().fill(
+                LinearGradient(colors: EOSIntelligence.hot, startPoint: .leading, endPoint: .trailing)
+            ).opacity(0.85)
+        )
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+        .shadow(color: EOSIntelligence.violet.opacity(0.45), radius: 10)
+    }
+}
+
+/// Signed-out invitation in place of the "Dla Ciebie" rail.
+struct IntelligenceInviteCard: View {
+    var onLogin: () -> Void
+
+    var body: some View {
+        HStack(spacing: 36) {
+            EOSIntelligenceOrb(size: 120)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("ESTATEOS™ INTELLIGENCE")
+                    .font(.system(size: 16, weight: .heavy))
+                    .tracking(2.6)
+                    .foregroundStyle(.white.opacity(0.7))
+                Text("Oferty dobrane do Twojego gustu")
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundStyle(LinearGradient(colors: EOSIntelligence.hot, startPoint: .leading, endPoint: .trailing))
+                Text("Zaloguj się przez iPhone’a — Intelligence pokaże tu propozycje, które uczy się z tego, co lubisz.")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(2)
+                    .frame(maxWidth: 900, alignment: .leading)
+            }
+            Spacer(minLength: 0)
+            Button(action: onLogin) {
+                Label("Zaloguj się", systemImage: "iphone")
+            }
+            .eosButton()
+        }
+        .padding(36)
+        .background(
+            RoundedRectangle(cornerRadius: 40, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 40, style: .continuous)
+                .strokeBorder(
+                    AngularGradient(colors: EOSIntelligence.base, center: .center),
+                    lineWidth: 2
+                )
+                .opacity(0.7)
+        )
+        .shadow(color: EOSIntelligence.violet.opacity(0.25), radius: 40, y: 10)
+        .focusSection()
     }
 }

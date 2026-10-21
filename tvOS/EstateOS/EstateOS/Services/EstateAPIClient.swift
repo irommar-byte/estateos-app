@@ -250,6 +250,16 @@ final class EstateAPIClient {
         )
     }
 
+    /// EstateOS Intelligence "Dla Ciebie" — ranked offer ids for the signed-in user
+    /// (`GET /api/mobile/v1/discovery/feed?mode=for_you`, Bearer token required).
+    func intelligenceFeed(limit: Int = 30) async throws -> [IntelligencePick] {
+        let envelope: IntelligenceFeedEnvelope = try await request(
+            "GET",
+            path: "/api/mobile/v1/discovery/feed?mode=for_you&limit=\(limit)"
+        )
+        return envelope.items ?? []
+    }
+
     private func request<T: Decodable>(
         _ method: String,
         path: String,
@@ -431,4 +441,28 @@ enum SpotlightResultKind: String, Decodable, Hashable, CaseIterable {
         case .agent: return "person.fill"
         }
     }
+}
+
+
+// MARK: - EstateOS Intelligence
+
+struct IntelligencePick: Decodable, Hashable {
+    let offerId: Int
+    let score: Double?
+
+    enum CodingKeys: String, CodingKey { case offerId, id, score }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let v = try? c.decode(Int.self, forKey: .offerId) {
+            offerId = v
+        } else {
+            offerId = try c.decode(Int.self, forKey: .id)
+        }
+        score = try? c.decodeIfPresent(Double.self, forKey: .score)
+    }
+}
+
+struct IntelligenceFeedEnvelope: Decodable {
+    let items: [IntelligencePick]?
 }

@@ -49,7 +49,9 @@ struct OfferDetailView: View {
         }
         .background(Color.black.ignoresSafeArea())
         .task(id: current.id) {
-            similar = app.similarSections(for: current)
+            var sections = app.similarSections(for: current)
+            if let picks = app.intelligenceSection(excluding: current) { sections.insert(picks, at: 0) }
+            similar = sections
             guard liveOffer.displayDescription == nil else { return }
             isLoadingDescription = true
             defer { isLoadingDescription = false }
