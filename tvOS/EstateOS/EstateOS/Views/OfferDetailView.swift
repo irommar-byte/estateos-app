@@ -8,38 +8,76 @@ struct OfferDetailView: View {
     var heroTransitionID: String? = nil
 
     @State private var isLoadingDescription = false
+    /// Offers opened from "Może Ci się spodobać" — MENU walks back through them.
+    @State private var trail: [EstateOffer] = []
+    @State private var similar: [ShowroomSection] = []
+
+    /// The offer on screen: the opened one, or the last one picked from suggestions.
+    private var current: EstateOffer { trail.last ?? offer }
 
     private var liveOffer: EstateOffer {
-        if let selected = app.selectedOffer, selected.id == offer.id { return selected }
-        return offer
+        let base = current
+        if let selected = app.selectedOffer, selected.id == base.id { return selected }
+        if let fresh = app.offers.first(where: { $0.id == base.id }) { return fresh }
+        return base
     }
 
     var body: some View {
+        // ZStack hosts the cross-fade when a suggested listing replaces the current one.
+        ZStack {
         DetailShellView(
             presentation: presentation,
             isFavorite: app.isFavorite(liveOffer.id),
             favoriteIdleAccent: .green,
-            onClose: {
-                heroTransition.end()
-                app.closeDetail()
-            },
+            onClose: goBack,
             onToggleFavorite: { Task { await app.toggleFavorite(liveOffer) } },
             isLoadingDescription: isLoadingDescription,
             heroNamespace: heroNamespace,
             heroTransitionID: heroTransitionID,
+            similar: similar,
+            onOpenSimilar: openSimilar,
             qrSheet: {
                 ContactQrSheet(offer: liveOffer)
             }
         )
-        .task(id: offer.id) {
+        // A new offer = a fresh page (focus and scroll start at the top), cross-faded in.
+        .id(current.id)
+        .transition(.asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 1.03)),
+            removal: .opacity
+        ))
+        }
+        .background(Color.black.ignoresSafeArea())
+        .task(id: current.id) {
+            similar = app.similarSections(for: current)
             guard liveOffer.displayDescription == nil else { return }
             isLoadingDescription = true
             defer { isLoadingDescription = false }
-            await app.refreshSelectedOfferDetail(id: offer.id)
+            if trail.isEmpty {
+                await app.refreshSelectedOfferDetail(id: offer.id)
+            } else {
+                await app.loadFullOfferIfNeeded(id: current.id)
+            }
         }
         .onChange(of: liveOffer.description) { _, _ in
             if liveOffer.displayDescription != nil { isLoadingDescription = false }
         }
+    }
+
+    private func openSimilar(_ item: ShowroomItem) {
+        guard let next = item.offer else { return }
+        if let url = item.imageURL { EOSImageCache.prefetch(urls: [url], size: .screen) }
+        app.recordView(of: next)
+        withAnimation(.easeInOut(duration: 0.5)) { trail.append(next) }
+    }
+
+    private func goBack() {
+        if !trail.isEmpty {
+            withAnimation(.easeInOut(duration: 0.45)) { _ = trail.removeLast() }
+            return
+        }
+        heroTransition.end()
+        app.closeDetail()
     }
 
     private var presentation: DetailPresentation {

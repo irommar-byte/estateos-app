@@ -524,7 +524,7 @@ private struct ShowroomRail: View {
 
 /// Chapter header for a rail: tinted glyph in a glass disc, bold title with count, one-line
 /// caption, and a hairline in the category colour fading out to the right.
-private struct ShowroomSectionHeader: View {
+struct ShowroomSectionHeader: View {
     let section: ShowroomSection
 
     var body: some View {

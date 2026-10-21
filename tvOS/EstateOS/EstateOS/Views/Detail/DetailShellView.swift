@@ -20,6 +20,9 @@ struct DetailShellView<QRSheet: View>: View {
     var isLoadingDescription: Bool = false
     var heroNamespace: Namespace.ID? = nil
     var heroTransitionID: String? = nil
+    /// "Może Ci się spodobać" rails at the end of the page (similar area / price / layout).
+    var similar: [ShowroomSection] = []
+    var onOpenSimilar: (ShowroomItem) -> Void = { _ in }
     @ViewBuilder var qrSheet: () -> QRSheet
 
     @State private var showQR = false
@@ -33,18 +36,20 @@ struct DetailShellView<QRSheet: View>: View {
         let start: Int
     }
 
-    private enum DetailPage: Hashable { case offer, details, photos }
+    private enum DetailPage: Hashable { case offer, details, photos, similar }
 
     private enum DetailFocus: Hashable {
         case gallery, contact, favorite
         case description, contactCard
         case photo(Int)
+        case similar(String)
 
         var page: DetailPage {
             switch self {
             case .gallery, .contact, .favorite: return .offer
             case .description, .contactCard: return .details
             case .photo: return .photos
+            case .similar: return .similar
             }
         }
     }
@@ -79,6 +84,11 @@ struct DetailShellView<QRSheet: View>: View {
                                 photosScreen
                                     .id(DetailPage.photos)
                             }
+
+                            if !similar.isEmpty {
+                                similarScreen
+                                    .id(DetailPage.similar)
+                            }
                         }
                     }
                     .scrollClipDisabled()
@@ -100,6 +110,7 @@ struct DetailShellView<QRSheet: View>: View {
             case .offer: onClose()
             case .details: focus = firstFocus
             case .photos: focus = .description
+            case .similar: focus = imageURLs.count > 1 ? .photo(0) : .description
             }
         }
         .fullScreenCover(isPresented: $showQR, content: qrSheet)
@@ -367,6 +378,53 @@ struct DetailShellView<QRSheet: View>: View {
         }
         .buttonStyle(.card)
         .focused($focus, equals: .contactCard)
+    }
+
+    // MARK: Screen 4 · Może Ci się spodobać
+
+    private var similarScreen: some View {
+        VStack(alignment: .leading, spacing: 56) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Może Ci się spodobać")
+                    .font(.system(size: 44, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(.white)
+                Text("Podobne oferty — wybierz, aby przejść dalej. MENU wraca do poprzedniej.")
+                    .font(.system(size: 21, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            ForEach(similar) { section in
+                VStack(alignment: .leading, spacing: 4) {
+                    ShowroomSectionHeader(section: section)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .top, spacing: 48) {
+                            ForEach(section.items) { item in
+                                EOSPosterCard(
+                                    imageURL: item.imageURL,
+                                    title: item.title,
+                                    subtitle: item.cardSubtitle,
+                                    width: 400,
+                                    action: { onOpenSimilar(item) }
+                                ) {
+                                    if let badge = item.badge {
+                                        EOSGlassBadge(text: badge, tint: Color(red: 0.5, green: 0.86, blue: 0.66))
+                                    }
+                                }
+                                .focused($focus, equals: .similar("\(section.id)|\(item.id)"))
+                            }
+                        }
+                        .padding(.vertical, 36)
+                    }
+                    .scrollClipDisabled()
+                }
+                .focusSection()
+                .onAppear {
+                    EOSImageCache.prefetch(urls: section.items.prefix(6).compactMap(\.imageURL), size: .card)
+                }
+            }
+        }
+        .padding(.top, 70)
+        .padding(.bottom, 140)
     }
 
     // MARK: Screen 3 · Zdjęcia

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import SwiftUI
 #if canImport(TVServices)
 import TVServices
 #endif
@@ -1397,5 +1398,148 @@ enum FilterFormat {
         case let (nil, hi?): return "do \(Int(hi))"
         default: return "Dowolny"
         }
+    }
+}
+
+// MARK: - "Może Ci się spodobać" — similar listings (2026-10)
+//
+// Local, instant and for everyone (no login): built from the catalog already on the device.
+// EstateOS Intelligence (`/api/mobile/v1/discovery/feed`) needs a signed-in user, so it can be
+// added later as an extra "Dla Ciebie" row for logged-in viewers.
+
+extension AppModel {
+    func similarSections(for offer: EstateOffer) -> [ShowroomSection] {
+        typealias C = ShowroomCategory
+        let isRent = (offer.transactionType ?? "").uppercased().contains("RENT")
+        let kind = HomePropertyKind.allCases.first { matchesHomePropertyType(offer, kind: $0) }
+        let price = offer.extras.pricePln ?? offer.price
+        let city = (offer.city ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let district = offer.displayDistrict
+
+        let pool = offers.filter { other in
+            guard other.id != offer.id else { return false }
+            let otherRent = (other.transactionType ?? "").uppercased().contains("RENT")
+            guard otherRent == isRent else { return false }
+            if let kind, !matchesHomePropertyType(other, kind: kind) { return false }
+            return true
+        }
+        func priceGap(_ o: EstateOffer) -> Double {
+            guard let price, let p = o.extras.pricePln ?? o.price else { return .greatestFiniteMagnitude }
+            return abs(p - price)
+        }
+
+        var used = Set<Int>()
+        var result: [ShowroomSection] = []
+        func add(_ title: String, _ list: [EstateOffer], icon: String, tint: Color, caption: String) {
+            let fresh = list.filter { !used.contains($0.id) }.prefix(20)
+            guard !fresh.isEmpty else { return }
+            fresh.forEach { used.insert($0.id) }
+            result.append(ShowroomSection(
+                id: "similar-\(title)", title: title,
+                items: fresh.map(ShowroomItem.init(offer:)),
+                icon: icon, tint: tint, caption: caption
+            ))
+        }
+
+        if !city.isEmpty {
+            let nearby = pool
+                .filter { ($0.city ?? "").caseInsensitiveCompare(city) == .orderedSame }
+                .sorted { a, b in
+                    let da = district != nil && a.displayDistrict == district
+                    let db = district != nil && b.displayDistrict == district
+                    if da != db { return da }
+                    return priceGap(a) < priceGap(b)
+                }
+            add("W tej samej okolicy", nearby, icon: "mappin.and.ellipse", tint: C.place,
+                caption: [district, city].compactMap { $0 }.joined(separator: ", "))
+        }
+
+        if let price, price > 0 {
+            let similarPrice = pool
+                .filter { priceGap($0) <= price * 0.2 }
+                .sorted { priceGap($0) < priceGap($1) }
+            add("W podobnej cenie", similarPrice, icon: "tag.fill", tint: C.picked,
+                caption: "± 20% od \(FilterFormat.money(price)) zł")
+        }
+
+        if let area = offer.area, area > 0 {
+            let rooms = offer.rooms.map { Int($0) }
+            let layout = pool
+                .filter { o in
+                    guard let a = o.area, abs(a - area) <= area * 0.2 else { return false }
+                    if let rooms { return Int(o.rooms ?? 0) == rooms }
+                    return true
+                }
+                .sorted { abs(($0.area ?? 0) - area) < abs(($1.area ?? 0) - area) }
+            let roomsText = rooms.map { "\($0) pok. · " } ?? ""
+            add("Podobny metraż i układ", layout, icon: "square.dashed", tint: C.fresh,
+                caption: "\(roomsText)ok. \(Int(area)) m²")
+        }
+
+        if result.count < 2 {
+            add("Nowe w ostatnich 24 h", showroomHomeNewest.filter { $0.id != offer.id },
+                icon: "clock.badge.checkmark", tint: C.fresh, caption: "Dodane w ciągu doby")
+        }
+        return result
+    }
+
+    func similarSections(for car: CarListing) -> [ShowroomSection] {
+        typealias C = ShowroomCategory
+        let pool = cars.filter { $0.id != car.id }
+        let make = car.make.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = car.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        func gap(_ c: CarListing) -> Double { abs(c.pricePln - car.pricePln) }
+
+        var used = Set<Int>()
+        var result: [ShowroomSection] = []
+        func add(_ title: String, _ list: [CarListing], icon: String, tint: Color, caption: String) {
+            let fresh = list.filter { !used.contains($0.id) }.prefix(20)
+            guard !fresh.isEmpty else { return }
+            fresh.forEach { used.insert($0.id) }
+            result.append(ShowroomSection(
+                id: "similar-\(title)", title: title,
+                items: fresh.map(ShowroomItem.init(car:)),
+                icon: icon, tint: tint, caption: caption
+            ))
+        }
+
+        let sameMake = pool.filter { $0.make.caseInsensitiveCompare(make) == .orderedSame }
+        if !model.isEmpty {
+            add("Ten sam model", sameMake
+                    .filter { $0.model.caseInsensitiveCompare(model) == .orderedSame }
+                    .sorted { abs($0.year - car.year) < abs($1.year - car.year) },
+                icon: "car.fill", tint: C.place, caption: "\(make) \(model)")
+        }
+        if !make.isEmpty {
+            add("Więcej aut marki \(make)", sameMake.sorted { gap($0) < gap($1) },
+                icon: "star.fill", tint: C.picked, caption: "Inne modele tej marki")
+        }
+        if car.pricePln > 0 {
+            add("W podobnej cenie", pool
+                    .filter { gap($0) <= car.pricePln * 0.2 && (car.year == 0 || abs($0.year - car.year) <= 4) }
+                    .sorted { gap($0) < gap($1) },
+                icon: "tag.fill", tint: C.deal, caption: "± 20% od \(FilterFormat.money(car.pricePln)) zł")
+        }
+        if result.count < 2 {
+            add("Nowe auta · 24 h", showroomCarFresh.filter { $0.id != car.id },
+                icon: "clock.badge.checkmark", tint: C.fresh, caption: "Dodane w ciągu doby")
+        }
+        return result
+    }
+
+    /// Loads the full description of an offer opened from "Może Ci się spodobać".
+    func loadFullOfferIfNeeded(id: Int) async {
+        guard let current = offers.first(where: { $0.id == id }),
+              OfferPresentation.plainDescription(from: current.description) == nil else { return }
+        guard let full = try? await api.offerDetail(id: id, fallbackOffers: offers) else { return }
+        if let idx = offers.firstIndex(where: { $0.id == id }) { offers[idx] = full }
+    }
+
+    func recordView(of offer: EstateOffer) {
+        Task { await api.recordOfferView(id: offer.id) }
+    }
+
+    func recordView(of car: CarListing) {
+        Task { await api.recordCarView(id: car.id) }
     }
 }
