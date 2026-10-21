@@ -58,6 +58,7 @@ private struct ShowroomSection: Identifiable {
 struct HomeShowroomView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.eosLaunchRevealed) private var revealed
+    @Environment(\.eosLaunchFinished) private var launchFinished
 
     let brand: CatalogBrand
     var onOpenFilters: () -> Void
@@ -105,9 +106,11 @@ struct HomeShowroomView: View {
         .onAppear {
             if spotlight == nil { spotlight = featured }
             app.noteShowroomSection(sections.first?.title ?? "")
+            // Arriving from the menu: land on the main action, not on the header capsule.
+            if launchFinished { claimPrimaryFocus() }
         }
-        .onChange(of: revealed) { _, isRevealed in
-            if isRevealed { primaryFocused = true }
+        .onChange(of: launchFinished) { _, finished in
+            if finished { claimPrimaryFocus() }
         }
         .onChange(of: featured?.id) { _, _ in
             spotlight = featuredItem()
@@ -337,6 +340,14 @@ struct HomeShowroomView: View {
     }
 
     // MARK: Actions
+
+    private func claimPrimaryFocus() {
+        Task { @MainActor in
+            // Let the view become enabled first, then take focus.
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            primaryFocused = true
+        }
+    }
 
     private func setSpotlight(_ item: ShowroomItem, immediately: Bool) {
         if spotlight?.id != item.id {

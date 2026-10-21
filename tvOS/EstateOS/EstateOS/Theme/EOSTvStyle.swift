@@ -290,6 +290,22 @@ enum EOSImageCache {
         cache.setObject(image, forKey: url as NSURL, cost: Int(cost))
     }
 
+    /// Downloads one image into the cache and waits for it (bounded), so a screen can appear
+    /// with its photo already in place instead of popping in.
+    static func ensure(_ url: URL?, timeout: TimeInterval = 2.5) async {
+        guard let url, image(for: url) == nil else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                guard let (data, _) = try? await URLSession.shared.data(from: url),
+                      let ui = UIImage(data: data) else { return }
+                store(ui, for: url)
+            }
+            group.addTask { try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
     static func prefetch(urls: [URL]) {
         Task.detached(priority: .utility) {
             for url in urls.prefix(6) {
@@ -308,10 +324,18 @@ enum EOSImageCache {
 
 struct EOSCachedRemoteImage<Placeholder: View>: View {
     let url: URL?
-    var contentMode: ContentMode = .fill
-    @ViewBuilder var placeholder: () -> Placeholder
+    var contentMode: ContentMode
+    var placeholder: () -> Placeholder
 
     @State private var image: UIImage?
+
+    init(url: URL?, contentMode: ContentMode = .fill, @ViewBuilder placeholder: @escaping () -> Placeholder) {
+        self.url = url
+        self.contentMode = contentMode
+        self.placeholder = placeholder
+        // Cached photos render on the very first frame — no placeholder flash.
+        _image = State(initialValue: url.flatMap { EOSImageCache.image(for: $0) })
+    }
 
     var body: some View {
         Group {
@@ -324,12 +348,12 @@ struct EOSCachedRemoteImage<Placeholder: View>: View {
             }
         }
         .task(id: url?.absoluteString) {
-            image = nil
-            guard let url else { return }
+            guard let url else { image = nil; return }
             if let cached = EOSImageCache.image(for: url) {
-                image = cached
+                if image !== cached { image = cached }
                 return
             }
+            image = nil
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 try Task.checkCancellation()
@@ -385,12 +409,14 @@ struct EOSFullBleedOfferImage: View {
     /// Enables a slow, continuous Ken-Burns drift — used for the naked immersive gallery so a
     /// still photo keeps a faint pulse of life instead of looking frozen.
     var ambient: Bool = false
+    /// Plain black while loading (full-screen backdrops) instead of the photo placeholder.
+    var quietPlaceholder: Bool = false
     @State private var ambientZoomed = false
 
     var body: some View {
         GeometryReader { proxy in
             EOSCachedRemoteImage(url: url, contentMode: .fill) {
-                placeholder
+                if quietPlaceholder { Color.black } else { placeholder }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .scaleEffect(ambient && ambientZoomed ? 1.055 : 1.0)
@@ -876,11 +902,21 @@ private struct EOSLaunchRevealedKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+private struct EOSLaunchFinishedKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 extension EnvironmentValues {
     /// False while the launch doors are still closed (RootView flips it as they open).
     var eosLaunchRevealed: Bool {
         get { self[EOSLaunchRevealedKey.self] }
         set { self[EOSLaunchRevealedKey.self] = newValue }
+    }
+
+    /// True once the splash is gone and the showroom accepts the remote.
+    var eosLaunchFinished: Bool {
+        get { self[EOSLaunchFinishedKey.self] }
+        set { self[EOSLaunchFinishedKey.self] = newValue }
     }
 }
 
@@ -964,7 +1000,7 @@ struct EOSPosterCard<Badge: View>: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 24) {
                 EOSCachedRemoteImage(url: imageURL, contentMode: .fill) {
                     Rectangle()
                         .fill(Color.white.opacity(0.08))
@@ -1037,7 +1073,7 @@ struct EOSBackdrop: View {
     var body: some View {
         ZStack {
             Color.black
-            EOSFullBleedOfferImage(url: url, ambient: true)
+            EOSFullBleedOfferImage(url: url, ambient: true, quietPlaceholder: true)
                 .id(url?.absoluteString ?? "none")
                 .transition(.opacity)
         }

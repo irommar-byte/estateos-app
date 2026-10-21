@@ -10,11 +10,11 @@ struct SplashCharRevealView: View, Animatable {
     var progress: Double
     /// iOS: AvenirNext-Medium 13.5 pt, letterSpacing 2.75 — scaled ×2 for the 10-foot screen.
     var font: Font = SplashCharRevealView.splashFont
-    var kerning: CGFloat = 5.5
+    var kerning: CGFloat = 7.5
     var foreground: Color = Color(red: 248 / 255, green: 248 / 255, blue: 252 / 255).opacity(0.98)
-    var wordSpacing: CGFloat = 20
+    var wordSpacing: CGFloat = 26
 
-    static let splashFont: Font = .custom("AvenirNext-Medium", size: 28)
+    static let splashFont: Font = .custom("AvenirNext-Medium", size: 36)
 
     var animatableData: Double {
         get { progress }

@@ -30,6 +30,7 @@ struct DetailShellView<QRSheet: View>: View {
     }
 
     private var imageURLs: [URL] { presentation.imageURLs }
+    private static var topAnchor: String { "detail-top" }
 
     var body: some View {
         GeometryReader { geo in
@@ -41,10 +42,12 @@ struct DetailShellView<QRSheet: View>: View {
                 EOSBackdropScrim()
                     .opacity(scrolled ? 0.6 : 1)
 
+                ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 64) {
                         hero
                             .frame(height: geo.size.height * 0.86, alignment: .bottomLeading)
+                            .id(Self.topAnchor)
                         if !presentation.specRows.isEmpty { factsGrid }
                         HStack(alignment: .top, spacing: 36) {
                             descriptionCard
@@ -53,7 +56,6 @@ struct DetailShellView<QRSheet: View>: View {
                         .focusSection()
                         if imageURLs.count > 1 { photoRail }
                     }
-                    .padding(.horizontal, EOSTvSpacing.screenHorizontal)
                     .padding(.bottom, 90)
                 }
                 .scrollClipDisabled()
@@ -62,12 +64,22 @@ struct DetailShellView<QRSheet: View>: View {
                 } action: { _, isScrolled in
                     scrolled = isScrolled
                 }
+                // MENU: from further down the page, back to the top first; from the top, close.
+                .onExitCommand {
+                    if scrolled {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+                            proxy.scrollTo(Self.topAnchor, anchor: .top)
+                        }
+                        primaryFocused = true
+                    } else {
+                        onClose()
+                    }
+                }
+                }
             }
         }
-        .ignoresSafeArea(edges: .horizontal)
         .defaultFocus($primaryFocused, true)
         .onAppear { primaryFocused = true }
-        .onExitCommand { onClose() }
         .fullScreenCover(isPresented: $showQR, content: qrSheet)
         .fullScreenCover(item: $gallery) { request in
             EOSGalleryView(urls: imageURLs, title: presentation.title, startIndex: request.start)
@@ -301,89 +313,72 @@ private struct DescriptionReader: View {
 
 // MARK: - Gallery
 
-/// Full-screen gallery. The thumbnail strip is the navigation: ◀ ▶ moves through it and the big
-/// photo follows instantly. Select hides/shows the chrome, ⏯ runs a slideshow, MENU closes
-/// (or first brings the chrome back). The strip never disappears by itself.
+/// Full-screen gallery (layers, back to front):
+///   1. the photo, edge to edge (Ken Burns only while the chrome is hidden)
+///   2. a soft bottom gradient
+///   3. a compact title capsule, top-left
+///   4. a slim glass filmstrip pinned to the bottom — fixed height, never covering the photo
+/// ◀ ▶ moves through the strip and the big photo follows instantly. Select hides/shows the
+/// chrome, ⏯ runs a slideshow, MENU first brings the chrome back, then closes. The strip
+/// never disappears by itself.
 struct EOSGalleryView: View {
     let urls: [URL]
     let title: String
-    let startIndex: Int
 
     @Environment(\.dismiss) private var dismiss
-    @State private var index = 0
+    @State private var index: Int
     @State private var direction: EOSGallerySlideDirection = .none
     @State private var chromeHidden = false
     @State private var slideshow: Task<Void, Never>?
     @FocusState private var focusedThumb: Int?
 
+    private static let thumbSize = CGSize(width: 224, height: 126)
+    private static let stripPadding: CGFloat = 22
+
+    init(urls: [URL], title: String, startIndex: Int) {
+        self.urls = urls
+        self.title = title
+        _index = State(initialValue: min(max(0, startIndex), max(0, urls.count - 1)))
+    }
+
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack {
+            // 1. Photo
             Color.black.ignoresSafeArea()
             if urls.indices.contains(index) {
-                EOSFullBleedOfferImage(url: urls[index], ambient: chromeHidden)
+                EOSFullBleedOfferImage(url: urls[index], ambient: chromeHidden, quietPlaceholder: true)
                     .id(index)
                     .transition(direction.transition)
+                    .ignoresSafeArea()
             }
 
-            LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .center, endPoint: .bottom)
-                .ignoresSafeArea()
-                .opacity(chromeHidden ? 0 : 1)
-                .allowsHitTesting(false)
-
-            HStack(spacing: 14) {
-                Text(title).font(.system(size: 24, weight: .semibold)).lineLimit(1)
-                Text("\(index + 1) / \(urls.count)")
-                    .font(.system(size: 22, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.75))
-                if slideshow != nil {
-                    Image(systemName: "play.fill").font(.system(size: 18))
-                }
-            }
-            .padding(.horizontal, 26)
-            .padding(.vertical, 14)
-            .eosGlassPanel(Capsule())
+            // 2. Gradient (only under the strip)
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.62),
+                    .init(color: .black.opacity(0.55), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
             .opacity(chromeHidden ? 0 : 1)
 
-            VStack {
-                Spacer()
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 24) {
-                            ForEach(Array(urls.enumerated()), id: \.offset) { i, url in
-                                Button { toggleChrome() } label: {
-                                    EOSCachedRemoteImage(url: url, contentMode: .fill) {
-                                        Color.white.opacity(0.08)
-                                    }
-                                    .frame(width: 208, height: 117)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .hoverEffect(.highlight)
-                                    .opacity(i == index ? 1 : 0.7)
-                                    .background(EOSFocusProbe { select(i, from: proxy) })
-                                }
-                                .buttonStyle(.borderless)
-                                .focused($focusedThumb, equals: i)
-                                .id(i)
-                                .accessibilityLabel("Zdjęcie \(i + 1) z \(urls.count)")
-                            }
-                        }
-                        .padding(.horizontal, 40)
-                        .padding(.vertical, 28)
-                    }
-                    .scrollClipDisabled()
-                    .onAppear { proxy.scrollTo(index, anchor: .center) }
-                }
-                .eosGlassPanel(cornerRadius: 44)
-                .padding(.horizontal, 80)
-                .padding(.bottom, 50)
-                .opacity(chromeHidden ? 0 : 1)
+            // 3 + 4. Chrome
+            VStack(alignment: .leading, spacing: 0) {
+                titleCapsule
+                Spacer(minLength: 0)
+                filmstrip
             }
+            .opacity(chromeHidden ? 0 : 1)
         }
         .animation(EOSMotion.gallery, value: index)
         .animation(.easeInOut(duration: 0.35), value: chromeHidden)
+        .defaultFocus($focusedThumb, index)
         .onAppear {
-            index = min(max(0, startIndex), max(0, urls.count - 1))
             focusedThumb = index
+            prefetchNeighbours()
         }
         .onPlayPauseCommand { toggleSlideshow() }
         .onExitCommand {
@@ -397,15 +392,74 @@ struct EOSGalleryView: View {
         .onDisappear { slideshow?.cancel() }
     }
 
-    private func select(_ i: Int, from proxy: ScrollViewProxy) {
+    private var titleCapsule: some View {
+        HStack(spacing: 14) {
+            Text(title)
+                .font(.system(size: 24, weight: .semibold))
+                .lineLimit(1)
+                .frame(maxWidth: 900, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(index + 1) / \(urls.count)")
+                .font(.system(size: 22, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.75))
+            if slideshow != nil {
+                Image(systemName: "play.fill").font(.system(size: 18))
+            }
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 14)
+        .eosGlassPanel(Capsule())
+        .fixedSize()
+    }
+
+    private var filmstrip: some View {
+        let height = Self.thumbSize.height + Self.stripPadding * 2
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 22) {
+                    ForEach(Array(urls.enumerated()), id: \.offset) { i, url in
+                        Button { chromeHidden.toggle() } label: {
+                            EOSCachedRemoteImage(url: url, contentMode: .fill) {
+                                Color.white.opacity(0.08)
+                            }
+                            .frame(width: Self.thumbSize.width, height: Self.thumbSize.height)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .hoverEffect(.highlight)
+                            .opacity(i == index ? 1 : 0.62)
+                            .background(EOSFocusProbe { select(i) })
+                        }
+                        .buttonStyle(.borderless)
+                        .focused($focusedThumb, equals: i)
+                        .id(i)
+                        .accessibilityLabel("Zdjęcie \(i + 1) z \(urls.count)")
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.vertical, Self.stripPadding)
+            }
+            .scrollClipDisabled()
+            .frame(height: height)   // a horizontal ScrollView is greedy vertically — pin it
+            .onAppear { proxy.scrollTo(index, anchor: .center) }
+            .onChange(of: index) { _, i in
+                withAnimation(EOSMotion.gallery) { proxy.scrollTo(i, anchor: .center) }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .eosGlassPanel(cornerRadius: 36)
+        .focusSection()
+    }
+
+    private func select(_ i: Int) {
         guard i != index else { return }
         direction = i > index ? .forward : .back
         index = i
-        EOSImageCache.prefetch(urls: [i - 1, i + 1].filter { urls.indices.contains($0) }.map { urls[$0] })
+        prefetchNeighbours()
     }
 
-    private func toggleChrome() {
-        chromeHidden.toggle()
+    private func prefetchNeighbours() {
+        let around = [index - 1, index + 1, index + 2].filter { urls.indices.contains($0) }
+        EOSImageCache.prefetch(urls: around.map { urls[$0] })
     }
 
     private func toggleSlideshow() {
@@ -419,8 +473,8 @@ struct EOSGalleryView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 guard !Task.isCancelled, !urls.isEmpty else { return }
-                direction = .forward
                 let next = (index + 1) % urls.count
+                direction = .forward
                 index = next
                 focusedThumb = next
             }

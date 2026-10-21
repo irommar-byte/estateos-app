@@ -16,6 +16,7 @@ struct RootView: View {
             // Like iOS: the app is already rendered under the splash, so the doors open onto it.
             HomeView()
                 .environment(\.eosLaunchRevealed, launchRevealed)
+                .environment(\.eosLaunchFinished, splashFinished)
                 .disabled(!splashFinished)
 
             if !splashFinished {
@@ -27,6 +28,7 @@ struct RootView: View {
                         TvLaunchMetrics.recordSplashEnd()
                         launchRevealed = true
                         splashFinished = true
+                        app.splashActive = false
                         Task { await app.fulfillPendingDeepLink() }
                     }
                 )

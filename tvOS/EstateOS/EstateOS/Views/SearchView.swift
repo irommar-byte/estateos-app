@@ -106,7 +106,11 @@ struct SearchView: View {
                         .focusEffectDisabled()
                     }
                 }
+                .padding(.vertical, 12)
             }
+            .scrollClipDisabled()
+            .fixedSize(horizontal: false, vertical: true)
+            .focusSection()
         }
     }
 

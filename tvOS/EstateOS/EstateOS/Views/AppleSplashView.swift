@@ -20,6 +20,9 @@ struct AppleSplashView: View {
     @State private var logoOpacity: Double = 0
     @State private var logoScale: CGFloat = 0.88
     @State private var logoGlow: Double = 0
+    /// Soft halo "breath" while the catalog is still loading — the screen never looks frozen.
+    @State private var holdPulse = false
+    @State private var holding = false
     @State private var line1Progress: Double = 0
     @State private var line2Progress: Double = 0
     @State private var sunProgress: CGFloat = 0
@@ -80,31 +83,36 @@ struct AppleSplashView: View {
 
     // MARK: - Layout
 
-    private func logoSize(in size: CGSize) -> CGFloat {
-        min(max(size.width * 0.42, 320), size.height * 0.48, 820)
+    /// The logo artwork is 3:2 with soft margins; at 62 % of the screen width the wordmark spans
+    /// about half the TV — the same visual weight as the iOS splash on a phone.
+    private func logoWidth(in size: CGSize) -> CGFloat {
+        size.width * 0.62
     }
 
     @ViewBuilder
     private func splashContent(in size: CGSize) -> some View {
-        let logo = logoSize(in: size)
-        VStack(spacing: 0) {
+        let logo = logoWidth(in: size)
+        let logoHeight = logo * 2 / 3
+        VStack(spacing: -logoHeight * 0.26) {
             ZStack {
                 // Ambient glow ring behind the logo (iOS `logoGlowRing`).
                 Circle()
                     .stroke(TL.gold.opacity(0.12), lineWidth: 1)
-                    .frame(width: logo * 0.68, height: logo * 0.68)
+                    .frame(width: logoHeight * 0.68, height: logoHeight * 0.68)
                     .shadow(color: TL.gold.opacity(0.72), radius: 56)
-                    .opacity(Self.glowRingOpacity(logoGlow))
-                    .scaleEffect(0.55 + 0.47 * logoGlow)
+                    .opacity(Self.glowRingOpacity(logoGlow) * (holding && holdPulse ? 0.55 : 1))
+                    .scaleEffect((0.55 + 0.47 * logoGlow) * (holding && holdPulse ? 1.06 : 1))
 
                 Image("EstateOSLogo")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: logo, height: logo)
+                    .frame(width: logo, height: logoHeight)
                     .opacity(logoOpacity)
                     .scaleEffect(logoScale)
             }
             .offset(y: -exitLift * size.height * 0.52)
+            .opacity(1 - exitLift * 0.85)
+            .blur(radius: exitLift * 6)
 
             VStack(spacing: 14) {
                 SplashCharRevealView(text: TL.line1, progress: line1Progress)
@@ -117,6 +125,8 @@ struct AppleSplashView: View {
             }
             .padding(.top, 26)
             .offset(y: exitLift * size.height * 0.52)
+            .opacity(1 - exitLift * 0.85)
+            .blur(radius: exitLift * 6)
         }
         .frame(width: size.width, height: size.height)
         .allowsHitTesting(false)
@@ -211,19 +221,27 @@ struct AppleSplashView: View {
             sunProgress = 1
         }
 
-        // 7. Fly-out: logo up, text down.
+        // 7–9. Fly-out, then doors. If the catalog is still loading, the logo and text simply stay
+        // on screen (the gold band has finished) — never an empty black screen behind closed doors.
         let flyOutAt = TL.flyOutStartMs(taglineLength: tagLen)
-        after(flyOutAt) {
-            withAnimation(.timingCurve(0.34, 0, 0.22, 1, duration: TL.seconds(TL.flyOutMs))) {
-                exitLift = 1
-            }
-        }
-
-        // 8–9. Doors.
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64((flyOutAt + TL.flyOutMs - TL.doorSoundLeadMs) * 1_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(flyOutAt * 1_000_000))
             guard !skipped else { return }
             await waitUntilCatalogReady()
+            guard !skipped else { return }
+            if holding {
+                holding = false
+                withAnimation(.easeOut(duration: 0.4)) { holdPulse = false }
+            }
+
+            // On a TV the travel is ~560 pt, so the iOS 380 ms becomes 560 ms (same speed feel),
+            // and the doors start while the logo is still leaving — no dead frame between them.
+            let flyOutMs = TL.flyOutMs * 1.47
+            withAnimation(.timingCurve(0.34, 0, 0.22, 1, duration: TL.seconds(flyOutMs))) {
+                exitLift = 1
+            }
+            let doorsAt = flyOutMs * 0.62
+            try? await Task.sleep(nanoseconds: UInt64((doorsAt - TL.doorSoundLeadMs) * 1_000_000))
             guard !skipped else { return }
 
             playDoorSound()
@@ -231,7 +249,7 @@ struct AppleSplashView: View {
             guard !skipped else { return }
             openDoors()
 
-            try? await Task.sleep(nanoseconds: UInt64(TL.doorDurationMs * 1_000_000))
+            try? await Task.sleep(nanoseconds: UInt64((TL.doorDurationMs + 80) * 1_000_000))
             guard !skipped else { return }
             finishSplash(nextSlot: nextSlot)
         }
@@ -272,10 +290,16 @@ struct AppleSplashView: View {
 
     private func waitUntilCatalogReady() async {
         let start = Date()
+        if !catalogReady {
+            holding = true
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { holdPulse = true }
+        }
         while !catalogReady && !skipped {
             if Date().timeIntervalSince(start) * 1000 >= TL.catalogReadyCapMs { break }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
+        // The doors open onto a real photo, never onto a grey placeholder.
+        await EOSImageCache.ensure(app.launchHeroImageURL, timeout: 2.5)
     }
 
     private func skip() {

@@ -8,6 +8,8 @@ import TVServices
 final class AppModel: ObservableObject {
     @Published var session: EstateSession?
     @Published var isBootstrapping = true
+    /// True while the launch splash is on screen (RootView clears it).
+    @Published var splashActive = true
     @Published var offers: [EstateOffer] = []
     @Published var selectedOffer: EstateOffer?
     @Published var globalError: String?
@@ -62,6 +64,11 @@ final class AppModel: ObservableObject {
             TvCatalogCache.isUsingCachedCatalog = true
         }
         warmPrefetchCatalogImages()
+        if !offers.isEmpty || !cars.isEmpty {
+            // Cached catalog is already on screen: keep the main thread free for the splash
+            // and refresh from the network right after it.
+            await waitForSplashEnd()
+        }
         TopShelfArtBaker.enqueue(offers: offers, cars: cars)
         async let offersTask: Void = { try? await refreshOffers() }()
         async let carsTask: Void = { try? await refreshCars() }()
@@ -748,6 +755,20 @@ final class AppModel: ObservableObject {
 
     var carsLast24Hours: [CarListing] {
         cars.filter(\.isWithinLast24Hours).sorted { $0.sortDate > $1.sortDate }
+    }
+
+    private func waitForSplashEnd() async {
+        let start = Date()
+        while splashActive, Date().timeIntervalSince(start) < 30 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try? await Task.sleep(nanoseconds: 600_000_000)
+    }
+
+    /// The photo the showroom opens on — the splash waits for it before opening the doors.
+    var launchHeroImageURL: URL? {
+        let offer = showroomHomeNewest.first ?? filteredOffersForBrowse.first ?? offers.first
+        return offer.flatMap { EOSOfferMedia.primaryImageURL(for: $0) }
     }
 
     func warmPrefetchCatalogImages() {
