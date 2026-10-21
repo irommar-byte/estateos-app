@@ -104,7 +104,12 @@ struct DetailShellView<QRSheet: View>: View {
         }
         .fullScreenCover(isPresented: $showQR, content: qrSheet)
         .fullScreenCover(item: $gallery) { request in
-            EOSGalleryView(urls: imageURLs, title: presentation.title, startIndex: request.start)
+            EOSGalleryView(
+                urls: imageURLs,
+                title: presentation.title,
+                startIndex: request.start,
+                info: GalleryOfferInfo(presentation: presentation, eyebrow: eyebrow)
+            )
         }
         .fullScreenCover(isPresented: $showDescription) {
             DescriptionReader(
@@ -219,15 +224,7 @@ struct DetailShellView<QRSheet: View>: View {
         }
     }
 
-    /// Up to five headline facts, in the order a buyer scans them.
-    private var keyFacts: [DetailPresentation.SpecRow] {
-        let preferred = [
-            "area", "rooms", "ppsm", "type",                             // nieruchomości
-            "year", "mileage", "power", "fuel", "gear",                  // samochody
-        ]
-        let byId = Dictionary(presentation.specRows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        return preferred.compactMap { byId[$0] }.prefix(5).map { $0 }
-    }
+    private var keyFacts: [DetailPresentation.SpecRow] { presentation.keyFacts }
 
     private var eyebrow: String {
         [presentation.transactionBadgeText, presentation.locationLine]
@@ -433,35 +430,73 @@ private struct DescriptionReader: View {
     }
 }
 
+// MARK: - Key facts (shared by the detail page and the gallery info card)
+
+extension DetailPresentation {
+    /// Up to five headline facts, in the order a buyer scans them.
+    var keyFacts: [SpecRow] {
+        let preferred = [
+            "area", "rooms", "ppsm", "floor", "built", "type",          // nieruchomości
+            "year", "mileage", "power", "fuel", "gear",                  // samochody
+        ]
+        let byId = Dictionary(specRows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return Array(preferred.compactMap { byId[$0] }.prefix(5))
+    }
+}
+
+/// What the gallery's ▲ info card shows about the listing.
+struct GalleryOfferInfo {
+    let eyebrow: String
+    let title: String
+    let price: String
+    let facts: [DetailPresentation.SpecRow]
+
+    init(presentation: DetailPresentation, eyebrow: String) {
+        self.eyebrow = eyebrow
+        title = presentation.title
+        price = presentation.priceText
+        facts = presentation.keyFacts
+    }
+}
+
 // MARK: - Gallery
 
-/// Full-screen gallery (layers, back to front):
-///   1. the photo, edge to edge (Ken Burns only while the chrome is hidden)
-///   2. a soft bottom gradient
-///   3. a compact title capsule, top-left
-///   4. a slim glass filmstrip pinned to the bottom — fixed height, never covering the photo
-/// ◀ ▶ moves through the strip and the big photo follows instantly. Select hides/shows the
-/// chrome, ⏯ runs a slideshow, MENU first brings the chrome back, then closes. The strip
-/// never disappears by itself.
+/// Gallery with two modes.
+///
+/// STRIP — photo behind, title capsule, glass filmstrip at the bottom. ◀ ▶ browse thumbnails,
+///         the big photo follows when the strip rests. Select on a thumbnail → FULL SCREEN.
+/// FULL SCREEN — nothing but the photo. ◀ ▶ glide photo to photo (directional slide with a
+///         touch of depth), a small counter appears and fades. ▲ raises a glass card with the
+///         essentials of the listing, ▼ lowers it. ⏯ slideshow. MENU → back to the strip;
+///         MENU on the strip closes the gallery.
 struct EOSGalleryView: View {
     let urls: [URL]
     let title: String
+    var info: GalleryOfferInfo? = nil
+
+    private enum Mode { case strip, fullscreen }
 
     @Environment(\.dismiss) private var dismiss
+    @State private var mode: Mode = .strip
     @State private var index: Int
-    /// The big photo follows `index` once the strip stops moving (no download per flicked thumb).
+    /// The strip's big photo follows `index` once the strip stops moving.
     @State private var photoIndex: Int
     @State private var photoTask: Task<Void, Never>?
-    @State private var chromeHidden = false
+    @State private var direction: EOSGallerySlideDirection = .none
+    @State private var showInfo = false
+    @State private var showCounter = false
+    @State private var counterTask: Task<Void, Never>?
     @State private var slideshow: Task<Void, Never>?
     @FocusState private var focusedThumb: Int?
+    @FocusState private var stageFocused: Bool
 
     private static let thumbSize = CGSize(width: 224, height: 126)
     private static let stripPadding: CGFloat = 22
 
-    init(urls: [URL], title: String, startIndex: Int) {
+    init(urls: [URL], title: String, startIndex: Int, info: GalleryOfferInfo? = nil) {
         self.urls = urls
         self.title = title
+        self.info = info
         let start = min(max(0, startIndex), max(0, urls.count - 1))
         _index = State(initialValue: start)
         _photoIndex = State(initialValue: start)
@@ -469,51 +504,67 @@ struct EOSGalleryView: View {
 
     var body: some View {
         ZStack {
-            // 1. Photo — swaps only when the next one is decoded, so it never flashes black.
             Color.black.ignoresSafeArea()
+
+            switch mode {
+            case .strip:
+                stripMode
+                    .transition(.opacity)
+            case .fullscreen:
+                fullscreenMode
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.4), value: mode)
+        .onPlayPauseCommand { toggleSlideshow() }
+        .onExitCommand {
+            switch mode {
+            case .fullscreen:
+                if showInfo {
+                    withAnimation(Self.cardSpring) { showInfo = false }
+                } else {
+                    leaveFullscreen()
+                }
+            case .strip:
+                stopSlideshow()
+                dismiss()
+            }
+        }
+        .onDisappear {
+            stopSlideshow()
+            photoTask?.cancel()
+            counterTask?.cancel()
+        }
+    }
+
+    // MARK: Strip mode
+
+    private var stripMode: some View {
+        ZStack {
             if urls.indices.contains(photoIndex) {
                 EOSBackdrop(url: urls[photoIndex])
             }
-
-            // 2. Gradient (only under the strip)
             LinearGradient(
                 stops: [
-                    .init(color: .clear, location: 0.62),
-                    .init(color: .black.opacity(0.55), location: 1),
+                    .init(color: .clear, location: 0.6),
+                    .init(color: .black.opacity(0.6), location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
             .ignoresSafeArea()
             .allowsHitTesting(false)
-            .opacity(chromeHidden ? 0 : 1)
 
-            // 3 + 4. Chrome
             VStack(alignment: .leading, spacing: 0) {
                 titleCapsule
                 Spacer(minLength: 0)
                 filmstrip
             }
-            .opacity(chromeHidden ? 0 : 1)
         }
-        .animation(.easeInOut(duration: 0.35), value: chromeHidden)
         .defaultFocus($focusedThumb, index)
         .onAppear {
             focusedThumb = index
             prefetchNeighbours()
-        }
-        .onPlayPauseCommand { toggleSlideshow() }
-        .onExitCommand {
-            if chromeHidden {
-                chromeHidden = false
-            } else {
-                slideshow?.cancel()
-                dismiss()
-            }
-        }
-        .onDisappear {
-            slideshow?.cancel()
-            photoTask?.cancel()
         }
     }
 
@@ -527,9 +578,6 @@ struct EOSGalleryView: View {
             Text("\(index + 1) / \(urls.count)")
                 .font(.system(size: 22, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.75))
-            if slideshow != nil {
-                Image(systemName: "play.fill").font(.system(size: 18))
-            }
         }
         .padding(.horizontal, 26)
         .padding(.vertical, 14)
@@ -543,7 +591,7 @@ struct EOSGalleryView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 22) {
                     ForEach(Array(urls.enumerated()), id: \.offset) { i, url in
-                        Button { chromeHidden.toggle() } label: {
+                        Button { enterFullscreen(at: i) } label: {
                             EOSCachedRemoteImage(url: url, contentMode: .fill, size: .thumb) {
                                 Color.white.opacity(0.08)
                             }
@@ -557,7 +605,7 @@ struct EOSGalleryView: View {
                         .buttonStyle(.borderless)
                         .focused($focusedThumb, equals: i)
                         .id(i)
-                        .accessibilityLabel("Zdjęcie \(i + 1) z \(urls.count)")
+                        .accessibilityLabel("Zdjęcie \(i + 1) z \(urls.count). Otwórz na pełnym ekranie")
                     }
                 }
                 .padding(.horizontal, 32)
@@ -566,13 +614,128 @@ struct EOSGalleryView: View {
             .scrollClipDisabled()
             .frame(height: height)   // a horizontal ScrollView is greedy vertically — pin it
             .onAppear { proxy.scrollTo(index, anchor: .center) }
-            .onChange(of: index) { _, i in
-                withAnimation(EOSMotion.gallery) { proxy.scrollTo(i, anchor: .center) }
-            }
         }
         .frame(maxWidth: .infinity)
         .eosGlassPanel(cornerRadius: 36)
         .focusSection()
+    }
+
+    // MARK: Full-screen mode
+
+    private var fullscreenMode: some View {
+        ZStack(alignment: .bottomLeading) {
+            // The photo — directional slide with depth when moving through the set.
+            ZStack {
+                if urls.indices.contains(index) {
+                    FullscreenPhoto(url: urls[index])
+                        .id(index)
+                        .transition(direction.transition)
+                }
+            }
+            .ignoresSafeArea()
+            .animation(.spring(response: 0.55, dampingFraction: 0.9), value: index)
+
+            // Soft floor for the info card.
+            LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
+                .ignoresSafeArea()
+                .opacity(showInfo ? 1 : 0)
+                .allowsHitTesting(false)
+
+            // Counter capsule — appears on each move, fades away.
+            HStack(spacing: 10) {
+                Text("\(index + 1) / \(urls.count)")
+                    .font(.system(size: 22, weight: .semibold).monospacedDigit())
+                if slideshow != nil {
+                    Image(systemName: "play.fill").font(.system(size: 16))
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
+            .eosGlassPanel(Capsule())
+            .opacity(showCounter || slideshow != nil ? 1 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .animation(.easeInOut(duration: 0.35), value: showCounter)
+
+            // ▲ info card.
+            if showInfo, let info {
+                GalleryInfoCard(info: info)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if !showInfo, info != nil, showCounter {
+                Label("Informacje o ofercie", systemImage: "chevron.up")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .eosGlassPanel(Capsule())
+                    .transition(.opacity)
+            }
+
+            // Invisible focus target that owns the remote in full screen.
+            Button { withAnimation(Self.cardSpring) { showInfo.toggle() } } label: {
+                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(GalleryStageButtonStyle())
+            .focused($stageFocused)
+            .onMoveCommand(perform: handleMove)
+            .accessibilityLabel("Zdjęcie \(index + 1) z \(urls.count)")
+        }
+        .onAppear {
+            stageFocused = true
+            flashCounter()
+            prefetchNeighbours()
+        }
+    }
+
+    private static var cardSpring: Animation { .spring(response: 0.5, dampingFraction: 0.88) }
+
+    // MARK: Actions
+
+    private func enterFullscreen(at i: Int) {
+        direction = .none
+        index = i
+        photoIndex = i
+        showInfo = false
+        mode = .fullscreen
+    }
+
+    private func leaveFullscreen() {
+        stopSlideshow()
+        showInfo = false
+        photoIndex = index
+        mode = .strip
+        focusedThumb = index
+    }
+
+    private func handleMove(_ move: MoveCommandDirection) {
+        switch move {
+        case .left: step(-1)
+        case .right: step(1)
+        case .up:
+            guard info != nil else { return }
+            withAnimation(Self.cardSpring) { showInfo = true }
+        case .down:
+            withAnimation(Self.cardSpring) { showInfo = false }
+        default: break
+        }
+    }
+
+    private func step(_ delta: Int) {
+        let next = index + delta
+        guard urls.indices.contains(next) else { return }
+        direction = delta > 0 ? .forward : .back
+        index = next
+        flashCounter()
+        prefetchNeighbours()
+    }
+
+    private func flashCounter() {
+        counterTask?.cancel()
+        showCounter = true
+        counterTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            guard !Task.isCancelled else { return }
+            showCounter = false
+        }
     }
 
     private func select(_ i: Int) {
@@ -588,27 +751,122 @@ struct EOSGalleryView: View {
     }
 
     private func prefetchNeighbours() {
-        let around = [photoIndex + 1, photoIndex - 1, photoIndex + 2].filter { urls.indices.contains($0) }
+        let around = [index + 1, index - 1, index + 2].filter { urls.indices.contains($0) }
         EOSImageCache.prefetch(urls: around.map { urls[$0] }, size: .screen)
     }
 
     private func toggleSlideshow() {
-        if let running = slideshow {
-            running.cancel()
-            slideshow = nil
+        if slideshow != nil {
+            stopSlideshow()
             return
         }
-        chromeHidden = true
+        if mode == .strip { enterFullscreen(at: index) }
+        withAnimation(Self.cardSpring) { showInfo = false }
         slideshow = Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                try? await Task.sleep(nanoseconds: 4_500_000_000)
                 guard !Task.isCancelled, !urls.isEmpty else { return }
-                let next = (index + 1) % urls.count
-                index = next
-                photoIndex = next
-                focusedThumb = next
+                direction = .forward
+                index = (index + 1) % urls.count
                 prefetchNeighbours()
             }
         }
+    }
+
+    private func stopSlideshow() {
+        slideshow?.cancel()
+        slideshow = nil
+    }
+}
+
+/// One full-screen photo: the cached screen-size image on the first frame when available,
+/// otherwise a soft placeholder until it is decoded. Very slow drift keeps it alive.
+private struct FullscreenPhoto: View {
+    let url: URL
+    @State private var drift = false
+
+    var body: some View {
+        GeometryReader { geo in
+            EOSCachedRemoteImage(url: url, contentMode: .fill, size: .screen) {
+                EOSCachedRemoteImage(url: url, contentMode: .fill, size: .card) { Color.black }
+                    .blur(radius: 12, opaque: true)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .scaleEffect(drift ? 1.035 : 1)
+            .clipped()
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 18).repeatForever(autoreverses: true)) { drift = true }
+        }
+    }
+}
+
+/// The remote's target in full screen: no visible chrome, no focus lift.
+private struct GalleryStageButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.contentShape(Rectangle())
+    }
+}
+
+/// ▲ card: the essentials of the listing over the photo, in one calm glass panel.
+private struct GalleryInfoCard: View {
+    let info: GalleryOfferInfo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !info.eyebrow.isEmpty {
+                Text(info.eyebrow)
+                    .font(.system(size: 18, weight: .bold))
+                    .tracking(2.2)
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                    .padding(.bottom, 12)
+            }
+            Text(info.title)
+                .font(.system(size: 44, weight: .bold))
+                .tracking(-0.6)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .padding(.bottom, 22)
+
+            HStack(alignment: .center, spacing: 0) {
+                Text(info.price)
+                    .font(.system(size: 40, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .fixedSize()
+                ForEach(info.facts) { row in
+                    Rectangle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(width: 1.5, height: 48)
+                        .padding(.horizontal, 30)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.value)
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Text(row.label.uppercased())
+                            .font(.system(size: 15, weight: .semibold))
+                            .tracking(1.4)
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                    }
+                    .fixedSize()
+                }
+            }
+
+            HStack(spacing: 28) {
+                Label("ukryj", systemImage: "chevron.down")
+                Label("zdjęcia", systemImage: "arrow.left.and.right")
+                Label("pokaz slajdów", systemImage: "playpause")
+            }
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(.white.opacity(0.55))
+            .padding(.top, 26)
+        }
+        .padding(.horizontal, 44)
+        .padding(.vertical, 38)
+        .frame(maxWidth: 1500, alignment: .leading)
+        .eosGlassPanel(cornerRadius: 40)
     }
 }

@@ -74,6 +74,8 @@ struct EstateOffer: Codable, Identifiable, Hashable {
     /// Whole-percent drop vs list price (e.g. 12 for −12%). Nil when not discounted.
     let priceDiscountPercent: Int?
     let isDiscounted: Bool
+    /// Building, plot and amenity data from the full catalog (`/api/mobile/v1/offers`).
+    var extras: EstateOfferExtras = .empty
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, city, district, localityCountry, localityCountryCode
@@ -139,6 +141,7 @@ struct EstateOffer: Codable, Identifiable, Hashable {
         imageCandidates = ([primaryImage].compactMap { $0 } + directImages)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        extras = (try? EstateOfferExtras(from: decoder)) ?? .empty
     }
 
     init(
@@ -411,6 +414,96 @@ extension EstateOffer {
         try c.encodeIfPresent(previousPrice, forKey: .previousPrice)
         try c.encodeIfPresent(priceDiscountPercent, forKey: .priceDiscountPercent)
         try c.encode(isDiscounted, forKey: .isDiscounted)
+        try extras.encode(to: encoder)
+    }
+}
+
+/// Offer fields used by filters and the detail page (Prisma `Offer`): floor, building year, plot,
+/// condition and amenities. Decoded from the same JSON object as `EstateOffer`; all optional.
+struct EstateOfferExtras: Codable, Hashable {
+    var floor: Int?
+    var totalFloors: Int?
+    var yearBuilt: Int?
+    var plotArea: Double?
+    var pricePerSqm: Double?
+    var pricePln: Double?
+    var condition: String?
+    var heating: String?
+    var hasBalcony = false
+    var hasElevator = false
+    var hasStorage = false
+    var hasParking = false
+    var hasGarden = false
+    var hasAirConditioning = false
+    var isDuplex = false
+    var isFurnished = false
+
+    static let empty = EstateOfferExtras()
+
+    enum CodingKeys: String, CodingKey {
+        case floor, totalFloors, yearBuilt, plotArea, pricePerSqm, pricePln, condition, heating
+        case hasBalcony, hasElevator, hasStorage, hasParking, hasGarden, hasAirConditioning
+        case isDuplex, isFurnished
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func int(_ k: CodingKeys) -> Int? {
+            if let v = try? c.decodeIfPresent(Int.self, forKey: k) { return v }
+            if let v = try? c.decodeIfPresent(Double.self, forKey: k) { return Int(v) }
+            if let s = try? c.decodeIfPresent(String.self, forKey: k) { return Int(s) }
+            return nil
+        }
+        func dbl(_ k: CodingKeys) -> Double? {
+            if let v = try? c.decodeIfPresent(Double.self, forKey: k) { return v }
+            if let s = try? c.decodeIfPresent(String.self, forKey: k) {
+                return Double(s.replacingOccurrences(of: ",", with: "."))
+            }
+            return nil
+        }
+        func flag(_ k: CodingKeys) -> Bool {
+            if let v = try? c.decodeIfPresent(Bool.self, forKey: k) { return v }
+            if let v = try? c.decodeIfPresent(Int.self, forKey: k) { return v != 0 }
+            return false
+        }
+        floor = int(.floor)
+        totalFloors = int(.totalFloors)
+        yearBuilt = int(.yearBuilt)
+        plotArea = dbl(.plotArea)
+        pricePerSqm = dbl(.pricePerSqm)
+        pricePln = dbl(.pricePln)
+        condition = try? c.decodeIfPresent(String.self, forKey: .condition)
+        heating = try? c.decodeIfPresent(String.self, forKey: .heating)
+        hasBalcony = flag(.hasBalcony)
+        hasElevator = flag(.hasElevator)
+        hasStorage = flag(.hasStorage)
+        hasParking = flag(.hasParking)
+        hasGarden = flag(.hasGarden)
+        hasAirConditioning = flag(.hasAirConditioning)
+        isDuplex = flag(.isDuplex)
+        isFurnished = flag(.isFurnished)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(floor, forKey: .floor)
+        try c.encodeIfPresent(totalFloors, forKey: .totalFloors)
+        try c.encodeIfPresent(yearBuilt, forKey: .yearBuilt)
+        try c.encodeIfPresent(plotArea, forKey: .plotArea)
+        try c.encodeIfPresent(pricePerSqm, forKey: .pricePerSqm)
+        try c.encodeIfPresent(pricePln, forKey: .pricePln)
+        try c.encodeIfPresent(condition, forKey: .condition)
+        try c.encodeIfPresent(heating, forKey: .heating)
+        try c.encode(hasBalcony, forKey: .hasBalcony)
+        try c.encode(hasElevator, forKey: .hasElevator)
+        try c.encode(hasStorage, forKey: .hasStorage)
+        try c.encode(hasParking, forKey: .hasParking)
+        try c.encode(hasGarden, forKey: .hasGarden)
+        try c.encode(hasAirConditioning, forKey: .hasAirConditioning)
+        try c.encode(isDuplex, forKey: .isDuplex)
+        try c.encode(isFurnished, forKey: .isFurnished)
     }
 }
 

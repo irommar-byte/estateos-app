@@ -73,6 +73,13 @@ struct OfferDetailView: View {
     }
 
     private func specRows(for offer: EstateOffer) -> [DetailPresentation.SpecRow] {
+        let x = offer.extras
+        let floorText: String? = x.floor.map { f in
+            let label = f <= 0 ? "parter" : "\(f)"
+            if let total = x.totalFloors, total > 0 { return "\(label) / \(total)" }
+            return label
+        }
+        let amenities = HomeAmenity.allCases.filter { $0.matches(x) }.map(\.title)
         let raw: [(String, String, String, String?)] = [
             ("tx", "Transakcja", "arrow.left.arrow.right", offer.transactionLabel),
             ("type", "Typ", "building.2", offer.displayPropertyType),
@@ -80,6 +87,12 @@ struct OfferDetailView: View {
             ("area", "Metraż", "square.split.bottomrightquarter", offer.area.map { "\(Int($0)) m²" }),
             ("rooms", "Pokoje", "bed.double", offer.rooms.map { String(format: "%.0f", $0) }),
             ("ppsm", "Cena za m²", "chart.bar", offer.pricePerSqm != nil ? offer.displayPricePerSqm : nil),
+            ("floor", "Piętro", "building", floorText),
+            ("built", "Rok budowy", "calendar", x.yearBuilt.map(String.init)),
+            ("plot", "Działka", "leaf", x.plotArea.map { "\(Int($0)) m²" }),
+            ("condition", "Stan", "sparkles", Self.conditionLabel(x.condition)),
+            ("heating", "Ogrzewanie", "flame", x.heating),
+            ("amenities", "Udogodnienia", "checkmark.seal", amenities.isEmpty ? nil : amenities.joined(separator: ", ")),
             ("city", "Miasto", "mappin.and.ellipse", offer.city),
             ("district", "Dzielnica", "map", offer.displayDistrict),
             ("country", "Kraj", "globe.europe.africa", "\(offer.resolvedCountry.flagEmoji) \(offer.resolvedCountry.name)"),
@@ -89,6 +102,17 @@ struct OfferDetailView: View {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, trimmed != "—" else { return nil }
             return DetailPresentation.SpecRow(id: id, label: label, value: trimmed, icon: icon)
+        }
+    }
+
+    /// Prisma `PropertyCondition` → Polish label.
+    private static func conditionLabel(_ raw: String?) -> String? {
+        switch (raw ?? "").uppercased() {
+        case "READY": return "Gotowe do zamieszkania"
+        case "RENOVATION", "TO_RENOVATE", "NEEDS_RENOVATION": return "Do remontu"
+        case "DEVELOPER", "DEVELOPER_STATE", "SHELL": return "Stan deweloperski"
+        case "": return nil
+        default: return nil
         }
     }
 }

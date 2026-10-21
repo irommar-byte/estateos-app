@@ -41,6 +41,9 @@ final class AppModel: ObservableObject {
     @Published var selectedCarCities: Set<String> = []
     @Published var carCitiesPickerExpanded = false
     @Published var selectedCarMakes: Set<String> = []
+    /// Extended criteria edited on the filter screen (location cascade, ranges, amenities, sort).
+    @Published var homeCriteria = HomeCriteria()
+    @Published var carCriteria = CarCriteria()
     @Published var selectedHomePropertyTypes: Set<HomePropertyKind> = []
     @Published var favoriteCarIds: Set<Int> = TvPreferences.favoriteCarIds
     let location = TvLocationService.shared
@@ -273,11 +276,14 @@ final class AppModel: ObservableObject {
         if homePremium { count += 1 }
         if homeDiscounted { count += 1 }
         count += selectedHomePropertyTypes.count
+        count += selectedHomeCities.isEmpty ? 0 : 1
+        count += homeCriteria.activeCount
         return count
     }
 
     var carSecondaryFilterCount: Int {
         selectedCarAttributes.count + selectedCarMakes.count
+            + (selectedCarCities.isEmpty ? 0 : 1) + carCriteria.activeCount
     }
 
 
@@ -325,6 +331,7 @@ final class AppModel: ObservableObject {
         selectedHomeCities = []
         selectedHomePropertyTypes = []
         homeCitiesPickerExpanded = false
+        homeCriteria = HomeCriteria()
     }
 
     func clearCarFilters() {
@@ -333,6 +340,7 @@ final class AppModel: ObservableObject {
         selectedCarCities = []
         selectedCarMakes = []
         carCitiesPickerExpanded = false
+        carCriteria = CarCriteria()
     }
 
     func toggleHomeNearest() {
@@ -483,6 +491,8 @@ final class AppModel: ObservableObject {
             return p.contains("HOUSE") || p.contains("HOME") || p.contains("DOM")
         case .plot:
             return p.contains("PLOT") || p.contains("LAND") || p.contains("DZIAL")
+        case .commercial:
+            return p.contains("COMMERCIAL") || p.contains("LOKAL") || p.contains("OFFICE")
         }
     }
 
@@ -519,10 +529,11 @@ final class AppModel: ObservableObject {
                 selectedHomePropertyTypes.contains { matchesHomePropertyType(offer, kind: $0) }
             }
         }
-        if homeNearest {
+        base = homeCriteria.apply(to: base)
+        if homeNearest || homeCriteria.sort == .nearest {
             return sortOffersByDistance(base)
         }
-        return base
+        return homeCriteria.sort.sorted(base)
     }
 
     var homeFilterSummary: String {
@@ -536,6 +547,7 @@ final class AppModel: ObservableObject {
         if !selectedHomeCities.isEmpty {
             parts.append(selectedHomeCities.sorted().joined(separator: " · "))
         }
+        parts.append(contentsOf: homeCriteria.summaryParts)
         return parts.isEmpty ? "Wszystkie" : parts.joined(separator: " · ")
     }
 
@@ -551,6 +563,7 @@ final class AppModel: ObservableObject {
         if !selectedCarMakes.isEmpty {
             parts.append(selectedCarMakes.sorted().joined(separator: " · "))
         }
+        parts.append(contentsOf: carCriteria.summaryParts)
         return parts.isEmpty ? "Wszystkie" : parts.joined(separator: " · ")
     }
 
@@ -665,6 +678,7 @@ final class AppModel: ObservableObject {
             || !selectedCarAttributes.isEmpty
             || !selectedCarMakes.isEmpty
             || !selectedCarCities.isEmpty
+            || carCriteria.isActive
     }
 
     var isHomeFilteringActive: Bool {
@@ -674,6 +688,7 @@ final class AppModel: ObservableObject {
             || !selectedHomeTransactions.isEmpty
             || !selectedHomeCities.isEmpty
             || !selectedHomePropertyTypes.isEmpty
+            || homeCriteria.isActive
     }
 
     /// Offers currently discounted by ≥2% (catalog-wide, for the filter chip count).
@@ -723,10 +738,11 @@ final class AppModel: ObservableObject {
                 return true
             }
         }
-        if carNearest {
+        base = carCriteria.apply(to: base)
+        if carNearest || carCriteria.sort == .nearest {
             return sortCarsByDistance(base)
         }
-        return base
+        return carCriteria.sort.sorted(base)
     }
 
     private func sortCarsByDistance(_ list: [CarListing]) -> [CarListing] {
@@ -1034,13 +1050,22 @@ enum HomeTransactionFilter: String, CaseIterable, Identifiable {
 }
 
 enum HomePropertyKind: String, CaseIterable, Identifiable {
-    case flat, house, plot
+    case flat, house, plot, commercial
     var id: String { rawValue }
     var title: String {
         switch self {
         case .flat: return "Mieszkanie"
         case .house: return "Dom"
         case .plot: return "Działka"
+        case .commercial: return "Lokal użytkowy"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .flat: return "building.2"
+        case .house: return "house"
+        case .plot: return "leaf"
+        case .commercial: return "storefront"
         }
     }
 }
@@ -1056,6 +1081,321 @@ enum CarAttributeFilter: String, CaseIterable, Identifiable {
         case .electric: return "Elektryczne"
         case .hybrid: return "Hybryda"
         case .automatic: return "Automat"
+        }
+    }
+}
+
+
+// MARK: - Extended filter criteria (filter screen, 2026-10)
+
+/// A closed numeric range picked from presets; nil bound = no limit.
+struct FilterRange: Hashable {
+    var min: Double?
+    var max: Double?
+    var isActive: Bool { min != nil || max != nil }
+    func contains(_ value: Double?) -> Bool {
+        guard isActive else { return true }
+        guard let value else { return false }
+        if let min, value < min { return false }
+        if let max, value > max { return false }
+        return true
+    }
+}
+
+enum HomeAmenity: String, CaseIterable, Identifiable, Hashable {
+    case balcony, elevator, parking, storage, garden, airConditioning, furnished
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .balcony: return "Balkon lub taras"
+        case .elevator: return "Winda"
+        case .parking: return "Miejsce parkingowe"
+        case .storage: return "Komórka lokatorska"
+        case .garden: return "Ogród"
+        case .airConditioning: return "Klimatyzacja"
+        case .furnished: return "Umeblowane"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .balcony: return "sun.max"
+        case .elevator: return "arrow.up.arrow.down.square"
+        case .parking: return "parkingsign.circle"
+        case .storage: return "shippingbox"
+        case .garden: return "leaf"
+        case .airConditioning: return "snowflake"
+        case .furnished: return "sofa"
+        }
+    }
+    func matches(_ x: EstateOfferExtras) -> Bool {
+        switch self {
+        case .balcony: return x.hasBalcony
+        case .elevator: return x.hasElevator
+        case .parking: return x.hasParking
+        case .storage: return x.hasStorage
+        case .garden: return x.hasGarden
+        case .airConditioning: return x.hasAirConditioning
+        case .furnished: return x.isFurnished
+        }
+    }
+}
+
+enum HomeFloorFilter: String, CaseIterable, Identifiable, Hashable {
+    case groundFloor, notGround, notTop, highFloor
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .groundFloor: return "Parter"
+        case .notGround: return "Bez parteru"
+        case .notTop: return "Nie ostatnie piętro"
+        case .highFloor: return "Od 4. piętra"
+        }
+    }
+    func matches(_ x: EstateOfferExtras) -> Bool {
+        guard let floor = x.floor else { return false }
+        switch self {
+        case .groundFloor: return floor <= 0
+        case .notGround: return floor > 0
+        case .notTop: return x.totalFloors.map { floor < $0 } ?? true
+        case .highFloor: return floor >= 4
+        }
+    }
+}
+
+enum HomeSort: String, CaseIterable, Identifiable, Hashable {
+    case newest, cheapest, priciest, largest, cheapestPerSqm, nearest
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .newest: return "Najnowsze"
+        case .cheapest: return "Najtańsze"
+        case .priciest: return "Najdroższe"
+        case .largest: return "Największe"
+        case .cheapestPerSqm: return "Najniższa cena za m²"
+        case .nearest: return "Najbliżej mnie"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .newest: return "clock"
+        case .cheapest: return "arrow.down"
+        case .priciest: return "arrow.up"
+        case .largest: return "square.resize.up"
+        case .cheapestPerSqm: return "chart.bar"
+        case .nearest: return "location"
+        }
+    }
+    func sorted(_ list: [EstateOffer]) -> [EstateOffer] {
+        func price(_ o: EstateOffer) -> Double { o.extras.pricePln ?? o.price ?? .greatestFiniteMagnitude }
+        switch self {
+        case .newest, .nearest: return list
+        case .cheapest: return list.sorted { price($0) < price($1) }
+        case .priciest: return list.sorted { (($0.extras.pricePln ?? $0.price) ?? 0) > (($1.extras.pricePln ?? $1.price) ?? 0) }
+        case .largest: return list.sorted { ($0.area ?? 0) > ($1.area ?? 0) }
+        case .cheapestPerSqm:
+            return list.sorted { ($0.pricePerSqm ?? .greatestFiniteMagnitude) < ($1.pricePerSqm ?? .greatestFiniteMagnitude) }
+        }
+    }
+}
+
+struct HomeCriteria: Hashable {
+    var countries: Set<String> = []
+    var districts: Set<String> = []
+    var price = FilterRange()
+    var area = FilterRange()
+    var minRooms: Int?
+    var floors: Set<HomeFloorFilter> = []
+    var minYearBuilt: Int?
+    var amenities: Set<HomeAmenity> = []
+    var sort: HomeSort = .newest
+
+    var activeCount: Int {
+        var n = 0
+        if !countries.isEmpty { n += 1 }
+        if !districts.isEmpty { n += 1 }
+        if price.isActive { n += 1 }
+        if area.isActive { n += 1 }
+        if minRooms != nil { n += 1 }
+        n += floors.count
+        if minYearBuilt != nil { n += 1 }
+        n += amenities.count
+        return n
+    }
+
+    var isActive: Bool { activeCount > 0 || sort != .newest }
+
+    var summaryParts: [String] {
+        var p: [String] = []
+        if !districts.isEmpty { p.append(districts.sorted().joined(separator: ", ")) }
+        if price.isActive { p.append(FilterFormat.range(price, unit: "zł", money: true)) }
+        if area.isActive { p.append(FilterFormat.range(area, unit: "m²", money: false)) }
+        if let minRooms { p.append("\(minRooms)+ pok.") }
+        if let minYearBuilt { p.append("od \(minYearBuilt) r.") }
+        p.append(contentsOf: floors.map(\.title).sorted())
+        p.append(contentsOf: amenities.map(\.title).sorted())
+        if sort != .newest { p.append(sort.title) }
+        return p
+    }
+
+    func apply(to list: [EstateOffer]) -> [EstateOffer] {
+        guard activeCount > 0 else { return list }
+        return list.filter(matches)
+    }
+
+    func matches(_ o: EstateOffer) -> Bool {
+        if !countries.isEmpty, !countries.contains(o.resolvedCountry.name) { return false }
+        if !districts.isEmpty {
+            guard let d = o.displayDistrict, districts.contains(d) else { return false }
+        }
+        if !price.contains(o.extras.pricePln ?? o.price) { return false }
+        if !area.contains(o.area) { return false }
+        if let minRooms, Int(o.rooms ?? 0) < minRooms { return false }
+        if !floors.isEmpty, !floors.allSatisfy({ $0.matches(o.extras) }) { return false }
+        if let minYearBuilt {
+            guard let y = o.extras.yearBuilt, y >= minYearBuilt else { return false }
+        }
+        if !amenities.allSatisfy({ $0.matches(o.extras) }) { return false }
+        return true
+    }
+}
+
+enum CarTransmissionFilter: String, CaseIterable, Identifiable, Hashable {
+    case automatic, manual
+    var id: String { rawValue }
+    var title: String { self == .automatic ? "Automatyczna" : "Manualna" }
+    func matches(_ car: CarListing) -> Bool {
+        let t = car.transmission.lowercased()
+        let isAuto = t.contains("automat") || t.contains("auto") || t.contains("dsg") || t.contains("cvt")
+        return self == .automatic ? isAuto : !isAuto && !t.isEmpty
+    }
+}
+
+enum CarSort: String, CaseIterable, Identifiable, Hashable {
+    case newest, cheapest, priciest, youngest, lowestMileage, nearest
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .newest: return "Najnowsze ogłoszenia"
+        case .cheapest: return "Najtańsze"
+        case .priciest: return "Najdroższe"
+        case .youngest: return "Najnowszy rocznik"
+        case .lowestMileage: return "Najmniejszy przebieg"
+        case .nearest: return "Najbliżej mnie"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .newest: return "clock"
+        case .cheapest: return "arrow.down"
+        case .priciest: return "arrow.up"
+        case .youngest: return "calendar"
+        case .lowestMileage: return "speedometer"
+        case .nearest: return "location"
+        }
+    }
+    func sorted(_ list: [CarListing]) -> [CarListing] {
+        switch self {
+        case .newest, .nearest: return list
+        case .cheapest: return list.sorted { $0.pricePln < $1.pricePln }
+        case .priciest: return list.sorted { $0.pricePln > $1.pricePln }
+        case .youngest: return list.sorted { $0.year > $1.year }
+        case .lowestMileage: return list.sorted { $0.mileageKm < $1.mileageKm }
+        }
+    }
+}
+
+struct CarCriteria: Hashable {
+    var countries: Set<String> = []
+    var models: Set<String> = []
+    var price = FilterRange()
+    var year = FilterRange()
+    var maxMileage: Int?
+    var transmissions: Set<CarTransmissionFilter> = []
+    var bodyTypes: Set<String> = []
+    var sort: CarSort = .newest
+
+    var activeCount: Int {
+        var n = 0
+        if !countries.isEmpty { n += 1 }
+        if !models.isEmpty { n += 1 }
+        if price.isActive { n += 1 }
+        if year.isActive { n += 1 }
+        if maxMileage != nil { n += 1 }
+        n += transmissions.count
+        if !bodyTypes.isEmpty { n += 1 }
+        return n
+    }
+
+    var isActive: Bool { activeCount > 0 || sort != .newest }
+
+    var summaryParts: [String] {
+        var p: [String] = []
+        if !models.isEmpty { p.append(models.sorted().joined(separator: ", ")) }
+        if price.isActive { p.append(FilterFormat.range(price, unit: "zł", money: true)) }
+        if year.isActive { p.append(FilterFormat.yearRange(year)) }
+        if let maxMileage { p.append("do \(FilterFormat.grouped(maxMileage)) km") }
+        p.append(contentsOf: transmissions.map(\.title).sorted())
+        if !bodyTypes.isEmpty { p.append(bodyTypes.sorted().joined(separator: ", ")) }
+        if sort != .newest { p.append(sort.title) }
+        return p
+    }
+
+    func apply(to list: [CarListing]) -> [CarListing] {
+        guard activeCount > 0 else { return list }
+        return list.filter(matches)
+    }
+
+    func matches(_ car: CarListing) -> Bool {
+        if !countries.isEmpty, !countries.contains(car.resolvedCountry.name) { return false }
+        if !models.isEmpty, !models.contains(car.model.trimmingCharacters(in: .whitespacesAndNewlines)) { return false }
+        if !price.contains(car.pricePln) { return false }
+        if !year.contains(car.year > 0 ? Double(car.year) : nil) { return false }
+        if let maxMileage, car.mileageKm > maxMileage { return false }
+        if !transmissions.isEmpty, !transmissions.contains(where: { $0.matches(car) }) { return false }
+        if !bodyTypes.isEmpty, !bodyTypes.contains(car.bodyType.trimmingCharacters(in: .whitespacesAndNewlines)) { return false }
+        return true
+    }
+}
+
+enum FilterFormat {
+    static func grouped(_ value: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.groupingSeparator = " "
+        return f.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    /// 450 000 → "450 tys.", 1 250 000 → "1,25 mln"
+    static func money(_ v: Double) -> String {
+        if v >= 1_000_000 {
+            let m = v / 1_000_000
+            let text = m == m.rounded() ? String(format: "%.0f", m) : String(format: "%.2f", m)
+                .replacingOccurrences(of: "0$", with: "", options: .regularExpression)
+            return text.replacingOccurrences(of: ".", with: ",") + " mln"
+        }
+        if v >= 10_000 { return "\(Int(v / 1000)) tys." }
+        return grouped(Int(v))
+    }
+
+    static func value(_ v: Double, money isMoney: Bool) -> String {
+        isMoney ? money(v) : grouped(Int(v))
+    }
+
+    static func range(_ r: FilterRange, unit: String, money isMoney: Bool) -> String {
+        switch (r.min, r.max) {
+        case let (lo?, hi?): return "\(value(lo, money: isMoney))–\(value(hi, money: isMoney)) \(unit)"
+        case let (lo?, nil): return "od \(value(lo, money: isMoney)) \(unit)"
+        case let (nil, hi?): return "do \(value(hi, money: isMoney)) \(unit)"
+        default: return "Dowolnie"
+        }
+    }
+
+    static func yearRange(_ r: FilterRange) -> String {
+        switch (r.min, r.max) {
+        case let (lo?, hi?): return "\(Int(lo))–\(Int(hi))"
+        case let (lo?, nil): return "od \(Int(lo))"
+        case let (nil, hi?): return "do \(Int(hi))"
+        default: return "Dowolny"
         }
     }
 }
