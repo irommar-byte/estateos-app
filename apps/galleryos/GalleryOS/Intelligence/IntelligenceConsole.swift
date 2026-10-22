@@ -10,7 +10,7 @@ struct IntelligenceConsole: View {
     @ObservedObject private var memories = MemoryCenter.shared
 
     private var busy: Bool { brain.running && brain.pauseReason == nil }
-    private var warm: Bool { brain.pauseReason != nil }
+    private var warm: Bool { brain.pauseReason != nil && !brain.waitingForCopy }
 
     private var tint: Color {
         warm ? Color(uiColor: .systemOrange) : Color(uiColor: .systemIndigo)
@@ -37,7 +37,8 @@ struct IntelligenceConsole: View {
                     Text(percentText)
                         .font(.system(size: 40, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                        .contentTransition(.numericText())
+                        .contentTransition(.numericText(value: fraction))
+                        .animation(.spring(response: 0.55, dampingFraction: 0.8), value: percentText)
                     Text(statusText)
                         .font(.footnote)
                         .monospacedDigit()
@@ -63,6 +64,9 @@ struct IntelligenceConsole: View {
         .animation(.smooth(duration: 0.4), value: brain.progress)
         // The later stages are built from the analysis; here they are kept up to date as it grows.
         .task(id: brain.revision / 25) {
+            // After the Core has slid in: building these at once made the slide stutter.
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
             await memories.refresh(library: library)
             await cleanup.refresh(library: library)
         }
@@ -77,6 +81,7 @@ struct IntelligenceConsole: View {
     private var percentText: String { "\(Int((fraction * 100).rounded(.down)))%" }
 
     private var headline: String {
+        if brain.waitingForCopy { return L("CZEKA NA KOPIĘ") }
         if warm { return L("PRZERWA · CIEPŁO") }
         if busy { return L("PRACUJE") }
         if brain.clustering { return L("GRUPUJE OSOBY") }
@@ -124,8 +129,12 @@ struct IntelligenceConsole: View {
                 id: "people", symbol: "person.2.crop.square.stack", title: L("Rozpoznawanie osób"),
                 detail: brain.clustering
                     ? L("Porządkuję twarze…")
-                    : L("\(PhotoFormat.grouped(p.placed)) z \(PhotoFormat.grouped(p.recognisable)) twarzy w \(p.people) osobach"),
-                fraction: brain.clustering ? nil : part(p.placed, of: p.recognisable), tint: Color(uiColor: .systemOrange)
+                    : (brain.unknownCount > 0
+                        ? L("\(p.people) osób · \(PhotoFormat.grouped(brain.unknownCount)) twarzy czeka na przypisanie (Osoby → Nieznane)")
+                        : L("\(PhotoFormat.grouped(p.placed)) z \(PhotoFormat.grouped(p.recognisable)) twarzy w \(p.people) osobach")),
+                // Grouping is done when it is not running: faces nobody is named for wait for you,
+                // they are not unfinished work.
+                fraction: brain.clustering ? nil : (p.recognisable > 0 ? 1 : 0), tint: Color(uiColor: .systemOrange)
             ))
         }
         let suggestions = cleanup.report.totalSuggested.count
@@ -194,20 +203,24 @@ private struct ProcessBar: View {
     let fraction: Double?
     let tint: Color
     let active: Bool
+    @Environment(\.coreMotion) private var motion
+    /// The bars fill up from empty once the panel has landed, like gauges coming alive.
+    @State private var grown = false
 
     var body: some View {
         GeometryReader { proxy in
-            let filled = proxy.size.width * CGFloat(fraction ?? 0.35)
+            let filled = proxy.size.width * CGFloat(fraction ?? 0.35) * (grown ? 1 : 0)
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.08))
                 Capsule()
                     .fill(LinearGradient(colors: [tint.opacity(0.55), tint], startPoint: .leading, endPoint: .trailing))
                     .frame(width: filled)
-                if (active && (fraction ?? 0) < 1) || fraction == nil {
+                if motion, (active && (fraction ?? 0) < 1) || fraction == nil {
                     // A glint running along the filled part while the work goes on (clock driven,
                     // so it never animates anything around it).
-                    TimelineView(.animation(minimumInterval: 1 / 30)) { context in
-                        let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
+                    TimelineView(.animation(minimumInterval: 1 / 60)) { context in
+                        let raw = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
+                        let phase = raw < 0.5 ? 2 * raw * raw : 1 - pow(-2 * raw + 2, 2) / 2
                         Capsule()
                             .fill(LinearGradient(colors: [.clear, .white.opacity(0.7), .clear], startPoint: .leading, endPoint: .trailing))
                             .frame(width: 34)
@@ -219,6 +232,14 @@ private struct ProcessBar: View {
             }
         }
         .clipShape(Capsule())
+        .animation(.spring(response: 0.7, dampingFraction: 0.86), value: fraction)
+        .onAppear { if motion { grow() } }
+        .onChange(of: motion) { _, value in if value { grow() } }
+    }
+
+    private func grow() {
+        guard !grown else { return }
+        withAnimation(.spring(response: 1.0, dampingFraction: 0.82)) { grown = true }
     }
 }
 
@@ -228,15 +249,24 @@ private struct NeuralChip: View {
     let active: Bool
     let tint: Color
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.coreMotion) private var motion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !active)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            Canvas { canvas, size in
-                draw(canvas, size: size, t: active ? t : 0)
+        ZStack {
+            // The glow is a still picture behind the chip; a live shadow redrawn every frame cost
+            // more than the chip itself.
+            Circle()
+                .fill(RadialGradient(colors: [tint.opacity(active ? (scheme == .dark ? 0.5 : 0.3) : 0.1), .clear],
+                                     center: .center, startRadius: 4, endRadius: 70))
+                .scaleEffect(active ? 1.1 : 0.8)
+                .animation(.spring(response: 0.9, dampingFraction: 0.8), value: active)
+            TimelineView(.animation(minimumInterval: 1 / 60, paused: !(active && motion))) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                Canvas(rendersAsynchronously: true) { canvas, size in
+                    draw(canvas, size: size, t: active && motion ? t : 0)
+                }
             }
         }
-        .shadow(color: tint.opacity(active ? (scheme == .dark ? 0.55 : 0.3) : 0.12), radius: active ? 14 : 4)
     }
 
     private func draw(_ canvas: GraphicsContext, size: CGSize, t: Double) {
@@ -313,16 +343,33 @@ private struct NeuralChip: View {
 private struct LoadMeter: View {
     let active: Bool
     let tint: Color
+    @Environment(\.coreMotion) private var motion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 12, paused: !active)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(0..<18, id: \.self) { index in
-                    let raw = active ? 0.45 + 0.55 * (sin(t * 4.3 + Double(index) * 0.8) * 0.5 + 0.5) * (sin(t * 1.7 + Double(index)) * 0.3 + 0.7) : 0.12
-                    Capsule()
-                        .fill(tint.opacity(active ? 0.9 : 0.3))
-                        .frame(width: 3, height: max(2, 14 * raw))
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !(active && motion))) { context in
+            let t = active && motion ? context.date.timeIntervalSinceReferenceDate : 0
+            Canvas(rendersAsynchronously: true) { canvas, size in
+                let count = 18
+                let spacing: CGFloat = 2
+                let width = (size.width - spacing * CGFloat(count - 1)) / CGFloat(count)
+                for index in 0..<count {
+                    let i = Double(index)
+                    // Three slow waves on top of each other: it moves like a real load graph,
+                    // smooth and never twitchy.
+                    let level: Double
+                    if active {
+                        let a = sin(t * 2.1 + i * 0.55) * 0.5 + 0.5
+                        let b = sin(t * 3.7 - i * 0.9 + 1.3) * 0.5 + 0.5
+                        let c = sin(t * 0.8 + i * 0.25) * 0.5 + 0.5
+                        level = 0.25 + 0.75 * (a * 0.45 + b * 0.3 + c * 0.25)
+                    } else {
+                        level = 0.14
+                    }
+                    let height = max(2, size.height * CGFloat(level))
+                    let rect = CGRect(x: CGFloat(index) * (width + spacing), y: size.height - height, width: width, height: height)
+                    canvas.fill(Path(roundedRect: rect, cornerRadius: width / 2),
+                                with: .linearGradient(Gradient(colors: [tint.opacity(active ? 1 : 0.35), tint.opacity(active ? 0.55 : 0.2)]),
+                                                      startPoint: CGPoint(x: rect.midX, y: rect.minY), endPoint: CGPoint(x: rect.midX, y: rect.maxY)))
                 }
             }
         }

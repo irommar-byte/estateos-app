@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F0F83B1AEB6733589DD62BBD /* Sync/GalleryDrive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75CC78D07AB72754CF12682B /* Sync/GalleryDrive.swift */; };
+		B34109A2DB50ADBF171792F5 /* Views/DriveViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 615301D9403122399B6E7D84 /* Views/DriveViews.swift */; };
+		B9539A91DB6A6C68D9725D67 /* Views/CoreControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E908E1DECEDCBA169A99A27 /* Views/CoreControls.swift */; };
 		930277AFC3F9B9907E537643 /* Views/SendReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A388CD5E95FEF4BD002610D2 /* Views/SendReportView.swift */; };
 		389F8DE97C9784FA9822077C /* Views/DeleteViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03D47FCD8D82EA019511B9B /* Views/DeleteViews.swift */; };
 		6FC985295BBB3BCF030A0950 /* Intelligence/IntelligenceConsole.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2AE5EF7FF1011BAAFFBDFB1 /* Intelligence/IntelligenceConsole.swift */; };
@@ -164,6 +167,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		75CC78D07AB72754CF12682B /* Sync/GalleryDrive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sync/GalleryDrive.swift; sourceTree = "<group>"; };
+		615301D9403122399B6E7D84 /* Views/DriveViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/DriveViews.swift; sourceTree = "<group>"; };
+		9E908E1DECEDCBA169A99A27 /* Views/CoreControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/CoreControls.swift; sourceTree = "<group>"; };
 		A388CD5E95FEF4BD002610D2 /* Views/SendReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SendReportView.swift; sourceTree = "<group>"; };
 		B03D47FCD8D82EA019511B9B /* Views/DeleteViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/DeleteViews.swift; sourceTree = "<group>"; };
 		F2AE5EF7FF1011BAAFFBDFB1 /* Intelligence/IntelligenceConsole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intelligence/IntelligenceConsole.swift; sourceTree = "<group>"; };
@@ -323,6 +329,9 @@
 		0D6F278107E74EA2BB3A5ECA /* GalleryOS */ = {
 			isa = PBXGroup;
 			children = (
+				75CC78D07AB72754CF12682B /* Sync/GalleryDrive.swift */,
+				615301D9403122399B6E7D84 /* Views/DriveViews.swift */,
+				9E908E1DECEDCBA169A99A27 /* Views/CoreControls.swift */,
 				A388CD5E95FEF4BD002610D2 /* Views/SendReportView.swift */,
 				B03D47FCD8D82EA019511B9B /* Views/DeleteViews.swift */,
 				F2AE5EF7FF1011BAAFFBDFB1 /* Intelligence/IntelligenceConsole.swift */,
@@ -628,6 +637,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F0F83B1AEB6733589DD62BBD /* Sync/GalleryDrive.swift in Sources */,
+				B34109A2DB50ADBF171792F5 /* Views/DriveViews.swift in Sources */,
+				B9539A91DB6A6C68D9725D67 /* Views/CoreControls.swift in Sources */,
 				930277AFC3F9B9907E537643 /* Views/SendReportView.swift in Sources */,
 				389F8DE97C9784FA9822077C /* Views/DeleteViews.swift in Sources */,
 				6FC985295BBB3BCF030A0950 /* Intelligence/IntelligenceConsole.swift in Sources */,

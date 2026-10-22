@@ -36,6 +36,20 @@ struct LibraryMapScreen: View {
     var focus: CLLocationCoordinate2D?
     /// Shown from the iPad sidebar: no back button, the sidebar is the way out.
     var embedded = false
+    /// Opened from a photo's details: the map comes in close on that one photo, which gets a pin
+    /// of its own (never folded into a group), with the others around it.
+    var focusPhoto: PhotoRef? = nil
+
+    private var mapPhotos: [PhotoRef] {
+        guard let focusPhoto, !library.grid.all.contains(where: { $0.id == focusPhoto.id }) else { return library.grid.all }
+        return library.grid.all + [focusPhoto]
+    }
+
+    private var focusPoint: CLLocationCoordinate2D? {
+        if let focus { return focus }
+        guard let latitude = focusPhoto?.latitude, let longitude = focusPhoto?.longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
     @AppStorage("galleryos.map.satellite") private var satellite = false
     @State private var placeAlbum: MapPlaceAlbum?
     @State private var visible = MapVisible.empty
@@ -44,8 +58,8 @@ struct LibraryMapScreen: View {
 
     var body: some View {
         PhotoMapView(
-            photos: library.grid.all,
-            focus: focus,
+            photos: mapPhotos,
+            focus: focusPoint,
             mapType: satellite ? .hybrid : .standard,
             asset: { library.asset(id: $0) },
             thumb: { library.thumbnail(id: $0) },
@@ -58,7 +72,8 @@ struct LibraryMapScreen: View {
             },
             onTracking: { mode in
                 if tracking != mode { tracking = mode }
-            }
+            },
+            focusID: focusPhoto?.id
         )
         .ignoresSafeArea()
         .overlay(alignment: .topLeading) {
@@ -216,6 +231,7 @@ private struct PhotoMapView: UIViewRepresentable {
     var onOpen: ([String], CLLocationCoordinate2D) -> Void
     var onVisible: (MapVisible) -> Void
     var onTracking: (MKUserTrackingMode) -> Void = { _ in }
+    var focusID: String? = nil
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -233,6 +249,7 @@ private struct PhotoMapView: UIViewRepresentable {
             compass.topAnchor.constraint(equalTo: map.safeAreaLayoutGuide.topAnchor, constant: 112)
         ])
         context.coordinator.map = map
+        context.coordinator.focusID = focusID
         context.coordinator.askForLocation()
         context.coordinator.reload(photos: photos, focus: focus, force: true)
         return map
@@ -259,6 +276,8 @@ private struct PhotoMapView: UIViewRepresentable {
         var onOpen: ([String], CLLocationCoordinate2D) -> Void
         var onVisible: (MapVisible) -> Void
         var onTracking: (MKUserTrackingMode) -> Void = { _ in }
+        /// The one photo the map was opened for: its own pin, on top, never in a group.
+        var focusID: String?
         private let locations = CLLocationManager()
         private var photos: [PhotoRef] = []
         private var photoSignature = ""
@@ -309,8 +328,10 @@ private struct PhotoMapView: UIViewRepresentable {
             if !focused, let map {
                 if let focus {
                     focused = true
+                    // One photo: close in, a few streets around it. A place: the neighbourhood.
+                    let span = focusID == nil ? 0.08 : 0.004
                     map.setRegion(
-                        MKCoordinateRegion(center: focus, span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)),
+                        MKCoordinateRegion(center: focus, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)),
                         animated: false
                     )
                 } else if let latest = located.last, let latitude = latest.latitude, let longitude = latest.longitude {
@@ -345,6 +366,7 @@ private struct PhotoMapView: UIViewRepresentable {
         }
 
         private static func step(_ level: Int) -> Double { pow(2, Double(level)) }
+        static let focusKey = "focus"
 
         private static func key(_ latitude: Double, _ longitude: Double, level: Int) -> String {
             let step = Self.step(level)
@@ -386,6 +408,11 @@ private struct PhotoMapView: UIViewRepresentable {
             var buckets: [String: (coordinate: CLLocationCoordinate2D, ids: [String], cover: String, coverAt: CLLocationCoordinate2D)] = [:]
             for photo in photos {
                 guard let latitude = photo.latitude, let longitude = photo.longitude else { continue }
+                if photo.id == focusID {
+                    let at = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                    buckets[Self.focusKey] = (at, [photo.id], photo.id, at)
+                    continue
+                }
                 let key = Self.key(latitude, longitude, level: next)
                 let at = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
                 if var existing = buckets[key] {
@@ -471,7 +498,9 @@ private struct PhotoMapView: UIViewRepresentable {
             view.annotation = pin
             view.transform = .identity
             view.alpha = 1
-            view.layer.zPosition = 0
+            let focused = pin.key == Self.focusKey
+            view.layer.zPosition = focused ? 10 : 0
+            view.setFocused(focused)
             view.configure(pin: pin, asset: asset(pin.coverID), thumb: thumb(pin.coverID))
             return view
         }
@@ -576,6 +605,13 @@ private final class PhotoPinView: MKAnnotationView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// The photo the map was opened for: a blue rim, above the rest.
+    func setFocused(_ focused: Bool) {
+        photo.layer.borderColor = (focused ? UIColor.systemBlue : UIColor.white).cgColor
+        photo.layer.borderWidth = focused ? 3.5 : 2.5
+        displayPriority = .required
+    }
 
     func applyCount(_ count: Int) {
         badge.isHidden = count < 2

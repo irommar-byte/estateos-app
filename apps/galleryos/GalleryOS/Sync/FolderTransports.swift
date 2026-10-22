@@ -84,6 +84,11 @@ final class FolderTransport: CatalogTransport {
         try Data(contentsOf: try file(relative))
     }
 
+    /// Where a catalog file sits on the folder (for playing a film straight from a pendrive).
+    func localURL(_ relative: String) -> URL? {
+        try? file(relative)
+    }
+
     func list(_ relative: String) async throws -> [String] {
         let folder = try file(relative)
         guard FileManager.default.fileExists(atPath: folder.path) else { return [] }

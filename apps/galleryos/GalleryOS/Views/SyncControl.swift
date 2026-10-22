@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -170,6 +171,19 @@ struct SyncGlyph: View {
     }
 }
 
+private struct CoreMotionKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Whether the Core's living parts (flow, chip, meters) may move. Off while the panel slides
+    /// in, so the slide is never interrupted by drawing.
+    var coreMotion: Bool {
+        get { self[CoreMotionKey.self] }
+        set { self[CoreMotionKey.self] = newValue }
+    }
+}
+
 /// Turns a view continuously from the clock, without an implicit animation: nothing around it
 /// (the navigation bar) is ever animated along with it.
 private struct Revolving: ViewModifier {
@@ -305,8 +319,21 @@ struct SyncPanel: View {
     @AppStorage(CloudServerShare.enabledKey) private var tvShare = true
     @AppStorage("galleryos.link.mode") private var linkMode = LinkMode.auto.rawValue
     @AppStorage(GalleryOwner.nameKey) private var ownerName = ""
+    @ObservedObject private var cleanup = CleanupCenter.shared
     @AppStorage(TrashRetention.key) private var trashDays = 30
     @State private var trashBytes: Int64 = 0
+    /// Your photos someone else moved to the trash; counted once the panel has slid in.
+    @State private var othersTrash: [String] = []
+    /// False while the panel slides in: the moving parts wait, so the slide stays perfectly smooth.
+    @State private var settled = false
+    @ObservedObject private var power = PowerWatch.shared
+    @ObservedObject private var drives = DriveCenter.shared
+    /// Counts the moments the machine starts (all rules met), for the light sweep.
+    @State private var ignition = 0
+    /// What Apple TV last told this iPhone through iCloud.
+    @State private var tvMark: TVPresence.Mark?
+    @State private var driveWizard = false
+    @State private var driveHub = false
     @State private var freeSpace: String?
     @State private var ledger = LibraryLedger()
     @State private var showGuide = false
@@ -342,6 +369,15 @@ struct SyncPanel: View {
             ScrollView {
                 VStack(spacing: 14) {
                     console
+                    ConditionDeck(
+                        autoSync: uploads,
+                        wifiOnly: Binding(get: { wifiOnly }, set: { wifiOnly = $0 }),
+                        chargingOnly: Binding(get: { chargingOnly }, set: { chargingOnly = $0 }),
+                        network: link.network,
+                        charging: power.charging,
+                        ignition: ignition,
+                        onChange: { LibraryEngine.shared.kick() }
+                    )
                     instruments
                     IntelligenceConsole()
                     assistant
@@ -353,9 +389,11 @@ struct SyncPanel: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
                 .padding(.bottom, 30)
+                .environment(\.coreMotion, settled)
             }
             .scrollBounceBehavior(.basedOnSize)
             .background(ConsoleBackdrop().ignoresSafeArea())
+            .cleanupDestinations()
             .navigationTitle(L("GalleryOS™ Core"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -367,13 +405,27 @@ struct SyncPanel: View {
                 if ownerName.isEmpty, !ShareAccount.shared.profileName.isEmpty {
                     ownerName = ShareAccount.shared.profileName
                 }
-                trashBytes = LibraryEngine.shared.trashBytes()
-                LibraryEngine.shared.publishCounts()
-                ledger = LibraryEngine.shared.ledger()
                 catalogLabel = LibraryEngine.shared.serverShareName()
+                // Counting the whole library while the sheet slides in made it stutter. Let it
+                // land first, then fill in the numbers with a spring.
+                try? await Task.sleep(for: .milliseconds(450))
+                guard !Task.isCancelled else { return }
+                settled = true
+                LibraryEngine.shared.publishCounts()
+                let counted = LibraryEngine.shared.ledger()
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.86)) {
+                    ledger = counted
+                    trashBytes = LibraryEngine.shared.trashBytes()
+                    othersTrash = LibraryEngine.shared.trashedByOthers()
+                }
                 freeSpace = await library.freeSpaceText()
             }
-            .task(id: feed.counts.sent) { ledger = LibraryEngine.shared.ledger() }
+            .task(id: feed.counts.sent) {
+                guard settled else { return }
+                let counted = LibraryEngine.shared.ledger()
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.88)) { ledger = counted }
+                othersTrash = LibraryEngine.shared.trashedByOthers()
+            }
             .fileImporter(isPresented: $pickingDisk, allowedContentTypes: [.folder]) { result in
                 guard case .success(let url) = result else { return }
                 guard url.startAccessingSecurityScopedResource() else { return }
@@ -420,6 +472,39 @@ struct SyncPanel: View {
                 Text(removeResult)
             }
             .animation(GalleryTheme.snappy, value: light)
+            .onChange(of: gateOpen) { old, new in
+                // Every rule met: the machine starts. A sweep of light, a firm click, and the
+                // engine is woken at once instead of at its next look.
+                guard new, !old else { return }
+                ignition += 1
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                LibraryEngine.shared.kick()
+            }
+            .task {
+                tvMark = TVPresence.latest()
+                drives.check()
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(20))
+                    tvMark = TVPresence.latest()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSUbiquitousKeyValueStore.didChangeExternallyNotification)) { _ in
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { tvMark = TVPresence.latest() }
+            }
+            .sheet(isPresented: $driveWizard) {
+                DriveWizard()
+                    .environmentObject(library)
+            }
+            .sheet(isPresented: $driveHub) {
+                DriveHub(onAddAnother: {
+                    driveHub = false
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(450))
+                        driveWizard = true
+                    }
+                })
+                .environmentObject(library)
+            }
             .task(id: liveLight) {
                 let next = liveLight
                 guard next != steadyLight else { return }
@@ -456,7 +541,7 @@ struct SyncPanel: View {
 
     private var console: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 7) {
                         StatusLED(color: light.color, blinking: light == .working || flowState == .searching)
@@ -464,22 +549,27 @@ struct SyncPanel: View {
                             .font(.system(size: 12, weight: .semibold))
                             .tracking(0.6)
                             .foregroundStyle(light.color)
+                            .lineLimit(1)
                             .contentTransition(.opacity)
+                        if light == .working, let progress = status.progress {
+                            Text("\(Int((progress * 100).rounded()))%")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(light.color)
+                                .contentTransition(.numericText(value: progress))
+                                .transition(.opacity)
+                        }
                     }
                     Text(headline)
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.6)
                         .contentTransition(.opacity)
                 }
                 Spacer(minLength: 8)
-                if light == .working, let progress = status.progress {
-                    Text("\(Int((progress * 100).rounded()))%")
-                        .font(.system(size: 30, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(light.color)
-                        .contentTransition(.numericText(value: progress))
-                        .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .trailing)))
+                MetalSyncSwitch(on: Binding(get: { uploads }, set: { uploads = $0 })) { value in
+                    LibraryEngine.shared.setUploadsEnabled(value)
+                    if value { ignition += 1 }
                 }
             }
             .padding(.horizontal, 18)
@@ -493,12 +583,16 @@ struct SyncPanel: View {
                 gatewayValue: gatewayValue,
                 serverTitle: servers.online?.title ?? servers.servers.first?.title ?? L("Serwer"),
                 serverValue: serverValue,
-                tvOn: tvShare && library.destinationConnected,
-                diskName: disks.disks.first(where: { $0.id == disks.targetID })?.name ?? disks.disks.first?.name,
-                diskChosen: disks.targetID != "server",
+                tv: tvLink,
+                disk: diskLink,
                 rate: telemetry.rate,
                 onTap: { item in
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    if item == .disk {
+                        // A pendrive has its own studio: the wizard the first time, the hub after.
+                        if drives.drives.isEmpty { driveWizard = true } else { driveHub = true }
+                        return
+                    }
                     node = item
                 }
             )
@@ -531,8 +625,36 @@ struct SyncPanel: View {
             .animation(.easeInOut(duration: 0.25), value: detailLine)
         }
         .background(ConsoleSurface(tint: light.color))
+        .overlay { IgnitionSweep(trigger: ignition, radius: 26) }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .coreCard(radius: 26)
+    }
+
+    /// Every rule for the automatic copy is met right now.
+    private var gateOpen: Bool {
+        guard uploads, library.destinationConnected, link.network != .none else { return false }
+        if wifiOnly && !(link.network == .wifi || link.network == .wired) { return false }
+        if chargingOnly && !power.charging { return false }
+        return true
+    }
+
+    /// How Apple TV is linked: switched off, waiting for it, paired through iCloud, or showing
+    /// the library right now (it checked in within the last quarter of an hour).
+    private var tvLink: TVLinkState {
+        guard tvShare, library.destinationConnected else { return .off }
+        guard let tvMark else { return .waiting }
+        return Date().timeIntervalSince(tvMark.at) < 15 * 60 ? .live : .paired
+    }
+
+    private var diskLink: DiskLink {
+        let current = drives.current
+        let copying = drives.copying && drives.job?.driveID == current?.id
+        return DiskLink(
+            name: current?.name,
+            present: current.map { drives.present.contains($0.id) } ?? false,
+            copying: copying,
+            fraction: copying ? (drives.job?.fraction ?? 0) : 0
+        )
     }
 
     private var statusCode: String {
@@ -649,13 +771,14 @@ struct SyncPanel: View {
                              title: L("Serwer nie odpowiada"), detail: message,
                              action: L("Sprawdź"), run: { Task { await link.probeAll() } }))
         }
-        let trashedByOthers = LibraryEngine.shared.trashedByOthers()
+        let trashedByOthers = othersTrash
         if !trashedByOthers.isEmpty {
             list.append(Step(id: "others-trash", symbol: "trash.circle.fill", tint: SyncLight.error.color,
                              title: L("Ktoś przeniósł do kosza Twoje zdjęcia: \(PhotoFormat.grouped(trashedByOthers.count))"),
                              detail: L("Są w Kolekcjach → Ostatnio usunięte. Usunąć je na zawsze możesz tylko Ty."),
                              action: L("Przywróć"), run: {
                                  library.restoreFromTrash(ids: trashedByOthers)
+                                 othersTrash = []
                                  ledger = LibraryEngine.shared.ledger()
                              }))
         }
@@ -888,6 +1011,24 @@ struct SyncPanel: View {
 
     private var toolsCard: some View {
         ConsoleCard(title: L("NARZĘDZIA"), trailing: nil) {
+            // Porządki live here, among the tools, and not in Collections.
+            NavigationLink(value: CleanupRoute.overview) {
+                HStack {
+                    ToolRow(title: L("Porządki"), symbol: "sparkles.rectangle.stack", tint: .teal, detail: cleanup.summary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .task(id: PhotoIntelligence.shared.revision / 20) {
+                // After the panel has landed and the counts are in.
+                try? await Task.sleep(for: .milliseconds(1100))
+                guard !Task.isCancelled else { return }
+                await cleanup.refresh(library: library)
+            }
+            Divider().padding(.leading, 40)
             Button {
                 UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                 repair.start(library: library)
@@ -1007,6 +1148,20 @@ struct SyncPanel: View {
                         }
                     }
                 case .tv:
+                    if let tvMark, tvShare {
+                        Section {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(L("Sparowane przez iCloud"))
+                                    Text(L("\(tvMark.name) · ostatnio \(tvMark.at.formatted(.relative(presentation: .named)))"))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "checkmark.icloud.fill").foregroundStyle(Color(red: 0.55, green: 0.78, blue: 1.0))
+                            }
+                        }
+                    }
                     Section {
                         AppleTVShareToggle()
                     } footer: {
@@ -1079,6 +1234,17 @@ enum ConsoleNode: String, Identifiable {
     }
 }
 
+enum TVLinkState: Equatable {
+    case off, waiting, paired, live
+}
+
+struct DiskLink: Equatable {
+    var name: String?
+    var present: Bool
+    var copying: Bool
+    var fraction: Double
+}
+
 enum FlowState: Equatable {
     case idle, sending, writingDisk, searching, fault, offline, verifying, deleting
 }
@@ -1086,6 +1252,7 @@ enum FlowState: Equatable {
 /// A separate job with its own small gauge, under the backup status.
 private struct OperationStrip: View {
     let operation: SyncOperation
+    @Environment(\.coreMotion) private var motion
 
     private var tint: Color {
         switch operation.kind {
@@ -1136,11 +1303,12 @@ private struct OperationStrip: View {
                             Capsule()
                                 .fill(tint)
                                 .frame(width: proxy.size.width * CGFloat(min(max(progress, 0), 1)))
-                                .animation(.smooth(duration: 0.35), value: progress)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.86), value: progress)
                         } else {
                             // Indeterminate: a short bar slides while iOS works.
-                            TimelineView(.animation) { context in
-                                let t = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+                            TimelineView(.animation(minimumInterval: 1 / 60, paused: !motion)) { context in
+                                let raw = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+                                let t = raw < 0.5 ? 2 * raw * raw : 1 - pow(-2 * raw + 2, 2) / 2
                                 Capsule()
                                     .fill(tint)
                                     .frame(width: proxy.size.width * 0.25)
@@ -1218,25 +1386,30 @@ extension Color {
     }
 }
 
+/// A status light that breathes like the one on a MacBook: a soft sine, never a hard blink.
+/// Driven by the clock, so it never animates anything around it.
 private struct StatusLED: View {
     let color: Color
     let blinking: Bool
-    @State private var dim = false
+    @Environment(\.coreMotion) private var motion
 
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 7, height: 7)
-            .shadow(color: color.opacity(0.9), radius: 4)
-            .opacity(blinking && dim ? 0.25 : 1)
-            .onAppear { animate() }
-            .onChange(of: blinking) { _, _ in animate() }
-    }
-
-    private func animate() {
-        dim = false
-        guard blinking else { return }
-        withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { dim = true }
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !(blinking && motion))) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let glow = blinking && motion ? 0.35 + 0.65 * (sin(t * 4.2) * 0.5 + 0.5) : 1
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.35 * glow))
+                    .frame(width: 15, height: 15)
+                    .blur(radius: 3)
+                Circle()
+                    .fill(RadialGradient(colors: [.white.opacity(0.9), color], center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: 5))
+                    .frame(width: 7, height: 7)
+                    .opacity(0.4 + 0.6 * glow)
+            }
+            .frame(width: 15, height: 15)
+        }
+        .animation(.smooth(duration: 0.4), value: color)
     }
 }
 
@@ -1250,11 +1423,15 @@ private struct FlowConsole: View {
     let gatewayValue: String
     let serverTitle: String
     let serverValue: String
-    let tvOn: Bool
-    let diskName: String?
-    let diskChosen: Bool
+    let tv: TVLinkState
+    let disk: DiskLink
     let rate: Double
     let onTap: (ConsoleNode) -> Void
+    @Environment(\.coreMotion) private var motion
+
+    private var tvOn: Bool { tv == .paired || tv == .live }
+    /// The light of an iCloud link: ice blue and silver.
+    private static let ice = Color(red: 0.62, green: 0.84, blue: 1.0)
 
     private var routeTint: Color {
         switch state {
@@ -1272,28 +1449,54 @@ private struct FlowConsole: View {
             let device = CGPoint(x: w * 0.14, y: h * 0.36)
             let gateway = CGPoint(x: w * 0.5, y: h * 0.36)
             let server = CGPoint(x: w * 0.86, y: h * 0.36)
-            let disk = CGPoint(x: w * 0.14, y: h * 0.82)
-            let tv = CGPoint(x: w * 0.86, y: h * 0.82)
+            let diskPoint = CGPoint(x: w * 0.14, y: h * 0.82)
+            let tvPoint = CGPoint(x: w * 0.86, y: h * 0.82)
             ZStack {
-                TimelineView(.animation(minimumInterval: 1 / 60, paused: state == .offline)) { context in
+                TimelineView(.animation(minimumInterval: 1 / 60, paused: (state == .offline && !disk.copying && !tvOn) || !motion)) { context in
                     let time = context.date.timeIntervalSinceReferenceDate
-                    Canvas { canvas, _ in
+                    Canvas(rendersAsynchronously: true) { canvas, _ in
                         drawLink(canvas, from: device, to: gateway, tint: routeTint, solid: state != .offline && state != .fault)
                         drawLink(canvas, from: gateway, to: server, tint: routeTint, solid: state == .idle || state == .sending || state == .verifying || state == .deleting)
-                        drawLink(canvas, from: device, to: disk, tint: .orange, solid: diskChosen)
-                        drawLink(canvas, from: server, to: tv, tint: .secondary, solid: tvOn)
+                        drawLink(canvas, from: device, to: diskPoint, tint: .orange, solid: disk.present)
+                        switch tv {
+                        case .off:
+                            drawLink(canvas, from: server, to: tvPoint, tint: .secondary, solid: false)
+                        case .waiting:
+                            // Dashed, with a scout pulse going out: the iPhone is waiting for Apple TV.
+                            drawLink(canvas, from: server, to: tvPoint, tint: .secondary, solid: false)
+                            let f = (time / 2.4).truncatingRemainder(dividingBy: 1)
+                            drawPacket(canvas, at: along([server, tvPoint], f), tint: Color.primary.opacity(0.35 * (1 - f)), size: 3)
+                        case .paired, .live:
+                            drawFiber(canvas, from: server, to: tvPoint, time: time, live: tv == .live)
+                        }
+                        if disk.copying {
+                            // The pendrive copy: comets from the device down into the stick.
+                            for index in 0..<3 {
+                                let f = (time * 0.8 + Double(index) / 3).truncatingRemainder(dividingBy: 1)
+                                drawComet(canvas, path: [device, diskPoint], at: f, tint: .orange, size: 4.5)
+                            }
+                        } else if disk.present {
+                            let f = (time / 3.6).truncatingRemainder(dividingBy: 1)
+                            if f < 0.4 {
+                                drawPacket(canvas, at: along([device, diskPoint], f / 0.4), tint: Color.orange.opacity(0.7), size: 3)
+                            }
+                        }
                         switch state {
                         case .sending:
                             // Faster flow at a higher measured rate; never frozen while a file is open.
                             let speed = 0.42 + min(rate / 8_000_000, 1) * 0.6
+                            let path = [device, gateway, server]
                             for index in 0..<4 {
                                 let f = (time * speed + Double(index) / 4).truncatingRemainder(dividingBy: 1)
-                                drawPacket(canvas, at: along([device, gateway, server], f), tint: routeTint, size: 5.5)
+                                drawComet(canvas, path: path, at: f, tint: routeTint, size: 5.5)
                             }
+                            // A soft flash at the server each time a packet lands.
+                            let landing = (time * speed * 4).truncatingRemainder(dividingBy: 1)
+                            drawSpark(canvas, at: server, tint: routeTint, phase: landing)
                         case .writingDisk:
                             for index in 0..<3 {
                                 let f = (time * 0.7 + Double(index) / 3).truncatingRemainder(dividingBy: 1)
-                                drawPacket(canvas, at: along([device, disk], f), tint: .orange, size: 5)
+                                drawComet(canvas, path: [device, diskPoint], at: f, tint: .orange, size: 5)
                             }
                         case .searching:
                             // A scout pulse runs out and back looking for a road.
@@ -1303,17 +1506,17 @@ private struct FlowConsole: View {
                             // Heartbeat: one quiet packet every few seconds proves the link is alive.
                             let f = (time / 3.2).truncatingRemainder(dividingBy: 1)
                             if f < 0.55 {
-                                drawPacket(canvas, at: along([device, gateway, server], f / 0.55), tint: routeTint.opacity(0.75), size: 3.5)
+                                // Eased: it sets off gently and arrives gently, like a real pulse.
+                                let x = f / 0.55
+                                let eased = x < 0.5 ? 2 * x * x : 1 - pow(-2 * x + 2, 2) / 2
+                                drawComet(canvas, path: [device, gateway, server], at: eased, tint: routeTint.opacity(0.8), size: 3.5)
                             }
-                            if tvOn {
-                                let g = (time / 4.5 + 0.3).truncatingRemainder(dividingBy: 1)
-                                if g < 0.5 { drawPacket(canvas, at: along([server, tv], g / 0.5), tint: .secondary, size: 3) }
-                            }
+
                         case .verifying:
                             // Confirmations come back from the server to the device.
                             for index in 0..<3 {
                                 let f = (time * 0.55 + Double(index) / 3).truncatingRemainder(dividingBy: 1)
-                                drawPacket(canvas, at: along([server, gateway, device], f), tint: Color(red: 0.36, green: 0.82, blue: 1.0), size: 4.5)
+                                drawComet(canvas, path: [server, gateway, device], at: f, tint: Color(red: 0.36, green: 0.82, blue: 1.0), size: 4.5)
                             }
                         case .deleting, .fault, .offline:
                             break
@@ -1329,15 +1532,66 @@ private struct FlowConsole: View {
                 ConsoleNodeView(symbol: "server.rack", title: serverTitle, value: serverValue, tint: state == .offline ? .secondary : GalleryTheme.accent, active: state == .idle || state == .sending || state == .verifying || state == .deleting, busy: state == .sending || state == .verifying)
                     .onTapGesture { onTap(.server) }
                     .position(server)
-                ConsoleNodeView(symbol: "mediastick", title: diskName ?? L("Pendrive"), value: diskName == nil ? L("dodaj") : (diskChosen ? L("aktywny") : L("gotowy")), tint: .orange, active: diskChosen, busy: state == .writingDisk, small: true)
+                ConsoleNodeView(symbol: "mediastick", title: disk.name ?? L("Pendrive"), value: diskValue, tint: .orange, active: disk.present, busy: disk.copying, small: true, glow: disk.present && !disk.copying)
                     .onTapGesture { onTap(.disk) }
-                    .position(disk)
-                ConsoleNodeView(symbol: "appletv.fill", title: L("Apple TV"), value: tvOn ? L("połączone") : L("wyłączone"), tint: .primary, active: tvOn, busy: false, small: true)
+                    .position(diskPoint)
+                ConsoleNodeView(symbol: "appletv.fill", title: L("Apple TV"), value: tvValue, tint: tvOn ? Self.ice : .primary, active: tvOn, busy: false, small: true, glow: tvOn)
                     .onTapGesture { onTap(.tv) }
-                    .position(tv)
+                    .position(tvPoint)
             }
         }
         .animation(GalleryTheme.snappy, value: state)
+    }
+
+    private var diskValue: String {
+        guard disk.name != nil else { return L("dodaj") }
+        if disk.copying { return "\(Int((disk.fraction * 100).rounded(.down)))%" }
+        return disk.present ? L("podłączony") : L("odłączony")
+    }
+
+    private var tvValue: String {
+        switch tv {
+        case .off: return L("wyłączone")
+        case .waiting: return L("czeka")
+        case .paired: return L("sparowane")
+        case .live: return L("na ekranie")
+        }
+    }
+
+    /// The iCloud link to Apple TV: two fine strands twisted round each other like a fibre,
+    /// with light running along them. Live, photons travel down to the television.
+    private func drawFiber(_ canvas: GraphicsContext, from a: CGPoint, to b: CGPoint, time: Double, live: Bool) {
+        let dx = b.x - a.x, dy = b.y - a.y
+        let length = max(hypot(dx, dy), 1)
+        let normal = CGPoint(x: -dy / length, y: dx / length)
+        var core = Path()
+        core.move(to: a)
+        core.addLine(to: b)
+        canvas.stroke(core, with: .color(Self.ice.opacity(0.16)), style: StrokeStyle(lineWidth: 9, lineCap: .round))
+        for strand in 0..<2 {
+            var path = Path()
+            let steps = 40
+            for step in 0...steps {
+                let f = Double(step) / Double(steps)
+                let taper = sin(f * .pi)
+                let wave = sin(f * .pi * 5 + time * 2.4 + Double(strand) * .pi) * 2.6 * taper
+                let point = CGPoint(x: a.x + dx * CGFloat(f) + normal.x * CGFloat(wave),
+                                    y: a.y + dy * CGFloat(f) + normal.y * CGFloat(wave))
+                if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+            canvas.stroke(path, with: .linearGradient(
+                Gradient(colors: [Self.ice.opacity(0.5), .white.opacity(0.95), Self.ice.opacity(0.6)]),
+                startPoint: a, endPoint: b), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+        }
+        // A bead of light gliding down the fibre.
+        let glint = (time / 2.2).truncatingRemainder(dividingBy: 1)
+        drawPacket(canvas, at: along([a, b], glint), tint: Self.ice, size: live ? 4.5 : 3)
+        if live {
+            for index in 0..<2 {
+                let f = (time * 0.45 + Double(index) / 2 + 0.25).truncatingRemainder(dividingBy: 1)
+                drawComet(canvas, path: [a, b], at: f, tint: Self.ice, size: 4)
+            }
+        }
     }
 
     private var gatewaySymbol: String {
@@ -1371,6 +1625,29 @@ private struct FlowConsole: View {
         }
     }
 
+    /// A packet with a fading tail behind it, the way light streaks on a long exposure.
+    private func drawComet(_ canvas: GraphicsContext, path: [CGPoint], at fraction: Double, tint: Color, size: CGFloat) {
+        let tail = 7
+        for step in stride(from: tail, through: 1, by: -1) {
+            let back = fraction - Double(step) * 0.011
+            guard back > 0 else { continue }
+            let fade = 1 - Double(step) / Double(tail + 1)
+            let point = along(path, back)
+            let r = size * 0.5 * CGFloat(0.35 + 0.65 * fade)
+            canvas.fill(Path(ellipseIn: CGRect(x: point.x - r, y: point.y - r, width: r * 2, height: r * 2)),
+                        with: .color(tint.opacity(0.32 * fade)))
+        }
+        drawPacket(canvas, at: along(path, fraction), tint: tint, size: size)
+    }
+
+    /// A ring that opens and fades where a packet arrives.
+    private func drawSpark(_ canvas: GraphicsContext, at point: CGPoint, tint: Color, phase: Double) {
+        let eased = 1 - pow(1 - phase, 2)
+        let r = 10 + 18 * CGFloat(eased)
+        canvas.stroke(Path(ellipseIn: CGRect(x: point.x - r, y: point.y - r, width: r * 2, height: r * 2)),
+                      with: .color(tint.opacity(0.35 * (1 - phase))), lineWidth: 1.5)
+    }
+
     private func drawPacket(_ canvas: GraphicsContext, at point: CGPoint, tint: Color, size: CGFloat) {
         for (scale, opacity) in [(3.2, 0.12), (2.0, 0.28), (1.0, 1.0)] {
             let r = size * scale / 2
@@ -1390,8 +1667,10 @@ private struct ConsoleNodeView: View {
     let busy: Bool
     var spinning = false
     var small = false
-    @State private var breathe = false
+    /// Switched on and alive: a slow breathing glow, like a device in standby.
+    var glow = false
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.coreMotion) private var motion
 
     private var disc: LinearGradient {
         scheme == .dark
@@ -1403,34 +1682,53 @@ private struct ConsoleNodeView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(active ? 0.16 : 0.05))
-                    .scaleEffect(busy && breathe ? 1.28 : 1)
-                    .opacity(busy && breathe ? 0 : 1)
-                Circle()
-                    .fill(disc)
-                    .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.1), radius: 3, y: 1)
-                    .padding(4)
-                Circle()
-                    .strokeBorder(
-                        AngularGradient(colors: [tint.opacity(active ? 0.9 : 0.25), tint.opacity(0.1), tint.opacity(active ? 0.9 : 0.25)], center: .center),
-                        lineWidth: 1.4
-                    )
-                    .padding(4)
-                    .rotationEffect(.degrees(spinning && breathe ? 360 : 0))
-                Image(systemName: symbol)
-                    .font(.system(size: small ? 15 : 19, weight: .semibold))
-                    .foregroundStyle(active ? tint : .secondary)
-                    .contentTransition(.symbolEffect(.replace))
-                    .symbolEffect(.variableColor.iterative, options: .repeating, isActive: spinning)
-                if busy {
+            TimelineView(.animation(minimumInterval: 1 / 60, paused: !((busy || spinning || glow) && motion))) { context in
+                let t = (busy || spinning || glow) && motion ? context.date.timeIntervalSinceReferenceDate : 0
+                let breath = glow ? (motion ? 0.5 + 0.5 * sin(t * 1.9) : 0.8) : 0
+                ZStack {
+                    if glow {
+                        Circle()
+                            .fill(RadialGradient(colors: [tint.opacity(0.55 * breath + 0.15), tint.opacity(0)],
+                                                 center: .center, startRadius: size * 0.25, endRadius: size * 0.95))
+                            .scaleEffect(1.25 + 0.12 * breath)
+                    }
                     Circle()
-                        .fill(tint)
-                        .frame(width: 5, height: 5)
-                        .shadow(color: tint, radius: 3)
-                        .opacity(breathe ? 1 : 0.2)
-                        .offset(x: size * 0.3, y: -size * 0.3)
+                        .fill(tint.opacity(active ? 0.16 : 0.05))
+                    if busy && motion {
+                        // Two sonar rings, one after the other, easing out as they grow.
+                        ForEach(0..<2, id: \.self) { ring in
+                            let phase = (t / 1.6 + Double(ring) * 0.5).truncatingRemainder(dividingBy: 1)
+                            let eased = 1 - pow(1 - phase, 3)
+                            Circle()
+                                .strokeBorder(tint.opacity(0.55 * (1 - phase)), lineWidth: 1.5)
+                                .scaleEffect(1 + 0.42 * eased)
+                        }
+                    }
+                    Circle()
+                        .fill(disc)
+                        .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.1), radius: 3, y: 1)
+                        .padding(4)
+                    Circle()
+                        .strokeBorder(
+                            AngularGradient(colors: [tint.opacity(active ? 0.95 : 0.25), tint.opacity(0.08), tint.opacity(active ? 0.95 : 0.25)], center: .center),
+                            lineWidth: 1.4
+                        )
+                        .padding(4)
+                        .rotationEffect(.degrees(spinning ? (t * 140).truncatingRemainder(dividingBy: 360) : (busy ? (t * 40).truncatingRemainder(dividingBy: 360) : 0)))
+                    Image(systemName: symbol)
+                        .font(.system(size: small ? 15 : 19, weight: .semibold))
+                        .foregroundStyle(active ? tint : .secondary)
+                        .shadow(color: glow ? tint.opacity(0.4 + 0.5 * breath) : .clear, radius: 3 + 5 * breath)
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.variableColor.iterative, options: .repeating, isActive: spinning && motion)
+                    if busy {
+                        Circle()
+                            .fill(tint)
+                            .frame(width: 5, height: 5)
+                            .shadow(color: tint, radius: 3)
+                            .opacity(0.3 + 0.7 * (sin(t * 5) * 0.5 + 0.5))
+                            .offset(x: size * 0.3, y: -size * 0.3)
+                    }
                 }
             }
             .frame(width: size, height: size)
@@ -1448,17 +1746,8 @@ private struct ConsoleNodeView: View {
             }
         }
         .contentShape(Rectangle())
-        .onAppear { animate() }
-        .onChange(of: busy) { _, _ in animate() }
-        .onChange(of: spinning) { _, _ in animate() }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-    }
-
-    private func animate() {
-        breathe = false
-        guard busy || spinning else { return }
-        withAnimation(.easeOut(duration: spinning ? 1.6 : 1.3).repeatForever(autoreverses: false)) { breathe = true }
     }
 }
 
@@ -1474,7 +1763,7 @@ private struct ConsoleProgress: View {
                     .fill(LinearGradient(colors: [tint.opacity(0.5), tint], startPoint: .leading, endPoint: .trailing))
                     .frame(width: max(0, proxy.size.width * CGFloat(progress ?? 0)))
                     .shadow(color: tint.opacity(0.4), radius: 3)
-                    .animation(.smooth(duration: 0.5), value: progress)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.85), value: progress)
             }
         }
         .frame(height: 4)
@@ -1582,7 +1871,7 @@ private struct Instrument<Graph: View>: View {
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .coreCard(radius: 18)
-        .animation(.smooth(duration: 0.4), value: value)
+        .animation(.spring(response: 0.5, dampingFraction: 0.82), value: value)
     }
 }
 
@@ -1648,6 +1937,8 @@ private struct FillBar: View {
     let fraction: Double
     let tint: Color
     let caption: String
+    @Environment(\.coreMotion) private var motion
+    @State private var grown = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1656,10 +1947,12 @@ private struct FillBar: View {
                     Capsule().fill(Color.primary.opacity(0.08))
                     Capsule()
                         .fill(LinearGradient(colors: [tint.opacity(0.6), tint], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: proxy.size.width * CGFloat(min(max(fraction, 0), 1)))
-                        .animation(.smooth(duration: 0.6), value: fraction)
+                        .frame(width: proxy.size.width * CGFloat(min(max(fraction, 0), 1)) * (grown ? 1 : 0))
+                        .animation(.spring(response: 0.7, dampingFraction: 0.85), value: fraction)
                 }
             }
+            .onAppear { if motion { grow() } }
+            .onChange(of: motion) { _, value in if value { grow() } }
             .frame(height: 4)
             Text(caption)
                 .font(.system(size: 11, weight: .medium))
@@ -1668,6 +1961,11 @@ private struct FillBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
+    }
+
+    private func grow() {
+        guard !grown else { return }
+        withAnimation(.spring(response: 1.0, dampingFraction: 0.82)) { grown = true }
     }
 }
 

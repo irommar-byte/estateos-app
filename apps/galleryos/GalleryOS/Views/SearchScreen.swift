@@ -42,7 +42,7 @@ struct SearchScreen: View {
         }
         let ids = await SmartSearch.run(parsed, english: english, library: library, brain: brain)
         guard !Task.isCancelled else { return }
-        let byID = Dictionary(library.allPhotos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let byID = Dictionary(library.shownPhotos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let ordered = ids.compactMap { byID[$0] }
         results = Self.relevanceGrid(ordered, scene: parsed.hasScene)
         searching = false

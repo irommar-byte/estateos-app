@@ -242,6 +242,8 @@ final class TVLibrary: ObservableObject {
             }
             link.setUpdated(.now)
             link.set(.online(route ?? .remote(server.host)))
+            // Tell the iPhone through iCloud that this television really has the library.
+            TVPresence.announce(server: server.id)
             setPhase(.ready)
             warmVisibleThumbs()
             pipeline.trimOriginals()

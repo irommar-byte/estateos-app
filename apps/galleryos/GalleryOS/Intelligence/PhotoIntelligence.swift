@@ -3,6 +3,13 @@ import Photos
 import SwiftUI
 import UIKit
 
+/// One face in a photo with the person it belongs to.
+struct PersonFace: Identifiable {
+    let face: FaceRecord
+    let person: PersonSummary
+    var id: Int64 { face.id }
+}
+
 /// A person as the screens show them.
 struct PersonSummary: Identifiable, Hashable {
     let id: Int64
@@ -32,6 +39,8 @@ final class PhotoIntelligence: ObservableObject {
     @Published private(set) var running = false
     /// Why the analysis waits right now, in plain words (nil while it works).
     @Published private(set) var pauseReason: String?
+    /// Holding back while photos are copied to the server (not a heat pause).
+    @Published private(set) var waitingForCopy = false
     /// Bumped whenever results change, so screens can refresh what they derive from them.
     @Published private(set) var revision = 0
     /// Server photos whose preview is still on its way; the analysis comes back for them by itself.
@@ -329,9 +338,22 @@ final class PhotoIntelligence: ObservableObject {
         pauseReason = nil
         // A warm phone gets breathing room between photos instead of a hard stop later.
         if thermal == .fair { try? await Task.sleep(for: .milliseconds(400)) }
-        // During the first big copy to the server: gently, one photo every second and a half.
+        // While photos are being copied to the server the phone has enough to do: the analysis
+        // waits for the copy to finish (on the charger it goes on, gently). Running both at
+        // once is what made the phone hot and the screen stutter.
         if LibraryEngine.shared.stillCopying(), backgroundTask == nil {
-            try? await Task.sleep(for: .milliseconds(1500))
+            if !SyncPolicy.charging {
+                pauseReason = L("Czekam, aż skończy się kopia na serwer.")
+                waitingForCopy = true
+                while LibraryEngine.shared.stillCopying(), !SyncPolicy.charging, foreground, !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(4))
+                }
+                waitingForCopy = false
+                pauseReason = nil
+                guard foreground, !Task.isCancelled else { return false }
+            } else {
+                try? await Task.sleep(for: .milliseconds(1500))
+            }
         } else if ProcessInfo.processInfo.isLowPowerModeEnabled {
             try? await Task.sleep(for: .milliseconds(600))
         }
@@ -436,6 +458,12 @@ final class PhotoIntelligence: ObservableObject {
         reloadPeople()
     }
 
+    /// After screenshots were switched on or off: people are counted again, with fitting covers.
+    func refreshPeople() {
+        guard database.isOpen, loaded else { return }
+        reloadPeople()
+    }
+
     func reloadPeople() {
         let faces = database.faces(withEmbeddings: false)
         var byPhoto: [String: [FaceRecord]] = [:]
@@ -450,10 +478,27 @@ final class PhotoIntelligence: ObservableObject {
         var photos: [Int64: [String]] = [:]
         var visible: [PersonSummary] = []
         var hidden: [PersonSummary] = []
-        let concealed: (String) -> Bool = { [weak library] id in library?.isConcealed(id) ?? false }
+        // Hidden photos and, while they are switched off, screenshots count nowhere.
+        let concealed: (String) -> Bool = { [weak library] id in
+            guard let library else { return false }
+            return library.isConcealed(id) || library.isHiddenScreenshot(id)
+        }
+        // A face remembers the id its photo had then; the library may know it by another id now
+        // (freed from this device, or come down from the server). Gone photos do not count.
+        let ready = library.map { !$0.allPhotos.isEmpty } ?? false
+        let resolve: (String) -> String? = { [weak library] id in
+            guard ready, let library else { return id }
+            return library.currentID(for: id)
+        }
         for person in known {
-            let members = byPerson[person.id] ?? []
-            let ids = Array(Set(members.map(\.photo))).filter { !concealed($0) }
+            var members: [FaceRecord] = []
+            var shownIDs = Set<String>()
+            for face in byPerson[person.id] ?? [] where !concealed(face.photo) {
+                guard let now = resolve(face.photo) else { continue }
+                members.append(face)
+                shownIDs.insert(now)
+            }
+            let ids = Array(Set(members.map(\.photo)))
             photos[person.id] = ids
             guard !ids.isEmpty else { continue }
             // Cover: a clear, large face, preferably alone in its photo (no one else in the circle).
@@ -464,12 +509,12 @@ final class PhotoIntelligence: ObservableObject {
             let cover = person.cover.flatMap { id in members.first { $0.id == id } }
                 ?? members.max { coverScore($0) < coverScore($1) }
             let summary = PersonSummary(
-                id: person.id, name: person.name, count: ids.count, coverFace: cover,
+                id: person.id, name: person.name, count: shownIDs.count, coverFace: cover,
                 favorite: person.favorite, hidden: person.hidden
             )
             if person.hidden {
                 hidden.append(summary)
-            } else if person.favorite || !person.name.isEmpty || ids.count >= FaceClustering.minimumGroup {
+            } else if person.favorite || !person.name.isEmpty || shownIDs.count >= FaceClustering.minimumGroup {
                 visible.append(summary)
             }
         }
@@ -481,22 +526,101 @@ final class PhotoIntelligence: ObservableObject {
         }
         people = visible
         hiddenPeople = hidden.sorted { $0.count > $1.count }
+        let unknown = unknownFaces().count
+        if unknown != unknownCount { unknownCount = unknown }
         revision += 1
         refreshProgress()
     }
 
+    /// The photos of a person under the ids the library shows them by now.
     func photos(of person: Int64) -> [String] {
-        photosByPerson[person] ?? []
+        let source = photosByPerson[person] ?? []
+        guard let library, !library.allPhotos.isEmpty else { return source }
+        var seen = Set<String>()
+        return source.compactMap { library.currentID(for: $0) }.filter { seen.insert($0).inserted }
+    }
+
+    // MARK: Faces nobody is named for yet
+
+    /// Clear faces that are not anyone yet: never grouped, or in a group too small to be shown as
+    /// a person. Faces of one small group sit together, the clearest first.
+    func unknownFaces() -> [FaceRecord] {
+        let shown = Set((people + hiddenPeople).map(\.id))
+        let ready = library.map { !$0.allPhotos.isEmpty } ?? false
+        var result: [FaceRecord] = []
+        for faces in facesByPhoto.values {
+            for face in faces where face.quality >= FaceClustering.minimumQuality {
+                if let person = face.person, shown.contains(person) { continue }
+                if let library {
+                    if library.isConcealed(face.photo) || library.isHiddenScreenshot(face.photo) { continue }
+                    if ready, library.currentID(for: face.photo) == nil { continue }
+                }
+                result.append(face)
+            }
+        }
+        return result.sorted { lhs, rhs in
+            if lhs.person != rhs.person { return (lhs.person ?? .max) < (rhs.person ?? .max) }
+            return lhs.quality > rhs.quality
+        }
+    }
+
+    @Published private(set) var unknownCount = 0
+
+    /// The chosen faces are this person: confirmed by the user, so later grouping keeps them there.
+    func assign(faces: [Int64], to person: Int64) {
+        guard !faces.isEmpty else { return }
+        database.assign(Dictionary(uniqueKeysWithValues: faces.map { ($0, Optional(person)) }), confirmed: true)
+        reloadPeople()
+        needsClustering = true
+        recluster()
+    }
+
+    /// A new person made of the chosen faces, with the name the user gave.
+    @discardableResult
+    func newPerson(named name: String, faces: [Int64]) -> Int64? {
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !faces.isEmpty, !cleaned.isEmpty else { return nil }
+        let person = database.createPerson()
+        database.assign(Dictionary(uniqueKeysWithValues: faces.map { ($0, Optional(person)) }), confirmed: true)
+        reloadPeople()
+        rename(person, to: cleaned)
+        reloadPeople()
+        needsClustering = true
+        recluster()
+        return person
+    }
+
+    /// Strangers in the background: put away together as one hidden person, out of the list.
+    func hideFaces(_ faces: [Int64]) {
+        guard !faces.isEmpty else { return }
+        let person = database.createPerson()
+        database.assign(Dictionary(uniqueKeysWithValues: faces.map { ($0, Optional(person)) }), confirmed: true)
+        reloadPeople()
+        setHidden(person, true)
     }
 
     func faces(of person: Int64) -> [FaceRecord] {
-        let ids = Set(photos(of: person))
+        let ids = Set(photosByPerson[person] ?? [])
         return ids.flatMap { facesByPhoto[$0] ?? [] }.filter { $0.person == person }
             .sorted { $0.quality > $1.quality }
     }
 
     func person(_ id: Int64) -> PersonSummary? {
         people.first { $0.id == id } ?? hiddenPeople.first { $0.id == id }
+    }
+
+    /// The faces in one photo that belong to a person, with that person, left to right: the round
+    /// avatars over the photo in the info panel.
+    func personFaces(in photo: String) -> [PersonFace] {
+        let faces = (facesByPhoto[photo] ?? []).sorted { $0.box.minX < $1.box.minX }
+        var seen = Set<Int64>()
+        var result: [PersonFace] = []
+        for face in faces {
+            guard let id = face.person, seen.insert(id).inserted,
+                  let person = people.first(where: { $0.id == id }) else { continue }
+            result.append(PersonFace(face: face, person: person))
+        }
+        return result
     }
 
     func people(in photo: String) -> [PersonSummary] {
@@ -624,7 +748,7 @@ final class PhotoIntelligence: ObservableObject {
     func reviewFaces(of person: Int64) async -> [FaceRecord] {
         let database = self.database
         let faces = await Task.detached(priority: .userInitiated) { database.faces(person: person) }.value
-        let visible = Set(photos(of: person))
+        let visible = Set(photosByPerson[person] ?? [])
         return faces.filter { visible.contains($0.photo) || visible.isEmpty }
     }
 

@@ -41,6 +41,10 @@ struct GalleryOSApp: App {
                 AppleTVSharing.refreshIfEnabled()
             }
             .onChange(of: scenePhase, initial: true) { _, phase in
+                // Pendrives are noticed the moment they are plugged in, while GalleryOS is open.
+                DriveCenter.shared.setActive(phase == .active)
+            }
+            .onChange(of: scenePhase, initial: true) { _, phase in
                 guard introPending, phase == .active else { return }
                 introPending = false
                 intro = true

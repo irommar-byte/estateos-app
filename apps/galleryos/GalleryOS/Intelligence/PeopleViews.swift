@@ -4,6 +4,7 @@ import SwiftUI
 enum PeopleRoute: Hashable {
     case all
     case person(Int64)
+    case unknown
 }
 
 extension View {
@@ -13,6 +14,7 @@ extension View {
             switch route {
             case .all: PeopleScreen()
             case .person(let id): PersonScreen(personID: id)
+            case .unknown: UnknownFacesScreen()
             }
         }
     }
@@ -114,6 +116,19 @@ struct PeopleShelf: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    if brain.unknownCount > 0 {
+                        NavigationLink(value: PeopleRoute.unknown) {
+                            VStack(spacing: 8) {
+                                UnknownStack(size: 82)
+                                Text(L("Nieznane"))
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(GalleryTheme.accent)
+                                    .lineLimit(1)
+                                    .frame(width: 90)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal, 16)
             }
@@ -177,6 +192,29 @@ struct PeopleScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
+                if brain.unknownCount > 0 {
+                    NavigationLink(value: PeopleRoute.unknown) {
+                        HStack(spacing: 14) {
+                            UnknownStack(size: 56)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(L("Nieznane osoby"))
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text(L("\(PhotoFormat.grouped(brain.unknownCount)) twarzy czeka. Przypisz je albo załóż nowe osoby."))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(uiColor: .secondarySystemBackground)))
+                    }
+                    .buttonStyle(.plain)
+                }
                 let favorites = brain.people.filter(\.favorite)
                 if !favorites.isEmpty {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)], spacing: 22) {
@@ -337,6 +375,216 @@ struct PeopleScreen: View {
     }
 }
 
+// MARK: Faces nobody is named for yet
+
+/// Three faces fanned out: the doorway to the unknown people.
+struct UnknownStack: View {
+    let size: CGFloat
+    @ObservedObject private var brain = PhotoIntelligence.shared
+    @State private var faces: [FaceRecord] = []
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Color(uiColor: .tertiarySystemFill))
+            ForEach(Array(faces.prefix(3).enumerated()), id: \.element.id) { index, face in
+                FaceAvatar(face: face, size: size * 0.56)
+                    .overlay(Circle().strokeBorder(Color(uiColor: .systemBackground), lineWidth: 2))
+                    .offset(Self.offset(index, size: size))
+            }
+            if faces.isEmpty {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .font(.system(size: size * 0.38))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .task(id: brain.revision) { faces = Array(brain.unknownFaces().prefix(3)) }
+    }
+
+    private static func offset(_ index: Int, size: CGFloat) -> CGSize {
+        let r = size * 0.2
+        switch index {
+        case 0: return CGSize(width: -r * 0.8, height: -r * 0.55)
+        case 1: return CGSize(width: r * 0.8, height: -r * 0.3)
+        default: return CGSize(width: 0, height: r * 0.8)
+        }
+    }
+}
+
+/// Every clear face that is nobody yet. Choose several (the same person, or strangers) and give
+/// them to someone you know, make a new person of them, or put them away.
+struct UnknownFacesScreen: View {
+    @EnvironmentObject private var library: PhotoLibrary
+    @ObservedObject private var brain = PhotoIntelligence.shared
+    @State private var faces: [FaceRecord] = []
+    @State private var chosen: Set<Int64> = []
+    @State private var picking = false
+    @State private var naming = false
+    @State private var draft = ""
+    @State private var viewer: ViewerRequest?
+
+    private let columns = [GridItem(.adaptive(minimum: 82, maximum: 110), spacing: 14)]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(L("Zaznacz twarze tej samej osoby i przypisz je komuś albo załóż nową osobę. Przytrzymaj twarz, żeby zobaczyć całe zdjęcie."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(faces) { face in
+                        let on = chosen.contains(face.id)
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if on { chosen.remove(face.id) } else { chosen.insert(face.id) }
+                            }
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        } label: {
+                            FaceAvatar(face: face, size: 82)
+                                .overlay {
+                                    Circle().strokeBorder(on ? GalleryTheme.accent : Color.clear, lineWidth: 3)
+                                }
+                                .overlay(alignment: .bottomTrailing) {
+                                    Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                                        .font(.title3)
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, on ? GalleryTheme.accent : Color.black.opacity(0.3))
+                                        .background(Circle().fill(on ? Color.white : Color.clear).padding(3))
+                                }
+                                .scaleEffect(on ? 0.9 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button(L("Pokaż zdjęcie"), systemImage: "photo") { open(face) }
+                        } preview: {
+                            FacePhotoPreview(id: library.currentID(for: face.photo) ?? face.photo)
+                        }
+                    }
+                }
+                if faces.isEmpty {
+                    ContentUnavailableView(L("Wszyscy rozpoznani"), systemImage: "person.crop.circle.badge.checkmark",
+                                           description: Text(L("Każda wyraźna twarz należy już do jakiejś osoby.")))
+                        .padding(.top, 40)
+                }
+            }
+            .padding(16)
+        }
+        .navigationTitle(L("Nieznane osoby"))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if !chosen.isEmpty {
+                    Button(L("Odznacz")) { chosen.removeAll() }
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if !chosen.isEmpty {
+                actions
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: chosen.isEmpty)
+        .task(id: brain.revision) { reload() }
+        .onChange(of: library.generation) { _, _ in reload() }
+        .sheet(isPresented: $picking) {
+            PersonPickerSheet(excluding: -1) { person in
+                brain.assign(faces: Array(chosen), to: person)
+                withAnimation { chosen.removeAll() }
+            }
+        }
+        .alert(L("Nowa osoba"), isPresented: $naming) {
+            TextField(L("Imię i nazwisko"), text: $draft)
+                .textInputAutocapitalization(.words)
+            Button(L("Utwórz")) {
+                if brain.newPerson(named: draft, faces: Array(chosen)) != nil {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    withAnimation { chosen.removeAll() }
+                }
+            }
+            Button(L("Anuluj"), role: .cancel) {}
+        } message: {
+            Text(L("Zaznaczone twarze (\(chosen.count)) staną się tą osobą."))
+        }
+        .fullScreenCover(item: $viewer) { request in
+            PhotoViewerHost(request: request)
+                .environmentObject(library)
+                .presentationBackground(.clear)
+        }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 10) {
+            Text(L("Wybrano twarzy: \(chosen.count)"))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Button {
+                    picking = true
+                } label: {
+                    Label(L("Przypisz do osoby"), systemImage: "person.crop.circle.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(brain.people.isEmpty)
+                Button {
+                    draft = ""
+                    naming = true
+                } label: {
+                    Label(L("Nowa osoba"), systemImage: "person.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .controlSize(.large)
+            Button(L("To przypadkowe osoby – schowaj")) {
+                brain.hideFaces(Array(chosen))
+                withAnimation { chosen.removeAll() }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.bar)
+    }
+
+    private func reload() {
+        let next = brain.unknownFaces()
+        faces = next
+        chosen.formIntersection(Set(next.map(\.id)))
+    }
+
+    private func open(_ face: FaceRecord) {
+        let id = library.currentID(for: face.photo) ?? face.photo
+        viewer = ViewerRequest(ids: [id], index: 0, origin: .zero, image: nil)
+    }
+}
+
+/// The whole photo behind a face, for the long-press preview.
+private struct FacePhotoPreview: View {
+    let id: String
+    @EnvironmentObject private var library: PhotoLibrary
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color(uiColor: .secondarySystemBackground)
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                ProgressView()
+            }
+        }
+        .frame(width: 320, height: 320)
+        .task(id: id) {
+            if let asset = library.asset(id: id) {
+                image = await PhotoIntelligence.request(asset, side: 900)
+            } else {
+                image = await library.sharpPreview(id: id, side: 1280) ?? library.thumbnail(id: id)
+            }
+        }
+    }
+}
+
 enum PhotoCountWord {
     static func text(_ count: Int) -> String {
         let number = PhotoFormat.grouped(count)
@@ -481,8 +729,8 @@ struct PersonScreen: View {
     }
 
     private func rebuild() {
-        let ids = Set(brain.photos(of: personID))
-        model = GridModel(photos: library.allPhotos.filter { ids.contains($0.id) })
+        // The person's photos under the ids the library knows them by now (see `currentID`).
+        model = GridModel(photos: brain.photos(of: personID).compactMap { library.photo(id: $0) })
     }
 }
 

@@ -236,7 +236,7 @@ enum SmartSearch {
         }
         let placeWords = query.places
         let names = library.placeNames
-        var candidates = library.allPhotos.filter { photo in
+        var candidates = library.shownPhotos.filter { photo in
             if library.isConcealed(photo.id) { return false }
             if let personPhotos, !personPhotos.contains(photo.id) { return false }
             if !query.years.isEmpty, !query.years.contains(calendar.component(.year, from: photo.created)) { return false }

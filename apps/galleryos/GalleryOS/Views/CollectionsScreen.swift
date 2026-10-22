@@ -87,8 +87,6 @@ struct CollectionsScreen: View {
                 tape(L("Przypięte"), albums: pinned, map: true)
                 MemoriesShelf()
                 PeopleShelf()
-                CleanupCard()
-                    .padding(.vertical, 4)
                 if !media.isEmpty {
                     tape(L("Typy multimediów"), albums: media, map: false)
                 }

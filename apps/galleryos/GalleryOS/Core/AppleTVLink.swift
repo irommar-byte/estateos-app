@@ -2,6 +2,7 @@ import CryptoKit
 import CloudKit
 import Foundation
 import Security
+import UIKit
 
 /// Server description that is handed from the iPhone to Apple TV.
 /// The password never travels in this struct; it is sent only inside `PairingPayload`.
@@ -486,6 +487,36 @@ enum GalleryOwner {
 
     static func setDisplayName(_ name: String) {
         UserDefaults.standard.set(name.trimmingCharacters(in: .whitespacesAndNewlines), forKey: nameKey)
+    }
+}
+
+/// Apple TV tells the iPhone, through iCloud, that it really has the library: the console then
+/// draws the iCloud fibre to it and lights the television up. Written by Apple TV each time it
+/// reaches the server (at most every few minutes), read by the iPhone.
+enum TVPresence {
+    static let key = "galleryos.tv.presence"
+
+    struct Mark: Codable, Equatable {
+        var name: String
+        var at: Date
+        var server: String
+    }
+
+    private static var lastSent = Date.distantPast
+
+    static func announce(server: String) {
+        guard Date().timeIntervalSince(lastSent) > 240 else { return }
+        lastSent = .now
+        let mark = Mark(name: UIDevice.current.name, at: .now, server: server)
+        guard let data = try? JSONEncoder().encode(mark) else { return }
+        let store = NSUbiquitousKeyValueStore.default
+        store.set(data, forKey: key)
+        store.synchronize()
+    }
+
+    static func latest() -> Mark? {
+        guard let data = NSUbiquitousKeyValueStore.default.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(Mark.self, from: data)
     }
 }
 

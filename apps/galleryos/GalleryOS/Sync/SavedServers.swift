@@ -251,15 +251,34 @@ final class SpareDisks: ObservableObject {
         }
     }
 
+    /// The sync always goes to the server now; pendrives are kept as mirrors by `DriveCenter`.
     func bookmarkForCopy() -> Data? {
-        guard targetID != "server" else { return nil }
-        return disks.first { $0.id == targetID }?.bookmark
+        nil
     }
 
     func add(data: Data, name: String) -> String? {
         disks.append(SpareDisk(id: UUID().uuidString, name: name, bookmark: data))
         persist()
         return nil
+    }
+
+    /// Adds a pendrive, or refreshes the bookmark of one already known by that name.
+    func remember(data: Data, name: String) -> String {
+        if let index = disks.firstIndex(where: { $0.name == name }) {
+            disks[index].bookmark = data
+            persist()
+            return disks[index].id
+        }
+        let id = UUID().uuidString
+        disks.append(SpareDisk(id: id, name: name, bookmark: data))
+        persist()
+        return id
+    }
+
+    func forget(_ id: String) {
+        disks.removeAll { $0.id == id }
+        if targetID == id { selectServer() }
+        persist()
     }
 
     func selectServer() {

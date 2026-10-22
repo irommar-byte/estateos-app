@@ -259,7 +259,7 @@ struct TripScreen: View {
         Group {
             if let trip {
                 let wanted = Set(trip.all)
-                let model = GridModel(photos: library.allPhotos.filter { wanted.contains($0.id) })
+                let model = GridModel(photos: library.shownPhotos.filter { wanted.contains($0.id) })
                 PhotoGrid(
                     model: model,
                     generation: library.generation,

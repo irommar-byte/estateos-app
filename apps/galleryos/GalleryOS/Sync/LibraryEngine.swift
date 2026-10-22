@@ -228,7 +228,12 @@ final class LibraryEngine {
             }
         }
         monitor.start(queue: DispatchQueue(label: "galleryos.network"))
+        // URLSession reports every few dozen kilobytes: hundreds of times a second on a fast
+        // home network. Each one used to wake the main thread, which made the whole phone lag and
+        // run hot while copying. Now at most ten a second get through (and always the last one).
+        let gate = ProgressGate()
         GalleryNetwork.shared.trackUpload { fraction in
+            guard gate.admit(fraction) else { return }
             Task { @MainActor in
                 LibraryEngine.shared.noteFileProgress(fraction)
             }
@@ -1626,7 +1631,34 @@ final class LibraryEngine {
         }
     }
 
+    /// A server is set up and can be read from (the pendrive copy needs one).
+    var serverReady: Bool {
+        let settings = DestinationSettings.load()
+        return settings.connected && settings.kind != DestinationKind.none && settings.kind != DestinationKind.immich
+    }
+
+    /// A connection of its own for a long job next to the sync (the pendrive copy), so neither
+    /// waits for the other.
+    func openSideTransport() async throws -> CatalogTransport {
+        let settings = DestinationSettings.load()
+        guard serverReady else { throw LibraryError(message: L("Najpierw połącz serwer.")) }
+        let transport = try await makeTransport(settings)
+        try await transport.open()
+        return transport
+    }
+
+    /// Everything the server library holds that is not deleted: what a pendrive copy contains.
+    func mirrorCatalog() -> [LibraryAsset] {
+        store.assets.values.filter { $0.deletedAt == nil }.sorted { $0.created > $1.created }
+    }
+
+    /// The server file of any id ("cloud:<hash>" or a photo on this device), when there is one.
+    func serverHash(of id: String) -> String? {
+        hash(for: id)
+    }
+
     func merged(local: [PhotoRef]) -> [PhotoRef] {
+        let onPhone = Set(local.map(\.id))
         var seen = Set<String>()
         var result: [PhotoRef] = []
         for var photo in local {
@@ -1642,7 +1674,13 @@ final class LibraryEngine {
         }
         result = LibraryRules.keepingOneFilm(result)
         let filmsOnPhone = result.filter { LibraryRules.isFilm($0) }
-        for asset in store.visible() where !seen.contains(asset.hash) && store.localID(forHash: asset.hash) == nil {
+        // Server photos not on this device, including ones freed from it ("Zwolnij miejsce"):
+        // they stay part of the whole library.
+        for asset in store.visible() where !seen.contains(asset.hash) {
+            if let local = store.localID(forHash: asset.hash), onPhone.contains(local), !removedFromPhone.contains(local),
+               !pendingDelete.contains(local) {
+                continue
+            }
             if LibraryRules.isFilm(asset), filmsOnPhone.contains(where: { LibraryRules.sameFilm($0, asset) }) {
                 continue
             }
@@ -2863,7 +2901,9 @@ final class LibraryEngine {
     /// Rebuilding the grids on every uploaded photo makes scrolling stutter, so while the
     /// queue is moving the catalogue is refreshed at most every few seconds.
     private func refreshCatalog(now force: Bool = false) async {
-        let gap: TimeInterval = 3
+        // While a big copy runs the library is rebuilt less often: the progress has its own,
+        // light channel, and every rebuild cost the main thread a visible hitch.
+        let gap: TimeInterval = stillCopying() ? 6 : 3
         let elapsed = Date().timeIntervalSince(lastOverlay)
         if force || elapsed >= gap {
             overlayTask?.cancel()
@@ -3753,8 +3793,11 @@ final class LibraryEngine {
         if library?.syncStatus != status {
             library?.syncStatus = status
         }
-        UserDefaults.standard.set(shownDone, forKey: "galleryos.sync.shownDone")
-        UserDefaults.standard.set(shownTotal, forKey: "galleryos.sync.shownTotal")
+        if savedShown.done != shownDone || savedShown.total != shownTotal {
+            savedShown = (shownDone, shownTotal)
+            UserDefaults.standard.set(shownDone, forKey: "galleryos.sync.shownDone")
+            UserDefaults.standard.set(shownTotal, forKey: "galleryos.sync.shownTotal")
+        }
         guard running, canSync() else { return }
         SyncLiveActivity.shared.update(
             done: shownDone,
@@ -3850,7 +3893,7 @@ final class LibraryEngine {
     /// Measures a few hundred photos at a time, away from the interface, and remembers the ones
     /// Photos no longer has so the same batch is not walked forever.
     private func scheduleFactScan() {
-        guard factScan == nil else { return }
+        guard factScan == nil, factCache.count < photos.count else { return }
         let ids = Array(photos.keys.filter { factCache[$0] == nil }.prefix(240))
         guard !ids.isEmpty else { return }
         factScan = Task.detached(priority: .utility) { [weak self] in
@@ -3898,8 +3941,19 @@ final class LibraryEngine {
     }
 
     /// Byte progress moves during a large file. A count of 2% stays on screen for the whole next photo.
+    private var savedShown = (done: -1, total: -1)
+
     private func byteProgress(countProgress: Double) -> Double {
-        guard let queued = queuedPoolBytes(), queued > 0 else { return countProgress }
+        // The queue's size changes only when a file finishes: the same key as `remainingPoolBytes`.
+        let key = [countsRevision, store.mapRevision, poolRevision]
+        let queued: Int64?
+        if let poolCache, poolCache.key == key {
+            queued = poolCache.bytes
+        } else {
+            queued = queuedPoolBytes()
+            poolCache = (key, queued)
+        }
+        guard let queued, queued > 0 else { return countProgress }
         let done = sentByteTotal()
         var moved = 0.0
         if let activeID, store.hash(forLocal: activeID) == nil, let size = poolBytes[activeID] {
@@ -4101,6 +4155,21 @@ final class SyncMotion: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return stamp
+    }
+}
+
+/// Lets byte progress through at most ten times a second, from any thread.
+final class ProgressGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last: CFAbsoluteTime = 0
+
+    func admit(_ fraction: Double) -> Bool {
+        let now = CFAbsoluteTimeGetCurrent()
+        lock.lock()
+        defer { lock.unlock() }
+        guard fraction >= 0.999 || now - last >= 0.1 else { return false }
+        last = now
+        return true
     }
 }
 

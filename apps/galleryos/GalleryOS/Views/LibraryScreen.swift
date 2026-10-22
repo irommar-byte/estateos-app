@@ -1106,12 +1106,15 @@ private struct SyncSettingsForm: View {
 
 
 
-/// The library being laid out: a mosaic of tiles breathes in diagonal waves in the colours of the
-/// launch film, so the film flows straight into it, and it opens out when the photos are ready.
+/// The library being laid out, as a piece of camera craft: a polished iris of seven blades opens
+/// and closes slowly while it turns, light gathers in its opening, a ring of light sweeps around
+/// it, photo frames drift up through a soft aurora in the colours of the launch film, and a glint
+/// runs through the name. One clock drives it all, drawn off the main thread.
 struct LibraryLoadingView: View {
     @State private var start = Date()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let palette: [Color] = [
+    private static let palette: [Color] = [
         Color(red: 0.29, green: 0.56, blue: 1.0),
         Color(red: 0.42, green: 0.3, blue: 0.85),
         Color(red: 1.0, green: 0.62, blue: 0.28),
@@ -1121,60 +1124,190 @@ struct LibraryLoadingView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let columns = proxy.size.width > 700 ? 7 : 4
-            let gap: CGFloat = 3
-            let side = (proxy.size.width - gap * CGFloat(columns - 1)) / CGFloat(columns)
-            let rows = Int(ceil(proxy.size.height / (side + gap))) + 1
-            TimelineView(.animation) { context in
-                let t = context.date.timeIntervalSince(start)
+            let size = proxy.size
+            let radius = min(size.width, size.height) * 0.17
+            let centre = CGPoint(x: size.width / 2, y: size.height * 0.4)
+            TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion)) { context in
+                let t = reduceMotion ? 2.0 : context.date.timeIntervalSince(start)
+                let appear = Self.easeOut(min(1, t / 1.1))
                 ZStack {
-                    Canvas { canvas, _ in
-                        for row in 0..<rows {
-                            for column in 0..<columns {
-                                let index = row * columns + column
-                                let wave = sin(t * 2.1 - Double(row + column) * 0.45)
-                                let appear = min(1, max(0, t * 2.4 - Double(row + column) * 0.12))
-                                let tint = palette[(index * 7 + row) % palette.count]
-                                let rect = CGRect(
-                                    x: CGFloat(column) * (side + gap),
-                                    y: CGFloat(row) * (side + gap),
-                                    width: side,
-                                    height: side
-                                ).insetBy(dx: side * 0.04 * (1 - appear), dy: side * 0.04 * (1 - appear))
-                                let path = Path(roundedRect: rect, cornerRadius: 4)
-                                canvas.fill(path, with: .color(Color.white.opacity(0.035 * appear)))
-                                canvas.fill(path, with: .color(tint.opacity((0.05 + 0.07 * (wave + 1) / 2) * appear)))
-                            }
-                        }
+                    Canvas(rendersAsynchronously: true) { canvas, area in
+                        Self.aurora(canvas, size: area, t: t, appear: appear)
+                        Self.frames(canvas, size: area, t: t, appear: appear)
+                        Self.iris(canvas, centre: centre, radius: radius * CGFloat(0.82 + 0.18 * appear), t: t, appear: appear)
                     }
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.0), Color.black.opacity(0.55), Color.black.opacity(0.0)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    VStack(spacing: 14) {
+                    VStack(spacing: 16) {
                         BrandWordmark(size: .largeTitle)
-                            .opacity(0.9)
-                        HStack(spacing: 8) {
-                            ForEach(0..<3) { dot in
-                                Circle()
-                                    .fill(Color(red: 0.29, green: 0.56, blue: 1.0))
-                                    .frame(width: 6, height: 6)
-                                    .scaleEffect(0.6 + 0.4 * max(0, sin(t * 4 - Double(dot) * 0.7)))
-                                    .opacity(0.4 + 0.6 * max(0, sin(t * 4 - Double(dot) * 0.7)))
+                            .overlay {
+                                GeometryReader { text in
+                                    let sweep = (t * 0.45).truncatingRemainder(dividingBy: 1.6) / 1.6
+                                    LinearGradient(colors: [.clear, .white.opacity(0.85), .clear], startPoint: .leading, endPoint: .trailing)
+                                        .frame(width: 70)
+                                        .offset(x: CGFloat(sweep) * (text.size.width + 140) - 70)
+                                        .blendMode(.plusLighter)
+                                }
+                                .mask(BrandWordmark(size: .largeTitle))
                             }
-                        }
+                            .opacity(appear)
+                            .offset(y: 10 * (1 - appear))
+                        Self.hairline(t: t)
+                            .frame(width: 120, height: 2)
+                            .opacity(appear)
                         Text(L("Układam Twoją bibliotekę"))
                             .font(.footnote.weight(.medium))
-                            .foregroundStyle(.secondary)
+                            .tracking(0.3)
+                            .foregroundStyle(.white.opacity(0.55))
+                            .opacity(Self.easeOut(min(1, max(0, (t - 0.4) / 0.8))))
                     }
+                    .position(x: size.width / 2, y: centre.y + radius + 92)
                 }
             }
         }
         .background(Color.black)
         .ignoresSafeArea(edges: .bottom)
+        .environment(\.colorScheme, .dark)
         .onAppear { start = .now }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L("Wczytywanie biblioteki"))
+    }
+
+    // MARK: Drawing
+
+    private static func easeOut(_ x: Double) -> Double { 1 - pow(1 - x, 3) }
+
+    private static func easeInOut(_ x: Double) -> Double {
+        x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
+    }
+
+    /// Three slow pools of colour drifting on long curves.
+    private static func aurora(_ canvas: GraphicsContext, size: CGSize, t: Double, appear: Double) {
+        let spots: [(Color, Double, Double, Double)] = [
+            (palette[0], 0.11, 0.0, 0.62),
+            (palette[1], 0.08, 2.1, 0.55),
+            (palette[2], 0.07, 4.2, 0.4),
+            (palette[3], 0.09, 1.3, 0.35),
+        ]
+        for (index, spot) in spots.enumerated() {
+            let (color, speed, offset, strength) = spot
+            let x = size.width * CGFloat(0.5 + 0.38 * sin(t * speed + offset))
+            let y = size.height * CGFloat(0.45 + 0.3 * cos(t * speed * 0.8 + offset * 1.7 + Double(index)))
+            let r = max(size.width, size.height) * CGFloat(0.42 + 0.06 * sin(t * 0.3 + offset))
+            canvas.fill(
+                Path(ellipseIn: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)),
+                with: .radialGradient(Gradient(colors: [color.opacity(0.22 * strength * appear), color.opacity(0)]),
+                                      center: CGPoint(x: x, y: y), startRadius: 0, endRadius: r)
+            )
+        }
+    }
+
+    /// Photo frames rising slowly at different depths: near ones larger, brighter and faster.
+    private static func frames(_ canvas: GraphicsContext, size: CGSize, t: Double, appear: Double) {
+        for index in 0..<16 {
+            let seed = Double(index)
+            let depth = 0.35 + 0.65 * (sin(seed * 12.9898) * 0.5 + 0.5)
+            let lane = (sin(seed * 78.233) * 0.5 + 0.5)
+            let rise = (seed * 0.137 + t * 0.028 * (0.5 + depth)).truncatingRemainder(dividingBy: 1)
+            let side = CGFloat(22 + 38 * depth)
+            let x = size.width * CGFloat(lane) + CGFloat(sin(t * 0.4 + seed) * 14)
+            let y = size.height * CGFloat(1.1 - rise * 1.25)
+            let fade = sin(rise * .pi)
+            let alpha = (0.05 + 0.16 * depth) * fade * appear
+            guard alpha > 0.005 else { continue }
+            var tile = canvas
+            tile.translateBy(x: x, y: y)
+            tile.rotate(by: .radians(sin(t * 0.25 + seed) * 0.18))
+            let rect = CGRect(x: -side / 2, y: -side * 0.4, width: side, height: side * 0.8)
+            let shape = Path(roundedRect: rect, cornerRadius: side * 0.12)
+            let tint = palette[index % palette.count]
+            tile.fill(shape, with: .linearGradient(Gradient(colors: [tint.opacity(alpha * 1.4), tint.opacity(alpha * 0.4)]),
+                                                   startPoint: CGPoint(x: rect.minX, y: rect.minY), endPoint: CGPoint(x: rect.maxX, y: rect.maxY)))
+            tile.stroke(shape, with: .color(.white.opacity(alpha * 1.6)), lineWidth: 0.8)
+        }
+    }
+
+    /// Seven polished blades around a breathing opening, a light core, and a sweeping ring.
+    private static func iris(_ canvas: GraphicsContext, centre: CGPoint, radius: CGFloat, t: Double, appear: Double) {
+        let blades = 7
+        let breath = easeInOut((sin(t * 0.9) + 1) / 2)
+        let opening = radius * CGFloat(0.22 + 0.2 * breath)
+        let turn = t * 0.35 + breath * 0.6
+        let twist = 1.05
+
+        // Light gathering in the opening, slowly changing colour.
+        let hue = (t * 0.12).truncatingRemainder(dividingBy: Double(palette.count))
+        let first = palette[Int(hue) % palette.count]
+        let second = palette[(Int(hue) + 1) % palette.count]
+        let core = radius * 0.95
+        canvas.fill(
+            Path(ellipseIn: CGRect(x: centre.x - core, y: centre.y - core, width: core * 2, height: core * 2)),
+            with: .radialGradient(Gradient(colors: [.white.opacity(0.95 * appear), first.opacity(0.9 * appear), second.opacity(0.5 * appear), .black]),
+                                  center: centre, startRadius: 0, endRadius: core)
+        )
+
+        // The blades, each a facet of brushed graphite catching the light differently.
+        var blades_ = canvas
+        blades_.clip(to: Path(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2)))
+        for index in 0..<blades {
+            let a = turn + Double(index) * 2 * .pi / Double(blades)
+            let b = turn + Double(index + 1) * 2 * .pi / Double(blades)
+            func point(_ angle: Double, _ r: CGFloat) -> CGPoint {
+                CGPoint(x: centre.x + r * CGFloat(cos(angle)), y: centre.y + r * CGFloat(sin(angle)))
+            }
+            var blade = Path()
+            blade.move(to: point(a, opening))
+            blade.addLine(to: point(b, opening))
+            blade.addLine(to: point(b + twist, radius * 1.6))
+            blade.addLine(to: point(a + twist, radius * 1.6))
+            blade.closeSubpath()
+            let light = 0.16 + 0.14 * (sin(a * 1.0 + t * 0.6) * 0.5 + 0.5)
+            blades_.fill(blade, with: .linearGradient(
+                Gradient(colors: [Color(white: light + 0.12), Color(white: light * 0.45)]),
+                startPoint: point(a, opening), endPoint: point(a + twist, radius)))
+            var edge = Path()
+            edge.move(to: point(a, opening))
+            edge.addLine(to: point(a + twist, radius * 1.6))
+            blades_.stroke(edge, with: .color(.white.opacity(0.22 * appear)), lineWidth: 0.7)
+        }
+
+        // A bezel and a ring of light sweeping around it.
+        let bezel = Path(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
+        canvas.stroke(bezel, with: .linearGradient(Gradient(colors: [.white.opacity(0.5), .white.opacity(0.05), .white.opacity(0.3)]),
+                                                     startPoint: CGPoint(x: centre.x - radius, y: centre.y - radius),
+                                                     endPoint: CGPoint(x: centre.x + radius, y: centre.y + radius)), lineWidth: 1.2)
+        let ring = radius + 14
+        let sweep = Angle.radians(t * 1.4)
+        canvas.stroke(
+            Path(ellipseIn: CGRect(x: centre.x - ring, y: centre.y - ring, width: ring * 2, height: ring * 2)),
+            with: .conicGradient(Gradient(colors: [palette[0].opacity(0), palette[0].opacity(0.9 * appear), palette[1].opacity(0.6 * appear), palette[0].opacity(0)]),
+                                 center: centre, angle: sweep),
+            style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
+        )
+        canvas.stroke(
+            Path(ellipseIn: CGRect(x: centre.x - ring, y: centre.y - ring, width: ring * 2, height: ring * 2)),
+            with: .color(.white.opacity(0.06 * appear)), lineWidth: 1
+        )
+        // The glow the ring throws, breathing with the iris.
+        let halo = ring + 26
+        canvas.fill(
+            Path(ellipseIn: CGRect(x: centre.x - halo, y: centre.y - halo, width: halo * 2, height: halo * 2)),
+            with: .radialGradient(Gradient(colors: [palette[0].opacity(0), palette[0].opacity(0.10 * appear * (0.6 + 0.4 * breath)), palette[0].opacity(0)]),
+                                  center: centre, startRadius: ring - 10, endRadius: halo)
+        )
+    }
+
+    /// A hairline with a glint running across it.
+    private static func hairline(t: Double) -> some View {
+        GeometryReader { proxy in
+            let raw = (t * 0.7).truncatingRemainder(dividingBy: 1)
+            let x = easeInOut(raw)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.1))
+                Capsule()
+                    .fill(LinearGradient(colors: [.clear, palette[0], .white, palette[0], .clear], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: 46)
+                    .offset(x: CGFloat(x) * (proxy.size.width + 46) - 46)
+            }
+            .clipShape(Capsule())
+        }
     }
 }

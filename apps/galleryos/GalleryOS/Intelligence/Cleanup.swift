@@ -2,10 +2,10 @@ import Accelerate
 import Photos
 import SwiftUI
 
-/// Finds what can go: series of near-identical shots (keeping the best one), blurred, burnt-out
-/// or dark frames, closed eyes, accidental pocket shots and old screenshots. Nothing is deleted
-/// without the user's tap, favourites are never suggested, and deleted photos stay 30 days in
-/// Recently Deleted.
+/// Finds what can go: series of near-identical shots (the best one suggested to keep), blurred,
+/// burnt-out or dark frames, closed eyes, accidental pocket shots and old screenshots. Nothing is
+/// marked in advance and nothing is deleted without the user's choice; every photo can be looked at
+/// full size first. Favourites are never suggested, and deleted photos wait in Recently Deleted.
 struct CleanupReport {
     struct Series: Identifiable, Hashable {
         let id: String
@@ -73,14 +73,16 @@ final class CleanupCenter: ObservableObject {
     @Published private(set) var report = CleanupReport()
     @Published private(set) var working = false
     private var builtRevision = -1
+    private var builtHiding: Bool?
     var ready: Bool { builtRevision >= 0 && !working }
 
     func refresh(library: PhotoLibrary, force: Bool = false) async {
         let brain = PhotoIntelligence.shared
-        guard force || builtRevision != brain.revision, !working else { return }
+        guard force || builtRevision != brain.revision || builtHiding != library.hideScreenshots, !working else { return }
         working = true
         builtRevision = brain.revision
-        let photos = library.allPhotos.filter { !$0.isFavorite && !library.isConcealed($0.id) }
+        builtHiding = library.hideScreenshots
+        let photos = library.shownPhotos.filter { !$0.isFavorite && !library.isConcealed($0.id) }
         let insights = brain.insights
         let assets: [String: PHAsset] = Dictionary(photos.compactMap { photo in
             library.asset(id: photo.id).map { (photo.id, $0) }
@@ -90,6 +92,15 @@ final class CleanupCenter: ObservableObject {
         }.value
         report = built
         working = false
+    }
+
+    /// One line for the Core: how much there is to look at.
+    var summary: String {
+        let ids = report.totalSuggested
+        if ids.isEmpty {
+            return working ? L("Szukam podobnych i nieudanych zdjęć…") : L("Podobne zdjęcia, nieudane kadry, stare zrzuty")
+        }
+        return L("\(PhotoCountWord.text(ids.count)) do przejrzenia · \(ByteText.amount(report.size(of: ids)))")
     }
 
     func forget(_ ids: Set<String>) {
@@ -219,43 +230,6 @@ final class CleanupCenter: ObservableObject {
 
 // MARK: Screens
 
-struct CleanupCard: View {
-    @EnvironmentObject private var library: PhotoLibrary
-    @ObservedObject private var center = CleanupCenter.shared
-
-    var body: some View {
-        NavigationLink(value: CleanupRoute.overview) {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(LinearGradient(colors: [Color.green.opacity(0.85), Color.teal], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: "sparkles.rectangle.stack")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 46, height: 46)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L("Porządki")).font(.headline).foregroundStyle(.primary)
-                    Text(subtitle).font(.footnote).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(uiColor: .secondarySystemBackground)))
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .task(id: PhotoIntelligence.shared.revision / 20) { await center.refresh(library: library) }
-    }
-
-    private var subtitle: String {
-        let ids = center.report.totalSuggested
-        if ids.isEmpty { return center.working ? L("Szukam podobnych i nieudanych zdjęć…") : L("Podobne zdjęcia, nieudane kadry, stare zrzuty") }
-        return L("\(PhotoCountWord.text(ids.count)) do przejrzenia · \(ByteText.amount(center.report.size(of: ids)))")
-    }
-}
-
 enum CleanupRoute: Hashable {
     case overview
     case series
@@ -279,6 +253,10 @@ struct CleanupScreen: View {
     @ObservedObject private var center = CleanupCenter.shared
     @ObservedObject private var brain = PhotoIntelligence.shared
 
+    private var categories: [CleanupReport.Category] {
+        CleanupReport.Category.allCases.filter { $0 != .screenshots || !library.hideScreenshots }
+    }
+
     var body: some View {
         List {
             Section {
@@ -299,13 +277,13 @@ struct CleanupScreen: View {
             }
             Section {
                 NavigationLink(value: CleanupRoute.series) {
-                    row(title: L("Podobne i serie"), detail: L("Zostaje najlepsze ujęcie, reszta do usunięcia."),
+                    row(title: L("Podobne i serie"), detail: L("Najlepsze ujęcie jest podpowiedziane. Ty decydujesz, co zostaje."),
                         symbol: "square.stack.3d.down.right", ids: center.report.seriesExtras)
                 }
                 .disabled(center.report.series.isEmpty)
             }
             Section {
-                ForEach(CleanupReport.Category.allCases) { category in
+                ForEach(categories) { category in
                     let ids = center.report.singles[category] ?? []
                     NavigationLink(value: CleanupRoute.category(category)) {
                         row(title: category.title, detail: category.detail, symbol: category.symbol, ids: ids)
@@ -313,7 +291,7 @@ struct CleanupScreen: View {
                     .disabled(ids.isEmpty)
                 }
             } footer: {
-                Text(L("Ulubione nigdy nie trafiają na listę. Usunięte zdjęcia przez 30 dni czekają w „Ostatnio usuniętych”."))
+                Text(L("Nic nie jest zaznaczone z góry. Stuknij zdjęcie, żeby obejrzeć je w całości. Ulubione nigdy nie trafiają na listę, a usunięte czekają w „Ostatnio usuniętych”."))
             }
         }
         .navigationTitle(L("Porządki"))
@@ -346,60 +324,102 @@ struct CleanupScreen: View {
     }
 }
 
-/// Every series as a strip: the keeper with a crown, the rest ticked for removal.
+/// What the preview shows: which photos, starting where, and which one is suggested to keep.
+struct CleanupPreviewRequest: Identifiable {
+    let id = UUID()
+    let ids: [String]
+    let start: Int
+    var keeper: String?
+}
+
+/// Every series as a strip. The suggested keeper wears a crown; nothing is marked until you
+/// choose. Tap a photo to see it big next to the others, the circle marks it for removal.
 struct SeriesReviewScreen: View {
     @EnvironmentObject private var library: PhotoLibrary
     @ObservedObject private var center = CleanupCenter.shared
     @State private var marked: Set<String> = []
-    @State private var prepared = false
     @State private var deleting = false
+    @State private var preview: CleanupPreviewRequest?
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 22) {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                Text(L("Stuknij zdjęcie, żeby obejrzeć je w całości i porównać. Kółko zaznacza zdjęcie do usunięcia."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 ForEach(center.report.series) { series in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(seriesTitle(series))
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(series.photos, id: \.self) { id in
-                                    let keeper = id == series.keep && !marked.contains(id)
-                                    Button { toggle(id) } label: {
-                                        CleanupThumb(id: id, side: 132)
-                                            .overlay(alignment: .topLeading) {
-                                                if keeper {
-                                                    Label(L("Najlepsze"), systemImage: "crown.fill")
-                                                        .font(.caption2.weight(.bold))
-                                                        .padding(.horizontal, 7)
-                                                        .padding(.vertical, 4)
-                                                        .background(Capsule().fill(.yellow))
-                                                        .foregroundStyle(.black)
-                                                        .padding(6)
-                                                }
-                                            }
-                                            .overlay(alignment: .bottomTrailing) { tick(marked.contains(id)) }
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
+                    seriesRow(series)
                 }
             }
             .padding(16)
         }
         .navigationTitle(L("Podobne i serie"))
-        .safeAreaInset(edge: .bottom) {
-            DeleteBar(ids: Array(marked), bytes: center.report.size(of: Array(marked)), deleting: $deleting) {
-                await remove()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(L("Zaznacz wszystkie oprócz najlepszych"), systemImage: "checkmark.circle") {
+                        marked = Set(center.report.seriesExtras)
+                    }
+                    Button(L("Odznacz wszystko"), systemImage: "circle") { marked.removeAll() }
+                        .disabled(marked.isEmpty)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
             }
         }
-        .onAppear {
-            guard !prepared else { return }
-            prepared = true
-            marked = Set(center.report.seriesExtras)
+        .safeAreaInset(edge: .bottom) {
+            if !marked.isEmpty {
+                DeleteBar(ids: Array(marked), bytes: center.report.size(of: Array(marked)), deleting: $deleting) {
+                    await remove()
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.smooth(duration: 0.3), value: marked.isEmpty)
+        .fullScreenCover(item: $preview) { request in
+            CleanupPreview(request: request, marked: $marked)
+                .environmentObject(library)
+        }
+    }
+
+    private func seriesRow(_ series: CleanupReport.Series) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(seriesTitle(series))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                let extras = Set(series.extras)
+                let chosen = !extras.isEmpty && extras.isSubset(of: marked)
+                Button(chosen ? L("Cofnij") : L("Zostaw najlepsze")) {
+                    if chosen { marked.subtract(extras) } else { marked.formUnion(extras); marked.remove(series.keep) }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
+                .font(.footnote.weight(.semibold))
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(series.photos.enumerated()), id: \.element) { offset, id in
+                        CleanupThumb(id: id, side: 132)
+                            .overlay(alignment: .topLeading) {
+                                if id == series.keep { KeeperBadge().padding(6) }
+                            }
+                            .overlay {
+                                if marked.contains(id) {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(Color.red, lineWidth: 3)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                preview = CleanupPreviewRequest(ids: series.photos, start: offset, keeper: series.keep)
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                TickButton(on: marked.contains(id)) { toggle(id) }
+                            }
+                    }
+                }
+            }
         }
     }
 
@@ -431,29 +451,37 @@ struct CategoryReviewScreen: View {
     @EnvironmentObject private var library: PhotoLibrary
     @ObservedObject private var center = CleanupCenter.shared
     @State private var marked: Set<String> = []
-    @State private var prepared = false
     @State private var deleting = false
+    @State private var preview: CleanupPreviewRequest?
 
     private var ids: [String] { center.report.singles[category] ?? [] }
 
     var body: some View {
         ScrollView {
-            Text(category.detail + L(" Stuknij zdjęcie, które chcesz zachować."))
+            Text(category.detail + L(" Stuknij zdjęcie, żeby obejrzeć je w całości. Kółko zaznacza zdjęcie do usunięcia."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 4)], spacing: 4) {
-                ForEach(ids, id: \.self) { id in
-                    Button {
-                        if marked.contains(id) { marked.remove(id) } else { marked.insert(id) }
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    } label: {
-                        CleanupThumb(id: id, side: 140, corner: 4, flexible: true)
-                            .overlay(alignment: .bottomTrailing) { tick(marked.contains(id)) }
-                            .opacity(marked.contains(id) ? 1 : 0.55)
-                    }
-                    .buttonStyle(.plain)
+                ForEach(Array(ids.enumerated()), id: \.element) { offset, id in
+                    CleanupThumb(id: id, side: 140, corner: 4, flexible: true)
+                        .overlay {
+                            if marked.contains(id) {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(Color.red, lineWidth: 3)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            preview = CleanupPreviewRequest(ids: ids, start: offset)
+                        }
+                        .overlay(alignment: .bottomTrailing) {
+                            TickButton(on: marked.contains(id)) {
+                                if marked.contains(id) { marked.remove(id) } else { marked.insert(id) }
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            }
+                        }
                 }
             }
             .padding(.horizontal, 4)
@@ -461,37 +489,292 @@ struct CategoryReviewScreen: View {
         .navigationTitle(category.title)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(marked.count == ids.count ? L("Odznacz") : L("Zaznacz wszystko")) {
+                Button(!ids.isEmpty && marked.count == ids.count ? L("Odznacz") : L("Zaznacz wszystko")) {
                     marked = marked.count == ids.count ? [] : Set(ids)
                 }
+                .disabled(ids.isEmpty)
             }
         }
         .safeAreaInset(edge: .bottom) {
-            DeleteBar(ids: Array(marked), bytes: center.report.size(of: Array(marked)), deleting: $deleting) {
-                let chosen = Array(marked)
-                deleting = true
-                if await library.delete(ids: chosen) {
-                    center.forget(Set(chosen))
-                    marked.subtract(chosen)
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if !marked.isEmpty {
+                DeleteBar(ids: Array(marked), bytes: center.report.size(of: Array(marked)), deleting: $deleting) {
+                    let chosen = Array(marked)
+                    deleting = true
+                    if await library.delete(ids: chosen) {
+                        center.forget(Set(chosen))
+                        marked.subtract(chosen)
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
+                    deleting = false
                 }
-                deleting = false
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .onAppear {
-            guard !prepared else { return }
-            prepared = true
-            marked = Set(ids)
+        .animation(.smooth(duration: 0.3), value: marked.isEmpty)
+        .fullScreenCover(item: $preview) { request in
+            CleanupPreview(request: request, marked: $marked)
+                .environmentObject(library)
         }
     }
 }
 
-private func tick(_ on: Bool) -> some View {
-    Image(systemName: on ? "checkmark.circle.fill" : "circle")
-        .font(.title3)
-        .symbolRenderingMode(.palette)
-        .foregroundStyle(.white, on ? Color.red : Color.black.opacity(0.3))
-        .padding(6)
+/// One photo at a time, full size and zoomable, with the others of its group in a strip below to
+/// compare. The big button keeps it or marks it for removal; nothing is deleted here.
+struct CleanupPreview: View {
+    let request: CleanupPreviewRequest
+    @Binding var marked: Set<String>
+    @EnvironmentObject private var library: PhotoLibrary
+    @Environment(\.dismiss) private var dismiss
+    @State private var page: Int
+
+    init(request: CleanupPreviewRequest, marked: Binding<Set<String>>) {
+        self.request = request
+        _marked = marked
+        _page = State(initialValue: request.start)
+    }
+
+    private var currentID: String? {
+        request.ids.indices.contains(page) ? request.ids[page] : nil
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            TabView(selection: $page) {
+                ForEach(Array(request.ids.enumerated()), id: \.element) { offset, id in
+                    CleanupBigPhoto(id: id)
+                        .tag(offset)
+                        .ignoresSafeArea()
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea()
+            VStack(spacing: 0) {
+                topBar
+                Spacer(minLength: 0)
+                bottomBar
+            }
+        }
+        .preferredColorScheme(.dark)
+        .statusBarHidden()
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 40, height: 40)
+                    .galleryGlass(in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("Zamknij"))
+            Spacer()
+            VStack(spacing: 2) {
+                Text(L("\(page + 1) z \(request.ids.count)"))
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                if let currentID, let photo = library.photo(id: currentID) {
+                    Text(photo.created.formatted(date: .abbreviated, time: .standard))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .galleryGlass(in: Capsule())
+            Spacer()
+            Color.clear.frame(width: 40, height: 40)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+    }
+
+    private var bottomBar: some View {
+        VStack(spacing: 12) {
+            if let currentID, currentID == request.keeper {
+                KeeperBadge(large: true)
+            }
+            if request.ids.count > 1 {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(request.ids.enumerated()), id: \.element) { offset, id in
+                                CleanupThumb(id: id, side: 54, corner: 8)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .strokeBorder(marked.contains(id) ? Color.red : (offset == page ? Color.white : Color.clear), lineWidth: 2.5)
+                                    }
+                                    .overlay(alignment: .bottomTrailing) {
+                                        if marked.contains(id) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .symbolRenderingMode(.palette)
+                                                .foregroundStyle(.white, .red)
+                                                .padding(2)
+                                        }
+                                    }
+                                    .opacity(offset == page ? 1 : 0.7)
+                                    .id(offset)
+                                    .onTapGesture {
+                                        withAnimation(.smooth(duration: 0.3)) { page = offset }
+                                    }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .onChange(of: page) { _, value in
+                        withAnimation(.smooth(duration: 0.3)) { proxy.scrollTo(value, anchor: .center) }
+                    }
+                    .onAppear { proxy.scrollTo(page, anchor: .center) }
+                }
+            }
+            if let currentID {
+                let isMarked = marked.contains(currentID)
+                Button {
+                    if isMarked { marked.remove(currentID) } else { marked.insert(currentID) }
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                } label: {
+                    Label(isMarked ? L("Zostaw to zdjęcie") : L("Zaznacz do usunięcia"),
+                          systemImage: isMarked ? "arrow.uturn.backward" : "trash")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .foregroundStyle(isMarked ? Color.primary : Color.white)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(isMarked ? AnyShapeStyle(Color.white.opacity(0.16)) : AnyShapeStyle(Color.red.gradient))
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .animation(.smooth(duration: 0.2), value: isMarked)
+            }
+            Text(marked.isEmpty ? L("Nic nie jest zaznaczone.") : L("Zaznaczone do usunięcia: \(PhotoFormat.grouped(marked.count))"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 10)
+        .padding(.top, 12)
+        .background(
+            LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+        )
+    }
+}
+
+/// A photo as big as the screen allows, pinch and double tap to look closer.
+private struct CleanupBigPhoto: View {
+    let id: String
+    @EnvironmentObject private var library: PhotoLibrary
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZoomablePicture(image: image ?? library.thumbnail(id: id))
+            .overlay {
+                if image == nil { ProgressView().tint(.white) }
+            }
+            .task(id: id) {
+                if let asset = library.asset(id: id) {
+                    image = await PhotoIntelligence.request(asset, side: 2400)
+                } else {
+                    image = await library.sharpPreview(id: id, side: 2048) ?? library.thumbnail(id: id)
+                }
+            }
+    }
+}
+
+struct ZoomablePicture: UIViewRepresentable {
+    let image: UIImage?
+
+    func makeUIView(context: Context) -> ZoomView {
+        ZoomView()
+    }
+
+    func updateUIView(_ view: ZoomView, context: Context) {
+        view.show(image)
+    }
+
+    final class ZoomView: UIScrollView, UIScrollViewDelegate {
+        private let picture = UIImageView()
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            delegate = self
+            minimumZoomScale = 1
+            maximumZoomScale = 5
+            showsVerticalScrollIndicator = false
+            showsHorizontalScrollIndicator = false
+            contentInsetAdjustmentBehavior = .never
+            backgroundColor = .clear
+            picture.contentMode = .scaleAspectFit
+            addSubview(picture)
+            let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
+            doubleTap.numberOfTapsRequired = 2
+            addGestureRecognizer(doubleTap)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        func show(_ image: UIImage?) {
+            guard picture.image !== image else { return }
+            picture.image = image
+            setNeedsLayout()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if zoomScale <= 1.001 {
+                picture.frame = bounds
+                contentSize = bounds.size
+            }
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { picture }
+
+        @objc private func doubleTapped(_ gesture: UITapGestureRecognizer) {
+            if zoomScale > 1.01 {
+                setZoomScale(1, animated: true)
+            } else {
+                let point = gesture.location(in: picture)
+                let size = CGSize(width: bounds.width / 2.5, height: bounds.height / 2.5)
+                zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
+            }
+        }
+    }
+}
+
+/// "Najlepsze": the shot GalleryOS suggests keeping.
+private struct KeeperBadge: View {
+    var large = false
+
+    var body: some View {
+        Label(large ? L("Najlepsze ujęcie w serii") : L("Najlepsze"), systemImage: "crown.fill")
+            .font(large ? .footnote.weight(.bold) : .caption2.weight(.bold))
+            .padding(.horizontal, large ? 12 : 7)
+            .padding(.vertical, large ? 6 : 4)
+            .background(Capsule().fill(.yellow))
+            .foregroundStyle(.black)
+    }
+}
+
+/// The circle in the corner of a thumbnail: marks the photo for removal.
+private struct TickButton: View {
+    let on: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, on ? Color.red : Color.black.opacity(0.3))
+                .padding(6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(on ? L("Zostaw to zdjęcie") : L("Zaznacz do usunięcia"))
+    }
 }
 
 private struct DeleteBar: View {
@@ -506,12 +789,12 @@ private struct DeleteBar: View {
         } label: {
             HStack {
                 if deleting { ProgressView().tint(.white) }
-                Text(ids.isEmpty ? L("Nic nie zaznaczono") : L("Usuń \(PhotoCountWord.text(ids.count)) · \(ByteText.amount(bytes))"))
+                Text(L("Usuń \(PhotoCountWord.text(ids.count)) · \(ByteText.amount(bytes))"))
                     .font(.headline)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ids.isEmpty ? Color.gray.opacity(0.4) : Color.red))
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.red))
             .foregroundStyle(.white)
         }
         .disabled(ids.isEmpty || deleting)

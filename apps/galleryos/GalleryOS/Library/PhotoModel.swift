@@ -137,6 +137,33 @@ struct GridModel: Equatable {
         )
     }
 
+    /// The same photos with fresher details (sent to the server, favourite): swapped in place,
+    /// without sorting and grouping thousands of photos again. Nil when photos came, went or
+    /// moved in time, which needs a real rebuild. Returns itself when nothing changed at all.
+    func patched(with photos: [PhotoRef]) -> GridModel? {
+        guard photos.count == all.count, !all.isEmpty else { return nil }
+        var byID: [String: PhotoRef] = [:]
+        byID.reserveCapacity(photos.count)
+        for photo in photos { byID[photo.id] = photo }
+        guard byID.count == all.count else { return nil }
+        var next = all
+        var changed = false
+        for index in next.indices {
+            guard let fresh = byID[next[index].id], fresh.created == next[index].created else { return nil }
+            if fresh != next[index] {
+                next[index] = fresh
+                changed = true
+            }
+        }
+        guard changed else { return self }
+        let nextDays = days.map { day -> PhotoDay in
+            var copy = day
+            copy.photos = day.photos.map { byID[$0.id] ?? $0 }
+            return copy
+        }
+        return GridModel(days: nextDays, months: months, years: years, all: next)
+    }
+
     /// `GridModel(photos:)` always re-sorts by date, so a chosen order has to reshape the model here.
     /// Date orders keep the day sections; any other order is one flat section in that order.
     func arranged(_ sort: LibrarySort) -> GridModel {

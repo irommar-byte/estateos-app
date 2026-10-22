@@ -37,6 +37,18 @@ struct PhotoViewerHost: View {
     @State private var scrim: Double = 0
     @State private var pageTrack = PageTrack()
     @State private var orientationTicket = 0
+    // The info panel, as in Photos: the photo moves up and the details rise from below.
+    @State private var infoStage = InfoStage.closed
+    @State private var infoProgress: CGFloat = 0
+    @State private var infoImage: UIImage?
+    @State private var infoStart: CGRect = .zero
+    @State private var infoPull: CGFloat = 0
+    @State private var infoInset: CGFloat = 0
+    @State private var infoScroll = ScrollPosition(edge: .top)
+    @State private var infoPerson: InfoPersonItem?
+    @State private var screenSize: CGSize = .zero
+
+    private enum InfoStage { case closed, moving, open }
 
     init(request: ViewerRequest) {
         self.request = request
@@ -103,11 +115,17 @@ struct PhotoViewerHost: View {
                 .ignoresSafeArea()
             pager
                 .ignoresSafeArea()
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { screenSize = $0 }
+            if !immersive, infoStage != .closed, let photo {
+                infoLayer(photo)
+            }
             if !immersive && chromeVisible {
                 VStack(spacing: 0) {
                     portraitTop
                         .padding(.top, 6)
                         .padding(.bottom, 4)
+                        .opacity(infoStage == .closed ? 1 : 0)
+                        .allowsHitTesting(infoStage == .closed)
                     Spacer(minLength: 0)
                     portraitBottom
                         .padding(.top, 8)
@@ -140,25 +158,39 @@ struct PhotoViewerHost: View {
         .onChange(of: index) { _, newValue in
             if !stripEngaged, stripSelection != newValue { stripSelection = newValue }
             playback.note(playing: false, fraction: 0)
+            if infoStage != .closed {
+                Task { await loadInfoImage() }
+            }
+        }
+        .onChange(of: immersive) { _, value in
+            // Turned sideways: the panel under the photo gives way to the sheet.
+            guard value, infoStage != .closed else { return }
+            infoStage = .closed
+            infoProgress = 0
+            infoImage = nil
+        }
+        .sheet(item: $infoPerson) { item in
+            NavigationStack {
+                PersonScreen(personID: item.id)
+                    .peopleDestinations()
+            }
+            .environmentObject(library)
         }
         .onChange(of: stripSelection) { _, newValue in
             guard stripEngaged, let newValue, newValue != index else { return }
             index = newValue
         }
         .fullScreenCover(isPresented: $showMap) {
-            LibraryMapScreen(focus: photo.flatMap { item in
-                guard let latitude = item.latitude, let longitude = item.longitude else { return nil }
-                return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-            })
-            .environmentObject(library)
+            LibraryMapScreen(focusPhoto: photo)
+                .environmentObject(library)
         }
         .sheet(isPresented: $info) {
             if let photo {
-                PhotoInfoSheet(photo: photo, place: placeName, names: PhotoIntelligence.shared.names(for: photo, library: library)) {
+                PhotoInfoSheet(photo: photo, place: placeName) {
                     info = false
                     showMap = true
                 }
-                    .environmentObject(library)
+                .environmentObject(library)
             }
         }
         .sheet(isPresented: $adjusting) {
@@ -234,7 +266,9 @@ struct PhotoViewerHost: View {
                     scrim = 1 - progress
                 }
             },
-            track: pageTrack
+            track: pageTrack,
+            liftEnabled: !immersive && infoStage == .closed,
+            onLift: { lift($0) }
         )
         .task(id: photoID) {
             guard let photoID else { return }
@@ -265,17 +299,20 @@ struct PhotoViewerHost: View {
 
     private var portraitBottom: some View {
         VStack(spacing: 12) {
-            if showsTransport {
-                transport
-                    .padding(.horizontal, 16)
+            if infoStage == .closed {
+                if showsTransport {
+                    transport
+                        .padding(.horizontal, 16)
+                }
+                filmstrip
+                    .transition(.opacity)
             }
-            filmstrip
             HStack {
                 plainButton("square.and.arrow.up", L("Udostępnij")) { share() }
                 Spacer()
                 plainButton(photo?.isFavorite == true ? "heart.fill" : "heart", L("Ulubione")) { toggleFavorite() }
                 Spacer()
-                plainButton("info.circle", L("Informacje")) { info = true }
+                plainButton(infoStage == .closed ? "info.circle" : "info.circle.fill", L("Informacje")) { toggleInfo() }
                 Spacer()
                 plainButton("slider.horizontal.3", L("Dopasuj")) { adjusting = true }
                     .disabled(isVideo)
@@ -286,7 +323,18 @@ struct PhotoViewerHost: View {
                     .opacity(canDelete ? 1 : 0.35)
             }
             .padding(.horizontal, 22)
+            .padding(.vertical, infoStage == .closed ? 0 : 6)
+            .background {
+                // Over the details the buttons float on glass, as in Photos.
+                if infoStage != .closed {
+                    Color.clear
+                        .galleryGlass(in: Capsule())
+                        .padding(.horizontal, 12)
+                        .transition(.opacity)
+                }
+            }
         }
+        .animation(.smooth(duration: 0.3), value: infoStage)
     }
 
     private var landscapeTop: some View {
@@ -300,7 +348,7 @@ struct PhotoViewerHost: View {
             if !isVideo {
                 circleButton("slider.horizontal.3", L("Dopasuj")) { adjusting = true }
             }
-            circleButton("info.circle", L("Informacje")) { info = true }
+            circleButton("info.circle", L("Informacje")) { toggleInfo() }
             if canDelete {
                 circleButton("trash", L("Usuń")) { confirmDelete = true }
             }
@@ -323,7 +371,7 @@ struct PhotoViewerHost: View {
 
     private var caption: some View {
         Button {
-            info = true
+            toggleInfo()
         } label: {
             VStack(spacing: 1) {
                 Text(captionTitle)
@@ -365,7 +413,7 @@ struct PhotoViewerHost: View {
 
     private var moreMenu: some View {
         Menu {
-            Button(L("Informacje"), systemImage: "info.circle") { info = true }
+            Button(L("Informacje"), systemImage: "info.circle") { toggleInfo() }
             Button(L("Udostępnij znajomym"), systemImage: "person.2") { friendShare = true }
             if let photo, let latitude = photo.latitude, let longitude = photo.longitude {
                 Menu(L("Prowadź do miejsca zdjęcia"), systemImage: "arrow.triangle.turn.up.right.diamond") {
@@ -449,6 +497,190 @@ struct PhotoViewerHost: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+
+    // MARK: Info panel
+
+    /// The photo on top, the details under it, in one scroll. While it opens or closes the same
+    /// view is drawn part way: the photo between where it was and the top, the details rising.
+    private func infoLayer(_ photo: PhotoRef) -> some View {
+        let size = screenSize
+        let header = headerHeight(size)
+        let start = infoStart.offsetBy(dx: 0, dy: -infoInset)
+        let rect = Self.lerp(start, CGRect(x: 0, y: 0, width: size.width, height: header), infoProgress)
+        return ScrollView {
+            VStack(spacing: 0) {
+                infoPicture
+                    .frame(width: max(rect.width, 1), height: max(rect.height, 1))
+                    .clipped()
+                    .offset(x: rect.minX, y: rect.minY)
+                    .frame(width: size.width, height: header, alignment: .topLeading)
+                    .overlay(alignment: .bottomLeading) {
+                        InfoPeopleBadges(photoID: photo.id) { infoPerson = InfoPersonItem(id: $0) }
+                            .padding(14)
+                            .opacity(infoStage == .open ? 1 : 0)
+                            .animation(.smooth(duration: 0.25), value: infoStage)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { closeInfo() }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 24).onEnded { value in
+                            swipeInfo(value.translation)
+                        }
+                    )
+                PhotoInfoPanel(
+                    photo: photo,
+                    place: placeName,
+                    onMap: { showMap = true },
+                    onPerson: { infoPerson = InfoPersonItem(id: $0) }
+                )
+                .padding(.top, 16)
+                .padding(.bottom, 130)
+                .offset(y: (size.height - header) * (1 - infoProgress))
+            }
+        }
+        .scrollPosition($infoScroll)
+        .scrollDisabled(infoStage != .open)
+        .scrollIndicators(.hidden)
+        .background(Color(uiColor: .systemBackground))
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, value in
+            infoPull = value
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentInsets.top
+        } action: { _, value in
+            infoInset = value
+        }
+        .onScrollPhaseChange { old, _ in
+            // Pulled down past the top and let go: back to the photo, as in Photos.
+            if old == .interacting, infoPull < -70 { closeInfo() }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var infoPicture: some View {
+        ZStack {
+            Color(uiColor: .secondarySystemBackground)
+            if let infoImage {
+                Image(uiImage: infoImage)
+                    .resizable()
+                    .scaledToFill()
+            }
+        }
+    }
+
+    private func headerHeight(_ size: CGSize) -> CGFloat {
+        (size.height * 0.46).rounded()
+    }
+
+    private func lift(_ event: ViewerLift) {
+        switch event {
+        case .began(let image, let frame):
+            guard infoStage == .closed else { return }
+            infoImage = image ?? photoID.flatMap { library.thumbnail(id: $0) }
+            infoStart = frame
+            infoProgress = 0
+            infoScroll = ScrollPosition(edge: .top)
+            infoStage = .moving
+            if infoImage == nil { Task { await loadInfoImage() } }
+        case .changed(let distance):
+            guard infoStage == .moving else { return }
+            let travel = max(screenSize.height - headerHeight(screenSize), 1)
+            let raw = distance / travel
+            // Past the end it only gives a little, like a spring.
+            infoProgress = raw <= 1 ? max(0, raw) : 1 + (raw - 1) * 0.15
+        case .ended(let velocity):
+            guard infoStage == .moving else { return }
+            if velocity > 320 || (infoProgress > 0.28 && velocity > -320) {
+                openInfo()
+            } else {
+                closeInfo()
+            }
+        }
+    }
+
+    private func toggleInfo() {
+        if immersive {
+            info = true
+            return
+        }
+        guard infoStage == .closed else {
+            closeInfo()
+            return
+        }
+        guard let photo else { return }
+        infoImage = playback.pager?.liftImage() ?? photoID.flatMap { library.thumbnail(id: $0) }
+        infoStart = Self.fitRect(photo, in: screenSize)
+        infoProgress = 0
+        infoScroll = ScrollPosition(edge: .top)
+        infoStage = .moving
+        if infoImage == nil { Task { await loadInfoImage() } }
+        // One frame later, so the panel is on screen before it starts to move.
+        DispatchQueue.main.async { openInfo() }
+    }
+
+    private func openInfo() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        withAnimation(.spring(response: 0.46, dampingFraction: 0.8)) {
+            infoProgress = 1
+        } completion: {
+            if infoProgress >= 1 { infoStage = .open }
+        }
+    }
+
+    private func closeInfo() {
+        guard infoStage != .closed else { return }
+        // Home is wherever the current photo sits full screen (it may be another one by now).
+        if let photo { infoStart = Self.fitRect(photo, in: screenSize) }
+        infoStage = .moving
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            infoProgress = 0
+            infoScroll.scrollTo(edge: .top)
+        } completion: {
+            guard infoProgress <= 0 else { return }
+            infoStage = .closed
+            infoImage = nil
+        }
+    }
+
+    /// Left and right on the photo above the details go to the next and previous one.
+    private func swipeInfo(_ translation: CGSize) {
+        guard infoStage == .open, abs(translation.width) > 50,
+              abs(translation.width) > abs(translation.height) * 1.4 else { return }
+        let next = index + (translation.width < 0 ? 1 : -1)
+        guard request.ids.indices.contains(next) else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        index = next
+    }
+
+    private func loadInfoImage() async {
+        guard let photoID, infoStage != .closed else { return }
+        if let quick = library.thumbnail(id: photoID) { infoImage = quick }
+        let loaded: UIImage?
+        if let asset = library.asset(id: photoID) {
+            loaded = await PhotoIntelligence.request(asset, side: 1800)
+        } else {
+            loaded = await library.sharpPreview(id: photoID, side: 1800)
+        }
+        guard let loaded, photoID == self.photoID, infoStage != .closed else { return }
+        withAnimation(.smooth(duration: 0.2)) { infoImage = loaded }
+    }
+
+    private static func fitRect(_ photo: PhotoRef, in size: CGSize) -> CGRect {
+        let bounds = CGRect(origin: .zero, size: size)
+        guard photo.pixelWidth > 0, photo.pixelHeight > 0, size.width > 0, size.height > 0 else { return bounds }
+        return AVMakeRect(aspectRatio: CGSize(width: photo.pixelWidth, height: photo.pixelHeight), insideRect: bounds)
+    }
+
+    private static func lerp(_ a: CGRect, _ b: CGRect, _ t: CGFloat) -> CGRect {
+        CGRect(
+            x: a.minX + (b.minX - a.minX) * t,
+            y: a.minY + (b.minY - a.minY) * t,
+            width: a.width + (b.width - a.width) * t,
+            height: a.height + (b.height - a.height) * t
+        )
     }
 
     private func closeAnimated() {
@@ -586,6 +818,14 @@ private final class ShareBox: @unchecked Sendable {
     }
 }
 
+/// The photo pushed up to show its details: start (with the picture and where it is), how far,
+/// and the release with the upward speed.
+enum ViewerLift {
+    case began(UIImage?, CGRect)
+    case changed(CGFloat)
+    case ended(CGFloat)
+}
+
 final class PageTrack {
     fileprivate weak var filmstrip: FilmstripView?
     fileprivate weak var pager: PhotoPagerController?
@@ -614,6 +854,9 @@ struct PhotoPager: UIViewControllerRepresentable {
     let onToggleChrome: () -> Void
     var onDrag: (CGFloat) -> Void = { _ in }
     var track = PageTrack()
+    /// Swipe up opens the info panel (portrait only, while it is closed).
+    var liftEnabled = false
+    var onLift: (ViewerLift) -> Void = { _ in }
 
     func makeUIViewController(context: Context) -> PhotoPagerController {
         let controller = PhotoPagerController()
@@ -634,6 +877,8 @@ struct PhotoPager: UIViewControllerRepresentable {
         controller.onToggleChrome = onToggleChrome
         controller.onDrag = onDrag
         controller.track = track
+        controller.liftEnabled = liftEnabled
+        controller.onLift = onLift
         return controller
     }
 
@@ -645,6 +890,8 @@ struct PhotoPager: UIViewControllerRepresentable {
         controller.onToggleChrome = onToggleChrome
         controller.onDrag = onDrag
         controller.track = track
+        controller.liftEnabled = liftEnabled
+        controller.onLift = onLift
         track.pager = controller
         controller.playback = playback
         playback?.pager = controller
@@ -678,6 +925,15 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
     var onDrag: (CGFloat) -> Void = { _ in }
     var track = PageTrack()
     var isInteracting: Bool { dragging }
+    var liftEnabled = false
+    var onLift: (ViewerLift) -> Void = { _ in }
+    private var lifting = false
+    private var pendingLift = false
+
+    /// The picture on screen now, for the info panel to take over.
+    func liftImage() -> UIImage? {
+        currentCell()?.displayImage ?? (index == initialIndex ? originImage : nil)
+    }
 
     private var collection: UICollectionView!
     private let flow = UICollectionViewFlowLayout()
@@ -964,8 +1220,19 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
         let translation = gesture.translation(in: view)
         switch gesture.state {
         case .began:
+            if pendingLift, liftEnabled {
+                lifting = true
+                let cell = currentCell()
+                onLift(.began(liftImage(), cell?.imageFrame(in: view) ?? view.bounds))
+                return
+            }
+            lifting = false
             beginDismiss(touch: gesture.location(in: view))
         case .changed:
+            if lifting {
+                onLift(.changed(-translation.y))
+                return
+            }
             guard let photo = dismissPhoto else { return }
             let height = max(view.bounds.height, 1)
             let drop = max(0, translation.y)
@@ -981,6 +1248,11 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
             )
             onDrag(min(1, drop / (height * 0.42)))
         case .ended, .cancelled:
+            if lifting {
+                lifting = false
+                onLift(.ended(gesture.state == .ended ? -gesture.velocity(in: view).y : -10_000))
+                return
+            }
             let velocity = gesture.velocity(in: view)
             let drop = max(0, translation.y)
             if gesture.state == .ended, velocity.y > 260 || (drop > 120 && velocity.y > -120) {
@@ -1152,9 +1424,16 @@ extension PhotoPagerController: UIGestureRecognizerDelegate {
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: view)
-        guard velocity.y > 0, abs(velocity.y) > abs(velocity.x) else { return false }
+        guard abs(velocity.y) > abs(velocity.x) else { return false }
         let cell = currentCell()
-        return (cell?.zoomScale ?? 1) <= 1.01 && (cell?.contentOffsetY ?? 0) <= 1
+        guard (cell?.zoomScale ?? 1) <= 1.01 else { return false }
+        if velocity.y > 0 {
+            pendingLift = false
+            return (cell?.contentOffsetY ?? 0) <= 1
+        }
+        // Up: the info panel, as in Photos.
+        pendingLift = true
+        return liftEnabled
     }
 }
 

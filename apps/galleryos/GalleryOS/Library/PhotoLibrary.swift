@@ -49,6 +49,10 @@ final class PhotoLibrary: NSObject, ObservableObject {
     private var albumMembers: [String: [String]] = [:]
     private var albumGrids: [String: GridModel] = [:]
     private var lastSignature: [String] = []
+    private var lastAnalysisNudge = Date.distantPast
+    /// Set when what the counts depend on changes outside the grids (hidden screenshots, a delete).
+    private var splitsStale = true
+    private var lastSplit = Date.distantPast
     private let imageManager = PHCachingImageManager()
     private var reloadTask: Task<Void, Never>?
     private var indexTask: Task<Void, Never>?
@@ -461,31 +465,72 @@ final class PhotoLibrary: NSObject, ObservableObject {
         let shown: ([PhotoRef]) -> [PhotoRef] = { [hideScreenshots] refs in
             hideScreenshots ? refs.filter { !$0.traits.contains(.screenshot) } : refs
         }
-        let nextPhone = GridModel(photos: shown(phoneAll))
-        let nextServer = GridModel(photos: shown(serverAll))
-        let nextGrid = GridModel(photos: shown(mergedAll))
+        var shots = Set<String>()
+        if hideScreenshots {
+            for list in [mergedAll, phoneAll, serverAll] {
+                for photo in list where photo.traits.contains(.screenshot) {
+                    shots.insert(photo.id)
+                    if let hash = photo.cloudHash { shots.insert("cloud:\(hash)") }
+                }
+            }
+        }
+        aliasIndex = nil
+        let shotsChanged = shots != hiddenScreenshotIDs
+        hiddenScreenshotIDs = shots
+        if shotsChanged || peopleBasis != mergedAll.count {
+            // Screenshots switched, or the library grew or shrank (first load, photos freed or
+            // arrived): people are counted and pictured again, once the grids below are in place.
+            peopleBasis = mergedAll.count
+            peopleRefresh?.cancel()
+            peopleRefresh = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(shotsChanged ? 50 : 2000))
+                guard !Task.isCancelled else { return }
+                PhotoIntelligence.shared.refreshPeople()
+            }
+        }
+        // Most passes during a copy only change details of photos already on screen (a tile now
+        // on the server). Those are patched in place; only new or removed photos re-sort.
+        let shownPhone = shown(phoneAll)
+        let shownServer = shown(serverAll)
+        let shownMerged = shown(mergedAll)
+        let nextPhone = phoneGrid.patched(with: shownPhone) ?? GridModel(photos: shownPhone)
+        let nextServer = serverGrid.patched(with: shownServer) ?? GridModel(photos: shownServer)
+        let nextGrid = grid.patched(with: shownMerged) ?? GridModel(photos: shownMerged)
+        let phoneMoved = nextPhone.all != phoneGrid.all
+        let serverMoved = nextServer.all != serverGrid.all
+        // States that do not show in the photo itself (three failed tries, a second copy) are
+        // picked up at least every 20 seconds.
+        if Date().timeIntervalSince(lastSplit) > 20 { splitsStale = true }
         let phoneTally = MediaCounts(nextPhone.all)
         let serverTally = MediaCounts(nextServer.all)
         if phoneCounts != phoneTally { phoneCounts = phoneTally }
         if serverCounts != serverTally { serverCounts = serverTally }
         let engine = LibraryEngine.shared
-        var device = DeviceSplit()
-        for photo in nextPhone.all {
-            switch engine.deviceState(photo.id) {
-            case .onServer: device.onServer += 1
-            case .waiting: device.waiting += 1
-            case .notSent: device.notSent += 1
-            case .deletedOnServer: device.deletedOnServer += 1
+        var device = deviceSplit
+        if phoneMoved || serverMoved || splitsStale {
+            device = DeviceSplit()
+            for photo in nextPhone.all {
+                switch engine.deviceState(photo.id) {
+                case .onServer: device.onServer += 1
+                case .waiting: device.waiting += 1
+                case .notSent: device.notSent += 1
+                case .deletedOnServer: device.deletedOnServer += 1
+                }
             }
         }
-        var server = ServerSplit()
-        for photo in nextServer.all {
-            if engine.serverAsset(photo.id).map { engine.isMine($0) } == true { server.mine += 1 } else { server.others += 1 }
-            if !engine.hasLocalCopy(photo.id) { server.notHere += 1 }
+        var server = serverSplit
+        if phoneMoved || serverMoved || splitsStale {
+            server = ServerSplit()
+            for photo in nextServer.all {
+                if engine.serverAsset(photo.id).map { engine.isMine($0) } == true { server.mine += 1 } else { server.others += 1 }
+                if !engine.hasLocalCopy(photo.id) { server.notHere += 1 }
+            }
+            splitsStale = false
+            lastSplit = .now
+            filteredGrids.removeAll()
         }
         if deviceSplit != device { deviceSplit = device }
         if serverSplit != server { serverSplit = server }
-        filteredGrids.removeAll()
         let remote = LibraryEngine.shared.supplementalAlbums()
         let titles = Set(localAlbums.map { $0.title.lowercased() })
         let merged = localAlbums + remote.filter { record in
@@ -511,6 +556,7 @@ final class PhotoLibrary: NSObject, ObservableObject {
             grid = nextGrid
             refIndexStale = true
         }
+        aliasIndex = nil
         if albumsChanged {
             albums = nextAlbums
             albumGrids.removeAll()
@@ -519,8 +565,13 @@ final class PhotoLibrary: NSObject, ObservableObject {
             lastSignature = signature
             generation += 1
             albumGrids.removeAll()
-            // New server photos get looked at too (from their previews).
-            PhotoIntelligence.shared.schedule(self)
+            // New server photos get looked at too (from their previews). During a big copy every
+            // sent photo shows up here; the analysis is nudged once a minute then, not each time.
+            let copying = LibraryEngine.shared.stillCopying()
+            if !copying || Date().timeIntervalSince(lastAnalysisNudge) > 60 {
+                lastAnalysisNudge = .now
+                PhotoIntelligence.shared.schedule(self)
+            }
         }
     }
 
@@ -675,6 +726,47 @@ final class PhotoLibrary: NSObject, ObservableObject {
 
     /// Every photo the library knows, screenshots included even when the grid hides them.
     var allPhotos: [PhotoRef] { everything.isEmpty ? grid.all : everything }
+
+    /// Every photo the person wants to see: without screenshots while they are switched off. People,
+    /// search, memories and Porządki use this, so a hidden screenshot shows up nowhere.
+    var shownPhotos: [PhotoRef] {
+        hideScreenshots ? allPhotos.filter { !$0.traits.contains(.screenshot) } : allPhotos
+    }
+
+    /// Screenshots kept out of sight right now (empty while they are shown).
+    private(set) var hiddenScreenshotIDs = Set<String>()
+
+    func isHiddenScreenshot(_ id: String) -> Bool {
+        hiddenScreenshotIDs.contains(id)
+    }
+
+    /// Any id a photo was known by → the id it is shown under now.
+    private var aliasIndex: [String: String]?
+    private var peopleBasis = -1
+    private var peopleRefresh: Task<Void, Never>?
+
+    /// Faces and memories remember the id a photo had when it was looked at. Since then it may have
+    /// moved: a server photo that came to this device, or one freed from it that now lives only on
+    /// the server. This finds it under its current id, or nil when it is gone or hidden.
+    func currentID(for id: String) -> String? {
+        let index = aliases()
+        if let hit = index[id] { return hit }
+        if let hash = LibraryEngine.shared.serverHash(of: id) { return index["cloud:\(hash)"] }
+        return nil
+    }
+
+    private func aliases() -> [String: String] {
+        if let aliasIndex { return aliasIndex }
+        var index: [String: String] = [:]
+        index.reserveCapacity(serverGrid.all.count + everything.count * 2)
+        for photo in serverGrid.all { index[photo.id] = photo.id }
+        for photo in shownPhotos {
+            index[photo.id] = photo.id
+            if let hash = photo.cloudHash { index["cloud:\(hash)"] = photo.id }
+        }
+        aliasIndex = index
+        return index
+    }
 
     /// Scene labels now come from PhotoIntelligence, which looks at each photo once for everything.
     func adoptLabels(_ fresh: [String: [String]]) {
